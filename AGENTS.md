@@ -37,6 +37,29 @@ it conflicts with the official Polymarket documentation. If the MCP is
 unavailable, stop and state that blocker before implementing protocol-sensitive
 code.
 
+## Official Polymarket Libraries
+
+For every Polymarket integration, use an official Polymarket Python SDK or
+client wherever it provides the required capability. Prefer the unified
+`polymarket-client` async SDK for discovery, market data, trading, account data,
+and realtime streams. Use a specialized official client, such as
+`py-clob-client-v2` or `py-builder-relayer-client`, when the unified SDK does
+not cover the requirement or the specialized client is the documented path.
+
+Do not hand-roll HTTP/WebSocket transports, authentication, signatures, order
+serialization, or protocol models when an official library already implements
+them. A direct integration is allowed only when official libraries lack the
+required capability or cannot meet a documented correctness or latency
+requirement. Record that exception and its evidence in `docs/api-notes.md` and
+the relevant implementation-plan slice before implementing it.
+
+Keep official-library objects inside `bots.polymarket` adapters. Validate and
+normalize them into this package's internal contracts at the adapter boundary;
+do not expose SDK models to bot or execution-domain code. Because the unified
+SDK is currently beta, pin the selected version and add adapter contract tests
+when a network slice introduces it. Beta status alone is not a reason to
+reimplement supported protocol behavior.
+
 ## Working Rules
 
 - Keep the package importable as `bots` after this directory is copied away.
@@ -50,6 +73,8 @@ code.
   credentials, and a funder address.
 - Normalize external Polymarket payloads at adapter boundaries before core bot
   logic sees them.
+- Prefer official Polymarket SDK/client methods before adding direct network or
+  protocol implementations.
 - Missing, stale, ambiguous, or malformed market data must skip or reject with a
   stable reason instead of guessing.
 - Package `__init__.py` files are not barrel exports.

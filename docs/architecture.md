@@ -16,6 +16,32 @@ engine pass. The package defines the contracts and safety boundaries that later
 slices should implement. It does not yet implement the Polymarket network
 clients or a runnable CLI.
 
+## Official Client Boundary
+
+Polymarket network adapters must be built on official Polymarket Python
+libraries wherever those libraries support the required capability. The
+default is the unified `polymarket-client` SDK, using `AsyncPublicClient` for
+public discovery, market data, and public streams and `AsyncSecureClient` for
+authenticated reads, trading, and user streams. This matches the framework's
+async, event-driven runtime.
+
+When the unified SDK does not expose a required operation, use the relevant
+specialized official client before writing a direct integration. For example,
+`py-clob-client-v2` is the official full-CLOB Python client and
+`py-builder-relayer-client` is the official relayer client. Direct HTTP or
+WebSocket code is the last resort and requires a documented capability,
+correctness, or latency gap in `api-notes.md` and the relevant implementation
+slice. Authentication, signing, and order serialization must never be
+hand-rolled when an official library supports them.
+
+The official libraries are transport/protocol dependencies, not framework
+contracts. Modules under `bots.polymarket` own their lifecycle and convert SDK
+models and events into `BookSnapshot`, `WalletTradeEvent`, `FillEvent`, and
+other package-owned types. Bots, runners, paper execution, and broker protocols
+must not import SDK types. The selected library version must be pinned and its
+adapter behavior covered by contract tests, especially while
+`polymarket-client` remains beta.
+
 ## Non-Goals
 
 - No FastAPI routes.
@@ -38,12 +64,12 @@ backend/bots/
     markets.py    # Static and dynamic market subscription contracts.
     runner.py     # Dispatches stream events into one bot.
   polymarket/
-    gamma.py      # Market discovery.
-    data.py       # Positions/trades/activity lookups.
-    clob.py       # CLOB books, prices, market info.
+    gamma.py      # SDK-backed market discovery adapter.
+    data.py       # SDK-backed positions/trades/activity adapter.
+    clob.py       # Official-client-backed CLOB adapter.
     wallet_activity.py # Wallet trades/activity stream and fallback.
-    ws_market.py  # Public market WebSocket.
-    ws_user.py    # Authenticated own-order/fill WebSocket.
+    ws_market.py  # SDK-backed public market stream adapter.
+    ws_user.py    # SDK-backed authenticated user stream adapter.
     types.py      # Polymarket-specific normalized types.
   execution/
     broker.py     # Broker protocol used by bots.
@@ -112,8 +138,8 @@ class MyBot(BaseBot):
         ...
 ```
 
-Only override hooks that are needed. Do not put HTTP clients, signing, fee
-math, or simulation details in bot classes.
+Only override hooks that are needed. Do not put SDK clients, HTTP clients,
+signing, fee math, or simulation details in bot classes.
 
 ## Multi-Market Routing
 
@@ -216,9 +242,10 @@ Live must be behind an explicit hard gate:
 - `POLY_API_KEY`, `POLY_API_SECRET`, and `POLY_API_PASSPHRASE` are configured.
 - `DEPOSIT_WALLET_ADDRESS` is configured as the funder address.
 
-The live broker submits signed CLOB orders and confirms fills from the
-authenticated user WebSocket. It must cancel open orders on shutdown when that
-is safe and configured.
+The live broker submits signed CLOB orders through an official Polymarket SDK or
+client and confirms fills from the official SDK's authenticated user stream
+when supported. It must cancel open orders on shutdown when that is safe and
+configured.
 
 ## Paper Realism Rule
 
@@ -234,12 +261,16 @@ slower polling path because it is easier to implement.
 
 Primary live data paths:
 
-- Public market/order-book changes: Polymarket market WebSocket.
-- Own live order and fill status: authenticated Polymarket user WebSocket.
+- Public market/order-book changes: official async SDK market subscription.
+- Own live order and fill status: official async SDK user subscription.
 - Watched-wallet trades: the lowest-latency stream that can correctly identify
   wallet, condition ID, token ID, side, size, price, timestamp, and source ID.
 - Static or slowly changing metadata: Gamma/CLOB REST, cached before hot-path
   decisions whenever possible.
+
+The last two paths must also use an official SDK/client operation wherever one
+exists. REST and WebSocket describe the upstream transport; they do not imply
+that this package should implement that transport itself.
 
 REST polling is not a primary live signal path for fast bots. It is allowed for:
 

@@ -42,6 +42,12 @@ class BuyCheapYes(BaseBot):
 - Do not access `.env` directly from bots.
 - Do not compute fees inside bots.
 - Do not sign orders inside bots.
+- Do not import or instantiate Polymarket SDK/client classes inside bots.
+
+Official Polymarket libraries belong behind the framework adapters. Bot code
+uses `ctx.markets`, `ctx.books`, normalized events, and `ctx.broker`; this keeps
+strategies independent of SDK releases and guarantees that paper and live modes
+continue to share package-owned contracts.
 
 ## Common Hooks
 
@@ -120,6 +126,10 @@ config = BotConfig.from_env("fast-test").with_overrides(
 
 Unit tests should feed synthetic `BookSnapshot` events into `BotRunner` and use a
 fake broker. Do not call Polymarket in bot unit tests.
+
+Adapter tests for the framework itself should exercise recorded or synthetic
+official-SDK models and events, then assert their conversion into internal
+contracts. They should not teach individual bots about SDK response shapes.
 
 Paper-broker tests should use deterministic latency and book sequences:
 

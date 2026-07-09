@@ -41,6 +41,19 @@ easy to read, easy to change, and boring to debug.
   checks in a named boundary helper or thin public wrapper and delegate formulas
   to private calculation functions.
 
+## Official External Clients
+
+- Prefer an official vendor SDK/client whenever it supports the external
+  operation. For Polymarket, follow the selection rule in
+  `docs/api-notes.md`: unified async SDK first, then specialized official
+  clients, then a documented direct-integration exception.
+- Keep vendor models, errors, and transport lifecycle inside the owning adapter.
+  Normalize them into package contracts before domain or bot code sees them.
+- Do not duplicate authentication, signing, serialization, pagination, or
+  realtime subscription behavior supplied by an official client.
+- Pin beta SDK versions and contract-test adapter behavior rather than leaking
+  unstable vendor contracts across the codebase.
+
 ## Constants And Literals
 
 - Treat hardcoded literals as a design smell when they represent shared

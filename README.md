@@ -24,6 +24,15 @@ engine: contracts, docs, safety gates, example shape, and an in-memory
 intentionally unimplemented until the later implementation-plan slices fill
 them in.
 
+Future Polymarket integrations must use an official Polymarket Python SDK or
+client wherever it supports the required capability. The unified
+`polymarket-client` async SDK is the default for this event-driven framework;
+specialized official clients such as `py-clob-client-v2` are the next choice.
+Direct HTTP, WebSocket, authentication, signing, or order serialization is
+allowed only for a documented capability gap in the official libraries. See
+`docs/api-notes.md` for the dependency-selection rule and current official
+packages.
+
 The target v1 is event-driven from the start. Paper and live modes must consume
 the same market-book, wallet-trade, and fill event shapes so paper behavior
 stays close to live behavior.

@@ -2,6 +2,40 @@
 
 These notes summarize the Polymarket docs relevant to this isolated bot package.
 
+## Official Python Libraries
+
+Use official Polymarket libraries wherever they support the required
+capability. Current official choices are:
+
+- [`polymarket-client`](https://docs.polymarket.com/dev-tooling/python): the
+  unified Python SDK for discovery, market data, trading, account data, and
+  realtime streams. It provides matching async and sync clients; this framework
+  uses `AsyncPublicClient` and `AsyncSecureClient`. Realtime subscriptions are
+  async-only. The SDK is currently beta.
+- [`py-clob-client-v2`](https://docs.polymarket.com/api-reference/clients-sdks):
+  the official specialized Python client for the full CLOB API, including
+  market data, order management, and authentication.
+- [`py-builder-relayer-client`](https://docs.polymarket.com/api-reference/clients-sdks):
+  the official Python relayer client for supported gasless transaction and
+  wallet flows.
+
+Selection order:
+
+1. Use the unified async SDK when it supports the operation or stream.
+2. Use a specialized official Python client when the unified SDK lacks the
+   capability or official documentation designates the specialized client.
+3. Implement direct HTTP/WebSocket access only when no official library can
+   satisfy the required capability, correctness, or latency. Document the
+   missing capability and evidence in this file and the relevant implementation
+   slice before writing it.
+
+Never hand-roll authentication, signing, order serialization, or protocol
+models already provided by an official library. Keep all SDK/client types at
+the `bots.polymarket` boundary and normalize them into package-owned contracts.
+Pin the chosen dependency version and cover the adapter with contract tests.
+The unified SDK's beta status requires version and compatibility discipline; it
+does not by itself justify bypassing the SDK.
+
 ## API Surfaces
 
 Gamma API: `https://gamma-api.polymarket.com`
@@ -47,7 +81,8 @@ CLOB trading uses two levels:
 - L2: API key, secret, and passphrase derived from L1.
 
 Even with L2 credentials, order creation still signs the order payload. Use the
-official SDK where possible rather than hand-rolling signatures.
+official unified SDK or official CLOB client rather than hand-rolling
+signatures.
 
 Relevant docs: `/api-reference/authentication`.
 
@@ -112,6 +147,12 @@ The docs reviewed here do not document a general arbitrary-wallet WebSocket.
 The framework therefore keeps `WalletActivityStream` abstract. Implementations
 should prefer the lowest-latency source that can normalize a stable
 `WalletTradeEvent`, then use Data API polling for bootstrap and reconciliation.
+
+Before adding either path directly, re-check the unified SDK and specialized
+official clients for a supported wallet activity method or stream. A source not
+covered by an official Polymarket library is an explicit exception to the
+official-library rule and must be documented here with the selected provider
+and rationale.
 
 Data API polling is not considered the target live wallet-following path. It is
 a fallback/degraded path unless no correct streaming source exists. If no

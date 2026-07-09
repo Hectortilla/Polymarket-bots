@@ -7,6 +7,23 @@ fastest correct source available and document any fallback that is slower than
 the intended live path. Do not implement polling as the primary live signal path
 when a correct WebSocket/streaming source is available.
 
+## Network Implementation Rule
+
+Every network slice must first map its requirements against the current
+official Polymarket Python libraries. Use the unified `polymarket-client` async
+SDK wherever it supports the operation or stream. If it does not, use a
+specialized official client such as `py-clob-client-v2` or
+`py-builder-relayer-client` before considering a direct integration.
+
+Direct HTTP/WebSocket, authentication, signing, order serialization, or
+protocol-model implementations are prohibited unless the official libraries
+lack the required capability or cannot satisfy a documented correctness or
+latency requirement. Record such an exception in `docs/api-notes.md` and the
+affected slice before implementation. Keep official-library types within
+`bots.polymarket` adapters and normalize them into package-owned contracts.
+Pin the chosen dependency version and add adapter contract tests; the unified
+SDK's current beta status is not, by itself, an exception.
+
 ## Slice 1: Contracts
 
 Status: done.
@@ -56,12 +73,14 @@ Tests:
 
 Implement public adapters:
 
-- `GammaClient.find_by_slug`.
-- `ClobClient.latest`.
-- `MarketStream.books`.
+- Internal `GammaClient.find_by_slug`, backed by the unified async SDK.
+- Internal `ClobClient.latest`, backed by the unified async SDK or the official
+  CLOB client when required.
+- Internal `MarketStream.books`, backed by the unified async SDK subscription.
 
 Rules:
 - Use async I/O.
+- Do not expose official SDK/client models outside the adapter boundary.
 - Use Polymarket market WebSocket as the live order-book/price signal path.
 - Use REST for bootstrap, metadata, backfill, and reconciliation.
 - Resolve bot market slugs through Gamma/CLOB metadata before subscribing or
@@ -74,6 +93,8 @@ Rules:
 
 Tests:
 
+- Pin and record the selected official library version.
+- Contract-test official-library models/events into internal types.
 - Parse normal market payload.
 - Reject missing token IDs.
 - Parse book levels into sorted `BookSnapshot`.
@@ -84,7 +105,9 @@ Tests:
 
 Implement wallet-following inputs:
 
-- `WalletActivityClient.latest_trades` using Data API `/trades?user=...`.
+- `WalletActivityClient.latest_trades` using the unified async SDK's Data API
+  coverage when available, otherwise a documented direct
+  `/trades?user=...` exception.
 - Optional `/activity?user=...` reconciliation path.
 - `WalletActivityStream.trades` for the preferred low-latency source.
 - Normalize every source into `WalletTradeEvent`.
@@ -95,6 +118,8 @@ Rules:
   no correct streaming source exists.
 - If no official arbitrary-wallet Polymarket WebSocket exists, evaluate
   on-chain/indexer WebSocket sources before accepting polling.
+- Re-check the unified SDK and specialized official clients before selecting a
+  direct Data API or third-party stream implementation.
 - Every event needs a stable `source_id`.
 - Sort backfilled rows by trade timestamp and deterministic tie-breaker.
 - Preserve `trade_timestamp_ms` and `observed_at_ms` for latency modeling.
@@ -129,6 +154,10 @@ No app imports.
 
 Implement live gating before live order submission.
 
+Build live authentication, credential derivation, signing, and submission on
+`AsyncSecureClient` or, where necessary, the official CLOB client. Do not
+reimplement those protocol operations.
+
 Required gates:
 
 - `BOT_MODE=live`.
@@ -145,6 +174,9 @@ Acceptance:
 ## Slice 7: Live Fill Confirmation
 
 Implement authenticated user WebSocket parsing.
+
+Use the unified async SDK's authenticated user subscription unless a verified
+capability, correctness, or latency gap is documented before implementation.
 
 Rules:
 
