@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for non-service modules that combine unrelated top-level responsibilities.
+
+Report when:
+- A module owns two or more unrelated concepts, workflows, adapters, or domains.
+- Callers must import from the same file for reasons that do not share a semantic owner.
+- Changes in one responsibility would force reading or testing unrelated behavior in the same module.
+
+Do not report:
+- One cohesive area with semantic internal sections, which belongs to the cohesive-package reviewer.
+- Service files with durable-domain mixing, which belong to the mixed-domain-service reviewer.
+- Large files when line count is the only evidence.
+
+For each finding, include severity, file:line evidence, the unrelated responsibilities, and the boundary that should split them. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

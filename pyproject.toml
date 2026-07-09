@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polymarket-bots"
+version = "0.1.0"
+description = "Standalone custom Polymarket bot framework."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.34.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4,<9.0",
+]
+
+[tool.setuptools]
+packages = [
+  "bots",
+  "bots.examples",
+  "bots.execution",
+  "bots.framework",
+  "bots.polymarket",
+]
+
+[tool.setuptools.package-dir]
+bots = "."
+"bots.examples" = "examples"
+"bots.execution" = "execution"
+"bots.framework" = "framework"
+"bots.polymarket" = "polymarket"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

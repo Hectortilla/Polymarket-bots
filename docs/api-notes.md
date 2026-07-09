@@ -1,0 +1,132 @@
+# Polymarket API Notes
+
+These notes summarize the Polymarket docs relevant to this isolated bot package.
+
+## API Surfaces
+
+Gamma API: `https://gamma-api.polymarket.com`
+
+- Market and event discovery.
+- Slugs, questions, outcomes, token IDs, active/closed state.
+- Public, no authentication.
+- Relevant docs: `/api-reference/introduction`, `/market-data/fetching-markets`.
+
+Data API: `https://data-api.polymarket.com`
+
+- Public positions, trades, activity, analytics.
+- Useful for wallet state and backtesting inputs.
+- Public wallet-following fallback through `/trades?user={address}` and
+  `/activity?user={address}`.
+- Public, no authentication.
+- Relevant docs: `/market-data/overview`, `/api-reference/core/get-trades-for-a-user-or-markets`.
+
+CLOB API: `https://clob.polymarket.com`
+
+- Order books, prices, spreads, market fee info.
+- Order placement, cancellation, heartbeat.
+- Read endpoints are public.
+- Trading endpoints require authentication.
+- Relevant docs: `/trading/overview`, `/trading/orders/create`, `/trading/orders/cancel`.
+
+Market WebSocket:
+
+- Public real-time order-book, price, and market lifecycle updates.
+- Relevant docs: `/api-reference/wss/market`.
+
+User WebSocket:
+
+- Authenticated own order and trade updates.
+- Required for live fill confirmation.
+- Relevant docs: `/api-reference/wss/user`.
+
+## Authentication
+
+CLOB trading uses two levels:
+
+- L1: private-key EIP-712 signature.
+- L2: API key, secret, and passphrase derived from L1.
+
+Even with L2 credentials, order creation still signs the order payload. Use the
+official SDK where possible rather than hand-rolling signatures.
+
+Relevant docs: `/api-reference/authentication`.
+
+## Orders
+
+Polymarket orders are limit orders. Market orders are represented by marketable
+limit orders.
+
+Supported order types include:
+
+- `GTC`: rests until filled or canceled.
+- `GTD`: expires at a configured time.
+- `FOK`: fills entirely immediately or cancels.
+- `FAK`: fills available liquidity immediately and cancels the rest.
+
+Paper mode should model marketable orders by sweeping the fill-time order book.
+
+## Fees
+
+Polymarket charges taker fees on certain markets. Makers are not charged fees.
+Some markets are fee-free. Fee parameters are market-specific and available from
+CLOB market info.
+
+Formula:
+
+```text
+fee = shares * fee_rate * price * (1 - price)
+```
+
+Fees are rounded to 5 decimal places. The fee is symmetric around price `0.50`.
+
+Relevant docs: `/trading/fees`.
+
+## Rate Limits
+
+Cloudflare throttling queues/delays over-limit traffic instead of always
+returning clean rejections, so rate-limit mistakes show up as latency.
+
+Important limits from docs:
+
+- Gamma `/markets`: 300 requests per 10 seconds.
+- Data `/trades`: 200 requests per 10 seconds.
+- Data `/positions`: 150 requests per 10 seconds.
+- CLOB `/book`: 1,500 requests per 10 seconds.
+- CLOB `/books`: 500 requests per 10 seconds.
+- CLOB `POST /order`: 5,000 requests per 10 seconds burst.
+
+Relevant docs: `/api-reference/rate-limits`.
+
+## Wallet Following
+
+The public docs expose wallet-scoped Data API endpoints:
+
+- `GET /trades?user={address}`
+- `GET /activity?user={address}`
+
+`/trades` rows include wallet, side, asset/token ID, condition ID, size, price,
+timestamp, and transaction hash. `/activity` rows include similar fields plus
+activity type and combo flags.
+
+The docs reviewed here do not document a general arbitrary-wallet WebSocket.
+The framework therefore keeps `WalletActivityStream` abstract. Implementations
+should prefer the lowest-latency source that can normalize a stable
+`WalletTradeEvent`, then use Data API polling for bootstrap and reconciliation.
+
+Data API polling is not considered the target live wallet-following path. It is
+a fallback/degraded path unless no correct streaming source exists. If no
+official Polymarket arbitrary-wallet stream is available, implementation work
+should evaluate on-chain or indexer WebSocket sources before settling for
+polling.
+
+## Market Slugs
+
+Gamma market discovery is the owner of slug-to-market metadata resolution.
+Multi-market and dynamic-market bots should produce slugs, then resolve those
+slugs through Gamma/CLOB metadata before subscribing or trading.
+
+For consecutive time-bucket markets, the framework expects the bot to generate
+candidate slugs through `current_markets()` and `next_markets()`. The adapter
+layer should then resolve the slug as soon as the market exists. Missing future
+markets are normal for ephemeral markets and should be retried without blocking
+the current market's hot path.

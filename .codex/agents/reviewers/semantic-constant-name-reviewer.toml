@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for constants whose names describe their current value or encoding rather than their domain meaning.
+
+Report when:
+- The name repeats the literal, encoding, vendor string, or current numeric value instead of the contract it represents.
+- A future value change would make the symbol name misleading.
+- Callers cannot infer why the value exists from the name.
+
+Do not report:
+- Well-known protocol names where the value is the domain meaning.
+- Local variables or test fixtures that are not shared constants.
+- Naming preferences that do not affect clarity or change safety.
+
+For each finding, include severity, file:line evidence, why the current name is value-based, and a meaning-based name. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

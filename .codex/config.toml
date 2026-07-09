@@ -1,0 +1,174 @@
+[project]
+name = "polymarket-bots"
+
+[agents]
+max_threads = 48
+max_depth = 1
+
+[agents.async_blocking_io_reviewer]
+description = "Reports blocking I/O introduced on asynchronous paths."
+config_file = "./agents/reviewers/async-blocking-io-reviewer.toml"
+
+[agents.cohesive_module_package_reviewer]
+description = "Reports cohesive modules that need ownership-based semantic submodules."
+config_file = "./agents/reviewers/cohesive-module-package-reviewer.toml"
+
+[agents.constant_extraction_test_reviewer]
+description = "Reports constant extraction that leaves tests coupled to literals."
+config_file = "./agents/reviewers/constant-extraction-test-reviewer.toml"
+
+[agents.constant_ownership_reviewer]
+description = "Reports shared values stored outside their smallest owning module."
+config_file = "./agents/reviewers/constant-ownership-reviewer.toml"
+
+[agents.contract_literal_reviewer]
+description = "Reports hardcoded shared contract and domain literals."
+config_file = "./agents/reviewers/contract-literal-reviewer.toml"
+
+[agents.cross_boundary_contract_reviewer]
+description = "Reports inconsistent duplicated contracts across system boundaries."
+config_file = "./agents/reviewers/cross-boundary-contract-reviewer.toml"
+
+[agents.dependency_light_foundation_reviewer]
+description = "Reports dependency-heavy constants or pure helpers that invite cycles."
+config_file = "./agents/reviewers/dependency-light-foundation-reviewer.toml"
+
+[agents.descriptive_name_reviewer]
+description = "Reports names that do not explain intent."
+config_file = "./agents/reviewers/descriptive-name-reviewer.toml"
+
+[agents.domain_shared_code_reviewer]
+description = "Reports vague utilities that obscure important domain behavior."
+config_file = "./agents/reviewers/domain-shared-code-reviewer.toml"
+
+[agents.duplicated_logic_reviewer]
+description = "Reports duplicated business, contract, validation, or safety logic."
+config_file = "./agents/reviewers/duplicated-logic-reviewer.toml"
+
+[agents.fail_safe_trading_reviewer]
+description = "Reports trading paths that proceed with missing or ambiguous data."
+config_file = "./agents/reviewers/fail-safe-trading-reviewer.toml"
+
+[agents.final_contract_scan_reviewer]
+description = "Performs the required final scan for duplicate contract literals."
+config_file = "./agents/reviewers/final-contract-scan-reviewer.toml"
+
+[agents.final_validation_scan_reviewer]
+description = "Performs the required final scan for validation woven into domain logic."
+config_file = "./agents/reviewers/final-validation-scan-reviewer.toml"
+
+[agents.important_branch_test_reviewer]
+description = "Reports important behavioral branches missing tests."
+config_file = "./agents/reviewers/important-branch-test-reviewer.toml"
+
+[agents.ingress_validation_reviewer]
+description = "Reports external validation or normalization placed outside ingress boundaries."
+config_file = "./agents/reviewers/ingress-validation-reviewer.toml"
+
+[agents.init_barrel_export_reviewer]
+description = "Reports package initializers used only as barrel exports."
+config_file = "./agents/reviewers/init-barrel-export-reviewer.toml"
+
+[agents.intent_comment_reviewer]
+description = "Reports obvious comments and missing rationale for non-obvious code."
+config_file = "./agents/reviewers/intent-comment-reviewer.toml"
+
+[agents.internal_revalidation_reviewer]
+description = "Reports request-shape validation repeated inside trusted internal layers."
+config_file = "./agents/reviewers/internal-revalidation-reviewer.toml"
+
+[agents.literal_single_source_reviewer]
+description = "Reports shared values defined more than once instead of imported."
+config_file = "./agents/reviewers/literal-single-source-reviewer.toml"
+
+[agents.live_execution_gate_reviewer]
+description = "Reports live execution paths lacking configuration and explicit opt-in gates."
+config_file = "./agents/reviewers/live-execution-gate-reviewer.toml"
+
+[agents.market_data_guard_reviewer]
+description = "Reports misplaced or unstable fail-safe market-data guards."
+config_file = "./agents/reviewers/market-data-guard-reviewer.toml"
+
+[agents.mirror_event_idempotency_reviewer]
+description = "Reports duplicate leader events that can create duplicate mirror actions."
+config_file = "./agents/reviewers/mirror-event-idempotency-reviewer.toml"
+
+[agents.mixed_domain_service_reviewer]
+description = "Reports service files containing multiple durable domains."
+config_file = "./agents/reviewers/mixed-domain-service-reviewer.toml"
+
+[agents.module_responsibility_reviewer]
+description = "Reports modules with more than one responsibility."
+config_file = "./agents/reviewers/module-responsibility-reviewer.toml"
+
+[agents.object_method_placement_reviewer]
+description = "Reports standalone functions that should be methods on an owning class or domain class."
+config_file = "./agents/reviewers/object-method-placement-reviewer.toml"
+
+[agents.owner_local_code_reviewer]
+description = "Reports code placed away from its owner or premature global utilities."
+config_file = "./agents/reviewers/owner-local-code-reviewer.toml"
+
+[agents.package_root_ownership_reviewer]
+description = "Reports package-root APIs implemented in submodules and re-exported."
+config_file = "./agents/reviewers/package-root-ownership-reviewer.toml"
+
+[agents.primitive_precondition_reviewer]
+description = "Reports low-level preconditions mixed into formula implementations."
+config_file = "./agents/reviewers/primitive-precondition-reviewer.toml"
+
+[agents.public_contract_discoverability_reviewer]
+description = "Reports unstable or difficult-to-discover public contracts."
+config_file = "./agents/reviewers/public-contract-discoverability-reviewer.toml"
+
+[agents.pure_domain_function_reviewer]
+description = "Reports avoidable side effects in strategy, risk, fee, P&L, or simulation logic."
+config_file = "./agents/reviewers/pure-domain-function-reviewer.toml"
+
+[agents.risk_proportional_test_reviewer]
+description = "Reports test coverage that is insufficient for the change risk."
+config_file = "./agents/reviewers/risk-proportional-test-reviewer.toml"
+
+[agents.semantic_abstraction_reviewer]
+description = "Reports abstractions based on coincidental similarity rather than one concept."
+config_file = "./agents/reviewers/semantic-abstraction-reviewer.toml"
+
+[agents.semantic_constant_name_reviewer]
+description = "Reports constants named after values instead of meaning."
+config_file = "./agents/reviewers/semantic-constant-name-reviewer.toml"
+
+[agents.shared_rule_representation_reviewer]
+description = "Reports repeated rules that need a shared explicit representation."
+config_file = "./agents/reviewers/shared-rule-representation-reviewer.toml"
+
+[agents.small_explicit_function_reviewer]
+description = "Reports clever inline logic that should be a small explicit function."
+config_file = "./agents/reviewers/small-explicit-function-reviewer.toml"
+
+[agents.stable_skip_reason_reviewer]
+description = "Reports skipped decisions with unstable or ad hoc reason strings."
+config_file = "./agents/reviewers/stable-skip-reason-reviewer.toml"
+
+[agents.synchronized_knowledge_reviewer]
+description = "Reports knowledge duplicated across places that must change together."
+config_file = "./agents/reviewers/synchronized-knowledge-reviewer.toml"
+
+[agents.task_scope_reviewer]
+description = "Reports refactors or features outside the requested task scope."
+config_file = "./agents/reviewers/task-scope-reviewer.toml"
+
+[agents.test_contract_literal_reviewer]
+description = "Reports tests that duplicate repository-owned contract literals."
+config_file = "./agents/reviewers/test-contract-literal-reviewer.toml"
+
+[agents.typed_finite_state_reviewer]
+description = "Reports loose strings used for finite state sets."
+config_file = "./agents/reviewers/typed-finite-state-reviewer.toml"
+
+[agents.user_copy_extraction_reviewer]
+description = "Reports user-facing copy extracted too early or left inline after becoming shared."
+config_file = "./agents/reviewers/user-copy-extraction-reviewer.toml"
+
+[agents.validation_before_decisions_reviewer]
+description = "Reports validation interleaved with formulas, transitions, or decisions."
+config_file = "./agents/reviewers/validation-before-decisions-reviewer.toml"

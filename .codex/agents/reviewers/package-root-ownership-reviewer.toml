@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for mismatch between package-root ownership and implementation location.
+
+Report when:
+- A symbol genuinely belongs to the package-root API but is implemented in a submodule and re-exported from the root.
+- Supporting concepts live at the package root even though a semantic submodule owns them.
+- The package root is neither a true owner nor a thin public entrypoint with real implementation.
+
+Do not report:
+- Plain barrel exports, which belong to the init-barrel-export reviewer.
+- Symbols correctly imported from their semantic submodule.
+- Package roots that implement the concept directly and keep supporting details in submodules.
+
+For each finding, include severity, file:line evidence, the ownership mismatch, and the correct implementation location. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

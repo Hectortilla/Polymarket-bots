@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for identifiers whose names fail to communicate intent in their actual context.
+
+Report when:
+- A variable, function, class, module, constant, or parameter name hides its role, unit, domain meaning, or lifecycle state.
+- Readers must inspect implementation details to know what the identifier represents.
+- A misleading name can cause incorrect usage or future drift.
+
+Do not report:
+- Purely subjective naming preferences.
+- Names that are conventional in the local framework or domain.
+- Constants named after values, which belong to the semantic-constant-name reviewer.
+
+For each finding, include severity, file:line evidence, why the name obscures intent, and a precise intent-based name. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

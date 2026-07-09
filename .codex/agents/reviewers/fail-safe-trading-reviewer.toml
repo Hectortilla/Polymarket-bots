@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for trading decisions that can proceed instead of skip when required data is unsafe.
+
+Report when:
+- Missing, stale, malformed, ambiguous, contradictory, or untrusted data can still lead to order creation, mirror action, or live/paper execution.
+- A trading path defaults to action instead of a stable skip when required context is absent.
+- Error handling converts uncertainty into a permissive decision.
+
+Do not report:
+- Non-trading validation placement concerns.
+- Market-data guard placement details unless the result is an unsafe proceed decision.
+- Pure observability or dashboard paths that cannot trigger execution.
+
+For each finding, include severity, file:line evidence, the unsafe proceed path, and the fail-safe skip condition. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

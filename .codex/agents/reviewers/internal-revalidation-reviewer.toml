@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for request-shape validation repeated inside trusted internal layers.
+
+Report when:
+- Wallet address, condition ID, pagination, range, None, format, or request payload validation appears in business logic, orchestration, or readonly client wrappers after ingress validation should have run.
+- Internal code rejects malformed request shape instead of assuming typed, valid values from its caller.
+- The same request validation is duplicated both at the boundary and inside core logic.
+
+Do not report:
+- True domain guards that convert bad external market data into stable skip reasons.
+- Primitive preconditions isolated in a thin public wrapper.
+- Defensive checks required by an external SDK adapter boundary.
+
+For each finding, include severity, file:line evidence, the repeated validation, and the boundary that should own it. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

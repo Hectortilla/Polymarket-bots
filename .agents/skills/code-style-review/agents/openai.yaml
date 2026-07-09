@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Style Review"
+  short_description: "Run parallel single-rule maintainability reviews"
+  default_prompt: "Use $code-style-review to run every focused reviewer on my latest changes and reconcile their findings."

@@ -1,0 +1,263 @@
+import asyncio
+from dataclasses import dataclass
+from decimal import Decimal
+
+from bots.framework.base import BaseBot
+from bots.framework.config import BotConfig
+from bots.framework.context import BotContext
+from bots.framework.events import BookLevel, BookSnapshot, WalletTradeEvent, Side
+from bots.framework.markets import MarketSubscription
+from bots.framework.runner import BotRunner
+
+
+@dataclass(slots=True)
+class RecordingMarketBot(BaseBot):
+    books: list[str]
+    wallet_trades: list[str]
+
+    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+        self.books.append(book.market_slug or "")
+
+    async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
+        self.wallet_trades.append(trade.market_slug or "")
+
+
+class BucketBot(RecordingMarketBot):
+    async def current_markets(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> tuple[MarketSubscription, ...]:
+        current_bucket = now_ms // 300_000 * 300
+        return (MarketSubscription(slug=f"btc-updown-5m-{current_bucket}"),)
+
+    async def next_markets(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> tuple[MarketSubscription, ...]:
+        next_bucket = (now_ms // 300_000 + 1) * 300
+        return (MarketSubscription(slug=f"btc-updown-5m-{next_bucket}"),)
+
+
+def test_runner_routes_static_multi_market_books(dummy_context: BotContext) -> None:
+    async def run() -> tuple[bool, bool, list[str]]:
+        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_book(_book("btc"))
+        rejected = await runner.dispatch_book(_book("sol"))
+
+        return accepted, rejected, bot.books
+
+    accepted, rejected, books = asyncio.run(run())
+
+    assert accepted is True
+    assert rejected is False
+    assert books == ["btc"]
+
+
+def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotContext) -> None:
+    async def run() -> tuple[bool, int]:
+        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_book(_book("sol"))
+        return accepted, len(bot.books)
+
+    accepted, book_count = asyncio.run(run())
+
+    assert accepted is False
+    assert book_count == 0
+
+
+def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:
+    async def run() -> tuple[bool, int]:
+        ctx = _with_config(
+            dummy_context,
+            BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=1_000),
+        )
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_book(
+            BookSnapshot(
+                token_id="123",
+                bids=(),
+                asks=(),
+                received_at_ms=2_000,
+                market_slug="btc",
+            )
+        )
+        return accepted, len(bot.books)
+
+    accepted, book_count = asyncio.run(run())
+
+    assert accepted is False
+    assert book_count == 0
+
+
+def test_runner_rejects_stale_book(dummy_context: BotContext) -> None:
+    async def run() -> tuple[bool, int]:
+        ctx = _with_config(
+            dummy_context,
+            BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=1_000),
+        )
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_book(
+            BookSnapshot(
+                token_id="123",
+                bids=(),
+                asks=(),
+                received_at_ms=500,
+                market_slug="btc",
+            )
+        )
+        return accepted, len(bot.books)
+
+    accepted, book_count = asyncio.run(run())
+
+    assert accepted is False
+    assert book_count == 0
+
+
+def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
+    async def run() -> tuple[bool, int]:
+        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_book(
+            BookSnapshot(
+                token_id="123",
+                bids=(),
+                asks=(
+                    BookLevel(price=Decimal("0"), size=Decimal("10")),
+                ),
+                received_at_ms=10**15,
+                market_slug="btc",
+            )
+        )
+        return accepted, len(bot.books)
+
+    accepted, book_count = asyncio.run(run())
+
+    assert accepted is False
+    assert book_count == 0
+
+
+def test_runner_routes_static_multi_market_wallet_trades(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> tuple[bool, bool, list[str]]:
+        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_wallet_trade(_wallet_trade("eth", "tx-1"))
+        rejected = await runner.dispatch_wallet_trade(_wallet_trade("sol", "tx-2"))
+
+        return accepted, rejected, bot.wallet_trades
+
+    accepted, rejected, wallet_trades = asyncio.run(run())
+
+    assert accepted is True
+    assert rejected is False
+    assert wallet_trades == ["eth"]
+
+
+def test_runner_rejects_wallet_trade_without_market_slug_when_planned(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> tuple[bool, int]:
+        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_wallet_trade(_wallet_trade(None, "tx-3"))
+        return accepted, len(bot.wallet_trades)
+
+    accepted, trade_count = asyncio.run(run())
+
+    assert accepted is False
+    assert trade_count == 0
+
+
+def test_runner_rejects_stale_wallet_trade(dummy_context: BotContext) -> None:
+    async def run() -> tuple[bool, int]:
+        ctx = _with_config(
+            dummy_context,
+            BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=500),
+        )
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+
+        accepted = await runner.dispatch_wallet_trade(_wallet_trade("btc", "tx-stale", observed_at_ms=2_000, trade_timestamp_ms=1_000))
+        return accepted, len(bot.wallet_trades)
+
+    accepted, trade_count = asyncio.run(run())
+
+    assert accepted is False
+    assert trade_count == 0
+
+
+def test_dynamic_market_hooks_expose_current_and_next(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> tuple[str, str]:
+        bot = BucketBot(books=[], wallet_trades=[])
+        current = await bot.current_markets(dummy_context, 1_783_549_250_000)
+        next_markets = await bot.next_markets(dummy_context, 1_783_549_250_000)
+
+        return current[0].slug, next_markets[0].slug
+
+    current_slug, next_slug = asyncio.run(run())
+
+    assert current_slug == "btc-updown-5m-1783549200"
+    assert next_slug == "btc-updown-5m-1783549500"
+
+
+def _book(market_slug: str) -> BookSnapshot:
+    return BookSnapshot(
+        token_id="123",
+        bids=(),
+        asks=(),
+        received_at_ms=10**15,
+        market_slug=market_slug,
+    )
+
+
+def _wallet_trade(
+    market_slug: str | None,
+    source_id: str,
+    *,
+    observed_at_ms: int = 1_100,
+    trade_timestamp_ms: int = 1_000,
+) -> WalletTradeEvent:
+    return WalletTradeEvent(
+        wallet="0xleader",
+        condition_id="0xcondition",
+        token_id="123",
+        side=Side.BUY,
+        size=Decimal("1"),
+        price=Decimal("0.50"),
+        source_id=source_id,
+        trade_timestamp_ms=trade_timestamp_ms,
+        observed_at_ms=observed_at_ms,
+        market_slug=market_slug,
+    )
+
+
+def _with_config(ctx: BotContext, config: BotConfig) -> BotContext:
+    return BotContext(
+        config=config,
+        broker=ctx.broker,
+        markets=ctx.markets,
+        books=ctx.books,
+        wallet_activity=ctx.wallet_activity,
+        positions=ctx.positions,
+    )

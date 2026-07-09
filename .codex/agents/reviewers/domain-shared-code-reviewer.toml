@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for vague shared code that hides important domain behavior.
+
+Report when:
+- A utility function or module name is generic enough that callers lose the domain meaning of the operation.
+- Important business behavior is placed in a catch-all helper, common module, or misc utility.
+- The shared location makes reuse harder to discover from the relevant domain concept.
+
+Do not report:
+- Dependency-light primitives that are intentionally domain-neutral.
+- Shared code whose name and module clearly communicate the domain behavior.
+- Owner-placement issues better handled by the owner-local or object-method reviewer.
+
+For each finding, include severity, file:line evidence, the hidden domain behavior, and a domain-specific name or owner. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

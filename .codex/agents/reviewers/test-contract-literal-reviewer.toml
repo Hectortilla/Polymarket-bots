@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for tests that repeat repository-owned contract literals instead of importing the owning symbol.
+
+Report when:
+- A test repeats a route, status, reason, environment key, domain value, field name, limit, or other stable repo contract.
+- The test would continue passing if the production constant changed but the copied literal did not.
+- A named constant, enum, typed value, or generated contract already exists for the assertion.
+
+Do not report:
+- Literals that are intentionally raw external input examples.
+- One-off expected strings that are user copy, not repo contracts.
+- Tests for parser behavior where the literal itself is the fixture under test.
+
+For each finding, include severity, file:line evidence, the copied contract, and the symbol tests should import. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

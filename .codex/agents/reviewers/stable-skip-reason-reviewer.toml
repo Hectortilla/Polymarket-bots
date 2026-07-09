@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for skip outcomes whose reason strings are not stable contracts.
+
+Report when:
+- Skip reasons are dynamic, interpolated, duplicated, inconsistently spelled, or constructed ad hoc.
+- Callers, tests, telemetry, or persistence depend on reason strings that lack a stable owner.
+- Equivalent skip outcomes use different reason values.
+
+Do not report:
+- Human-readable log details that are separate from the stable skip reason.
+- Non-skip errors or statuses unless they are used as skip contracts.
+- Literal extraction issues where no skip contract is involved.
+
+For each finding, include severity, file:line evidence, the unstable skip outcome, and the stable owning reason definition. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

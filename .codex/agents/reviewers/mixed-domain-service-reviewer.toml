@@ -1,0 +1,18 @@
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only whether a service file mixes two or more durable domains.
+
+Report when:
+- A service file contains more than one of these durable domains: public orchestration, typed contracts, validation, normalization/parsing, formulas, book/IO adapters, persistence, or SDK/transport integration.
+- The public service entrypoint is doing supporting-domain work that should live in semantic submodules.
+- Package promotion is required even if there is only one current call site.
+
+Do not report:
+- Non-service module responsibility issues.
+- Service files that are thin orchestration over already-owned submodules.
+- Package splits based on line count rather than durable domains.
+
+For each finding, include severity, file:line evidence, every durable domain identified, and a proposed package map with a thin public root. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""
