@@ -44,3 +44,7 @@ metadata, reconnect backfill, reconciliation, or explicit degraded fallback.
 Bots can operate on one market, many static market slugs, or dynamic market
 slugs generated from context such as time buckets. The runner routes
 market-tagged events only to bots whose current market set includes that slug.
+
+Wallet-following bots can watch one or many leader addresses through
+`BOT_WALLET_ADDRESSES`. The runner matches addresses case-insensitively and
+routes wallet-trade events only from the bot's current wallet set.

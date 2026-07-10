@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Keep all custom bot code inside `backend/bots`.
+- Keep all custom bot code inside this standalone `bots` package.
 - Keep the package isolated from the main app.
 - Make new bots small: subclass `BaseBot`, override event hooks, use `ctx`.
 - Treat low latency as a core framework requirement, not an optimization.
@@ -53,7 +53,7 @@ adapter behavior covered by contract tests, especially while
 ## Package Layout
 
 ```text
-backend/bots/
+polyfollow-bots/  # Installed and imported as `bots`.
   docs/
   framework/
     base.py       # BaseBot event hooks.
@@ -62,6 +62,7 @@ backend/bots/
     dedupe.py     # Source event dedupe for wallet-following inputs.
     events.py     # Shared typed event/order contracts.
     markets.py    # Static and dynamic market subscription contracts.
+    wallets.py    # Watched-wallet subscription contracts.
     runner.py     # Dispatches stream events into one bot.
   polymarket/
     gamma.py      # SDK-backed market discovery adapter.
@@ -104,6 +105,7 @@ Wallet-following bots use a parallel event path:
 WalletActivityStream or Data API reconciliation
   -> WalletTradeEvent
   -> market slug route check
+  -> watched wallet address route check
   -> SourceEventDeduper
   -> BotRunner
   -> BaseBot.on_wallet_trade(ctx, trade)
@@ -126,6 +128,9 @@ class MyBot(BaseBot):
         ...
 
     async def next_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
+        ...
+
+    async def current_wallets(self, ctx: BotContext, now_ms: int) -> tuple[WalletSubscription, ...]:
         ...
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
@@ -197,6 +202,32 @@ next slug ahead of time, and transition instantly when the active market closes.
 
 Future stream managers should use `MarketPlan.next` to pre-resolve metadata and
 pre-subscribe where the external APIs support it.
+
+## Multi-Wallet Routing
+
+Wallet-following bots support a static list of leader addresses from config:
+
+```text
+BOT_WALLET_ADDRESSES=0xleader1,0xleader2,0xleader3
+```
+
+The default `BaseBot.current_wallets()` returns one `WalletSubscription` per
+configured address. The runner refreshes this wallet plan before dispatch and
+only calls `on_wallet_trade` when `trade.wallet` belongs to the current plan.
+Address matching is case-insensitive, and repeated configured addresses
+collapse to one subscription.
+
+If a bot has no configured/current wallet set, the runner accepts trades from
+all wallets so custom upstream filtering remains possible. Once a bot declares
+wallets, trades from other addresses are rejected before dedupe and strategy
+logic. A bot may override `current_wallets()` for a deliberate runtime-managed
+leader set; unlike expiring markets, wallets have no `next_wallets()` rollover
+contract in v1.
+
+Market and wallet routing are independent and cumulative. A wallet trade must
+match both the current wallet plan and the current market plan when both are
+declared. This permits one follower to watch many leaders across many markets
+without duplicating bot instances.
 
 ## Configuration
 
@@ -290,6 +321,8 @@ latency tradeoff explicit.
 
 Wallet-following is a first-class strategy type. A follower bot must react to
 `WalletTradeEvent`, not infer leader activity from public market-book updates.
+One follower may subscribe to multiple leader wallets and must apply the same
+normalization, routing, freshness, and dedupe rules to every leader.
 
 Every normalized wallet trade must include:
 
@@ -305,8 +338,9 @@ Every normalized wallet trade must include:
 - Transaction hash when available.
 
 The `source_id` is mandatory because activity sources can replay rows during
-polling, reconnect, or reconciliation. The runner dedupes source IDs before
-calling `on_wallet_trade`.
+polling, reconnect, or reconciliation. The runner dedupes by normalized wallet
+address plus source ID before calling `on_wallet_trade`; equal source IDs from
+different watched wallets remain distinct events.
 
 Orders produced from a wallet trade should copy `trade.source_id` into
 `OrderRequest.source_id`. Broker implementations should preserve that ID in

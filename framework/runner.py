@@ -8,6 +8,7 @@ from bots.framework.context import BotContext
 from bots.framework.dedupe import SourceEventDeduper
 from bots.framework.events import BookSnapshot, FillEvent, WalletTradeEvent
 from bots.framework.markets import MarketPlan
+from bots.framework.wallets import WalletPlan
 
 
 class BotRunner:
@@ -21,6 +22,7 @@ class BotRunner:
         self.ctx = ctx
         self.deduper = deduper or SourceEventDeduper()
         self.market_plan = MarketPlan(current=())
+        self.wallet_plan = WalletPlan(current=())
 
     async def run_books(self, books: AsyncIterator[BookSnapshot]) -> None:
         await self.bot.on_start(self.ctx)
@@ -53,11 +55,14 @@ class BotRunner:
 
     async def dispatch_wallet_trade(self, trade: WalletTradeEvent) -> bool:
         await self.refresh_markets()
+        await self.refresh_wallets()
         if not self._accept_market_slug(trade.market_slug):
+            return False
+        if not self._accept_wallet_address(trade.wallet):
             return False
         if not self._accept_wallet_trade(trade):
             return False
-        if not self.deduper.remember(trade.source_id):
+        if not self.deduper.remember(self._wallet_source_key(trade)):
             return False
 
         await self.bot.on_wallet_trade(self.ctx, trade)
@@ -70,6 +75,12 @@ class BotRunner:
             next=await self.bot.next_markets(self.ctx, now_ms),
         )
         return self.market_plan
+
+    async def refresh_wallets(self) -> WalletPlan:
+        self.wallet_plan = WalletPlan(
+            current=await self.bot.current_wallets(self.ctx, self._now_ms()),
+        )
+        return self.wallet_plan
 
     def _accept_book(self, book: BookSnapshot) -> bool:
         return (
@@ -89,7 +100,18 @@ class BotRunner:
     def _accept_wallet_trade(self, trade: WalletTradeEvent) -> bool:
         if not trade.source_id:
             return False
-        return trade.observed_at_ms - trade.trade_timestamp_ms <= self.ctx.config.book_max_age_ms
+        observed_delay_ms = trade.observed_at_ms - trade.trade_timestamp_ms
+        return observed_delay_ms <= self.ctx.config.book_max_age_ms
+
+    def _accept_wallet_address(self, wallet: str) -> bool:
+        active_addresses = self.wallet_plan.active_addresses
+        if not active_addresses:
+            return True
+        return wallet.lower() in active_addresses
+
+    @staticmethod
+    def _wallet_source_key(trade: WalletTradeEvent) -> str:
+        return f"{trade.wallet.lower()}\0{trade.source_id}"
 
     @staticmethod
     def _now_ms() -> int:

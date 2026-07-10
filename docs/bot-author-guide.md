@@ -38,6 +38,7 @@ class BuyCheapYes(BaseBot):
 - Use `ctx.markets` for discovery.
 - Use `ctx.books` for latest cached books.
 - Use config market slugs or market hooks for multi-market bots.
+- Use config wallet addresses or `current_wallets()` for multi-wallet followers.
 - Do not import `backend/app`.
 - Do not access `.env` directly from bots.
 - Do not compute fees inside bots.
@@ -68,6 +69,12 @@ continue to share package-owned contracts.
 - Return market slugs that should be prepared next.
 - Use this for consecutive short-lived markets so metadata/subscriptions can be
   ready before rollover.
+
+`current_wallets`
+
+- Return the leader wallet addresses whose trades should reach the bot now.
+- Use the default implementation for static `BOT_WALLET_ADDRESSES`.
+- Override it only for a deliberate runtime-managed leader set.
 
 `on_book`
 
@@ -100,6 +107,7 @@ Use global `.env` defaults for shared behavior:
 ```text
 BOT_MODE=paper
 BOT_MARKET_SLUGS=btc-up,eth-up
+BOT_WALLET_ADDRESSES=0xleader1,0xleader2
 BOT_MAX_ORDER_SIZE=10
 BOT_MAX_SLIPPAGE_PCT=0.02
 BOT_PAPER_LATENCY_MS=250
@@ -147,12 +155,14 @@ from bots.framework.context import BotContext
 from bots.framework.events import OrderRequest, WalletTradeEvent
 
 
-class FollowLeader(BaseBot):
-    def __init__(self, leader_wallet: str) -> None:
-        self.leader_wallet = leader_wallet.lower()
+class FollowLeaders(BaseBot):
+    def __init__(self, leader_wallets: tuple[str, ...]) -> None:
+        self.leader_wallets = frozenset(
+            wallet.lower() for wallet in leader_wallets
+        )
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
-        if trade.wallet.lower() != self.leader_wallet:
+        if trade.wallet.lower() not in self.leader_wallets:
             return
 
         await ctx.broker.submit(
@@ -176,6 +186,12 @@ Wallet-following strategies should make the scaling rule obvious. Examples:
 - Ignore trades below a minimum size.
 - Ignore stale trades when observed delay is too high.
 - Ignore unsupported markets until Gamma/CLOB metadata is resolved.
+
+For a static multi-wallet bot, configure the same addresses in
+`BOT_WALLET_ADDRESSES`; the runner then filters unrelated leaders before this
+hook runs. Keep an explicit set in the strategy only when the strategy itself
+needs per-leader policy. A single follower can combine multiple wallet and
+market subscriptions: both route filters must match before dispatch.
 
 ## Dynamic Market Bot
 

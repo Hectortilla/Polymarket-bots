@@ -3,6 +3,10 @@ from __future__ import annotations
 from bots.framework.context import BotContext
 from bots.framework.events import BookSnapshot, FillEvent, WalletTradeEvent
 from bots.framework.markets import MarketSubscription, subscriptions_from_slugs
+from bots.framework.wallets import (
+    WalletSubscription,
+    subscriptions_from_addresses,
+)
 
 
 class BaseBot:
@@ -24,6 +28,13 @@ class BaseBot:
         now_ms: int,
     ) -> tuple[MarketSubscription, ...]:
         return ()
+
+    async def current_wallets(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> tuple[WalletSubscription, ...]:
+        return subscriptions_from_addresses(ctx.config.wallet_addresses)
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
         pass

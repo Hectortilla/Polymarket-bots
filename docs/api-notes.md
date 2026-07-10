@@ -139,6 +139,12 @@ The public docs expose wallet-scoped Data API endpoints:
 - `GET /trades?user={address}`
 - `GET /activity?user={address}`
 
+These endpoints are scoped to one user parameter per request. A multi-wallet
+adapter therefore fans out through the official client per configured address,
+then normalizes, merges, deterministically sorts, and dedupes the resulting
+events. It must apply bounded concurrency and the documented Data API rate
+limits rather than issuing an unbounded request burst.
+
 `/trades` rows include wallet, side, asset/token ID, condition ID, size, price,
 timestamp, and transaction hash. `/activity` rows include similar fields plus
 activity type and combo flags.

@@ -24,6 +24,21 @@ def test_wallet_follower_carries_source_id(dummy_context: BotContext) -> None:
     assert order.reason == "wallet_follow"
 
 
+def test_wallet_follower_accepts_multiple_leaders(dummy_context: BotContext) -> None:
+    async def run() -> int:
+        bot = ExampleWalletFollower(
+            ("0xLeaderOne", "0xLeaderTwo"),
+            Decimal("0.5"),
+        )
+        await bot.on_wallet_trade(
+            dummy_context,
+            replace(_wallet_trade(), wallet="0xleadertwo"),
+        )
+        return len(dummy_context.broker.submitted)
+
+    assert asyncio.run(run()) == 1
+
+
 def test_wallet_follower_ignores_non_leader(dummy_context: BotContext) -> None:
     async def run() -> int:
         bot = ExampleWalletFollower("0xLeader", Decimal("0.5"))

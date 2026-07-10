@@ -14,6 +14,7 @@ class BotMode(StrEnum):
 
 BOT_MODE_ENV: Final = "BOT_MODE"
 BOT_MARKET_SLUGS_ENV: Final = "BOT_MARKET_SLUGS"
+BOT_WALLET_ADDRESSES_ENV: Final = "BOT_WALLET_ADDRESSES"
 BOT_MAX_ORDER_SIZE_ENV: Final = "BOT_MAX_ORDER_SIZE"
 BOT_MAX_SLIPPAGE_PCT_ENV: Final = "BOT_MAX_SLIPPAGE_PCT"
 BOT_PAPER_LATENCY_MS_ENV: Final = "BOT_PAPER_LATENCY_MS"
@@ -41,6 +42,7 @@ class BotConfig:
     name: str
     mode: BotMode = DEFAULT_BOT_MODE
     market_slugs: tuple[str, ...] = ()
+    wallet_addresses: tuple[str, ...] = ()
     max_order_size: Decimal = DEFAULT_MAX_ORDER_SIZE
     max_slippage_pct: Decimal = DEFAULT_MAX_SLIPPAGE_PCT
     paper_latency_ms: int = DEFAULT_PAPER_LATENCY_MS
@@ -74,6 +76,7 @@ class BotConfig:
             name=name,
             mode=BotMode(os.getenv(BOT_MODE_ENV, DEFAULT_BOT_MODE.value)),
             market_slugs=_env_csv(BOT_MARKET_SLUGS_ENV),
+            wallet_addresses=_env_csv(BOT_WALLET_ADDRESSES_ENV),
             max_order_size=Decimal(
                 os.getenv(BOT_MAX_ORDER_SIZE_ENV, str(DEFAULT_MAX_ORDER_SIZE))
             ),

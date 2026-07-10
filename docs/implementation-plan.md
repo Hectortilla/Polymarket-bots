@@ -31,6 +31,8 @@ Status: done.
 - Keep `BaseBot`, `BotContext`, event contracts, and broker protocol small.
 - Add tests for fee calculation.
 - Add first-class wallet-trade contracts and runner dedupe.
+- Add static multi-wallet configuration, subscription contracts, and
+  case-insensitive wallet-event routing.
 - Add first-class market subscription contracts and market-slug event routing.
 - Do not implement network clients yet.
 
@@ -40,6 +42,7 @@ Acceptance:
 - Example bot can be instantiated.
 - Fee helper passes symmetry and rounding tests.
 - Duplicate wallet source events are skipped before bot hooks run.
+- Multiple configured wallet addresses route only matching wallet trades.
 - Static multi-market slug lists route only matching market events.
 - Dynamic market hooks can expose current and next market slugs.
 
@@ -111,6 +114,9 @@ Implement wallet-following inputs:
 - Optional `/activity?user=...` reconciliation path.
 - `WalletActivityStream.trades` for the preferred low-latency source.
 - Normalize every source into `WalletTradeEvent`.
+- Subscribe the low-latency stream to every current wallet address.
+- Fan out wallet-scoped bootstrap and reconciliation reads across all current
+  wallet addresses with bounded concurrency, then merge them deterministically.
 
 Rules:
 
@@ -124,7 +130,11 @@ Rules:
 - Sort backfilled rows by trade timestamp and deterministic tie-breaker.
 - Preserve `trade_timestamp_ms` and `observed_at_ms` for latency modeling.
 - Skip missing condition ID, token ID, side, size, price, or source ID.
-- Do not let duplicate source IDs call `on_wallet_trade` twice.
+- Do not let duplicate source IDs for the same wallet call
+  `on_wallet_trade` twice. Do not collapse equal source IDs from different
+  wallets.
+- Normalize wallet addresses for case-insensitive matching before framework
+  routing.
 
 Tests:
 
@@ -133,6 +143,9 @@ Tests:
 - Missing required fields are rejected.
 - Replayed rows are deduped.
 - Observed delay is preserved.
+- Multiple wallets are fetched/subscribed and merged without dropping events.
+- One failing wallet read does not silently erase successful wallet results;
+  the adapter exposes a stable failure or degraded-state reason.
 
 ## Slice 5: Runner CLI
 
@@ -145,6 +158,8 @@ Responsibilities:
 - Apply per-bot overrides.
 - Build paper broker.
 - Open market stream and/or wallet activity stream.
+- Load all configured wallet addresses and pass the current wallet plan to the
+  wallet activity stream/client.
 - Subscribe to all current market slugs and prepare `next_markets`.
 - Run one bot.
 

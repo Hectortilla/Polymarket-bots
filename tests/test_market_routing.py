@@ -150,23 +150,36 @@ def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
     assert book_count == 0
 
 
-def test_runner_routes_static_multi_market_wallet_trades(
+def test_runner_combines_multi_market_and_multi_wallet_routes(
     dummy_context: BotContext,
 ) -> None:
-    async def run() -> tuple[bool, bool, list[str]]:
-        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
+    async def run() -> tuple[bool, bool, bool, list[str]]:
+        ctx = _with_config(
+            dummy_context,
+            BotConfig(
+                name="multi",
+                market_slugs=("btc", "eth"),
+                wallet_addresses=("0xleader", "0xsecond"),
+            ),
+        )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
         runner = BotRunner(bot, ctx)
 
         accepted = await runner.dispatch_wallet_trade(_wallet_trade("eth", "tx-1"))
-        rejected = await runner.dispatch_wallet_trade(_wallet_trade("sol", "tx-2"))
+        wrong_market = await runner.dispatch_wallet_trade(
+            _wallet_trade("sol", "tx-2")
+        )
+        wrong_wallet = await runner.dispatch_wallet_trade(
+            _wallet_trade("btc", "tx-3", wallet="0xother")
+        )
 
-        return accepted, rejected, bot.wallet_trades
+        return accepted, wrong_market, wrong_wallet, bot.wallet_trades
 
-    accepted, rejected, wallet_trades = asyncio.run(run())
+    accepted, wrong_market, wrong_wallet, wallet_trades = asyncio.run(run())
 
     assert accepted is True
-    assert rejected is False
+    assert wrong_market is False
+    assert wrong_wallet is False
     assert wallet_trades == ["eth"]
 
 
@@ -235,11 +248,12 @@ def _wallet_trade(
     market_slug: str | None,
     source_id: str,
     *,
+    wallet: str = "0xleader",
     observed_at_ms: int = 1_100,
     trade_timestamp_ms: int = 1_000,
 ) -> WalletTradeEvent:
     return WalletTradeEvent(
-        wallet="0xleader",
+        wallet=wallet,
         condition_id="0xcondition",
         token_id="123",
         side=Side.BUY,
