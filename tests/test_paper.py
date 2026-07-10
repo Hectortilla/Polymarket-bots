@@ -402,6 +402,41 @@ def test_paper_broker_rejects_book_missing_market_identity() -> None:
     assert reject_reason is FillRejectReason.BOOK_MISMATCH
 
 
+def test_paper_broker_rejects_non_finite_book_level() -> None:
+    async def run() -> tuple[OrderStatus, FillRejectReason | None]:
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    ask_sizes=(Decimal("Infinity"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.status, fill.reject_reason
+
+    status, reject_reason = asyncio.run(run())
+
+    assert status is OrderStatus.REJECTED
+    assert reject_reason is FillRejectReason.BAD_BOOK_LEVEL
+
+
 def test_paper_broker_rejects_missing_market_metadata() -> None:
     async def run() -> tuple[OrderStatus, FillRejectReason | None, str | None]:
         broker = PaperBroker(

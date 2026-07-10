@@ -9,22 +9,19 @@ from time import time
 
 from bots.execution.broker import Broker
 from bots.execution.orders import taker_fee_usdc
-from bots.framework.book_validation import (
-    BOOK_PRICE_CEILING,
-    ZERO_DECIMAL,
-    book_levels_are_valid,
-)
 from bots.framework.config import BotConfig
 from bots.framework.context import BookClient, MarketClient
 from bots.framework.events import (
     BookSnapshot,
+    BOOK_PRICE_CEILING,
     FillEvent,
     FillRejectReason,
     OrderRequest,
     OrderStatus,
     Side,
+    ZERO_DECIMAL,
 )
-from .book import consume_levels, ordered_levels, slippage_limit_price
+from .book import consume_levels, slippage_limit_price
 from .portfolio import PaperPortfolio
 
 SleepFn = Callable[[float], Awaitable[None]]
@@ -119,7 +116,7 @@ class PaperBroker(Broker):
             )
             return self._memoize_source_fill(order, fill)
 
-        levels = ordered_levels(order.side, book)
+        levels = book.executable_levels(order.side)
         slippage_cap = slippage_limit_price(
             side=order.side,
             reference_price=order.price,
@@ -233,7 +230,7 @@ class PaperBroker(Broker):
             return FillRejectReason.BOOK_MISMATCH
         if not book.is_fresh(fill_time_ms, self._config.book_max_age_ms):
             return FillRejectReason.BOOK_STALE
-        if not book_levels_are_valid(book):
+        if not book.has_valid_levels():
             return FillRejectReason.BAD_BOOK_LEVEL
         return None
 

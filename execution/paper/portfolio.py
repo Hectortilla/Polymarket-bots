@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from bots.framework.book_validation import ZERO_DECIMAL
-from bots.framework.events import Side
+from bots.framework.events import ZERO_DECIMAL, Side
 
 
 @dataclass(frozen=True, slots=True)

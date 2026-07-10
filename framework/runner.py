@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 from time import time
 
 from bots.framework.base import BaseBot
-from bots.framework.book_validation import book_levels_are_valid
 from bots.framework.context import BotContext
 from bots.framework.dedupe import SourceEventDeduper
 from bots.framework.events import BookSnapshot, FillEvent, WalletTradeEvent
@@ -76,7 +75,7 @@ class BotRunner:
         return (
             self._accept_market_slug(book.market_slug)
             and book.is_fresh(self._now_ms(), self.ctx.config.book_max_age_ms)
-            and book_levels_are_valid(book)
+            and book.has_valid_levels()
         )
 
     def _accept_market_slug(self, market_slug: str | None) -> bool:

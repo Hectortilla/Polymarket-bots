@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+
+ZERO_DECIMAL = Decimal("0")
+BOOK_PRICE_CEILING = Decimal("1")
 
 
 class Side(StrEnum):
@@ -43,6 +46,17 @@ class BookLevel:
     price: Decimal
     size: Decimal
 
+    def is_valid(self) -> bool:
+        try:
+            return (
+                self.price.is_finite()
+                and self.size.is_finite()
+                and ZERO_DECIMAL < self.price <= BOOK_PRICE_CEILING
+                and self.size > ZERO_DECIMAL
+            )
+        except (AttributeError, InvalidOperation, TypeError, ValueError):
+            return False
+
 
 @dataclass(frozen=True, slots=True)
 class BookSnapshot:
@@ -56,6 +70,21 @@ class BookSnapshot:
     def is_fresh(self, now_ms: int, max_age_ms: int) -> bool:
         age_ms = max(0, now_ms - self.received_at_ms)
         return 0 <= age_ms <= max_age_ms
+
+    def has_valid_levels(self) -> bool:
+        return (
+            isinstance(self.bids, tuple)
+            and isinstance(self.asks, tuple)
+            and all(
+                isinstance(level, BookLevel) and level.is_valid()
+                for level in (*self.bids, *self.asks)
+            )
+        )
+
+    def executable_levels(self, side: Side) -> tuple[BookLevel, ...]:
+        if side is Side.BUY:
+            return tuple(sorted(self.asks, key=lambda level: level.price))
+        return tuple(sorted(self.bids, key=lambda level: level.price, reverse=True))
 
 
 @dataclass(frozen=True, slots=True)

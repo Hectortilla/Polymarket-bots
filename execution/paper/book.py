@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from bots.framework.book_validation import BOOK_PRICE_CEILING, ZERO_DECIMAL
-from bots.framework.events import BookLevel, BookSnapshot, Side
+from bots.framework.events import BOOK_PRICE_CEILING, ZERO_DECIMAL, BookLevel, Side
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,12 +11,6 @@ class ConsumedLevel:
     price: Decimal
     size: Decimal
     notional_usdc: Decimal
-
-
-def ordered_levels(side: Side, book: BookSnapshot) -> tuple[BookLevel, ...]:
-    if side is Side.BUY:
-        return tuple(sorted(book.asks, key=lambda level: level.price))
-    return tuple(sorted(book.bids, key=lambda level: level.price, reverse=True))
 
 
 def slippage_limit_price(

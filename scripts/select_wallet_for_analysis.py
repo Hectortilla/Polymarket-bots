@@ -13,8 +13,8 @@ from pathlib import Path
 
 import requests
 
-from backend.bots.scripts.short_wallet_files import load_rows
-from backend.bots.scripts.wallets_finder import fetch_all_activity
+from scripts.short_wallet_files import load_rows
+from scripts.wallets_finder import fetch_all_activity
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 GOOD_FILE = RESULTS_DIR / "good_wallets.txt"
