@@ -5,13 +5,9 @@ import pytest
 from bots.execution.broker import Broker
 from bots.framework.config import BotConfig
 from bots.framework.context import BotContext
-from bots.framework.events import (
-    BookSnapshot,
-    FillEvent,
-    OrderRequest,
-    OrderStatus,
-    WalletTradeEvent,
-)
+from bots.framework.events import FillEvent, OrderRequest, OrderStatus
+from bots.framework.events.books import BookSnapshot
+from bots.framework.events.wallet_trades import WalletTradeEvent
 from bots.polymarket.types import Market, Position
 
 

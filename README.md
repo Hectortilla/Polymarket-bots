@@ -20,9 +20,9 @@ Start with:
 
 The current package has the Slice 1 contract layer plus the Slice 2 paper fill
 engine: contracts, docs, safety gates, example shape, and an in-memory
-`PaperBroker.submit()` implementation. The network adapters are still
-intentionally unimplemented until the later implementation-plan slices fill
-them in.
+`PaperBroker.submit()` implementation. Analysis scripts use the pinned unified
+Polymarket SDK through a normalization boundary; bot runtime network adapters
+remain intentionally unimplemented until their later implementation slices.
 
 Future Polymarket integrations must use an official Polymarket Python SDK or
 client wherever it supports the required capability. The unified
@@ -48,3 +48,6 @@ market-tagged events only to bots whose current market set includes that slug.
 Wallet-following bots can watch one or many leader addresses through
 `BOT_WALLET_ADDRESSES`. The runner matches addresses case-insensitively and
 routes wallet-trade events only from the bot's current wallet set.
+
+Runner dispatch returns a typed `DispatchOutcome`. Rejected events carry a
+stable `DispatchSkipReason` instead of collapsing every skip into a boolean.

@@ -3,7 +3,8 @@ from decimal import Decimal
 import pytest
 
 from bots.execution.paper.book import consume_levels, slippage_limit_price
-from bots.framework.events import BookLevel, BookSnapshot, Side
+from bots.framework.events import Side
+from bots.framework.events.books import BookLevel, BookSnapshot
 
 
 @pytest.mark.parametrize(
@@ -61,6 +62,14 @@ def test_book_snapshot_orders_executable_levels_for_each_side() -> None:
 
     assert book.executable_levels(Side.BUY) == (low, high)
     assert book.executable_levels(Side.SELL) == (high, low)
+
+
+def test_book_snapshot_rejects_future_freshness_and_detects_crossed_depth() -> None:
+    bid = BookLevel(price=Decimal("0.70"), size=Decimal("1"))
+    ask = BookLevel(price=Decimal("0.60"), size=Decimal("1"))
+    book = _book(bids=(bid,), asks=(ask,))
+    assert book.is_fresh(now_ms=999, max_age_ms=1_000) is False
+    assert book.is_crossed() is True
 
 
 def test_sell_slippage_limit_is_inclusive_and_stops_at_worse_price() -> None:

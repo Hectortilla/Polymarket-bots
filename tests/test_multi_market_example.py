@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from bots.examples.example_multi_market import CrossMarketRule, ExampleMultiMarketBot
 from bots.framework.context import BotContext
-from bots.framework.events import BookLevel, BookSnapshot
+from bots.framework.events.books import BookLevel, BookSnapshot
 
 
 def test_multi_market_example_trades_target_from_signal_market(

@@ -14,13 +14,12 @@ from bots.framework.config import (
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
 from bots.framework.events import (
-    BookLevel,
-    BookSnapshot,
     FillRejectReason,
     OrderRequest,
     OrderStatus,
     Side,
 )
+from bots.framework.events.books import BookLevel, BookSnapshot
 from bots.polymarket.types import Market
 
 DEFAULT_MARKET_SLUG = "btc-up"
@@ -293,7 +292,7 @@ def test_portfolio_state_tracks_buy_then_sell_flip() -> None:
                 _book(
                     token_id="123",
                     ask_prices=(Decimal("0.40"),),
-                    bid_prices=(Decimal("0.70"),),
+                    bid_prices=(Decimal("0.30"),),
                     ask_sizes=(Decimal("2"),),
                     bid_sizes=(Decimal("3"),),
                     received_at_ms=1_000,
@@ -318,7 +317,7 @@ def test_portfolio_state_tracks_buy_then_sell_flip() -> None:
             OrderRequest(
                 token_id="123",
                 side=Side.SELL,
-                price=Decimal("0.60"),
+                price=Decimal("0.30"),
                 size=Decimal("3"),
                 market_slug=DEFAULT_MARKET_SLUG,
             )
@@ -328,9 +327,9 @@ def test_portfolio_state_tracks_buy_then_sell_flip() -> None:
 
     cash_usdc, size, average_entry_price = asyncio.run(run())
 
-    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.80") + Decimal("2.10")
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.80") + Decimal("0.90")
     assert size == Decimal("-1")
-    assert average_entry_price == Decimal("0.70")
+    assert average_entry_price == Decimal("0.30")
 
 
 def test_paper_broker_rejects_book_token_mismatch() -> None:
@@ -552,7 +551,7 @@ def test_portfolio_state_tracks_partial_close() -> None:
                 _book(
                     token_id="123",
                     ask_prices=(Decimal("0.40"),),
-                    bid_prices=(Decimal("0.70"),),
+                    bid_prices=(Decimal("0.30"),),
                     ask_sizes=(Decimal("2"),),
                     bid_sizes=(Decimal("3"),),
                     received_at_ms=1_000,
@@ -577,7 +576,7 @@ def test_portfolio_state_tracks_partial_close() -> None:
             OrderRequest(
                 token_id="123",
                 side=Side.SELL,
-                price=Decimal("0.60"),
+                price=Decimal("0.30"),
                 size=Decimal("1"),
                 market_slug=DEFAULT_MARKET_SLUG,
             )
@@ -587,7 +586,7 @@ def test_portfolio_state_tracks_partial_close() -> None:
 
     cash_usdc, size, average_entry_price = asyncio.run(run())
 
-    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.80") + Decimal("0.70")
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.80") + Decimal("0.30")
     assert size == Decimal("1")
     assert average_entry_price == Decimal("0.40")
 
@@ -600,7 +599,7 @@ def test_portfolio_state_tracks_exact_close() -> None:
                 _book(
                     token_id="123",
                     ask_prices=(Decimal("0.40"),),
-                    bid_prices=(Decimal("0.70"),),
+                    bid_prices=(Decimal("0.30"),),
                     ask_sizes=(Decimal("2"),),
                     bid_sizes=(Decimal("3"),),
                     received_at_ms=1_000,
@@ -625,7 +624,7 @@ def test_portfolio_state_tracks_exact_close() -> None:
             OrderRequest(
                 token_id="123",
                 side=Side.SELL,
-                price=Decimal("0.60"),
+                price=Decimal("0.30"),
                 size=Decimal("2"),
                 market_slug=DEFAULT_MARKET_SLUG,
             )
@@ -635,7 +634,7 @@ def test_portfolio_state_tracks_exact_close() -> None:
 
     cash_usdc, positions, average_entry_price = asyncio.run(run())
 
-    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.80") + Decimal("1.40")
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.80") + Decimal("0.60")
     assert "123" not in positions
     assert average_entry_price is None
 
@@ -648,7 +647,7 @@ def test_portfolio_state_tracks_short_then_buy_close() -> None:
                 _book(
                     token_id="123",
                     ask_prices=(Decimal("0.40"),),
-                    bid_prices=(Decimal("0.70"),),
+                    bid_prices=(Decimal("0.30"),),
                     ask_sizes=(Decimal("2"),),
                     bid_sizes=(Decimal("3"),),
                     received_at_ms=1_000,
@@ -664,7 +663,7 @@ def test_portfolio_state_tracks_short_then_buy_close() -> None:
             OrderRequest(
                 token_id="123",
                 side=Side.SELL,
-                price=Decimal("0.60"),
+                price=Decimal("0.30"),
                 size=Decimal("2"),
                 market_slug=DEFAULT_MARKET_SLUG,
             )
@@ -683,7 +682,7 @@ def test_portfolio_state_tracks_short_then_buy_close() -> None:
 
     cash_usdc, positions, average_entry_price = asyncio.run(run())
 
-    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC + Decimal("1.40") - Decimal("0.80")
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC + Decimal("0.60") - Decimal("0.80")
     assert "123" not in positions
     assert average_entry_price is None
 

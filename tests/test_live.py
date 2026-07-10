@@ -1,11 +1,13 @@
 import pytest
 
 from bots.execution.live import LiveBroker
-from bots.framework.config import BotConfig, BotMode
+from bots.framework.config import BOT_MODE_ENV, BotConfig, BotMode
+
+LIVE_MODE_REQUIREMENT = f"{BOT_MODE_ENV}={BotMode.LIVE.value}"
 
 
 def test_live_broker_requires_live_mode_and_enabled_flag() -> None:
-    with pytest.raises(RuntimeError, match="BOT_MODE=live"):
+    with pytest.raises(RuntimeError, match=LIVE_MODE_REQUIREMENT):
         LiveBroker(
             BotConfig(
                 name="paper",
@@ -18,7 +20,7 @@ def test_live_broker_requires_live_mode_and_enabled_flag() -> None:
             )
         )
 
-    with pytest.raises(RuntimeError, match="BOT_MODE=live"):
+    with pytest.raises(RuntimeError, match=LIVE_MODE_REQUIREMENT):
         LiveBroker(BotConfig(name="disabled-live", mode=BotMode.LIVE))
 
 

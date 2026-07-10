@@ -2,9 +2,11 @@ import asyncio
 from dataclasses import replace
 from decimal import Decimal
 
-from bots.examples.example_wallet_follower import ExampleWalletFollower
+from bots.examples.example_wallet_follower import ExampleWalletFollower, WALLET_FOLLOW_REASON
 from bots.framework.context import BotContext
-from bots.framework.events import OrderRequest, Side, WalletTradeEvent
+from bots.framework.events import OrderRequest, Side
+from bots.framework.events.wallet_trades import WalletTradeEvent
+from bots.framework.events.wallet_trades import wallet_source_key
 
 
 def test_wallet_follower_carries_source_id(dummy_context: BotContext) -> None:
@@ -20,8 +22,8 @@ def test_wallet_follower_carries_source_id(dummy_context: BotContext) -> None:
     assert order.size == Decimal("2.5")
     assert order.condition_id == "0xcondition"
     assert order.market_slug == "btc"
-    assert order.source_id == "tx-1"
-    assert order.reason == "wallet_follow"
+    assert order.source_id == wallet_source_key("0xLeader", "tx-1")
+    assert order.reason == WALLET_FOLLOW_REASON
 
 
 def test_wallet_follower_accepts_multiple_leaders(dummy_context: BotContext) -> None:
@@ -39,17 +41,16 @@ def test_wallet_follower_accepts_multiple_leaders(dummy_context: BotContext) -> 
     assert asyncio.run(run()) == 1
 
 
-def test_wallet_follower_ignores_non_leader(dummy_context: BotContext) -> None:
-    async def run() -> int:
+def test_wallet_follower_exposes_leaders_for_runner_routing(dummy_context: BotContext) -> None:
+    async def run() -> tuple[str, ...]:
         bot = ExampleWalletFollower("0xLeader", Decimal("0.5"))
-        trade = replace(_wallet_trade(), wallet="0xother")
-        await bot.on_wallet_trade(dummy_context, trade)
-        return len(dummy_context.broker.submitted)
+        subscriptions = await bot.current_wallets(dummy_context, 0)
+        return tuple(subscription.address for subscription in subscriptions)
 
-    assert asyncio.run(run()) == 0
+    assert asyncio.run(run()) == ("0xleader",)
 
 
-def test_wallet_follower_ignores_malformed_trade(dummy_context: BotContext) -> None:
+def test_wallet_follower_assumes_runner_validated_trade(dummy_context: BotContext) -> None:
     async def run() -> int:
         bot = ExampleWalletFollower("0xLeader", Decimal("0.5"))
         trade = replace(_wallet_trade(), market_slug=None, condition_id=None, size=Decimal("0"))
@@ -59,7 +60,7 @@ def test_wallet_follower_ignores_malformed_trade(dummy_context: BotContext) -> N
         )
         return len(dummy_context.broker.submitted)
 
-    assert asyncio.run(run()) == 0
+    assert asyncio.run(run()) == 1
 
 
 def _wallet_trade() -> WalletTradeEvent:

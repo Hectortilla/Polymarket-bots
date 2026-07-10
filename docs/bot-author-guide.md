@@ -7,7 +7,8 @@ from decimal import Decimal
 
 from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
-from bots.framework.events import BookSnapshot, OrderRequest, Side
+from bots.framework.events import OrderRequest, Side
+from bots.framework.events.books import BookSnapshot
 
 
 class BuyCheapYes(BaseBot):
@@ -152,7 +153,8 @@ from decimal import Decimal
 
 from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
-from bots.framework.events import OrderRequest, WalletTradeEvent
+from bots.framework.events import OrderRequest
+from bots.framework.events.wallet_trades import WalletTradeEvent
 
 
 class FollowLeaders(BaseBot):
@@ -173,13 +175,16 @@ class FollowLeaders(BaseBot):
                 size=min(trade.size * Decimal("0.25"), ctx.config.max_order_size),
                 market_slug=trade.market_slug,
                 condition_id=trade.condition_id,
-                source_id=trade.source_id,
+                source_id=trade.source_key,
                 reason="wallet_follow",
             )
         )
 ```
 
-Wallet-following strategies should make the scaling rule obvious. Examples:
+Wallet-following strategies receive already-validated normalized events.
+Structural validation, finite positive price/size checks, required identifiers,
+timestamp ordering, and freshness belong to adapter and runner boundaries.
+Strategies should make the scaling rule obvious. Examples:
 
 - Fixed multiplier of leader size.
 - Cap by `ctx.config.max_order_size`.

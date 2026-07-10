@@ -25,7 +25,7 @@ from bots.framework.config import (
 
 
 def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(BOT_MODE_ENV, "live")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
     monkeypatch.setenv(BOT_MARKET_SLUGS_ENV, "btc-up, eth-up")
     monkeypatch.setenv(BOT_WALLET_ADDRESSES_ENV, "0xleader1, 0xleader2")
     monkeypatch.setenv(BOT_MAX_ORDER_SIZE_ENV, "4")
@@ -67,6 +67,20 @@ def test_config_rejects_invalid_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         BotConfig.from_env("bad-mode")
 
 
-def test_config_rejects_invalid_ranges() -> None:
-    with pytest.raises(ValueError, match="max_order_size"):
-        BotConfig(name="bad-size", max_order_size=Decimal("0"))
+@pytest.mark.parametrize(
+    ("override", "message"),
+    (
+        ({"max_order_size": Decimal("0")}, "max_order_size"),
+        ({"max_slippage_pct": Decimal("-0.01")}, "max_slippage_pct"),
+        ({"paper_latency_ms": -1}, "paper_latency_ms"),
+        ({"paper_latency_jitter_ms": -1}, "paper_latency_jitter_ms"),
+        ({"book_max_age_ms": -1}, "book_max_age_ms"),
+        ({"paper_portfolio_usdc": Decimal("0")}, "paper_portfolio_usdc"),
+    ),
+)
+def test_config_rejects_invalid_ranges(
+    override: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        BotConfig(name="invalid", **override)  # type: ignore[arg-type]

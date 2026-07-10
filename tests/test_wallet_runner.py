@@ -5,7 +5,9 @@ from decimal import Decimal
 from bots.framework.base import BaseBot
 from bots.framework.config import BotConfig
 from bots.framework.context import BotContext
-from bots.framework.events import Side, WalletTradeEvent
+from bots.framework.dispatch import DispatchSkipReason
+from bots.framework.events import Side
+from bots.framework.events.wallet_trades import WalletTradeEvent
 from bots.framework.runner import BotRunner
 
 
@@ -28,7 +30,7 @@ class RecordingBot(BaseBot):
 def test_runner_dispatches_wallet_trade_once(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, bool, list[str]]:
         bot = RecordingBot(seen=[])
-        runner = BotRunner(bot, dummy_context)
+        runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_250)
         trade = _wallet_trade("tx-1")
 
         first = await runner.dispatch_wallet_trade(trade)
@@ -38,15 +40,15 @@ def test_runner_dispatches_wallet_trade_once(dummy_context: BotContext) -> None:
 
     first, duplicate, seen = asyncio.run(run())
 
-    assert first is True
-    assert duplicate is False
+    assert first.accepted is True
+    assert duplicate.skip_reason is DispatchSkipReason.DUPLICATE_SOURCE_EVENT
     assert seen == ["tx-1"]
 
 
 def test_runner_rejects_wallet_trade_without_source_id(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         bot = RecordingBot(seen=[])
-        runner = BotRunner(bot, dummy_context)
+        runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_250)
         trade = _wallet_trade("")
 
         accepted = await runner.dispatch_wallet_trade(trade)
@@ -54,8 +56,42 @@ def test_runner_rejects_wallet_trade_without_source_id(dummy_context: BotContext
 
     accepted, seen_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.WALLET_TRADE_INVALID
     assert seen_count == 0
+
+
+def test_runner_rejects_future_dated_wallet_trade(dummy_context: BotContext) -> None:
+    async def run():
+        bot = RecordingBot(seen=[])
+        runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_000)
+        trade = _wallet_trade("future")
+        trade = WalletTradeEvent(
+            wallet=trade.wallet,
+            condition_id=trade.condition_id,
+            token_id=trade.token_id,
+            side=trade.side,
+            size=trade.size,
+            price=trade.price,
+            source_id=trade.source_id,
+            trade_timestamp_ms=2_000,
+            observed_at_ms=2_100,
+        )
+        return await runner.dispatch_wallet_trade(trade)
+
+    outcome = asyncio.run(run())
+    assert outcome.skip_reason is DispatchSkipReason.WALLET_TRADE_FUTURE_DATED
+
+
+def test_runner_rejects_promptly_observed_trade_after_queue_delay(
+    dummy_context: BotContext,
+) -> None:
+    async def run():
+        bot = RecordingBot(seen=[])
+        runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 10_000)
+        return await runner.dispatch_wallet_trade(_wallet_trade("queued"))
+
+    outcome = asyncio.run(run())
+    assert outcome.skip_reason is DispatchSkipReason.WALLET_TRADE_STALE
 
 
 def test_runner_routes_trades_from_multiple_configured_wallets(
@@ -70,7 +106,7 @@ def test_runner_routes_trades_from_multiple_configured_wallets(
             ),
         )
         bot = RecordingBot(seen=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_250)
 
         first = await runner.dispatch_wallet_trade(
             _wallet_trade("tx-1", wallet="0xleaderone")
@@ -85,9 +121,9 @@ def test_runner_routes_trades_from_multiple_configured_wallets(
 
     first, second, unrelated, seen = asyncio.run(run())
 
-    assert first is True
-    assert second is True
-    assert unrelated is False
+    assert first.accepted is True
+    assert second.accepted is True
+    assert unrelated.skip_reason is DispatchSkipReason.WALLET_NOT_TRACKED
     assert seen == ["tx-1", "tx-2"]
 
 
@@ -120,7 +156,7 @@ def test_dedupe_scopes_source_ids_to_each_wallet(dummy_context: BotContext) -> N
             ),
         )
         bot = RecordingBot(seen=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_250)
 
         first = await runner.dispatch_wallet_trade(
             _wallet_trade("shared-source", wallet="0xfirst")
@@ -132,15 +168,15 @@ def test_dedupe_scopes_source_ids_to_each_wallet(dummy_context: BotContext) -> N
 
     first, second, seen = asyncio.run(run())
 
-    assert first is True
-    assert second is True
+    assert first.accepted is True
+    assert second.accepted is True
     assert seen == ["shared-source", "shared-source"]
 
 
 def test_runner_calls_start_and_stop_for_wallet_stream(dummy_context: BotContext) -> None:
     async def run() -> tuple[int, int]:
         bot = RecordingBot(seen=[])
-        runner = BotRunner(bot, dummy_context)
+        runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_250)
 
         async def trades():
             yield _wallet_trade("tx-1")

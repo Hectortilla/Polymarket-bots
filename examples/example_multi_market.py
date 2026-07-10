@@ -5,7 +5,8 @@ from decimal import Decimal
 
 from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
-from bots.framework.events import BookSnapshot, OrderRequest, Side
+from bots.framework.events import OrderRequest, Side
+from bots.framework.events.books import BookSnapshot
 from bots.framework.markets import MarketSubscription
 
 
@@ -23,6 +24,28 @@ class ExampleMultiMarketBot(BaseBot):
     def __init__(self, rules: tuple[CrossMarketRule, ...]) -> None:
         self.rules = rules
 
+    def orders_for_book(
+        self,
+        book: BookSnapshot,
+        max_order_size: Decimal,
+    ) -> tuple[OrderRequest, ...]:
+        if book.market_slug is None or not book.asks:
+            return ()
+        best_ask = min(book.asks, key=lambda level: level.price)
+        return tuple(
+            OrderRequest(
+                token_id=rule.target_token_id,
+                side=Side.BUY,
+                price=rule.order_price,
+                size=min(rule.max_size, max_order_size),
+                market_slug=rule.target_slug,
+                reason=f"cross_market_signal:{rule.signal_slug}",
+            )
+            for rule in self.rules
+            if book.market_slug == rule.signal_slug
+            and best_ask.price <= rule.trigger_price
+        )
+
     async def current_markets(
         self,
         ctx: BotContext,
@@ -33,23 +56,5 @@ class ExampleMultiMarketBot(BaseBot):
         return tuple(MarketSubscription(slug=slug) for slug in sorted(slugs))
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
-        if book.market_slug is None or not book.asks:
-            return
-
-        best_ask = book.asks[0]
-        for rule in self.rules:
-            if book.market_slug != rule.signal_slug:
-                continue
-            if best_ask.price > rule.trigger_price:
-                continue
-
-            await ctx.broker.submit(
-                OrderRequest(
-                    token_id=rule.target_token_id,
-                    side=Side.BUY,
-                    price=rule.order_price,
-                    size=min(rule.max_size, ctx.config.max_order_size),
-                    market_slug=rule.target_slug,
-                    reason=f"cross_market_signal:{rule.signal_slug}",
-                )
-            )
+        for order in self.orders_for_book(book, ctx.config.max_order_size):
+            await ctx.broker.submit(order)

@@ -4,12 +4,31 @@ import os
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import StrEnum
-from typing import Final
+from typing import Final, TypedDict, Unpack
 
 
 class BotMode(StrEnum):
     PAPER = "paper"
     LIVE = "live"
+
+
+class BotConfigOverrides(TypedDict, total=False):
+    name: str
+    mode: BotMode
+    market_slugs: tuple[str, ...]
+    wallet_addresses: tuple[str, ...]
+    max_order_size: Decimal
+    max_slippage_pct: Decimal
+    paper_latency_ms: int
+    paper_latency_jitter_ms: int
+    book_max_age_ms: int
+    paper_portfolio_usdc: Decimal
+    live_enabled: bool
+    private_key: str | None
+    api_key: str | None
+    api_secret: str | None
+    api_passphrase: str | None
+    funder_address: str | None
 
 
 BOT_MODE_ENV: Final = "BOT_MODE"
@@ -109,7 +128,7 @@ class BotConfig:
             funder_address=_optional_env(BOT_FUNDER_ADDRESS_ENV),
         )
 
-    def with_overrides(self, **overrides: object) -> BotConfig:
+    def with_overrides(self, **overrides: Unpack[BotConfigOverrides]) -> BotConfig:
         return replace(self, **overrides)
 
 

@@ -45,6 +45,8 @@ Acceptance:
 - Multiple configured wallet addresses route only matching wallet trades.
 - Static multi-market slug lists route only matching market events.
 - Dynamic market hooks can expose current and next market slugs.
+- Dispatch rejection exposes a stable typed reason.
+- Future-dated, malformed, crossed, and stale inputs fail closed before hooks.
 
 ## Slice 2: Paper Fill Engine
 
@@ -63,6 +65,9 @@ Required behavior:
 - Compute taker fee for every consumed level.
 - Emit `FillEvent`.
 - Track cash, positions, average entry, and cumulative fees in memory.
+- Claim source IDs atomically across concurrent in-flight submissions.
+- Keep validation, market lookup, fill math, and portfolio transitions in
+  responsibility-owned modules.
 
 Tests:
 

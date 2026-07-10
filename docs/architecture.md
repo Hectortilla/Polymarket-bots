@@ -60,11 +60,12 @@ polyfollow-bots/  # Installed and imported as `bots`.
     config.py     # Global env config plus per-bot overrides.
     context.py    # Object passed to every bot hook.
     dedupe.py     # Source event dedupe for wallet-following inputs.
-    events.py     # Shared typed event/order contracts.
+    dispatch.py   # Typed dispatch outcomes and stable skip reasons.
+    events/       # Orders/fills plus semantic book and wallet-trade contracts.
     markets.py    # Static and dynamic market subscription contracts.
     wallets.py    # Watched-wallet subscription contracts.
-    runner.py     # Dispatches stream events into one bot.
-  polymarket/
+    runner/       # Dispatch orchestration plus owned validation policy.
+  polymarket_adapter/ # Installed as bots.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery adapter.
     data.py       # SDK-backed positions/trades/activity adapter.
     clob.py       # Official-client-backed CLOB adapter.
@@ -74,7 +75,7 @@ polyfollow-bots/  # Installed and imported as `bots`.
     types.py      # Polymarket-specific normalized types.
   execution/
     broker.py     # Broker protocol used by bots.
-    paper/        # Paper broker, book sweep, and portfolio state.
+    paper/        # Orchestration, validation, fill math, market data, portfolio.
     live.py       # Live broker.
     orders.py     # Shared order and fee helpers.
   examples/
@@ -114,6 +115,11 @@ WalletActivityStream or Data API reconciliation
   -> FillEvent
   -> BaseBot.on_fill(ctx, fill)
 ```
+
+`dispatch_book()` and `dispatch_wallet_trade()` return `DispatchOutcome`.
+Accepted events have no skip reason. Rejected events use the finite
+`DispatchSkipReason` contract for route mismatches, malformed/stale/future data,
+crossed books, and duplicate source events.
 
 ## Bot Contract
 
@@ -280,10 +286,13 @@ configured.
 
 ## Paper Realism Rule
 
-Paper mode must not fill against stale decision-time prices. It should queue an
+Paper mode must not fill against stale, future-dated, malformed, or crossed
+decision-time prices. It should queue an
 order, wait configured latency plus jitter, then fill against the latest known
 book at fill time. If no fresh book is available, the order is rejected with a
-stable reason instead of guessing.
+stable reason instead of guessing. Source IDs are claimed atomically across the
+full in-flight submission so concurrent duplicates cannot apply two portfolio
+transitions.
 
 ## Performance Rule
 
@@ -342,7 +351,7 @@ polling, reconnect, or reconciliation. The runner dedupes by normalized wallet
 address plus source ID before calling `on_wallet_trade`; equal source IDs from
 different watched wallets remain distinct events.
 
-Orders produced from a wallet trade should copy `trade.source_id` into
+Orders produced from a wallet trade should put `trade.source_key` into
 `OrderRequest.source_id`. Broker implementations should preserve that ID in
 paper fill records, live order metadata where possible, logs, and reconciliation
 state.

@@ -9,7 +9,7 @@ description = "Standalone custom Polymarket bot framework."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "requests>=2.34.2",
+    "polymarket-client==0.1.0b17",
 ]
 
 [project.optional-dependencies]
@@ -22,16 +22,30 @@ packages = [
   "bots",
   "bots.examples",
   "bots.execution",
+  "bots.execution.paper",
   "bots.framework",
+  "bots.framework.events",
+  "bots.framework.runner",
   "bots.polymarket",
+  "scripts",
+  "scripts.select_wallet_for_analysis",
+  "scripts.polymarket_wallet_api",
+  "scripts.wallets_finder",
 ]
 
 [tool.setuptools.package-dir]
 bots = "."
 "bots.examples" = "examples"
 "bots.execution" = "execution"
+"bots.execution.paper" = "execution/paper"
 "bots.framework" = "framework"
-"bots.polymarket" = "polymarket"
+"bots.framework.events" = "framework/events"
+"bots.framework.runner" = "framework/runner"
+"bots.polymarket" = "polymarket_adapter"
+scripts = "scripts"
+"scripts.select_wallet_for_analysis" = "scripts/select_wallet_for_analysis"
+"scripts.polymarket_wallet_api" = "scripts/polymarket_wallet_api"
+"scripts.wallets_finder" = "scripts/wallets_finder"
 
 [tool.pytest.ini_options]
 addopts = "-q"

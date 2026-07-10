@@ -36,6 +36,12 @@ Pin the chosen dependency version and cover the adapter with contract tests.
 The unified SDK's beta status requires version and compatibility discipline; it
 does not by itself justify bypassing the SDK.
 
+This package pins `polymarket-client==0.1.0b17`. Its internal adapter source
+directory is named `polymarket_adapter/` but installs as `bots.polymarket`; this
+prevents it from shadowing the official SDK's top-level `polymarket` import at
+the repository root. Wallet-analysis scripts use synchronous `PublicClient`
+methods and normalize SDK models before analysis code sees them.
+
 ## API Surfaces
 
 Gamma API: `https://gamma-api.polymarket.com`

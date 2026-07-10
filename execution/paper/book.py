@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from bots.framework.events import BOOK_PRICE_CEILING, ZERO_DECIMAL, BookLevel, Side
+from bots.framework.events import Side
+from bots.framework.events.books import BOOK_PRICE_CEILING, BookLevel
+
+EMPTY_BOOK_SIZE = Decimal("0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +38,7 @@ def consume_levels(
     consumed: list[ConsumedLevel] = []
 
     for level in levels:
-        if remaining <= ZERO_DECIMAL:
+        if remaining <= EMPTY_BOOK_SIZE:
             break
         if not _within_slippage(side, level.price, slippage_limit_price):
             break

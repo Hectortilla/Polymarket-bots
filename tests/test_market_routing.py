@@ -2,10 +2,16 @@ import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 
+import pytest
+
 from bots.framework.base import BaseBot
 from bots.framework.config import BotConfig
 from bots.framework.context import BotContext
-from bots.framework.events import BookLevel, BookSnapshot, WalletTradeEvent, Side
+from bots.framework.dispatch import DispatchSkipReason
+from bots.framework.dispatch import DispatchOutcome
+from bots.framework.events import Side
+from bots.framework.events.books import BookLevel, BookSnapshot
+from bots.framework.events.wallet_trades import WalletTradeEvent
 from bots.framework.markets import MarketSubscription
 from bots.framework.runner import BotRunner
 
@@ -44,7 +50,7 @@ def test_runner_routes_static_multi_market_books(dummy_context: BotContext) -> N
     async def run() -> tuple[bool, bool, list[str]]:
         ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_000)
 
         accepted = await runner.dispatch_book(_book("btc"))
         rejected = await runner.dispatch_book(_book("sol"))
@@ -53,8 +59,8 @@ def test_runner_routes_static_multi_market_books(dummy_context: BotContext) -> N
 
     accepted, rejected, books = asyncio.run(run())
 
-    assert accepted is True
-    assert rejected is False
+    assert accepted.accepted is True
+    assert rejected.skip_reason is DispatchSkipReason.MARKET_NOT_TRACKED
     assert books == ["btc"]
 
 
@@ -62,14 +68,14 @@ def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotConte
     async def run() -> tuple[bool, int]:
         ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_000)
 
         accepted = await runner.dispatch_book(_book("sol"))
         return accepted, len(bot.books)
 
     accepted, book_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.MARKET_NOT_TRACKED
     assert book_count == 0
 
 
@@ -80,7 +86,7 @@ def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:
             BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=1_000),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_000)
 
         accepted = await runner.dispatch_book(
             BookSnapshot(
@@ -95,7 +101,7 @@ def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:
 
     accepted, book_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.BOOK_FUTURE_DATED
     assert book_count == 0
 
 
@@ -106,7 +112,7 @@ def test_runner_rejects_stale_book(dummy_context: BotContext) -> None:
             BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=1_000),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 2_000)
 
         accepted = await runner.dispatch_book(
             BookSnapshot(
@@ -121,7 +127,7 @@ def test_runner_rejects_stale_book(dummy_context: BotContext) -> None:
 
     accepted, book_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.BOOK_STALE
     assert book_count == 0
 
 
@@ -129,7 +135,7 @@ def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_000)
 
         accepted = await runner.dispatch_book(
             BookSnapshot(
@@ -138,7 +144,7 @@ def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
                 asks=(
                     BookLevel(price=Decimal("0"), size=Decimal("10")),
                 ),
-                received_at_ms=10**15,
+                received_at_ms=1_000,
                 market_slug="btc",
             )
         )
@@ -146,7 +152,7 @@ def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
 
     accepted, book_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.BAD_BOOK_LEVEL
     assert book_count == 0
 
 
@@ -163,7 +169,7 @@ def test_runner_combines_multi_market_and_multi_wallet_routes(
             ),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_100)
 
         accepted = await runner.dispatch_wallet_trade(_wallet_trade("eth", "tx-1"))
         wrong_market = await runner.dispatch_wallet_trade(
@@ -177,9 +183,9 @@ def test_runner_combines_multi_market_and_multi_wallet_routes(
 
     accepted, wrong_market, wrong_wallet, wallet_trades = asyncio.run(run())
 
-    assert accepted is True
-    assert wrong_market is False
-    assert wrong_wallet is False
+    assert accepted.accepted is True
+    assert wrong_market.skip_reason is DispatchSkipReason.MARKET_NOT_TRACKED
+    assert wrong_wallet.skip_reason is DispatchSkipReason.WALLET_NOT_TRACKED
     assert wallet_trades == ["eth"]
 
 
@@ -189,14 +195,14 @@ def test_runner_rejects_wallet_trade_without_market_slug_when_planned(
     async def run() -> tuple[bool, int]:
         ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_100)
 
         accepted = await runner.dispatch_wallet_trade(_wallet_trade(None, "tx-3"))
         return accepted, len(bot.wallet_trades)
 
     accepted, trade_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.MARKET_NOT_TRACKED
     assert trade_count == 0
 
 
@@ -207,14 +213,14 @@ def test_runner_rejects_stale_wallet_trade(dummy_context: BotContext) -> None:
             BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=500),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        runner = BotRunner(bot, ctx)
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 2_000)
 
         accepted = await runner.dispatch_wallet_trade(_wallet_trade("btc", "tx-stale", observed_at_ms=2_000, trade_timestamp_ms=1_000))
         return accepted, len(bot.wallet_trades)
 
     accepted, trade_count = asyncio.run(run())
 
-    assert accepted is False
+    assert accepted.skip_reason is DispatchSkipReason.WALLET_TRADE_STALE
     assert trade_count == 0
 
 
@@ -234,12 +240,19 @@ def test_dynamic_market_hooks_expose_current_and_next(
     assert next_slug == "btc-updown-5m-1783549500"
 
 
+def test_dispatch_outcome_enforces_reason_invariant() -> None:
+    with pytest.raises(ValueError, match="require a skip reason"):
+        DispatchOutcome(accepted=False)
+    with pytest.raises(ValueError, match="cannot have a skip reason"):
+        DispatchOutcome(accepted=True, skip_reason=DispatchSkipReason.BOOK_STALE)
+
+
 def _book(market_slug: str) -> BookSnapshot:
     return BookSnapshot(
         token_id="123",
         bids=(),
         asks=(),
-        received_at_ms=10**15,
+        received_at_ms=1_000,
         market_slug=market_slug,
     )
 

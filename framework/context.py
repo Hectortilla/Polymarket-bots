@@ -5,7 +5,8 @@ from typing import Protocol
 
 from bots.execution.broker import Broker
 from bots.framework.config import BotConfig
-from bots.framework.events import BookSnapshot, WalletTradeEvent
+from bots.framework.events.books import BookSnapshot
+from bots.framework.events.wallet_trades import WalletTradeEvent
 from bots.polymarket.types import Market, Position
 
 

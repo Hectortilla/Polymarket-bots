@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from bots.framework.events import BookSnapshot
+from bots.framework.events.books import BookSnapshot
 
 
 class MarketStream:

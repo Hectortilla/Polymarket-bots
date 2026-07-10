@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bots.framework.events import BookSnapshot
+from bots.framework.events.books import BookSnapshot
 
 
 class ClobClient:
