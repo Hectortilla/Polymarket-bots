@@ -1,5 +1,5 @@
-model = "gpt-5.4-mini"
-model_reasoning_effort = "medium"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 developer_instructions = """
 Review only for request-shape validation repeated inside trusted internal layers.
