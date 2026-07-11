@@ -12,7 +12,7 @@ from bots.framework.dispatch import DispatchOutcome
 from bots.framework.events import Side
 from bots.framework.events.books import BookLevel, BookSnapshot
 from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.framework.markets import MarketSubscription
+from bots.framework.markets import MarketSubscription, market_bucket_slug
 from bots.framework.runner import BotRunner
 
 
@@ -34,16 +34,27 @@ class BucketBot(RecordingMarketBot):
         ctx: BotContext,
         now_ms: int,
     ) -> tuple[MarketSubscription, ...]:
-        current_bucket = now_ms // 300_000 * 300
-        return (MarketSubscription(slug=f"btc-updown-5m-{current_bucket}"),)
+        return (
+            MarketSubscription(
+                slug=market_bucket_slug("btc-updown-5m", now_ms, 300),
+            ),
+        )
 
     async def next_markets(
         self,
         ctx: BotContext,
         now_ms: int,
     ) -> tuple[MarketSubscription, ...]:
-        next_bucket = (now_ms // 300_000 + 1) * 300
-        return (MarketSubscription(slug=f"btc-updown-5m-{next_bucket}"),)
+        return (
+            MarketSubscription(
+                slug=market_bucket_slug(
+                    "btc-updown-5m",
+                    now_ms,
+                    300,
+                    offset=1,
+                ),
+            ),
+        )
 
 
 def test_runner_routes_static_multi_market_books(dummy_context: BotContext) -> None:

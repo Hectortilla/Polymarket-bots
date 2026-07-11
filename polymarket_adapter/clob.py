@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterable
+from http import HTTPStatus
 
 from polymarket import AsyncPublicClient, RequestRejectedError
 
 from bots.framework.events.books import BookSnapshot
 from bots.polymarket.errors import MarketDataError, MarketDataIssue
-from bots.polymarket.normalization import normalize_book
+from bots.polymarket.normalization.book import normalize_book
 from bots.polymarket.types import Market
 
 
@@ -37,7 +38,7 @@ class ClobClient:
         try:
             source = await self._client.get_order_book(token_id=token_id)
         except RequestRejectedError as error:
-            if error.status == 404:
+            if error.status == HTTPStatus.NOT_FOUND:
                 return None
             raise
         market = self._market_by_token.get(token_id)
@@ -48,6 +49,8 @@ class ClobClient:
             received_at_ms=self._now_ms(),
             condition_id=source.market,
             market_slug=market.slug if market else None,
+            expected_token_id=token_id,
+            expected_condition_id=market.condition_id if market else None,
         )
 
     async def close(self) -> None:

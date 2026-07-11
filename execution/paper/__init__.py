@@ -86,10 +86,10 @@ class PaperBroker(Broker):
         except BaseException as exc:
             if not claimed_fill.done():
                 claimed_fill.set_exception(exc)
-            raise
-        finally:
             async with self._source_claim_lock:
-                self._fills_by_source_id.pop(order.source_id, None)
+                if self._fills_by_source_id.get(order.source_id) is claimed_fill:
+                    self._fills_by_source_id.pop(order.source_id, None)
+            raise
 
     async def _submit_once(self, order: OrderRequest) -> FillEvent:
 

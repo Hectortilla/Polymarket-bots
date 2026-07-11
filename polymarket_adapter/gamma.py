@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
+from http import HTTPStatus
 
 from polymarket import AsyncPublicClient, RequestRejectedError
 
 from bots.polymarket.errors import MarketDataError, MarketDataIssue
-from bots.polymarket.normalization import normalize_market
+from bots.polymarket.normalization.market import normalize_market
 from bots.polymarket.types import Market
 
 
@@ -24,7 +25,7 @@ class GammaClient:
         try:
             source = await self._client.get_market(slug=slug)
         except RequestRejectedError as error:
-            if error.status == 404:
+            if error.status == HTTPStatus.NOT_FOUND:
                 return None
             raise
         return normalize_market(source)

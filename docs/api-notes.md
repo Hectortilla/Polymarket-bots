@@ -47,8 +47,11 @@ Slice 3 uses the pinned SDK's `AsyncPublicClient.get_market(slug=...)`,
 market stream consumes full `MarketBookEvent` snapshots and applies each
 `MarketPriceChangeEvent` atomically to adapter-owned depth before emitting a
 sorted internal `BookSnapshot`. A zero-sized price change removes that level,
-as specified by the market-channel documentation. REST remains the bootstrap
-and reconciliation path; the SDK market subscription is the live signal path.
+as specified by the market-channel documentation. The adapter treats `market`
+as the condition ID and accepts only `BUY` or `SELL` price-change sides; it
+rejects updates whose token or condition identity disagrees with resolved
+metadata. REST remains the bootstrap and reconciliation path; the SDK market
+subscription is the live signal path.
 
 ## API Surfaces
 

@@ -13,9 +13,13 @@ from polymarket.models.clob.market_events import (
 from polymarket.models.clob.order_book import OrderBookLevel
 from polymarket.streams import MarketSpec
 
+from bots.framework.events import Side
 from bots.framework.events.books import BookSnapshot
 from bots.polymarket.errors import MarketDataError, MarketDataIssue
-from bots.polymarket.normalization import normalize_book
+from bots.polymarket.normalization.book import (
+    normalize_book,
+    normalize_price_change_level,
+)
 from bots.polymarket.types import Market
 
 
@@ -72,32 +76,45 @@ class MarketStream:
 
                 if not isinstance(event, MarketPriceChangeEvent):
                     continue
-                candidates: dict[
+                pending_levels: dict[
                     str,
                     tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]],
                 ] = {}
+                invalid_tokens: set[str] = set()
                 for change in event.payload.price_changes:
                     token_id = str(change.token_id)
                     sides = depth.get(token_id)
                     if token_id not in normalized_token_ids or sides is None:
                         continue
-                    candidate = candidates.setdefault(
+                    if token_id in invalid_tokens:
+                        continue
+                    try:
+                        side = _normalize_price_change_side(change.side)
+                        level = normalize_price_change_level(
+                            price=change.price,
+                            size=change.size,
+                        )
+                    except MarketDataError:
+                        invalid_tokens.add(token_id)
+                        pending_levels.pop(token_id, None)
+                        continue
+                    bid_ask_levels = pending_levels.setdefault(
                         token_id,
                         (sides[0].copy(), sides[1].copy()),
                     )
-                    levels = candidate[0] if change.side == "BUY" else candidate[1]
-                    if change.size == 0:
-                        levels.pop(change.price, None)
+                    levels = bid_ask_levels[0] if side is Side.BUY else bid_ask_levels[1]
+                    if level.size == 0:
+                        levels.pop(level.price, None)
                     else:
-                        levels[change.price] = change.size
-                for token_id, candidate in candidates.items():
+                        levels[level.price] = level.size
+                for token_id, bid_ask_levels in pending_levels.items():
                     snapshot = self._snapshot(
                         token_id,
                         event.payload.market,
-                        *candidate,
+                        *bid_ask_levels,
                     )
                     if snapshot is not None:
-                        depth[token_id] = candidate
+                        depth[token_id] = bid_ask_levels
                         yield snapshot
 
     def _snapshot(
@@ -122,6 +139,8 @@ class MarketStream:
                 received_at_ms=self._now_ms(),
                 condition_id=condition_id,
                 market_slug=market.slug if market else None,
+                expected_token_id=token_id,
+                expected_condition_id=market.condition_id if market else None,
             )
         except MarketDataError:
             return None
@@ -129,3 +148,13 @@ class MarketStream:
     async def close(self) -> None:
         if self._owns_client:
             await self._client.close()
+
+
+def _normalize_price_change_side(value: object) -> Side:
+    try:
+        return Side(value)
+    except (TypeError, ValueError) as error:
+        raise MarketDataError(
+            MarketDataIssue.INVALID_BOOK_SIDE,
+            "price change side is invalid",
+        ) from error

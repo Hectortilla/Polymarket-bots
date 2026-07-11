@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from decimal import Decimal
 from importlib.metadata import version
+from http import HTTPStatus
 
 import pytest
 from polymarket import RequestRejectedError
@@ -60,24 +62,32 @@ class FakePublicClient:
         markets: dict[str, list[SdkMarket | None]] | None = None,
         book: OrderBook | None = None,
         events: tuple[object, ...] = (),
+        market_error: RequestRejectedError | None = None,
+        book_error: RequestRejectedError | None = None,
     ) -> None:
         self.markets = markets or {}
         self.book = book
         self.events = events
+        self.market_error = market_error
+        self.book_error = book_error
         self.requested_slugs: list[str] = []
         self.subscribed_token_ids: tuple[str, ...] = ()
 
     async def get_market(self, *, slug: str) -> SdkMarket:
         self.requested_slugs.append(slug)
+        if self.market_error is not None:
+            raise self.market_error
         results = self.markets.get(slug, [None])
         result = results.pop(0) if len(results) > 1 else results[0]
         if result is None:
-            raise RequestRejectedError("not found", status=404)
+            raise RequestRejectedError("not found", status=HTTPStatus.NOT_FOUND)
         return result
 
     async def get_order_book(self, *, token_id: str) -> OrderBook:
+        if self.book_error is not None:
+            raise self.book_error
         if self.book is None:
-            raise RequestRejectedError("not found", status=404)
+            raise RequestRejectedError("not found", status=HTTPStatus.NOT_FOUND)
         return self.book
 
     async def subscribe(self, spec: object) -> FakeStream:
@@ -104,6 +114,36 @@ def test_gamma_normalizes_sdk_market_and_rejects_missing_token_id() -> None:
 
     assert market == _market("alpha")
     assert issue is MarketDataIssue.MISSING_TOKEN_ID
+
+
+def test_gamma_rejects_malformed_nested_market_payload() -> None:
+    malformed = _sdk_market("malformed").model_copy(update={"outcomes": None})
+
+    async def run() -> MarketDataIssue:
+        client = GammaClient(
+            FakePublicClient(markets={"malformed": [malformed]}),  # type: ignore[arg-type]
+        )
+        with pytest.raises(MarketDataError) as caught:
+            await client.find_by_slug("malformed")
+        return caught.value.issue
+
+    assert asyncio.run(run()) is MarketDataIssue.MISSING_TOKEN_ID
+
+
+def test_gamma_propagates_non_not_found_rejection() -> None:
+    async def run() -> None:
+        client = GammaClient(
+            FakePublicClient(
+                market_error=RequestRejectedError(
+                    "server error",
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            )
+        )
+        with pytest.raises(RequestRejectedError):
+            await client.find_by_slug("alpha")
+
+    asyncio.run(run())
 
 
 def test_gamma_resolves_multiple_slugs_and_retries_future_market() -> None:
@@ -166,6 +206,37 @@ def test_clob_normalizes_and_sorts_order_book() -> None:
     assert book.received_at_ms == 1_234
 
 
+def test_clob_rejects_mismatched_market_identity() -> None:
+    market = replace(_market("alpha"), condition_id="condition-other")
+
+    async def run() -> MarketDataIssue:
+        client = ClobClient(
+            FakePublicClient(book=_order_book(bids=(), asks=())),  # type: ignore[arg-type]
+            markets=(market,),
+        )
+        with pytest.raises(MarketDataError) as caught:
+            await client.latest("yes-alpha")
+        return caught.value.issue
+
+    assert asyncio.run(run()) is MarketDataIssue.BOOK_IDENTITY_MISMATCH
+
+
+def test_clob_propagates_non_not_found_rejection() -> None:
+    async def run() -> None:
+        client = ClobClient(
+            FakePublicClient(
+                book_error=RequestRejectedError(
+                    "server error",
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            )
+        )
+        with pytest.raises(RequestRejectedError):
+            await client.latest("yes-alpha")
+
+    asyncio.run(run())
+
+
 def test_market_stream_applies_price_changes_to_full_depth() -> None:
     events = (
         MarketBookEvent(
@@ -215,6 +286,108 @@ def test_market_stream_applies_price_changes_to_full_depth() -> None:
     assert tuple(level.price for level in books[0].bids) == (Decimal("0.40"),)
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert all(book.market_slug == "alpha" for book in books)
+
+
+def test_market_stream_keeps_last_valid_depth_after_crossed_update() -> None:
+    events = (
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-alpha",
+                asset_id="yes-alpha",
+                bids=(_level("0.40", "2"),),
+                asks=(_level("0.60", "3"),),
+            ),
+        ),
+        MarketPriceChangeEvent(
+            type="price_change",
+            payload=MarketPriceChangePayload(
+                market="condition-alpha",
+                price_changes=(
+                    PriceChange(
+                        asset_id="yes-alpha",
+                        price="0.70",
+                        size="5",
+                        side="BUY",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    async def run() -> list[object]:
+        stream = MarketStream(
+            FakePublicClient(events=events),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+            now_ms=lambda: 2_000,
+        )
+        return [book async for book in stream.books({"yes-alpha"})]
+
+    books = asyncio.run(run())
+
+    assert len(books) == 1
+    assert tuple(level.price for level in books[0].bids) == (Decimal("0.40"),)
+
+
+def test_market_stream_ignores_unknown_price_change_side() -> None:
+    invalid_change = PriceChange.model_construct(
+        asset_id="yes-alpha",
+        price=Decimal("0.50"),
+        size=Decimal("5"),
+        side="UNKNOWN",
+    )
+    events = (
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-alpha",
+                asset_id="yes-alpha",
+                bids=(_level("0.40", "2"),),
+                asks=(_level("0.60", "3"),),
+            ),
+        ),
+        MarketPriceChangeEvent(
+            type="price_change",
+            payload=MarketPriceChangePayload(
+                market="condition-alpha",
+                price_changes=(invalid_change,),
+            ),
+        ),
+    )
+
+    async def run() -> list[object]:
+        stream = MarketStream(
+            FakePublicClient(events=events),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+            now_ms=lambda: 2_000,
+        )
+        return [book async for book in stream.books({"yes-alpha"})]
+
+    assert len(asyncio.run(run())) == 1
+
+
+def test_market_stream_rejects_mismatched_market_identity() -> None:
+    events = (
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-other",
+                asset_id="yes-alpha",
+                bids=(_level("0.40", "2"),),
+                asks=(_level("0.60", "3"),),
+            ),
+        ),
+    )
+
+    async def run() -> list[object]:
+        stream = MarketStream(
+            FakePublicClient(events=events),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+            now_ms=lambda: 2_000,
+        )
+        return [book async for book in stream.books({"yes-alpha"})]
+
+    assert asyncio.run(run()) == []
 
 
 def _sdk_market(slug: str, *, no_token_id: str | None = "no-token") -> SdkMarket:

@@ -5,11 +5,15 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from bots.framework.events.book_validation import BookValidationIssue
+
+
 if TYPE_CHECKING:
     from bots.framework.events import Side
 
-BOOK_LEVEL_VALUE_FLOOR = Decimal("0")
-BOOK_PRICE_CEILING = Decimal("1")
+PRICE_FLOOR = Decimal("0")
+PRICE_CEILING = Decimal("1")
+BOOK_LEVEL_VALUE_FLOOR = PRICE_FLOOR
+BOOK_PRICE_CEILING = PRICE_CEILING
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,16 +25,26 @@ class BookLevel:
     def notional_usdc(self) -> Decimal:
         return self.price * self.size
 
-    def is_valid(self) -> bool:
+    def is_valid_price(self) -> bool:
         try:
             return (
                 self.price.is_finite()
-                and self.size.is_finite()
-                and BOOK_LEVEL_VALUE_FLOOR < self.price <= BOOK_PRICE_CEILING
-                and self.size > BOOK_LEVEL_VALUE_FLOOR
+                and PRICE_FLOOR < self.price <= PRICE_CEILING
             )
         except (AttributeError, InvalidOperation, TypeError, ValueError):
             return False
+
+    def is_valid_size(self, *, allow_zero: bool = False) -> bool:
+        try:
+            lower_bound = BOOK_LEVEL_VALUE_FLOOR
+            return self.size.is_finite() and (
+                self.size >= lower_bound if allow_zero else self.size > lower_bound
+            )
+        except (AttributeError, InvalidOperation, TypeError, ValueError):
+            return False
+
+    def is_valid(self) -> bool:
+        return self.is_valid_price() and self.is_valid_size()
 
 
 @dataclass(frozen=True, slots=True)

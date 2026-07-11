@@ -11,6 +11,8 @@ class MarketDataIssue(StrEnum):
     MISSING_TOKEN_ID = "missing_token_id"
     INVALID_MARKET_PARAMETERS = "invalid_market_parameters"
     INVALID_BOOK_LEVEL = "invalid_book_level"
+    INVALID_BOOK_SIDE = "invalid_book_side"
+    BOOK_IDENTITY_MISMATCH = "book_identity_mismatch"
     CROSSED_BOOK = "crossed_book"
 
 

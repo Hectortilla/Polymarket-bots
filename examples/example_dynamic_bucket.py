@@ -25,7 +25,22 @@ class ExampleFiveMinuteBucketBot(BaseBot):
         return (MarketSubscription(slug=self._slug_for(now_ms, offset=1)),)
 
     def _slug_for(self, now_ms: int, offset: int) -> str:
-        now_seconds = now_ms // 1000
-        bucket = now_seconds // self.bucket_seconds + offset
-        bucket_start = bucket * self.bucket_seconds
-        return f"{self.slug_prefix}-{bucket_start}"
+        return self.market_bucket_slug(
+            self.slug_prefix,
+            now_ms,
+            self.bucket_seconds,
+            offset=offset,
+        )
+
+    @staticmethod
+    def market_bucket_slug(
+        prefix: str,
+        now_ms: int,
+        bucket_seconds: int,
+        *,
+        offset: int = 0,
+    ) -> str:
+        if bucket_seconds <= 0:
+            raise ValueError("bucket_seconds must be positive")
+        bucket_start = (now_ms // 1000 // bucket_seconds + offset) * bucket_seconds
+        return f"{prefix}-{bucket_start}"

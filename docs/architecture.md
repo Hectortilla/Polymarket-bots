@@ -68,6 +68,7 @@ polyfollow-bots/  # Installed and imported as `bots`.
     runner/       # Dispatch orchestration plus owned validation policy.
   polymarket_adapter/ # Installed as bots.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
+    normalization/ # Market, book, and scalar SDK-payload normalization.
     data.py       # SDK-backed positions/trades/activity adapter.
     clob.py       # Official-client-backed CLOB adapter.
     wallet_activity.py # Wallet trades/activity stream and fallback.
@@ -293,7 +294,9 @@ order, wait configured latency plus jitter, then fill against the latest known
 book at fill time. If no fresh book is available, the order is rejected with a
 stable reason instead of guessing. Source IDs are claimed atomically across the
 full in-flight submission so concurrent duplicates cannot apply two portfolio
-transitions.
+transitions. Successful paper source claims remain available for the broker's
+process lifetime; durable claims across restarts require a future persistence
+slice because v1 has no database integration.
 
 ## Performance Rule
 

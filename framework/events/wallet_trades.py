@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 
 from bots.framework.events import Side
+from bots.framework.events.books import PRICE_CEILING, PRICE_FLOOR
 from bots.framework.wallets import normalize_wallet_address
 
 
@@ -39,8 +40,8 @@ class WalletTradeEvent:
                 and isinstance(self.side, Side)
                 and self.size.is_finite()
                 and self.price.is_finite()
-                and self.size > 0
-                and 0 < self.price <= 1
+                and self.size > PRICE_FLOOR
+                and PRICE_FLOOR < self.price <= PRICE_CEILING
                 and bool(self.source_id)
                 and self.trade_timestamp_ms >= 0
                 and self.observed_at_ms >= self.trade_timestamp_ms

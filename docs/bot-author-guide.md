@@ -113,6 +113,7 @@ BOT_MAX_ORDER_SIZE=10
 BOT_MAX_SLIPPAGE_PCT=0.02
 BOT_PAPER_LATENCY_MS=250
 BOT_PAPER_LATENCY_JITTER_MS=100
+BOT_BOOK_MAX_AGE_MS=5000
 BOT_PAPER_PORTFOLIO_USDC=1000
 BOT_LIVE_ENABLED=false
 POLYMARKET_PRIVATE_KEY=
@@ -203,7 +204,7 @@ market subscriptions: both route filters must match before dispatch.
 ```python
 from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
-from bots.framework.markets import MarketSubscription
+from bots.framework.markets import MarketSubscription, market_bucket_slug
 
 
 class FiveMinuteBot(BaseBot):
@@ -225,8 +226,7 @@ class FiveMinuteBot(BaseBot):
         return (MarketSubscription(slug=self._slug(now_ms, 1)),)
 
     def _slug(self, now_ms: int, offset: int) -> str:
-        bucket = now_ms // 1000 // 300 + offset
-        return f"{self.prefix}-{bucket * 300}"
+        return market_bucket_slug(self.prefix, now_ms, 300, offset=offset)
 ```
 
 This lets a bot initialize in the middle of a bucket, receive events for the

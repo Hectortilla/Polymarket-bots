@@ -66,6 +66,8 @@ Required behavior:
 - Emit `FillEvent`.
 - Track cash, positions, average entry, and cumulative fees in memory.
 - Claim source IDs atomically across concurrent in-flight submissions.
+- Retain successful paper source claims for the broker process lifetime so
+  replayed source IDs cannot apply a second portfolio transition.
 - Keep validation, market lookup, fill math, and portfolio transitions in
   responsibility-owned modules.
 
@@ -108,6 +110,9 @@ Tests:
 - Parse normal market payload.
 - Reject missing token IDs.
 - Parse book levels into sorted `BookSnapshot`.
+- Reject book snapshots whose token or condition identity disagrees with
+  resolved metadata.
+- Reject malformed market payloads and unknown price-change sides at ingress.
 - Resolve multiple configured slugs.
 - Retry unresolved future dynamic slugs without blocking current market events.
 

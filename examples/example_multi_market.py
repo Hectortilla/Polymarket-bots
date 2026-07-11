@@ -33,17 +33,24 @@ class ExampleMultiMarketBot(BaseBot):
             return ()
         best_ask = min(book.asks, key=lambda level: level.price)
         return tuple(
-            OrderRequest(
-                token_id=rule.target_token_id,
-                side=Side.BUY,
-                price=rule.order_price,
-                size=min(rule.max_size, max_order_size),
-                market_slug=rule.target_slug,
-                reason=f"cross_market_signal:{rule.signal_slug}",
-            )
+            self._order_for_rule(rule, max_order_size)
             for rule in self.rules
             if book.market_slug == rule.signal_slug
             and best_ask.price <= rule.trigger_price
+        )
+
+    @staticmethod
+    def _order_for_rule(
+        rule: CrossMarketRule,
+        max_order_size: Decimal,
+    ) -> OrderRequest:
+        return OrderRequest(
+            token_id=rule.target_token_id,
+            side=Side.BUY,
+            price=rule.order_price,
+            size=min(rule.max_size, max_order_size),
+            market_slug=rule.target_slug,
+            reason=f"cross_market_signal:{rule.signal_slug}",
         )
 
     async def current_markets(

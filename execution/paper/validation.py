@@ -3,10 +3,9 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from bots.framework.events import FillRejectReason, OrderRequest, Side
-from bots.framework.events.book_validation import BookValidationIssue
-from bots.framework.events.books import BOOK_PRICE_CEILING, BookSnapshot
+from bots.framework.events.books import BOOK_PRICE_CEILING, BookSnapshot, PRICE_FLOOR
 
-ORDER_VALUE_FLOOR = Decimal("0")
+ORDER_VALUE_FLOOR = PRICE_FLOOR
 
 
 def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
@@ -40,7 +39,7 @@ def classify_book(
     if order.condition_id is not None and book.condition_id != order.condition_id:
         return FillRejectReason.BOOK_MISMATCH
     issue = book.validation_issue(fill_time_ms, max_age_ms)
-    return _BOOK_FILL_REASONS.get(issue)
+    return None if issue is None else FillRejectReason(issue.value)
 
 
 def valid_fee_rate(value: object) -> Decimal | None:
@@ -52,11 +51,3 @@ def valid_fee_rate(value: object) -> Decimal | None:
     except (InvalidOperation, TypeError, ValueError):
         pass
     return None
-
-
-_BOOK_FILL_REASONS = {
-    BookValidationIssue.FUTURE_DATED: FillRejectReason.BOOK_FUTURE_DATED,
-    BookValidationIssue.STALE: FillRejectReason.BOOK_STALE,
-    BookValidationIssue.BAD_LEVEL: FillRejectReason.BAD_BOOK_LEVEL,
-    BookValidationIssue.CROSSED: FillRejectReason.BOOK_CROSSED,
-}

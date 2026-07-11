@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -20,7 +21,13 @@ from bots.framework.config import (
     BOT_WALLET_ADDRESSES_ENV,
     BotConfig,
     BotMode,
+    DEFAULT_BOT_MODE,
     DEFAULT_BOOK_MAX_AGE_MS,
+    DEFAULT_MAX_ORDER_SIZE,
+    DEFAULT_MAX_SLIPPAGE_PCT,
+    DEFAULT_PAPER_LATENCY_JITTER_MS,
+    DEFAULT_PAPER_LATENCY_MS,
+    DEFAULT_PAPER_PORTFOLIO_USDC,
 )
 
 
@@ -65,6 +72,23 @@ def test_config_rejects_invalid_mode(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError):
         BotConfig.from_env("bad-mode")
+
+
+@pytest.mark.parametrize(
+    ("env_key", "default"),
+    (
+        (BOT_MODE_ENV, DEFAULT_BOT_MODE.value),
+        (BOT_MAX_ORDER_SIZE_ENV, str(DEFAULT_MAX_ORDER_SIZE)),
+        (BOT_MAX_SLIPPAGE_PCT_ENV, str(DEFAULT_MAX_SLIPPAGE_PCT)),
+        (BOT_PAPER_LATENCY_MS_ENV, str(DEFAULT_PAPER_LATENCY_MS)),
+        (BOT_PAPER_LATENCY_JITTER_MS_ENV, str(DEFAULT_PAPER_LATENCY_JITTER_MS)),
+        (BOT_BOOK_MAX_AGE_MS_ENV, str(DEFAULT_BOOK_MAX_AGE_MS)),
+        (BOT_PAPER_PORTFOLIO_USDC_ENV, str(DEFAULT_PAPER_PORTFOLIO_USDC)),
+    ),
+)
+def test_author_guide_documents_runtime_defaults(env_key: str, default: str) -> None:
+    guide = (Path(__file__).parents[1] / "docs" / "bot-author-guide.md").read_text()
+    assert f"{env_key}={default}" in guide
 
 
 @pytest.mark.parametrize(
