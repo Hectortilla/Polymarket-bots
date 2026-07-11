@@ -19,12 +19,16 @@ from bots.polymarket.types import Market
 
 def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
     dotenv = tmp_path / ".env"
-    dotenv.write_text("FROM_FILE=value\nexport QUOTED='hello world'\n", encoding="utf-8")
+    dotenv.write_text(
+        'FROM_FILE=value\nexport QUOTED="hello world"\nMULTILINE="first line\nsecond line"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setenv("FROM_FILE", "existing")
     load_dotenv(dotenv)
 
     assert os.environ["FROM_FILE"] == "existing"
     assert os.environ["QUOTED"] == "hello world"
+    assert os.environ["MULTILINE"] == "first line\nsecond line"
 
 
 def test_parse_overrides_converts_config_types() -> None:

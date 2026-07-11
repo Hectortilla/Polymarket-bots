@@ -206,8 +206,10 @@ Responsibilities:
 
 Implementation notes:
 
-- `bots.cli` loads a simple `.env` file without adding a runtime dependency,
-  accepts `module:attribute` bot factories, and supports typed config overrides.
+- `bots.cli` loads `.env` files with the `python-dotenv` library, including
+  quoted multiline values, without overriding existing process variables;
+  it accepts `module:attribute` bot factories and supports typed config
+  overrides.
 - Current markets are required and are the only markets subscribed by this
   runner; available next markets are resolved on a best-effort basis so a
   future stream manager can pre-subscribe them without blocking the current
