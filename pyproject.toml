@@ -26,6 +26,7 @@ packages = [
   "bots.framework",
   "bots.framework.events",
   "bots.framework.runner",
+  "bots.cli",
   "bots.polymarket",
   "bots.polymarket.wallet_activity",
   "bots.polymarket.normalization",
@@ -43,6 +44,7 @@ bots = "."
 "bots.framework" = "framework"
 "bots.framework.events" = "framework/events"
 "bots.framework.runner" = "framework/runner"
+"bots.cli" = "cli"
 "bots.polymarket" = "polymarket_adapter"
 "bots.polymarket.normalization" = "polymarket_adapter/normalization"
 scripts = "scripts"

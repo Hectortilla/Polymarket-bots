@@ -14,6 +14,7 @@ class MarketDataIssue(StrEnum):
     INVALID_BOOK_SIDE = "invalid_book_side"
     BOOK_IDENTITY_MISMATCH = "book_identity_mismatch"
     CROSSED_BOOK = "crossed_book"
+    AMBIGUOUS_MARKET_METADATA = "ambiguous_market_metadata"
 
 
 class MarketDataError(ValueError):

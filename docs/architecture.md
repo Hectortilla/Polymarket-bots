@@ -11,12 +11,19 @@
 
 ## Current Status
 
-Slices 1 through 4 are implemented: framework contracts, the paper fill engine,
-public Polymarket market-data adapters, and wallet activity Data API inputs.
+Slices 1 through 5 are implemented: framework contracts, the paper fill engine,
+public Polymarket market-data adapters, wallet activity Data API inputs, and a
+paper runner CLI.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
-does not yet implement authenticated clients, an arbitrary-wallet trade stream,
-or a runnable CLI.
+does not yet implement authenticated clients or an arbitrary-wallet trade
+stream. The CLI subscribes only to current markets, resolves next markets
+best-effort for rollover preparation, and fails closed when wallet addresses are
+configured without an injected compatible source.
+CLI paper runs persist normalized source-event claims under `.bot-state/` so a
+restart cannot submit the same wallet-following source event twice. Direct
+`PaperBroker` users may inject another idempotency store; tests retain the
+process-local default.
 
 ## Official Client Boundary
 
@@ -199,10 +206,10 @@ Example shape:
 ```python
 class FiveMinuteBucketBot(BaseBot):
     async def current_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
-        return (MarketSubscription(slug=self.slug_for(now_ms, offset=0)),)
+        return (MarketSubscription(slug=self.slug_for(now_ms, bucket_offset=0)),)
 
     async def next_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
-        return (MarketSubscription(slug=self.slug_for(now_ms, offset=1)),)
+        return (MarketSubscription(slug=self.slug_for(now_ms, bucket_offset=1)),)
 ```
 
 The framework does not hardcode BTC or five-minute market rules. It provides

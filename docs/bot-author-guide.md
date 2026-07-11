@@ -225,8 +225,13 @@ class FiveMinuteBot(BaseBot):
     ) -> tuple[MarketSubscription, ...]:
         return (MarketSubscription(slug=self._slug(now_ms, 1)),)
 
-    def _slug(self, now_ms: int, offset: int) -> str:
-        return market_bucket_slug(self.prefix, now_ms, 300, offset=offset)
+    def _slug(self, now_ms: int, bucket_offset: int) -> str:
+        return market_bucket_slug(
+            self.prefix,
+            now_ms,
+            300,
+            bucket_offset=bucket_offset,
+        )
 ```
 
 This lets a bot initialize in the middle of a bucket, receive events for the

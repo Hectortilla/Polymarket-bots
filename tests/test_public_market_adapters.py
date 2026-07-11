@@ -29,12 +29,41 @@ from polymarket.models.gamma.market import (
 from bots.polymarket.clob import ClobClient
 from bots.polymarket.errors import MarketDataError, MarketDataIssue
 from bots.polymarket.gamma import GammaClient
-from bots.polymarket.types import Market
+from bots.polymarket.types import Market, index_markets_by_token
 from bots.polymarket.ws_market import MarketStream
 
 
 def test_selected_polymarket_sdk_version_is_pinned() -> None:
     assert version("polymarket-client") == "0.1.0b17"
+
+
+def test_index_markets_rejects_ambiguous_token_metadata() -> None:
+    with pytest.raises(MarketDataError) as error:
+        index_markets_by_token(
+            (_market("first"), replace(_market("second"), yes_token_id="yes-first"))
+        )
+
+    assert error.value.issue is MarketDataIssue.AMBIGUOUS_MARKET_METADATA
+
+
+def test_clob_set_markets_replaces_token_metadata() -> None:
+    client = ClobClient(FakePublicClient(), markets=(_market("old"),))  # type: ignore[arg-type]
+    client.set_markets((_market("new"),))
+
+    assert client._market_by_token == {
+        "yes-new": _market("new"),
+        "no-token": _market("new"),
+    }
+
+
+def test_market_stream_set_markets_replaces_token_metadata() -> None:
+    stream = MarketStream(FakePublicClient(), markets=(_market("old"),))  # type: ignore[arg-type]
+    stream.set_markets((_market("new"),))
+
+    assert stream._market_by_token == {
+        "yes-new": _market("new"),
+        "no-token": _market("new"),
+    }
 
 
 class FakeStream:

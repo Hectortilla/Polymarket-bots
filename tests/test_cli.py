@@ -1,0 +1,261 @@
+import asyncio
+import os
+from collections.abc import AsyncIterator
+from decimal import Decimal
+from types import SimpleNamespace
+
+import pytest
+
+from bots.cli.config import load_dotenv, parse_overrides
+from bots.cli.factories import load_bot
+from bots.cli.markets import resolve_plan_markets
+from bots.cli.runner import run_bot
+from bots.cli.streams import StreamKind, merge_streams
+from bots.framework.base import BaseBot
+from bots.framework.config import BotConfig, BotMode
+from bots.framework.markets import MarketPlan, MarketSubscription
+from bots.polymarket.types import Market
+
+
+def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("FROM_FILE=value\nexport QUOTED='hello world'\n", encoding="utf-8")
+    monkeypatch.setenv("FROM_FILE", "existing")
+    load_dotenv(dotenv)
+
+    assert os.environ["FROM_FILE"] == "existing"
+    assert os.environ["QUOTED"] == "hello world"
+
+
+def test_parse_overrides_converts_config_types() -> None:
+    overrides = parse_overrides(
+        ["paper_latency_ms=25", "max_order_size=2.5", "live_enabled=false"]
+    )
+
+    assert overrides == {
+        "paper_latency_ms": 25,
+        "max_order_size": Decimal("2.5"),
+        "live_enabled": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["unknown=value", "name=not-allowed", "malformed", "live_enabled=maybe"],
+)
+def test_parse_overrides_rejects_invalid_values(value: str) -> None:
+    with pytest.raises(ValueError):
+        parse_overrides([value])
+
+
+def test_merge_streams_preserves_typed_stream_kind() -> None:
+    async def source(values: tuple[int, ...]) -> AsyncIterator[int]:
+        for value in values:
+            yield value
+
+    async def run() -> list[tuple[StreamKind, int]]:
+        return [
+            (item.kind, item.event)
+            async for item in merge_streams(
+                (
+                    (StreamKind.BOOK, source((1, 2))),
+                    (StreamKind.WALLET, source((3,))),
+                )
+            )
+        ]
+
+    assert sorted(asyncio.run(run())) == [
+        (StreamKind.BOOK, 1),
+        (StreamKind.BOOK, 2),
+        (StreamKind.WALLET, 3),
+    ]
+
+
+def test_merge_streams_propagates_failure_and_cancels_sibling() -> None:
+    cancelled = False
+
+    async def failing() -> AsyncIterator[int]:
+        raise RuntimeError("source failed")
+        yield 0
+
+    async def waiting() -> AsyncIterator[int]:
+        nonlocal cancelled
+        try:
+            await asyncio.Event().wait()
+            yield 0
+        finally:
+            cancelled = True
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="source failed"):
+            async for _ in merge_streams(
+                (
+                    (StreamKind.BOOK, failing()),
+                    (StreamKind.WALLET, waiting()),
+                )
+            ):
+                pass
+
+    asyncio.run(run())
+    assert cancelled is True
+
+
+def test_resolve_plan_markets_requires_current_and_tolerates_next() -> None:
+    class FakeGamma:
+        async def find_many(self, slugs: tuple[str, ...]) -> tuple[Market | None, ...]:
+            return tuple(_market(slug) if slug == "current" else None for slug in slugs)
+
+    async def run():
+        return await resolve_plan_markets(
+            MarketPlan(
+                current=(MarketSubscription("current"),),
+                next=(MarketSubscription("future"),),
+            ),
+            FakeGamma(),  # type: ignore[arg-type]
+        )
+
+    resolved = asyncio.run(run())
+    assert tuple(market.slug for market in resolved.current) == ("current",)
+    assert resolved.next == ()
+
+
+def test_resolve_plan_markets_rejects_missing_current() -> None:
+    class FakeGamma:
+        async def find_many(self, slugs: tuple[str, ...]) -> tuple[None, ...]:
+            return tuple(None for _ in slugs)
+
+    async def run():
+        await resolve_plan_markets(
+            MarketPlan(current=(MarketSubscription("missing"),)),
+            FakeGamma(),  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(RuntimeError, match="configured markets could not be resolved"):
+        asyncio.run(run())
+
+
+def test_config_rejects_non_finite_decimals() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        BotConfig(name="test", max_order_size=Decimal("Infinity"))
+
+
+def test_load_bot_supports_config_and_zero_argument_factories(monkeypatch) -> None:
+    class ConfigBot(BaseBot):
+        def __init__(self, config: BotConfig) -> None:
+            self.config = config
+
+    class EmptyBot(BaseBot):
+        pass
+
+    module = SimpleNamespace(
+        with_config=lambda config: ConfigBot(config),
+        without_config=lambda: EmptyBot(),
+    )
+    monkeypatch.setitem(__import__("sys").modules, "test_cli_factories", module)
+    config = BotConfig(name="factory")
+
+    assert isinstance(load_bot("test_cli_factories:without_config", config), EmptyBot)
+    loaded = load_bot("test_cli_factories:with_config", config)
+    assert isinstance(loaded, ConfigBot)
+    assert loaded.config is config
+
+
+def test_load_bot_rejects_invalid_factory() -> None:
+    with pytest.raises(ValueError, match="invalid bot factory"):
+        load_bot("missing_module:bot", BotConfig(name="factory"))
+
+
+def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
+    class FakeClient:
+        closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    class FakeGamma:
+        def __init__(self, client) -> None:
+            self.client = client
+
+        async def find_many(self, slugs):
+            return tuple(_market(slug) for slug in slugs)
+
+    class FakeAdapter:
+        def __init__(self, client) -> None:
+            self.client = client
+            self.markets = ()
+
+        def set_markets(self, markets) -> None:
+            self.markets = tuple(markets)
+
+        async def books(self, token_ids):
+            yield object()
+
+    class FakeBotRunner:
+        def __init__(self, bot, ctx) -> None:
+            self.bot = bot
+            self.market_plan = MarketPlan(current=())
+            self.wallet_plan = SimpleNamespace(active_addresses=frozenset())
+            self.dispatched = 0
+
+        async def refresh_markets(self):
+            self.market_plan = MarketPlan(
+                current=(MarketSubscription("current"),)
+            )
+
+        async def refresh_wallets(self):
+            return self.wallet_plan
+
+        async def dispatch_book(self, event) -> None:
+            self.dispatched += 1
+
+    class LifecycleBot(BaseBot):
+        started = 0
+        stopped = 0
+
+        async def on_start(self, ctx) -> None:
+            self.started += 1
+
+        async def on_stop(self, ctx) -> None:
+            self.stopped += 1
+
+    class FakeBroker:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+    monkeypatch.setattr("bots.cli.runner.GammaClient", FakeGamma)
+    monkeypatch.setattr("bots.cli.runner.ClobClient", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.MarketStream", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.PaperBroker", FakeBroker)
+    monkeypatch.setattr("bots.cli.runner.BotRunner", FakeBotRunner)
+
+    async def run() -> tuple[int, int, bool]:
+        client = FakeClient()
+        monkeypatch.setattr("bots.cli.runner.AsyncPublicClient", lambda: client)
+        bot = LifecycleBot()
+        await run_bot(bot, BotConfig(name="runner", market_slugs=("current",)))
+        return bot.started, bot.stopped, client.closed
+
+    assert asyncio.run(run()) == (1, 1, True)
+
+
+def test_run_bot_rejects_live_before_opening_client() -> None:
+    async def run() -> None:
+        await run_bot(BaseBot(), BotConfig(name="live", mode=BotMode.LIVE))
+
+    with pytest.raises(RuntimeError, match="live mode"):
+        asyncio.run(run())
+
+
+def _market(slug: str) -> Market:
+    return Market(
+        condition_id=f"condition-{slug}",
+        slug=slug,
+        question=slug,
+        yes_token_id=f"yes-{slug}",
+        no_token_id=f"no-{slug}",
+        minimum_tick_size=Decimal("0.01"),
+        minimum_order_size=Decimal("1"),
+        neg_risk=False,
+        fee_rate=Decimal("0"),
+    )

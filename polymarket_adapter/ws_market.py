@@ -20,7 +20,7 @@ from bots.polymarket.normalization.book import (
     normalize_book,
     normalize_price_change_level,
 )
-from bots.polymarket.types import Market
+from bots.polymarket.types import Market, index_markets_by_token
 
 
 class MarketStream:
@@ -34,11 +34,11 @@ class MarketStream:
         self._client = client or AsyncPublicClient()
         self._owns_client = client is None
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
-        self._market_by_token = {
-            token_id: market
-            for market in markets
-            for token_id in (market.yes_token_id, market.no_token_id)
-        }
+        self._market_by_token: dict[str, Market] = {}
+        self.set_markets(markets)
+
+    def set_markets(self, markets: Iterable[Market]) -> None:
+        self._market_by_token = index_markets_by_token(markets)
 
     async def books(self, token_ids: set[str]) -> AsyncIterator[BookSnapshot]:
         normalized_token_ids = frozenset(token_id for token_id in token_ids if token_id)

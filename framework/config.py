@@ -54,6 +54,12 @@ DEFAULT_PAPER_LATENCY_MS: Final = 250
 DEFAULT_PAPER_LATENCY_JITTER_MS: Final = 100
 DEFAULT_BOOK_MAX_AGE_MS: Final = 5_000
 DEFAULT_PAPER_PORTFOLIO_USDC: Final = Decimal("1000")
+DECIMAL_CONFIG_FIELDS: Final = frozenset(
+    {"max_order_size", "max_slippage_pct", "paper_portfolio_usdc"}
+)
+INTEGER_CONFIG_FIELDS: Final = frozenset(
+    {"paper_latency_ms", "paper_latency_jitter_ms", "book_max_age_ms"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +82,10 @@ class BotConfig:
     funder_address: str | None = None
 
     def __post_init__(self) -> None:
+        for field_name in DECIMAL_CONFIG_FIELDS:
+            value = getattr(self, field_name)
+            if not value.is_finite():
+                raise ValueError(f"{field_name} must be finite")
         if self.max_order_size <= 0:
             raise ValueError("max_order_size must be positive")
         if self.max_slippage_pct < 0:
@@ -130,7 +140,6 @@ class BotConfig:
 
     def with_overrides(self, **overrides: Unpack[BotConfigOverrides]) -> BotConfig:
         return replace(self, **overrides)
-
 
 def _env_bool(key: str) -> bool:
     value = os.getenv(key, "false").lower()

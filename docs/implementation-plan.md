@@ -187,6 +187,8 @@ Implementation notes:
 
 ## Slice 5: Runner CLI
 
+Status: done.
+
 Add a tiny script or module entrypoint.
 
 Responsibilities:
@@ -200,6 +202,21 @@ Responsibilities:
   wallet activity stream/client.
 - Subscribe to all current market slugs and prepare `next_markets`.
 - Run one bot.
+
+Implementation notes:
+
+- `bots.cli` loads a simple `.env` file without adding a runtime dependency,
+  accepts `module:attribute` bot factories, and supports typed config overrides.
+- Current markets are required and are the only markets subscribed by this
+  runner; available next markets are resolved on a best-effort basis so a
+  future stream manager can pre-subscribe them without blocking the current
+  market hot path.
+- Market and wallet streams are multiplexed into one `BotRunner` lifecycle.
+- Wallet streams remain injected because the pinned SDK does not provide an
+  arbitrary-wallet stream; configuring wallets without a source fails closed.
+- CLI paper runs use an atomic file-backed source-claim store under
+  `.bot-state/` to preserve wallet-event idempotency across restarts without
+  adding a database dependency.
 
 No app imports.
 

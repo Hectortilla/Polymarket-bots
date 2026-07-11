@@ -51,7 +51,7 @@ class BucketBot(RecordingMarketBot):
                     "btc-updown-5m",
                     now_ms,
                     300,
-                    offset=1,
+                    bucket_offset=1,
                 ),
             ),
         )
@@ -73,6 +73,24 @@ def test_runner_routes_static_multi_market_books(dummy_context: BotContext) -> N
     assert accepted.accepted is True
     assert rejected.skip_reason is DispatchSkipReason.MARKET_NOT_TRACKED
     assert books == ["btc"]
+
+
+def test_runner_accepts_wallet_trade_without_market_plan_per_contract(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> bool:
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(
+            bot,
+            _with_config(dummy_context, BotConfig(name="wallet")),
+            now_ms_fn=lambda: 1_100,
+        )
+        outcome = await runner.dispatch_wallet_trade(
+            _wallet_trade("btc", "trade-1")
+        )
+        return outcome.accepted
+
+    assert asyncio.run(run()) is True
 
 
 def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotContext) -> None:

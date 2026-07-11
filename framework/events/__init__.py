@@ -34,6 +34,7 @@ class FillRejectReason(StrEnum):
     MARKET_UNAVAILABLE = "market_unavailable"
     MARKET_FEE_INVALID = "market_fee_invalid"
     NO_DEPTH_WITHIN_SLIPPAGE = "no_depth_within_slippage"
+    DUPLICATE_SOURCE_ID = "duplicate_source_id"
 
 
 @dataclass(frozen=True, slots=True)

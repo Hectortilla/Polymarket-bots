@@ -17,6 +17,7 @@ from bots.framework.events import (
 from bots.framework.events.books import BookSnapshot
 
 from .fill_math import simulate_fill
+from .idempotency import SourceIdempotencyStore
 from .market_data import (
     MARKET_FEE_INVALID_MESSAGE,
     MARKET_UNAVAILABLE_MESSAGE,
@@ -37,6 +38,7 @@ BOOK_STALE_MESSAGE = "fill-time book was stale"
 BAD_BOOK_LEVEL_MESSAGE = "fill-time book contained invalid levels"
 BOOK_FUTURE_DATED_MESSAGE = "fill-time book was future-dated"
 BOOK_CROSSED_MESSAGE = "fill-time book was crossed"
+DUPLICATE_SOURCE_MESSAGE = "source event was already processed"
 
 
 class PaperBroker(Broker):
@@ -49,6 +51,7 @@ class PaperBroker(Broker):
         rng: random.Random | None = None,
         sleep_fn: SleepFn = asyncio.sleep,
         now_ms_fn: NowMsFn | None = None,
+        source_store: SourceIdempotencyStore | None = None,
     ) -> None:
         self._config = config
         self._books = books
@@ -60,6 +63,7 @@ class PaperBroker(Broker):
         self._portfolio = PaperPortfolio(config.paper_portfolio_usdc)
         self._source_claim_lock = asyncio.Lock()
         self._fills_by_source_id: dict[str, asyncio.Future[FillEvent]] = {}
+        self._source_store = source_store
 
     @property
     def portfolio(self) -> PaperPortfolio:
@@ -80,12 +84,28 @@ class PaperBroker(Broker):
             return await claimed_fill
 
         try:
+            if self._source_store is not None and not await asyncio.to_thread(
+                self._source_store.claim, order.source_id
+            ):
+                fill = FillEvent.rejected(
+                    order_id=f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}",
+                    token_id=order.token_id,
+                    side=order.side,
+                    requested_size=order.size,
+                    received_at_ms=self._now_ms(),
+                    reject_reason=FillRejectReason.DUPLICATE_SOURCE_ID,
+                    reject_message=DUPLICATE_SOURCE_MESSAGE,
+                )
+                claimed_fill.set_result(fill)
+                return fill
             fill = await self._submit_once(order)
             claimed_fill.set_result(fill)
             return fill
         except BaseException as exc:
             if not claimed_fill.done():
                 claimed_fill.set_exception(exc)
+            if self._source_store is not None:
+                await asyncio.to_thread(self._source_store.release, order.source_id)
             async with self._source_claim_lock:
                 if self._fills_by_source_id.get(order.source_id) is claimed_fill:
                     self._fills_by_source_id.pop(order.source_id, None)

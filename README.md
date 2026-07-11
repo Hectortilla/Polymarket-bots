@@ -19,7 +19,8 @@ Start with:
 - `docs/implementation-plan.md`
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
-Slice 3 public market-data adapters, and Slice 4 wallet activity inputs. Gamma
+Slice 3 public market-data adapters, Slice 4 wallet activity inputs, and the
+Slice 5 paper runner CLI. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
 use the pinned unified Polymarket SDK and normalize SDK models at the
 `bots.polymarket` boundary. Authenticated runtime adapters remain intentionally

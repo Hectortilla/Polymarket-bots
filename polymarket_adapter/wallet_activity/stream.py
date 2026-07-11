@@ -21,7 +21,7 @@ class WalletActivityStream:
         self._source = source
         self._now_ms = now_ms
 
-    async def trades(self, wallets: set[str]) -> AsyncIterator[WalletTradeEvent]:
+    async def trades(self, wallets: frozenset[str]) -> AsyncIterator[WalletTradeEvent]:
         if self._source is None:
             raise WalletActivityError(
                 WalletActivityIssue.STREAM_UNAVAILABLE,
