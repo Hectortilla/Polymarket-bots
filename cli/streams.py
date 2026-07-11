@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
+from bots.polymarket.types import MarketTradeHint
+
 if TYPE_CHECKING:
     from bots.framework.events.books import BookSnapshot
     from bots.framework.events.wallet_trades import WalletTradeEvent
     from bots.polymarket.types import Market
     from bots.polymarket.wallet_activity.stream import WalletActivityStream
     from bots.polymarket.ws_market import MarketStream
-    from bots.polymarket.types import MarketTradeHint
 
 
 class StreamKind(StrEnum):
@@ -59,8 +60,6 @@ async def merge_streams(
         tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint]], ...
     ],
 ) -> AsyncIterator[StreamEvent]:
-    from bots.polymarket.types import MarketTradeHint
-
     queue: asyncio.Queue[StreamEvent | StreamFailure | StreamCompleted] = asyncio.Queue()
 
     async def enqueue_stream_events(
