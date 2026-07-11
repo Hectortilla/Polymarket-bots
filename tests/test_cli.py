@@ -15,6 +15,7 @@ from bots.framework.base import BaseBot
 from bots.framework.config import BotConfig, BotMode
 from bots.framework.markets import MarketPlan, MarketSubscription
 from bots.polymarket.types import Market
+from bots.polymarket.types import MarketTradeHint
 
 
 def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
@@ -72,6 +73,24 @@ def test_merge_streams_preserves_typed_stream_kind() -> None:
         (StreamKind.BOOK, 1),
         (StreamKind.BOOK, 2),
         (StreamKind.WALLET, 3),
+    ]
+
+
+def test_merge_streams_routes_market_trade_hints_separately() -> None:
+    async def source() -> AsyncIterator[object]:
+        yield MarketTradeHint("condition", "token", "market", 123)
+
+    async def run() -> list[tuple[StreamKind, object]]:
+        return [
+            (item.kind, item.event)
+            async for item in merge_streams(((StreamKind.BOOK, source()),))
+        ]
+
+    assert asyncio.run(run()) == [
+        (
+            StreamKind.MARKET_HINT,
+            MarketTradeHint("condition", "token", "market", 123),
+        )
     ]
 
 

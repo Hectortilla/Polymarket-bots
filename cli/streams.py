@@ -59,6 +59,8 @@ async def merge_streams(
         tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint]], ...
     ],
 ) -> AsyncIterator[StreamEvent]:
+    from bots.polymarket.types import MarketTradeHint
+
     queue: asyncio.Queue[StreamEvent | StreamFailure | StreamCompleted] = asyncio.Queue()
 
     async def enqueue_stream_events(
@@ -67,7 +69,9 @@ async def merge_streams(
     ) -> None:
         try:
             async for event in stream:
-                if stream_kind is StreamKind.BOOK:
+                if isinstance(event, MarketTradeHint):
+                    await queue.put(MarketHintStreamEvent(StreamKind.MARKET_HINT, event))
+                elif stream_kind is StreamKind.BOOK:
                     await queue.put(BookStreamEvent(stream_kind, event))
                 elif stream_kind is StreamKind.WALLET:
                     await queue.put(WalletStreamEvent(stream_kind, event))

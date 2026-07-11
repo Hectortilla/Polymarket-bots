@@ -38,6 +38,7 @@ maximum-concurrency waves possible and do not omit reviewers.
 - `domain_shared_code_reviewer`
 - `cross_boundary_contract_reviewer`
 - `ingress_validation_reviewer`
+- `import_placement_reviewer`
 - `internal_revalidation_reviewer`
 - `validation_before_decisions_reviewer`
 - `market_data_guard_reviewer`

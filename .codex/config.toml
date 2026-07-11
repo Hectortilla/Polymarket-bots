@@ -65,6 +65,10 @@ config_file = "./agents/reviewers/important-branch-test-reviewer.toml"
 description = "Reports external validation or normalization placed outside ingress boundaries."
 config_file = "./agents/reviewers/ingress-validation-reviewer.toml"
 
+[agents.import_placement_reviewer]
+description = "Reports unjustified non-top-level imports and masked circular dependencies."
+config_file = "./agents/reviewers/import-placement-reviewer.toml"
+
 [agents.init_barrel_export_reviewer]
 description = "Reports package initializers used only as barrel exports."
 config_file = "./agents/reviewers/init-barrel-export-reviewer.toml"
