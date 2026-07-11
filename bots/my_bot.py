@@ -1,7 +1,10 @@
 import os
 
-from examples.example_price_watcher import ExamplePriceWatcher
+from examples.example_rebound import ExampleReboundBot
 
 
 def create(config):
-    return ExamplePriceWatcher(os.environ["BOT_YES_TOKEN_ID"])
+    return ExampleReboundBot(
+        os.environ.get("BOT_OUTCOME_LABEL", "Yes"),
+        market_slug=os.environ.get("BOT_MARKET_SLUG"),
+    )

@@ -7,6 +7,7 @@ from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
 from bots.framework.events import OrderRequest, Side
 from bots.framework.events.books import BookSnapshot
+from bots.framework.outcomes import resolve_outcome_token
 from bots.framework.streams import StreamRelation, StreamRule
 
 
@@ -14,7 +15,7 @@ from bots.framework.streams import StreamRelation, StreamRule
 class CrossMarketRule:
     signal_slug: str
     target_slug: str
-    target_token_id: str
+    target_outcome_label: str
     trigger_price: Decimal
     order_price: Decimal
     max_size: Decimal
@@ -23,6 +24,7 @@ class CrossMarketRule:
 class ExampleMultiMarketBot(BaseBot):
     def __init__(self, rules: tuple[CrossMarketRule, ...]) -> None:
         self.rules = rules
+        self._target_token_ids: dict[str, str | None] = {}
 
     def orders_for_book(
         self,
@@ -33,19 +35,28 @@ class ExampleMultiMarketBot(BaseBot):
             return ()
         best_ask = min(book.asks, key=lambda level: level.price)
         return tuple(
-            self._order_for_rule(rule, max_order_size)
+            order
             for rule in self.rules
-            if book.market_slug == rule.signal_slug
+            for order in (
+                self._order_for_rule(
+                    rule, self._target_token_ids.get(rule.target_slug), max_order_size
+                )
+            ,)
+            if order is not None
+            and book.market_slug == rule.signal_slug
             and best_ask.price <= rule.trigger_price
         )
 
     @staticmethod
     def _order_for_rule(
         rule: CrossMarketRule,
+        target_token_id: str | None,
         max_order_size: Decimal,
-    ) -> OrderRequest:
+    ) -> OrderRequest | None:
+        if target_token_id is None:
+            return None
         return OrderRequest(
-            token_id=rule.target_token_id,
+            token_id=target_token_id,
             side=Side.BUY,
             price=rule.order_price,
             size=min(rule.max_size, max_order_size),
@@ -63,5 +74,15 @@ class ExampleMultiMarketBot(BaseBot):
         return (StreamRule(StreamRelation.INDEPENDENT, tuple(sorted(slugs))),)
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+        if book.market_slug is None:
+            return
+        for rule in self.rules:
+            if rule.target_slug not in self._target_token_ids:
+                market = await ctx.markets.find_by_slug(rule.target_slug)
+                self._target_token_ids[rule.target_slug] = (
+                    None
+                    if market is None
+                    else resolve_outcome_token(market, rule.target_outcome_label)
+                )
         for order in self.orders_for_book(book, ctx.config.max_order_size):
             await ctx.broker.submit(order)

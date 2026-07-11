@@ -8,15 +8,22 @@ from bots.framework.events import OrderRequest, Side
 from bots.framework.events.books import BookSnapshot
 from bots.framework.outcomes import resolve_outcome_token
 
-PRICE_TRIGGER = Decimal("0.45")
 
+class ExampleReboundBot(BaseBot):
+    """Tutorial bot: buy after a fall followed by a small rebound.
 
-class ExamplePriceWatcher(BaseBot):
-    def __init__(self, outcome_label: str = "Yes", *, market_slug: str | None = None) -> None:
+    This is intentionally a toy signal. It uses the best ask as the observed
+    price and does not try to predict whether the rebound will continue.
+    """
+
+    def __init__(self, outcome_label: str = "Yes", *, market_slug: str | None = None, order_size: Decimal = Decimal("1")) -> None:
         self.outcome_label = outcome_label
         self.market_slug = market_slug
+        self.order_size = order_size
         self._market_slug: str | None = None
         self._token_id: str | None = None
+        self._last_price: Decimal | None = None
+        self._saw_decline = False
 
     def order_for_book(
         self,
@@ -25,14 +32,28 @@ class ExamplePriceWatcher(BaseBot):
     ) -> OrderRequest | None:
         if book.token_id != self._token_id or not book.asks:
             return None
-        best_ask = min(book.asks, key=lambda level: level.price)
-        if best_ask.price > PRICE_TRIGGER:
+
+        current_price = min(book.asks, key=lambda level: level.price).price
+        previous_price = self._last_price
+        self._last_price = current_price
+
+        if previous_price is None:
             return None
+        if current_price < previous_price:
+            self._saw_decline = True
+            return None
+        if not self._saw_decline or current_price <= previous_price:
+            return None
+
+        self._saw_decline = False
         return OrderRequest(
             token_id=self._token_id,
             side=Side.BUY,
-            price=best_ask.price,
-            size=min(best_ask.size, max_order_size),
+            price=current_price,
+            size=min(self.order_size, max_order_size),
+            market_slug=book.market_slug,
+            condition_id=book.condition_id,
+            reason="price_rebound",
         )
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
@@ -46,6 +67,8 @@ class ExamplePriceWatcher(BaseBot):
             self._token_id = (
                 None if market is None else resolve_outcome_token(market, self.outcome_label)
             )
+            self._last_price = None
+            self._saw_decline = False
         order = self.order_for_book(book, ctx.config.max_order_size)
         if order is not None:
             await ctx.broker.submit(order)

@@ -8,6 +8,12 @@ from bots.polymarket.errors import MarketDataError, MarketDataIssue
 
 
 @dataclass(frozen=True, slots=True)
+class MarketOutcome:
+    label: str
+    token_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class Market:
     condition_id: str
     slug: str
@@ -18,6 +24,7 @@ class Market:
     minimum_order_size: Decimal
     neg_risk: bool
     fee_rate: Decimal
+    outcomes: tuple[MarketOutcome, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +44,18 @@ class Position:
 
 def market_token_ids(market: Market) -> tuple[str, str]:
     return market.yes_token_id, market.no_token_id
+
+
+def token_id_for_outcome(market: Market, label: str) -> str | None:
+    normalized = label.casefold().strip()
+    matches = [
+        outcome.token_id
+        for outcome in market.outcomes
+        if outcome.label.casefold().strip() == normalized
+    ]
+    if matches:
+        return matches[0] if len(set(matches)) == 1 else None
+    return {"yes": market.yes_token_id, "no": market.no_token_id}.get(normalized)
 
 
 def index_markets_by_token(markets: Iterable[Market]) -> dict[str, Market]:
