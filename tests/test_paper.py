@@ -2,26 +2,26 @@ import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 
-from bots.execution.paper import PaperBroker
-from bots.execution.orders import taker_fee_usdc
-from bots.execution.paper import (
+from polybot.execution.paper import PaperBroker
+from polybot.execution.orders import taker_fee_usdc
+from polybot.execution.paper import (
     MARKET_UNAVAILABLE_MESSAGE,
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
 )
-from bots.framework.config import (
+from polybot.framework.config import (
     BotConfig,
     DEFAULT_MAX_SLIPPAGE_PCT,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
-from bots.framework.events import (
+from polybot.framework.events import (
     FillRejectReason,
     OrderRequest,
     OrderStatus,
     Side,
 )
-from bots.framework.events.books import BookLevel, BookSnapshot
-from bots.polymarket.types import Market
-from bots.execution.paper.idempotency import FileSourceIdempotencyStore
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.polymarket.types import Market
+from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 
 DEFAULT_MARKET_SLUG = "btc-up"
 DEFAULT_CONDITION_ID = "0xcondition"

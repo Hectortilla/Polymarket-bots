@@ -588,7 +588,7 @@ wheels = [
 ]
 
 [[package]]
-name = "polymarket-bots"
+name = "polymarket-polybot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

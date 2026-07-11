@@ -2,13 +2,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from bots.execution.broker import Broker
-from bots.framework.config import BotConfig
-from bots.framework.context import BotContext
-from bots.framework.events import FillEvent, OrderRequest, OrderStatus
-from bots.framework.events.books import BookSnapshot
-from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.polymarket.types import Market, Position
+from polybot.execution.broker import Broker
+from polybot.framework.config import BotConfig
+from polybot.framework.context import BotContext
+from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
+from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.polymarket.types import Market, Position
 
 
 @dataclass(slots=True)

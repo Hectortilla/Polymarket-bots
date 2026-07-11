@@ -20,7 +20,7 @@ protocol-model implementations are prohibited unless the official libraries
 lack the required capability or cannot satisfy a documented correctness or
 latency requirement. Record such an exception in `docs/api-notes.md` and the
 affected slice before implementation. Keep official-library types within
-`bots.polymarket` adapters and normalize them into package-owned contracts.
+`polybot.polymarket` adapters and normalize them into package-owned contracts.
 Pin the chosen dependency version and add adapter contract tests; the unified
 SDK's current beta status is not, by itself, an exception.
 
@@ -38,7 +38,7 @@ Status: done.
 
 Acceptance:
 
-- `bots` package imports.
+- `polybot` package imports.
 - Example bot can be instantiated.
 - Fee helper passes symmetry and rounding tests.
 - Duplicate wallet source events are skipped before bot hooks run.
@@ -100,7 +100,7 @@ Rules:
 - Use `MarketPlan.next` to pre-resolve and pre-subscribe upcoming dynamic
   markets when the upstream source allows it.
 - Normalize external payloads at adapter boundaries.
-- Emit only typed internal contracts to bots.
+- Emit only typed internal contracts to polybot.
 - Stable skip/reject reasons for missing or malformed data.
 
 Tests:
@@ -206,7 +206,7 @@ Responsibilities:
 
 Implementation notes:
 
-- `bots.cli` loads `.env` files with the `python-dotenv` library, including
+- `polybot.cli` loads `.env` files with the `python-dotenv` library, including
   quoted multiline values, without overriding existing process variables;
   it accepts `module:attribute` bot factories and supports typed config
   overrides.

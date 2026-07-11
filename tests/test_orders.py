@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from bots.execution.orders import FEE_PRECISION, taker_fee_usdc
+from polybot.execution.orders import FEE_PRECISION, taker_fee_usdc
 
 
 def test_taker_fee_is_symmetric_around_half_probability() -> None:

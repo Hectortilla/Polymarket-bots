@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from bots.framework.wallets import normalize_wallet_address
+from polybot.framework.wallets import normalize_wallet_address
 from scripts.wallet_analysis import WalletMetrics, WalletVerdict
 from scripts.wallet_payloads import PROXY_WALLET_FIELD, PositionRow
 from scripts.wallet_scan_report import format_wallet_scan_record

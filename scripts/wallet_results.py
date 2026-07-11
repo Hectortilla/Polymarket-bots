@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bots.framework.wallets import normalize_wallet_address
+from polybot.framework.wallets import normalize_wallet_address
 
 
 def load_seen_wallets(path: Path) -> set[str]:

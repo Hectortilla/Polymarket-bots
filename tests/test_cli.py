@@ -6,23 +6,23 @@ from types import SimpleNamespace
 
 import pytest
 
-from bots.cli.config import load_dotenv, parse_overrides
-from bots.cli.entrypoint import (
+from polybot.cli.config import load_dotenv, parse_overrides
+from polybot.cli.entrypoint import (
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
     _dashboard_enabled,
     main,
 )
-from bots.cli.factories import load_bot
-from bots.cli.markets import resolve_plan_markets
-from bots.cli.runner import _wait_for_stream_plan_change, run_bot
-from bots.cli.streams import StreamKind, merge_streams
-from bots.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
-from bots.cli.observability.observer import RuntimeObserver
-from bots.framework.base import BaseBot
-from bots.framework.config import BotConfig, BotMode
-from bots.framework.markets import MarketPlan, MarketSubscription
-from bots.polymarket.types import Market
-from bots.polymarket.types import MarketTradeHint
+from polybot.cli.factories import load_bot
+from polybot.cli.markets import resolve_plan_markets
+from polybot.cli.runner import _wait_for_stream_plan_change, run_bot
+from polybot.cli.streams import StreamKind, merge_streams
+from polybot.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
+from polybot.cli.observability.observer import RuntimeObserver
+from polybot.framework.base import BaseBot
+from polybot.framework.config import BotConfig, BotMode
+from polybot.framework.markets import MarketPlan, MarketSubscription
+from polybot.polymarket.types import Market
+from polybot.polymarket.types import MarketTradeHint
 
 
 def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
@@ -65,7 +65,7 @@ def test_dashboard_defaults_to_interactive_output(monkeypatch) -> None:
         def isatty(self) -> bool:
             return True
 
-    monkeypatch.setattr("bots.cli.entrypoint.sys.stdout", Output())
+    monkeypatch.setattr("polybot.cli.entrypoint.sys.stdout", Output())
     monkeypatch.setenv("TERM", "xterm-256color")
 
     assert _dashboard_enabled(None) is True
@@ -77,24 +77,24 @@ def test_dashboard_rejects_explicit_non_tty_output(monkeypatch) -> None:
         def isatty(self) -> bool:
             return False
 
-    monkeypatch.setattr("bots.cli.entrypoint.sys.stdout", Output())
+    monkeypatch.setattr("polybot.cli.entrypoint.sys.stdout", Output())
 
     with pytest.raises(ValueError, match=INTERACTIVE_TERMINAL_REQUIRED_MESSAGE):
         _dashboard_enabled(True)
 
 
 def test_main_treats_keyboard_interrupt_as_graceful_shutdown(monkeypatch) -> None:
-    monkeypatch.setattr("bots.cli.entrypoint.load_dotenv", lambda path: None)
-    monkeypatch.setattr("bots.cli.entrypoint.load_bot", lambda target, config: BaseBot())
-    monkeypatch.setattr("bots.cli.entrypoint._dashboard_enabled", lambda value: False)
+    monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr("polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot())
+    monkeypatch.setattr("polybot.cli.entrypoint._dashboard_enabled", lambda value: False)
 
     def raise_keyboard_interrupt(awaitable) -> None:
         awaitable.close()
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("bots.cli.entrypoint.asyncio.run", raise_keyboard_interrupt)
+    monkeypatch.setattr("polybot.cli.entrypoint.asyncio.run", raise_keyboard_interrupt)
 
-    assert main(["--bot", "bots.my_bot:create", "--no-dashboard"]) == 0
+    assert main(["--bot", "polybot.my_bot:create", "--no-dashboard"]) == 0
 
 
 def test_merge_streams_preserves_typed_stream_kind() -> None:
@@ -289,16 +289,16 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         def __init__(self, *args, **kwargs) -> None:
             pass
 
-    monkeypatch.setattr("bots.cli.runner.GammaClient", FakeGamma)
-    monkeypatch.setattr("bots.cli.runner.ClobClient", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.MarketStream", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.WalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.PaperBroker", FakeBroker)
-    monkeypatch.setattr("bots.cli.runner.BotRunner", FakeBotRunner)
+    monkeypatch.setattr("polybot.cli.runner.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.MarketStream", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.cli.runner.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[int, int, bool]:
         client = FakeClient()
-        monkeypatch.setattr("bots.cli.runner.AsyncPublicClient", lambda: client)
+        monkeypatch.setattr("polybot.cli.runner.AsyncPublicClient", lambda: client)
         bot = LifecycleBot()
         await run_bot(bot, BotConfig(name="runner", market_slugs=("current",)))
         return bot.started, bot.stopped, client.closed
@@ -315,7 +315,7 @@ def test_run_bot_rejects_live_before_opening_client() -> None:
 
 
 def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) -> None:
-    from bots.framework.streams import StreamPlan, StreamRelation, StreamRule
+    from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 
     initial = StreamPlan(
         current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
@@ -335,12 +335,12 @@ def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) 
     async def run() -> StreamPlan:
         return await _wait_for_stream_plan_change(DynamicRunner(), initial)
 
-    monkeypatch.setattr("bots.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("polybot.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
     assert asyncio.run(run()) == rolled
 
 
 def test_run_bot_rebuilds_market_stream_when_dynamic_plan_rolls_over(monkeypatch) -> None:
-    from bots.framework.streams import StreamPlan, StreamRelation, StreamRule
+    from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 
     initial = StreamPlan(
         current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
@@ -386,13 +386,13 @@ def test_run_bot_rebuilds_market_stream_when_dynamic_plan_rolls_over(monkeypatch
         def __init__(self, *args, **kwargs) -> None:
             pass
 
-    monkeypatch.setattr("bots.cli.runner.GammaClient", FakeGamma)
-    monkeypatch.setattr("bots.cli.runner.ClobClient", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.MarketStream", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.WalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.PaperBroker", FakeBroker)
-    monkeypatch.setattr("bots.cli.runner.BotRunner", DynamicRunner)
-    monkeypatch.setattr("bots.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("polybot.cli.runner.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.MarketStream", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.cli.runner.BotRunner", DynamicRunner)
+    monkeypatch.setattr("polybot.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
 
     asyncio.run(run_bot(BaseBot(), BotConfig(name="dynamic"), client=object()))
 
@@ -465,16 +465,16 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
         async def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("bots.cli.runner.GammaClient", FakeGamma)
-    monkeypatch.setattr("bots.cli.runner.ClobClient", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.MarketStream", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.WalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("bots.cli.runner.PaperBroker", FakeBroker)
-    monkeypatch.setattr("bots.cli.runner.BotRunner", FakeBotRunner)
+    monkeypatch.setattr("polybot.cli.runner.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.MarketStream", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.cli.runner.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[FakeClient, RecordingObserver]:
         client = FakeClient()
-        monkeypatch.setattr("bots.cli.runner.AsyncPublicClient", lambda: client)
+        monkeypatch.setattr("polybot.cli.runner.AsyncPublicClient", lambda: client)
         observer = RecordingObserver()
         with pytest.raises(RuntimeError, match="stop failed"):
             await run_bot(

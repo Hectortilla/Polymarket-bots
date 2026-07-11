@@ -4,11 +4,11 @@ from decimal import Decimal
 
 import pytest
 
-from bots.execution.paper import PaperBroker
-from bots.framework.config import BotConfig
-from bots.framework.events import FillRejectReason, OrderRequest, Side
-from bots.framework.events.books import BookLevel, BookSnapshot
-from bots.polymarket.types import Market
+from polybot.execution.paper import PaperBroker
+from polybot.framework.config import BotConfig
+from polybot.framework.events import FillRejectReason, OrderRequest, Side
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.polymarket.types import Market
 
 
 @dataclass

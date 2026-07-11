@@ -53,7 +53,7 @@ required capability or cannot meet a documented correctness or latency
 requirement. Record that exception and its evidence in `docs/api-notes.md` and
 the relevant implementation-plan slice before implementing it.
 
-Keep official-library objects inside `bots.polymarket` adapters. Validate and
+Keep official-library objects inside `polybot.polymarket` adapters. Validate and
 normalize them into this package's internal contracts at the adapter boundary;
 do not expose SDK models to bot or execution-domain code. Because the unified
 SDK is currently beta, pin the selected version and add adapter contract tests
@@ -62,7 +62,7 @@ reimplement supported protocol behavior.
 
 ## Working Rules
 
-- Keep the package importable as `bots` after this directory is copied away.
+- Keep the package importable as `polybot` after this directory is copied away.
 - Prefer small modules named by responsibility.
 - Write straightforward code for the current slice. Do not introduce speculative
   abstractions, wrappers, dependencies, or generalized extension points.

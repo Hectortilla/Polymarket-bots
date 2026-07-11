@@ -26,15 +26,15 @@ from polymarket.models.gamma.market import (
     MarketTrading,
 )
 
-from bots.polymarket.clob import ClobClient
-from bots.polymarket.errors import MarketDataError, MarketDataIssue
-from bots.polymarket.gamma import GammaClient
-from bots.polymarket.types import (
+from polybot.polymarket.clob import ClobClient
+from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+from polybot.polymarket.gamma import GammaClient
+from polybot.polymarket.types import (
     Market,
     MarketOutcome as NormalizedMarketOutcome,
     index_markets_by_token,
 )
-from bots.polymarket.ws_market import MarketStream
+from polybot.polymarket.ws_market import MarketStream
 
 
 def test_selected_polymarket_sdk_version_is_pinned() -> None:

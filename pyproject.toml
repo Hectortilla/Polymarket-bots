@@ -3,7 +3,7 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "polymarket-bots"
+name = "polymarket-polybot"
 version = "0.1.0"
 description = "Standalone custom Polymarket bot framework."
 readme = "README.md"
@@ -22,19 +22,19 @@ dev = [
 
 [tool.setuptools]
 packages = [
-  "bots",
-  "bots.examples",
-  "bots.execution",
-  "bots.execution.paper",
-  "bots.framework",
-  "bots.framework.events",
-  "bots.framework.runner",
-  "bots.cli",
-  "bots.cli.dashboard",
-  "bots.cli.observability",
-  "bots.polymarket",
-  "bots.polymarket.wallet_activity",
-  "bots.polymarket.normalization",
+  "polybot",
+  "polybot.examples",
+  "polybot.execution",
+  "polybot.execution.paper",
+  "polybot.framework",
+  "polybot.framework.events",
+  "polybot.framework.runner",
+  "polybot.cli",
+  "polybot.cli.dashboard",
+  "polybot.cli.observability",
+  "polybot.polymarket",
+  "polybot.polymarket.wallet_activity",
+  "polybot.polymarket.normalization",
   "scripts",
   "scripts.select_wallet_for_analysis",
   "scripts.polymarket_wallet_api",
@@ -42,16 +42,7 @@ packages = [
 ]
 
 [tool.setuptools.package-dir]
-bots = "."
-"bots.examples" = "examples"
-"bots.execution" = "execution"
-"bots.execution.paper" = "execution/paper"
-"bots.framework" = "framework"
-"bots.framework.events" = "framework/events"
-"bots.framework.runner" = "framework/runner"
-"bots.cli" = "cli"
-"bots.polymarket" = "polymarket_adapter"
-"bots.polymarket.normalization" = "polymarket_adapter/normalization"
+"" = "src"
 scripts = "scripts"
 "scripts.select_wallet_for_analysis" = "scripts/select_wallet_for_analysis"
 "scripts.polymarket_wallet_api" = "scripts/polymarket_wallet_api"

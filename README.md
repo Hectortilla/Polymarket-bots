@@ -23,7 +23,7 @@ Slice 3 public market-data adapters, Slice 4 wallet activity inputs, and the
 Slice 5 paper runner CLI, and an opt-in terminal dashboard. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
 use the pinned unified Polymarket SDK and normalize SDK models at the
-`bots.polymarket` boundary. Authenticated runtime adapters remain intentionally
+`polybot.polymarket` boundary. Authenticated runtime adapters remain intentionally
 unimplemented until their later slices; no arbitrary-wallet trade stream is
 bundled because the pinned SDK does not provide one.
 
@@ -63,5 +63,5 @@ The CLI enables the dashboard automatically on interactive terminals. Use
 BOT_MODE=paper \
 BOT_STREAM_RULES='<stream-rules-json>' \
 BOT_YES_TOKEN_ID=<yes-token-id> \
-uv run python -m bots.cli --bot bots.my_bot:create --dashboard
+uv run python -m polybot.cli --bot polybot.my_bot:create --dashboard
 ```

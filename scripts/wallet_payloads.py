@@ -5,7 +5,7 @@ from enum import StrEnum
 from math import isfinite
 from typing import Final, TypedDict
 
-from bots.framework.events import Side
+from polybot.framework.events import Side
 
 CONDITION_ID_FIELD: Final = "conditionId"
 PROXY_WALLET_FIELD: Final = "proxyWallet"

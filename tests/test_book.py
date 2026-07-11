@@ -2,9 +2,9 @@ from decimal import Decimal
 
 import pytest
 
-from bots.execution.paper.book import consume_levels, slippage_limit_price
-from bots.framework.events import Side
-from bots.framework.events.books import BookLevel, BookSnapshot
+from polybot.execution.paper.book import consume_levels, slippage_limit_price
+from polybot.framework.events import Side
+from polybot.framework.events.books import BookLevel, BookSnapshot
 
 
 @pytest.mark.parametrize(

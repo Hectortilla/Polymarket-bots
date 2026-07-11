@@ -2,10 +2,10 @@ import asyncio
 from dataclasses import replace
 from decimal import Decimal
 
-from bots.examples.example_multi_market import CrossMarketRule, ExampleMultiMarketBot
-from bots.framework.context import BotContext
-from bots.framework.events.books import BookLevel, BookSnapshot
-from bots.polymarket.types import Market, MarketOutcome
+from polybot.examples.example_multi_market import CrossMarketRule, ExampleMultiMarketBot
+from polybot.framework.context import BotContext
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.polymarket.types import Market, MarketOutcome
 
 
 def test_multi_market_example_trades_target_from_signal_market(

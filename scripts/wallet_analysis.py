@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import TypedDict
 
-from bots.framework.events import Side
+from polybot.framework.events import Side
 from scripts.wallet_payloads import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,

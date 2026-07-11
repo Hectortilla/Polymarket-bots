@@ -3,10 +3,10 @@ import random
 from dataclasses import replace
 from decimal import Decimal
 
-from bots.framework.context import BotContext
-from bots.framework.events.books import BookLevel, BookSnapshot
-from bots.polymarket.types import Market, MarketOutcome
-from examples.example_random_hold import ExampleRandomHoldBot
+from polybot.framework.context import BotContext
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.polymarket.types import Market, MarketOutcome
+from polybot.examples.example_random_hold import ExampleRandomHoldBot
 
 
 def test_random_hold_bot_buys_holds_then_sells_and_starts_again(

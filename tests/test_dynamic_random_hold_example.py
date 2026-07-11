@@ -1,8 +1,8 @@
 import asyncio
 from decimal import Decimal
 
-from bots.framework.context import BotContext
-from examples.example_dynamic_random_hold import ExampleDynamicRandomHoldBot
+from polybot.framework.context import BotContext
+from polybot.examples.example_dynamic_random_hold import ExampleDynamicRandomHoldBot
 
 
 def test_dynamic_random_hold_bot_declares_current_and_next_buckets(

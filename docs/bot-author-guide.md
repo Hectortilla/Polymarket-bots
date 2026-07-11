@@ -5,10 +5,10 @@
 ```python
 from decimal import Decimal
 
-from bots.framework.base import BaseBot
-from bots.framework.context import BotContext
-from bots.framework.events import OrderRequest, Side
-from bots.framework.events.books import BookSnapshot
+from polybot.framework.base import BaseBot
+from polybot.framework.context import BotContext
+from polybot.framework.events import OrderRequest, Side
+from polybot.framework.events.books import BookSnapshot
 
 
 class BuyCheapYes(BaseBot):
@@ -40,10 +40,10 @@ class BuyCheapYes(BaseBot):
 - Use `ctx.books` for latest cached books.
 - Use `current_stream_rules()` for market, wallet, and mixed subscriptions.
 - Do not import `backend/app`.
-- Do not access `.env` directly from bots.
-- Do not compute fees inside bots.
-- Do not sign orders inside bots.
-- Do not import or instantiate Polymarket SDK/client classes inside bots.
+- Do not access `.env` directly from polybot.
+- Do not compute fees inside polybot.
+- Do not sign orders inside polybot.
+- Do not import or instantiate Polymarket SDK/client classes inside polybot.
 
 Official Polymarket libraries belong behind the framework adapters. Bot code
 uses `ctx.markets`, `ctx.books`, normalized events, and `ctx.broker`; this keeps
@@ -146,8 +146,8 @@ It shows market/wallet activity, paper orders and fills, multi-token prices,
 and executable paper PnL without changing strategy behavior.
 
 Tools integrating the CLI may pass a custom
-`bots.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers
-receive `bots.cli.observability.events.RuntimeEvent` values and must remain
+`polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers
+receive `polybot.cli.observability.events.RuntimeEvent` values and must remain
 non-essential: the runtime suppresses their lifecycle and event failures.
 
 ## Wallet-Following Bot
@@ -155,10 +155,10 @@ non-essential: the runtime suppresses their lifecycle and event failures.
 ```python
 from decimal import Decimal
 
-from bots.framework.base import BaseBot
-from bots.framework.context import BotContext
-from bots.framework.events import OrderRequest
-from bots.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.base import BaseBot
+from polybot.framework.context import BotContext
+from polybot.framework.events import OrderRequest
+from polybot.framework.events.wallet_trades import WalletTradeEvent
 
 
 class FollowLeaders(BaseBot):
@@ -203,9 +203,9 @@ runs. Keep an explicit set in the strategy only when it needs per-leader policy.
 ## Dynamic Market Bot
 
 ```python
-from bots.framework.base import BaseBot
-from bots.framework.context import BotContext
-from bots.framework.markets import MarketSubscription, market_bucket_slug
+from polybot.framework.base import BaseBot
+from polybot.framework.context import BotContext
+from polybot.framework.markets import MarketSubscription, market_bucket_slug
 
 
 class FiveMinuteBot(BaseBot):

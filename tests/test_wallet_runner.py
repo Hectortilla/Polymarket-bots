@@ -2,13 +2,13 @@ import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 
-from bots.framework.base import BaseBot
-from bots.framework.config import BotConfig
-from bots.framework.context import BotContext
-from bots.framework.dispatch import DispatchSkipReason
-from bots.framework.events import Side
-from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.framework.runner import BotRunner
+from polybot.framework.base import BaseBot
+from polybot.framework.config import BotConfig
+from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
+from polybot.framework.events import Side
+from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.runner import BotRunner
 
 
 @dataclass(slots=True)

@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal
 
-from bots.framework.events import Side
-from bots.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
-from bots.polymarket.wallet_activity import (
+from polybot.framework.events import Side
+from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
+from polybot.polymarket.wallet_activity import (
     TRADE_ACTIVITY_TYPE,
     WalletActivityClient,
     WalletActivityError,

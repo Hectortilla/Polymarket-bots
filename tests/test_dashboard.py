@@ -7,11 +7,11 @@ from math import nan
 import pytest
 from rich.console import Console
 
-from bots.cli.dashboard.render import render_dashboard
-from bots.cli.dashboard.controller import TerminalDashboard
-from bots.cli.dashboard.state import MAX_CHART_TOKENS, DashboardState
-from bots.cli.observability.broker import ObservableBroker
-from bots.cli.observability.events import (
+from polybot.cli.dashboard.render import render_dashboard
+from polybot.cli.dashboard.controller import TerminalDashboard
+from polybot.cli.dashboard.state import MAX_CHART_TOKENS, DashboardState
+from polybot.cli.observability.broker import ObservableBroker
+from polybot.cli.observability.events import (
     BrokerFailed,
     DispatchCompleted,
     FillCompleted,
@@ -22,17 +22,17 @@ from bots.cli.observability.events import (
     RuntimeFailed,
     StreamReceived,
 )
-from bots.cli.observability.observer import (
+from polybot.cli.observability.observer import (
     RuntimeObserver,
     emit_observer,
     start_observer,
     stop_observer,
 )
-from bots.cli.streams import BookStreamEvent, StreamKind, WalletStreamEvent
-from bots.framework.config import BotConfig
-from bots.framework.events import FillEvent, FillRejectReason, OrderRequest, OrderStatus, Side
-from bots.framework.events.books import BookLevel, BookSnapshot
-from bots.framework.events.wallet_trades import WalletTradeEvent
+from polybot.cli.streams import BookStreamEvent, StreamKind, WalletStreamEvent
+from polybot.framework.config import BotConfig
+from polybot.framework.events import FillEvent, FillRejectReason, OrderRequest, OrderStatus, Side
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.wallet_trades import WalletTradeEvent
 
 
 class RecordingObserver(RuntimeObserver):
@@ -88,7 +88,7 @@ def test_dashboard_start_does_not_block_the_event_loop(monkeypatch) -> None:
         def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("bots.cli.dashboard.controller.Live", BlockingLive)
+    monkeypatch.setattr("polybot.cli.dashboard.controller.Live", BlockingLive)
 
     async def run() -> bool:
         dashboard = TerminalDashboard(Console(width=80, height=24))
@@ -133,7 +133,7 @@ def test_dashboard_render_is_threaded_and_stop_closes_live_session(monkeypatch) 
         def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("bots.cli.dashboard.controller.Live", BlockingLive)
+    monkeypatch.setattr("polybot.cli.dashboard.controller.Live", BlockingLive)
 
     async def run() -> bool:
         dashboard = TerminalDashboard(Console(width=80, height=24))
@@ -366,7 +366,7 @@ def test_dashboard_skips_rejected_books_but_counts_them() -> None:
             1.0,
         )
     )
-    from bots.framework.dispatch import DispatchOutcome, DispatchSkipReason
+    from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 
     item = BookStreamEvent(StreamKind.BOOK, rejected_book)
     state.apply(
@@ -387,7 +387,7 @@ def test_dashboard_promotes_accepted_books_for_valuation() -> None:
     book = _book("accepted", Decimal("0.40"), Decimal("0.60"), received_at_ms=1_000)
     item = BookStreamEvent(StreamKind.BOOK, book)
     state.apply(StreamReceived(item, 1.0))
-    from bots.framework.dispatch import DispatchOutcome
+    from polybot.framework.dispatch import DispatchOutcome
 
     state.apply(DispatchCompleted(item, DispatchOutcome.accepted_event(), 2.0))
     state.portfolio = PortfolioSnapshot(
@@ -429,7 +429,7 @@ def test_dashboard_tracks_dispatch_skips_and_rejected_fills() -> None:
         reject_reason=FillRejectReason.BOOK_CROSSED,
         reject_message="crossed book",
     )
-    from bots.framework.dispatch import DispatchOutcome, DispatchSkipReason
+    from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 
     state.apply(
         DispatchCompleted(

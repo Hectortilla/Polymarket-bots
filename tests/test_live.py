@@ -1,7 +1,7 @@
 import pytest
 
-from bots.execution.live import LiveBroker
-from bots.framework.config import BOT_MODE_ENV, BotConfig, BotMode
+from polybot.execution.live import LiveBroker
+from polybot.framework.config import BOT_MODE_ENV, BotConfig, BotMode
 
 LIVE_MODE_REQUIREMENT = f"{BOT_MODE_ENV}={BotMode.LIVE.value}"
 

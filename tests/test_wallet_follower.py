@@ -2,11 +2,11 @@ import asyncio
 from dataclasses import replace
 from decimal import Decimal
 
-from bots.examples.example_wallet_follower import ExampleWalletFollower, WALLET_FOLLOW_REASON
-from bots.framework.context import BotContext
-from bots.framework.events import OrderRequest, Side
-from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.framework.events.wallet_trades import wallet_source_key
+from polybot.examples.example_wallet_follower import ExampleWalletFollower, WALLET_FOLLOW_REASON
+from polybot.framework.context import BotContext
+from polybot.framework.events import OrderRequest, Side
+from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.events.wallet_trades import wallet_source_key
 
 
 def test_wallet_follower_carries_source_id(dummy_context: BotContext) -> None:

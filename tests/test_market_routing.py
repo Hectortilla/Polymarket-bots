@@ -4,16 +4,16 @@ from decimal import Decimal
 
 import pytest
 
-from bots.framework.base import BaseBot
-from bots.framework.config import BotConfig
-from bots.framework.context import BotContext
-from bots.framework.dispatch import DispatchSkipReason
-from bots.framework.dispatch import DispatchOutcome
-from bots.framework.events import Side
-from bots.framework.events.books import BookLevel, BookSnapshot
-from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.framework.markets import MarketSubscription, market_bucket_slug
-from bots.framework.runner import BotRunner
+from polybot.framework.base import BaseBot
+from polybot.framework.config import BotConfig
+from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
+from polybot.framework.dispatch import DispatchOutcome
+from polybot.framework.events import Side
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.markets import MarketSubscription, market_bucket_slug
+from polybot.framework.runner import BotRunner
 
 
 @dataclass(slots=True)

@@ -2,8 +2,8 @@ from decimal import Decimal
 
 import pytest
 
-from bots.execution.paper.portfolio import PaperPortfolio, PaperPosition
-from bots.framework.events import Side
+from polybot.execution.paper.portfolio import PaperPortfolio, PaperPosition
+from polybot.framework.events import Side
 
 
 def test_nonzero_position_requires_average_price() -> None:

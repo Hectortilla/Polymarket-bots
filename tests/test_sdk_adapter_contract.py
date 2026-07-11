@@ -5,7 +5,7 @@ from polymarket.models.data.activity import TradeActivity
 from polymarket.models.data.portfolio import Position
 from polymarket.models.gamma.market import Market
 
-from bots.framework.events import Side
+from polybot.framework.events import Side
 from scripts.polymarket_wallet_api.sdk_payloads import activity_payload, market_payload, position_payload
 from scripts.wallet_payloads import ACTIVITY_SIDE_FIELD, CONDITION_ID_FIELD, normalize_activity_rows, normalize_position_rows
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from bots.framework.config import (
+from polybot.framework.config import (
     BOT_API_KEY_ENV,
     BOT_API_PASSPHRASE_ENV,
     BOT_API_SECRET_ENV,

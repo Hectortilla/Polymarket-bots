@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bots.framework.wallets import normalize_wallet_address
+from polybot.framework.wallets import normalize_wallet_address
 from scripts.polymarket_wallet_api import fetch_all_activity, fetch_gamma_market
 from scripts.wallet_payloads import CONDITION_ID_FIELD, ActivityRow
 from scripts.wallets_finder import RESULTS_DIR

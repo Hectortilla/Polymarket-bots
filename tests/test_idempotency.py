@@ -2,7 +2,7 @@ import asyncio
 import multiprocessing
 from pathlib import Path
 
-from bots.execution.paper.idempotency import FileSourceIdempotencyStore
+from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 
 
 def _claim_in_process(path: str, ready, results) -> None:

@@ -2,9 +2,9 @@
 
 ## Goals
 
-- Keep all custom bot code inside this standalone `bots` package.
+- Keep all custom bot code inside this standalone `polybot` package.
 - Keep the package isolated from the main app.
-- Make new bots small: subclass `BaseBot`, override event hooks, use `ctx`.
+- Make new polybot small: subclass `BaseBot`, override event hooks, use `ctx`.
 - Treat low latency as a core framework requirement, not an optimization.
 - Make paper trading realistic enough to test bot behavior before live trading.
 - Keep files short and named by responsibility.
@@ -45,7 +45,7 @@ slice. Authentication, signing, and order serialization must never be
 hand-rolled when an official library supports them.
 
 The official libraries are transport/protocol dependencies, not framework
-contracts. Modules under `bots.polymarket` own their lifecycle and convert SDK
+contracts. Modules under `polybot.polymarket` own their lifecycle and convert SDK
 models and events into `BookSnapshot`, `WalletTradeEvent`, `FillEvent`, and
 other package-owned types. Bots, runners, paper execution, and broker protocols
 must not import SDK types. The selected library version must be pinned and its
@@ -63,7 +63,8 @@ adapter behavior covered by contract tests, especially while
 ## Package Layout
 
 ```text
-polyfollow-bots/  # Installed and imported as `bots`.
+polyfollow-polybot/
+  src/polybot/       # Installed and imported as `polybot`.
   docs/
   framework/
     base.py       # BaseBot event hooks.
@@ -75,7 +76,7 @@ polyfollow-bots/  # Installed and imported as `bots`.
     markets.py    # Static and dynamic market subscription contracts.
     wallets.py    # Watched-wallet subscription contracts.
     runner/       # Dispatch orchestration plus owned validation policy.
-  polymarket_adapter/ # Installed as bots.polymarket; does not shadow the SDK.
+    polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
     normalization/ # Market, book, and scalar SDK-payload normalization.
     data.py       # SDK-backed positions/trades/activity adapter.
@@ -85,7 +86,7 @@ polyfollow-bots/  # Installed and imported as `bots`.
     ws_user.py    # SDK-backed authenticated user stream adapter.
     types.py      # Polymarket-specific normalized types.
   execution/
-    broker.py     # Broker protocol used by bots.
+    broker.py     # Broker protocol used by polybot.
     paper/        # Orchestration, validation, fill math, market data, portfolio.
     live.py       # Live broker.
     orders.py     # Shared order and fee helpers.
@@ -141,9 +142,9 @@ in memory, uses `asciichartpy` for price/PnL charts, and renders independently
 of bot execution.
 
 Custom CLI integrations can pass a
-`bots.cli.observability.observer.RuntimeObserver` to `run_bot()`. Its
+`polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Its
 `start(config)`, `emit(event)`, and `stop()` methods receive
-`bots.cli.observability.events.RuntimeEvent` values; observer exceptions are
+`polybot.cli.observability.events.RuntimeEvent` values; observer exceptions are
 deliberately suppressed so telemetry cannot interrupt the paper runtime.
 
 The current paper CLI does not automatically call `BaseBot.on_fill()` after
@@ -238,7 +239,7 @@ pre-subscribe where the external APIs support it.
 
 ## Multi-Wallet Routing
 
-Wallet-following bots support a static list of leader addresses from config:
+Wallet-following polybot support a static list of leader addresses from config:
 
 ```text
 `BOT_STREAM_RULES` is the sole configuration schema for market/wallet topology.

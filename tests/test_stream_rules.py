@@ -1,4 +1,4 @@
-from bots.framework.streams import StreamPlan, StreamRelation, StreamRule
+from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 
 
 def test_mixed_rules_union_their_trade_relations() -> None:

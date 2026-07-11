@@ -2,11 +2,11 @@ import asyncio
 from dataclasses import replace
 from decimal import Decimal
 
-from bots.framework.context import BotContext
-from bots.framework.events.books import BookLevel, BookSnapshot
-from examples.example_rebound import ExampleReboundBot
-from bots.polymarket.types import Market, MarketOutcome
-from bots.framework.outcomes import resolve_outcome_token
+from polybot.framework.context import BotContext
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.examples.example_rebound import ExampleReboundBot
+from polybot.polymarket.types import Market, MarketOutcome
+from polybot.framework.outcomes import resolve_outcome_token
 
 
 def test_rebound_bot_buys_after_decline_then_rise(dummy_context: BotContext) -> None:
