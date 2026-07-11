@@ -101,7 +101,7 @@ async def run_bot(
             RuntimeStateChanged(RuntimeState.RUNNING, monotonic()),
         )
         while True:
-            plan = await _refresh_plan(runner)
+            plan = await runner.refresh_stream_plan()
             resolved = await resolve_plan_markets(plan, gamma)
             clob.set_markets(resolved.current)
             market_stream.set_markets(resolved.current)
@@ -218,14 +218,6 @@ async def _dispatch_stream_event(
     elif item.kind is StreamKind.MARKET_HINT:
         wallet_stream.wake_market(item.event.condition_id)
     return None
-
-
-async def _refresh_plan(runner: BotRunner):
-    if hasattr(runner, "refresh_stream_plan"):
-        return await runner.refresh_stream_plan()
-    await runner.refresh_markets()
-    await runner.refresh_wallets()
-    return runner.market_plan
 
 
 async def _wait_for_stream_plan_change(runner: BotRunner, active_plan):

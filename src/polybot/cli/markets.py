@@ -23,12 +23,9 @@ async def resolve_plan_markets(
     gamma: GammaClient,
 ) -> ResolvedMarketPlan:
     """Resolve current markets strictly and next markets best-effort."""
-    if isinstance(plan, StreamPlan):
-        current_slugs = plan.current_market_slugs
-        next_slugs = plan.next_market_slugs
-    else:
-        current_slugs = tuple(subscription.slug for subscription in plan.current)
-        next_slugs = tuple(subscription.slug for subscription in plan.next)
+    current_slugs = plan.current_market_slugs
+    next_slugs = plan.next_market_slugs
+
     slugs = tuple(dict.fromkeys((*current_slugs, *next_slugs)))
     if not slugs:
         return ResolvedMarketPlan(current=(), next=())
