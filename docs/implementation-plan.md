@@ -79,6 +79,8 @@ Tests:
 
 ## Slice 3: Public Market Data
 
+Status: done.
+
 Implement public adapters:
 
 - Internal `GammaClient.find_by_slug`, backed by the unified async SDK.
@@ -108,6 +110,18 @@ Tests:
 - Parse book levels into sorted `BookSnapshot`.
 - Resolve multiple configured slugs.
 - Retry unresolved future dynamic slugs without blocking current market events.
+
+Implementation notes:
+
+- `GammaClient` uses `AsyncPublicClient.get_market(slug=...)`, resolves slug
+  batches concurrently, and exposes a cancel-safe retry loop for future slugs.
+- `ClobClient` uses `AsyncPublicClient.get_order_book(token_id=...)` for REST
+  bootstrap and reconciliation snapshots.
+- `MarketStream` uses `AsyncPublicClient.subscribe(MarketSpec(...))`. It owns
+  live depth, applies all changes in one price-change message atomically, and
+  emits only complete sorted `BookSnapshot` contracts.
+- The selected official library remains pinned at `polymarket-client==0.1.0b17`.
+  No direct-network exception was required.
 
 ## Slice 4: Wallet Activity Input
 

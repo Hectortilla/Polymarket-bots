@@ -11,10 +11,11 @@
 
 ## Current Status
 
-This is a documentation plus Slice 1 contract-layer and Slice 2 paper fill
-engine pass. The package defines the contracts and safety boundaries that later
-slices should implement. It does not yet implement the Polymarket network
-clients or a runnable CLI.
+Slices 1 through 3 are implemented: framework contracts, the paper fill engine,
+and public Polymarket market-data adapters. Public adapters use the unified SDK
+for Gamma discovery, CLOB bootstrap snapshots, and market WebSocket events. The
+package does not yet implement authenticated clients, wallet-activity runtime
+inputs, or a runnable CLI.
 
 ## Official Client Boundary
 
@@ -66,11 +67,11 @@ polyfollow-bots/  # Installed and imported as `bots`.
     wallets.py    # Watched-wallet subscription contracts.
     runner/       # Dispatch orchestration plus owned validation policy.
   polymarket_adapter/ # Installed as bots.polymarket; does not shadow the SDK.
-    gamma.py      # SDK-backed market discovery adapter.
+    gamma.py      # SDK-backed market discovery and future-slug retry.
     data.py       # SDK-backed positions/trades/activity adapter.
     clob.py       # Official-client-backed CLOB adapter.
     wallet_activity.py # Wallet trades/activity stream and fallback.
-    ws_market.py  # SDK-backed public market stream adapter.
+    ws_market.py  # SDK-backed public market stream and depth state.
     ws_user.py    # SDK-backed authenticated user stream adapter.
     types.py      # Polymarket-specific normalized types.
   execution/

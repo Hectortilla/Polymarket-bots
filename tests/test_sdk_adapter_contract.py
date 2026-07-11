@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 
 from polymarket.models.data.activity import TradeActivity
 from polymarket.models.data.portfolio import Position
@@ -12,7 +13,7 @@ from scripts.wallet_payloads import ACTIVITY_SIDE_FIELD, CONDITION_ID_FIELD, nor
 def test_sdk_trade_model_normalizes_to_analysis_contract() -> None:
     model = TradeActivity.model_construct(
         wallet="0xwallet",
-        timestamp=1,
+        timestamp=datetime.fromtimestamp(1, timezone.utc),
         transaction_hash="0xtx",
         type="TRADE",
         condition_id="condition",
@@ -29,6 +30,7 @@ def test_sdk_trade_model_normalizes_to_analysis_contract() -> None:
     assert rows[0][CONDITION_ID_FIELD] == "condition"
     assert rows[0][ACTIVITY_SIDE_FIELD] == Side.BUY.value
     assert rows[0]["usdcSize"] == 0.8
+    assert rows[0]["timestamp"] == 1
 
 
 def test_sdk_position_model_normalizes_to_analysis_contract() -> None:

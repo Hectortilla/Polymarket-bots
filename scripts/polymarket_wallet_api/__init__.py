@@ -12,6 +12,7 @@ from scripts.wallet_payloads import CONDITION_ID_FIELD, normalize_activity_rows,
 GAMMA_API_BASE: Final = "https://gamma-api.polymarket.com"
 GAMMA_MARKETS_PATH: Final = "/markets"
 MAX_ACTIVITY_ITEMS: Final = 3_500
+MAX_ACTIVITY_OFFSET: Final = 3_000
 SDK_PAGE_SIZE: Final = 500
 POSITION_SIZE_THRESHOLD: Final = 0.1
 SINGLE_RESULT_PAGE_SIZE: Final = 1
@@ -34,12 +35,33 @@ def fetch_all_activity(
             sort_direction=DESCENDING_SORT,
             page_size=SDK_PAGE_SIZE,
         )
-        models = list(islice(paginator.iter_items(), item_limit + 1))
-    truncated = len(models) > item_limit
-    rows = normalize_activity_rows(
-        [activity_payload(model) for model in models[:item_limit]]
-    )
+        models = []
+        truncated = False
+        try:
+            models_iterator = iter(paginator.iter_items())
+            for _ in range(item_limit + 1):
+                models.append(next(models_iterator))
+        except StopIteration:
+            pass
+        except PolymarketError as exc:
+            if not _is_activity_offset_limit_error(exc):
+                raise
+            # The Data API rejects offsets >= 3000. Keep the rows already
+            # fetched so one very active wallet does not abort the scan.
+            truncated = True
+        else:
+            truncated = len(models) > item_limit
+    if len(models) > item_limit:
+        models = models[:item_limit]
+        truncated = True
+    elif len(models) >= MAX_ACTIVITY_OFFSET:
+        truncated = True
+    rows = normalize_activity_rows([activity_payload(model) for model in models])
     return enrich_activity_with_market_slug(rows), truncated
+
+
+def _is_activity_offset_limit_error(error: PolymarketError) -> bool:
+    return "max historical activity offset of 3000 exceeded" in str(error).lower()
 
 
 def fetch_positions(wallet: str) -> list[dict[str, object]]:

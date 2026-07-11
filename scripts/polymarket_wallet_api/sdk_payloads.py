@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from scripts.wallet_payloads import CONDITION_ID_FIELD, PROXY_WALLET_FIELD
 
 
 def activity_payload(model: object) -> dict[str, object]:
+    timestamp = getattr(model, "timestamp", None)
+    if isinstance(timestamp, datetime):
+        timestamp = timestamp.timestamp()
     return {
         PROXY_WALLET_FIELD: str(getattr(model, "wallet", "") or ""),
-        "timestamp": getattr(model, "timestamp", None),
+        "timestamp": timestamp,
         CONDITION_ID_FIELD: str(getattr(model, "condition_id", "") or ""),
         "type": str(getattr(model, "type", "")),
         "size": getattr(model, "shares", None),

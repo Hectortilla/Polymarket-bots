@@ -5,7 +5,7 @@
       "name": "Wallets finder (loop)",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/scripts/wallets_finder.py",
+      "program": "${workspaceFolder}/scripts/wallets_finder/__init__.py",
       "args": [
         "--loop"
       ],
@@ -22,7 +22,7 @@
       "name": "Select wallet for analysis",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/scripts/select_wallet_for_analysis.py",
+      "module": "scripts.select_wallet_for_analysis",
       "cwd": "${workspaceFolder}",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"

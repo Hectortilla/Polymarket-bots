@@ -55,6 +55,31 @@ def test_fetch_activity_truncates_and_closes_sdk_client(monkeypatch) -> None:
     assert client.calls[0][1]["sort_by"] == api.ACTIVITY_SORT_BY
 
 
+def test_fetch_activity_keeps_rows_when_offset_limit_is_reached(monkeypatch) -> None:
+    class OffsetLimitedPaginator(FakePaginator):
+        def iter_items(self):
+            yield from self.items
+            raise api.PolymarketError("max historical activity offset of 3000 exceeded")
+
+    models = [
+        SimpleNamespace(
+            wallet="0xwallet", timestamp=index, transaction_hash=f"tx-{index}",
+            type="TRADE", condition_id="condition", token_id="token", side="BUY",
+            shares=1, amount=0.5, price=0.5, outcome="Yes", title="Question", slug="market",
+        )
+        for index in range(2)
+    ]
+    client = FakeClient(activity=models)
+    client.list_activity = lambda **kwargs: OffsetLimitedPaginator(models)
+    monkeypatch.setattr(api, "PublicClient", lambda: client)
+    monkeypatch.setattr(api, "enrich_activity_with_market_slug", lambda rows: rows)
+
+    rows, truncated = api.fetch_all_activity("0xwallet", max_items=3)
+
+    assert len(rows) == 2
+    assert truncated is True
+
+
 def test_market_position_workflow_flattens_sdk_envelopes(monkeypatch) -> None:
     position = SimpleNamespace(
         wallet="0xwallet", condition_id="condition", size=2,

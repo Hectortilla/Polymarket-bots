@@ -42,6 +42,14 @@ prevents it from shadowing the official SDK's top-level `polymarket` import at
 the repository root. Wallet-analysis scripts use synchronous `PublicClient`
 methods and normalize SDK models before analysis code sees them.
 
+Slice 3 uses the pinned SDK's `AsyncPublicClient.get_market(slug=...)`,
+`get_order_book(token_id=...)`, and `subscribe(MarketSpec(...))` methods. The
+market stream consumes full `MarketBookEvent` snapshots and applies each
+`MarketPriceChangeEvent` atomically to adapter-owned depth before emitting a
+sorted internal `BookSnapshot`. A zero-sized price change removes that level,
+as specified by the market-channel documentation. REST remains the bootstrap
+and reconciliation path; the SDK market subscription is the live signal path.
+
 ## API Surfaces
 
 Gamma API: `https://gamma-api.polymarket.com`
@@ -182,4 +190,6 @@ For consecutive time-bucket markets, the framework expects the bot to generate
 candidate slugs through `current_markets()` and `next_markets()`. The adapter
 layer should then resolve the slug as soon as the market exists. Missing future
 markets are normal for ephemeral markets and should be retried without blocking
-the current market's hot path.
+the current market's hot path. `GammaClient.wait_for_slug()` provides that
+cancel-safe async retry primitive; stream-plan orchestration schedules it in a
+separate task when consuming `MarketPlan.next`.

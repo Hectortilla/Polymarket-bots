@@ -18,11 +18,11 @@ Start with:
 - `docs/api-notes.md`
 - `docs/implementation-plan.md`
 
-The current package has the Slice 1 contract layer plus the Slice 2 paper fill
-engine: contracts, docs, safety gates, example shape, and an in-memory
-`PaperBroker.submit()` implementation. Analysis scripts use the pinned unified
-Polymarket SDK through a normalization boundary; bot runtime network adapters
-remain intentionally unimplemented until their later implementation slices.
+The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
+and Slice 3 public market-data adapters. Gamma discovery, CLOB snapshots, and
+market WebSocket books use the pinned unified Polymarket SDK and normalize SDK
+models at the `bots.polymarket` boundary. Authenticated and wallet-activity
+runtime adapters remain intentionally unimplemented until their later slices.
 
 Future Polymarket integrations must use an official Polymarket Python SDK or
 client wherever it supports the required capability. The unified
