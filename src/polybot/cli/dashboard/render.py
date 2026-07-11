@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from decimal import Decimal
 from math import isnan
 
@@ -23,6 +24,8 @@ PRICE_CHART_MAX = 1.0
 WALLET_VALUE_CHART_MARGIN_RATIO = 0.15
 MIN_WALLET_VALUE_CHART_MARGIN = 1.0
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
+DIMMED_SERIES_COLORS = tuple(f"\033[2m{color}" for color in SERIES_COLORS)
+DIMMED_WALLET_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
 SERIES_LEGEND_STYLES = tuple(legend_style for _, legend_style in SERIES_PALETTE)
 
 
@@ -43,11 +46,11 @@ def render_dashboard(state: DashboardState, width: int, height: int) -> Layout:
 
 
 def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
-    series = [list(state.price_history[token_id]) for token_id in state.chart_tokens]
+    series, colors = _price_chart_series(state)
     legend = _market_legend(state)
     price = _chart(
         series,
-        SERIES_COLORS,
+        colors,
         max(5, min(12, height // 3)),
         "No two-sided market prices",
         minimum=PRICE_CHART_MIN,
@@ -58,8 +61,8 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
     wallet_values = list(state.wallet_value_history)
     wallet_minimum, wallet_maximum = _padded_bounds(wallet_values)
     wallet_value = _chart(
-        [wallet_values],
-        (asciichartpy.lightgreen,),
+        _split_stale_samples(wallet_values, state.wallet_value_stale_history),
+        (asciichartpy.lightgreen, DIMMED_WALLET_VALUE_COLOR),
         5,
         "Wallet value unavailable",
         minimum=wallet_minimum,
@@ -70,7 +73,7 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
             legend,
             price,
             Text("Executable wallet value", style="bold green"),
-            Text("green: total executable wallet value (all markets)", style="bright_green"),
+            Text("green: current · dim green: stale", style="bright_green"),
             wallet_value,
         ),
         title="Market price and paper wallet value",
@@ -110,6 +113,27 @@ def _chart(
         config["max"] = maximum
     chart = asciichartpy.plot(series if len(series) > 1 else series[0], config)
     return Text.from_ansi(chart)
+
+
+def _price_chart_series(state: DashboardState) -> tuple[list[list[float]], tuple[str, ...]]:
+    series: list[list[float]] = []
+    colors: list[str] = []
+    for index, token_id in enumerate(state.chart_tokens):
+        values = list(state.price_history[token_id])
+        stale = state.price_stale_history.get(token_id, deque())
+        series.extend(_split_stale_samples(values, stale))
+        colors.extend((SERIES_COLORS[index], DIMMED_SERIES_COLORS[index]))
+    return series, tuple(colors)
+
+
+def _split_stale_samples(
+    values: list[float], stale_samples: deque[bool],
+) -> list[list[float]]:
+    stale = [*stale_samples]
+    stale.extend(False for _ in range(len(values) - len(stale)))
+    current = [value if not is_stale else float("nan") for value, is_stale in zip(values, stale)]
+    dimmed = [value if is_stale else float("nan") for value, is_stale in zip(values, stale)]
+    return [current, dimmed]
 
 
 def _padded_bounds(values: list[float]) -> tuple[float | None, float | None]:

@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
+from threading import Lock
+from traceback import format_exception
 
 from rich.console import Console
 from rich.live import Live
+from rich.text import Text
 
 from polybot.cli.dashboard.render import render_dashboard
 from polybot.cli.dashboard.state import DashboardState
@@ -22,9 +26,11 @@ class TerminalDashboard:
         self._live: Live | None = None
         self._task: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
+        self._state_lock = Lock()
 
     async def start(self, config: BotConfig) -> None:
-        self._state.book_max_age_ms = config.book_max_age_ms
+        with self._state_lock:
+            self._state.book_max_age_ms = config.book_max_age_ms
         self._live = Live(
             console=self._console,
             screen=True,
@@ -36,14 +42,14 @@ class TerminalDashboard:
         try:
             await asyncio.to_thread(self._live.start, refresh=True)
             self._task = asyncio.create_task(self._render_loop())
-        except Exception:
-            if self._live is not None:
-                await asyncio.to_thread(self._live.stop)
-                self._live = None
+        except Exception as error:
+            cleanup_error = await self._close_live()
+            self._report_failure(error, cleanup_error)
             raise
 
     def emit(self, event: RuntimeEvent) -> None:
-        self._state.apply(event)
+        with self._state_lock:
+            self._state.apply(event)
         self._wake.set()
 
     async def stop(self) -> None:
@@ -51,12 +57,18 @@ class TerminalDashboard:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
             self._task = None
-        if self._live is not None:
-            try:
-                await asyncio.to_thread(self._render)
-            finally:
-                await asyncio.to_thread(self._live.stop)
-                self._live = None
+        if self._live is None:
+            return
+        render_error: Exception | None = None
+        try:
+            await asyncio.to_thread(self._render)
+        except Exception as error:
+            render_error = error
+        cleanup_error = await self._close_live()
+        failure = render_error or cleanup_error
+        if failure is not None:
+            self._report_failure(failure, cleanup_error if render_error else None)
+            raise failure
 
     async def _render_loop(self) -> None:
         try:
@@ -67,18 +79,46 @@ class TerminalDashboard:
                     pass
                 self._wake.clear()
                 await asyncio.to_thread(self._render)
-        except Exception:
-            if self._live is not None:
-                await asyncio.to_thread(self._live.stop)
-                self._live = None
+        except Exception as error:
+            cleanup_error = await self._close_live()
+            self._report_failure(error, cleanup_error)
 
     def _render(self) -> None:
-        if self._live is None:
+        live = self._live
+        if live is None:
             return
         width = self._console.size.width
         height = self._console.size.height
-        self._state.sample(width)
-        self._live.update(
-            render_dashboard(self._state, width, height),
+        with self._state_lock:
+            self._state.sample(width)
+            state = deepcopy(self._state)
+        live.update(
+            render_dashboard(state, width, height),
             refresh=True,
         )
+
+    async def _close_live(self) -> Exception | None:
+        live = self._live
+        self._live = None
+        if live is None:
+            return None
+        try:
+            await asyncio.to_thread(live.stop)
+        except Exception as error:
+            return error
+        return None
+
+    def _report_failure(
+        self,
+        error: Exception,
+        cleanup_error: Exception | None = None,
+    ) -> None:
+        message = Text(
+            "Dashboard stopped after an internal error; bot execution continues.\n",
+            style="bold red",
+        )
+        message.append("".join(format_exception(error)), style="red")
+        if cleanup_error is not None and cleanup_error is not error:
+            message.append("Dashboard cleanup also failed:\n", style="bold red")
+            message.append("".join(format_exception(cleanup_error)), style="red")
+        self._console.print(message)

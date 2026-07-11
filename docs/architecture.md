@@ -139,8 +139,13 @@ The CLI may attach a fail-open `RuntimeObserver` without exposing it to bots,
 adapters, or paper execution. The observer receives lifecycle, stream,
 dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
 in memory, uses `asciichartpy` for fixed-scale price and padded
-executable-wallet-value charts, and renders independently
-of bot execution.
+executable-wallet-value charts. Expired market data retains its last plotted
+value in a dimmed series rather than being treated as a current quote. The
+dashboard renders independently of bot execution.
+
+Dashboard state sampling takes a locked snapshot before rendering in a worker
+thread. A rendering failure closes the live display and prints its traceback to
+the terminal while the fail-open observer boundary lets bot execution continue.
 
 Custom CLI integrations can pass a
 `polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Its

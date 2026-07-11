@@ -295,5 +295,7 @@ Status: done.
 Acceptance:
 
 - Dashboard failures cannot interrupt dispatch, execution, or shutdown.
+- Dashboard failures close the live display and leave a traceback in the
+  terminal.
 - No strategy logging or rendering code is required.
 - PnL marks longs at best bid and shorts at best ask; missing marks show N/A.

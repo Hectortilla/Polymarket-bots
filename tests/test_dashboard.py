@@ -1,8 +1,9 @@
 import asyncio
-from threading import Event
 from collections import deque
 from decimal import Decimal
-from math import nan
+from io import StringIO
+from math import isnan, nan
+from threading import Event, Thread
 
 import pytest
 from rich.console import Console
@@ -161,6 +162,72 @@ def test_dashboard_render_is_threaded_and_stop_closes_live_session(monkeypatch) 
 
     assert asyncio.run(run())
     assert live_sessions[0].stopped
+
+
+def test_dashboard_reports_render_loop_failure(monkeypatch) -> None:
+    stopped = Event()
+    output = StringIO()
+
+    class FailingLive:
+        def __init__(self, **kwargs) -> None:
+            return None
+
+        def start(self, *, refresh: bool) -> None:
+            return None
+
+        def update(self, renderable, *, refresh: bool) -> None:
+            raise RuntimeError("chart exploded")
+
+        def stop(self) -> None:
+            stopped.set()
+
+    monkeypatch.setattr("polybot.cli.dashboard.controller.Live", FailingLive)
+
+    async def inline_to_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "polybot.cli.dashboard.controller.asyncio.to_thread",
+        inline_to_thread,
+    )
+
+    async def run() -> None:
+        dashboard = TerminalDashboard(
+            Console(file=output, width=80, height=24, force_terminal=False)
+        )
+        await dashboard.start(BotConfig(name="dashboard"))
+        dashboard.emit(RuntimeStarted.from_config(BotConfig(name="dashboard")))
+        await asyncio.sleep(0)
+        assert stopped.is_set()
+        await dashboard.stop()
+
+    asyncio.run(run())
+
+    rendered_output = output.getvalue()
+    assert "Dashboard stopped after an internal error" in rendered_output
+    assert "RuntimeError: chart exploded" in rendered_output
+
+
+def test_dashboard_releases_state_lock_before_terminal_update() -> None:
+    update_started = Event()
+    release_update = Event()
+
+    class BlockingLive:
+        def update(self, renderable, *, refresh: bool) -> None:
+            update_started.set()
+            release_update.wait(timeout=1)
+
+    dashboard = TerminalDashboard(Console(width=80, height=24))
+    dashboard._live = BlockingLive()
+    render_thread = Thread(target=dashboard._render)
+
+    render_thread.start()
+    assert update_started.wait(timeout=1)
+    dashboard.emit(RuntimeStarted.from_config(BotConfig(name="dashboard")))
+    release_update.set()
+    render_thread.join(timeout=1)
+
+    assert not render_thread.is_alive()
 
 
 def test_dashboard_marks_long_at_bid_and_short_at_ask() -> None:
@@ -487,6 +554,62 @@ def test_dashboard_samples_executable_wallet_value() -> None:
     state.sample(80)
 
     assert list(state.wallet_value_history) == [125.0]
+
+
+def test_dashboard_retains_stale_chart_values_with_stale_markers() -> None:
+    state = DashboardState(book_max_age_ms=100)
+    state.apply(
+        StreamReceived(
+            BookStreamEvent(
+                StreamKind.BOOK,
+                _book("token", Decimal("0.4"), Decimal("0.6"), received_at_ms=1_000),
+            ),
+            1.0,
+        )
+    )
+    state.portfolio = PortfolioSnapshot(
+        Decimal("90"),
+        Decimal("0"),
+        (PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.5")),),
+    )
+
+    state.sample(80, now_ms=1_000)
+    state.sample(80, now_ms=1_101)
+
+    assert list(state.price_history["token"]) == [0.5, 0.5]
+    assert list(state.price_stale_history["token"]) == [False, True]
+    assert list(state.wallet_value_history) == [90.4, 90.4]
+    assert list(state.wallet_value_stale_history) == [False, True]
+
+
+def test_dashboard_renders_stale_samples_in_dimmed_series(monkeypatch) -> None:
+    state = DashboardState(chart_tokens=deque(("token",)))
+    state.price_history = {"token": deque((0.45, 0.55))}
+    state.price_stale_history = {"token": deque((False, True))}
+    state.wallet_value_history = deque((100.0, 110.0))
+    state.wallet_value_stale_history = deque((False, True))
+    calls: list[tuple[object, dict[str, object]]] = []
+
+    def plot(series, config):
+        calls.append((series, config))
+        return "chart"
+
+    monkeypatch.setattr("polybot.cli.dashboard.render.asciichartpy.plot", plot)
+
+    render_dashboard(state, 120, 35)
+
+    price_series, price_config = calls[0]
+    wallet_series, wallet_config = calls[1]
+    assert price_series[0][0] == 0.45
+    assert isnan(price_series[0][1])
+    assert isnan(price_series[1][0])
+    assert price_series[1][1] == 0.55
+    assert len(price_config["colors"]) == 2
+    assert wallet_series[0][0] == 100.0
+    assert isnan(wallet_series[0][1])
+    assert isnan(wallet_series[1][0])
+    assert wallet_series[1][1] == 110.0
+    assert len(wallet_config["colors"]) == 2
 
 
 def test_dashboard_ticker_removes_terminal_control_characters() -> None:

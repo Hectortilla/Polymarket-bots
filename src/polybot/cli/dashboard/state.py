@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
-from math import nan
+from math import isnan, nan
 from time import monotonic, time
+from typing import TypeVar
 
 from polybot.cli.observability.events import (
     BrokerFailed,
@@ -32,6 +33,7 @@ MAX_CHART_TOKENS = len(SERIES_PALETTE)
 EVENT_RATE_WINDOW_SECONDS = 10
 MARKET_TICKER_INTERVAL_SECONDS = 1
 LATENCY_SAMPLE_LIMIT = 100
+T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +71,9 @@ class DashboardState:
     event_times: deque[float] = field(default_factory=deque)
     chart_tokens: deque[str] = field(default_factory=deque)
     price_history: dict[str, deque[float]] = field(default_factory=dict)
+    price_stale_history: dict[str, deque[bool]] = field(default_factory=dict)
     wallet_value_history: deque[float] = field(default_factory=deque)
+    wallet_value_stale_history: deque[bool] = field(default_factory=deque)
     market_ticker_at: dict[str, float] = field(default_factory=dict)
 
     def apply(self, event: RuntimeEvent) -> None:
@@ -107,14 +111,33 @@ class DashboardState:
         max_points = max(12, min(120, width - 12))
         for token_id in self.chart_tokens:
             history = self.price_history[token_id]
-            midpoint = midpoint_for(self._current_book(token_id, now_ms))
-            history.append(float(midpoint) if midpoint is not None else nan)
+            stale_history = self.price_stale_history[token_id]
+            book = self._current_book(token_id, now_ms)
+            midpoint = midpoint_for(book)
+            if midpoint is not None:
+                value = float(midpoint)
+                is_stale = False
+            elif book is None:
+                value = _last_chart_value(history)
+                is_stale = value is not None
+            else:
+                value = None
+                is_stale = False
+            history.append(nan if value is None else value)
+            stale_history.append(is_stale)
             _trim(history, max_points)
+            _trim(stale_history, max_points)
         wallet_value = self.executable_equity(now_ms)
-        self.wallet_value_history.append(
-            float(wallet_value) if wallet_value is not None else nan
-        )
+        if wallet_value is not None:
+            value = float(wallet_value)
+            is_stale = False
+        else:
+            value = _last_chart_value(self.wallet_value_history)
+            is_stale = value is not None
+        self.wallet_value_history.append(nan if value is None else value)
+        self.wallet_value_stale_history.append(is_stale)
         _trim(self.wallet_value_history, max_points)
+        _trim(self.wallet_value_stale_history, max_points)
 
     def executable_equity(self, now_ms: int | None = None) -> Decimal | None:
         if self.portfolio is None:
@@ -242,8 +265,10 @@ class DashboardState:
         if len(self.chart_tokens) >= MAX_CHART_TOKENS:
             removed = self.chart_tokens.popleft()
             self.price_history.pop(removed, None)
+            self.price_stale_history.pop(removed, None)
         self.chart_tokens.append(token_id)
         self.price_history.setdefault(token_id, deque())
+        self.price_stale_history.setdefault(token_id, deque())
 
     def _current_book(self, token_id: str, now_ms: int | None) -> BookSnapshot | None:
         book = self.books.get(token_id)
@@ -305,9 +330,13 @@ def _average(values: deque[int]) -> int | None:
     return None if not values else round(sum(values) / len(values))
 
 
-def _trim(values: deque[float], limit: int) -> None:
+def _trim(values: deque[T], limit: int) -> None:
     while len(values) > limit:
         values.popleft()
+
+
+def _last_chart_value(values: deque[float]) -> float | None:
+    return next((value for value in reversed(values) if not isnan(value)), None)
 
 
 def _safe_message(value: str) -> str:
