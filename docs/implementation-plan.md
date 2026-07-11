@@ -130,6 +130,8 @@ Implementation notes:
 
 ## Slice 4: Wallet Activity Input
 
+Status: done.
+
 Implement wallet-following inputs:
 
 - `WalletActivityClient.latest_trades` using the unified async SDK's Data API
@@ -170,6 +172,18 @@ Tests:
 - Multiple wallets are fetched/subscribed and merged without dropping events.
 - One failing wallet read does not silently erase successful wallet results;
   the adapter exposes a stable failure or degraded-state reason.
+
+Implementation notes:
+
+- `WalletActivityClient` uses the pinned unified SDK's public
+  `list_trades(user=...)` and `list_activity(user=..., activity_types=("TRADE",))`
+  methods; no direct HTTP exception is required.
+- Reads for multiple wallets use bounded concurrency, deterministic timestamp
+  ordering, wallet-scoped source dedupe, and explicit per-wallet failures.
+- The pinned SDK does not expose an arbitrary-wallet trade stream. The
+  `WalletActivityStream` boundary therefore accepts an injected compatible
+  low-latency source and fails closed when none is configured; Data API reads
+  remain bootstrap/reconciliation or explicit degraded fallback.
 
 ## Slice 5: Runner CLI
 

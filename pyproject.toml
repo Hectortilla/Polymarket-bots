@@ -27,6 +27,7 @@ packages = [
   "bots.framework.events",
   "bots.framework.runner",
   "bots.polymarket",
+  "bots.polymarket.wallet_activity",
   "bots.polymarket.normalization",
   "scripts",
   "scripts.select_wallet_for_analysis",

@@ -166,10 +166,12 @@ limits rather than issuing an unbounded request burst.
 timestamp, and transaction hash. `/activity` rows include similar fields plus
 activity type and combo flags.
 
-The docs reviewed here do not document a general arbitrary-wallet WebSocket.
-The framework therefore keeps `WalletActivityStream` abstract. Implementations
-should prefer the lowest-latency source that can normalize a stable
-`WalletTradeEvent`, then use Data API polling for bootstrap and reconciliation.
+The pinned unified SDK does not expose a general arbitrary-wallet trade
+WebSocket. The framework therefore keeps `WalletActivityStream` as an
+injected source boundary and fails closed when no compatible source is
+configured. Implementations should prefer the lowest-latency source that can
+normalize a stable `WalletTradeEvent`, then use Data API reads for bootstrap,
+reconciliation, and explicit degraded fallback.
 
 Before adding either path directly, re-check the unified SDK and specialized
 official clients for a supported wallet activity method or stream. A source not

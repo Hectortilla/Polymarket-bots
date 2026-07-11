@@ -11,11 +11,12 @@
 
 ## Current Status
 
-Slices 1 through 3 are implemented: framework contracts, the paper fill engine,
-and public Polymarket market-data adapters. Public adapters use the unified SDK
-for Gamma discovery, CLOB bootstrap snapshots, and market WebSocket events. The
-package does not yet implement authenticated clients, wallet-activity runtime
-inputs, or a runnable CLI.
+Slices 1 through 4 are implemented: framework contracts, the paper fill engine,
+public Polymarket market-data adapters, and wallet activity Data API inputs.
+Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
+snapshots, market WebSocket events, and wallet trade/activity reads. The package
+does not yet implement authenticated clients, an arbitrary-wallet trade stream,
+or a runnable CLI.
 
 ## Official Client Boundary
 
@@ -71,7 +72,7 @@ polyfollow-bots/  # Installed and imported as `bots`.
     normalization/ # Market, book, and scalar SDK-payload normalization.
     data.py       # SDK-backed positions/trades/activity adapter.
     clob.py       # Official-client-backed CLOB adapter.
-    wallet_activity.py # Wallet trades/activity stream and fallback.
+    wallet_activity/  # Wallet trades/activity stream and fallback.
     ws_market.py  # SDK-backed public market stream and depth state.
     ws_user.py    # SDK-backed authenticated user stream adapter.
     types.py      # Polymarket-specific normalized types.

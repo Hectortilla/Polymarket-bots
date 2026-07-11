@@ -19,10 +19,12 @@ Start with:
 - `docs/implementation-plan.md`
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
-and Slice 3 public market-data adapters. Gamma discovery, CLOB snapshots, and
-market WebSocket books use the pinned unified Polymarket SDK and normalize SDK
-models at the `bots.polymarket` boundary. Authenticated and wallet-activity
-runtime adapters remain intentionally unimplemented until their later slices.
+Slice 3 public market-data adapters, and Slice 4 wallet activity inputs. Gamma
+discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
+use the pinned unified Polymarket SDK and normalize SDK models at the
+`bots.polymarket` boundary. Authenticated runtime adapters remain intentionally
+unimplemented until their later slices; no arbitrary-wallet trade stream is
+bundled because the pinned SDK does not provide one.
 
 Future Polymarket integrations must use an official Polymarket Python SDK or
 client wherever it supports the required capability. The unified
