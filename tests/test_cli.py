@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from bots.cli.config import load_dotenv, parse_overrides
-from bots.cli.entrypoint import INTERACTIVE_TERMINAL_REQUIRED_MESSAGE, _dashboard_enabled
+from bots.cli.entrypoint import (
+    INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
+    _dashboard_enabled,
+    main,
+)
 from bots.cli.factories import load_bot
 from bots.cli.markets import resolve_plan_markets
 from bots.cli.runner import run_bot
@@ -77,6 +81,20 @@ def test_dashboard_rejects_explicit_non_tty_output(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match=INTERACTIVE_TERMINAL_REQUIRED_MESSAGE):
         _dashboard_enabled(True)
+
+
+def test_main_treats_keyboard_interrupt_as_graceful_shutdown(monkeypatch) -> None:
+    monkeypatch.setattr("bots.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr("bots.cli.entrypoint.load_bot", lambda target, config: BaseBot())
+    monkeypatch.setattr("bots.cli.entrypoint._dashboard_enabled", lambda value: False)
+
+    def raise_keyboard_interrupt(awaitable) -> None:
+        awaitable.close()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("bots.cli.entrypoint.asyncio.run", raise_keyboard_interrupt)
+
+    assert main(["--bot", "bots.my_bot:create", "--no-dashboard"]) == 0
 
 
 def test_merge_streams_preserves_typed_stream_kind() -> None:

@@ -1,9 +1,7 @@
 import os
 
-from examples.example_rebound import ExampleReboundBot
+from examples.example_dynamic_random_hold import ExampleDynamicRandomHoldBot
 
 
 def create(config):
-    return ExampleReboundBot(
-        os.environ.get("BOT_OUTCOME_LABEL", "Yes"),
-    )
+    return ExampleDynamicRandomHoldBot("btc-updown-5m")
