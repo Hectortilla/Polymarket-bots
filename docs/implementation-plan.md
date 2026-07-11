@@ -211,9 +211,10 @@ Implementation notes:
   it accepts `module:attribute` bot factories and supports typed config
   overrides.
 - Current markets are required and are the only markets subscribed by this
-  runner; available next markets are resolved on a best-effort basis so a
-  future stream manager can pre-subscribe them without blocking the current
-  market hot path.
+  runner; available next markets are resolved on a best-effort basis. The
+  runner refreshes dynamic plans once per second and rebuilds current stream
+  subscriptions when the active rules change, without blocking the current
+  market hot path on next-market resolution.
 - Market and wallet streams are multiplexed into one `BotRunner` lifecycle.
 - Wallet streams remain injected because the pinned SDK does not provide an
   arbitrary-wallet stream; configuring wallets without a source fails closed.

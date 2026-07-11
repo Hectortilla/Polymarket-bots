@@ -47,6 +47,7 @@ from .streams import StreamEvent, StreamKind, build_streams, merge_streams
 BOT_STATE_DIR = Path(".bot-state")
 STATE_KEY_HEX_LENGTH = 16
 SOURCE_ID_STORE_SUFFIX = ".source-ids"
+STREAM_PLAN_REFRESH_INTERVAL_SECONDS = 1.0
 
 
 async def run_bot(
@@ -95,48 +96,79 @@ async def run_bot(
     failed = False
     try:
         await bot.on_start(ctx)
-        if hasattr(runner, "refresh_stream_plan"):
-            await runner.refresh_stream_plan()
-            plan = runner.stream_plan
-        else:
-            await runner.refresh_markets()
-            await runner.refresh_wallets()
-            plan = runner.market_plan
-        resolved = await resolve_plan_markets(plan, gamma)
-        clob.set_markets(resolved.current)
-        market_stream.set_markets(resolved.current)
-        selectors = (
-            _compile_selectors(plan, resolved.current)
-            if getattr(plan, "current", ()) and hasattr(plan.current[0], "relation")
-            else ()
-        )
-        wallet_stream = WalletActivityStream(
-            wallet_client,
-            selectors,
-            wallet_source,
-            budget_per_10s=config.data_trades_budget_per_10s,
-        )
-        streams = build_streams(
-            market_stream,
-            wallet_stream=wallet_stream,
-            markets=resolved.current,
-            wallet_enabled=bool(selectors),
-        )
-        if not streams:
-            raise RuntimeError(
-                "the bot declared no current market or wallet subscriptions"
-            )
         emit_observer(
             runtime_observer,
             RuntimeStateChanged(RuntimeState.RUNNING, monotonic()),
         )
-        async for item in merge_streams(streams):
-            emit_observer(runtime_observer, StreamReceived(item, monotonic()))
-            outcome = await _dispatch_stream_event(runner, item, wallet_stream)
-            emit_observer(
-                runtime_observer,
-                DispatchCompleted(item, outcome, monotonic()),
+        while True:
+            plan = await _refresh_plan(runner)
+            resolved = await resolve_plan_markets(plan, gamma)
+            clob.set_markets(resolved.current)
+            market_stream.set_markets(resolved.current)
+            selectors = (
+                _compile_selectors(plan, resolved.current)
+                if getattr(plan, "current", ()) and hasattr(plan.current[0], "relation")
+                else ()
             )
+            wallet_stream = WalletActivityStream(
+                wallet_client,
+                selectors,
+                wallet_source,
+                budget_per_10s=config.data_trades_budget_per_10s,
+            )
+            streams = build_streams(
+                market_stream,
+                wallet_stream=wallet_stream,
+                markets=resolved.current,
+                wallet_enabled=bool(selectors),
+            )
+            if not streams:
+                raise RuntimeError(
+                    "the bot declared no current market or wallet subscriptions"
+                )
+
+            stream_events = merge_streams(streams)
+            next_event = asyncio.create_task(anext(stream_events))
+            plan_change = (
+                asyncio.create_task(_wait_for_stream_plan_change(runner, plan))
+                if hasattr(runner, "refresh_stream_plan")
+                else None
+            )
+            try:
+                while True:
+                    waiting = {next_event}
+                    if plan_change is not None:
+                        waiting.add(plan_change)
+                    done, _ = await asyncio.wait(
+                        waiting,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if plan_change in done:
+                        plan_change.result()
+                        # Rebuild the SDK stream so it follows the bot's newly
+                        # active market and does not feed old-bucket books.
+                        break
+                    try:
+                        item = next_event.result()
+                    except StopAsyncIteration:
+                        return
+                    emit_observer(runtime_observer, StreamReceived(item, monotonic()))
+                    outcome = await _dispatch_stream_event(runner, item, wallet_stream)
+                    emit_observer(
+                        runtime_observer,
+                        DispatchCompleted(item, outcome, monotonic()),
+                    )
+                    next_event = asyncio.create_task(anext(stream_events))
+            finally:
+                next_event.cancel()
+                if plan_change is not None:
+                    plan_change.cancel()
+                await asyncio.gather(
+                    next_event,
+                    *(() if plan_change is None else (plan_change,)),
+                    return_exceptions=True,
+                )
+                await stream_events.aclose()
     except BaseException as error:
         if not isinstance(error, asyncio.CancelledError):
             failed = True
@@ -186,6 +218,23 @@ async def _dispatch_stream_event(
     elif item.kind is StreamKind.MARKET_HINT:
         wallet_stream.wake_market(item.event.condition_id)
     return None
+
+
+async def _refresh_plan(runner: BotRunner):
+    if hasattr(runner, "refresh_stream_plan"):
+        return await runner.refresh_stream_plan()
+    await runner.refresh_markets()
+    await runner.refresh_wallets()
+    return runner.market_plan
+
+
+async def _wait_for_stream_plan_change(runner: BotRunner, active_plan):
+    """Wait until a dynamic bot changes its active subscriptions."""
+    while True:
+        await asyncio.sleep(STREAM_PLAN_REFRESH_INTERVAL_SECONDS)
+        candidate = await runner.refresh_stream_plan()
+        if candidate.current != active_plan.current:
+            return candidate
 
 
 def _compile_selectors(plan, markets) -> tuple[WalletTradeSelector, ...]:

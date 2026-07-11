@@ -14,7 +14,7 @@ from bots.cli.entrypoint import (
 )
 from bots.cli.factories import load_bot
 from bots.cli.markets import resolve_plan_markets
-from bots.cli.runner import run_bot
+from bots.cli.runner import _wait_for_stream_plan_change, run_bot
 from bots.cli.streams import StreamKind, merge_streams
 from bots.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
 from bots.cli.observability.observer import RuntimeObserver
@@ -312,6 +312,96 @@ def test_run_bot_rejects_live_before_opening_client() -> None:
 
     with pytest.raises(RuntimeError, match="live mode"):
         asyncio.run(run())
+
+
+def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) -> None:
+    from bots.framework.streams import StreamPlan, StreamRelation, StreamRule
+
+    initial = StreamPlan(
+        current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
+    )
+    rolled = StreamPlan(
+        current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-300",)),),
+    )
+
+    class DynamicRunner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def refresh_stream_plan(self):
+            self.calls += 1
+            return initial if self.calls == 1 else rolled
+
+    async def run() -> StreamPlan:
+        return await _wait_for_stream_plan_change(DynamicRunner(), initial)
+
+    monkeypatch.setattr("bots.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    assert asyncio.run(run()) == rolled
+
+
+def test_run_bot_rebuilds_market_stream_when_dynamic_plan_rolls_over(monkeypatch) -> None:
+    from bots.framework.streams import StreamPlan, StreamRelation, StreamRule
+
+    initial = StreamPlan(
+        current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
+    )
+    rolled = StreamPlan(
+        current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-300",)),),
+    )
+
+    class FakeGamma:
+        def __init__(self, client) -> None:
+            pass
+
+        async def find_many(self, slugs):
+            return tuple(_market(slug) for slug in slugs)
+
+    class FakeAdapter:
+        market_sets: list[tuple[str, ...]] = []
+
+        def __init__(self, client) -> None:
+            pass
+
+        def set_markets(self, markets) -> None:
+            self.market_sets.append(tuple(market.slug for market in markets))
+
+        async def events(self, token_ids):
+            if "yes-bucket-0" in token_ids:
+                await asyncio.Event().wait()
+            yield object()
+
+    class DynamicRunner:
+        def __init__(self, bot, ctx) -> None:
+            self.calls = 0
+            self.dispatched = 0
+
+        async def refresh_stream_plan(self):
+            self.calls += 1
+            return initial if self.calls < 3 else rolled
+
+        async def dispatch_book(self, event):
+            self.dispatched += 1
+
+    class FakeBroker:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+    monkeypatch.setattr("bots.cli.runner.GammaClient", FakeGamma)
+    monkeypatch.setattr("bots.cli.runner.ClobClient", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.MarketStream", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.PaperBroker", FakeBroker)
+    monkeypatch.setattr("bots.cli.runner.BotRunner", DynamicRunner)
+    monkeypatch.setattr("bots.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+
+    asyncio.run(run_bot(BaseBot(), BotConfig(name="dynamic"), client=object()))
+
+    assert FakeAdapter.market_sets == [
+        ("bucket-0",),
+        ("bucket-0",),
+        ("bucket-300",),
+        ("bucket-300",),
+    ]
 
 
 def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None:
