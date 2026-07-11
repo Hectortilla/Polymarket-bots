@@ -287,8 +287,9 @@ Status: done.
 - Emit optional fail-open runtime observer events for lifecycle, streams,
   dispatch outcomes, orders, fills, and paper portfolio snapshots.
 - Decorate the CLI broker without changing its public order/fill contract.
-- Render a Rich dashboard with an `asciichartpy` multi-token price chart,
-  executable PnL curve, activity ticker, and persistent status metrics.
+- Render a Rich dashboard with an `asciichartpy` fixed-scale multi-token price
+  chart, padded executable-wallet-value curve, activity ticker, and persistent
+  status metrics.
 - Auto-enable on usable TTY output and support `--dashboard` / `--no-dashboard`.
 
 Acceptance:

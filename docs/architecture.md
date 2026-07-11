@@ -138,7 +138,8 @@ crossed books, and duplicate source events.
 The CLI may attach a fail-open `RuntimeObserver` without exposing it to bots,
 adapters, or paper execution. The observer receives lifecycle, stream,
 dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
-in memory, uses `asciichartpy` for price/PnL charts, and renders independently
+in memory, uses `asciichartpy` for fixed-scale price and padded
+executable-wallet-value charts, and renders independently
 of bot execution.
 
 Custom CLI integrations can pass a

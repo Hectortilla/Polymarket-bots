@@ -69,7 +69,7 @@ class DashboardState:
     event_times: deque[float] = field(default_factory=deque)
     chart_tokens: deque[str] = field(default_factory=deque)
     price_history: dict[str, deque[float]] = field(default_factory=dict)
-    pnl_history: deque[float] = field(default_factory=deque)
+    wallet_value_history: deque[float] = field(default_factory=deque)
     market_ticker_at: dict[str, float] = field(default_factory=dict)
 
     def apply(self, event: RuntimeEvent) -> None:
@@ -110,9 +110,11 @@ class DashboardState:
             midpoint = midpoint_for(self._current_book(token_id, now_ms))
             history.append(float(midpoint) if midpoint is not None else nan)
             _trim(history, max_points)
-        pnl = self.executable_pnl(now_ms)
-        self.pnl_history.append(float(pnl) if pnl is not None else nan)
-        _trim(self.pnl_history, max_points)
+        wallet_value = self.executable_equity(now_ms)
+        self.wallet_value_history.append(
+            float(wallet_value) if wallet_value is not None else nan
+        )
+        _trim(self.wallet_value_history, max_points)
 
     def executable_equity(self, now_ms: int | None = None) -> Decimal | None:
         if self.portfolio is None:

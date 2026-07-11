@@ -18,6 +18,10 @@ from .palette import SERIES_PALETTE
 from .state import DashboardState, short_token
 
 MISSING_METRIC = "N/A"
+PRICE_CHART_MIN = 0.0
+PRICE_CHART_MAX = 1.0
+WALLET_VALUE_CHART_MARGIN_RATIO = 0.15
+MIN_WALLET_VALUE_CHART_MARGIN = 1.0
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
 SERIES_LEGEND_STYLES = tuple(legend_style for _, legend_style in SERIES_PALETTE)
 
@@ -46,19 +50,30 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
         SERIES_COLORS,
         max(5, min(12, height // 3)),
         "No two-sided market prices",
+        minimum=PRICE_CHART_MIN,
+        maximum=PRICE_CHART_MAX,
     )
     if height < 30:
         return Panel(Group(legend, price), title="Market price", border_style="cyan")
-    pnl = _chart([list(state.pnl_history)], (asciichartpy.lightgreen,), 5, "PnL unavailable")
+    wallet_values = list(state.wallet_value_history)
+    wallet_minimum, wallet_maximum = _padded_bounds(wallet_values)
+    wallet_value = _chart(
+        [wallet_values],
+        (asciichartpy.lightgreen,),
+        5,
+        "Wallet value unavailable",
+        minimum=wallet_minimum,
+        maximum=wallet_maximum,
+    )
     return Panel(
         Group(
             legend,
             price,
-            Text("Executable PnL", style="bold green"),
-            Text("green: total executable PnL (all markets)", style="bright_green"),
-            pnl,
+            Text("Executable wallet value", style="bold green"),
+            Text("green: total executable wallet value (all markets)", style="bright_green"),
+            wallet_value,
         ),
-        title="Market price and paper PnL",
+        title="Market price and paper wallet value",
         border_style="cyan",
     )
 
@@ -80,16 +95,35 @@ def _chart(
     colors: tuple[str, ...],
     chart_height: int,
     empty_message: str,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
 ) -> Text:
     if not series or not any(
         values and any(not isnan(value) for value in values) for values in series
     ):
         return Text(empty_message, style="dim")
-    chart = asciichartpy.plot(
-        series if len(series) > 1 else series[0],
-        {"height": chart_height, "colors": list(colors)},
-    )
+    config: dict[str, object] = {"height": chart_height, "colors": list(colors)}
+    if minimum is not None:
+        config["min"] = minimum
+    if maximum is not None:
+        config["max"] = maximum
+    chart = asciichartpy.plot(series if len(series) > 1 else series[0], config)
     return Text.from_ansi(chart)
+
+
+def _padded_bounds(values: list[float]) -> tuple[float | None, float | None]:
+    displayed_values = [value for value in values if not isnan(value)]
+    if not displayed_values:
+        return None, None
+    minimum = min(displayed_values)
+    maximum = max(displayed_values)
+    margin = max(
+        (maximum - minimum) * WALLET_VALUE_CHART_MARGIN_RATIO,
+        max(abs(minimum), abs(maximum)) * WALLET_VALUE_CHART_MARGIN_RATIO,
+        MIN_WALLET_VALUE_CHART_MARGIN,
+    )
+    return minimum - margin, maximum + margin
 
 
 def _ticker_panel(state: DashboardState) -> Panel:

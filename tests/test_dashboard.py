@@ -7,7 +7,11 @@ from math import nan
 import pytest
 from rich.console import Console
 
-from polybot.cli.dashboard.render import render_dashboard
+from polybot.cli.dashboard.render import (
+    PRICE_CHART_MAX,
+    PRICE_CHART_MIN,
+    render_dashboard,
+)
 from polybot.cli.dashboard.controller import TerminalDashboard
 from polybot.cli.dashboard.state import MAX_CHART_TOKENS, DashboardState
 from polybot.cli.observability.broker import ObservableBroker
@@ -450,9 +454,39 @@ def test_dashboard_render_handles_all_missing_chart_samples() -> None:
         "one": deque((nan,)),
         "two": deque((nan,)),
     }
-    state.pnl_history.append(nan)
+    state.wallet_value_history.append(nan)
 
     Console(width=120, height=35).print(render_dashboard(state, 120, 35))
+
+
+def test_dashboard_chart_bounds_fix_prices_and_pad_wallet_value(monkeypatch) -> None:
+    state = DashboardState(chart_tokens=deque(("token",)))
+    state.price_history = {"token": deque((0.45, 0.55))}
+    state.wallet_value_history = deque((100.0, 110.0))
+    configurations: list[dict[str, object]] = []
+
+    def plot(series, config):
+        configurations.append(config)
+        return "chart"
+
+    monkeypatch.setattr("polybot.cli.dashboard.render.asciichartpy.plot", plot)
+
+    render_dashboard(state, 120, 35)
+
+    price_config, wallet_config = configurations
+    assert price_config["min"] == PRICE_CHART_MIN
+    assert price_config["max"] == PRICE_CHART_MAX
+    assert wallet_config["min"] < 100.0
+    assert wallet_config["max"] > 110.0
+
+
+def test_dashboard_samples_executable_wallet_value() -> None:
+    state = DashboardState(initial_cash_usdc=Decimal("100"))
+    state.portfolio = PortfolioSnapshot(Decimal("125"), Decimal("0"), ())
+
+    state.sample(80)
+
+    assert list(state.wallet_value_history) == [125.0]
 
 
 def test_dashboard_ticker_removes_terminal_control_characters() -> None:

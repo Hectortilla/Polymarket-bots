@@ -143,7 +143,7 @@ The CLI dashboard is enabled automatically on interactive terminals. It is an
 external observer: bots should not import dashboard classes or emit display
 events. Use `--dashboard` to require it or `--no-dashboard` for headless runs.
 It shows market/wallet activity, paper orders and fills, multi-token prices,
-and executable paper PnL without changing strategy behavior.
+and executable paper wallet value without changing strategy behavior.
 
 Tools integrating the CLI may pass a custom
 `polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers
