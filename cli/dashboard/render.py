@@ -40,11 +40,7 @@ def render_dashboard(state: DashboardState, width: int, height: int) -> Layout:
 
 def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
     series = [list(state.price_history[token_id]) for token_id in state.chart_tokens]
-    legend = Text()
-    for index, token_id in enumerate(state.chart_tokens):
-        if index:
-            legend.append("  ")
-        legend.append(short_token(token_id), style=SERIES_LEGEND_STYLES[index])
+    legend = _market_legend(state)
     price = _chart(
         series,
         SERIES_COLORS,
@@ -55,10 +51,28 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
         return Panel(Group(legend, price), title="Market price", border_style="cyan")
     pnl = _chart([list(state.pnl_history)], (asciichartpy.lightgreen,), 5, "PnL unavailable")
     return Panel(
-        Group(legend, price, Text("Executable PnL", style="bold green"), pnl),
+        Group(
+            legend,
+            price,
+            Text("Executable PnL", style="bold green"),
+            Text("green: total executable PnL (all markets)", style="bright_green"),
+            pnl,
+        ),
         title="Market price and paper PnL",
         border_style="cyan",
     )
+
+
+def _market_legend(state: DashboardState) -> Text:
+    legend = Text()
+    for index, token_id in enumerate(state.chart_tokens):
+        if index:
+            legend.append("  ")
+        legend.append(
+            f"{index + 1}: {state.market_label(token_id)}",
+            style=SERIES_LEGEND_STYLES[index],
+        )
+    return legend
 
 
 def _chart(

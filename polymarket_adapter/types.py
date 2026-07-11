@@ -58,6 +58,17 @@ def token_id_for_outcome(market: Market, label: str) -> str | None:
     return {"yes": market.yes_token_id, "no": market.no_token_id}.get(normalized)
 
 
+def outcome_label_for_token(market: Market, token_id: str) -> str | None:
+    for outcome in market.outcomes:
+        if outcome.token_id == token_id:
+            return outcome.label
+    if token_id == market.yes_token_id:
+        return "Yes"
+    if token_id == market.no_token_id:
+        return "No"
+    return None
+
+
 def index_markets_by_token(markets: Iterable[Market]) -> dict[str, Market]:
     indexed: dict[str, Market] = {}
     for market in markets:

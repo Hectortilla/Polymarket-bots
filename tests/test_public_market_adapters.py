@@ -29,7 +29,11 @@ from polymarket.models.gamma.market import (
 from bots.polymarket.clob import ClobClient
 from bots.polymarket.errors import MarketDataError, MarketDataIssue
 from bots.polymarket.gamma import GammaClient
-from bots.polymarket.types import Market, index_markets_by_token
+from bots.polymarket.types import (
+    Market,
+    MarketOutcome as NormalizedMarketOutcome,
+    index_markets_by_token,
+)
 from bots.polymarket.ws_market import MarketStream
 
 
@@ -232,6 +236,7 @@ def test_clob_normalizes_and_sorts_order_book() -> None:
     )
     assert book.market_slug == "alpha"
     assert book.condition_id == "condition-alpha"
+    assert book.outcome == "Yes"
     assert book.received_at_ms == 1_234
 
 
@@ -315,6 +320,7 @@ def test_market_stream_applies_price_changes_to_full_depth() -> None:
     assert tuple(level.price for level in books[0].bids) == (Decimal("0.40"),)
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert all(book.market_slug == "alpha" for book in books)
+    assert all(book.outcome == "Yes" for book in books)
 
 
 def test_market_stream_keeps_last_valid_depth_after_crossed_update() -> None:
@@ -455,6 +461,10 @@ def _market(slug: str) -> Market:
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=Decimal("0.05"),
+        outcomes=(
+            NormalizedMarketOutcome("Yes", f"yes-{slug}"),
+            NormalizedMarketOutcome("No", "no-token"),
+        ),
     )
 
 

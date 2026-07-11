@@ -21,7 +21,12 @@ from bots.polymarket.normalization.book import (
     normalize_book,
     normalize_price_change_level,
 )
-from bots.polymarket.types import Market, MarketTradeHint, index_markets_by_token
+from bots.polymarket.types import (
+    Market,
+    MarketTradeHint,
+    index_markets_by_token,
+    outcome_label_for_token,
+)
 
 
 class MarketStream:
@@ -157,6 +162,7 @@ class MarketStream:
                 received_at_ms=self._now_ms(),
                 condition_id=condition_id,
                 market_slug=market.slug if market else None,
+                outcome=outcome_label_for_token(market, token_id) if market else None,
                 expected_token_id=token_id,
                 expected_condition_id=market.condition_id if market else None,
             )

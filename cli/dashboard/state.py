@@ -50,6 +50,7 @@ class DashboardState:
     require_accepted_books: bool = False
     book_max_age_ms: int | None = None
     books: dict[str, BookSnapshot] = field(default_factory=dict)
+    market_labels: dict[str, str] = field(default_factory=dict)
     pending_books: dict[str, BookSnapshot] = field(default_factory=dict)
     portfolio: PortfolioSnapshot | None = None
     ticker: deque[TickerRow] = field(default_factory=lambda: deque(maxlen=MAX_TICKER_ROWS))
@@ -168,6 +169,11 @@ class DashboardState:
     def _record_book_stream(self, event: StreamReceived) -> None:
         book = event.item.event
         self.books[book.token_id] = book
+        if book.market_slug:
+            label = book.market_slug
+            if book.outcome:
+                label = f"{label} · {book.outcome}"
+            self.market_labels[book.token_id] = label
         self._activate_chart_token(book.token_id)
         midpoint = midpoint_for(book)
         last_at = self.market_ticker_at.get(book.token_id)
@@ -230,8 +236,8 @@ class DashboardState:
 
     def _activate_chart_token(self, token_id: str) -> None:
         if token_id in self.chart_tokens:
-            self.chart_tokens.remove(token_id)
-        elif len(self.chart_tokens) >= MAX_CHART_TOKENS:
+            return
+        if len(self.chart_tokens) >= MAX_CHART_TOKENS:
             removed = self.chart_tokens.popleft()
             self.price_history.pop(removed, None)
         self.chart_tokens.append(token_id)
@@ -246,6 +252,9 @@ class DashboardState:
 
     def _ticker(self, style: str, message: str) -> None:
         self.ticker.appendleft(TickerRow(style, _safe_message(message)))
+
+    def market_label(self, token_id: str) -> str:
+        return self.market_labels.get(token_id, short_token(token_id))
 
     def _trim_event_times(self, now: float) -> None:
         cutoff = now - EVENT_RATE_WINDOW_SECONDS

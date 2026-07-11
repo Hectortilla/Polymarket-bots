@@ -224,6 +224,48 @@ def test_dashboard_tracks_market_wallet_and_chart_events() -> None:
     assert all(len(values) == 1 for values in state.price_history.values())
 
 
+def test_dashboard_keeps_chart_series_order_stable_on_book_updates() -> None:
+    state = DashboardState()
+    first = StreamReceived(
+        BookStreamEvent(StreamKind.BOOK, _book("first", Decimal("0.4"), Decimal("0.6"))),
+        1.0,
+    )
+    second = StreamReceived(
+        BookStreamEvent(StreamKind.BOOK, _book("second", Decimal("0.3"), Decimal("0.7"))),
+        2.0,
+    )
+
+    state.apply(first)
+    state.apply(second)
+    state.apply(StreamReceived(first.item, 3.0))
+
+    assert tuple(state.chart_tokens) == ("first", "second")
+
+
+def test_dashboard_uses_market_slug_for_chart_labels() -> None:
+    state = DashboardState()
+    book = _book("token", Decimal("0.4"), Decimal("0.6"))
+    state.apply(
+        StreamReceived(
+            BookStreamEvent(
+                StreamKind.BOOK,
+                BookSnapshot(
+                    token_id=book.token_id,
+                    bids=book.bids,
+                    asks=book.asks,
+                    received_at_ms=book.received_at_ms,
+                    market_slug="btc-up-or-down",
+                    outcome="Yes",
+                ),
+            ),
+            1.0,
+        )
+    )
+
+    assert state.market_label("token") == "btc-up-or-down · Yes"
+    assert state.market_label("unknown-token") == "unknown…oken"
+
+
 def test_observable_broker_returns_original_fill_and_emits_order_then_fill() -> None:
     class Broker:
         async def submit(self, order: OrderRequest) -> FillEvent:

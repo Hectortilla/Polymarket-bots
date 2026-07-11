@@ -5,7 +5,7 @@ from decimal import Decimal
 from polymarket.models.gamma.market import Market as SdkMarket
 
 from bots.polymarket.errors import MarketDataError, MarketDataIssue
-from bots.polymarket.types import Market
+from bots.polymarket.types import Market, MarketOutcome
 
 from .values import (
     _nested_value,
@@ -86,4 +86,8 @@ def normalize_market(source: SdkMarket) -> Market:
         minimum_order_size=minimum_order_size,
         neg_risk=neg_risk,
         fee_rate=fee_rate,
+        outcomes=(
+            MarketOutcome("Yes", yes_token_id),
+            MarketOutcome("No", no_token_id),
+        ),
     )

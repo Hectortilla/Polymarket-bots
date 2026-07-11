@@ -18,6 +18,7 @@ def normalize_book(
     received_at_ms: int,
     condition_id: object = None,
     market_slug: str | None = None,
+    outcome: str | None = None,
     expected_token_id: str | None = None,
     expected_condition_id: str | None = None,
 ) -> BookSnapshot:
@@ -54,6 +55,7 @@ def normalize_book(
         received_at_ms=received_at_ms,
         market_slug=market_slug,
         condition_id=normalized_condition_id,
+        outcome=outcome,
     )
     if snapshot.is_crossed():
         raise MarketDataError(

@@ -55,6 +55,7 @@ class BookSnapshot:
     received_at_ms: int
     market_slug: str | None = None
     condition_id: str | None = None
+    outcome: str | None = None
 
     def is_fresh(self, now_ms: int, max_age_ms: int) -> bool:
         age_ms = now_ms - self.received_at_ms
