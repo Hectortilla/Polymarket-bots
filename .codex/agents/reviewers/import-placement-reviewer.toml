@@ -1,0 +1,31 @@
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for imports placed inside functions, methods, classes, or other
+non-module scope when a module-level import is appropriate.
+
+Report when:
+- A local import is used without a concrete need for lazy loading, optional
+  dependency support, plugin discovery, or cycle avoidance.
+- A local import hides a normal dependency and makes the module's dependency
+  surface or initialization behavior harder to understand.
+- A module-level import would create a circular import, and the local import is
+  only masking that cycle rather than reflecting a sound dependency boundary.
+- A local import is being used to work around an ownership or layering problem
+  that should instead be fixed by moving a contract/helper or changing the
+  dependency direction.
+
+Do not report:
+- Imports intentionally delayed to break a genuine, documented circular import
+  when the dependency direction cannot reasonably be improved in the scope.
+- Optional or expensive dependencies intentionally loaded only on a feature
+  path, plugin-registration imports, or imports required after process setup.
+- Type-checking-only imports guarded by TYPE_CHECKING.
+- Ordinary module-level import ordering or formatter preferences.
+
+For each finding, include severity, file:line evidence, the import, why the
+local placement is unjustified, whether it creates or masks a circular import,
+and the smallest module-level or dependency-boundary fix. Do not edit files or
+report adjacent concerns. Otherwise return `No findings`.
+"""

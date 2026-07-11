@@ -18,16 +18,21 @@ from bots.framework.base import BaseBot
 from bots.framework.config import BotConfig, BotMode
 from bots.framework.markets import MarketPlan, MarketSubscription
 from bots.polymarket.types import Market
+from bots.polymarket.types import MarketTradeHint
 
 
 def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
     dotenv = tmp_path / ".env"
-    dotenv.write_text("FROM_FILE=value\nexport QUOTED='hello world'\n", encoding="utf-8")
+    dotenv.write_text(
+        'FROM_FILE=value\nexport QUOTED="hello world"\nMULTILINE="first line\nsecond line"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setenv("FROM_FILE", "existing")
     load_dotenv(dotenv)
 
     assert os.environ["FROM_FILE"] == "existing"
     assert os.environ["QUOTED"] == "hello world"
+    assert os.environ["MULTILINE"] == "first line\nsecond line"
 
 
 def test_parse_overrides_converts_config_types() -> None:
@@ -94,6 +99,24 @@ def test_merge_streams_preserves_typed_stream_kind() -> None:
         (StreamKind.BOOK, 1),
         (StreamKind.BOOK, 2),
         (StreamKind.WALLET, 3),
+    ]
+
+
+def test_merge_streams_routes_market_trade_hints_separately() -> None:
+    async def source() -> AsyncIterator[object]:
+        yield MarketTradeHint("condition", "token", "market", 123)
+
+    async def run() -> list[tuple[StreamKind, object]]:
+        return [
+            (item.kind, item.event)
+            async for item in merge_streams(((StreamKind.BOOK, source()),))
+        ]
+
+    assert asyncio.run(run()) == [
+        (
+            StreamKind.MARKET_HINT,
+            MarketTradeHint("condition", "token", "market", 123),
+        )
     ]
 
 

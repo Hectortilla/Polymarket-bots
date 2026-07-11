@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
+from bots.polymarket.types import MarketTradeHint
+
 if TYPE_CHECKING:
     from bots.framework.events.books import BookSnapshot
     from bots.framework.events.wallet_trades import WalletTradeEvent
     from bots.polymarket.types import Market
     from bots.polymarket.wallet_activity.stream import WalletActivityStream
     from bots.polymarket.ws_market import MarketStream
-    from bots.polymarket.types import MarketTradeHint
 
 
 class StreamKind(StrEnum):
@@ -67,7 +68,9 @@ async def merge_streams(
     ) -> None:
         try:
             async for event in stream:
-                if stream_kind is StreamKind.BOOK:
+                if isinstance(event, MarketTradeHint):
+                    await queue.put(MarketHintStreamEvent(StreamKind.MARKET_HINT, event))
+                elif stream_kind is StreamKind.BOOK:
                     await queue.put(BookStreamEvent(stream_kind, event))
                 elif stream_kind is StreamKind.WALLET:
                     await queue.put(WalletStreamEvent(stream_kind, event))
