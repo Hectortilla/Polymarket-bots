@@ -36,13 +36,18 @@ def main(argv: list[str] | None = None) -> int:
         dashboard_enabled = _dashboard_enabled(args.dashboard)
     except ValueError as error:
         parser.error(str(error))
-    asyncio.run(
-        run_bot(
-            bot,
-            config,
-            observer=TerminalDashboard() if dashboard_enabled else None,
+    try:
+        asyncio.run(
+            run_bot(
+                bot,
+                config,
+                observer=TerminalDashboard() if dashboard_enabled else None,
+            )
         )
-    )
+    except KeyboardInterrupt:
+        # asyncio.run lets the cancelled task finish its async cleanup first.
+        # Treat the user's first Ctrl+C as a normal shutdown, not a failure.
+        return 0
     return 0
 
 
