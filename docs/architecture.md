@@ -12,8 +12,8 @@
 ## Current Status
 
 Slices 1 through 5 are implemented: framework contracts, the paper fill engine,
-public Polymarket market-data adapters, wallet activity Data API inputs, and a
-paper runner CLI.
+public Polymarket market-data adapters, wallet activity Data API inputs, a
+paper runner CLI, and an opt-in terminal dashboard.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -101,9 +101,9 @@ MarketStream
   -> BotRunner
   -> BaseBot.on_book(ctx, book)
   -> ctx.broker.submit(OrderRequest)
-  -> PaperBroker or LiveBroker
-  -> FillEvent
-  -> BaseBot.on_fill(ctx, fill)
+  -> ObservableBroker (CLI-only)
+  -> PaperBroker
+  -> FillEvent returned to the calling strategy hook
 ```
 
 Paper and live brokers intentionally share `OrderRequest` and `FillEvent`.
@@ -121,15 +121,34 @@ WalletActivityStream or Data API reconciliation
   -> BotRunner
   -> BaseBot.on_wallet_trade(ctx, trade)
   -> ctx.broker.submit(OrderRequest)
-  -> PaperBroker or LiveBroker
-  -> FillEvent
-  -> BaseBot.on_fill(ctx, fill)
+  -> ObservableBroker (CLI-only)
+  -> PaperBroker
+  -> FillEvent returned to the calling strategy hook
 ```
 
 `dispatch_book()` and `dispatch_wallet_trade()` return `DispatchOutcome`.
 Accepted events have no skip reason. Rejected events use the finite
 `DispatchSkipReason` contract for route mismatches, malformed/stale/future data,
 crossed books, and duplicate source events.
+
+## Terminal Observability
+
+The CLI may attach a fail-open `RuntimeObserver` without exposing it to bots,
+adapters, or paper execution. The observer receives lifecycle, stream,
+dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
+in memory, uses `asciichartpy` for price/PnL charts, and renders independently
+of bot execution.
+
+Custom CLI integrations can pass a
+`bots.cli.observability.observer.RuntimeObserver` to `run_bot()`. Its
+`start(config)`, `emit(event)`, and `stop()` methods receive
+`bots.cli.observability.events.RuntimeEvent` values; observer exceptions are
+deliberately suppressed so telemetry cannot interrupt the paper runtime.
+
+The current paper CLI does not automatically call `BaseBot.on_fill()` after
+`broker.submit()`. Strategies that need immediate paper fill handling should
+use the returned `FillEvent`; `on_fill()` remains available to runtimes that
+explicitly dispatch fill events.
 
 ## Bot Contract
 

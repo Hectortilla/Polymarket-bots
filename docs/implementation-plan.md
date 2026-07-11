@@ -275,3 +275,21 @@ Optional later slice.
 - Replay stored wallet trades into `BotRunner`.
 - Reuse the same `BaseBot` hooks.
 - Make latency deterministic for repeatable tests.
+
+## Slice 10: Terminal Dashboard and Runtime Observability
+
+Status: done.
+
+- Keep terminal rendering outside bot, adapter, and execution code.
+- Emit optional fail-open runtime observer events for lifecycle, streams,
+  dispatch outcomes, orders, fills, and paper portfolio snapshots.
+- Decorate the CLI broker without changing its public order/fill contract.
+- Render a Rich dashboard with an `asciichartpy` multi-token price chart,
+  executable PnL curve, activity ticker, and persistent status metrics.
+- Auto-enable on usable TTY output and support `--dashboard` / `--no-dashboard`.
+
+Acceptance:
+
+- Dashboard failures cannot interrupt dispatch, execution, or shutdown.
+- No strategy logging or rendering code is required.
+- PnL marks longs at best bid and shorts at best ask; missing marks show N/A.

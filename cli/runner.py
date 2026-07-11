@@ -2,16 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
 from hashlib import sha256
 from pathlib import Path
+from time import monotonic
 
 from polymarket import AsyncPublicClient
 
 from bots.execution.paper import PaperBroker
 from bots.execution.paper.idempotency import FileSourceIdempotencyStore
+from bots.cli.observability.broker import ObservableBroker
+from bots.cli.observability.events import (
+    DispatchCompleted,
+    PortfolioSnapshot,
+    RuntimeFailed,
+    RuntimeStarted,
+    RuntimeState,
+    RuntimeStateChanged,
+    StreamReceived,
+)
+from bots.cli.observability.observer import (
+    NullRuntimeObserver,
+    RuntimeObserver,
+    emit_observer,
+    start_observer,
+    stop_observer,
+)
 from bots.framework.base import BaseBot
 from bots.framework.config import BotConfig, BotMode
 from bots.framework.context import BotContext
+from bots.framework.dispatch import DispatchOutcome
 from bots.framework.runner import BotRunner
 from bots.polymarket.clob import ClobClient
 from bots.polymarket.gamma import GammaClient
@@ -35,21 +55,28 @@ async def run_bot(
     *,
     wallet_source: WalletTradeSource | None = None,
     client: AsyncPublicClient | None = None,
+    observer: RuntimeObserver | None = None,
 ) -> None:
     """Run one bot using public market data and the paper broker."""
     if config.mode is BotMode.LIVE:
         raise RuntimeError("live mode is not available in the paper runner CLI")
+    runtime_observer = observer or NullRuntimeObserver()
     owned_client = client is None
     public_client = client or AsyncPublicClient()
     gamma = GammaClient(public_client)
     clob = ClobClient(public_client)
     market_stream = MarketStream(public_client)
     wallet_client = WalletActivityClient(public_client)
-    state_name = sha256(config.name.encode("utf-8")).hexdigest()[:STATE_KEY_HEX_LENGTH]
+    state_key = sha256(config.name.encode("utf-8")).hexdigest()[:STATE_KEY_HEX_LENGTH]
     source_store = FileSourceIdempotencyStore(
-        BOT_STATE_DIR / f"{state_name}{SOURCE_ID_STORE_SUFFIX}"
+        BOT_STATE_DIR / f"{state_key}{SOURCE_ID_STORE_SUFFIX}"
     )
-    broker = PaperBroker(config, clob, gamma, source_store=source_store)
+    paper_broker = PaperBroker(config, clob, gamma, source_store=source_store)
+    broker = ObservableBroker(
+        paper_broker,
+        runtime_observer,
+        lambda: PortfolioSnapshot.from_paper(paper_broker.portfolio),
+    )
     ctx = BotContext(
         config=config,
         broker=broker,
@@ -59,6 +86,13 @@ async def run_bot(
     )
     runner = BotRunner(bot, ctx)
 
+    await start_observer(runtime_observer, config)
+    emit_observer(runtime_observer, RuntimeStarted.from_config(config))
+    emit_observer(
+        runtime_observer,
+        RuntimeStateChanged(RuntimeState.STARTING, monotonic()),
+    )
+    failed = False
     try:
         await bot.on_start(ctx)
         if hasattr(runner, "refresh_stream_plan"):
@@ -92,25 +126,66 @@ async def run_bot(
             raise RuntimeError(
                 "the bot declared no current market or wallet subscriptions"
             )
+        emit_observer(
+            runtime_observer,
+            RuntimeStateChanged(RuntimeState.RUNNING, monotonic()),
+        )
         async for item in merge_streams(streams):
-            await _dispatch_stream_event(runner, item, wallet_stream)
+            emit_observer(runtime_observer, StreamReceived(item, monotonic()))
+            outcome = await _dispatch_stream_event(runner, item, wallet_stream)
+            emit_observer(
+                runtime_observer,
+                DispatchCompleted(item, outcome, monotonic()),
+            )
+    except BaseException as error:
+        if not isinstance(error, asyncio.CancelledError):
+            failed = True
+            emit_observer(
+                runtime_observer,
+                RuntimeFailed(f"{type(error).__name__}: {error}", monotonic()),
+            )
+        raise
     finally:
-        await bot.on_stop(ctx)
-        if owned_client:
-            await public_client.close()
+        if not failed:
+            emit_observer(
+                runtime_observer,
+                RuntimeStateChanged(RuntimeState.STOPPING, monotonic()),
+            )
+        try:
+            try:
+                await bot.on_stop(ctx)
+            finally:
+                if owned_client:
+                    await public_client.close()
+        except BaseException as error:
+            failed = True
+            if not isinstance(error, asyncio.CancelledError):
+                emit_observer(
+                    runtime_observer,
+                    RuntimeFailed(f"{type(error).__name__}: {error}", monotonic()),
+                )
+            raise
+        finally:
+            if not failed:
+                emit_observer(
+                    runtime_observer,
+                    RuntimeStateChanged(RuntimeState.STOPPED, monotonic()),
+                )
+            await stop_observer(runtime_observer)
 
 
 async def _dispatch_stream_event(
     runner: BotRunner,
     item: StreamEvent,
     wallet_stream: WalletActivityStream,
-) -> None:
+) -> DispatchOutcome | None:
     if item.kind is StreamKind.BOOK:
-        await runner.dispatch_book(item.event)
+        return await runner.dispatch_book(item.event)
     elif item.kind is StreamKind.WALLET:
-        await runner.dispatch_wallet_trade(item.event)
+        return await runner.dispatch_wallet_trade(item.event)
     elif item.kind is StreamKind.MARKET_HINT:
         wallet_stream.wake_market(item.event.condition_id)
+    return None
 
 
 def _compile_selectors(plan, markets) -> tuple[WalletTradeSelector, ...]:

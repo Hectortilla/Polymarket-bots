@@ -7,10 +7,13 @@ from types import SimpleNamespace
 import pytest
 
 from bots.cli.config import load_dotenv, parse_overrides
+from bots.cli.entrypoint import INTERACTIVE_TERMINAL_REQUIRED_MESSAGE, _dashboard_enabled
 from bots.cli.factories import load_bot
 from bots.cli.markets import resolve_plan_markets
 from bots.cli.runner import run_bot
 from bots.cli.streams import StreamKind, merge_streams
+from bots.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
+from bots.cli.observability.observer import RuntimeObserver
 from bots.framework.base import BaseBot
 from bots.framework.config import BotConfig, BotMode
 from bots.framework.markets import MarketPlan, MarketSubscription
@@ -46,6 +49,29 @@ def test_parse_overrides_converts_config_types() -> None:
 def test_parse_overrides_rejects_invalid_values(value: str) -> None:
     with pytest.raises(ValueError):
         parse_overrides([value])
+
+
+def test_dashboard_defaults_to_interactive_output(monkeypatch) -> None:
+    class Output:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr("bots.cli.entrypoint.sys.stdout", Output())
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    assert _dashboard_enabled(None) is True
+    assert _dashboard_enabled(False) is False
+
+
+def test_dashboard_rejects_explicit_non_tty_output(monkeypatch) -> None:
+    class Output:
+        def isatty(self) -> bool:
+            return False
+
+    monkeypatch.setattr("bots.cli.entrypoint.sys.stdout", Output())
+
+    with pytest.raises(ValueError, match=INTERACTIVE_TERMINAL_REQUIRED_MESSAGE):
+        _dashboard_enabled(True)
 
 
 def test_merge_streams_preserves_typed_stream_kind() -> None:
@@ -245,6 +271,96 @@ def test_run_bot_rejects_live_before_opening_client() -> None:
 
     with pytest.raises(RuntimeError, match="live mode"):
         asyncio.run(run())
+
+
+def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    class FakeGamma:
+        def __init__(self, client) -> None:
+            self.client = client
+
+        async def find_many(self, slugs):
+            return tuple(_market(slug) for slug in slugs)
+
+    class FakeAdapter:
+        def __init__(self, client) -> None:
+            self.client = client
+
+        def set_markets(self, markets) -> None:
+            return None
+
+        async def books(self, token_ids):
+            yield object()
+
+    class FakeBotRunner:
+        def __init__(self, bot, ctx) -> None:
+            self.market_plan = MarketPlan(current=(MarketSubscription("current"),))
+            self.wallet_plan = SimpleNamespace(active_addresses=frozenset())
+
+        async def refresh_markets(self) -> None:
+            return None
+
+        async def refresh_wallets(self) -> None:
+            return None
+
+        async def dispatch_book(self, event) -> None:
+            return None
+
+    class FakeBroker:
+        def __init__(self, *args, **kwargs) -> None:
+            return None
+
+    class FailingStopBot(BaseBot):
+        async def on_stop(self, ctx) -> None:
+            raise RuntimeError("stop failed")
+
+    class RecordingObserver(RuntimeObserver):
+        def __init__(self) -> None:
+            self.events = []
+            self.stopped = False
+
+        async def start(self, config) -> None:
+            return None
+
+        def emit(self, event) -> None:
+            self.events.append(event)
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    monkeypatch.setattr("bots.cli.runner.GammaClient", FakeGamma)
+    monkeypatch.setattr("bots.cli.runner.ClobClient", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.MarketStream", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("bots.cli.runner.PaperBroker", FakeBroker)
+    monkeypatch.setattr("bots.cli.runner.BotRunner", FakeBotRunner)
+
+    async def run() -> tuple[FakeClient, RecordingObserver]:
+        client = FakeClient()
+        monkeypatch.setattr("bots.cli.runner.AsyncPublicClient", lambda: client)
+        observer = RecordingObserver()
+        with pytest.raises(RuntimeError, match="stop failed"):
+            await run_bot(
+                FailingStopBot(),
+                BotConfig(name="shutdown", market_slugs=("current",)),
+                observer=observer,
+            )
+        return client, observer
+
+    client, observer = asyncio.run(run())
+    assert client.closed
+    assert observer.stopped
+    assert any(isinstance(event, RuntimeFailed) for event in observer.events)
+    assert not any(
+        isinstance(event, RuntimeStateChanged) and event.state is RuntimeState.STOPPED
+        for event in observer.events
+    )
 
 
 def _market(slug: str) -> Market:

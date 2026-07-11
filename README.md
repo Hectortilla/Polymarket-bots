@@ -20,7 +20,7 @@ Start with:
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, and the
-Slice 5 paper runner CLI. Gamma
+Slice 5 paper runner CLI, and an opt-in terminal dashboard. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
 use the pinned unified Polymarket SDK and normalize SDK models at the
 `bots.polymarket` boundary. Authenticated runtime adapters remain intentionally
@@ -55,3 +55,13 @@ before dispatching normalized wallet trades.
 
 Runner dispatch returns a typed `DispatchOutcome`. Rejected events carry a
 stable `DispatchSkipReason` instead of collapsing every skip into a boolean.
+
+The CLI enables the dashboard automatically on interactive terminals. Use
+`--dashboard` to require it or `--no-dashboard` for headless operation:
+
+```sh
+BOT_MODE=paper \
+BOT_STREAM_RULES='<stream-rules-json>' \
+BOT_YES_TOKEN_ID=<yes-token-id> \
+uv run python -m bots.cli --bot bots.my_bot:create --dashboard
+```

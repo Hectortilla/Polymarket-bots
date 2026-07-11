@@ -83,9 +83,9 @@ continue to share package-owned contracts.
 
 `on_fill`
 
-- Update bot-local state after a fill.
-- Stop quoting after a position is reached.
-- React to partial fills.
+- Update bot-local state after an explicitly dispatched fill.
+- The paper CLI returns a `FillEvent` from `ctx.broker.submit()` but does not
+  automatically invoke this hook; use the returned value when needed.
 
 `on_stop`
 
@@ -136,6 +136,19 @@ Paper-broker tests should use deterministic latency and book sequences:
 - Decision book at time T.
 - Fill book at time T plus latency.
 - Expected fills, fees, and cash movements.
+
+## Terminal Dashboard
+
+The CLI dashboard is enabled automatically on interactive terminals. It is an
+external observer: bots should not import dashboard classes or emit display
+events. Use `--dashboard` to require it or `--no-dashboard` for headless runs.
+It shows market/wallet activity, paper orders and fills, multi-token prices,
+and executable paper PnL without changing strategy behavior.
+
+Tools integrating the CLI may pass a custom
+`bots.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers
+receive `bots.cli.observability.events.RuntimeEvent` values and must remain
+non-essential: the runtime suppresses their lifecycle and event failures.
 
 ## Wallet-Following Bot
 
