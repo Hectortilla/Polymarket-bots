@@ -8,6 +8,7 @@ from decimal import Decimal
 from polymarket import AsyncPublicClient
 from polymarket.models.clob.market_events import (
     MarketBookEvent,
+    MarketLastTradePriceEvent,
     MarketPriceChangeEvent,
 )
 from polymarket.models.clob.order_book import OrderBookLevel
@@ -20,7 +21,7 @@ from bots.polymarket.normalization.book import (
     normalize_book,
     normalize_price_change_level,
 )
-from bots.polymarket.types import Market, index_markets_by_token
+from bots.polymarket.types import Market, MarketTradeHint, index_markets_by_token
 
 
 class MarketStream:
@@ -41,6 +42,11 @@ class MarketStream:
         self._market_by_token = index_markets_by_token(markets)
 
     async def books(self, token_ids: set[str]) -> AsyncIterator[BookSnapshot]:
+        async for event in self.events(token_ids):
+            if isinstance(event, BookSnapshot):
+                yield event
+
+    async def events(self, token_ids: set[str]) -> AsyncIterator[BookSnapshot | MarketTradeHint]:
         normalized_token_ids = frozenset(token_id for token_id in token_ids if token_id)
         if len(normalized_token_ids) != len(token_ids) or not normalized_token_ids:
             raise MarketDataError(
@@ -54,6 +60,18 @@ class MarketStream:
         )
         async with stream:
             async for event in stream:
+                if isinstance(event, MarketLastTradePriceEvent):
+                    payload = event.payload
+                    token_id = str(payload.token_id)
+                    market = self._market_by_token.get(token_id)
+                    if token_id in normalized_token_ids:
+                        yield MarketTradeHint(
+                            condition_id=str(payload.market),
+                            token_id=token_id,
+                            market_slug=market.slug if market else None,
+                            occurred_at_ms=self._now_ms(),
+                        )
+                    continue
                 if isinstance(event, MarketBookEvent):
                     payload = event.payload
                     token_id = str(payload.token_id)

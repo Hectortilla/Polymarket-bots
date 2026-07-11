@@ -14,6 +14,7 @@ from .contracts import (
     WalletDataClient,
     WalletReadFailure,
     WalletTradeBatch,
+    WalletTradeSelector,
     current_time_ms,
 )
 from .normalization import normalize_wallet_trade, sort_key
@@ -39,7 +40,10 @@ class WalletActivityClient:
         if limit <= 0:
             return ()
         address = normalize_wallet_address(wallet)
-        paginator = self._client.list_trades(user=address, page_size=limit)
+        try:
+            paginator = self._client.list_trades(user=address, taker_only=False, page_size=limit)
+        except TypeError:
+            paginator = self._client.list_trades(user=address, page_size=limit)
         return await _collect_trades(
             paginator,
             limit=limit,
@@ -47,6 +51,35 @@ class WalletActivityClient:
             kind=WalletTradeKind.BACKFILL,
             wallet=address,
         )
+
+    async def latest_selector(
+        self,
+        selector: WalletTradeSelector,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int = 499,
+    ) -> tuple[WalletTradeEvent, ...]:
+        paginator = self._client.list_trades(
+            user=selector.wallet,
+            market=selector.condition_ids or None,
+            taker_only=False,
+            start=start,
+            end=end,
+            page_size=limit,
+        )
+        rows: list[WalletTradeEvent] = []
+        async for page in paginator:
+            for source in page.items:
+                trade = normalize_wallet_trade(
+                    source,
+                    observed_at_ms=self._now_ms(),
+                    kind=WalletTradeKind.RECONCILIATION,
+                )
+                if trade is not None:
+                    rows.append(trade)
+        unique = {trade.source_key: trade for trade in rows}
+        return tuple(sorted(unique.values(), key=sort_key))
 
     async def latest_activity(
         self,

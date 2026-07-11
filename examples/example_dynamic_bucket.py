@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
-from bots.framework.markets import MarketSubscription
 from bots.framework.markets import market_bucket_slug
+from bots.framework.streams import StreamRelation, StreamRule
 
 
 class ExampleFiveMinuteBucketBot(BaseBot):
@@ -11,19 +11,19 @@ class ExampleFiveMinuteBucketBot(BaseBot):
         self.slug_prefix = slug_prefix
         self.bucket_seconds = bucket_seconds
 
-    async def current_markets(
+    async def current_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
-        return (MarketSubscription(slug=self._slug_for(now_ms, bucket_offset=0)),)
+    ) -> tuple[StreamRule, ...]:
+        return (StreamRule(StreamRelation.INDEPENDENT, (self._slug_for(now_ms, 0),)),)
 
-    async def next_markets(
+    async def next_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
-        return (MarketSubscription(slug=self._slug_for(now_ms, bucket_offset=1)),)
+    ) -> tuple[StreamRule, ...]:
+        return (StreamRule(StreamRelation.INDEPENDENT, (self._slug_for(now_ms, 1),)),)
 
     def _slug_for(self, now_ms: int, bucket_offset: int) -> str:
         return market_bucket_slug(

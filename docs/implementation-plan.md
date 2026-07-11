@@ -200,7 +200,8 @@ Responsibilities:
 - Open market stream and/or wallet activity stream.
 - Load all configured wallet addresses and pass the current wallet plan to the
   wallet activity stream/client.
-- Subscribe to all current market slugs and prepare `next_markets`.
+- Subscribe to all current markets declared by `StreamPlan` and prepare next
+  stream rules.
 - Run one bot.
 
 Implementation notes:

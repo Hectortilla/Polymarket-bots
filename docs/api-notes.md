@@ -167,11 +167,11 @@ timestamp, and transaction hash. `/activity` rows include similar fields plus
 activity type and combo flags.
 
 The pinned unified SDK does not expose a general arbitrary-wallet trade
-WebSocket. The framework therefore keeps `WalletActivityStream` as an
-injected source boundary and fails closed when no compatible source is
-configured. Implementations should prefer the lowest-latency source that can
-normalize a stable `WalletTradeEvent`, then use Data API reads for bootstrap,
-reconciliation, and explicit degraded fallback.
+WebSocket. `WalletActivityStream` therefore uses SDK-backed Data API polling as
+the authoritative wallet-identified source. Public market `last_trade_price`
+events are only wake-up hints because they omit a wallet. Optional compatible
+push sources may be merged with polling and are deduplicated by canonical trade
+identity.
 
 Before adding either path directly, re-check the unified SDK and specialized
 official clients for a supported wallet activity method or stream. A source not
@@ -179,11 +179,9 @@ covered by an official Polymarket library is an explicit exception to the
 official-library rule and must be documented here with the selected provider
 and rationale.
 
-Data API polling is not considered the target live wallet-following path. It is
-a fallback/degraded path unless no correct streaming source exists. If no
-official Polymarket arbitrary-wallet stream is available, implementation work
-should evaluate on-chain or indexer WebSocket sources before settling for
-polling.
+`/trades` is limited to 200 requests per sliding 10 seconds. The runner keeps a
+shared process budget below that limit, including pagination requests; no quota
+or `Retry-After` response-header contract is documented.
 
 ## Market Slugs
 
@@ -192,7 +190,7 @@ Multi-market and dynamic-market bots should produce slugs, then resolve those
 slugs through Gamma/CLOB metadata before subscribing or trading.
 
 For consecutive time-bucket markets, the framework expects the bot to generate
-candidate slugs through `current_markets()` and `next_markets()`. The adapter
+candidate stream rules through `current_stream_rules()` and `next_stream_rules()`. The adapter
 layer should then resolve the slug as soon as the market exists. Missing future
 markets are normal for ephemeral markets and should be retried without blocking
 the current market's hot path. `GammaClient.wait_for_slug()` provides that

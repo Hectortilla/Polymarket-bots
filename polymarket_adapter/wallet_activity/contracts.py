@@ -10,6 +10,9 @@ from bots.framework.events.wallet_trades import WalletTradeEvent
 
 DEFAULT_WALLET_TRADE_LIMIT = 100
 DEFAULT_MAX_CONCURRENCY = 4
+DEFAULT_DATA_TRADES_BUDGET_PER_10S = 180
+DATA_TRADES_WINDOW_SECONDS = 10
+DATA_TRADES_PAGE_SIZE = 499
 TRADE_ACTIVITY_TYPE = "TRADE"
 
 
@@ -45,7 +48,16 @@ class WalletTradeSource(Protocol):
 
 
 class WalletDataClient(Protocol):
-    def list_trades(self, *, user: str, page_size: int) -> AsyncIterable[object]: ...
+    def list_trades(
+        self,
+        *,
+        user: str | None = None,
+        market: tuple[str, ...] | None = None,
+        taker_only: bool | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        page_size: int,
+    ) -> AsyncIterable[object]: ...
 
     def list_activity(
         self,
@@ -54,3 +66,13 @@ class WalletDataClient(Protocol):
         activity_types: tuple[str, ...],
         page_size: int,
     ) -> AsyncIterable[object]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class WalletTradeSelector:
+    wallet: str | None = None
+    condition_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.wallet is None and not self.condition_ids:
+            raise ValueError("wallet trade selectors require a wallet or markets")

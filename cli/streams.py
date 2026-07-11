@@ -14,11 +14,13 @@ if TYPE_CHECKING:
     from bots.polymarket.types import Market
     from bots.polymarket.wallet_activity.stream import WalletActivityStream
     from bots.polymarket.ws_market import MarketStream
+    from bots.polymarket.types import MarketTradeHint
 
 
 class StreamKind(StrEnum):
     BOOK = "book"
     WALLET = "wallet"
+    MARKET_HINT = "market_hint"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +35,13 @@ class WalletStreamEvent:
     event: WalletTradeEvent
 
 
-StreamEvent = BookStreamEvent | WalletStreamEvent
+@dataclass(frozen=True, slots=True)
+class MarketHintStreamEvent:
+    kind: Literal[StreamKind.MARKET_HINT]
+    event: MarketTradeHint
+
+
+StreamEvent = BookStreamEvent | WalletStreamEvent | MarketHintStreamEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,21 +56,23 @@ class StreamCompleted:
 
 async def merge_streams(
     streams: tuple[
-        tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent]], ...
+        tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint]], ...
     ],
 ) -> AsyncIterator[StreamEvent]:
     queue: asyncio.Queue[StreamEvent | StreamFailure | StreamCompleted] = asyncio.Queue()
 
     async def enqueue_stream_events(
         stream_kind: StreamKind,
-        stream: AsyncIterator[BookSnapshot | WalletTradeEvent],
+        stream: AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint],
     ) -> None:
         try:
             async for event in stream:
                 if stream_kind is StreamKind.BOOK:
                     await queue.put(BookStreamEvent(stream_kind, event))
-                else:
+                elif stream_kind is StreamKind.WALLET:
                     await queue.put(WalletStreamEvent(stream_kind, event))
+                else:
+                    await queue.put(MarketHintStreamEvent(stream_kind, event))
         except BaseException as error:
             await queue.put(StreamFailure(error))
         finally:
@@ -93,12 +103,12 @@ def build_streams(
     *,
     wallet_stream: WalletActivityStream,
     markets: Iterable[Market],
-    wallet_addresses: frozenset[str],
+    wallet_enabled: bool,
 ) -> tuple[
-    tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent]], ...
+        tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint]], ...
 ]:
     streams: list[
-        tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent]]
+        tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint]]
     ] = []
     from bots.polymarket.types import market_token_ids
 
@@ -106,7 +116,12 @@ def build_streams(
         token_id for market in markets for token_id in market_token_ids(market)
     }
     if token_ids:
-        streams.append((StreamKind.BOOK, market_stream.books(token_ids)))
-    if wallet_addresses:
-        streams.append((StreamKind.WALLET, wallet_stream.trades(wallet_addresses)))
+        stream = (
+            market_stream.events(token_ids)
+            if hasattr(market_stream, "events")
+            else market_stream.books(token_ids)
+        )
+        streams.append((StreamKind.BOOK, stream))
+    if wallet_enabled:
+        streams.append((StreamKind.WALLET, wallet_stream.trades()))
     return tuple(streams)

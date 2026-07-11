@@ -7,7 +7,8 @@ from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
 from bots.framework.events import OrderRequest
 from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.framework.wallets import WalletSubscription, normalize_wallet_address
+from bots.framework.streams import StreamRelation, StreamRule
+from bots.framework.wallets import normalize_wallet_address
 
 WALLET_FOLLOW_REASON = "wallet_follow"
 
@@ -41,12 +42,12 @@ class ExampleWalletFollower(BaseBot):
             reason=WALLET_FOLLOW_REASON,
         )
 
-    async def current_wallets(
+    async def current_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[WalletSubscription, ...]:
-        return WalletSubscription.from_addresses(tuple(self.leader_wallets))
+    ) -> tuple[StreamRule, ...]:
+        return (StreamRule(StreamRelation.INDEPENDENT, wallet_addresses=tuple(self.leader_wallets)),)
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
         await ctx.broker.submit(self.order_for_trade(trade, ctx.config.max_order_size))

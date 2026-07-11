@@ -38,8 +38,7 @@ class BuyCheapYes(BaseBot):
 - Use `ctx.broker` for orders.
 - Use `ctx.markets` for discovery.
 - Use `ctx.books` for latest cached books.
-- Use config market slugs or market hooks for multi-market bots.
-- Use config wallet addresses or `current_wallets()` for multi-wallet followers.
+- Use `current_stream_rules()` for market, wallet, and mixed subscriptions.
 - Do not import `backend/app`.
 - Do not access `.env` directly from bots.
 - Do not compute fees inside bots.
@@ -59,23 +58,15 @@ continue to share package-owned contracts.
 - Store token IDs.
 - Initialize strategy state.
 
-`current_markets`
+`current_stream_rules`
 
-- Return the market slugs that should receive events right now.
-- Use the default implementation for static `BOT_MARKET_SLUGS`.
-- Override it for time-bucketed or otherwise dynamic markets.
+- Return `StreamRule` values for the current market/wallet topology.
+- Use `StreamRelation.FILTERED` for wallet-and-market intersection and
+  `StreamRelation.INDEPENDENT` for market-or-wallet union.
 
-`next_markets`
+`next_stream_rules`
 
-- Return market slugs that should be prepared next.
-- Use this for consecutive short-lived markets so metadata/subscriptions can be
-  ready before rollover.
-
-`current_wallets`
-
-- Return the leader wallet addresses whose trades should reach the bot now.
-- Use the default implementation for static `BOT_WALLET_ADDRESSES`.
-- Override it only for a deliberate runtime-managed leader set.
+- Return the rules that should be prepared for the next dynamic interval.
 
 `on_book`
 
@@ -107,8 +98,7 @@ Use global `.env` defaults for shared behavior:
 
 ```text
 BOT_MODE=paper
-BOT_MARKET_SLUGS=btc-up,eth-up
-BOT_WALLET_ADDRESSES=0xleader1,0xleader2
+BOT_STREAM_RULES=[{"relation":"filtered","market_slugs":["btc-up","eth-up"],"wallet_addresses":["0x0000000000000000000000000000000000000001"]}]
 BOT_MAX_ORDER_SIZE=10
 BOT_MAX_SLIPPAGE_PCT=0.02
 BOT_PAPER_LATENCY_MS=250
@@ -193,11 +183,9 @@ Strategies should make the scaling rule obvious. Examples:
 - Ignore stale trades when observed delay is too high.
 - Ignore unsupported markets until Gamma/CLOB metadata is resolved.
 
-For a static multi-wallet bot, configure the same addresses in
-`BOT_WALLET_ADDRESSES`; the runner then filters unrelated leaders before this
-hook runs. Keep an explicit set in the strategy only when the strategy itself
-needs per-leader policy. A single follower can combine multiple wallet and
-market subscriptions: both route filters must match before dispatch.
+For a static multi-wallet bot, declare the wallet selectors in
+`BOT_STREAM_RULES`; the runner applies the selected relation before this hook
+runs. Keep an explicit set in the strategy only when it needs per-leader policy.
 
 ## Dynamic Market Bot
 
@@ -211,14 +199,14 @@ class FiveMinuteBot(BaseBot):
     def __init__(self, prefix: str) -> None:
         self.prefix = prefix
 
-    async def current_markets(
+    async def current_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
     ) -> tuple[MarketSubscription, ...]:
         return (MarketSubscription(slug=self._slug(now_ms, 0)),)
 
-    async def next_markets(
+    async def next_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
@@ -257,5 +245,5 @@ bot = ExampleMultiMarketBot(rules=(rule,))
 ```
 
 In this example, a cheap ask on `btc-up` can trigger a BUY on `eth-down`. The
-same bot can declare both slugs in `current_markets()`, receive both markets'
+same bot can declare both slugs in `current_stream_rules()`, receive both markets'
 book events through the same callback, and route decisions by slug.

@@ -10,7 +10,7 @@ from bots.framework.config import (
     BOT_BOOK_MAX_AGE_MS_ENV,
     BOT_FUNDER_ADDRESS_ENV,
     BOT_LIVE_ENABLED_ENV,
-    BOT_MARKET_SLUGS_ENV,
+    BOT_STREAM_RULES_ENV,
     BOT_MAX_ORDER_SIZE_ENV,
     BOT_MAX_SLIPPAGE_PCT_ENV,
     BOT_MODE_ENV,
@@ -18,7 +18,6 @@ from bots.framework.config import (
     BOT_PAPER_LATENCY_MS_ENV,
     BOT_PAPER_PORTFOLIO_USDC_ENV,
     BOT_PRIVATE_KEY_ENV,
-    BOT_WALLET_ADDRESSES_ENV,
     BotConfig,
     BotMode,
     DEFAULT_BOT_MODE,
@@ -33,8 +32,10 @@ from bots.framework.config import (
 
 def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
-    monkeypatch.setenv(BOT_MARKET_SLUGS_ENV, "btc-up, eth-up")
-    monkeypatch.setenv(BOT_WALLET_ADDRESSES_ENV, "0xleader1, 0xleader2")
+    monkeypatch.setenv(
+        BOT_STREAM_RULES_ENV,
+        '[{"relation":"filtered","market_slugs":["btc-up","eth-up"],"wallet_addresses":["0x0000000000000000000000000000000000000001","0x0000000000000000000000000000000000000002"]}]',
+    )
     monkeypatch.setenv(BOT_MAX_ORDER_SIZE_ENV, "4")
     monkeypatch.setenv(BOT_MAX_SLIPPAGE_PCT_ENV, "0.01")
     monkeypatch.setenv(BOT_PAPER_LATENCY_MS_ENV, "300")
@@ -51,8 +52,11 @@ def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch)
     config = BotConfig.from_env("env-bot").with_overrides(max_order_size=Decimal("2"))
 
     assert config.mode is BotMode.LIVE
-    assert config.market_slugs == ("btc-up", "eth-up")
-    assert config.wallet_addresses == ("0xleader1", "0xleader2")
+    assert config.stream_rules[0].market_slugs == ("btc-up", "eth-up")
+    assert config.stream_rules[0].wallet_addresses == (
+        "0x0000000000000000000000000000000000000001",
+        "0x0000000000000000000000000000000000000002",
+    )
     assert config.max_order_size == Decimal("2")
     assert config.max_slippage_pct == Decimal("0.01")
     assert config.paper_latency_ms == 300

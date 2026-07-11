@@ -48,9 +48,10 @@ Bots can operate on one market, many static market slugs, or dynamic market
 slugs generated from context such as time buckets. The runner routes
 market-tagged events only to bots whose current market set includes that slug.
 
-Wallet-following bots can watch one or many leader addresses through
-`BOT_WALLET_ADDRESSES`. The runner matches addresses case-insensitively and
-routes wallet-trade events only from the bot's current wallet set.
+Wallet-following and market-wide trade streams are declared together through
+`BOT_STREAM_RULES`. Rules express filtered wallet-and-market streams or
+independent wallet-or-market streams; the runner applies the declared relation
+before dispatching normalized wallet trades.
 
 Runner dispatch returns a typed `DispatchOutcome`. Rejected events carry a
 stable `DispatchSkipReason` instead of collapsing every skip into a boolean.

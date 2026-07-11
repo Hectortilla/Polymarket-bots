@@ -140,13 +140,10 @@ class MyBot(BaseBot):
     async def on_start(self, ctx: BotContext) -> None:
         ...
 
-    async def current_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
+    async def current_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
         ...
 
-    async def next_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
-        ...
-
-    async def current_wallets(self, ctx: BotContext, now_ms: int) -> tuple[WalletSubscription, ...]:
+    async def next_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
         ...
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
@@ -168,13 +165,12 @@ Multi-market bots are supported through market slugs. A bot can use a static
 list from config:
 
 ```text
-BOT_MARKET_SLUGS=btc-up,eth-up,sol-up
+BOT_STREAM_RULES=[{"relation":"filtered","market_slugs":["btc-up","eth-up","sol-up"],"wallet_addresses":["0x0000000000000000000000000000000000000001"]}]
 ```
 
-The default `BaseBot.current_markets()` returns one `MarketSubscription` per
-configured slug. The runner refreshes the bot's market plan before dispatch and
-only calls market-sensitive hooks when the event's `market_slug` is in the
-current market set.
+The default `BaseBot.current_stream_rules()` returns configured stream rules.
+The runner refreshes its stream plan before dispatch and routes events according
+to the active relation.
 
 Market-sensitive events must carry market identity:
 
@@ -196,7 +192,8 @@ current market plan or was deliberately pre-resolved by the bot.
 
 ## Dynamic Consecutive Markets
 
-Dynamic market bots should override `current_markets()` and `next_markets()`.
+Dynamic market bots should override `current_stream_rules()` and
+`next_stream_rules()`.
 This supports short-lived markets whose slug can be derived from the current
 time bucket, while allowing the runner or future stream manager to subscribe to
 the next market before rollover.
@@ -205,10 +202,10 @@ Example shape:
 
 ```python
 class FiveMinuteBucketBot(BaseBot):
-    async def current_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
+    async def current_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
         return (MarketSubscription(slug=self.slug_for(now_ms, bucket_offset=0)),)
 
-    async def next_markets(self, ctx: BotContext, now_ms: int) -> tuple[MarketSubscription, ...]:
+    async def next_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
         return (MarketSubscription(slug=self.slug_for(now_ms, bucket_offset=1)),)
 ```
 
@@ -224,21 +221,17 @@ pre-subscribe where the external APIs support it.
 Wallet-following bots support a static list of leader addresses from config:
 
 ```text
-BOT_WALLET_ADDRESSES=0xleader1,0xleader2,0xleader3
+`BOT_STREAM_RULES` is the sole configuration schema for market/wallet topology.
 ```
 
-The default `BaseBot.current_wallets()` returns one `WalletSubscription` per
-configured address. The runner refreshes this wallet plan before dispatch and
-only calls `on_wallet_trade` when `trade.wallet` belongs to the current plan.
-Address matching is case-insensitive, and repeated configured addresses
-collapse to one subscription.
+Wallet selectors are declared by `StreamRule.wallet_addresses`; address matching
+is case-insensitive, and repeated configured addresses collapse to one selector.
 
 If a bot has no configured/current wallet set, the runner accepts trades from
 all wallets so custom upstream filtering remains possible. Once a bot declares
 wallets, trades from other addresses are rejected before dedupe and strategy
-logic. A bot may override `current_wallets()` for a deliberate runtime-managed
-leader set; unlike expiring markets, wallets have no `next_wallets()` rollover
-contract in v1.
+logic. A bot may override `current_stream_rules()` for a deliberate
+runtime-managed leader set.
 
 Market and wallet routing are independent and cumulative. A wallet trade must
 match both the current wallet plan and the current market plan when both are

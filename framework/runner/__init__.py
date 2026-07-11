@@ -10,9 +10,8 @@ from bots.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from bots.framework.events import FillEvent
 from bots.framework.events.books import BookSnapshot
 from bots.framework.events.wallet_trades import WalletTradeEvent
-from bots.framework.markets import MarketPlan
 from bots.framework.runner.validation import book_skip_reason, wallet_trade_skip_reason
-from bots.framework.wallets import WalletPlan
+from bots.framework.streams import StreamPlan
 
 
 class BotRunner:
@@ -27,8 +26,7 @@ class BotRunner:
         self.ctx = ctx
         self.deduper = deduper or SourceEventDeduper()
         self._now_ms_fn = now_ms_fn or _system_now_ms
-        self.market_plan = MarketPlan(current=())
-        self.wallet_plan = WalletPlan(current=())
+        self.stream_plan = StreamPlan(current=())
 
     async def run_books(self, books: AsyncIterator[BookSnapshot]) -> None:
         await self.bot.on_start(self.ctx)
@@ -39,8 +37,8 @@ class BotRunner:
             await self.bot.on_stop(self.ctx)
 
     async def dispatch_book(self, book: BookSnapshot) -> DispatchOutcome:
-        await self.refresh_markets()
-        if not self.market_plan.accepts_slug(book.market_slug):
+        await self.refresh_stream_plan()
+        if not self.stream_plan.accepts_book(book.market_slug):
             return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
         reason = book_skip_reason(
             book,
@@ -64,11 +62,15 @@ class BotRunner:
             await self.bot.on_stop(self.ctx)
 
     async def dispatch_wallet_trade(self, trade: WalletTradeEvent) -> DispatchOutcome:
-        await self.refresh_markets()
-        await self.refresh_wallets()
-        if not self.market_plan.accepts_slug(trade.market_slug):
-            return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
-        if not self.wallet_plan.accepts_address(trade.wallet):
+        await self.refresh_stream_plan()
+        if not self.stream_plan.accepts_trade(trade.wallet, trade.market_slug):
+            if any(
+                trade.wallet.lower() in rule.wallet_addresses
+                for rule in self.stream_plan.current
+            ):
+                return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
+            if any(rule.market_slugs and not rule.wallet_addresses for rule in self.stream_plan.current):
+                return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
             return DispatchOutcome.skipped(DispatchSkipReason.WALLET_NOT_TRACKED)
         reason = wallet_trade_skip_reason(
             trade,
@@ -82,19 +84,13 @@ class BotRunner:
         await self.bot.on_wallet_trade(self.ctx, trade)
         return DispatchOutcome.accepted_event()
 
-    async def refresh_markets(self) -> MarketPlan:
+    async def refresh_stream_plan(self) -> StreamPlan:
         now_ms = self._now_ms()
-        self.market_plan = MarketPlan(
-            current=await self.bot.current_markets(self.ctx, now_ms),
-            next=await self.bot.next_markets(self.ctx, now_ms),
+        self.stream_plan = StreamPlan(
+            current=await self.bot.current_stream_rules(self.ctx, now_ms),
+            next=await self.bot.next_stream_rules(self.ctx, now_ms),
         )
-        return self.market_plan
-
-    async def refresh_wallets(self) -> WalletPlan:
-        self.wallet_plan = WalletPlan(
-            current=await self.bot.current_wallets(self.ctx, self._now_ms()),
-        )
-        return self.wallet_plan
+        return self.stream_plan
 
     def _now_ms(self) -> int:
         return self._now_ms_fn()

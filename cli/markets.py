@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from bots.framework.markets import MarketPlan
+from bots.framework.streams import StreamPlan
 from bots.polymarket.types import Market
 
 if TYPE_CHECKING:
@@ -19,12 +19,16 @@ class ResolvedMarketPlan:
 
 
 async def resolve_plan_markets(
-    plan: MarketPlan,
+    plan: StreamPlan,
     gamma: GammaClient,
 ) -> ResolvedMarketPlan:
     """Resolve current markets strictly and next markets best-effort."""
-    current_slugs = tuple(subscription.slug for subscription in plan.current)
-    next_slugs = tuple(subscription.slug for subscription in plan.next)
+    if isinstance(plan, StreamPlan):
+        current_slugs = plan.current_market_slugs
+        next_slugs = plan.next_market_slugs
+    else:
+        current_slugs = tuple(subscription.slug for subscription in plan.current)
+        next_slugs = tuple(subscription.slug for subscription in plan.next)
     slugs = tuple(dict.fromkeys((*current_slugs, *next_slugs)))
     if not slugs:
         return ResolvedMarketPlan(current=(), next=())

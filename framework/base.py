@@ -5,6 +5,7 @@ from bots.framework.events import FillEvent
 from bots.framework.events.books import BookSnapshot
 from bots.framework.events.wallet_trades import WalletTradeEvent
 from bots.framework.markets import MarketSubscription
+from bots.framework.streams import StreamRule
 from bots.framework.wallets import WalletSubscription
 
 
@@ -14,18 +15,18 @@ class BaseBot:
     async def on_start(self, ctx: BotContext) -> None:
         pass
 
-    async def current_markets(
+    async def current_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
-        return MarketSubscription.from_slugs(ctx.config.market_slugs)
+    ) -> tuple[StreamRule, ...]:
+        return ctx.config.stream_rules
 
-    async def next_markets(
+    async def next_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
+    ) -> tuple[StreamRule, ...]:
         return ()
 
     async def current_wallets(
@@ -33,7 +34,30 @@ class BaseBot:
         ctx: BotContext,
         now_ms: int,
     ) -> tuple[WalletSubscription, ...]:
-        return WalletSubscription.from_addresses(ctx.config.wallet_addresses)
+        rules = await self.current_stream_rules(ctx, now_ms)
+        return WalletSubscription.from_addresses(
+            tuple(dict.fromkeys(wallet for rule in rules for wallet in rule.wallet_addresses))
+        )
+
+    async def current_markets(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> tuple[MarketSubscription, ...]:
+        rules = await self.current_stream_rules(ctx, now_ms)
+        return MarketSubscription.from_slugs(
+            tuple(dict.fromkeys(slug for rule in rules for slug in rule.market_slugs))
+        )
+
+    async def next_markets(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> tuple[MarketSubscription, ...]:
+        rules = await self.next_stream_rules(ctx, now_ms)
+        return MarketSubscription.from_slugs(
+            tuple(dict.fromkeys(slug for rule in rules for slug in rule.market_slugs))
+        )
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
         pass

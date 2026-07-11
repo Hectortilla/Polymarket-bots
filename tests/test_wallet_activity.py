@@ -126,7 +126,7 @@ def test_many_wallet_reads_are_sorted_and_report_failures() -> None:
         return await WalletActivityClient(client).latest_trades_many(("0xfirst", "0xfailing"))
 
     result = asyncio.run(run())
-    assert [trade.source_id for trade in result.trades] == ["tx-1"]
+    assert [trade.transaction_hash for trade in result.trades] == ["tx-1"]
     assert result.failures[0].wallet == "0xfailing"
     assert result.failures[0].issue is WalletActivityIssue.WALLET_READ_FAILED
 
@@ -174,7 +174,7 @@ def test_many_wallet_reads_bound_concurrency_and_sort_results() -> None:
 
     client, result = asyncio.run(run())
     assert client.peak_active == 2
-    assert [trade.source_id for trade in result.trades] == ["early", "middle", "late"]
+    assert [trade.transaction_hash for trade in result.trades] == ["early", "middle", "late"]
 
 
 def test_boundaries_reject_invalid_limits_and_concurrency() -> None:
@@ -202,7 +202,7 @@ def test_stream_normalizes_filters_and_validates_events() -> None:
 
     source, trades = asyncio.run(run())
     assert source.wallets == frozenset({"0xleader"})
-    assert [trade.source_id for trade in trades] == ["tx-1"]
+    assert [trade.transaction_hash for trade in trades] == ["tx-1"]
 
 
 def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() -> None:
@@ -234,7 +234,8 @@ def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() ->
         return [trade async for trade in WalletActivityStream(source).trades({"0xleader"})]
 
     trades = asyncio.run(run())
-    assert [trade.source_id for trade in trades] == ["typed"]
+    assert len(trades) == 1
+    assert len(trades[0].source_id) == 64
     assert trades[0].wallet == "0xleader"
 
 

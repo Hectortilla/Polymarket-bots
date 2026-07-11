@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from hashlib import sha256
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from math import isfinite
@@ -67,14 +68,14 @@ def normalize_wallet_trade(
     normalized_price = _decimal(price)
     timestamp = _timestamp_ms(_get_trade_field(source, "timestamp"))
     transaction_hash = _get_trade_field(source, "transaction_hash")
-    source_id = transaction_hash
-    required_fields = (wallet, condition_id, token_id, source_id)
+    upstream_source_id = transaction_hash
+    required_fields = (wallet, condition_id, token_id, upstream_source_id)
     if not all(isinstance(value, str) for value in required_fields):
         return None
     normalized_fields = tuple(value.strip() for value in required_fields)
     if not all(normalized_fields) or not isinstance(side, str) or timestamp is None:
         return None
-    wallet, condition_id, token_id, source_id = normalized_fields
+    wallet, condition_id, token_id, upstream_source_id = normalized_fields
     if normalized_size is None or normalized_price is None:
         return None
     try:
@@ -85,7 +86,16 @@ def normalize_wallet_trade(
             side=Side(side.upper()),
             size=normalized_size,
             price=normalized_price,
-            source_id=source_id,
+            source_id=_canonical_source_id(
+                wallet=wallet,
+                condition_id=condition_id,
+                token_id=token_id,
+                side=side,
+                size=normalized_size,
+                price=normalized_price,
+                timestamp=timestamp,
+                upstream_source_id=upstream_source_id,
+            ),
             trade_timestamp_ms=timestamp,
             observed_at_ms=observed_at_ms,
             kind=kind,
@@ -117,9 +127,52 @@ def normalize_stream_event(
             observed_at_ms=observed_at_ms,
             kind=WalletTradeKind.TRADE,
         )
-    event = replace(source, wallet=normalize_wallet_address(source.wallet))
+    event = replace(
+        source,
+        wallet=normalize_wallet_address(source.wallet),
+        source_id=_canonical_source_id(
+            wallet=source.wallet,
+            condition_id=source.condition_id,
+            token_id=source.token_id,
+            side=source.side.value,
+            size=source.size,
+            price=source.price,
+            timestamp=source.trade_timestamp_ms,
+            upstream_source_id=source.transaction_hash or source.source_id,
+        ),
+    )
     return event if event.is_valid() else None
 
 
 def sort_key(trade: WalletTradeEvent) -> tuple[int, str, str, str]:
-    return (trade.trade_timestamp_ms, trade.source_id, trade.token_id, trade.wallet)
+    return (
+        trade.trade_timestamp_ms,
+        trade.transaction_hash or trade.source_id,
+        trade.token_id,
+        trade.wallet,
+    )
+
+
+def _canonical_source_id(
+    *,
+    wallet: str,
+    condition_id: str,
+    token_id: str,
+    side: object,
+    size: Decimal,
+    price: Decimal,
+    timestamp: int,
+    upstream_source_id: str,
+) -> str:
+    parts = (
+        "wallet-trade-v1",
+        normalize_wallet_address(wallet),
+        condition_id,
+        token_id,
+        str(side).upper(),
+        format(size.normalize(), "f"),
+        format(price.normalize(), "f"),
+        str(timestamp),
+        upstream_source_id,
+    )
+    return sha256("\0".join(parts).encode()).hexdigest()

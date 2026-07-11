@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import json
+import re
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import StrEnum
 from typing import Final, TypedDict, Unpack
+
+from bots.framework.streams import StreamRelation, StreamRule
 
 
 class BotMode(StrEnum):
@@ -15,8 +19,10 @@ class BotMode(StrEnum):
 class BotConfigOverrides(TypedDict, total=False):
     name: str
     mode: BotMode
+    stream_rules: tuple[StreamRule, ...]
     market_slugs: tuple[str, ...]
     wallet_addresses: tuple[str, ...]
+    data_trades_budget_per_10s: int
     max_order_size: Decimal
     max_slippage_pct: Decimal
     paper_latency_ms: int
@@ -32,8 +38,8 @@ class BotConfigOverrides(TypedDict, total=False):
 
 
 BOT_MODE_ENV: Final = "BOT_MODE"
-BOT_MARKET_SLUGS_ENV: Final = "BOT_MARKET_SLUGS"
-BOT_WALLET_ADDRESSES_ENV: Final = "BOT_WALLET_ADDRESSES"
+BOT_STREAM_RULES_ENV: Final = "BOT_STREAM_RULES"
+BOT_DATA_TRADES_BUDGET_PER_10S_ENV: Final = "BOT_DATA_TRADES_BUDGET_PER_10S"
 BOT_MAX_ORDER_SIZE_ENV: Final = "BOT_MAX_ORDER_SIZE"
 BOT_MAX_SLIPPAGE_PCT_ENV: Final = "BOT_MAX_SLIPPAGE_PCT"
 BOT_PAPER_LATENCY_MS_ENV: Final = "BOT_PAPER_LATENCY_MS"
@@ -54,11 +60,13 @@ DEFAULT_PAPER_LATENCY_MS: Final = 250
 DEFAULT_PAPER_LATENCY_JITTER_MS: Final = 100
 DEFAULT_BOOK_MAX_AGE_MS: Final = 5_000
 DEFAULT_PAPER_PORTFOLIO_USDC: Final = Decimal("1000")
+DEFAULT_DATA_TRADES_BUDGET_PER_10S: Final = 180
+WALLET_ADDRESS_PATTERN: Final = re.compile(r"0x[a-fA-F0-9]{40}\Z")
 DECIMAL_CONFIG_FIELDS: Final = frozenset(
     {"max_order_size", "max_slippage_pct", "paper_portfolio_usdc"}
 )
 INTEGER_CONFIG_FIELDS: Final = frozenset(
-    {"paper_latency_ms", "paper_latency_jitter_ms", "book_max_age_ms"}
+    {"paper_latency_ms", "paper_latency_jitter_ms", "book_max_age_ms", "data_trades_budget_per_10s"}
 )
 
 
@@ -66,8 +74,10 @@ INTEGER_CONFIG_FIELDS: Final = frozenset(
 class BotConfig:
     name: str
     mode: BotMode = DEFAULT_BOT_MODE
+    stream_rules: tuple[StreamRule, ...] = ()
     market_slugs: tuple[str, ...] = ()
     wallet_addresses: tuple[str, ...] = ()
+    data_trades_budget_per_10s: int = DEFAULT_DATA_TRADES_BUDGET_PER_10S
     max_order_size: Decimal = DEFAULT_MAX_ORDER_SIZE
     max_slippage_pct: Decimal = DEFAULT_MAX_SLIPPAGE_PCT
     paper_latency_ms: int = DEFAULT_PAPER_LATENCY_MS
@@ -82,6 +92,17 @@ class BotConfig:
     funder_address: str | None = None
 
     def __post_init__(self) -> None:
+        if not self.stream_rules and (self.market_slugs or self.wallet_addresses):
+            relation = (
+                StreamRelation.FILTERED
+                if self.market_slugs and self.wallet_addresses
+                else StreamRelation.INDEPENDENT
+            )
+            object.__setattr__(
+                self,
+                "stream_rules",
+                (StreamRule(relation, self.market_slugs, self.wallet_addresses),),
+            )
         for field_name in DECIMAL_CONFIG_FIELDS:
             value = getattr(self, field_name)
             if not value.is_finite():
@@ -98,14 +119,16 @@ class BotConfig:
             raise ValueError("book_max_age_ms must be nonnegative")
         if self.paper_portfolio_usdc <= 0:
             raise ValueError("paper_portfolio_usdc must be positive")
+        if not 1 <= self.data_trades_budget_per_10s <= DEFAULT_DATA_TRADES_BUDGET_PER_10S:
+            raise ValueError("data_trades_budget_per_10s must be between 1 and 180")
 
     @classmethod
     def from_env(cls, name: str) -> BotConfig:
         return cls(
             name=name,
             mode=BotMode(os.getenv(BOT_MODE_ENV, DEFAULT_BOT_MODE.value)),
-            market_slugs=_env_csv(BOT_MARKET_SLUGS_ENV),
-            wallet_addresses=_env_csv(BOT_WALLET_ADDRESSES_ENV),
+            stream_rules=_env_stream_rules(),
+            data_trades_budget_per_10s=int(os.getenv(BOT_DATA_TRADES_BUDGET_PER_10S_ENV, str(DEFAULT_DATA_TRADES_BUDGET_PER_10S))),
             max_order_size=Decimal(
                 os.getenv(BOT_MAX_ORDER_SIZE_ENV, str(DEFAULT_MAX_ORDER_SIZE))
             ),
@@ -155,8 +178,28 @@ def _optional_env(key: str) -> str | None:
     return value
 
 
-def _env_csv(key: str) -> tuple[str, ...]:
-    value = os.getenv(key)
-    if value is None or value.strip() == "":
+def _env_stream_rules() -> tuple[StreamRule, ...]:
+    raw = os.getenv(BOT_STREAM_RULES_ENV)
+    if raw is None or not raw.strip():
         return ()
-    return tuple(part.strip() for part in value.split(",") if part.strip())
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{BOT_STREAM_RULES_ENV} must be valid JSON") from error
+    if not isinstance(values, list):
+        raise ValueError(f"{BOT_STREAM_RULES_ENV} must be a JSON array")
+    rules: list[StreamRule] = []
+    for value in values:
+        if not isinstance(value, dict) or set(value) - {"relation", "market_slugs", "wallet_addresses"}:
+            raise ValueError("stream rules contain unsupported fields")
+        relation = value.get("relation")
+        markets = value.get("market_slugs", [])
+        wallets = value.get("wallet_addresses", [])
+        if not isinstance(relation, str) or not isinstance(markets, list) or not isinstance(wallets, list):
+            raise ValueError("stream rules have invalid field types")
+        if not all(isinstance(item, str) for item in [*markets, *wallets]):
+            raise ValueError("stream rule selectors must be strings")
+        if any(WALLET_ADDRESS_PATTERN.fullmatch(wallet) is None for wallet in wallets):
+            raise ValueError("stream rule wallet addresses must be 0x-prefixed addresses")
+        rules.append(StreamRule(StreamRelation(relation), tuple(markets), tuple(wallets)))
+    return tuple(dict.fromkeys(rules))

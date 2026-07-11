@@ -7,7 +7,7 @@ from bots.framework.base import BaseBot
 from bots.framework.context import BotContext
 from bots.framework.events import OrderRequest, Side
 from bots.framework.events.books import BookSnapshot
-from bots.framework.markets import MarketSubscription
+from bots.framework.streams import StreamRelation, StreamRule
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,14 +53,14 @@ class ExampleMultiMarketBot(BaseBot):
             reason=f"cross_market_signal:{rule.signal_slug}",
         )
 
-    async def current_markets(
+    async def current_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
+    ) -> tuple[StreamRule, ...]:
         slugs = {rule.signal_slug for rule in self.rules}
         slugs.update(rule.target_slug for rule in self.rules)
-        return tuple(MarketSubscription(slug=slug) for slug in sorted(slugs))
+        return (StreamRule(StreamRelation.INDEPENDENT, tuple(sorted(slugs))),)
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
         for order in self.orders_for_book(book, ctx.config.max_order_size):
