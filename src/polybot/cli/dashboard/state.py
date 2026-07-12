@@ -40,6 +40,7 @@ T = TypeVar("T")
 class TickerRow:
     style: str
     message: str
+    count: int = 1
 
 
 @dataclass(slots=True)
@@ -278,7 +279,12 @@ class DashboardState:
         return book if book.is_fresh(current_time_ms, self.book_max_age_ms) else None
 
     def _ticker(self, style: str, message: str) -> None:
-        self.ticker.appendleft(TickerRow(style, _safe_message(message)))
+        safe_message = _safe_message(message)
+        if self.ticker and self.ticker[0].message == safe_message:
+            previous = self.ticker[0]
+            self.ticker[0] = TickerRow(previous.style, safe_message, previous.count + 1)
+            return
+        self.ticker.appendleft(TickerRow(style, safe_message))
 
     def market_label(self, token_id: str) -> str:
         return self.market_labels.get(token_id, short_token(token_id))

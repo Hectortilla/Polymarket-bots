@@ -620,6 +620,24 @@ def test_dashboard_ticker_removes_terminal_control_characters() -> None:
     assert "\n" not in state.ticker[0].message
 
 
+def test_dashboard_aggregates_consecutive_identical_ticker_events() -> None:
+    state = DashboardState()
+    state.apply(RuntimeFailed("repeated failure", 1.0))
+    state.apply(RuntimeFailed("repeated failure", 2.0))
+    state.apply(RuntimeFailed("another failure", 3.0))
+    state.apply(RuntimeFailed("repeated failure", 4.0))
+
+    assert [(row.message, row.count) for row in state.ticker] == [
+        ("RUN FAILED repeated failure", 1),
+        ("RUN FAILED another failure", 1),
+        ("RUN FAILED repeated failure", 2),
+    ]
+    output = StringIO()
+    Console(file=output, width=80, height=24).print(render_dashboard(state, 80, 24))
+
+    assert "RUN FAILED repeated failure x2" in output.getvalue()
+
+
 def _book(
     token_id: str,
     bid: Decimal,

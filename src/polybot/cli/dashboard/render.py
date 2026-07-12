@@ -151,12 +151,19 @@ def _padded_bounds(values: list[float]) -> tuple[float | None, float | None]:
 
 
 def _ticker_panel(state: DashboardState) -> Panel:
-    rows = [Text(row.message, style=row.style, overflow="ellipsis") for row in state.ticker]
+    rows = [
+        Text(_ticker_message(row.message, row.count), style=row.style, overflow="ellipsis")
+        for row in state.ticker
+    ]
     return Panel(
         Group(*rows) if rows else Text("Waiting for runtime events", style="dim"),
         title="Activity",
         border_style="bright_magenta",
     )
+
+
+def _ticker_message(message: str, count: int) -> str:
+    return message if count == 1 else f"{message} x{count}"
 
 
 def _status_panel(state: DashboardState) -> Panel:
