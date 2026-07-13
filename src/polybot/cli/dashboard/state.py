@@ -91,6 +91,8 @@ class DashboardState:
     chart_tokens: deque[str] = field(default_factory=deque)
     price_history: dict[str, deque[float]] = field(default_factory=dict)
     price_stale_history: dict[str, deque[bool]] = field(default_factory=dict)
+    trade_marker_history: dict[str, deque[tuple[Side, ...]]] = field(default_factory=dict)
+    pending_trade_markers: dict[str, list[Side]] = field(default_factory=dict)
     wallet_value_history: deque[float] = field(default_factory=deque)
     wallet_value_stale_history: deque[bool] = field(default_factory=deque)
     chart_sample_times: deque[float] = field(default_factory=deque)
@@ -142,6 +144,7 @@ class DashboardState:
         for token_id in self.chart_tokens:
             history = self.price_history[token_id]
             stale_history = self.price_stale_history[token_id]
+            marker_history = self.trade_marker_history[token_id]
             book = self._current_book(token_id, now_ms)
             midpoint = midpoint_for(book)
             if midpoint is not None:
@@ -155,8 +158,10 @@ class DashboardState:
                 is_stale = False
             history.append(nan if value is None else value)
             stale_history.append(is_stale)
+            marker_history.append(tuple(self.pending_trade_markers.pop(token_id, ())))
             _trim(history, max_points)
             _trim(stale_history, max_points)
+            _trim(marker_history, max_points)
         wallet_value = self.executable_equity(now_ms)
         if wallet_value is not None:
             value = float(wallet_value)
@@ -384,6 +389,9 @@ class DashboardState:
             )
             return
         self.fill_count += 1
+        if fill.filled_size > 0:
+            self._activate_chart_token(fill.token_id)
+            self.pending_trade_markers.setdefault(fill.token_id, []).append(fill.side)
         price = "-" if fill.average_price is None else str(fill.average_price)
         self._ticker(
             _side_style(fill.side),
@@ -397,9 +405,12 @@ class DashboardState:
             removed = self.chart_tokens.popleft()
             self.price_history.pop(removed, None)
             self.price_stale_history.pop(removed, None)
+            self.trade_marker_history.pop(removed, None)
+            self.pending_trade_markers.pop(removed, None)
         self.chart_tokens.append(token_id)
         self.price_history.setdefault(token_id, deque())
         self.price_stale_history.setdefault(token_id, deque())
+        self.trade_marker_history.setdefault(token_id, deque())
 
     def _current_book(self, token_id: str, now_ms: int | None) -> BookSnapshot | None:
         book = self.books.get(token_id)

@@ -295,7 +295,9 @@ Status: done.
   chart with a taller plotting area, variance-padded executable-wallet-value
   curve, activity ticker, and persistent status metrics. Support terminal-only
   fixed-width time-window controls: `z` zooms in, `x` zooms out, and `r`
-  resets. Show the visible start and end times below the plots.
+  resets. Show the visible start and end times below the plots. Mark completed
+  buys in wallet-value green and sells in red, anchored to the traded token's
+  line.
 - Extend stream health with run-lifetime raw/coalesced book counts, cumulative
   dropped/received ratio, and a recent ratio over the last 100 book-bearing
   health-counter deltas; retain these in telemetry state without displaying

@@ -143,7 +143,8 @@ The CLI dashboard is enabled by default. It is an external observer: bots
 should not import dashboard classes or emit display events. Use
 `--no-dashboard` for headless runs.
 It shows market/wallet activity, paper orders and fills, multi-token prices,
-and executable paper wallet value without changing strategy behavior. When a
+green buy and red sell markers anchored to the traded token's line, and
+executable paper wallet value without changing strategy behavior. When a
 market book expires, its last chart value stays visible in a dimmed color.
 
 Tools integrating the CLI may pass a custom

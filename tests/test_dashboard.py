@@ -6,6 +6,7 @@ from io import StringIO
 from math import isnan, nan
 from threading import Event, Thread
 
+import asciichartpy
 import pytest
 from rich.console import Console
 
@@ -15,6 +16,7 @@ from polybot.cli.dashboard.render import (
     _chart_time_range,
     _fixed_ms,
     _price_chart_height,
+    _price_chart_series,
     render_dashboard,
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
@@ -602,6 +604,65 @@ def test_dashboard_tracks_dispatch_skips_and_rejected_fills() -> None:
 
     assert state.skipped_dispatches == 1
     assert state.rejected_count == 1
+    assert state.pending_trade_markers == {}
+
+
+def test_dashboard_samples_buy_fills_as_trade_markers() -> None:
+    state = DashboardState()
+    fill = FillEvent(
+        order_id="order",
+        token_id="token",
+        side=Side.BUY,
+        status=OrderStatus.PARTIAL,
+        requested_size=Decimal("2"),
+        filled_size=Decimal("1"),
+        average_price=Decimal("0.47"),
+        fee_usdc=Decimal("0"),
+        received_at_ms=1,
+    )
+
+    state.apply(
+        FillCompleted(
+            OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("2")),
+            fill,
+            None,
+            3,
+            2.0,
+        )
+    )
+    state.sample(80, now_ms=1_000)
+
+    assert tuple(state.chart_tokens) == ("token",)
+    assert list(state.trade_marker_history["token"]) == [(Side.BUY,)]
+    assert state.pending_trade_markers == {}
+
+
+def test_dashboard_samples_sell_fills_as_trade_markers() -> None:
+    state = DashboardState()
+    fill = FillEvent(
+        order_id="order",
+        token_id="token",
+        side=Side.SELL,
+        status=OrderStatus.FILLED,
+        requested_size=Decimal("1"),
+        filled_size=Decimal("1"),
+        average_price=Decimal("0.53"),
+        fee_usdc=Decimal("0"),
+        received_at_ms=1,
+    )
+
+    state.apply(
+        FillCompleted(
+            OrderRequest("token", Side.SELL, Decimal("0.5"), Decimal("1")),
+            fill,
+            None,
+            3,
+            2.0,
+        )
+    )
+    state.sample(80, now_ms=1_000)
+
+    assert list(state.trade_marker_history["token"]) == [(Side.SELL,)]
 
 
 def test_dashboard_render_handles_all_missing_chart_samples() -> None:
@@ -783,6 +844,38 @@ def test_dashboard_renders_stale_samples_in_dimmed_series(monkeypatch) -> None:
     assert isnan(wallet_series[1][0])
     assert wallet_series[1][-1] == 110.0
     assert len(wallet_config["colors"]) == 2
+
+
+def test_dashboard_renders_trade_markers_on_token_lines_with_side_colors() -> None:
+    state = DashboardState(chart_tokens=deque(("one", "two")))
+    state.price_history = {
+        "one": deque((0.4, 0.5, 0.6)),
+        "two": deque((0.6, 0.5, 0.4)),
+    }
+    state.price_stale_history = {
+        "one": deque((False, False, False)),
+        "two": deque((False, False, False)),
+    }
+    state.trade_marker_history = {
+        "one": deque(((), (Side.BUY,), ())),
+        "two": deque(((Side.SELL,), (), (Side.BUY, Side.SELL))),
+    }
+    state.chart_sample_times = deque((1.0, 2.0, 3.0))
+
+    series, colors = _price_chart_series(state, 80)
+
+    assert len(series) == 8
+    assert colors[2] == asciichartpy.lightgreen
+    assert colors[5] == asciichartpy.red
+    assert colors[6] == asciichartpy.lightgreen
+    assert colors[7] == asciichartpy.red
+    for marker_index, token_series_index in ((2, 0), (5, 3), (6, 3), (7, 3)):
+        display_index = next(
+            index
+            for index, value in enumerate(series[marker_index])
+            if not isnan(value)
+        )
+        assert series[marker_index][display_index] == series[token_series_index][display_index]
 
 
 def test_dashboard_ticker_removes_terminal_control_characters() -> None:

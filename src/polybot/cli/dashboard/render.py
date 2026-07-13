@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.text import Text
 
 from polybot.cli.streams import StreamKind
+from polybot.framework.events import Side
 
 from .palette import SERIES_PALETTE
 from .state import DashboardState, short_token
@@ -107,6 +108,9 @@ def _market_legend(state: DashboardState) -> Text:
             f"{index + 1}: {state.market_label(token_id)}",
             style=SERIES_LEGEND_STYLES[index],
         )
+    if state.chart_tokens:
+        legend.append("  green mark: buy", style="bright_green")
+        legend.append(" · red mark: sell", style="red")
     return legend
 
 
@@ -146,7 +150,58 @@ def _price_chart_series(
         )
         series.extend(_split_stale_samples(values, stale))
         colors.extend((SERIES_COLORS[index], DIMMED_SERIES_COLORS[index]))
+        marker_series, marker_colors = _visible_trade_marker_series(
+            state.trade_marker_history.get(token_id, deque()),
+            values,
+            state,
+            width,
+        )
+        series.extend(marker_series)
+        colors.extend(marker_colors)
     return series, tuple(colors)
+
+
+def _visible_trade_marker_series(
+    markers: deque[tuple[Side, ...]],
+    displayed_values: list[float],
+    state: DashboardState,
+    width: int,
+) -> tuple[list[list[float]], list[str]]:
+    window = state.chart_window_points(width)
+    timestamp_count = min(window, len(state.chart_sample_times))
+    source_count = timestamp_count or min(window, len(markers))
+    if source_count == 0:
+        return [], []
+    visible_markers = list(markers)[-source_count:]
+    visible_markers = [()] * (source_count - len(visible_markers)) + visible_markers
+    indices = _resample_indices(source_count, state.chart_display_points(width))
+    result: list[list[float]] = []
+    colors: list[str] = []
+    for source_index, sides in enumerate(visible_markers):
+        if not sides:
+            continue
+        display_index = _nearest_display_index(indices, source_index)
+        line_value = displayed_values[display_index]
+        if isnan(line_value):
+            continue
+        for side in sides:
+            series = [float("nan")] * len(indices)
+            series[display_index] = line_value
+            result.append(series)
+            colors.append(
+                asciichartpy.lightgreen if side is Side.BUY else asciichartpy.red
+            )
+    return result, colors
+
+
+def _nearest_display_index(indices: list[int], source_index: int) -> int:
+    nearest = min(abs(index - source_index) for index in indices)
+    matches = [
+        display_index
+        for display_index, index in enumerate(indices)
+        if abs(index - source_index) == nearest
+    ]
+    return matches[len(matches) // 2]
 
 
 def _visible_chart_samples(
