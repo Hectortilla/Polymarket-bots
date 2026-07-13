@@ -26,6 +26,7 @@ from polybot.cli.observability.events import (
     RuntimeStarted,
     RuntimeFailed,
     StreamReceived,
+    StreamHealth,
 )
 from polybot.cli.observability.observer import (
     RuntimeObserver,
@@ -293,6 +294,19 @@ def test_dashboard_tracks_market_wallet_and_chart_events() -> None:
     assert state.stream_counts[StreamKind.BOOK] == 5
     assert state.stream_counts[StreamKind.WALLET] == 1
     assert all(len(values) == 1 for values in state.price_history.values())
+
+
+def test_dashboard_tracks_stream_health_samples() -> None:
+    state = DashboardState()
+    state.apply(StreamHealth(3, 9, 120, False, 1.0))
+    state.apply(StreamHealth(5, 12, 6_100, True, 2.0))
+
+    assert state.queue_depth == 5
+    assert state.peak_queue_depth == 12
+    assert state.latest_book_lag_ms() == 6_100
+    assert state.book_lag_percentile(0.95) == 6_100
+    assert state.maximum_book_lag_ms() == 6_100
+    assert state.stale_ratio() == 0.5
 
 
 def test_dashboard_keeps_chart_series_order_stable_on_book_updates() -> None:

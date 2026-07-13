@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from hashlib import sha256
 from pathlib import Path
-from time import monotonic
+from time import monotonic, time
 
 from polymarket import AsyncPublicClient
 
@@ -17,6 +17,7 @@ from polybot.cli.observability.events import (
     PortfolioSnapshot,
     RuntimeFailed,
     RuntimeStarted,
+    StreamHealth,
     RuntimeState,
     RuntimeStateChanged,
     StreamReceived,
@@ -31,7 +32,7 @@ from polybot.cli.observability.observer import (
 from polybot.framework.base import BaseBot
 from polybot.framework.config import BotConfig, BotMode
 from polybot.framework.context import BotContext
-from polybot.framework.dispatch import DispatchOutcome
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.gamma import GammaClient
@@ -42,7 +43,7 @@ from polybot.polymarket.wallet_activity.stream import WalletActivityStream
 from polybot.polymarket.ws_market import MarketStream
 
 from .markets import resolve_plan_markets
-from .streams import StreamEvent, StreamKind, build_streams, merge_streams
+from .streams import BookStreamEvent, StreamEvent, StreamKind, StreamTelemetry, build_streams, merge_streams
 
 BOT_STATE_DIR = Path(".bot-state")
 STATE_KEY_HEX_LENGTH = 16
@@ -127,7 +128,8 @@ async def run_bot(
                     "the bot declared no current market or wallet subscriptions"
                 )
 
-            stream_events = merge_streams(streams)
+            telemetry = StreamTelemetry()
+            stream_events = merge_streams(streams, telemetry=telemetry)
             next_event = asyncio.create_task(anext(stream_events))
             plan_change = (
                 asyncio.create_task(_wait_for_stream_plan_change(runner, plan))
@@ -157,6 +159,24 @@ async def run_bot(
                     emit_observer(
                         runtime_observer,
                         DispatchCompleted(item, outcome, monotonic()),
+                    )
+                    lag_ms = None
+                    stale = False
+                    if isinstance(item, BookStreamEvent) and hasattr(item.event, "received_at_ms"):
+                        lag_ms = max(0, int(time() * 1000) - item.event.received_at_ms)
+                        stale = (
+                            outcome is not None
+                            and not outcome.accepted
+                            and outcome.skip_reason is DispatchSkipReason.BOOK_STALE
+                        )
+                    emit_observer(
+                        runtime_observer,
+                        StreamHealth(
+                            queue_depth=telemetry.queue_depth,
+                            peak_queue_depth=telemetry.peak_queue_depth,
+                            book_dispatch_lag_ms=lag_ms,
+                            book_stale=stale,
+                        ),
                     )
                     next_event = asyncio.create_task(anext(stream_events))
             finally:

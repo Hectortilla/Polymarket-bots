@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
-from math import isnan, nan
+from math import ceil, isnan, nan
 from time import monotonic, time
 from typing import TypeVar
 
@@ -21,6 +21,7 @@ from polybot.cli.observability.events import (
     RuntimeState,
     RuntimeStateChanged,
     StreamReceived,
+    StreamHealth,
 )
 from polybot.cli.dashboard.palette import SERIES_PALETTE
 from polybot.cli.streams import StreamKind
@@ -33,6 +34,7 @@ MAX_CHART_TOKENS = len(SERIES_PALETTE)
 EVENT_RATE_WINDOW_SECONDS = 10
 MARKET_TICKER_INTERVAL_SECONDS = 1
 LATENCY_SAMPLE_LIMIT = 100
+HEALTH_SAMPLE_LIMIT = 100
 T = TypeVar("T")
 
 
@@ -69,6 +71,12 @@ class DashboardState:
     broker_latencies_ms: deque[int] = field(
         default_factory=lambda: deque(maxlen=LATENCY_SAMPLE_LIMIT)
     )
+    book_lags_ms: deque[int] = field(default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT))
+    book_stale_samples: deque[bool] = field(default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT))
+    queue_depth: int = 0
+    peak_queue_depth: int = 0
+    stream_received_times: dict[StreamKind, deque[float]] = field(default_factory=dict)
+    stream_dispatched_times: dict[StreamKind, deque[float]] = field(default_factory=dict)
     event_times: deque[float] = field(default_factory=deque)
     chart_tokens: deque[str] = field(default_factory=deque)
     price_history: dict[str, deque[float]] = field(default_factory=dict)
@@ -94,6 +102,12 @@ class DashboardState:
                 self._stream_received(event)
             case DispatchCompleted():
                 self._dispatch_completed(event)
+            case StreamHealth():
+                self.queue_depth = event.queue_depth
+                self.peak_queue_depth = max(self.peak_queue_depth, event.peak_queue_depth)
+                if event.book_dispatch_lag_ms is not None:
+                    self.book_lags_ms.append(event.book_dispatch_lag_ms)
+                    self.book_stale_samples.append(event.book_stale)
             case OrderSubmitted():
                 self.order_count += 1
                 self._ticker(
@@ -182,6 +196,7 @@ class DashboardState:
     def _stream_received(self, event: StreamReceived) -> None:
         kind = event.item.kind
         self.stream_counts[kind] = self.stream_counts.get(kind, 0) + 1
+        self._record_rate(self.stream_received_times, kind, event.occurred_at)
         if kind is StreamKind.BOOK:
             if self.require_accepted_books:
                 self.pending_books[event.item.event.token_id] = event.item.event
@@ -238,9 +253,46 @@ class DashboardState:
             return
         if event.outcome.accepted:
             self.accepted_dispatches += 1
+            self._record_rate(self.stream_dispatched_times, event.kind, event.occurred_at)
             return
         self.skipped_dispatches += 1
+        self._record_rate(self.stream_dispatched_times, event.kind, event.occurred_at)
         self._ticker("yellow", f"SKIP {event.kind.value}: {event.outcome.skip_reason.value}")
+
+    def stream_rate(self, kind: StreamKind, *, received: bool) -> float:
+        samples = (self.stream_received_times if received else self.stream_dispatched_times).get(kind)
+        if not samples:
+            return 0.0
+        now = monotonic()
+        self._trim_times(samples, now)
+        return len(samples) / EVENT_RATE_WINDOW_SECONDS
+
+    def book_lag_percentile(self, percentile: float) -> int | None:
+        if not self.book_lags_ms:
+            return None
+        values = sorted(self.book_lags_ms)
+        index = min(len(values) - 1, max(0, ceil(len(values) * percentile) - 1))
+        return values[index]
+
+    def latest_book_lag_ms(self) -> int | None:
+        return self.book_lags_ms[-1] if self.book_lags_ms else None
+
+    def maximum_book_lag_ms(self) -> int | None:
+        return max(self.book_lags_ms) if self.book_lags_ms else None
+
+    def stale_ratio(self) -> float:
+        return sum(self.book_stale_samples) / len(self.book_stale_samples) if self.book_stale_samples else 0.0
+
+    def _record_rate(self, target: dict[StreamKind, deque[float]], kind: StreamKind, occurred_at: float) -> None:
+        samples = target.setdefault(kind, deque())
+        samples.append(occurred_at)
+        self._trim_times(samples, occurred_at)
+
+    @staticmethod
+    def _trim_times(samples: deque[float], now: float) -> None:
+        cutoff = now - EVENT_RATE_WINDOW_SECONDS
+        while samples and samples[0] < cutoff:
+            samples.popleft()
 
     def _fill_completed(self, event: FillCompleted) -> None:
         self.broker_latencies_ms.append(event.latency_ms)

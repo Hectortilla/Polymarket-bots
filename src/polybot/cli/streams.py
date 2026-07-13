@@ -55,10 +55,25 @@ class StreamCompleted:
     pass
 
 
+@dataclass(slots=True)
+class StreamTelemetry:
+    queue_depth: int = 0
+    peak_queue_depth: int = 0
+
+    def enqueued(self) -> None:
+        self.queue_depth += 1
+        self.peak_queue_depth = max(self.peak_queue_depth, self.queue_depth)
+
+    def dequeued(self) -> None:
+        self.queue_depth = max(0, self.queue_depth - 1)
+
+
 async def merge_streams(
     streams: tuple[
         tuple[StreamKind, AsyncIterator[BookSnapshot | WalletTradeEvent | MarketTradeHint]], ...
     ],
+    *,
+    telemetry: StreamTelemetry | None = None,
 ) -> AsyncIterator[StreamEvent]:
     queue: asyncio.Queue[StreamEvent | StreamFailure | StreamCompleted] = asyncio.Queue()
 
@@ -70,12 +85,20 @@ async def merge_streams(
             async for event in stream:
                 if isinstance(event, MarketTradeHint):
                     await queue.put(MarketHintStreamEvent(StreamKind.MARKET_HINT, event))
+                    if telemetry is not None:
+                        telemetry.enqueued()
                 elif stream_kind is StreamKind.BOOK:
                     await queue.put(BookStreamEvent(stream_kind, event))
+                    if telemetry is not None:
+                        telemetry.enqueued()
                 elif stream_kind is StreamKind.WALLET:
                     await queue.put(WalletStreamEvent(stream_kind, event))
+                    if telemetry is not None:
+                        telemetry.enqueued()
                 else:
                     await queue.put(MarketHintStreamEvent(stream_kind, event))
+                    if telemetry is not None:
+                        telemetry.enqueued()
         except BaseException as error:
             await queue.put(StreamFailure(error))
         finally:
@@ -89,6 +112,8 @@ async def merge_streams(
     try:
         while completed < len(tasks):
             item = await queue.get()
+            if telemetry is not None and not isinstance(item, (StreamFailure, StreamCompleted)):
+                telemetry.dequeued()
             if isinstance(item, StreamCompleted):
                 completed += 1
             elif isinstance(item, StreamFailure):

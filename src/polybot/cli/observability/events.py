@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
 from time import monotonic
@@ -63,6 +63,15 @@ class DispatchCompleted:
     @property
     def kind(self) -> StreamKind:
         return self.item.kind
+
+
+@dataclass(frozen=True, slots=True)
+class StreamHealth:
+    queue_depth: int
+    peak_queue_depth: int
+    book_dispatch_lag_ms: int | None
+    book_stale: bool = False
+    occurred_at: float = field(default_factory=monotonic)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +136,7 @@ RuntimeEvent = (
     | RuntimeStateChanged
     | StreamReceived
     | DispatchCompleted
+    | StreamHealth
     | OrderSubmitted
     | FillCompleted
     | BrokerFailed

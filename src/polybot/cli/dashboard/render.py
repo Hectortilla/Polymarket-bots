@@ -189,7 +189,13 @@ def _status_panel(state: DashboardState) -> Panel:
     table.add_row(
         Text(f"cash {cash} · equity {equity} · PnL {pnl}", style="bold green"),
         Text(f"fees {fees} · positions {positions}", style="white"),
-        Text(f"wallet lag {_optional_ms(state.average_wallet_lag_ms())}", style="magenta"),
+        Text(
+            f"book lag {_optional_ms(state.latest_book_lag_ms())} · "
+            f"p95 {_optional_ms(state.book_lag_percentile(0.95))} · "
+            f"max {_optional_ms(state.maximum_book_lag_ms())} · "
+            f"q {state.queue_depth}/{state.peak_queue_depth} · stale {state.stale_ratio():.0%}",
+            style="yellow",
+        ),
         Text(f"broker {_optional_ms(state.average_broker_latency_ms())}", style="cyan"),
     )
     return Panel(table, border_style="bright_blue")

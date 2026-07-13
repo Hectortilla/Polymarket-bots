@@ -15,7 +15,7 @@ from polybot.cli.entrypoint import (
 from polybot.cli.factories import load_bot
 from polybot.cli.markets import resolve_plan_markets
 from polybot.cli.runner import _wait_for_stream_plan_change, run_bot
-from polybot.cli.streams import StreamKind, merge_streams
+from polybot.cli.streams import StreamKind, StreamTelemetry, merge_streams
 from polybot.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
@@ -118,6 +118,18 @@ def test_merge_streams_preserves_typed_stream_kind() -> None:
         (StreamKind.BOOK, 2),
         (StreamKind.WALLET, 3),
     ]
+
+
+def test_stream_telemetry_tracks_current_and_peak_queue_depth() -> None:
+    telemetry = StreamTelemetry()
+    telemetry.enqueued()
+    telemetry.enqueued()
+    telemetry.dequeued()
+    telemetry.dequeued()
+    telemetry.dequeued()
+
+    assert telemetry.queue_depth == 0
+    assert telemetry.peak_queue_depth == 2
 
 
 def test_merge_streams_routes_market_trade_hints_separately() -> None:
