@@ -93,6 +93,7 @@ class DashboardState:
     price_stale_history: dict[str, deque[bool]] = field(default_factory=dict)
     wallet_value_history: deque[float] = field(default_factory=deque)
     wallet_value_stale_history: deque[bool] = field(default_factory=deque)
+    chart_sample_times: deque[float] = field(default_factory=deque)
     time_zoom_level: int = 0
     market_ticker_at: dict[str, float] = field(default_factory=dict)
 
@@ -136,6 +137,8 @@ class DashboardState:
 
     def sample(self, width: int, now_ms: int | None = None) -> None:
         max_points = MAX_CHART_HISTORY_POINTS
+        self.chart_sample_times.append(time() if now_ms is None else now_ms / 1000)
+        _trim(self.chart_sample_times, max_points)
         for token_id in self.chart_tokens:
             history = self.price_history[token_id]
             stale_history = self.price_stale_history[token_id]
@@ -167,13 +170,27 @@ class DashboardState:
         _trim(self.wallet_value_stale_history, max_points)
 
     def chart_window_points(self, width: int) -> int:
-        base_points = max(MIN_CHART_WINDOW_POINTS, min(MAX_CHART_WINDOW_POINTS, width - 12))
+        base_points = self.chart_display_points(width)
         if self.time_zoom_level < 0:
             return max(
                 MIN_CHART_WINDOW_POINTS,
                 base_points // (2 ** (-self.time_zoom_level)),
             )
         return min(MAX_CHART_HISTORY_POINTS, base_points * (2**self.time_zoom_level))
+
+    @staticmethod
+    def chart_display_points(width: int) -> int:
+        chart_panel_width = width * 2 // 3 if width >= 110 else width
+        return max(
+            MIN_CHART_WINDOW_POINTS,
+            min(MAX_CHART_WINDOW_POINTS, chart_panel_width - 12),
+        )
+
+    def visible_time_range(self, width: int) -> tuple[float, float] | None:
+        timestamps = list(self.chart_sample_times)[-self.chart_window_points(width) :]
+        if not timestamps:
+            return None
+        return timestamps[0], timestamps[-1]
 
     def zoom_time(self, direction: int) -> bool:
         updated_level = min(

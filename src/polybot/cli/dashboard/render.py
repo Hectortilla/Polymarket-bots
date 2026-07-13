@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from datetime import datetime
 from decimal import Decimal
 from math import isnan
 
@@ -24,6 +25,7 @@ PRICE_CHART_MAX = 1.0
 WALLET_VALUE_CHART_MARGIN_RATIO = 0.15
 WALLET_VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
 MIN_WALLET_VALUE_CHART_MARGIN = 0.01
+CHART_Y_AXIS_WIDTH = 10
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
 DIMMED_SERIES_COLORS = tuple(f"\033[2m{color}" for color in SERIES_COLORS)
 DIMMED_WALLET_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
@@ -57,11 +59,19 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
         minimum=PRICE_CHART_MIN,
         maximum=PRICE_CHART_MAX,
     )
+    time_range = _chart_time_range(state, width)
     if height < 30:
-        return Panel(Group(legend, price), title="Market price", border_style="cyan")
-    window = state.chart_window_points(width)
-    wallet_values = list(state.wallet_value_history)[-window:]
-    wallet_stale_samples = deque(state.wallet_value_stale_history, maxlen=window)
+        return Panel(
+            Group(legend, price, time_range),
+            title="Market price",
+            border_style="cyan",
+        )
+    wallet_values, wallet_stale_samples = _visible_chart_samples(
+        state.wallet_value_history,
+        state.wallet_value_stale_history,
+        state,
+        width,
+    )
     wallet_minimum, wallet_maximum = _padded_bounds(wallet_values)
     wallet_value = _chart(
         _split_stale_samples(wallet_values, wallet_stale_samples),
@@ -81,6 +91,7 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
                 style="bright_green",
             ),
             wallet_value,
+            time_range,
         ),
         title="Market price and paper wallet value",
         border_style="cyan",
@@ -126,13 +137,50 @@ def _price_chart_series(
 ) -> tuple[list[list[float]], tuple[str, ...]]:
     series: list[list[float]] = []
     colors: list[str] = []
-    window = state.chart_window_points(width)
     for index, token_id in enumerate(state.chart_tokens):
-        values = list(state.price_history[token_id])[-window:]
-        stale = deque(state.price_stale_history.get(token_id, deque()), maxlen=window)
+        values, stale = _visible_chart_samples(
+            state.price_history[token_id],
+            state.price_stale_history.get(token_id, deque()),
+            state,
+            width,
+        )
         series.extend(_split_stale_samples(values, stale))
         colors.extend((SERIES_COLORS[index], DIMMED_SERIES_COLORS[index]))
     return series, tuple(colors)
+
+
+def _visible_chart_samples(
+    values: deque[float],
+    stale_samples: deque[bool],
+    state: DashboardState,
+    width: int,
+) -> tuple[list[float], deque[bool]]:
+    window = state.chart_window_points(width)
+    display_points = state.chart_display_points(width)
+    timestamp_count = min(window, len(state.chart_sample_times))
+    source_count = timestamp_count or min(window, len(values))
+    if source_count == 0:
+        return [], deque()
+    visible_values = list(values)[-source_count:]
+    visible_stale = list(stale_samples)[-source_count:]
+    visible_values = [float("nan")] * (source_count - len(visible_values)) + visible_values
+    visible_stale = [False] * (source_count - len(visible_stale)) + visible_stale
+    indices = _resample_indices(source_count, display_points)
+    return (
+        [visible_values[index] for index in indices],
+        deque(visible_stale[index] for index in indices),
+    )
+
+
+def _resample_indices(source_points: int, display_points: int) -> list[int]:
+    if source_points == 0:
+        return []
+    if display_points == 1:
+        return [source_points - 1]
+    return [
+        round(index * (source_points - 1) / (display_points - 1))
+        for index in range(display_points)
+    ]
 
 
 def _split_stale_samples(
@@ -169,13 +217,26 @@ def _price_chart_height(width: int, height: int) -> int:
     if width < 110:
         available_height = available_height * 2 // 3  # Chart/activity split.
     wallet_height = 8 if height >= 30 else 0
-    return max(5, min(18, available_height - wallet_height - 2))
+    return max(5, min(18, available_height - wallet_height - 3))
 
 
 def _time_window_label(zoom_level: int) -> str:
     if zoom_level == 0:
         return "normal"
     return f"{2**abs(zoom_level)}x {'closer' if zoom_level < 0 else 'wider'}"
+
+
+def _chart_time_range(state: DashboardState, width: int) -> Text:
+    visible_range = state.visible_time_range(width)
+    if visible_range is None:
+        return Text("time range unavailable", style="dim", justify="center")
+    started_at, ended_at = visible_range
+    label = Text(style="dim cyan")
+    label.append(" " * CHART_Y_AXIS_WIDTH)
+    label.append(datetime.fromtimestamp(started_at).strftime("%H:%M:%S"))
+    label.append(" " * max(1, state.chart_display_points(width) - 16))
+    label.append(datetime.fromtimestamp(ended_at).strftime("%H:%M:%S"))
+    return label
 
 
 def _ticker_panel(state: DashboardState) -> Panel:

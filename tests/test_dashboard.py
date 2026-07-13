@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+from datetime import datetime
 from decimal import Decimal
 from io import StringIO
 from math import isnan, nan
@@ -11,6 +12,7 @@ from rich.console import Console
 from polybot.cli.dashboard.render import (
     PRICE_CHART_MAX,
     PRICE_CHART_MIN,
+    _chart_time_range,
     _fixed_ms,
     _price_chart_height,
     render_dashboard,
@@ -656,7 +658,7 @@ def test_dashboard_wallet_chart_padding_follows_observed_variance(monkeypatch) -
 def test_dashboard_price_chart_is_taller_on_normal_terminal_heights() -> None:
     assert _price_chart_height(120, 35) == 18
     assert _price_chart_height(120, 100) == 18
-    assert _price_chart_height(80, 35) == 10
+    assert _price_chart_height(80, 35) == 9
 
 
 def test_dashboard_time_zoom_retains_history_and_changes_window() -> None:
@@ -671,6 +673,40 @@ def test_dashboard_time_zoom_retains_history_and_changes_window() -> None:
     assert state.chart_window_points(100) == 44
     assert state.zoom_time(1)
     assert state.reset_time_zoom() is False
+
+
+def test_dashboard_time_zoom_keeps_the_rendered_chart_width(monkeypatch) -> None:
+    state = DashboardState(chart_tokens=deque(("token",)))
+    state.price_history = {"token": deque(float(value) / 200 for value in range(200))}
+    state.price_stale_history = {"token": deque(False for _ in range(200))}
+    state.wallet_value_history = deque(float(value) for value in range(200))
+    state.wallet_value_stale_history = deque(False for _ in range(200))
+    state.chart_sample_times = deque(float(value) for value in range(200))
+    rendered_widths: list[int] = []
+
+    def plot(series, config):
+        rendered_widths.append(len(series[0]))
+        return "chart"
+
+    monkeypatch.setattr("polybot.cli.dashboard.render.asciichartpy.plot", plot)
+
+    render_dashboard(state, 120, 35)
+    state.zoom_time(-1)
+    render_dashboard(state, 120, 35)
+    state.zoom_time(2)
+    render_dashboard(state, 120, 35)
+
+    assert rendered_widths == [68, 68, 68, 68, 68, 68]
+
+
+def test_dashboard_shows_visible_time_range_endpoints() -> None:
+    state = DashboardState()
+    state.chart_sample_times = deque((1_700_000_000.0, 1_700_000_010.0))
+
+    label = _chart_time_range(state, 100).plain
+
+    assert datetime.fromtimestamp(1_700_000_000).strftime("%H:%M:%S") in label
+    assert datetime.fromtimestamp(1_700_000_010).strftime("%H:%M:%S") in label
 
 
 def test_dashboard_keyboard_time_zoom_controls_change_only_chart_window() -> None:
@@ -738,14 +774,14 @@ def test_dashboard_renders_stale_samples_in_dimmed_series(monkeypatch) -> None:
     price_series, price_config = calls[0]
     wallet_series, wallet_config = calls[1]
     assert price_series[0][0] == 0.45
-    assert isnan(price_series[0][1])
+    assert isnan(price_series[0][-1])
     assert isnan(price_series[1][0])
-    assert price_series[1][1] == 0.55
+    assert price_series[1][-1] == 0.55
     assert len(price_config["colors"]) == 2
     assert wallet_series[0][0] == 100.0
-    assert isnan(wallet_series[0][1])
+    assert isnan(wallet_series[0][-1])
     assert isnan(wallet_series[1][0])
-    assert wallet_series[1][1] == 110.0
+    assert wallet_series[1][-1] == 110.0
     assert len(wallet_config["colors"]) == 2
 
 

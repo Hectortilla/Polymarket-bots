@@ -153,7 +153,9 @@ dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
 in memory, uses `asciichartpy` for fixed-scale price and variance-padded
 executable-wallet-value charts. The price chart is taller for clearer y-axis
 resolution. Press `z` to narrow the displayed time window, `x` to widen it,
-and `r` to reset it; these dashboard-only controls never affect bot execution.
+and `r` to reset it. Zooming resamples history into a fixed chart width, and
+the visible range's start and end times are shown below the plots. These
+dashboard-only controls never affect bot execution.
 Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
 dashboard renders independently of bot execution.
