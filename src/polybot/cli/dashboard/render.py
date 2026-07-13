@@ -22,7 +22,8 @@ MISSING_METRIC = "N/A"
 PRICE_CHART_MIN = 0.0
 PRICE_CHART_MAX = 1.0
 WALLET_VALUE_CHART_MARGIN_RATIO = 0.15
-MIN_WALLET_VALUE_CHART_MARGIN = 1.0
+WALLET_VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
+MIN_WALLET_VALUE_CHART_MARGIN = 0.01
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
 DIMMED_SERIES_COLORS = tuple(f"\033[2m{color}" for color in SERIES_COLORS)
 DIMMED_WALLET_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
@@ -46,22 +47,24 @@ def render_dashboard(state: DashboardState, width: int, height: int) -> Layout:
 
 
 def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
-    series, colors = _price_chart_series(state)
+    series, colors = _price_chart_series(state, width)
     legend = _market_legend(state)
     price = _chart(
         series,
         colors,
-        max(5, min(12, height // 3)),
+        _price_chart_height(width, height),
         "No two-sided market prices",
         minimum=PRICE_CHART_MIN,
         maximum=PRICE_CHART_MAX,
     )
     if height < 30:
         return Panel(Group(legend, price), title="Market price", border_style="cyan")
-    wallet_values = list(state.wallet_value_history)
+    window = state.chart_window_points(width)
+    wallet_values = list(state.wallet_value_history)[-window:]
+    wallet_stale_samples = deque(state.wallet_value_stale_history, maxlen=window)
     wallet_minimum, wallet_maximum = _padded_bounds(wallet_values)
     wallet_value = _chart(
-        _split_stale_samples(wallet_values, state.wallet_value_stale_history),
+        _split_stale_samples(wallet_values, wallet_stale_samples),
         (asciichartpy.lightgreen, DIMMED_WALLET_VALUE_COLOR),
         5,
         "Wallet value unavailable",
@@ -73,7 +76,10 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
             legend,
             price,
             Text("Executable wallet value", style="bold green"),
-            Text("green: current · dim green: stale", style="bright_green"),
+            Text(
+                f"green: current · dim green: stale · z/x time zoom ({_time_window_label(state.time_zoom_level)}) · r reset",
+                style="bright_green",
+            ),
             wallet_value,
         ),
         title="Market price and paper wallet value",
@@ -115,12 +121,15 @@ def _chart(
     return Text.from_ansi(chart)
 
 
-def _price_chart_series(state: DashboardState) -> tuple[list[list[float]], tuple[str, ...]]:
+def _price_chart_series(
+    state: DashboardState, width: int
+) -> tuple[list[list[float]], tuple[str, ...]]:
     series: list[list[float]] = []
     colors: list[str] = []
+    window = state.chart_window_points(width)
     for index, token_id in enumerate(state.chart_tokens):
-        values = list(state.price_history[token_id])
-        stale = state.price_stale_history.get(token_id, deque())
+        values = list(state.price_history[token_id])[-window:]
+        stale = deque(state.price_stale_history.get(token_id, deque()), maxlen=window)
         series.extend(_split_stale_samples(values, stale))
         colors.extend((SERIES_COLORS[index], DIMMED_SERIES_COLORS[index]))
     return series, tuple(colors)
@@ -142,12 +151,31 @@ def _padded_bounds(values: list[float]) -> tuple[float | None, float | None]:
         return None, None
     minimum = min(displayed_values)
     maximum = max(displayed_values)
+    value_range = maximum - minimum
     margin = max(
-        (maximum - minimum) * WALLET_VALUE_CHART_MARGIN_RATIO,
-        max(abs(minimum), abs(maximum)) * WALLET_VALUE_CHART_MARGIN_RATIO,
+        value_range * WALLET_VALUE_CHART_MARGIN_RATIO,
         MIN_WALLET_VALUE_CHART_MARGIN,
     )
+    if value_range == 0:
+        margin = max(
+            margin,
+            max(abs(minimum), abs(maximum)) * WALLET_VALUE_FLAT_CHART_MARGIN_RATIO,
+        )
     return minimum - margin, maximum + margin
+
+
+def _price_chart_height(width: int, height: int) -> int:
+    available_height = height - 5  # Persistent status row.
+    if width < 110:
+        available_height = available_height * 2 // 3  # Chart/activity split.
+    wallet_height = 8 if height >= 30 else 0
+    return max(5, min(18, available_height - wallet_height - 2))
+
+
+def _time_window_label(zoom_level: int) -> str:
+    if zoom_level == 0:
+        return "normal"
+    return f"{2**abs(zoom_level)}x {'closer' if zoom_level < 0 else 'wider'}"
 
 
 def _ticker_panel(state: DashboardState) -> Panel:
@@ -190,12 +218,10 @@ def _status_panel(state: DashboardState) -> Panel:
         Text(f"cash {cash} · equity {equity} · PnL {pnl}", style="bold green"),
         Text(f"fees {fees} · positions {positions}", style="white"),
         Text(
-            f"book lag {_optional_ms(state.latest_book_lag_ms())} · "
-            f"p95 {_optional_ms(state.book_lag_percentile(0.95))} · "
-            f"max {_optional_ms(state.maximum_book_lag_ms())} · "
-            f"q {state.queue_depth}/{state.peak_queue_depth} · stale {state.stale_ratio():.0%} · "
-            f"drop {state.book_dropped_count}/{state.book_received_count} "
-            f"{state.cumulative_book_drop_ratio():.0%} · recent {state.recent_book_drop_ratio():.0%}",
+            f"book lag {_fixed_ms(state.latest_book_lag_ms())} · "
+            f"p95 {_fixed_ms(state.book_lag_percentile(0.95))} · "
+            f"max {_fixed_ms(state.maximum_book_lag_ms())} · "
+            f"q {state.queue_depth}/{state.peak_queue_depth} · stale {state.stale_ratio():.0%}",
             style="yellow",
         ),
         Text(f"broker {_optional_ms(state.average_broker_latency_ms())}", style="cyan"),
@@ -213,3 +239,7 @@ def _optional_money(value: Decimal | None) -> str:
 
 def _optional_ms(value: int | None) -> str:
     return MISSING_METRIC if value is None else f"{value}ms"
+
+
+def _fixed_ms(value: int | None) -> str:
+    return f"{value:6d}ms" if value is not None else f"{MISSING_METRIC:>8}"

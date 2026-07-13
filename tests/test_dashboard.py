@@ -11,10 +11,16 @@ from rich.console import Console
 from polybot.cli.dashboard.render import (
     PRICE_CHART_MAX,
     PRICE_CHART_MIN,
+    _fixed_ms,
+    _price_chart_height,
     render_dashboard,
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
-from polybot.cli.dashboard.state import MAX_CHART_TOKENS, DashboardState
+from polybot.cli.dashboard.state import (
+    MAX_CHART_HISTORY_POINTS,
+    MAX_CHART_TOKENS,
+    DashboardState,
+)
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import (
     BrokerFailed,
@@ -307,6 +313,12 @@ def test_dashboard_tracks_stream_health_samples() -> None:
     assert state.book_lag_percentile(0.95) == 6_100
     assert state.maximum_book_lag_ms() == 6_100
     assert state.stale_ratio() == 0.5
+
+
+def test_dashboard_formats_book_lag_with_stable_width() -> None:
+    assert _fixed_ms(9) == "     9ms"
+    assert _fixed_ms(12_345) == " 12345ms"
+    assert _fixed_ms(None) == "     N/A"
 
 
 def test_dashboard_tracks_cumulative_and_recent_book_drop_ratios() -> None:
@@ -620,6 +632,56 @@ def test_dashboard_chart_bounds_fix_prices_and_pad_wallet_value(monkeypatch) -> 
     assert price_config["max"] == PRICE_CHART_MAX
     assert wallet_config["min"] < 100.0
     assert wallet_config["max"] > 110.0
+
+
+def test_dashboard_wallet_chart_padding_follows_observed_variance(monkeypatch) -> None:
+    state = DashboardState(chart_tokens=deque(("token",)))
+    state.price_history = {"token": deque((0.45, 0.55))}
+    state.wallet_value_history = deque((100.0, 100.1))
+    configurations: list[dict[str, object]] = []
+
+    def plot(series, config):
+        configurations.append(config)
+        return "chart"
+
+    monkeypatch.setattr("polybot.cli.dashboard.render.asciichartpy.plot", plot)
+
+    render_dashboard(state, 120, 35)
+
+    wallet_config = configurations[1]
+    assert wallet_config["min"] == pytest.approx(99.985)
+    assert wallet_config["max"] == pytest.approx(100.115)
+
+
+def test_dashboard_price_chart_is_taller_on_normal_terminal_heights() -> None:
+    assert _price_chart_height(120, 35) == 18
+    assert _price_chart_height(120, 100) == 18
+    assert _price_chart_height(80, 35) == 10
+
+
+def test_dashboard_time_zoom_retains_history_and_changes_window() -> None:
+    state = DashboardState()
+    for value in range(MAX_CHART_HISTORY_POINTS + 1):
+        state.wallet_value_history.append(float(value))
+    state.sample(100)
+
+    assert len(state.wallet_value_history) == MAX_CHART_HISTORY_POINTS
+    assert state.chart_window_points(100) == 88
+    assert state.zoom_time(-1)
+    assert state.chart_window_points(100) == 44
+    assert state.zoom_time(1)
+    assert state.reset_time_zoom() is False
+
+
+def test_dashboard_keyboard_time_zoom_controls_change_only_chart_window() -> None:
+    dashboard = TerminalDashboard(Console(width=80, height=24))
+
+    dashboard._handle_key("z")
+    assert dashboard._state.time_zoom_level == -1
+    dashboard._handle_key("x")
+    assert dashboard._state.time_zoom_level == 0
+    dashboard._handle_key("r")
+    assert dashboard._state.time_zoom_level == 0
 
 
 def test_dashboard_samples_executable_wallet_value() -> None:

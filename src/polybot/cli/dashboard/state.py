@@ -31,6 +31,11 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 
 MAX_TICKER_ROWS = 40
 MAX_CHART_TOKENS = len(SERIES_PALETTE)
+MAX_CHART_HISTORY_POINTS = 720
+MIN_CHART_WINDOW_POINTS = 12
+MAX_CHART_WINDOW_POINTS = 120
+MIN_TIME_ZOOM_LEVEL = -3
+MAX_TIME_ZOOM_LEVEL = 3
 EVENT_RATE_WINDOW_SECONDS = 10
 MARKET_TICKER_INTERVAL_SECONDS = 1
 LATENCY_SAMPLE_LIMIT = 100
@@ -88,6 +93,7 @@ class DashboardState:
     price_stale_history: dict[str, deque[bool]] = field(default_factory=dict)
     wallet_value_history: deque[float] = field(default_factory=deque)
     wallet_value_stale_history: deque[bool] = field(default_factory=deque)
+    time_zoom_level: int = 0
     market_ticker_at: dict[str, float] = field(default_factory=dict)
 
     def apply(self, event: RuntimeEvent) -> None:
@@ -129,7 +135,7 @@ class DashboardState:
                 self._ticker("bold red", f"RUN FAILED {event.error}")
 
     def sample(self, width: int, now_ms: int | None = None) -> None:
-        max_points = max(12, min(120, width - 12))
+        max_points = MAX_CHART_HISTORY_POINTS
         for token_id in self.chart_tokens:
             history = self.price_history[token_id]
             stale_history = self.price_stale_history[token_id]
@@ -159,6 +165,31 @@ class DashboardState:
         self.wallet_value_stale_history.append(is_stale)
         _trim(self.wallet_value_history, max_points)
         _trim(self.wallet_value_stale_history, max_points)
+
+    def chart_window_points(self, width: int) -> int:
+        base_points = max(MIN_CHART_WINDOW_POINTS, min(MAX_CHART_WINDOW_POINTS, width - 12))
+        if self.time_zoom_level < 0:
+            return max(
+                MIN_CHART_WINDOW_POINTS,
+                base_points // (2 ** (-self.time_zoom_level)),
+            )
+        return min(MAX_CHART_HISTORY_POINTS, base_points * (2**self.time_zoom_level))
+
+    def zoom_time(self, direction: int) -> bool:
+        updated_level = min(
+            MAX_TIME_ZOOM_LEVEL,
+            max(MIN_TIME_ZOOM_LEVEL, self.time_zoom_level + direction),
+        )
+        if updated_level == self.time_zoom_level:
+            return False
+        self.time_zoom_level = updated_level
+        return True
+
+    def reset_time_zoom(self) -> bool:
+        if self.time_zoom_level == 0:
+            return False
+        self.time_zoom_level = 0
+        return True
 
     def executable_equity(self, now_ms: int | None = None) -> Decimal | None:
         if self.portfolio is None:
@@ -407,7 +438,7 @@ def _best_ask(book: BookSnapshot | None) -> Decimal | None:
 
 
 def short_token(token_id: str) -> str:
-    return token_id if len(token_id) <= 12 else f"{token_id[:6]}…{token_id[-4:]}"
+    return token_id if len(token_id) <= 12 else f"{token_id[:7]}…{token_id[-4:]}"
 
 
 def _side_style(side: Side) -> str:

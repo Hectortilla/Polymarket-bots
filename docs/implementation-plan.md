@@ -292,11 +292,13 @@ Status: done.
   dispatch outcomes, orders, fills, and paper portfolio snapshots.
 - Decorate the CLI broker without changing its public order/fill contract.
 - Render a Rich dashboard with an `asciichartpy` fixed-scale multi-token price
-  chart, padded executable-wallet-value curve, activity ticker, and persistent
-  status metrics.
+  chart with a taller plotting area, variance-padded executable-wallet-value
+  curve, activity ticker, and persistent status metrics. Support terminal-only
+  time-window controls: `z` zooms in, `x` zooms out, and `r` resets.
 - Extend stream health with run-lifetime raw/coalesced book counts, cumulative
   dropped/received ratio, and a recent ratio over the last 100 book-bearing
-  health-counter deltas. Preserve lifetime counters and peak queue depth across
+  health-counter deltas; retain these in telemetry state without displaying
+  the drop metrics in the dashboard status row. Preserve lifetime counters and peak queue depth across
   dynamic stream-plan rebuilds while resetting current depth per generation.
 - Enable by default and support `--no-dashboard` for headless operation (with
   `--dashboard` retained as the explicit positive form).

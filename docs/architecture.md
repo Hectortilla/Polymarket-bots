@@ -150,15 +150,17 @@ The CLI enables its terminal dashboard by default and accepts `--no-dashboard`
 for headless operation. It may attach a fail-open `RuntimeObserver` without exposing it to bots,
 adapters, or paper execution. The observer receives lifecycle, stream,
 dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
-in memory, uses `asciichartpy` for fixed-scale price and padded
-executable-wallet-value charts. Expired market data retains its last plotted
+in memory, uses `asciichartpy` for fixed-scale price and variance-padded
+executable-wallet-value charts. The price chart is taller for clearer y-axis
+resolution. Press `z` to narrow the displayed time window, `x` to widen it,
+and `r` to reset it; these dashboard-only controls never affect bot execution.
+Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
 dashboard renders independently of bot execution.
 
 Stream health distinguishes local book coalescing from upstream SDK loss. It
 reports run-lifetime raw book arrivals and pending snapshots superseded before
-dispatch, plus cumulative and recent drop ratios. The recent ratio aggregates
-the last 100 health-counter deltas that contain book arrivals. Queue depth is
+dispatch, plus cumulative and recent drop ratios for telemetry state. Queue depth is
 reset when a dynamic subscription generation closes, while lifetime counts and
 peak depth continue across stream-plan rebuilds.
 

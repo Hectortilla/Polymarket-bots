@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+import select
+import sys
 from threading import Lock
 from traceback import format_exception
 
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+
+try:
+    import termios
+    import tty
+except ImportError:  # pragma: no cover - non-POSIX terminals do not support cbreak input.
+    termios = None
+    tty = None
 
 from polybot.cli.dashboard.render import render_dashboard
 from polybot.cli.dashboard.state import DashboardState
@@ -27,8 +36,11 @@ class TerminalDashboard:
         self._task: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
         self._state_lock = Lock()
+        self._input_task: asyncio.Task[None] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def start(self, config: BotConfig) -> None:
+        self._loop = asyncio.get_running_loop()
         with self._state_lock:
             self._state.book_max_age_ms = config.book_max_age_ms
         self._live = Live(
@@ -42,6 +54,7 @@ class TerminalDashboard:
         try:
             await asyncio.to_thread(self._live.start, refresh=True)
             self._task = asyncio.create_task(self._render_loop())
+            self._input_task = asyncio.create_task(self._read_keys())
         except Exception as error:
             cleanup_error = await self._close_live()
             self._report_failure(error, cleanup_error)
@@ -53,6 +66,10 @@ class TerminalDashboard:
         self._wake.set()
 
     async def stop(self) -> None:
+        if self._input_task is not None:
+            self._input_task.cancel()
+            await asyncio.gather(self._input_task, return_exceptions=True)
+            self._input_task = None
         if self._task is not None:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
@@ -82,6 +99,37 @@ class TerminalDashboard:
         except Exception as error:
             cleanup_error = await self._close_live()
             self._report_failure(error, cleanup_error)
+
+    async def _read_keys(self) -> None:
+        if termios is None or tty is None or not sys.stdin.isatty():
+            return
+        await asyncio.to_thread(self._read_terminal_keys)
+
+    def _read_terminal_keys(self) -> None:
+        file_descriptor = sys.stdin.fileno()
+        settings = termios.tcgetattr(file_descriptor)
+        try:
+            tty.setcbreak(file_descriptor)
+            while self._live is not None:
+                ready, _, _ = select.select((sys.stdin,), (), (), DASHBOARD_REFRESH_SECONDS)
+                if ready:
+                    self._handle_key(sys.stdin.read(1))
+        finally:
+            termios.tcsetattr(file_descriptor, termios.TCSADRAIN, settings)
+
+    def _handle_key(self, key: str) -> None:
+        with self._state_lock:
+            if key.lower() == "z":
+                changed = self._state.zoom_time(-1)
+            elif key.lower() == "x":
+                changed = self._state.zoom_time(1)
+            elif key.lower() == "r":
+                changed = self._state.reset_time_zoom()
+            else:
+                changed = False
+        if changed:
+            if self._loop is not None:
+                self._loop.call_soon_threadsafe(self._wake.set)
 
     def _render(self) -> None:
         live = self._live
