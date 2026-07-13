@@ -31,6 +31,24 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "subProcess": true
+    },
+    {
+      "name": "Run polybot CLI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "polybot.cli",
+      "args": [
+        "--bot",
+        "polybot.my_bot:create"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true
     }
   ],
   "compounds": [
