@@ -181,9 +181,9 @@ Implementation notes:
 - Reads for multiple wallets use bounded concurrency, deterministic timestamp
   ordering, wallet-scoped source dedupe, and explicit per-wallet failures.
 - The pinned SDK does not expose an arbitrary-wallet trade stream. The
-  `WalletActivityStream` boundary therefore accepts an injected compatible
-  low-latency source and fails closed when none is configured; Data API reads
-  remain bootstrap/reconciliation or explicit degraded fallback.
+  `WalletActivityStream` boundary supports an injected compatible low-latency
+  source and otherwise uses SDK-backed Data API polling as its explicit
+  degraded fallback. It fails closed only when neither source is configured.
 
 ## Slice 5: Runner CLI
 
@@ -220,8 +220,10 @@ Implementation notes:
   coalesce by token ID, idempotent market-trade wake hints coalesce by condition
   ID, and wallet trades remain lossless FIFO events. A superseded pending book
   is counted as a local coalescing drop; generation-close cleanup is not.
-- Wallet streams remain injected because the pinned SDK does not provide an
-  arbitrary-wallet stream; configuring wallets without a source fails closed.
+- The CLI supplies SDK-backed Data API polling for wallet streams because the
+  pinned SDK does not provide an arbitrary-wallet stream. Compatible injected
+  sources remain optional low-latency additions; a stream fails closed only
+  when neither a client nor a source is configured.
 - CLI paper runs use an atomic file-backed source-claim store under
   `.bot-state/` to preserve wallet-event idempotency across restarts without
   adding a database dependency.

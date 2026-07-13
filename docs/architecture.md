@@ -20,7 +20,9 @@ does not yet implement authenticated clients or an arbitrary-wallet trade
 stream. The CLI subscribes only to current markets, resolves next markets
 best-effort for rollover preparation, and rebuilds its current subscriptions
 when a dynamic bot's active stream plan changes. It fails closed when wallet
-addresses are configured without an injected compatible source.
+addresses are configured without either the SDK-backed Data API client or an
+injected compatible source. The CLI supplies the SDK-backed polling client;
+an injected source is optional and can provide lower-latency wallet events.
 CLI paper runs persist normalized source-event claims under `.bot-state/` so a
 restart cannot submit the same wallet-following source event twice. Direct
 `PaperBroker` users may inject another idempotency store; tests retain the

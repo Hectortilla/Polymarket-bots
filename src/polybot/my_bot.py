@@ -1,7 +1,5 @@
-import os
-
-from polybot.examples.example_dynamic_random_hold import ExampleDynamicRandomHoldBot
+from polybot.examples.example_fixed_dollar_wallet_copy import FixedDollarWalletCopyBot
 
 
-def create(config):
-    return ExampleDynamicRandomHoldBot("btc-updown-5m")
+def create(_config):
+    return FixedDollarWalletCopyBot()
