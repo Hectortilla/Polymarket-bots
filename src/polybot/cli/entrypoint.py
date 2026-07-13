@@ -14,7 +14,9 @@ from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
 from .runner import run_bot
 
-INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = "--dashboard requires an interactive terminal"
+INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (
+    "dashboard requires an interactive terminal; use --no-dashboard for headless runs"
+)
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one Polymarket bot in paper mode")
@@ -24,8 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dashboard",
         action=argparse.BooleanOptionalAction,
-        default=None,
-        help="show the live terminal dashboard (default: enabled on an interactive terminal)",
+        default=True,
+        help="show the live terminal dashboard (default; use --no-dashboard for headless mode)",
     )
     args = parser.parse_args(argv)
     load_dotenv(args.dotenv)
@@ -51,8 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _dashboard_enabled(value: bool | None) -> bool:
+def _dashboard_enabled(value: bool) -> bool:
     interactive = sys.stdout.isatty() and os.getenv("TERM", "").lower() != "dumb"
     if value is True and not interactive:
         raise ValueError(INTERACTIVE_TERMINAL_REQUIRED_MESSAGE)
-    return interactive if value is None else value
+    return value

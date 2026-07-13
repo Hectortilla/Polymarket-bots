@@ -139,9 +139,9 @@ Paper-broker tests should use deterministic latency and book sequences:
 
 ## Terminal Dashboard
 
-The CLI dashboard is enabled automatically on interactive terminals. It is an
-external observer: bots should not import dashboard classes or emit display
-events. Use `--dashboard` to require it or `--no-dashboard` for headless runs.
+The CLI dashboard is enabled by default. It is an external observer: bots
+should not import dashboard classes or emit display events. Use
+`--no-dashboard` for headless runs.
 It shows market/wallet activity, paper orders and fills, multi-token prices,
 and executable paper wallet value without changing strategy behavior. When a
 market book expires, its last chart value stays visible in a dimmed color.

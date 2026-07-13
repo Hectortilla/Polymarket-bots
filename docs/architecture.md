@@ -135,7 +135,8 @@ crossed books, and duplicate source events.
 
 ## Terminal Observability
 
-The CLI may attach a fail-open `RuntimeObserver` without exposing it to bots,
+The CLI enables its terminal dashboard by default and accepts `--no-dashboard`
+for headless operation. It may attach a fail-open `RuntimeObserver` without exposing it to bots,
 adapters, or paper execution. The observer receives lifecycle, stream,
 dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
 in memory, uses `asciichartpy` for fixed-scale price and padded

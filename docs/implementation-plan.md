@@ -290,7 +290,8 @@ Status: done.
 - Render a Rich dashboard with an `asciichartpy` fixed-scale multi-token price
   chart, padded executable-wallet-value curve, activity ticker, and persistent
   status metrics.
-- Auto-enable on usable TTY output and support `--dashboard` / `--no-dashboard`.
+- Enable by default and support `--no-dashboard` for headless operation (with
+  `--dashboard` retained as the explicit positive form).
 
 Acceptance:
 

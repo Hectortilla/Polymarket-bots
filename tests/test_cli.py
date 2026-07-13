@@ -60,7 +60,7 @@ def test_parse_overrides_rejects_invalid_values(value: str) -> None:
         parse_overrides([value])
 
 
-def test_dashboard_defaults_to_interactive_output(monkeypatch) -> None:
+def test_dashboard_defaults_to_enabled(monkeypatch) -> None:
     class Output:
         def isatty(self) -> bool:
             return True
@@ -68,7 +68,7 @@ def test_dashboard_defaults_to_interactive_output(monkeypatch) -> None:
     monkeypatch.setattr("polybot.cli.entrypoint.sys.stdout", Output())
     monkeypatch.setenv("TERM", "xterm-256color")
 
-    assert _dashboard_enabled(None) is True
+    assert _dashboard_enabled(True) is True
     assert _dashboard_enabled(False) is False
 
 
