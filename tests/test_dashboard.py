@@ -309,6 +309,67 @@ def test_dashboard_tracks_stream_health_samples() -> None:
     assert state.stale_ratio() == 0.5
 
 
+def test_dashboard_tracks_cumulative_and_recent_book_drop_ratios() -> None:
+    state = DashboardState()
+    assert state.cumulative_book_drop_ratio() == 0.0
+    assert state.recent_book_drop_ratio() == 0.0
+
+    state.apply(
+        StreamHealth(
+            1,
+            3,
+            10,
+            book_received_count=10,
+            book_dropped_count=2,
+        )
+    )
+    state.apply(
+        StreamHealth(
+            0,
+            3,
+            12,
+            book_received_count=15,
+            book_dropped_count=4,
+        )
+    )
+
+    assert state.book_received_count == 15
+    assert state.book_dropped_count == 4
+    assert state.cumulative_book_drop_ratio() == pytest.approx(4 / 15)
+    assert state.recent_book_drop_ratio() == pytest.approx(4 / 15)
+
+
+def test_dashboard_recent_book_drop_ratio_uses_last_100_book_deltas() -> None:
+    state = DashboardState()
+    received = 0
+    dropped = 0
+    for index in range(101):
+        received += 1
+        dropped += int(index == 0 or index == 100)
+        state.apply(
+            StreamHealth(
+                0,
+                1,
+                None,
+                book_received_count=received,
+                book_dropped_count=dropped,
+            )
+        )
+
+    assert state.cumulative_book_drop_ratio() == pytest.approx(2 / 101)
+    assert state.recent_book_drop_ratio() == pytest.approx(1 / 100)
+
+
+def test_dashboard_ignores_non_book_health_samples_for_recent_drop_window() -> None:
+    state = DashboardState()
+    state.apply(StreamHealth(0, 1, None, book_received_count=2, book_dropped_count=1))
+    for _ in range(150):
+        state.apply(StreamHealth(0, 1, None, book_received_count=2, book_dropped_count=1))
+
+    assert list(state.book_drop_samples) == [(2, 1)]
+    assert state.recent_book_drop_ratio() == 0.5
+
+
 def test_dashboard_keeps_chart_series_order_stable_on_book_updates() -> None:
     state = DashboardState()
     first = StreamReceived(

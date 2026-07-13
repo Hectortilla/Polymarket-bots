@@ -53,6 +53,13 @@ rejects updates whose token or condition identity disagrees with resolved
 metadata. REST remains the bootstrap and reconciliation path; the SDK market
 subscription is the live signal path.
 
+In pinned `polymarket-client==0.1.0b17`, CLOB market subscriptions construct a
+1,024-entry `AsyncSubscriptionHandle` queue. That SDK queue uses drop-oldest
+backpressure and exposes its own `dropped` counter. Those upstream SDK losses
+are distinct from the CLI's intentional per-token pending-book coalescing and
+are not included in the CLI book-drop ratio. The CLI policy requires no direct
+network integration and introduces no exception to the official-library rule.
+
 ## API Surfaces
 
 Gamma API: `https://gamma-api.polymarket.com`

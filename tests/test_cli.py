@@ -20,7 +20,12 @@ from polybot.cli.observability.events import RuntimeFailed, RuntimeState, Runtim
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
 from polybot.framework.config import BotConfig, BotMode
+from polybot.framework.context import BotContext
+from polybot.framework.events import Side
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import MarketPlan, MarketSubscription
+from polybot.framework.runner import BotRunner
 from polybot.polymarket.types import Market
 from polybot.polymarket.types import MarketTradeHint
 
@@ -98,25 +103,28 @@ def test_main_treats_keyboard_interrupt_as_graceful_shutdown(monkeypatch) -> Non
 
 
 def test_merge_streams_preserves_typed_stream_kind() -> None:
-    async def source(values: tuple[int, ...]) -> AsyncIterator[int]:
+    async def source(values) -> AsyncIterator[object]:
         for value in values:
             yield value
 
-    async def run() -> list[tuple[StreamKind, int]]:
+    first = _book("token", 1)
+    newest = _book("token", 2)
+    wallet = _wallet("wallet-1")
+
+    async def run() -> list[tuple[StreamKind, object]]:
         return [
             (item.kind, item.event)
             async for item in merge_streams(
                 (
-                    (StreamKind.BOOK, source((1, 2))),
-                    (StreamKind.WALLET, source((3,))),
+                    (StreamKind.BOOK, source((first, newest))),
+                    (StreamKind.WALLET, source((wallet,))),
                 )
             )
         ]
 
-    assert sorted(asyncio.run(run())) == [
-        (StreamKind.BOOK, 1),
-        (StreamKind.BOOK, 2),
-        (StreamKind.WALLET, 3),
+    assert asyncio.run(run()) == [
+        (StreamKind.BOOK, newest),
+        (StreamKind.WALLET, wallet),
     ]
 
 
@@ -130,6 +138,160 @@ def test_stream_telemetry_tracks_current_and_peak_queue_depth() -> None:
 
     assert telemetry.queue_depth == 0
     assert telemetry.peak_queue_depth == 2
+    assert telemetry.book_drop_ratio == 0.0
+
+
+def test_merge_streams_coalesces_books_independently_by_token() -> None:
+    telemetry = StreamTelemetry()
+
+    async def source() -> AsyncIterator[BookSnapshot]:
+        yield _book("one", 1)
+        yield _book("two", 2)
+        yield _book("one", 3)
+        yield _book("two", 4)
+
+    async def run() -> list[BookSnapshot]:
+        return [
+            item.event
+            async for item in merge_streams(
+                ((StreamKind.BOOK, source()),), telemetry=telemetry
+            )
+        ]
+
+    assert asyncio.run(run()) == [_book("one", 3), _book("two", 4)]
+    assert telemetry.book_received_count == 4
+    assert telemetry.book_dropped_count == 2
+    assert telemetry.book_drop_ratio == 0.5
+    assert telemetry.peak_queue_depth == 2
+    assert telemetry.queue_depth == 0
+
+
+def test_merge_streams_preserves_wallet_trades_and_coalesces_hints() -> None:
+    first_wallet = _wallet("wallet-1")
+    second_wallet = _wallet("wallet-2")
+    old_book = _book("token-a", 1)
+    new_book = _book("token-a", 2)
+    old_hint = MarketTradeHint("condition-a", "token-a", "market", 1)
+    new_hint = MarketTradeHint("condition-a", "token-a", "market", 2)
+    other_hint = MarketTradeHint("condition-b", "token-b", "market", 3)
+
+    async def source(values) -> AsyncIterator[object]:
+        for value in values:
+            yield value
+
+    async def run():
+        return [
+            item
+            async for item in merge_streams(
+                (
+                    (
+                        StreamKind.BOOK,
+                        source(
+                            (
+                                old_book,
+                                old_hint,
+                                new_book,
+                                new_hint,
+                                other_hint,
+                            )
+                        ),
+                    ),
+                    (StreamKind.WALLET, source((first_wallet, second_wallet))),
+                )
+            )
+        ]
+
+    events = asyncio.run(run())
+    assert [(item.kind, item.event) for item in events] == [
+        (StreamKind.BOOK, new_book),
+        (StreamKind.MARKET_HINT, new_hint),
+        (StreamKind.MARKET_HINT, other_hint),
+        (StreamKind.WALLET, first_wallet),
+        (StreamKind.WALLET, second_wallet),
+    ]
+
+
+def test_merge_streams_keeps_lifetime_counters_across_generations() -> None:
+    telemetry = StreamTelemetry()
+
+    async def source(token_id: str) -> AsyncIterator[BookSnapshot]:
+        yield _book(token_id, 1)
+        yield _book(token_id, 2)
+
+    async def consume(token_id: str) -> None:
+        async for _ in merge_streams(
+            ((StreamKind.BOOK, source(token_id)),), telemetry=telemetry
+        ):
+            pass
+
+    async def run() -> None:
+        await consume("first")
+        await consume("second")
+
+    asyncio.run(run())
+    assert telemetry.book_received_count == 4
+    assert telemetry.book_dropped_count == 2
+    assert telemetry.peak_queue_depth == 1
+    assert telemetry.queue_depth == 0
+
+
+def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> None:
+    entered_handler = asyncio.Event()
+    producer_finished = asyncio.Event()
+    release_handler = asyncio.Event()
+    now_ms = 0
+    telemetry = StreamTelemetry()
+
+    class SlowBot(BaseBot):
+        def __init__(self) -> None:
+            self.received_at_ms: list[int] = []
+
+        async def on_book(self, ctx, book) -> None:
+            self.received_at_ms.append(book.received_at_ms)
+            if len(self.received_at_ms) == 1:
+                entered_handler.set()
+                await release_handler.wait()
+
+    async def source() -> AsyncIterator[BookSnapshot]:
+        yield _book("token", 0)
+        await entered_handler.wait()
+        yield _book("token", 1_000)
+        yield _book("token", 2_000)
+        yield _book("token", 7_000)
+        producer_finished.set()
+
+    async def run() -> tuple[list[bool], list[int]]:
+        nonlocal now_ms
+        bot = SlowBot()
+        ctx = BotContext(
+            config=BotConfig(name="slow", book_max_age_ms=5_000),
+            broker=SimpleNamespace(),
+            markets=SimpleNamespace(),
+            books=SimpleNamespace(),
+            wallet_activity=SimpleNamespace(),
+        )
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: now_ms)
+
+        async def release() -> None:
+            nonlocal now_ms
+            await producer_finished.wait()
+            now_ms = 7_000
+            release_handler.set()
+
+        release_task = asyncio.create_task(release())
+        outcomes = []
+        async for item in merge_streams(
+            ((StreamKind.BOOK, source()),), telemetry=telemetry
+        ):
+            outcomes.append(await runner.dispatch_book(item.event))
+        await release_task
+        return [outcome.accepted for outcome in outcomes], bot.received_at_ms
+
+    accepted, received_at_ms = asyncio.run(run())
+    assert accepted == [True, True]
+    assert received_at_ms == [0, 7_000]
+    assert telemetry.book_received_count == 4
+    assert telemetry.book_dropped_count == 2
 
 
 def test_merge_streams_routes_market_trade_hints_separately() -> None:
@@ -517,4 +679,27 @@ def _market(slug: str) -> Market:
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=Decimal("0"),
+    )
+
+
+def _book(token_id: str, received_at_ms: int) -> BookSnapshot:
+    return BookSnapshot(
+        token_id=token_id,
+        bids=(BookLevel(Decimal("0.4"), Decimal("1")),),
+        asks=(BookLevel(Decimal("0.6"), Decimal("1")),),
+        received_at_ms=received_at_ms,
+    )
+
+
+def _wallet(source_id: str) -> WalletTradeEvent:
+    return WalletTradeEvent(
+        wallet="0x0000000000000000000000000000000000000001",
+        condition_id="condition",
+        token_id="token",
+        side=Side.BUY,
+        size=Decimal("1"),
+        price=Decimal("0.5"),
+        source_id=source_id,
+        trade_timestamp_ms=1,
+        observed_at_ms=1,
     )

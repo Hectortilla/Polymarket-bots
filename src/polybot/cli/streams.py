@@ -55,10 +55,22 @@ class StreamCompleted:
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class _BookMarker:
+    token_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _MarketHintMarker:
+    condition_id: str
+
+
 @dataclass(slots=True)
 class StreamTelemetry:
     queue_depth: int = 0
     peak_queue_depth: int = 0
+    book_received_count: int = 0
+    book_dropped_count: int = 0
 
     def enqueued(self) -> None:
         self.queue_depth += 1
@@ -66,6 +78,21 @@ class StreamTelemetry:
 
     def dequeued(self) -> None:
         self.queue_depth = max(0, self.queue_depth - 1)
+
+    def book_received(self) -> None:
+        self.book_received_count += 1
+
+    def book_dropped(self) -> None:
+        self.book_dropped_count += 1
+
+    def reset_queue_depth(self) -> None:
+        self.queue_depth = 0
+
+    @property
+    def book_drop_ratio(self) -> float:
+        if self.book_received_count == 0:
+            return 0.0
+        return self.book_dropped_count / self.book_received_count
 
 
 async def merge_streams(
@@ -75,7 +102,44 @@ async def merge_streams(
     *,
     telemetry: StreamTelemetry | None = None,
 ) -> AsyncIterator[StreamEvent]:
-    queue: asyncio.Queue[StreamEvent | StreamFailure | StreamCompleted] = asyncio.Queue()
+    queue: asyncio.Queue[
+        BookStreamEvent
+        | WalletStreamEvent
+        | _BookMarker
+        | _MarketHintMarker
+        | StreamFailure
+        | StreamCompleted
+    ] = asyncio.Queue()
+    pending_books: dict[str, BookSnapshot] = {}
+    pending_market_hints: dict[str, MarketTradeHint] = {}
+
+    def enqueue_book(event: BookSnapshot) -> None:
+        token_id = getattr(event, "token_id", None)
+        if not isinstance(token_id, str):
+            queue.put_nowait(BookStreamEvent(StreamKind.BOOK, event))
+            if telemetry is not None:
+                telemetry.enqueued()
+            return
+        if telemetry is not None:
+            telemetry.book_received()
+        if token_id in pending_books:
+            pending_books[token_id] = event
+            if telemetry is not None:
+                telemetry.book_dropped()
+            return
+        pending_books[token_id] = event
+        queue.put_nowait(_BookMarker(token_id))
+        if telemetry is not None:
+            telemetry.enqueued()
+
+    def enqueue_market_hint(event: MarketTradeHint) -> None:
+        if event.condition_id in pending_market_hints:
+            pending_market_hints[event.condition_id] = event
+            return
+        pending_market_hints[event.condition_id] = event
+        queue.put_nowait(_MarketHintMarker(event.condition_id))
+        if telemetry is not None:
+            telemetry.enqueued()
 
     async def enqueue_stream_events(
         stream_kind: StreamKind,
@@ -84,19 +148,11 @@ async def merge_streams(
         try:
             async for event in stream:
                 if isinstance(event, MarketTradeHint):
-                    await queue.put(MarketHintStreamEvent(StreamKind.MARKET_HINT, event))
-                    if telemetry is not None:
-                        telemetry.enqueued()
+                    enqueue_market_hint(event)
                 elif stream_kind is StreamKind.BOOK:
-                    await queue.put(BookStreamEvent(stream_kind, event))
-                    if telemetry is not None:
-                        telemetry.enqueued()
+                    enqueue_book(event)
                 elif stream_kind is StreamKind.WALLET:
                     await queue.put(WalletStreamEvent(stream_kind, event))
-                    if telemetry is not None:
-                        telemetry.enqueued()
-                else:
-                    await queue.put(MarketHintStreamEvent(stream_kind, event))
                     if telemetry is not None:
                         telemetry.enqueued()
         except BaseException as error:
@@ -118,12 +174,21 @@ async def merge_streams(
                 completed += 1
             elif isinstance(item, StreamFailure):
                 raise item.error
+            elif isinstance(item, _BookMarker):
+                yield BookStreamEvent(StreamKind.BOOK, pending_books.pop(item.token_id))
+            elif isinstance(item, _MarketHintMarker):
+                yield MarketHintStreamEvent(
+                    StreamKind.MARKET_HINT,
+                    pending_market_hints.pop(item.condition_id),
+                )
             else:
                 yield item
     finally:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if telemetry is not None:
+            telemetry.reset_queue_depth()
 
 
 def build_streams(

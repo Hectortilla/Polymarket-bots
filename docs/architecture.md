@@ -99,6 +99,7 @@ polyfollow-polybot/
 ```text
 MarketStream
   -> BookSnapshot
+  -> per-token newest-pending coalescing
   -> market slug route check
   -> BotRunner
   -> BaseBot.on_book(ctx, book)
@@ -133,6 +134,16 @@ Accepted events have no skip reason. Rejected events use the finite
 `DispatchSkipReason` contract for route mismatches, malformed/stale/future data,
 crossed books, and duplicate source events.
 
+The CLI merger applies stream-specific backpressure before dispatch. It retains
+at most one pending `BookSnapshot` per token and replaces that snapshot with the
+newest arrival, so a slow strategy does not drain an obsolete FIFO of books.
+Idempotent market-trade wake hints are similarly coalesced by condition ID.
+Wallet trades are never coalesced: every normalized wallet event remains in
+lossless FIFO order. Market-data memory is therefore bounded by the subscribed
+token and condition counts, while wallet traffic intentionally retains
+lossless semantics. The runner's five-second default freshness validation is
+unchanged and still rejects a genuinely stale latest snapshot.
+
 ## Terminal Observability
 
 The CLI enables its terminal dashboard by default and accepts `--no-dashboard`
@@ -143,6 +154,13 @@ in memory, uses `asciichartpy` for fixed-scale price and padded
 executable-wallet-value charts. Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
 dashboard renders independently of bot execution.
+
+Stream health distinguishes local book coalescing from upstream SDK loss. It
+reports run-lifetime raw book arrivals and pending snapshots superseded before
+dispatch, plus cumulative and recent drop ratios. The recent ratio aggregates
+the last 100 health-counter deltas that contain book arrivals. Queue depth is
+reset when a dynamic subscription generation closes, while lifetime counts and
+peak depth continue across stream-plan rebuilds.
 
 Dashboard state sampling takes a locked snapshot before rendering in a worker
 thread. A rendering failure closes the live display and prints its traceback to

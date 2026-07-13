@@ -72,6 +72,8 @@ class StreamHealth:
     book_dispatch_lag_ms: int | None
     book_stale: bool = False
     occurred_at: float = field(default_factory=monotonic)
+    book_received_count: int = 0
+    book_dropped_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)

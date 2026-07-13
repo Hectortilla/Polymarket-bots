@@ -87,6 +87,7 @@ async def run_bot(
         wallet_activity=wallet_client,
     )
     runner = BotRunner(bot, ctx)
+    telemetry = StreamTelemetry()
 
     await start_observer(runtime_observer, config)
     emit_observer(runtime_observer, RuntimeStarted.from_config(config))
@@ -128,7 +129,6 @@ async def run_bot(
                     "the bot declared no current market or wallet subscriptions"
                 )
 
-            telemetry = StreamTelemetry()
             stream_events = merge_streams(streams, telemetry=telemetry)
             next_event = asyncio.create_task(anext(stream_events))
             plan_change = (
@@ -176,6 +176,8 @@ async def run_bot(
                             peak_queue_depth=telemetry.peak_queue_depth,
                             book_dispatch_lag_ms=lag_ms,
                             book_stale=stale,
+                            book_received_count=telemetry.book_received_count,
+                            book_dropped_count=telemetry.book_dropped_count,
                         ),
                     )
                     next_event = asyncio.create_task(anext(stream_events))

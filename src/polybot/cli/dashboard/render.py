@@ -193,7 +193,9 @@ def _status_panel(state: DashboardState) -> Panel:
             f"book lag {_optional_ms(state.latest_book_lag_ms())} · "
             f"p95 {_optional_ms(state.book_lag_percentile(0.95))} · "
             f"max {_optional_ms(state.maximum_book_lag_ms())} · "
-            f"q {state.queue_depth}/{state.peak_queue_depth} · stale {state.stale_ratio():.0%}",
+            f"q {state.queue_depth}/{state.peak_queue_depth} · stale {state.stale_ratio():.0%} · "
+            f"drop {state.book_dropped_count}/{state.book_received_count} "
+            f"{state.cumulative_book_drop_ratio():.0%} · recent {state.recent_book_drop_ratio():.0%}",
             style="yellow",
         ),
         Text(f"broker {_optional_ms(state.average_broker_latency_ms())}", style="cyan"),

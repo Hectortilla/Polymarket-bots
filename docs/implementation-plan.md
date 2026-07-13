@@ -216,6 +216,10 @@ Implementation notes:
   subscriptions when the active rules change, without blocking the current
   market hot path on next-market resolution.
 - Market and wallet streams are multiplexed into one `BotRunner` lifecycle.
+- Stream multiplexing applies freshness-preserving backpressure: pending books
+  coalesce by token ID, idempotent market-trade wake hints coalesce by condition
+  ID, and wallet trades remain lossless FIFO events. A superseded pending book
+  is counted as a local coalescing drop; generation-close cleanup is not.
 - Wallet streams remain injected because the pinned SDK does not provide an
   arbitrary-wallet stream; configuring wallets without a source fails closed.
 - CLI paper runs use an atomic file-backed source-claim store under
@@ -290,6 +294,10 @@ Status: done.
 - Render a Rich dashboard with an `asciichartpy` fixed-scale multi-token price
   chart, padded executable-wallet-value curve, activity ticker, and persistent
   status metrics.
+- Extend stream health with run-lifetime raw/coalesced book counts, cumulative
+  dropped/received ratio, and a recent ratio over the last 100 book-bearing
+  health-counter deltas. Preserve lifetime counters and peak queue depth across
+  dynamic stream-plan rebuilds while resetting current depth per generation.
 - Enable by default and support `--no-dashboard` for headless operation (with
   `--dashboard` retained as the explicit positive form).
 

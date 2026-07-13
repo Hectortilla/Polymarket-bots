@@ -73,6 +73,11 @@ class DashboardState:
     )
     book_lags_ms: deque[int] = field(default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT))
     book_stale_samples: deque[bool] = field(default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT))
+    book_drop_samples: deque[tuple[int, int]] = field(
+        default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT)
+    )
+    book_received_count: int = 0
+    book_dropped_count: int = 0
     queue_depth: int = 0
     peak_queue_depth: int = 0
     stream_received_times: dict[StreamKind, deque[float]] = field(default_factory=dict)
@@ -105,6 +110,7 @@ class DashboardState:
             case StreamHealth():
                 self.queue_depth = event.queue_depth
                 self.peak_queue_depth = max(self.peak_queue_depth, event.peak_queue_depth)
+                self._record_book_drop_counters(event)
                 if event.book_dispatch_lag_ms is not None:
                     self.book_lags_ms.append(event.book_dispatch_lag_ms)
                     self.book_stale_samples.append(event.book_stale)
@@ -282,6 +288,30 @@ class DashboardState:
 
     def stale_ratio(self) -> float:
         return sum(self.book_stale_samples) / len(self.book_stale_samples) if self.book_stale_samples else 0.0
+
+    def cumulative_book_drop_ratio(self) -> float:
+        if self.book_received_count == 0:
+            return 0.0
+        return self.book_dropped_count / self.book_received_count
+
+    def recent_book_drop_ratio(self) -> float:
+        received = sum(sample[0] for sample in self.book_drop_samples)
+        if received == 0:
+            return 0.0
+        return sum(sample[1] for sample in self.book_drop_samples) / received
+
+    def _record_book_drop_counters(self, event: StreamHealth) -> None:
+        if (
+            event.book_received_count < self.book_received_count
+            or event.book_dropped_count < self.book_dropped_count
+        ):
+            return
+        received_delta = event.book_received_count - self.book_received_count
+        dropped_delta = event.book_dropped_count - self.book_dropped_count
+        self.book_received_count = event.book_received_count
+        self.book_dropped_count = event.book_dropped_count
+        if received_delta:
+            self.book_drop_samples.append((received_delta, dropped_delta))
 
     def _record_rate(self, target: dict[StreamKind, deque[float]], kind: StreamKind, occurred_at: float) -> None:
         samples = target.setdefault(kind, deque())
