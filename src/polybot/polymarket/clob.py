@@ -29,6 +29,21 @@ class ClobClient:
     def set_markets(self, markets: Iterable[Market]) -> None:
         self._market_by_token = index_markets_by_token(markets)
 
+    def add_market(self, market: Market) -> None:
+        """Add metadata for a wallet-discovered market without dropping others."""
+        additions = index_markets_by_token((market,))
+        for token_id, existing in self._market_by_token.items():
+            candidate = additions.get(token_id)
+            if candidate is not None and candidate != existing:
+                raise MarketDataError(
+                    MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                    f"token ID maps to multiple markets: {token_id}",
+                )
+        self._market_by_token.update(additions)
+
+    def has_market_slug(self, slug: str) -> bool:
+        return any(candidate.slug == slug for candidate in self._market_by_token.values())
+
     async def latest(self, token_id: str) -> BookSnapshot | None:
         if not token_id.strip():
             raise MarketDataError(

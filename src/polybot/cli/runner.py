@@ -155,7 +155,9 @@ async def run_bot(
                     except StopAsyncIteration:
                         return
                     emit_observer(runtime_observer, StreamReceived(item, monotonic()))
-                    outcome = await _dispatch_stream_event(runner, item, wallet_stream)
+                    outcome = await _dispatch_stream_event(
+                        runner, item, wallet_stream, gamma=gamma, clob=clob
+                    )
                     emit_observer(
                         runtime_observer,
                         DispatchCompleted(item, outcome, monotonic()),
@@ -232,10 +234,28 @@ async def _dispatch_stream_event(
     runner: BotRunner,
     item: StreamEvent,
     wallet_stream: WalletActivityStream,
+    *,
+    gamma: GammaClient,
+    clob: ClobClient,
 ) -> DispatchOutcome | None:
     if item.kind is StreamKind.BOOK:
         return await runner.dispatch_book(item.event)
     elif item.kind is StreamKind.WALLET:
+        # Wallet-only subscriptions can discover markets that were not part of
+        # the current market plan. Hydrate CLOB metadata before the bot submits
+        # an order so fill-time book identity validation remains meaningful.
+        if item.event.market_slug and not clob.has_market_slug(item.event.market_slug):
+            try:
+                market = await gamma.find_by_slug(item.event.market_slug)
+            except Exception:
+                market = None
+            if market is not None:
+                try:
+                    clob.add_market(market)
+                except Exception:
+                    # Keep the stream alive; the broker will fail closed on
+                    # the unresolved or ambiguous book identity.
+                    pass
         return await runner.dispatch_wallet_trade(item.event)
     elif item.kind is StreamKind.MARKET_HINT:
         wallet_stream.wake_market(item.event.condition_id)
