@@ -6,13 +6,14 @@ from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.resolutions import YES_OUTCOME
 from polybot.framework.outcomes import resolve_outcome_token
 
 PRICE_TRIGGER = Decimal("0.45")
 
 
 class ExamplePriceWatcher(BaseBot):
-    def __init__(self, outcome_label: str = "Yes", *, market_slug: str | None = None) -> None:
+    def __init__(self, outcome_label: str = YES_OUTCOME, *, market_slug: str | None = None) -> None:
         self.outcome_label = outcome_label
         self.market_slug = market_slug
         self._market_slug: str | None = None

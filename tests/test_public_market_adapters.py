@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import tomllib
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from decimal import Decimal
 from importlib.metadata import version
 from http import HTTPStatus
+from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from polymarket import RequestRejectedError
@@ -28,17 +31,31 @@ from polymarket.models.gamma.market import (
 
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.gamma import GammaClient
+from polybot.polymarket.gamma import (
+    GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST,
+    GAMMA_MARKETS_PAGE_SIZE,
+    GAMMA_MARKETS_QUERY_BUDGET,
+    GammaClient,
+)
 from polybot.polymarket.types import (
     Market,
     MarketOutcome as NormalizedMarketOutcome,
     index_markets_by_token,
 )
 from polybot.polymarket.ws_market import MarketStream
+from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
 
 
-def test_selected_polymarket_sdk_version_is_pinned() -> None:
-    assert version("polymarket-client") == "0.1.0b17"
+def test_selected_polymarket_sdk_version_matches_project_pin() -> None:
+    project = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text()
+    )
+    dependency = next(
+        dependency
+        for dependency in project["project"]["dependencies"]
+        if dependency.startswith("polymarket-client==")
+    )
+    assert version("polymarket-client") == dependency.removeprefix("polymarket-client==")
 
 
 def test_index_markets_rejects_ambiguous_token_metadata() -> None:
@@ -88,6 +105,18 @@ class FakeStream:
             yield event
 
 
+class FakePaginator:
+    def __init__(self, items: tuple[SdkMarket, ...]) -> None:
+        self._items = items
+
+    def iter_items(self) -> AsyncIterator[SdkMarket]:
+        return self._iterate()
+
+    async def _iterate(self) -> AsyncIterator[SdkMarket]:
+        for item in self._items:
+            yield item
+
+
 class FakePublicClient:
     def __init__(
         self,
@@ -97,13 +126,17 @@ class FakePublicClient:
         events: tuple[object, ...] = (),
         market_error: RequestRejectedError | None = None,
         book_error: RequestRejectedError | None = None,
+        closed_markets: frozenset[str] = frozenset(),
     ) -> None:
         self.markets = markets or {}
         self.book = book
         self.events = events
         self.market_error = market_error
         self.book_error = book_error
+        self.closed_markets = closed_markets
         self.requested_slugs: list[str] = []
+        self.requested_slug_batches: list[tuple[str, ...]] = []
+        self.requested_closed: list[bool | None] = []
         self.subscribed_token_ids: tuple[str, ...] = ()
 
     async def get_market(self, *, slug: str) -> SdkMarket:
@@ -115,6 +148,25 @@ class FakePublicClient:
         if result is None:
             raise RequestRejectedError("not found", status=HTTPStatus.NOT_FOUND)
         return result
+
+    def list_markets(
+        self,
+        *,
+        slug: tuple[str, ...],
+        page_size: int,
+        closed: bool | None = None,
+    ) -> FakePaginator:
+        assert page_size == GAMMA_MARKETS_PAGE_SIZE
+        self.requested_slug_batches.append(slug)
+        self.requested_closed.append(closed)
+        items = tuple(
+            result
+            for requested_slug in slug
+            if requested_slug not in self.closed_markets or closed is True
+            for result in self.markets.get(requested_slug, [None])[:1]
+            if result is not None
+        )
+        return FakePaginator(items)
 
     async def get_order_book(self, *, token_id: str) -> OrderBook:
         if self.book_error is not None:
@@ -149,6 +201,29 @@ def test_gamma_normalizes_sdk_market_and_rejects_missing_token_id() -> None:
     assert issue is MarketDataIssue.MISSING_TOKEN_ID
 
 
+def test_gamma_normalizes_missing_trading_limits_as_unknown() -> None:
+    async def run() -> Market | None:
+        client = GammaClient(
+            FakePublicClient(  # type: ignore[arg-type]
+                markets={
+                    "alpha": [
+                        _sdk_market(
+                            "alpha",
+                            minimum_order_size=None,
+                            minimum_tick_size=None,
+                        )
+                    ]
+                },
+            )
+        )
+        return await client.find_by_slug("alpha")
+
+    market = asyncio.run(run())
+
+    assert market is not None
+    assert (market.minimum_tick_size, market.minimum_order_size) == (None, None)
+
+
 def test_gamma_rejects_malformed_nested_market_payload() -> None:
     malformed = _sdk_market("malformed").model_copy(update={"outcomes": None})
 
@@ -180,7 +255,13 @@ def test_gamma_propagates_non_not_found_rejection() -> None:
 
 
 def test_gamma_resolves_multiple_slugs_and_retries_future_market() -> None:
-    async def run() -> tuple[tuple[Market | None, ...], Market, list[float]]:
+    async def run() -> tuple[
+        tuple[Market | None, ...],
+        Market,
+        list[float],
+        list[tuple[str, ...]],
+        list[str],
+    ]:
         fake = FakePublicClient(
             markets={
                 "alpha": [_sdk_market("alpha")],
@@ -189,7 +270,7 @@ def test_gamma_resolves_multiple_slugs_and_retries_future_market() -> None:
             }
         )
         client = GammaClient(fake)  # type: ignore[arg-type]
-        resolved = await client.find_many(("alpha", "missing"))
+        resolved = await client.find_many(("alpha", "missing", "alpha"))
         sleeps: list[float] = []
 
         async def no_wait(delay: float) -> None:
@@ -200,14 +281,81 @@ def test_gamma_resolves_multiple_slugs_and_retries_future_market() -> None:
             retry_delay_s=0.25,
             sleep=no_wait,
         )
-        return resolved, future, sleeps
+        return resolved, future, sleeps, fake.requested_slug_batches, fake.requested_slugs
 
-    resolved, future, sleeps = asyncio.run(run())
+    resolved, future, sleeps, requested_batches, requested_slugs = asyncio.run(run())
 
     assert resolved[0] == _market("alpha")
     assert resolved[1] is None
+    assert resolved[2] == _market("alpha")
+    assert requested_batches == [("alpha", "missing"), ("missing",)]
+    assert requested_slugs == ["future", "future"]
     assert future == _market("future")
     assert sleeps == [0.25]
+
+
+def test_gamma_splits_slug_batches_before_query_limit() -> None:
+    slugs = tuple(f"{'x' * 1_000}-{index}" for index in range(70))
+
+    async def run() -> tuple[list[tuple[str, ...]], list[bool | None]]:
+        fake = FakePublicClient()
+        await GammaClient(fake).find_many(slugs)  # type: ignore[arg-type]
+        return fake.requested_slug_batches, fake.requested_closed
+
+    requested_batches, requested_closed = asyncio.run(run())
+    batches = [
+        batch
+        for batch, closed in zip(requested_batches, requested_closed)
+        if closed is None
+    ]
+
+    assert len(batches) > 1
+    assert tuple(slug for batch in batches for slug in batch) == slugs
+    assert all(
+        len(
+            urlencode(
+                [("slug", slug) for slug in batch]
+                + [("limit", str(GAMMA_MARKETS_PAGE_SIZE))]
+            )
+        )
+        <= GAMMA_MARKETS_QUERY_BUDGET
+        for batch in batches
+    )
+
+
+def test_gamma_splits_slug_batches_at_api_array_limit() -> None:
+    async def run() -> tuple[list[tuple[str, ...]], list[bool | None]]:
+        slugs = tuple(f"market-{index}" for index in range(101))
+        fake = FakePublicClient()
+        await GammaClient(fake).find_many(slugs)  # type: ignore[arg-type]
+        return fake.requested_slug_batches, fake.requested_closed
+
+    requested_batches, requested_closed = asyncio.run(run())
+    batches = [
+        batch
+        for batch, closed in zip(requested_batches, requested_closed)
+        if closed is None
+    ]
+
+    assert [len(batch) for batch in batches] == [
+        GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST,
+        1,
+    ]
+
+
+def test_gamma_retries_unresolved_slugs_as_closed_markets() -> None:
+    async def run() -> tuple[Market | None, list[bool | None]]:
+        fake = FakePublicClient(
+            markets={"closed": [_sdk_market("closed")]},
+            closed_markets=frozenset({"closed"}),
+        )
+        resolved = await GammaClient(fake).find_many(("closed",))  # type: ignore[arg-type]
+        return resolved[0], fake.requested_closed
+
+    market, requested_closed = asyncio.run(run())
+
+    assert market == _market("closed")
+    assert requested_closed == [None, True]
 
 
 def test_clob_normalizes_and_sorts_order_book() -> None:
@@ -236,7 +384,7 @@ def test_clob_normalizes_and_sorts_order_book() -> None:
     )
     assert book.market_slug == "alpha"
     assert book.condition_id == "condition-alpha"
-    assert book.outcome == "Yes"
+    assert book.outcome == YES_OUTCOME
     assert book.received_at_ms == 1_234
 
 
@@ -320,7 +468,7 @@ def test_market_stream_applies_price_changes_to_full_depth() -> None:
     assert tuple(level.price for level in books[0].bids) == (Decimal("0.40"),)
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert all(book.market_slug == "alpha" for book in books)
-    assert all(book.outcome == "Yes" for book in books)
+    assert all(book.outcome == YES_OUTCOME for book in books)
 
 
 def test_market_stream_keeps_last_valid_depth_after_crossed_update() -> None:
@@ -425,7 +573,13 @@ def test_market_stream_rejects_mismatched_market_identity() -> None:
     assert asyncio.run(run()) == []
 
 
-def _sdk_market(slug: str, *, no_token_id: str | None = "no-token") -> SdkMarket:
+def _sdk_market(
+    slug: str,
+    *,
+    no_token_id: str | None = "no-token",
+    minimum_order_size: str | None = "1",
+    minimum_tick_size: str | None = "0.01",
+) -> SdkMarket:
     return SdkMarket.model_construct(
         id=f"id-{slug}",
         slug=slug,
@@ -433,12 +587,12 @@ def _sdk_market(slug: str, *, no_token_id: str | None = "no-token") -> SdkMarket
         question=f"Question {slug}?",
         state=MarketState(negRisk=False),
         outcomes=MarketOutcomes(
-            yes=MarketOutcome(label="Yes", tokenId=f"yes-{slug}"),
-            no=MarketOutcome(label="No", tokenId=no_token_id),
+            yes=MarketOutcome(label=YES_OUTCOME, tokenId=f"yes-{slug}"),
+            no=MarketOutcome(label=NO_OUTCOME, tokenId=no_token_id),
         ),
         trading=MarketTrading(
-            minimumOrderSize="1",
-            minimumTickSize="0.01",
+            minimumOrderSize=minimum_order_size,
+            minimumTickSize=minimum_tick_size,
             feesEnabled=True,
             feeSchedule=FeeSchedule(
                 exponent=2,
@@ -462,8 +616,8 @@ def _market(slug: str) -> Market:
         neg_risk=False,
         fee_rate=Decimal("0.05"),
         outcomes=(
-            NormalizedMarketOutcome("Yes", f"yes-{slug}"),
-            NormalizedMarketOutcome("No", "no-token"),
+            NormalizedMarketOutcome(YES_OUTCOME, f"yes-{slug}"),
+            NormalizedMarketOutcome(NO_OUTCOME, "no-token"),
         ),
     )
 

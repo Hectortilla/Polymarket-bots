@@ -8,12 +8,13 @@ from typing import Any
 
 from dotenv import load_dotenv as _load_dotenv
 
-from polybot.framework.config import (
+from polybot.framework.config.models import (
     BotConfigOverrides,
     BotMode,
     DECIMAL_CONFIG_FIELDS,
     INTEGER_CONFIG_FIELDS,
 )
+from polybot.framework.config.environment import parse_bool
 
 
 def parse_config_override(key: str, raw: str) -> tuple[str, object]:
@@ -27,10 +28,7 @@ def parse_config_override(key: str, raw: str) -> tuple[str, object]:
     if key in DECIMAL_CONFIG_FIELDS:
         return key, Decimal(raw)
     if key == "live_enabled":
-        value = raw.lower()
-        if value not in {"true", "false"}:
-            raise ValueError(f"{key} must be true or false")
-        return key, value == "true"
+        return key, parse_bool(raw, key=key)
     if key in INTEGER_CONFIG_FIELDS:
         return key, int(raw)
     return key, raw

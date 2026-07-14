@@ -7,6 +7,7 @@ from polybot.framework.events.book_validation import BookValidationIssue
 
 
 class DispatchSkipReason(StrEnum):
+    MARKET_METADATA_MISSING = BookValidationIssue.MISSING_MARKET_IDENTITY.value
     MARKET_NOT_TRACKED = "market_not_tracked"
     WALLET_NOT_TRACKED = "wallet_not_tracked"
     BOOK_STALE = BookValidationIssue.STALE.value

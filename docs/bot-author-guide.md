@@ -87,6 +87,17 @@ continue to share package-owned contracts.
 - The paper CLI returns a `FillEvent` from `ctx.broker.submit()` but does not
   automatically invoke this hook; use the returned value when needed.
 
+`on_market_resolved`
+
+- Receive a package-owned `MarketResolutionEvent` after paper and followed-wallet
+  positions are settled and resolution state is persisted.
+
+Resolution event contracts are defined in
+`polybot.framework.events.resolutions`; import that module directly when a bot
+needs the event or settlement types.
+- Treat it as a lifecycle event, not as a fill; settlement does not fabricate an
+  order or `FillEvent`.
+
 `on_stop`
 
 - Clean up bot-local resources.
@@ -103,7 +114,7 @@ BOT_MAX_ORDER_SIZE=10
 BOT_MAX_SLIPPAGE_PCT=0.02
 BOT_PAPER_LATENCY_MS=250
 BOT_PAPER_LATENCY_JITTER_MS=100
-BOT_BOOK_MAX_AGE_MS=5000
+BOT_EVENT_MAX_AGE_MS=5000
 BOT_PAPER_PORTFOLIO_USDC=1000
 BOT_LIVE_ENABLED=false
 POLYMARKET_PRIVATE_KEY=

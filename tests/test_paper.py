@@ -8,11 +8,11 @@ from polybot.execution.paper import (
     MARKET_UNAVAILABLE_MESSAGE,
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
 )
-from polybot.framework.config import (
-    BotConfig,
+from polybot.framework.config.constants import (
     DEFAULT_MAX_SLIPPAGE_PCT,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
+from polybot.framework.config.models import BotConfig
 from polybot.framework.events import (
     FillRejectReason,
     OrderRequest,
@@ -22,6 +22,7 @@ from polybot.framework.events import (
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.polymarket.types import Market
 from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
+from polybot.execution.paper.latency import sample_latency_ms
 
 DEFAULT_MARKET_SLUG = "btc-up"
 DEFAULT_CONDITION_ID = "0xcondition"
@@ -57,14 +58,16 @@ def _market(
     *,
     slug: str = DEFAULT_MARKET_SLUG,
     condition_id: str = DEFAULT_CONDITION_ID,
+    yes_token_id: str = "123",
+    no_token_id: str = "456",
     fee_rate: Decimal = Decimal("0"),
 ) -> Market:
     return Market(
         condition_id=condition_id,
         slug=slug,
         question="Will BTC go up?",
-        yes_token_id="123",
-        no_token_id="456",
+        yes_token_id=yes_token_id,
+        no_token_id=no_token_id,
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,
@@ -507,6 +510,56 @@ def test_paper_broker_rejects_missing_market_metadata() -> None:
     assert reject_message == MARKET_UNAVAILABLE_MESSAGE
 
 
+def test_paper_broker_rejects_fill_time_market_metadata_mismatch_without_mutation() -> None:
+    async def run() -> tuple[OrderStatus, FillRejectReason | None, Decimal, dict[str, object]]:
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market(condition_id="different-condition")),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+                condition_id=DEFAULT_CONDITION_ID,
+            )
+        )
+        return (
+            fill.status,
+            fill.reject_reason,
+            broker.portfolio.cash_usdc,
+            broker.portfolio.positions,
+        )
+
+    status, reject_reason, cash_usdc, positions = asyncio.run(run())
+
+    assert status is OrderStatus.REJECTED
+    assert reject_reason is FillRejectReason.MARKET_METADATA_MISMATCH
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
+    assert positions == {}
+
+
+def test_sample_latency_includes_positive_jitter() -> None:
+    class RecordingRandom:
+        def randrange(self, stop: int) -> int:
+            assert stop == 6
+            return 4
+
+    assert sample_latency_ms(100, 5, RecordingRandom()) == 104
+
+
 def test_paper_broker_rejects_invalid_market_fee_rate() -> None:
     async def run() -> tuple[OrderStatus, FillRejectReason | None]:
         broker = PaperBroker(
@@ -577,6 +630,51 @@ def test_paper_broker_dedupes_source_id() -> None:
     assert first_cash == DEFAULT_PAPER_PORTFOLIO_USDC - Decimal("0.40")
     assert second_cash == first_cash
     assert first_order_id == second_order_id
+
+
+def test_invalid_source_order_does_not_claim_source_id() -> None:
+    async def run() -> tuple[FillRejectReason | None, OrderStatus, Decimal]:
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+        invalid = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("0"),
+                market_slug=DEFAULT_MARKET_SLUG,
+                source_id="retryable-source",
+            )
+        )
+        valid = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+                source_id="retryable-source",
+            )
+        )
+        return invalid.reject_reason, valid.status, valid.filled_size
+
+    reject_reason, status, filled_size = asyncio.run(run())
+
+    assert reject_reason is FillRejectReason.BAD_SIZE
+    assert status is OrderStatus.FILLED
+    assert filled_size == Decimal("1")
 
 
 def test_portfolio_state_tracks_partial_close() -> None:

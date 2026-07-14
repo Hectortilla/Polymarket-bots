@@ -13,7 +13,7 @@ def test_nonzero_position_requires_average_price() -> None:
 
 def test_portfolio_transition_is_pure() -> None:
     portfolio = PaperPortfolio(cash_usdc=Decimal("100"))
-    cash, fees, position = portfolio.after_fill(
+    cash, fees, position = portfolio.calculate_after_fill(
         token_id="token",
         side=Side.BUY,
         filled_size=Decimal("2"),

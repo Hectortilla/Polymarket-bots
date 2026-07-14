@@ -3,8 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from polybot.framework.wallets import normalize_wallet_address
-from scripts.wallet_analysis import WalletMetrics, WalletVerdict
-from scripts.wallet_payloads import PROXY_WALLET_FIELD, PositionRow
+from scripts.wallet_analysis.contracts import (
+    WalletClassificationReason,
+    WalletMetrics,
+    WalletVerdict,
+)
+from scripts.wallet_payload_contracts import PROXY_WALLET_FIELD, PositionRow
 from scripts.wallet_scan_report import format_wallet_scan_record
 
 
@@ -24,7 +28,7 @@ def result_note(
     metrics: WalletMetrics,
     market_share: float,
     density: float,
-    reason: str,
+    reason: WalletClassificationReason,
 ) -> str:
     return format_wallet_scan_record(
         label=verdict,

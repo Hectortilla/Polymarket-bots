@@ -1,0 +1,104 @@
+"""Dashboard ticker and runtime-status renderables."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.console import Group
+
+from polybot.cli.streams.contracts import StreamKind
+
+from .state import DashboardState
+
+MISSING_METRIC = "N/A"
+
+
+def ticker_panel(state: DashboardState) -> Panel:
+    rows = [
+        Text(
+            ticker_message(row.message, row.count),
+            style=row.style,
+            overflow="ellipsis",
+        )
+        for row in state.ticker
+    ]
+    return Panel(
+        Group(*rows) if rows else Text("Waiting for runtime events", style="dim"),
+        title="Activity",
+        border_style="bright_magenta",
+    )
+
+
+def ticker_message(message: str, count: int) -> str:
+    return message if count == 1 else f"{message} x{count}"
+
+
+def status_panel(state: DashboardState) -> Panel:
+    table = Table.grid(expand=True)
+    table.add_column(ratio=1)
+    table.add_column(ratio=1)
+    table.add_column(ratio=1)
+    table.add_column(ratio=1)
+    portfolio = state.portfolio
+    cash = "-" if portfolio is None else money(portfolio.cash_usdc)
+    fees = "-" if portfolio is None else money(portfolio.cumulative_fees_usdc)
+    equity = optional_money(state.executable_equity())
+    pnl = optional_money(state.executable_pnl())
+    books = state.stream_counts.get(StreamKind.BOOK, 0)
+    wallets = state.stream_counts.get(StreamKind.WALLET, 0)
+    positions = 0 if portfolio is None else len(portfolio.positions)
+    table.add_row(
+        Text(
+            f"{state.lifecycle.value.upper()} · "
+            f"{state.mode.value if state.mode is not None else '-'} · {state.name}",
+            style="bold white",
+        ),
+        Text(
+            f"{state.uptime_seconds()}s · {state.event_rate():.1f} ev/s",
+            style="bright_cyan",
+        ),
+        Text(
+            f"books {books} · follows {wallets} · skip {state.skipped_dispatches}",
+            style="yellow",
+        ),
+        Text(
+            f"fills {state.fill_count} · rejects {state.rejected_count}",
+            style="green",
+        ),
+    )
+    table.add_row(
+        Text(f"cash {cash} · equity {equity} · PnL {pnl}", style="bold green"),
+        Text(f"fees {fees} · positions {positions}", style="white"),
+        Text(
+            f"book lag {fixed_ms(state.latest_book_lag_ms())} · "
+            f"p95 {fixed_ms(state.book_lag_percentile(0.95))} · "
+            f"max {fixed_ms(state.maximum_book_lag_ms())} · "
+            f"q {state.queue_depth}/{state.peak_queue_depth} · "
+            f"stale {state.stale_ratio():.0%}",
+            style="yellow",
+        ),
+        Text(
+            f"broker {optional_ms(state.average_broker_latency_ms())}",
+            style="cyan",
+        ),
+    )
+    return Panel(table, border_style="bright_blue")
+
+
+def money(value: Decimal) -> str:
+    return f"${value:.2f}"
+
+
+def optional_money(value: Decimal | None) -> str:
+    return MISSING_METRIC if value is None else money(value)
+
+
+def optional_ms(value: int | None) -> str:
+    return MISSING_METRIC if value is None else f"{value}ms"
+
+
+def fixed_ms(value: int | None) -> str:
+    return f"{value:6d}ms" if value is not None else f"{MISSING_METRIC:>8}"

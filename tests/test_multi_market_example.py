@@ -5,6 +5,7 @@ from decimal import Decimal
 from polybot.examples.example_multi_market import CrossMarketRule, ExampleMultiMarketBot
 from polybot.framework.context import BotContext
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.types import Market, MarketOutcome
 
 
@@ -17,7 +18,7 @@ def test_multi_market_example_trades_target_from_signal_market(
                 CrossMarketRule(
                     signal_slug="btc-up",
                     target_slug="eth-down",
-                    target_outcome_label="No",
+                    target_outcome_label=NO_OUTCOME,
                     trigger_price=Decimal("0.40"),
                     order_price=Decimal("0.52"),
                     max_size=Decimal("3"),
@@ -47,7 +48,7 @@ def test_multi_market_example_declares_all_signal_and_target_markets(
                 CrossMarketRule(
                     signal_slug="btc-up",
                     target_slug="eth-down",
-                    target_outcome_label="No",
+                    target_outcome_label=NO_OUTCOME,
                     trigger_price=Decimal("0.40"),
                     order_price=Decimal("0.52"),
                     max_size=Decimal("3"),
@@ -70,7 +71,7 @@ def test_multi_market_example_ignores_unconfigured_market(
                 CrossMarketRule(
                     signal_slug="btc-up",
                     target_slug="eth-down",
-                    target_outcome_label="No",
+                    target_outcome_label=NO_OUTCOME,
                     trigger_price=Decimal("0.40"),
                     order_price=Decimal("0.52"),
                     max_size=Decimal("3"),
@@ -108,5 +109,8 @@ class _Markets:
             minimum_order_size=Decimal("1"),
             neg_risk=False,
             fee_rate=Decimal("0"),
-            outcomes=(MarketOutcome("Yes", "eth-yes-token"), MarketOutcome("No", "eth-no-token")),
+            outcomes=(
+                MarketOutcome(YES_OUTCOME, "eth-yes-token"),
+                MarketOutcome(NO_OUTCOME, "eth-no-token"),
+            ),
         )

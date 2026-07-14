@@ -37,6 +37,12 @@ def _positive_decimal(value: object, field: str) -> Decimal:
     return normalized
 
 
+def _optional_positive_decimal(value: object, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    return _positive_decimal(value, field)
+
+
 def _non_negative_decimal(value: object, field: str) -> Decimal:
     normalized = _decimal(value, field)
     if normalized < 0:

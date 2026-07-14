@@ -5,14 +5,15 @@ from decimal import Decimal
 
 from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
-from polybot.polymarket.wallet_activity import (
-    TRADE_ACTIVITY_TYPE,
-    WalletActivityClient,
+from polybot.polymarket.wallet_activity.client import WalletActivityClient
+from polybot.polymarket.wallet_activity.constants import TRADE_ACTIVITY_TYPE
+from polybot.polymarket.wallet_activity.contracts import (
     WalletActivityError,
     WalletActivityIssue,
-    WalletActivityStream,
-    normalize_wallet_trade,
+    WalletTradeSelector,
 )
+from polybot.polymarket.wallet_activity.normalization import normalize_wallet_trade
+from polybot.polymarket.wallet_activity.stream import WalletActivityStream
 
 
 class Page:
@@ -33,7 +34,9 @@ class FakePaginator:
 
 
 class FakeClient:
-    def __init__(self, rows: tuple[object, ...], failing: set[str] | None = None) -> None:
+    def __init__(
+        self, rows: tuple[object, ...], failing: set[str] | None = None
+    ) -> None:
         self.rows = rows
         self.failing = failing or set()
         self.activity_calls: list[tuple[str, tuple[str, ...]]] = []
@@ -66,6 +69,16 @@ class FakeStreamSource:
     async def _iterate(self):
         for row in self.rows:
             yield row
+
+
+class PollingClient:
+    def __init__(self, rows: tuple[object, ...]) -> None:
+        self.rows = rows
+        self.calls: list[dict[str, object]] = []
+
+    def list_trades(self, **kwargs: object) -> FakePaginator:
+        self.calls.append(kwargs)
+        return FakePaginator((Page(*self.rows),))
 
 
 class ConcurrentClient(FakeClient):
@@ -106,7 +119,9 @@ def _row(wallet: str, tx: str, timestamp: int = 1_700_000_000) -> dict[str, obje
 
 
 def test_normalize_trade_converts_public_row_and_preserves_latency() -> None:
-    trade = normalize_wallet_trade(_row("0xLeader", "tx-1"), observed_at_ms=1_700_000_001_250)
+    trade = normalize_wallet_trade(
+        _row("0xLeader", "tx-1"), observed_at_ms=1_700_000_001_250
+    )
     assert trade is not None
     assert trade.wallet == "0xleader"
     assert trade.side is Side.BUY
@@ -117,13 +132,20 @@ def test_normalize_trade_converts_public_row_and_preserves_latency() -> None:
 
 def test_missing_required_trade_fields_are_rejected() -> None:
     assert normalize_wallet_trade(_row("0xleader", ""), observed_at_ms=1) is None
-    assert normalize_wallet_trade({**_row("0xleader", "tx-1"), "asset": None}, observed_at_ms=1) is None
+    assert (
+        normalize_wallet_trade(
+            {**_row("0xleader", "tx-1"), "asset": None}, observed_at_ms=1
+        )
+        is None
+    )
 
 
 def test_many_wallet_reads_are_sorted_and_report_failures() -> None:
     async def run():
         client = FakeClient((_row("0xfirst", "tx-1"),), {"0xfailing"})
-        return await WalletActivityClient(client).latest_trades_many(("0xfirst", "0xfailing"))
+        return await WalletActivityClient(client).latest_trades_many(
+            ("0xfirst", "0xfailing")
+        )
 
     result = asyncio.run(run())
     assert [trade.transaction_hash for trade in result.trades] == ["tx-1"]
@@ -134,7 +156,9 @@ def test_many_wallet_reads_are_sorted_and_report_failures() -> None:
 def test_latest_activity_filters_trade_rows_and_marks_reconciliation() -> None:
     async def run():
         client = FakeClient((_row("0xleader", "tx-1"),))
-        trades = await WalletActivityClient(client, now_ms=lambda: 1_700_000_001_000).latest_activity(
+        trades = await WalletActivityClient(
+            client, now_ms=lambda: 1_700_000_001_000
+        ).latest_activity(
             "0xLEADER",
             limit=1,
         )
@@ -174,7 +198,11 @@ def test_many_wallet_reads_bound_concurrency_and_sort_results() -> None:
 
     client, result = asyncio.run(run())
     assert client.peak_active == 2
-    assert [trade.transaction_hash for trade in result.trades] == ["early", "middle", "late"]
+    assert [trade.transaction_hash for trade in result.trades] == [
+        "early",
+        "middle",
+        "late",
+    ]
 
 
 def test_boundaries_reject_invalid_limits_and_concurrency() -> None:
@@ -195,7 +223,9 @@ def test_stream_normalizes_filters_and_validates_events() -> None:
     invalid = {**_row("0xleader", "bad"), "price": "2"}
 
     async def run():
-        source = FakeStreamSource((_row("0xLEADER", "tx-1"), _row("0xother", "tx-2"), invalid))
+        source = FakeStreamSource(
+            (_row("0xLEADER", "tx-1"), _row("0xother", "tx-2"), invalid)
+        )
         stream = WalletActivityStream(source, now_ms=lambda: 1_700_000_001_000)
         trades = [trade async for trade in stream.trades({"0xLeAdEr"})]
         return source, trades
@@ -231,7 +261,9 @@ def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() ->
 
     async def run():
         source = FakeStreamSource((valid, invalid))
-        return [trade async for trade in WalletActivityStream(source).trades({"0xleader"})]
+        return [
+            trade async for trade in WalletActivityStream(source).trades({"0xleader"})
+        ]
 
     trades = asyncio.run(run())
     assert len(trades) == 1
@@ -250,3 +282,35 @@ def test_stream_requires_an_explicit_supported_source() -> None:
         assert error.issue is WalletActivityIssue.STREAM_UNAVAILABLE
     else:
         raise AssertionError("stream should fail closed when no source is configured")
+
+
+def test_polling_starts_at_the_freshness_window_and_discards_stale_rows() -> None:
+    now_ms = 1_700_000_010_000
+
+    async def run() -> tuple[PollingClient, WalletTradeEvent]:
+        client = PollingClient(
+            (
+                _row("0xleader", "stale", 1_700_000_000),
+                _row("0xleader", "fresh", 1_700_000_009),
+            )
+        )
+        stream = WalletActivityStream(
+            WalletActivityClient(client, now_ms=lambda: now_ms),
+            max_trade_age_ms=5_000,
+            now_ms=lambda: now_ms,
+        )
+        queue: asyncio.Queue[WalletTradeEvent] = asyncio.Queue()
+        task = asyncio.create_task(
+            stream._poll(WalletTradeSelector(wallet="0xleader"), queue)
+        )
+        try:
+            return client, await asyncio.wait_for(queue.get(), timeout=0.1)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    client, trade = asyncio.run(run())
+
+    assert client.calls[0]["start"] == 1_700_000_004
+    assert client.calls[0]["end"] == 1_700_000_010
+    assert trade.transaction_hash == "fresh"

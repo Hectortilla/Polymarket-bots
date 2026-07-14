@@ -3,8 +3,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from scripts.terminal import color_enabled
-from scripts.wallet_analysis import HEDGE_SCORE_THRESHOLD, classify_wallet_candidate, market_trade_share
-from scripts.wallet_analysis import WalletMetrics
+from scripts.wallet_analysis.classification import (
+    HEDGE_SCORE_THRESHOLD,
+    classify_wallet_candidate,
+)
+from scripts.wallet_analysis.contracts import (
+    PNL_SIGNIFICANCE_THRESHOLD,
+    WalletMetrics,
+)
+from scripts.wallet_analysis.market_metrics import market_trade_share
 
 GOOD_VERDICT = "Good for the trader"
 BAD_VERDICT = "Bad"
@@ -36,7 +43,13 @@ def heading(text: str) -> str:
 
 def signed(value: float) -> str:
     rendered = f"{value:+,.2f}"
-    return good(rendered) if value > 0.005 else bad(rendered) if value < -0.005 else dim(rendered)
+    return (
+        good(rendered)
+        if value > PNL_SIGNIFICANCE_THRESHOLD
+        else bad(rendered)
+        if value < -PNL_SIGNIFICANCE_THRESHOLD
+        else dim(rendered)
+    )
 
 
 def verdict_label(is_good: bool) -> str:
@@ -50,7 +63,7 @@ def print_wallet_report(
     target_slug: str | None = None,
     target_condition_id: str | None = None,
 ) -> None:
-    if int(metrics["n_items"]) == 0:
+    if int(metrics["activity_count"]) == 0:
         print(warn(f"{wallet}: no activity found."))
         return
     classification = classify_wallet_candidate(metrics)
@@ -60,7 +73,7 @@ def print_wallet_report(
         target_condition_id=target_condition_id,
     )
     print(heading(f"\nWALLET {wallet}"))
-    print(f"activity items : {metrics['n_items']} ({metrics['n_trades']} trades)")
+    print(f"activity items : {metrics['activity_count']} ({metrics['trade_count']} trades)")
     print(f"markets touched: {metrics['n_markets']}")
     print(f"net cash       : {signed(float(metrics['net_cash']))} USDC")
     print(f"fees           : {float(metrics['fees']):,.2f} USDC")

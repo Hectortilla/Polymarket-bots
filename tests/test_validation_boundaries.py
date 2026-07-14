@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 
 from polybot.execution.paper import PaperBroker
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.polymarket.types import Market
@@ -91,7 +91,7 @@ def test_book_freshness_uses_actual_post_lookup_clock() -> None:
             name="actual-clock",
             paper_latency_ms=0,
             paper_latency_jitter_ms=0,
-            book_max_age_ms=100,
+            event_max_age_ms=100,
         ),
         CountingBooks(snapshot=_book(received_at_ms=1_000)),
         MarketSource(None),

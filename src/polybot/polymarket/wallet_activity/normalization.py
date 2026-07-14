@@ -7,19 +7,35 @@ from decimal import Decimal, InvalidOperation
 from math import isfinite
 
 from polybot.framework.events import Side
+from polybot.framework.events.resolutions import normalize_outcome
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
 
-TIMESTAMP_MILLISECONDS_THRESHOLD = 10_000_000_000
+from .constants import (
+    ACTIVITY_SIDE_FIELD,
+    ACTIVITY_SIZE_FIELD,
+    ACTIVITY_TIMESTAMP_FIELD,
+    ACTIVITY_TOKEN_ID_FIELD,
+    ACTIVITY_TRANSACTION_HASH_FIELD,
+    ACTIVITY_OUTCOME_FIELD,
+    CONDITION_ID_FIELD,
+    PROXY_WALLET_FIELD,
+)
+
+MILLISECONDS_TIMESTAMP_THRESHOLD = 10_000_000_000
+WALLET_TRADE_SOURCE_ID_VERSION = "wallet-trade-v1"
 
 
 def _get_trade_field(source: object, name: str) -> object:
     if isinstance(source, dict):
         aliases = {
-            "wallet": "proxyWallet",
-            "condition_id": "conditionId",
-            "token_id": "asset",
-            "transaction_hash": "transactionHash",
+            "wallet": PROXY_WALLET_FIELD,
+            "condition_id": CONDITION_ID_FIELD,
+            "token_id": ACTIVITY_TOKEN_ID_FIELD,
+            "transaction_hash": ACTIVITY_TRANSACTION_HASH_FIELD,
+            "side": ACTIVITY_SIDE_FIELD,
+            "size": ACTIVITY_SIZE_FIELD,
+            "timestamp": ACTIVITY_TIMESTAMP_FIELD,
         }
         return source.get(name, source.get(aliases.get(name, name)))
     return getattr(source, name, None)
@@ -38,7 +54,7 @@ def _timestamp_ms(value: object) -> int | None:
         return None
     return (
         int(seconds * 1000)
-        if seconds < TIMESTAMP_MILLISECONDS_THRESHOLD
+        if seconds < MILLISECONDS_TIMESTAMP_THRESHOLD
         else int(seconds)
     )
 
@@ -67,13 +83,20 @@ def normalize_wallet_trade(
     normalized_size = _decimal(size)
     normalized_price = _decimal(price)
     timestamp = _timestamp_ms(_get_trade_field(source, "timestamp"))
-    transaction_hash = _get_trade_field(source, "transaction_hash")
+    raw_outcome = _get_trade_field(source, ACTIVITY_OUTCOME_FIELD)
+    outcome = normalize_outcome(raw_outcome)
+    transaction_hash = _optional_text(_get_trade_field(source, "transaction_hash"))
     upstream_source_id = transaction_hash
     required_fields = (wallet, condition_id, token_id, upstream_source_id)
     if not all(isinstance(value, str) for value in required_fields):
         return None
     normalized_fields = tuple(value.strip() for value in required_fields)
-    if not all(normalized_fields) or not isinstance(side, str) or timestamp is None:
+    if (
+        not all(normalized_fields)
+        or not isinstance(side, str)
+        or timestamp is None
+        or (raw_outcome is not None and outcome is None)
+    ):
         return None
     wallet, condition_id, token_id, upstream_source_id = normalized_fields
     if normalized_size is None or normalized_price is None:
@@ -99,17 +122,9 @@ def normalize_wallet_trade(
             trade_timestamp_ms=timestamp,
             observed_at_ms=observed_at_ms,
             kind=kind,
-            market_slug=(
-                _get_trade_field(source, "slug")
-                if isinstance(_get_trade_field(source, "slug"), str)
-                else None
-            ),
+            market_slug=_optional_text(_get_trade_field(source, "slug")),
             transaction_hash=transaction_hash,
-            outcome=(
-                _get_trade_field(source, "outcome")
-                if isinstance(_get_trade_field(source, "outcome"), str)
-                else None
-            ),
+            outcome=outcome,
         )
     except (TypeError, ValueError):
         return None
@@ -127,21 +142,52 @@ def normalize_stream_event(
             observed_at_ms=observed_at_ms,
             kind=WalletTradeKind.TRADE,
         )
+    wallet = _required_text(source.wallet)
+    condition_id = _required_text(source.condition_id)
+    token_id = _required_text(source.token_id)
+    source_id = _required_text(source.source_id)
+    if None in (wallet, condition_id, token_id, source_id):
+        return None
+    normalized_outcome = normalize_outcome(source.outcome)
+    if source.outcome is not None and normalized_outcome is None:
+        return None
+    if not source.is_valid() or not isinstance(source.side, Side):
+        return None
+    upstream_source_id = _optional_text(source.transaction_hash) or source_id
     event = replace(
         source,
-        wallet=normalize_wallet_address(source.wallet),
+        wallet=normalize_wallet_address(wallet),
+        condition_id=condition_id,
+        token_id=token_id,
+        market_slug=_optional_text(source.market_slug),
+        transaction_hash=_optional_text(source.transaction_hash),
+        outcome=normalized_outcome,
         source_id=_canonical_source_id(
-            wallet=source.wallet,
-            condition_id=source.condition_id,
-            token_id=source.token_id,
+            wallet=wallet,
+            condition_id=condition_id,
+            token_id=token_id,
             side=source.side.value,
             size=source.size,
             price=source.price,
             timestamp=source.trade_timestamp_ms,
-            upstream_source_id=source.transaction_hash or source.source_id,
+            upstream_source_id=upstream_source_id,
         ),
     )
     return event if event.is_valid() else None
+
+
+def _required_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _optional_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def sort_key(trade: WalletTradeEvent) -> tuple[int, str, str, str]:
@@ -165,7 +211,7 @@ def _canonical_source_id(
     upstream_source_id: str,
 ) -> str:
     parts = (
-        "wallet-trade-v1",
+        WALLET_TRADE_SOURCE_ID_VERSION,
         normalize_wallet_address(wallet),
         condition_id,
         token_id,

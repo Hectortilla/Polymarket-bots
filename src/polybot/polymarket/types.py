@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from collections.abc import Iterable
 
+from polybot.framework.events.resolutions import BinaryOutcome, NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-
 
 @dataclass(frozen=True, slots=True)
 class MarketOutcome:
@@ -20,11 +20,14 @@ class Market:
     question: str
     yes_token_id: str
     no_token_id: str
-    minimum_tick_size: Decimal
-    minimum_order_size: Decimal
+    minimum_tick_size: Decimal | None
+    minimum_order_size: Decimal | None
     neg_risk: bool
     fee_rate: Decimal
     outcomes: tuple[MarketOutcome, ...] = ()
+    resolved: bool = False
+    winning_token_id: str | None = None
+    winning_outcome: BinaryOutcome | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +43,10 @@ class Position:
     token_id: str
     size: Decimal
     average_price: Decimal | None = None
+    condition_id: str | None = None
+    market_slug: str | None = None
+    outcome: str | None = None
+    current_price: Decimal | None = None
 
 
 def market_token_ids(market: Market) -> tuple[str, str]:
@@ -63,9 +70,9 @@ def outcome_label_for_token(market: Market, token_id: str) -> str | None:
         if outcome.token_id == token_id:
             return outcome.label
     if token_id == market.yes_token_id:
-        return "Yes"
+        return YES_OUTCOME
     if token_id == market.no_token_id:
-        return "No"
+        return NO_OUTCOME
     return None
 
 

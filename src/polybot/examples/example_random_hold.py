@@ -2,14 +2,42 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
 from time import monotonic
+from typing import Literal
 
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
 from polybot.framework.outcomes import resolve_outcome_token
+
+RandomHoldAction = Literal["buy", "sell"]
+
+
+@dataclass(frozen=True, slots=True)
+class RandomHoldState:
+    selected_token_id: str | None
+    position_size: Decimal
+    bought_at: float | None
+    sell_in_flight: bool
+
+    def decision(
+        self,
+        book: BookSnapshot,
+        *,
+        now: float,
+        hold_seconds: float,
+    ) -> RandomHoldAction | None:
+        if book.token_id != self.selected_token_id:
+            return None
+        if self.position_size == 0:
+            return "buy"
+        if self.sell_in_flight or self.bought_at is None:
+            return None
+        return "sell" if now - self.bought_at >= hold_seconds else None
 
 
 class ExampleRandomHoldBot(BaseBot):
@@ -54,17 +82,17 @@ class ExampleRandomHoldBot(BaseBot):
             self._selected_token_id = self._rng.choice(
                 (self._yes_token_id, self._no_token_id)
             )
-        if book.token_id != self._selected_token_id:
-            return
-
-        if self._position_size == 0:
+        action = RandomHoldState(
+            self._selected_token_id,
+            self._position_size,
+            self._bought_at,
+            self._sell_in_flight,
+        ).decision(book, now=self._monotonic(), hold_seconds=self.hold_seconds)
+        if action == "buy":
             await self._buy(ctx, book)
             return
-        if self._sell_in_flight or self._bought_at is None:
-            return
-        if self._monotonic() - self._bought_at < self.hold_seconds:
-            return
-        await self._sell(ctx, book)
+        if action == "sell":
+            await self._sell(ctx, book)
 
     async def _load_market(self, ctx: BotContext, market_slug: str) -> None:
         if market_slug == self._market_slug:
@@ -72,8 +100,12 @@ class ExampleRandomHoldBot(BaseBot):
         market = await ctx.markets.find_by_slug(market_slug)
         self._market_slug = market_slug
         self._condition_id = None if market is None else market.condition_id
-        self._yes_token_id = None if market is None else resolve_outcome_token(market, "Yes")
-        self._no_token_id = None if market is None else resolve_outcome_token(market, "No")
+        self._yes_token_id = (
+            None if market is None else resolve_outcome_token(market, YES_OUTCOME)
+        )
+        self._no_token_id = (
+            None if market is None else resolve_outcome_token(market, NO_OUTCOME)
+        )
         self._selected_token_id = None
         self._position_size = Decimal("0")
         self._bought_at = None

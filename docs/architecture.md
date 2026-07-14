@@ -11,20 +11,24 @@
 
 ## Current Status
 
-Slices 1 through 5 are implemented: framework contracts, the paper fill engine,
-public Polymarket market-data adapters, wallet activity Data API inputs, a
-paper runner CLI, and an opt-in terminal dashboard.
+Slices 1 through 5, Slice 10, and Slice 11 are implemented: framework contracts,
+the paper fill engine, public Polymarket market-data adapters, wallet activity
+Data API inputs, the paper runner CLI and terminal dashboard, plus dynamic
+market tracking and resolution settlement.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
-stream. The CLI subscribes only to current markets, resolves next markets
-best-effort for rollover preparation, and rebuilds its current subscriptions
-when a dynamic bot's active stream plan changes. It fails closed when wallet
+stream. The CLI subscribes one union of unresolved configured, wallet-discovered,
+and paper-position markets, resolves next markets best-effort for rollover
+preparation, and replaces the union subscription when its registry changes. It
+fails closed when wallet
 addresses are configured without either the SDK-backed Data API client or an
 injected compatible source. The CLI supplies the SDK-backed polling client;
 an injected source is optional and can provide lower-latency wallet events.
-CLI paper runs persist normalized source-event claims under `.bot-state/` so a
-restart cannot submit the same wallet-following source event twice. Direct
+CLI paper runs persist normalized source-event claims, followed-wallet epochs,
+baselines, movement journals, checkpoints, and settlements under `.bot-state/`.
+A restart cannot submit the same wallet-following source event twice or reapply
+the same resolution. Direct
 `PaperBroker` users may inject another idempotency store; tests retain the
 process-local default.
 
@@ -70,20 +74,38 @@ polyfollow-polybot/
   docs/
   framework/
     base.py       # BaseBot event hooks.
-    config.py     # Global env config plus per-bot overrides.
+    config/       # Config model, defaults, environment, and stream-rule parsing.
     context.py    # Object passed to every bot hook.
     dedupe.py     # Source event dedupe for wallet-following inputs.
     dispatch.py   # Typed dispatch outcomes and stable skip reasons.
-    events/       # Orders/fills plus semantic book and wallet-trade contracts.
+    events/       # Orders/fills plus book, wallet-trade, and resolution contracts.
     markets.py    # Static and dynamic market subscription contracts.
     wallets.py    # Watched-wallet subscription contracts.
     runner/       # Dispatch orchestration plus owned validation policy.
-    polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
+  cli/
+    runner/       # Runtime lifecycle, stream planning, and event dispatch.
+      service.py
+      factory.py
+      streams.py
+      dispatch.py
+      book_dispatch.py
+      wallet_dispatch.py
+      resolution_dispatch.py
+      state.py
+    tracked_markets.py # Condition-keyed union market registry.
+    tracking/     # Wallet-discovery and paper-position registry workflows.
+    streams/      # CLI stream contracts, construction, merging, and telemetry.
+    followed_wallets/ # Follow contracts, position replay, and persistence.
+    resolution.py # Gamma reconciliation and settlement ordering.
+    resolution_state.py # Idempotent resolution ledger.
+    persistence.py # Atomic JSON file primitive.
+  polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
     normalization/ # Market, book, and scalar SDK-payload normalization.
-    data.py       # SDK-backed positions/trades/activity adapter.
+    data.py       # SDK-backed normalized current-position adapter.
     clob.py       # Official-client-backed CLOB adapter.
     wallet_activity/  # Wallet trades/activity stream and fallback.
+      constants.py
     ws_market.py  # SDK-backed public market stream and depth state.
     ws_user.py    # SDK-backed authenticated user stream adapter.
     types.py      # Polymarket-specific normalized types.
@@ -131,6 +153,36 @@ WalletActivityStream or Data API reconciliation
   -> FillEvent returned to the calling strategy hook
 ```
 
+Every runtime also owns one `condition_id`-keyed tracked-market registry. It
+unions configured markets, accepted wallet discoveries, and paper-position
+interests into one SDK market subscription. New token pairs are batched at the
+interval owned by `MARKET_ADDITION_BATCH_SECONDS` in
+`polybot.cli.tracked_markets` before the current SDK handle is closed and
+replaced; the pinned SDK cannot
+mutate an open handle. Filtered stream rules remain strict allowlists, while
+wallet-only and independent rules can discover new markets. Entries remain
+until resolution.
+The registry's admitted slugs are also supplied to `BotRunner` as runtime book
+routes. This lets wallet-only discoveries reach `on_book` while keeping
+filtered-rule allowlists strict at registry ingress.
+
+Resolution follows a separate non-fill path:
+
+```text
+MarketResolvedEvent or Gamma reconciliation
+  -> MarketResolutionEvent
+  -> idempotency check
+  -> paper and followed-wallet settlement via `MarketResolutionEvent.payout_for`
+  -> atomic persistence and registry removal
+  -> observer MarketSettled event
+  -> BaseBot.on_market_resolved(ctx, event)
+```
+
+The official market subscription enables custom lifecycle events. Gamma checks
+all unresolved registry entries immediately after each subscription replacement
+and at `RESOLUTION_RECONCILIATION_SECONDS` so a disconnect or SDK queue loss
+cannot permanently hide a resolution.
+
 `dispatch_book()` and `dispatch_wallet_trade()` return `DispatchOutcome`.
 Accepted events have no skip reason. Rejected events use the finite
 `DispatchSkipReason` contract for route mismatches, malformed/stale/future data,
@@ -151,7 +203,7 @@ unchanged and still rejects a genuinely stale latest snapshot.
 The CLI enables its terminal dashboard by default and accepts `--no-dashboard`
 for headless operation. It may attach a fail-open `RuntimeObserver` without exposing it to bots,
 adapters, or paper execution. The observer receives lifecycle, stream,
-dispatch, order, fill, and portfolio events. Its Rich dashboard projects them
+dispatch, order, fill, settlement, and portfolio events. Its Rich dashboard projects them
 in memory, uses `asciichartpy` for fixed-scale price and variance-padded
 executable-wallet-value charts. The price chart is taller for clearer y-axis
 resolution. Completed buys and sells are marked directly on the traded token's
@@ -170,6 +222,13 @@ never affect bot execution.
 Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
 dashboard renders independently of bot execution.
+The market-price chart plots up to twenty tokens and keeps its admitted selection
+stable when more books are tracked than can be plotted. Overflow books still
+update runtime state and the activity ticker, but repeated union snapshots
+cannot rotate the visible lines or erase their histories.
+Resolved series similarly retain a dimmed final `1` or `0` value; their existing
+legend labels and the activity ticker identify the winning outcome. No separate
+tracked-markets panel is introduced.
 
 Stream health distinguishes local book coalescing from upstream SDK loss. It
 reports run-lifetime raw book arrivals and pending snapshots superseded before
@@ -214,6 +273,9 @@ class MyBot(BaseBot):
         ...
 
     async def on_fill(self, ctx: BotContext, fill: FillEvent) -> None:
+        ...
+
+    async def on_market_resolved(self, ctx: BotContext, event: MarketResolutionEvent) -> None:
         ...
 ```
 
@@ -357,8 +419,22 @@ book at fill time. If no fresh book is available, the order is rejected with a
 stable reason instead of guessing. Source IDs are claimed atomically across the
 full in-flight submission so concurrent duplicates cannot apply two portfolio
 transitions. Successful paper source claims remain available for the broker's
-process lifetime; durable claims across restarts require a future persistence
-slice because v1 has no database integration.
+process lifetime. CLI paper runs additionally persist claims across restarts in
+an atomic file-backed store; direct broker users may inject their own store.
+
+## Followed-Wallet Accounting
+
+When a wallet is first followed, only its current open Data API positions are
+loaded. Each position receives its baseline at the first valid executable bid,
+so tracked gross PnL begins at zero; an unsafe or unavailable mark leaves PnL
+unavailable without preventing market tracking. Closed history and Polymarket
+lifetime PnL are not imported.
+
+Post-follow movements replay by `(trade_timestamp_ms, source_key)`. Buys update
+weighted basis, sells realize against basis, and resolution realizes remaining
+value at `1` or `0`. Fees are never inferred, so this accounting is explicitly
+gross. Removing and later re-adding a wallet creates a new persisted follow
+epoch.
 
 ## Performance Rule
 

@@ -33,6 +33,7 @@ class FillRejectReason(StrEnum):
     BOOK_CROSSED = BookValidationIssue.CROSSED.value
     MARKET_UNAVAILABLE = "market_unavailable"
     MARKET_FEE_INVALID = "market_fee_invalid"
+    MARKET_METADATA_MISMATCH = "market_metadata_mismatch"
     NO_DEPTH_WITHIN_SLIPPAGE = "no_depth_within_slippage"
     DUPLICATE_SOURCE_ID = "duplicate_source_id"
 

@@ -2,22 +2,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Protocol
 
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-
-DEFAULT_WALLET_TRADE_LIMIT = 100
-DEFAULT_MAX_CONCURRENCY = 4
-DEFAULT_DATA_TRADES_BUDGET_PER_10S = 180
-DATA_TRADES_WINDOW_SECONDS = 10
-DATA_TRADES_PAGE_SIZE = 499
-TRADE_ACTIVITY_TYPE = "TRADE"
-
-
-def current_time_ms() -> int:
-    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
 
 class WalletActivityIssue(StrEnum):
@@ -44,7 +32,8 @@ class WalletTradeBatch:
 
 
 class WalletTradeSource(Protocol):
-    def trades(self, wallets: frozenset[str]) -> AsyncIterable[object]: ...
+    def trades(self, wallets: frozenset[str]) -> AsyncIterable[object]:
+        ...
 
 
 class WalletDataClient(Protocol):
@@ -57,7 +46,8 @@ class WalletDataClient(Protocol):
         start: int | None = None,
         end: int | None = None,
         page_size: int,
-    ) -> AsyncIterable[object]: ...
+    ) -> AsyncIterable[object]:
+        ...
 
     def list_activity(
         self,
@@ -65,7 +55,8 @@ class WalletDataClient(Protocol):
         user: str,
         activity_types: tuple[str, ...],
         page_size: int,
-    ) -> AsyncIterable[object]: ...
+    ) -> AsyncIterable[object]:
+        ...
 
 
 @dataclass(frozen=True, slots=True)

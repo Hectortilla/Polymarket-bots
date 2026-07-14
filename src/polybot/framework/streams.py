@@ -56,6 +56,21 @@ class StreamPlan:
     def current_wallet_addresses(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(wallet for rule in self.current for wallet in rule.wallet_addresses))
 
+    def wallet_discovery_scopes(self) -> dict[str, frozenset[str] | None]:
+        scopes: dict[str, set[str] | None] = {}
+        for rule in self.current:
+            for wallet in rule.wallet_addresses:
+                if rule.relation is StreamRelation.INDEPENDENT:
+                    scopes[wallet] = None
+                elif wallet not in scopes:
+                    scopes[wallet] = set(rule.market_slugs)
+                elif scopes[wallet] is not None:
+                    scopes[wallet].update(rule.market_slugs)
+        return {
+            wallet: None if slugs is None else frozenset(slugs)
+            for wallet, slugs in scopes.items()
+        }
+
     def accepts_book(self, market_slug: str | None) -> bool:
         if not self.current:
             return True

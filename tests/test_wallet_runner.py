@@ -1,9 +1,9 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from polybot.framework.base import BaseBot
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import Side
@@ -57,6 +57,22 @@ def test_runner_rejects_wallet_trade_without_source_id(dummy_context: BotContext
     accepted, seen_count = asyncio.run(run())
 
     assert accepted.skip_reason is DispatchSkipReason.WALLET_TRADE_INVALID
+    assert seen_count == 0
+
+
+def test_runner_rejects_invalid_wallet_trade_before_bot_dispatch(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> tuple[DispatchSkipReason | None, int]:
+        bot = RecordingBot(seen=[])
+        runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_250)
+        invalid_trade = replace(_wallet_trade("invalid"), size=Decimal("0"))
+        outcome = await runner.dispatch_wallet_trade(invalid_trade)
+        return outcome.skip_reason, len(bot.seen)
+
+    skip_reason, seen_count = asyncio.run(run())
+
+    assert skip_reason is DispatchSkipReason.WALLET_TRADE_INVALID
     assert seen_count == 0
 
 

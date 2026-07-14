@@ -36,14 +36,15 @@ Pin the chosen dependency version and cover the adapter with contract tests.
 The unified SDK's beta status requires version and compatibility discipline; it
 does not by itself justify bypassing the SDK.
 
-This package pins `polymarket-client==0.1.0b17`. Its internal adapter source
+This package pins the `polymarket-client` version declared in `pyproject.toml`. Its internal adapter source
 directory is named `polymarket_adapter/` but installs as `polybot.polymarket`; this
 prevents it from shadowing the official SDK's top-level `polymarket` import at
 the repository root. Wallet-analysis scripts use synchronous `PublicClient`
 methods and normalize SDK models before analysis code sees them.
 
 Slice 3 uses the pinned SDK's `AsyncPublicClient.get_market(slug=...)`,
-`get_order_book(token_id=...)`, and `subscribe(MarketSpec(...))` methods. The
+`list_markets(slug=...)`, `get_order_book(token_id=...)`, and
+`subscribe(MarketSpec(...))` methods. The
 market stream consumes full `MarketBookEvent` snapshots and applies each
 `MarketPriceChangeEvent` atomically to adapter-owned depth before emitting a
 sorted internal `BookSnapshot`. A zero-sized price change removes that level,
@@ -53,7 +54,24 @@ rejects updates whose token or condition identity disagrees with resolved
 metadata. REST remains the bootstrap and reconciliation path; the SDK market
 subscription is the live signal path.
 
-In pinned `polymarket-client==0.1.0b17`, CLOB market subscriptions construct a
+Slice 11 sets `custom_feature_enabled=True` on the same union `MarketSpec`.
+Official market-channel documentation states that this enables
+`market_resolved`, whose payload includes the condition/market ID, both asset
+IDs, winning asset, winning outcome, and timestamp. The pinned SDK exposes that
+payload as `MarketResolvedEvent`; the adapter validates it against Gamma market
+metadata before producing `MarketResolutionEvent`. No direct WebSocket
+implementation is required.
+
+The pinned SDK's open subscription handle cannot add token IDs. Registry
+additions are therefore batched at the interval owned by
+`MARKET_ADDITION_BATCH_SECONDS` in `polybot.cli.tracked_markets` and replace the
+one union handle.
+Gamma reconciliation runs immediately after replacement and then at the interval
+owned by `polybot.cli.resolution.RESOLUTION_RECONCILIATION_SECONDS`.
+It accepts a resolution only when Gamma reports a final resolution/closed state
+and the binary outcome prices are exactly `1` and `0`.
+
+In the pinned `polymarket-client` version, CLOB market subscriptions construct a
 1,024-entry `AsyncSubscriptionHandle` queue. That SDK queue uses drop-oldest
 backpressure and exposes its own `dropped` counter. Those upstream SDK losses
 are distinct from the CLI's intentional per-token pending-book coalescing and
@@ -66,6 +84,8 @@ Gamma API: `https://gamma-api.polymarket.com`
 
 - Market and event discovery.
 - Slugs, questions, outcomes, token IDs, active/closed state.
+- The official SDK's `AsyncPublicClient.list_markets(slug=...)` maps to the
+  keyset market-list endpoint and accepts multiple slugs in one request.
 - Public, no authentication.
 - Relevant docs: `/api-reference/introduction`, `/market-data/fetching-markets`.
 
@@ -77,6 +97,20 @@ Data API: `https://data-api.polymarket.com`
   `/activity?user={address}`.
 - Public, no authentication.
 - Relevant docs: `/market-data/overview`, `/api-reference/core/get-trades-for-a-user-or-markets`.
+
+Slice 11 bootstraps newly followed wallets through
+`AsyncPublicClient.list_positions(user=..., size_threshold=0)`, the official SDK
+binding for `GET /positions`. Only normalized open positions are accepted;
+missing wallet-market-token identity or invalid numeric values fail closed.
+The API's `outcome` field is an arbitrary string (for example, `Up` or `Down`),
+so position normalization preserves any non-empty string rather than restricting
+it to binary `Yes`/`No` labels.
+Closed-position history and API lifetime PnL fields are deliberately ignored.
+Bootstrap CLOB marks are best-effort: a CLOB 404 or a book without an executable
+side stores the position with an unknown baseline and does not block market
+tracking. A later valid book can populate that baseline. The adapter does not
+substitute the Data API's indicative `cur_price` for an executable mark; position
+identity and malformed market data still fail closed.
 
 CLOB API: `https://clob.polymarket.com`
 
@@ -156,6 +190,19 @@ Important limits from docs:
 
 Relevant docs: `/api-reference/rate-limits`.
 
+`GammaClient.find_many()` uses the SDK market-list paginator with a sequence of
+slugs and a page size of 100, preserving the caller's order and duplicate
+slugs after the response is normalized. It splits the sequence at a
+60,000-character encoded-query budget because the pinned SDK's `httpx`
+transport rejects query components longer than 65,536 characters. This avoids one
+Gamma request per market during bootstrap while keeping long slug collections
+safe. It also caps each slug-filter array at 100 values, matching Gamma's API
+validation. Because the list endpoint defaults to `closed=false`, unresolved
+slugs are retried together with `closed=true` so open wallet positions in closed
+or resolved markets can still be normalized. Batches are sent sequentially and
+the SDK paginator handles pagination inside each batch. A fixed inter-request
+delay is not needed for this path.
+
 ## Wallet Following
 
 The public docs expose wallet-scoped Data API endpoints:
@@ -180,6 +227,11 @@ events are only wake-up hints because they omit a wallet. Optional compatible
 push sources may be merged with polling and are deduplicated by canonical trade
 identity.
 
+The Data API's omitted `start` uses a broad default window (about three years).
+Polling must set `start` to the runtime freshness window, with a one-second
+overlap for timestamp boundaries, and discard rows outside that window before
+queueing them.
+
 Before adding either path directly, re-check the unified SDK and specialized
 official clients for a supported wallet activity method or stream. A source not
 covered by an official Polymarket library is an explicit exception to the
@@ -195,6 +247,12 @@ or `Retry-After` response-header contract is documented.
 Gamma market discovery is the owner of slug-to-market metadata resolution.
 Multi-market and dynamic-market bots should produce slugs, then resolve those
 slugs through Gamma/CLOB metadata before subscribing or trading.
+
+Gamma's `orderMinSize` and `orderPriceMinTickSize` are nullable. The adapter
+preserves null values as unknown `Market.minimum_order_size` and
+`Market.minimum_tick_size`; it does not invent a zero-size minimum or a price
+increment. The CLOB order-book response remains the authoritative source when
+an execution path needs concrete trading limits.
 
 For consecutive time-bucket markets, the framework expects the bot to generate
 candidate stream rules through `current_stream_rules()` and `next_stream_rules()`. The adapter

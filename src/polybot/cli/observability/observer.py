@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from polybot.cli.observability.events import RuntimeEvent
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 
 
 class RuntimeObserver(Protocol):

@@ -1,11 +1,11 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 import pytest
 
 from polybot.framework.base import BaseBot
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.dispatch import DispatchOutcome
@@ -93,6 +93,28 @@ def test_runner_accepts_wallet_trade_without_market_plan_per_contract(
     assert asyncio.run(run()) is True
 
 
+def test_runner_routes_books_for_runtime_wallet_discoveries(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> tuple[DispatchOutcome, DispatchOutcome, list[str]]:
+        ctx = _with_config(
+            dummy_context,
+            BotConfig(name="wallet", wallet_addresses=("0xleader",)),
+        )
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_000)
+        runner.set_runtime_market_slugs(frozenset({"btc"}))
+
+        accepted = await runner.dispatch_book(_book("btc"))
+        rejected = await runner.dispatch_book(_book("sol"))
+        return accepted, rejected, bot.books
+
+    accepted, rejected, books = asyncio.run(run())
+    assert accepted.accepted
+    assert rejected.skip_reason is DispatchSkipReason.MARKET_NOT_TRACKED
+    assert books == ["btc"]
+
+
 def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc", "eth")))
@@ -108,11 +130,22 @@ def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotConte
     assert book_count == 0
 
 
+def test_runner_rejects_book_without_condition_id(dummy_context: BotContext) -> None:
+    async def run() -> DispatchOutcome:
+        ctx = _with_config(dummy_context, BotConfig(name="multi", market_slugs=("btc",)))
+        runner = BotRunner(RecordingMarketBot(books=[], wallet_trades=[]), ctx)
+        return await runner.dispatch_book(replace(_book("btc"), condition_id=None))
+
+    outcome = asyncio.run(run())
+
+    assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+
+
 def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(
             dummy_context,
-            BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=1_000),
+            BotConfig(name="multi", market_slugs=("btc", "eth"), event_max_age_ms=1_000),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
         runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_000)
@@ -124,6 +157,7 @@ def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:
                 asks=(),
                 received_at_ms=2_000,
                 market_slug="btc",
+                condition_id="condition",
             )
         )
         return accepted, len(bot.books)
@@ -138,7 +172,7 @@ def test_runner_rejects_stale_book(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(
             dummy_context,
-            BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=1_000),
+            BotConfig(name="multi", market_slugs=("btc", "eth"), event_max_age_ms=1_000),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
         runner = BotRunner(bot, ctx, now_ms_fn=lambda: 2_000)
@@ -150,6 +184,7 @@ def test_runner_rejects_stale_book(dummy_context: BotContext) -> None:
                 asks=(),
                 received_at_ms=500,
                 market_slug="btc",
+                condition_id="condition",
             )
         )
         return accepted, len(bot.books)
@@ -175,6 +210,7 @@ def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
                 ),
                 received_at_ms=1_000,
                 market_slug="btc",
+                condition_id="condition",
             )
         )
         return accepted, len(bot.books)
@@ -239,7 +275,7 @@ def test_runner_rejects_stale_wallet_trade(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(
             dummy_context,
-            BotConfig(name="multi", market_slugs=("btc", "eth"), book_max_age_ms=500),
+            BotConfig(name="multi", market_slugs=("btc", "eth"), event_max_age_ms=500),
         )
         bot = RecordingMarketBot(books=[], wallet_trades=[])
         runner = BotRunner(bot, ctx, now_ms_fn=lambda: 2_000)
@@ -283,6 +319,7 @@ def _book(market_slug: str) -> BookSnapshot:
         asks=(),
         received_at_ms=1_000,
         market_slug=market_slug,
+        condition_id="condition",
     )
 
 

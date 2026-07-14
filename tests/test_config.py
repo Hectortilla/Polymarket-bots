@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from polybot.framework.config import (
+from polybot.framework.config.constants import (
     BOT_API_KEY_ENV,
     BOT_API_PASSPHRASE_ENV,
     BOT_API_SECRET_ENV,
-    BOT_BOOK_MAX_AGE_MS_ENV,
+    BOT_EVENT_MAX_AGE_MS_ENV,
     BOT_FUNDER_ADDRESS_ENV,
     BOT_LIVE_ENABLED_ENV,
     BOT_STREAM_RULES_ENV,
@@ -18,16 +18,14 @@ from polybot.framework.config import (
     BOT_PAPER_LATENCY_MS_ENV,
     BOT_PAPER_PORTFOLIO_USDC_ENV,
     BOT_PRIVATE_KEY_ENV,
-    BotConfig,
-    BotMode,
-    DEFAULT_BOT_MODE,
-    DEFAULT_BOOK_MAX_AGE_MS,
+    DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
     DEFAULT_MAX_SLIPPAGE_PCT,
     DEFAULT_PAPER_LATENCY_JITTER_MS,
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
+from polybot.framework.config.models import BotConfig, BotMode, DEFAULT_BOT_MODE
 
 
 def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,7 +38,7 @@ def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv(BOT_MAX_SLIPPAGE_PCT_ENV, "0.01")
     monkeypatch.setenv(BOT_PAPER_LATENCY_MS_ENV, "300")
     monkeypatch.setenv(BOT_PAPER_LATENCY_JITTER_MS_ENV, "50")
-    monkeypatch.setenv(BOT_BOOK_MAX_AGE_MS_ENV, str(DEFAULT_BOOK_MAX_AGE_MS))
+    monkeypatch.setenv(BOT_EVENT_MAX_AGE_MS_ENV, str(DEFAULT_EVENT_MAX_AGE_MS))
     monkeypatch.setenv(BOT_PAPER_PORTFOLIO_USDC_ENV, "500")
     monkeypatch.setenv(BOT_LIVE_ENABLED_ENV, "true")
     monkeypatch.setenv(BOT_PRIVATE_KEY_ENV, "private")
@@ -61,7 +59,7 @@ def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch)
     assert config.max_slippage_pct == Decimal("0.01")
     assert config.paper_latency_ms == 300
     assert config.paper_latency_jitter_ms == 50
-    assert config.book_max_age_ms == DEFAULT_BOOK_MAX_AGE_MS
+    assert config.event_max_age_ms == DEFAULT_EVENT_MAX_AGE_MS
     assert config.paper_portfolio_usdc == Decimal("500")
     assert config.live_enabled is True
     assert config.private_key == "private"
@@ -86,7 +84,7 @@ def test_config_rejects_invalid_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         (BOT_MAX_SLIPPAGE_PCT_ENV, str(DEFAULT_MAX_SLIPPAGE_PCT)),
         (BOT_PAPER_LATENCY_MS_ENV, str(DEFAULT_PAPER_LATENCY_MS)),
         (BOT_PAPER_LATENCY_JITTER_MS_ENV, str(DEFAULT_PAPER_LATENCY_JITTER_MS)),
-        (BOT_BOOK_MAX_AGE_MS_ENV, str(DEFAULT_BOOK_MAX_AGE_MS)),
+        (BOT_EVENT_MAX_AGE_MS_ENV, str(DEFAULT_EVENT_MAX_AGE_MS)),
         (BOT_PAPER_PORTFOLIO_USDC_ENV, str(DEFAULT_PAPER_PORTFOLIO_USDC)),
     ),
 )
@@ -102,7 +100,7 @@ def test_author_guide_documents_runtime_defaults(env_key: str, default: str) -> 
         ({"max_slippage_pct": Decimal("-0.01")}, "max_slippage_pct"),
         ({"paper_latency_ms": -1}, "paper_latency_ms"),
         ({"paper_latency_jitter_ms": -1}, "paper_latency_jitter_ms"),
-        ({"book_max_age_ms": -1}, "book_max_age_ms"),
+        ({"event_max_age_ms": -1}, "event_max_age_ms"),
         ({"paper_portfolio_usdc": Decimal("0")}, "paper_portfolio_usdc"),
     ),
 )

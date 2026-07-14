@@ -2,13 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING
 
 from polybot.framework.events.book_validation import BookValidationIssue
-
-
-if TYPE_CHECKING:
-    from polybot.framework.events import Side
+from polybot.framework.events import Side
+from polybot.framework.events.resolutions import Outcome
 
 PRICE_FLOOR = Decimal("0")
 PRICE_CEILING = Decimal("1")
@@ -27,10 +24,7 @@ class BookLevel:
 
     def is_valid_price(self) -> bool:
         try:
-            return (
-                self.price.is_finite()
-                and PRICE_FLOOR < self.price <= PRICE_CEILING
-            )
+            return self.price.is_finite() and PRICE_FLOOR < self.price <= PRICE_CEILING
         except (AttributeError, InvalidOperation, TypeError, ValueError):
             return False
 
@@ -55,7 +49,7 @@ class BookSnapshot:
     received_at_ms: int
     market_slug: str | None = None
     condition_id: str | None = None
-    outcome: str | None = None
+    outcome: Outcome | None = None
 
     def is_fresh(self, now_ms: int, max_age_ms: int) -> bool:
         age_ms = now_ms - self.received_at_ms
@@ -79,11 +73,25 @@ class BookSnapshot:
         )
 
     def executable_levels(self, side: Side) -> tuple[BookLevel, ...]:
-        from polybot.framework.events import Side
-
         if side is Side.BUY:
             return tuple(sorted(self.asks, key=lambda level: level.price))
         return tuple(sorted(self.bids, key=lambda level: level.price, reverse=True))
+
+    def midpoint(self) -> Decimal | None:
+        if not self.bids or not self.asks:
+            return None
+        return (
+            max(level.price for level in self.bids)
+            + min(level.price for level in self.asks)
+        ) / 2
+
+    def executable_mark(self, size: Decimal) -> Decimal | None:
+        """Return the quote required to liquidate a non-zero position."""
+        if size > 0 and self.bids:
+            return max(level.price for level in self.bids)
+        if size < 0 and self.asks:
+            return min(level.price for level in self.asks)
+        return None
 
     def validation_issue(
         self,

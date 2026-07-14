@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from polybot.framework.context import BotContext
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
 from polybot.examples.example_rebound import ExampleReboundBot
 from polybot.polymarket.types import Market, MarketOutcome
 from polybot.framework.outcomes import resolve_outcome_token
@@ -44,7 +45,7 @@ def test_rebound_bot_does_not_buy_without_a_prior_decline(
 def test_outcome_resolution_supports_binary_and_arbitrary_labels() -> None:
     market = _market("tutorial-market", "yes-token")
     assert resolve_outcome_token(market, "yes") == "yes-token"
-    assert resolve_outcome_token(market, "No") == "no-token"
+    assert resolve_outcome_token(market, NO_OUTCOME) == "no-token"
 
     multi_market = replace(
         market,
@@ -75,7 +76,10 @@ def _market(slug: str, yes_token_id: str) -> Market:
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=Decimal("0"),
-        outcomes=(MarketOutcome("Yes", yes_token_id), MarketOutcome("No", "no-token")),
+        outcomes=(
+            MarketOutcome(YES_OUTCOME, yes_token_id),
+            MarketOutcome(NO_OUTCOME, "no-token"),
+        ),
     )
 
 

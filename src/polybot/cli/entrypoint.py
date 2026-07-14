@@ -7,16 +7,18 @@ import asyncio
 import os
 import sys
 
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 
 from .config import load_dotenv, parse_overrides
 from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
-from .runner import run_bot
+from .runner.service import run_bot
 
 INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (
     "dashboard requires an interactive terminal; use --no-dashboard for headless runs"
 )
+TERM_ENV_KEY = "TERM"
+NON_INTERACTIVE_TERMINAL = "dumb"
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one Polymarket bot in paper mode")
@@ -54,7 +56,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _dashboard_enabled(value: bool) -> bool:
-    interactive = sys.stdout.isatty() and os.getenv("TERM", "").lower() != "dumb"
+    interactive = (
+        sys.stdout.isatty()
+        and os.getenv(TERM_ENV_KEY, "").lower() != NON_INTERACTIVE_TERMINAL
+    )
     if value is True and not interactive:
         raise ValueError(INTERACTIVE_TERMINAL_REQUIRED_MESSAGE)
     return value

@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from polymarket.models.clob.order_book import OrderBookLevel
 
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import normalize_outcome
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
 from .values import _required_text
@@ -18,7 +19,7 @@ def normalize_book(
     received_at_ms: int,
     condition_id: object = None,
     market_slug: str | None = None,
-    outcome: str | None = None,
+    outcome: object = None,
     expected_token_id: str | None = None,
     expected_condition_id: str | None = None,
 ) -> BookSnapshot:
@@ -48,6 +49,12 @@ def normalize_book(
 
     normalized_bids = _levels(bids, reverse=True)
     normalized_asks = _levels(asks, reverse=False)
+    normalized_outcome = normalize_outcome(outcome)
+    if outcome is not None and normalized_outcome is None:
+        raise MarketDataError(
+            MarketDataIssue.INVALID_MARKET_PARAMETERS,
+            "book outcome is invalid",
+        )
     snapshot = BookSnapshot(
         token_id=normalized_token_id,
         bids=normalized_bids,
@@ -55,7 +62,7 @@ def normalize_book(
         received_at_ms=received_at_ms,
         market_slug=market_slug,
         condition_id=normalized_condition_id,
-        outcome=outcome,
+        outcome=normalized_outcome,
     )
     if snapshot.is_crossed():
         raise MarketDataError(

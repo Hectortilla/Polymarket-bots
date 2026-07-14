@@ -39,10 +39,7 @@ def simulate_fill(
     )
     average_price = filled_notional / filled_size
     fee_usdc = sum(
-        (
-            taker_fee_usdc(level.size, fee_rate, level.price)
-            for level in consumed
-        ),
+        (taker_fee_usdc(level.size, fee_rate, level.price) for level in consumed),
         EMPTY_FILL_VALUE,
     )
     status = OrderStatus.FILLED if filled_size == order.size else OrderStatus.PARTIAL

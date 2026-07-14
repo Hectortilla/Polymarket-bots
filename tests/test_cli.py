@@ -1,33 +1,44 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
+from polybot.async_io import run_blocking
 from polybot.cli.config import load_dotenv, parse_overrides
+from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
+    TERM_ENV_KEY,
     _dashboard_enabled,
     main,
 )
 from polybot.cli.factories import load_bot
 from polybot.cli.markets import resolve_plan_markets
-from polybot.cli.runner import _wait_for_stream_plan_change, run_bot
-from polybot.cli.streams import StreamKind, StreamTelemetry, merge_streams
+from polybot.cli.runner.service import run_bot
+from polybot.cli.runner.dispatch import dispatch_stream_event
+from polybot.cli.runner.streams import wait_for_stream_plan_change
+from polybot.cli.streams.contracts import ResolutionStreamEvent, StreamKind, WalletStreamEvent
+from polybot.cli.streams.merger import merge_streams
+from polybot.cli.streams.telemetry import StreamTelemetry
 from polybot.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
-from polybot.framework.config import BotConfig, BotMode
+from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import MarketResolutionEvent, YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import MarketPlan, MarketSubscription
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.types import Market
 from polybot.polymarket.types import MarketTradeHint
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
+from polybot.cli.streams.contracts import BookStreamEvent
 
 
 def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
@@ -71,7 +82,7 @@ def test_dashboard_defaults_to_enabled(monkeypatch) -> None:
             return True
 
     monkeypatch.setattr("polybot.cli.entrypoint.sys.stdout", Output())
-    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setenv(TERM_ENV_KEY, "xterm-256color")
 
     assert _dashboard_enabled(True) is True
     assert _dashboard_enabled(False) is False
@@ -126,6 +137,115 @@ def test_merge_streams_preserves_typed_stream_kind() -> None:
         (StreamKind.BOOK, newest),
         (StreamKind.WALLET, wallet),
     ]
+
+
+def test_rejected_books_do_not_mark_followed_wallet_baselines() -> None:
+    class Runner:
+        def __init__(self, outcome: DispatchOutcome) -> None:
+            self.outcome = outcome
+
+        async def dispatch_book(self, event) -> DispatchOutcome:
+            return self.outcome
+
+    class FollowedWallets:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def mark_baseline(self, token_id, price) -> None:
+            self.calls.append((token_id, price))
+
+    async def run(outcome: DispatchOutcome, followed_wallets: FollowedWallets):
+        await dispatch_stream_event(
+            Runner(outcome),
+            BookStreamEvent(StreamKind.BOOK, _book("token", 1)),
+            object(),
+            gamma=object(),
+            clob=object(),
+            followed_wallets=followed_wallets,
+        )
+
+    rejected = FollowedWallets()
+    asyncio.run(run(DispatchOutcome.skipped(DispatchSkipReason.BOOK_STALE), rejected))
+    assert rejected.calls == []
+
+    accepted = FollowedWallets()
+    asyncio.run(run(DispatchOutcome.accepted_event(), accepted))
+    assert accepted.calls == [("token", Decimal("0.4"))]
+
+
+def test_wallet_trade_identity_is_validated_before_bot_or_follow_state() -> None:
+    class Runner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def dispatch_wallet_trade(self, event) -> DispatchOutcome:
+            self.calls += 1
+            return DispatchOutcome.accepted_event()
+
+    class Gamma:
+        async def find_by_slug(self, slug: str):
+            return _market(slug)
+
+    class Clob:
+        def has_market_slug(self, slug: str) -> bool:
+            return False
+
+        def add_market(self, market) -> None:
+            return None
+
+    class FollowedWallets:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def record_trade(self, event) -> None:
+            self.calls.append(event)
+
+    async def run() -> tuple[DispatchOutcome, DispatchOutcome, int, int]:
+        runner = Runner()
+        followed = FollowedWallets()
+        matching = replace(
+            _wallet("matching"),
+            condition_id="condition-market",
+            token_id="yes-market",
+            market_slug="market",
+        )
+        mismatched = replace(matching, token_id="wrong-token")
+        matching_outcome = await dispatch_stream_event(
+            runner,
+            WalletStreamEvent(StreamKind.WALLET, matching),
+            object(),
+            gamma=Gamma(),
+            clob=Clob(),
+            followed_wallets=followed,
+        )
+        mismatched_outcome = await dispatch_stream_event(
+            runner,
+            WalletStreamEvent(StreamKind.WALLET, mismatched),
+            object(),
+            gamma=Gamma(),
+            clob=Clob(),
+            followed_wallets=followed,
+        )
+        return matching_outcome, mismatched_outcome, runner.calls, len(followed.calls)
+
+    matching_outcome, mismatched_outcome, runner_calls, recorded_count = asyncio.run(run())
+
+    assert matching_outcome is not None and matching_outcome.accepted
+    assert mismatched_outcome is not None
+    assert mismatched_outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+    assert runner_calls == 1
+    assert recorded_count == 1
+
+
+def test_run_blocking_propagates_worker_exception() -> None:
+    def fail() -> None:
+        raise RuntimeError("worker failed")
+
+    async def run() -> None:
+        await run_blocking(fail)
+
+    with pytest.raises(RuntimeError, match="worker failed"):
+        asyncio.run(run())
 
 
 def test_stream_telemetry_tracks_current_and_peak_queue_depth() -> None:
@@ -264,7 +384,7 @@ def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> 
         nonlocal now_ms
         bot = SlowBot()
         ctx = BotContext(
-            config=BotConfig(name="slow", book_max_age_ms=5_000),
+            config=BotConfig(name="slow", event_max_age_ms=5_000),
             broker=SimpleNamespace(),
             markets=SimpleNamespace(),
             books=SimpleNamespace(),
@@ -310,6 +430,22 @@ def test_merge_streams_routes_market_trade_hints_separately() -> None:
             MarketTradeHint("condition", "token", "market", 123),
         )
     ]
+
+
+def test_merge_streams_consumes_resolution_only_source_until_completion() -> None:
+    event = _resolution_event()
+
+    async def source() -> AsyncIterator[object]:
+        yield event
+
+    async def run():
+        return [
+            item
+            async for item in merge_streams(((StreamKind.RESOLUTION, source()),))
+        ]
+
+    items = asyncio.run(run())
+    assert items == [ResolutionStreamEvent(StreamKind.RESOLUTION, event)]
 
 
 def test_merge_streams_propagates_failure_and_cancels_sibling() -> None:
@@ -429,7 +565,7 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
             self.markets = tuple(markets)
 
         async def books(self, token_ids):
-            yield object()
+            yield _book("token", 0)
 
     class FakeBotRunner:
         def __init__(self, bot, ctx) -> None:
@@ -437,6 +573,9 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
             self.market_plan = MarketPlan(current=())
             self.wallet_plan = SimpleNamespace(active_addresses=frozenset())
             self.dispatched = 0
+
+        def set_runtime_market_slugs(self, market_slugs) -> None:
+            self.market_slugs = market_slugs
 
         async def refresh_markets(self):
             self.market_plan = MarketPlan(
@@ -446,8 +585,9 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         async def refresh_wallets(self):
             return self.wallet_plan
 
-        async def dispatch_book(self, event) -> None:
+        async def dispatch_book(self, event) -> DispatchOutcome:
             self.dispatched += 1
+            return DispatchOutcome.accepted_event()
 
     class LifecycleBot(BaseBot):
         started = 0
@@ -463,16 +603,16 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         def __init__(self, *args, **kwargs) -> None:
             pass
 
-    monkeypatch.setattr("polybot.cli.runner.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.WalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.PaperBroker", FakeBroker)
-    monkeypatch.setattr("polybot.cli.runner.BotRunner", FakeBotRunner)
+    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[int, int, bool]:
         client = FakeClient()
-        monkeypatch.setattr("polybot.cli.runner.AsyncPublicClient", lambda: client)
+        monkeypatch.setattr("polybot.cli.runner.factory.AsyncPublicClient", lambda: client)
         bot = LifecycleBot()
         await run_bot(bot, BotConfig(name="runner", market_slugs=("current",)))
         return bot.started, bot.stopped, client.closed
@@ -489,8 +629,6 @@ def test_run_bot_rejects_live_before_opening_client() -> None:
 
 
 def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) -> None:
-    from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-
     initial = StreamPlan(
         current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
     )
@@ -507,15 +645,13 @@ def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) 
             return initial if self.calls == 1 else rolled
 
     async def run() -> StreamPlan:
-        return await _wait_for_stream_plan_change(DynamicRunner(), initial)
+        return await wait_for_stream_plan_change(DynamicRunner(), initial)
 
-    monkeypatch.setattr("polybot.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("polybot.cli.runner.streams.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
     assert asyncio.run(run()) == rolled
 
 
-def test_run_bot_rebuilds_market_stream_when_dynamic_plan_rolls_over(monkeypatch) -> None:
-    from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-
+def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(monkeypatch) -> None:
     initial = StreamPlan(
         current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
     )
@@ -540,41 +676,45 @@ def test_run_bot_rebuilds_market_stream_when_dynamic_plan_rolls_over(monkeypatch
             self.market_sets.append(tuple(market.slug for market in markets))
 
         async def events(self, token_ids):
-            if "yes-bucket-0" in token_ids:
+            if "yes-bucket-0" in token_ids and "yes-bucket-300" not in token_ids:
                 await asyncio.Event().wait()
-            yield object()
+            yield _book("token", 0)
 
     class DynamicRunner:
         def __init__(self, bot, ctx) -> None:
             self.calls = 0
             self.dispatched = 0
 
+        def set_runtime_market_slugs(self, market_slugs) -> None:
+            self.market_slugs = market_slugs
+
         async def refresh_stream_plan(self):
             self.calls += 1
             return initial if self.calls < 3 else rolled
 
-        async def dispatch_book(self, event):
+        async def dispatch_book(self, event) -> DispatchOutcome:
             self.dispatched += 1
+            return DispatchOutcome.accepted_event()
 
     class FakeBroker:
         def __init__(self, *args, **kwargs) -> None:
             pass
 
-    monkeypatch.setattr("polybot.cli.runner.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.WalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.PaperBroker", FakeBroker)
-    monkeypatch.setattr("polybot.cli.runner.BotRunner", DynamicRunner)
-    monkeypatch.setattr("polybot.cli.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", DynamicRunner)
+    monkeypatch.setattr("polybot.cli.runner.streams.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
 
     asyncio.run(run_bot(BaseBot(), BotConfig(name="dynamic"), client=object()))
 
     assert FakeAdapter.market_sets == [
         ("bucket-0",),
         ("bucket-0",),
-        ("bucket-300",),
-        ("bucket-300",),
+        ("bucket-0", "bucket-300"),
+        ("bucket-0", "bucket-300"),
     ]
 
 
@@ -608,14 +748,17 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
             self.market_plan = MarketPlan(current=(MarketSubscription("current"),))
             self.wallet_plan = SimpleNamespace(active_addresses=frozenset())
 
+        def set_runtime_market_slugs(self, market_slugs) -> None:
+            self.market_slugs = market_slugs
+
         async def refresh_markets(self) -> None:
             return None
 
         async def refresh_wallets(self) -> None:
             return None
 
-        async def dispatch_book(self, event) -> None:
-            return None
+        async def dispatch_book(self, event) -> DispatchOutcome:
+            return DispatchOutcome.accepted_event()
 
     class FakeBroker:
         def __init__(self, *args, **kwargs) -> None:
@@ -639,16 +782,16 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
         async def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("polybot.cli.runner.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.WalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.PaperBroker", FakeBroker)
-    monkeypatch.setattr("polybot.cli.runner.BotRunner", FakeBotRunner)
+    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[FakeClient, RecordingObserver]:
         client = FakeClient()
-        monkeypatch.setattr("polybot.cli.runner.AsyncPublicClient", lambda: client)
+        monkeypatch.setattr("polybot.cli.runner.factory.AsyncPublicClient", lambda: client)
         observer = RecordingObserver()
         with pytest.raises(RuntimeError, match="stop failed"):
             await run_bot(
@@ -688,6 +831,20 @@ def _book(token_id: str, received_at_ms: int) -> BookSnapshot:
         bids=(BookLevel(Decimal("0.4"), Decimal("1")),),
         asks=(BookLevel(Decimal("0.6"), Decimal("1")),),
         received_at_ms=received_at_ms,
+        market_slug="market",
+        condition_id="condition",
+    )
+
+
+def _resolution_event() -> MarketResolutionEvent:
+    return MarketResolutionEvent(
+        condition_id="condition",
+        market_slug="market",
+        token_ids=("token", "no-token"),
+        winning_token_id="token",
+        winning_outcome=YES_OUTCOME,
+        resolved_at_ms=1_000,
+        source="test",
     )
 
 

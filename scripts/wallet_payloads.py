@@ -1,61 +1,35 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from enum import StrEnum
 from math import isfinite
-from typing import Final, TypedDict
 
 from polybot.framework.events import Side
+from polybot.framework.events.resolutions import normalize_outcome
 
-CONDITION_ID_FIELD: Final = "conditionId"
-PROXY_WALLET_FIELD: Final = "proxyWallet"
-ACTIVITY_TYPE_FIELD: Final = "type"
-ACTIVITY_SIDE_FIELD: Final = "side"
-ACTIVITY_SIZE_FIELD: Final = "size"
-ACTIVITY_PRICE_FIELD: Final = "price"
-ACTIVITY_USDC_SIZE_FIELD: Final = "usdcSize"
-ACTIVITY_TIMESTAMP_FIELD: Final = "timestamp"
-ACTIVITY_SLUG_FIELD: Final = "slug"
-ACTIVITY_TITLE_FIELD: Final = "title"
-ACTIVITY_OUTCOME_FIELD: Final = "outcome"
-POSITION_SIZE_FIELD: Final = "size"
-POSITION_CURRENT_VALUE_FIELD: Final = "currentValue"
-POSITION_REALIZED_PNL_FIELD: Final = "realizedPnl"
-POSITION_CASH_PNL_FIELD: Final = "cashPnl"
-
-
-class ActivityRow(TypedDict, total=False):
-    proxyWallet: str
-    conditionId: str
-    type: ActivityType
-    side: Side
-    size: float
-    price: float
-    usdcSize: float
-    timestamp: int
-    slug: str
-    market_slug: str
-    title: str
-    outcome: str
-    transactionHash: str
-    asset: str
-
-
-class PositionRow(TypedDict, total=False):
-    proxyWallet: str
-    conditionId: str
-    size: float
-    currentValue: float
-    realizedPnl: float
-    cashPnl: float
-
-
-class ActivityType(StrEnum):
-    TRADE = "TRADE"
-    SPLIT = "SPLIT"
-    MERGE = "MERGE"
-    REDEEM = "REDEEM"
-    REWARD = "REWARD"
+from scripts.wallet_payload_contracts import (
+    ACTIVITY_OUTCOME_FIELD,
+    ACTIVITY_PRICE_FIELD,
+    ACTIVITY_SIDE_FIELD,
+    ACTIVITY_SLUG_FIELD,
+    ACTIVITY_SIZE_FIELD,
+    ACTIVITY_TIMESTAMP_FIELD,
+    ACTIVITY_TOKEN_ID_FIELD,
+    ACTIVITY_TITLE_FIELD,
+    ACTIVITY_TRANSACTION_HASH_FIELD,
+    ACTIVITY_TYPE_FIELD,
+    ACTIVITY_USDC_SIZE_FIELD,
+    CONDITION_ID_FIELD,
+    ENRICHED_MARKET_SLUG_FIELD,
+    POSITION_CASH_PNL_FIELD,
+    POSITION_CURRENT_VALUE_FIELD,
+    POSITION_REALIZED_PNL_FIELD,
+    POSITION_SIZE_FIELD,
+    PROXY_WALLET_FIELD,
+    TRADE_ACTIVITY_TYPE,
+    ActivityRow,
+    ActivityType,
+    PositionRow,
+)
 
 
 def normalize_gamma_market(payload: object) -> dict[str, object] | None:
@@ -112,9 +86,29 @@ def _normalize_activity_row(candidate: object) -> ActivityRow | None:
         activity_type = ActivityType(candidate.get(ACTIVITY_TYPE_FIELD))
     except (TypeError, ValueError):
         return None
+    proxy_wallet = _required_identifier(candidate, PROXY_WALLET_FIELD)
+    condition_id = _required_identifier(candidate, CONDITION_ID_FIELD)
+    if proxy_wallet is None or condition_id is None:
+        return None
     row: ActivityRow = dict(candidate)  # type: ignore[assignment]
+    row[PROXY_WALLET_FIELD] = proxy_wallet
+    row[CONDITION_ID_FIELD] = condition_id
     row[ACTIVITY_TYPE_FIELD] = activity_type
+    raw_outcome = candidate.get(ACTIVITY_OUTCOME_FIELD)
+    outcome = normalize_outcome(raw_outcome)
+    if raw_outcome is not None and outcome is None:
+        return None
+    if outcome is not None:
+        row[ACTIVITY_OUTCOME_FIELD] = outcome
     if activity_type is ActivityType.TRADE:
+        transaction_hash = _required_identifier(
+            candidate, ACTIVITY_TRANSACTION_HASH_FIELD
+        )
+        token_id = _required_identifier(candidate, ACTIVITY_TOKEN_ID_FIELD)
+        if transaction_hash is None or token_id is None:
+            return None
+        row[ACTIVITY_TRANSACTION_HASH_FIELD] = transaction_hash
+        row[ACTIVITY_TOKEN_ID_FIELD] = token_id
         try:
             row[ACTIVITY_SIDE_FIELD] = Side(candidate.get(ACTIVITY_SIDE_FIELD))
         except (TypeError, ValueError):
@@ -135,7 +129,9 @@ def _normalize_activity_row(candidate: object) -> ActivityRow | None:
         row[ACTIVITY_PRICE_FIELD] = price
         row[ACTIVITY_USDC_SIZE_FIELD] = usdc_size
     else:
-        usdc_size = _normalized_number(candidate.get(ACTIVITY_USDC_SIZE_FIELD), default=0)
+        usdc_size = _normalized_number(
+            candidate.get(ACTIVITY_USDC_SIZE_FIELD), default=0
+        )
         size = _normalized_number(candidate.get(ACTIVITY_SIZE_FIELD), default=0)
         if usdc_size is None or size is None or usdc_size < 0 or size < 0:
             return None
@@ -151,9 +147,15 @@ def _normalize_activity_row(candidate: object) -> ActivityRow | None:
 def _normalize_position_row(candidate: object) -> PositionRow | None:
     if not isinstance(candidate, Mapping):
         return None
+    proxy_wallet = _required_identifier(candidate, PROXY_WALLET_FIELD)
+    condition_id = _required_identifier(candidate, CONDITION_ID_FIELD)
+    if proxy_wallet is None or condition_id is None:
+        return None
     size = _normalized_number(candidate.get(POSITION_SIZE_FIELD))
     current_value = _normalized_number(candidate.get(POSITION_CURRENT_VALUE_FIELD))
-    realized_pnl = _normalized_number(candidate.get(POSITION_REALIZED_PNL_FIELD), default=0)
+    realized_pnl = _normalized_number(
+        candidate.get(POSITION_REALIZED_PNL_FIELD), default=0
+    )
     cash_pnl = _normalized_number(candidate.get(POSITION_CASH_PNL_FIELD), default=0)
     if (
         size is None
@@ -165,6 +167,8 @@ def _normalize_position_row(candidate: object) -> PositionRow | None:
     ):
         return None
     row: PositionRow = dict(candidate)  # type: ignore[assignment]
+    row[PROXY_WALLET_FIELD] = proxy_wallet
+    row[CONDITION_ID_FIELD] = condition_id
     row[POSITION_SIZE_FIELD] = size
     row[POSITION_CURRENT_VALUE_FIELD] = current_value
     row[POSITION_REALIZED_PNL_FIELD] = realized_pnl
@@ -182,3 +186,11 @@ def _normalized_number(value: object, *, default: float | None = None) -> float 
         return normalized if isfinite(normalized) else None
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def _required_identifier(candidate: Mapping[object, object], field: str) -> str | None:
+    value = candidate.get(field)
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None

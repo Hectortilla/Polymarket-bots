@@ -5,9 +5,9 @@ import sys
 from collections.abc import Iterable
 from typing import TypedDict
 
-from scripts.wallet_analysis import WalletVerdict
+from scripts.wallet_analysis.contracts import WalletClassificationReason, WalletVerdict
 
-WALLET_SCAN_FIELD_COUNT = 9
+WALLET_SCAN_RECORD_FIELD_COUNT = 9
 
 
 class WalletScanRecord(TypedDict):
@@ -18,7 +18,7 @@ class WalletScanRecord(TypedDict):
     volume: int
     market_trade_pct: float
     trade_density: float
-    reason: str
+    reason: WalletClassificationReason
     scanned_at: str
 
 
@@ -27,9 +27,9 @@ def parse_wallet_scan_report_line(line: str) -> WalletScanRecord | None:
     if not line or line.startswith("#"):
         return None
     fields = shlex.split(line)
-    if len(fields) != WALLET_SCAN_FIELD_COUNT:
+    if len(fields) != WALLET_SCAN_RECORD_FIELD_COUNT:
         raise ValueError(
-            f"expected {WALLET_SCAN_FIELD_COUNT} fields, got {len(fields)}"
+            f"expected {WALLET_SCAN_RECORD_FIELD_COUNT} fields, got {len(fields)}"
         )
     wallet, label, net, hedge, volume, market_pct, density, reason, scanned_at = fields
     return {
@@ -40,7 +40,7 @@ def parse_wallet_scan_report_line(line: str) -> WalletScanRecord | None:
         "volume": int(_field_value(volume, "vol")),
         "market_trade_pct": float(_field_value(market_pct, "market_trade_pct")),
         "trade_density": float(_field_value(density, "trade_density")),
-        "reason": reason,
+        "reason": WalletClassificationReason(reason),
         "scanned_at": scanned_at,
     }
 
@@ -69,7 +69,7 @@ def format_wallet_scan_record(
     volume: float,
     market_trade_pct: float,
     trade_density: float,
-    reason: str,
+    reason: WalletClassificationReason,
     scanned_at: str,
 ) -> str:
     return (

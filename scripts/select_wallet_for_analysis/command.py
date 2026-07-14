@@ -3,7 +3,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from scripts.wallets_finder import RESULTS_DIR
+from scripts.paths import RESULTS_DIR
 
 CODEX_PROMPT = """Analyze the attached Polymarket wallet activity rigorously. Verify quantitative metrics first, then identify timing, sizing, execution, hedging, and risk-management regularities. Separate empirical facts from hypotheses, cite concrete records, rank competing strategy explanations, and state failure conditions and missing data."""
 

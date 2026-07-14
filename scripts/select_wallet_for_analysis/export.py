@@ -6,8 +6,17 @@ from pathlib import Path
 
 from polybot.framework.wallets import normalize_wallet_address
 from scripts.polymarket_wallet_api import fetch_all_activity, fetch_gamma_market
-from scripts.wallet_payloads import CONDITION_ID_FIELD, ActivityRow
-from scripts.wallets_finder import RESULTS_DIR
+from scripts.polymarket_wallet_api.constants import (
+    MARKET_ACTIVE_FIELD,
+    MARKET_CLOSED_FIELD,
+    MARKET_END_DATE_FIELD,
+    MARKET_OUTCOMES_FIELD,
+    MARKET_QUESTION_FIELD,
+    MARKET_START_DATE_FIELD,
+    MARKET_WINNING_OUTCOME_FIELD,
+)
+from scripts.wallet_payload_contracts import ACTIVITY_SLUG_FIELD, CONDITION_ID_FIELD, ActivityRow
+from scripts.paths import RESULTS_DIR
 
 DATA_FILENAME_TEMPLATE = "data_{wallet_id}.json"
 
@@ -47,14 +56,16 @@ def _fetch_market_context(condition_id: str) -> dict[str, object]:
         return {"condition_id": condition_id}
     return {
         "condition_id": market.get(CONDITION_ID_FIELD) or condition_id,
-        "market_slug": market.get("slug"),
-        "market_name": market.get("question") or market.get("slug"),
-        "market_start_timestamp": _timestamp(market.get("startDate")),
-        "market_end_timestamp": _timestamp(market.get("endDate")),
-        "market_active": market.get("active"),
-        "market_closed": market.get("closed"),
-        "market_resolved_outcome": market.get("winningOutcome"),
-        "market_outcomes": market.get("outcomes"),
+        "market_slug": market.get(ACTIVITY_SLUG_FIELD),
+        "market_name": market.get(MARKET_QUESTION_FIELD) or market.get(
+            ACTIVITY_SLUG_FIELD
+        ),
+        "market_start_timestamp": _timestamp(market.get(MARKET_START_DATE_FIELD)),
+        "market_end_timestamp": _timestamp(market.get(MARKET_END_DATE_FIELD)),
+        "market_active": market.get(MARKET_ACTIVE_FIELD),
+        "market_closed": market.get(MARKET_CLOSED_FIELD),
+        "market_resolved_outcome": market.get(MARKET_WINNING_OUTCOME_FIELD),
+        "market_outcomes": market.get(MARKET_OUTCOMES_FIELD),
     }
 
 

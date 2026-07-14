@@ -9,6 +9,7 @@ from polybot.execution.paper.validation import valid_fee_rate
 
 MARKET_UNAVAILABLE_MESSAGE = "fill-time market metadata was unavailable"
 MARKET_FEE_INVALID_MESSAGE = "fill-time market fee rate was invalid"
+MARKET_METADATA_MISMATCH_MESSAGE = "fill-time market metadata did not match the order"
 
 
 async def latest_book(
@@ -41,4 +42,31 @@ async def resolve_fee_rate(
         fee_rate = None
     if fee_rate is None:
         return None, (FillRejectReason.MARKET_FEE_INVALID, MARKET_FEE_INVALID_MESSAGE)
+    if not _market_matches_order_and_book(market, order, book):
+        return None, (
+            FillRejectReason.MARKET_METADATA_MISMATCH,
+            MARKET_METADATA_MISMATCH_MESSAGE,
+        )
     return fee_rate, None
+
+
+def _market_matches_order_and_book(
+    market: object, order: OrderRequest, book: BookSnapshot
+) -> bool:
+    market_slug = getattr(market, "slug", None)
+    condition_id = getattr(market, "condition_id", None)
+    yes_token_id = getattr(market, "yes_token_id", None)
+    no_token_id = getattr(market, "no_token_id", None)
+    if not all(
+        isinstance(value, str) and value for value in (market_slug, condition_id)
+    ):
+        return False
+    if book.market_slug != market_slug or book.condition_id != condition_id:
+        return False
+    if book.token_id not in (yes_token_id, no_token_id):
+        return False
+    if order.market_slug is not None and order.market_slug != market_slug:
+        return False
+    if order.condition_id is not None and order.condition_id != condition_id:
+        return False
+    return order.token_id in (yes_token_id, no_token_id)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from polybot.execution.broker import Broker
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.polymarket.types import Market, Position

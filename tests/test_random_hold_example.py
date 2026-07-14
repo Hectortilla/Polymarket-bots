@@ -4,7 +4,9 @@ from dataclasses import replace
 from decimal import Decimal
 
 from polybot.framework.context import BotContext
+from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.types import Market, MarketOutcome
 from polybot.examples.example_random_hold import ExampleRandomHoldBot
 
@@ -30,7 +32,11 @@ def test_random_hold_bot_buys_holds_then_sells_and_starts_again(
 
     asyncio.run(run())
 
-    assert [order.side.value for order in dummy_context.broker.submitted] == ["BUY", "SELL", "BUY"]
+    assert [order.side for order in dummy_context.broker.submitted] == [
+        Side.BUY,
+        Side.SELL,
+        Side.BUY,
+    ]
     assert dummy_context.broker.submitted[0].reason == "random_hold_buy"
     assert dummy_context.broker.submitted[1].reason == "random_hold_sell"
     assert dummy_context.broker.submitted[1].price == Decimal("0.40")
@@ -59,7 +65,7 @@ class _Markets:
             neg_risk=False,
             fee_rate=Decimal("0"),
             outcomes=(
-                MarketOutcome("Yes", "yes-token"),
-                MarketOutcome("No", "no-token"),
+                MarketOutcome(YES_OUTCOME, "yes-token"),
+                MarketOutcome(NO_OUTCOME, "no-token"),
             ),
         )

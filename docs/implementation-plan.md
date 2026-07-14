@@ -118,14 +118,19 @@ Tests:
 
 Implementation notes:
 
-- `GammaClient` uses `AsyncPublicClient.get_market(slug=...)`, resolves slug
-  batches concurrently, and exposes a cancel-safe retry loop for future slugs.
+- `GammaClient.find_by_slug()` uses `AsyncPublicClient.get_market(slug=...)`
+  for one-off lookups. `GammaClient.find_many()` uses
+  `AsyncPublicClient.list_markets(slug=..., page_size=100)` to resolve
+  sequential paginated Gamma requests with no more than 100 slugs per filter
+  array and a query-size-safe encoded budget, and exposes a cancel-safe retry
+  loop for future slugs. Unresolved first-pass slugs are retried in a batch with
+  `closed=true` because the list endpoint defaults to `closed=false`.
 - `ClobClient` uses `AsyncPublicClient.get_order_book(token_id=...)` for REST
   bootstrap and reconciliation snapshots.
 - `MarketStream` uses `AsyncPublicClient.subscribe(MarketSpec(...))`. It owns
   live depth, applies all changes in one price-change message atomically, and
   emits only complete sorted `BookSnapshot` contracts.
-- The selected official library remains pinned at `polymarket-client==0.1.0b17`.
+- The selected official library remains pinned in `pyproject.toml`.
   No direct-network exception was required.
 
 ## Slice 4: Wallet Activity Input
@@ -210,11 +215,11 @@ Implementation notes:
   quoted multiline values, without overriding existing process variables;
   it accepts `module:attribute` bot factories and supports typed config
   overrides.
-- Current markets are required and are the only markets subscribed by this
-  runner; available next markets are resolved on a best-effort basis. The
-  runner refreshes dynamic plans once per second and rebuilds current stream
-  subscriptions when the active rules change, without blocking the current
-  market hot path on next-market resolution.
+- Slice 5 originally subscribed current markets only and resolved available next
+  markets on a best-effort basis. Slice 11 supersedes that lifecycle with the
+  unresolved union registry. The runner still refreshes dynamic plans once per
+  second without blocking the current market hot path on next-market
+  resolution.
 - Market and wallet streams are multiplexed into one `BotRunner` lifecycle.
 - Stream multiplexing applies freshness-preserving backpressure: pending books
   coalesce by token ID, idempotent market-trade wake hints coalesce by condition
@@ -317,3 +322,50 @@ Acceptance:
   terminal.
 - No strategy logging or rendering code is required.
 - PnL marks longs at best bid and shorts at best ask; missing marks show N/A.
+- The chart displays up to twenty tokens. Additional tracked tokens do not
+  rotate visible series or reset their histories when repeated market snapshots
+  arrive.
+
+## Slice 11: Dynamic Market Tracking and Resolution
+
+Status: done.
+
+- Own one deduplicated runtime registry keyed by `condition_id`, merging
+  configured, accepted followed-wallet, and paper-position interests.
+- Keep filtered rules as strict allowlists; allow wallet-only and independent
+  rules to discover markets. Retain unresolved dynamic entries across stream
+  plan changes.
+- Bootstrap newly followed wallets from current open positions only. Persist
+  follow epochs, executable baselines, deterministic movement journals, source
+  IDs, checkpoints, and settlements atomically under `.bot-state/`.
+- Replay gross PnL by `(trade_timestamp_ms, source_key)` without guessing fees.
+- Subscribe once with `MarketSpec(..., custom_feature_enabled=True)`. Batch new
+  registry token pairs at the interval owned by `MARKET_ADDITION_BATCH_SECONDS`
+  in `polybot.cli.tracked_markets` and replace the union SDK handle because the
+  pinned SDK cannot mutate it.
+- Normalize SDK `MarketResolvedEvent` into `MarketResolutionEvent`; reject
+  mismatched condition, token-pair, winner, or outcome identity.
+- Reconcile unresolved markets through Gamma immediately after replacement and
+  at the interval owned by `RESOLUTION_RECONCILIATION_SECONDS`.
+- Settle paper and followed-wallet positions at `1` for the winning token and
+  `0` for the losing token. Transfer paper payout to cash, archive wallet
+  journals, persist idempotency, then invoke `BaseBot.on_market_resolved()`.
+- Emit non-coalesced resolution and observer settlement events. Update the
+  existing market series, legend, and ticker with dimmed final values; do not
+  add a second market panel.
+
+Acceptance:
+
+- Multiple wallets discovering one condition create one registry entry and one
+  token pair in the active SDK handle.
+- Books for registry-admitted wallet discoveries reach `on_book` even when the
+  originating wallet-only rule declares no static market slugs.
+- Filtered rules never expand outside their allowlists; wallet-only and
+  independent rules can expand the registry.
+- Bootstrap PnL starts at zero when an executable mark exists and remains
+  unavailable when it does not.
+- Buys, sells, out-of-order delivery, duplicates, restarts, removal/re-add, and
+  resolution produce deterministic gross accounting.
+- Resolution settlement is persisted before the bot hook and is idempotent.
+- Resolved markets leave the next union handle while unresolved entries remain.
+- Gamma reconciliation recovers lifecycle events missed by the stream.

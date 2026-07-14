@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from http import HTTPStatus
+from typing import Final
+from urllib.parse import urlencode
 
 from polymarket import AsyncPublicClient, RequestRejectedError
 
@@ -11,17 +13,18 @@ from polybot.polymarket.normalization.market import normalize_market
 from polybot.polymarket.types import Market
 
 
+GAMMA_MARKETS_PAGE_SIZE: Final = 100
+GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST: Final = GAMMA_MARKETS_PAGE_SIZE
+GAMMA_MARKETS_QUERY_BUDGET: Final = 60_000
+
+
 class GammaClient:
     def __init__(self, client: AsyncPublicClient | None = None) -> None:
         self._client = client or AsyncPublicClient()
         self._owns_client = client is None
 
     async def find_by_slug(self, slug: str) -> Market | None:
-        if not slug.strip():
-            raise MarketDataError(
-                MarketDataIssue.EMPTY_IDENTIFIER,
-                "market slug must not be empty",
-            )
+        self._validate_slug(slug)
         try:
             source = await self._client.get_market(slug=slug)
         except RequestRejectedError as error:
@@ -31,7 +34,25 @@ class GammaClient:
         return normalize_market(source)
 
     async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
-        return tuple(await asyncio.gather(*(self.find_by_slug(slug) for slug in slugs)))
+        requested_slugs = tuple(slugs)
+        for slug in requested_slugs:
+            self._validate_slug(slug)
+        unique_slugs = tuple(dict.fromkeys(requested_slugs))
+        if not unique_slugs:
+            return ()
+
+        markets_by_slug: dict[str, Market] = {}
+        await self._collect_markets(unique_slugs, markets_by_slug)
+        unresolved_slugs = tuple(
+            slug for slug in unique_slugs if slug not in markets_by_slug
+        )
+        if unresolved_slugs:
+            await self._collect_markets(
+                unresolved_slugs,
+                markets_by_slug,
+                closed=True,
+            )
+        return tuple(markets_by_slug.get(slug) for slug in requested_slugs)
 
     async def wait_for_slug(
         self,
@@ -51,3 +72,55 @@ class GammaClient:
     async def close(self) -> None:
         if self._owns_client:
             await self._client.close()
+
+    @staticmethod
+    def _validate_slug(slug: str) -> None:
+        if not slug.strip():
+            raise MarketDataError(
+                MarketDataIssue.EMPTY_IDENTIFIER,
+                "market slug must not be empty",
+            )
+
+    async def _collect_markets(
+        self,
+        slugs: Iterable[str],
+        markets_by_slug: dict[str, Market],
+        *,
+        closed: bool | None = None,
+    ) -> None:
+        for slug_batch in _iter_slug_batches(slugs):
+            paginator = self._client.list_markets(
+                slug=slug_batch,
+                closed=closed,
+                page_size=GAMMA_MARKETS_PAGE_SIZE,
+            )
+            async for source in paginator.iter_items():
+                market = normalize_market(source)
+                markets_by_slug[market.slug] = market
+
+
+def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:
+    # Keep batches below httpx's 65,536-character URL query-component limit.
+    current: list[str] = []
+    current_query_length = _encoded_query_length(())
+    for slug in slugs:
+        slug_query_length = len(urlencode((("slug", slug),)))
+        candidate_query_length = current_query_length + 1 + slug_query_length
+        if current and (
+            len(current) >= GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST
+            or candidate_query_length > GAMMA_MARKETS_QUERY_BUDGET
+        ):
+            yield tuple(current)
+            current = []
+            current_query_length = _encoded_query_length(())
+            candidate_query_length = current_query_length + 1 + slug_query_length
+        current.append(slug)
+        current_query_length = candidate_query_length
+    if current:
+        yield tuple(current)
+
+
+def _encoded_query_length(slugs: Iterable[str]) -> int:
+    params = [("slug", slug) for slug in slugs]
+    params.append(("limit", str(GAMMA_MARKETS_PAGE_SIZE)))
+    return len(urlencode(params))

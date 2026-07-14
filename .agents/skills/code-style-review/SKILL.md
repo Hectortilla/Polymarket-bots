@@ -1,13 +1,15 @@
 ---
 name: code-style-review
-description: Run a parallel, read-only maintainability and refactoring review using one project subagent per repository style rule, then reconcile their reports and apply accepted fixes holistically.
+description: Run a parallel maintainability and refactoring review using one project subagent per repository style rule, then reconcile every verified finding and implement all fixes holistically.
 ---
 
 # Code Style Review
 
 Use the reviewer roles registered in `.codex/config.toml`; their configurations
-live in `.codex/agents/reviewers/`. Reviewer agents only inspect and report. The
-parent agent owns judgment, edits, verification, and documentation consistency.
+live in `.codex/agents/reviewers/`. Reviewer agents inspect and report; the
+parent agent owns reconciliation, edits, verification, and documentation
+consistency. Reviewer agents must not edit files directly, so the parent can
+apply the complete reconciled fix set coherently.
 Documentation satisfaction, acceptance criteria, and the final drift audit are
 task-completion duties, not style-reviewer roles; the parent must still perform
 them under `AGENTS.md`.
@@ -98,22 +100,31 @@ complete report set.
    relevant file references and affected rules.
 3. Resolve conflicting suggestions against `.agents/CODE_STYLE.md`, then
    `AGENTS.md`, task scope, and referenced docs in that order.
-4. Prefer the smallest coherent design that fixes all accepted findings. Do not
+4. Prefer the smallest coherent design that fixes all verified findings. Do not
    apply isolated suggestions that would create a worse module boundary,
    dependency direction, or public contract.
-5. Prioritize behavior and safety risks first, structural maintainability next,
-   then naming and comments.
+5. Treat every verified finding as actionable. Critical bugs, logical
+   correctness, structural maintainability, style, naming, readability, and
+   comments have equal priority. Resolve ordering only as needed to keep the
+   resulting patch coherent and safe; do not omit or defer a finding because
+   it is classified as style or readability.
 
 ## Act On Findings
 
 - For a review-only request, report findings first and do not edit.
-- For an implementation or refactoring request, let only the parent agent apply
-  accepted edits. Update tests and affected docs, tasks, and decisions as
-  required by `AGENTS.md`.
+- For an implementation or refactoring request, the parent agent must apply
+  every verified finding from the complete reviewer set. Do not silently reject,
+  skip, or defer findings. If two findings conflict, reconcile them into one
+  coherent solution that addresses both; if a finding is unsupported, verify
+  that explicitly during reconciliation rather than treating it as deferred.
+  Update tests and affected docs, tasks, and decisions as required by
+  `AGENTS.md`.
 - After edits, run targeted tests and checks. Re-run only the reviewers whose
   rules could have been affected by the final patch.
-- Report accepted findings, rejected or deferred findings with reasons,
-  verification, and the final documentation-drift audit.
+- Verify that no reviewer finding remains unapplied before handoff. Run the
+  relevant tests and checks, and complete the final documentation-drift audit.
+  The handoff should state what was changed and how it was verified; do not
+  substitute a findings summary for implementing the fixes.
 
 ## Guardrails
 

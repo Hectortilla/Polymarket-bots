@@ -4,6 +4,7 @@ from polybot.framework.context import BotContext
 from polybot.framework.events import FillEvent
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import MarketSubscription
 from polybot.framework.streams import StreamRule
 from polybot.framework.wallets import WalletSubscription
@@ -66,6 +67,13 @@ class BaseBot:
         pass
 
     async def on_fill(self, ctx: BotContext, fill: FillEvent) -> None:
+        pass
+
+    async def on_market_resolved(
+        self,
+        ctx: BotContext,
+        event: MarketResolutionEvent,
+    ) -> None:
         pass
 
     async def on_stop(self, ctx: BotContext) -> None:

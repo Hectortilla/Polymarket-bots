@@ -2,12 +2,14 @@ from typing import cast
 
 import pytest
 
-from scripts.wallet_analysis import (
+from scripts.wallet_analysis.classification import (
     HEDGE_SCORE_THRESHOLD,
+    classify_wallet_candidate,
+)
+from scripts.wallet_analysis.contracts import (
     WalletClassificationReason,
     WalletMetrics,
     WalletVerdict,
-    classify_wallet_candidate,
 )
 
 

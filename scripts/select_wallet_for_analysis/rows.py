@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from scripts.wallet_scan_report import load_wallet_scan_report_rows
-from scripts.wallets_finder import GOOD_FILE
+from scripts.paths import GOOD_FILE
 
 SORT_CHOICES = (
     ("n", "net", "Net"), ("h", "hedge", "Hedge"),

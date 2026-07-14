@@ -27,11 +27,17 @@ packages = [
   "polybot.execution",
   "polybot.execution.paper",
   "polybot.framework",
+  "polybot.framework.config",
   "polybot.framework.events",
   "polybot.framework.runner",
   "polybot.cli",
   "polybot.cli.dashboard",
+  "polybot.cli.followed_wallets",
+  "polybot.cli.followed_wallets.persistence",
+  "polybot.cli.streams",
+  "polybot.cli.tracking",
   "polybot.cli.observability",
+  "polybot.cli.runner",
   "polybot.polymarket",
   "polybot.polymarket.wallet_activity",
   "polybot.polymarket.normalization",
@@ -39,6 +45,7 @@ packages = [
   "scripts.select_wallet_for_analysis",
   "scripts.polymarket_wallet_api",
   "scripts.wallets_finder",
+  "scripts.wallet_analysis",
 ]
 
 [tool.setuptools.package-dir]
@@ -47,6 +54,7 @@ scripts = "scripts"
 "scripts.select_wallet_for_analysis" = "scripts/select_wallet_for_analysis"
 "scripts.polymarket_wallet_api" = "scripts/polymarket_wallet_api"
 "scripts.wallets_finder" = "scripts/wallets_finder"
+"scripts.wallet_analysis" = "scripts/wallet_analysis"
 
 [tool.pytest.ini_options]
 addopts = "-q"

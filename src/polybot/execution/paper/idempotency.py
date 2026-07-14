@@ -7,10 +7,15 @@ from pathlib import Path
 from typing import Protocol
 
 
-class SourceIdempotencyStore(Protocol):
-    def claim(self, source_id: str) -> bool: ...
+DUPLICATE_SOURCE_MESSAGE = "source event was already processed"
 
-    def release(self, source_id: str) -> None: ...
+
+class SourceIdempotencyStore(Protocol):
+    def claim(self, source_id: str) -> bool:
+        ...
+
+    def release(self, source_id: str) -> None:
+        ...
 
 
 class FileSourceIdempotencyStore:

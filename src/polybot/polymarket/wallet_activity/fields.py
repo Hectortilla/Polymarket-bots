@@ -1,0 +1,23 @@
+"""Canonical field names for wallet activity and position payloads."""
+
+from typing import Final
+
+CONDITION_ID_FIELD: Final = "conditionId"
+PROXY_WALLET_FIELD: Final = "proxyWallet"
+ACTIVITY_TYPE_FIELD: Final = "type"
+ACTIVITY_SIDE_FIELD: Final = "side"
+ACTIVITY_SIZE_FIELD: Final = "size"
+ACTIVITY_PRICE_FIELD: Final = "price"
+ACTIVITY_TIMESTAMP_FIELD: Final = "timestamp"
+ACTIVITY_TRANSACTION_HASH_FIELD: Final = "transactionHash"
+ACTIVITY_TOKEN_ID_FIELD: Final = "asset"
+ACTIVITY_SLUG_FIELD: Final = "slug"
+ACTIVITY_OUTCOME_FIELD: Final = "outcome"
+ACTIVITY_USDC_SIZE_FIELD: Final = "usdcSize"
+ACTIVITY_TITLE_FIELD: Final = "title"
+POSITION_SIZE_FIELD: Final = "size"
+POSITION_CURRENT_VALUE_FIELD: Final = "currentValue"
+POSITION_REALIZED_PNL_FIELD: Final = "realizedPnl"
+POSITION_CASH_PNL_FIELD: Final = "cashPnl"
+ENRICHED_MARKET_SLUG_FIELD: Final = "market_slug"
+TRADE_ACTIVITY_TYPE: Final = "TRADE"

@@ -6,14 +6,14 @@ from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
-from math import ceil, isnan, nan
+from math import ceil
 from time import monotonic, time
-from typing import TypeVar
 
 from polybot.cli.observability.events import (
     BrokerFailed,
     DispatchCompleted,
     FillCompleted,
+    MarketSettled,
     OrderSubmitted,
     PortfolioSnapshot,
     RuntimeEvent,
@@ -24,25 +24,42 @@ from polybot.cli.observability.events import (
     StreamReceived,
     StreamHealth,
 )
-from polybot.cli.dashboard.palette import SERIES_PALETTE
-from polybot.cli.streams import StreamKind
+from polybot.cli.dashboard.palette import SERIES_PALETTE, side_text_style
+from polybot.cli.streams.contracts import StreamKind
 from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.framework.config.models import BotMode
+from polybot.framework.wallets import normalize_wallet_address
+
+from .copy import (
+    RESOLUTION_LOSER_LABEL,
+    RESOLUTION_WINNER_LABEL,
+    RUN_FAILED_PREFIX,
+)
+from .chart_state import (
+    MAX_CHART_HISTORY_POINTS,
+    MAX_CHART_WINDOW_POINTS,
+    MAX_TIME_ZOOM_LEVEL,
+    MIN_CHART_WINDOW_POINTS,
+    MIN_TIME_ZOOM_LEVEL,
+    chart_display_points,
+    chart_window_points,
+    record_sample,
+    visible_time_range,
+)
+from .health import average, ratio
+from .token_labels import format_token_label
+from .wallet_state import WalletTimelineEvent, wallet_market_label
 
 MAX_TICKER_ROWS = 40
 MAX_CHART_TOKENS = len(SERIES_PALETTE)
-MAX_CHART_HISTORY_POINTS = 720
 MAX_WALLET_TIMELINE_EVENTS = 5_000
-MIN_CHART_WINDOW_POINTS = 12
-MAX_CHART_WINDOW_POINTS = 120
-MIN_TIME_ZOOM_LEVEL = -3
-MAX_TIME_ZOOM_LEVEL = 3
 EVENT_RATE_WINDOW_SECONDS = 10
 MARKET_TICKER_INTERVAL_SECONDS = 1
 LATENCY_SAMPLE_LIMIT = 100
 HEALTH_SAMPLE_LIMIT = 100
-T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,22 +75,9 @@ class DashboardView(StrEnum):
 
 
 @dataclass(slots=True)
-class WalletTimelineEvent:
-    """A dashboard-only projection of one detected leader trade."""
-
-    source_key: str
-    wallet: str
-    trade_timestamp_ms: int
-    side: Side
-    notional: Decimal
-    market_label: str
-    accepted: bool | None = None
-
-
-@dataclass(slots=True)
 class DashboardState:
     name: str = "-"
-    mode: str = "-"
+    mode: BotMode | None = None
     lifecycle: RuntimeState = RuntimeState.STARTING
     started_at: float | None = None
     initial_cash_usdc: Decimal | None = None
@@ -123,13 +127,14 @@ class DashboardState:
     wallet_timeline: deque[WalletTimelineEvent] = field(default_factory=deque)
     wallet_timeline_by_source: dict[str, WalletTimelineEvent] = field(default_factory=dict)
     wallet_page: int = 0
+    resolved_prices: dict[str, Decimal] = field(default_factory=dict)
 
     def apply(self, event: RuntimeEvent) -> None:
         self._remember_event(event)
         match event:
             case RuntimeStarted():
                 self.name = event.name
-                self.mode = event.mode.value
+                self.mode = event.mode
                 self.initial_cash_usdc = event.initial_cash_usdc
                 self.started_at = event.occurred_at
                 self.lifecycle = RuntimeState.STARTING
@@ -152,75 +157,35 @@ class DashboardState:
                 self.order_count += 1
                 self._ticker(
                     _side_style(event.order.side),
-                    f"ORDER {event.order.side.value} {event.order.size} {short_token(event.order.token_id)}",
+                    f"ORDER {event.order.side.value} {event.order.size} {format_token_label(event.order.token_id)}",
                 )
             case FillCompleted():
                 self._fill_completed(event)
             case BrokerFailed():
                 self._ticker("bold red", f"BROKER ERROR {event.error}")
+            case MarketSettled():
+                self.portfolio = event.portfolio
+                self._ticker(
+                    "bold magenta",
+                    f"SETTLED {event.settlement.resolution.market_slug} paper payout "
+                    f"${event.settlement.paper_cash_payout_usdc}",
+                )
             case RuntimeFailed():
                 self.lifecycle = RuntimeState.FAILED
-                self._ticker("bold red", f"RUN FAILED {event.error}")
+                self._ticker("bold red", f"{RUN_FAILED_PREFIX} {event.error}")
 
     def sample(self, width: int, now_ms: int | None = None) -> None:
-        max_points = MAX_CHART_HISTORY_POINTS
-        self.chart_sample_times.append(time() if now_ms is None else now_ms / 1000)
-        _trim(self.chart_sample_times, max_points)
-        for token_id in self.chart_tokens:
-            history = self.price_history[token_id]
-            stale_history = self.price_stale_history[token_id]
-            marker_history = self.trade_marker_history[token_id]
-            book = self._current_book(token_id, now_ms)
-            midpoint = midpoint_for(book)
-            if midpoint is not None:
-                value = float(midpoint)
-                is_stale = False
-            elif book is None:
-                value = _last_chart_value(history)
-                is_stale = value is not None
-            else:
-                value = None
-                is_stale = False
-            history.append(nan if value is None else value)
-            stale_history.append(is_stale)
-            marker_history.append(tuple(self.pending_trade_markers.pop(token_id, ())))
-            _trim(history, max_points)
-            _trim(stale_history, max_points)
-            _trim(marker_history, max_points)
-        wallet_value = self.executable_equity(now_ms)
-        if wallet_value is not None:
-            value = float(wallet_value)
-            is_stale = False
-        else:
-            value = _last_chart_value(self.wallet_value_history)
-            is_stale = value is not None
-        self.wallet_value_history.append(nan if value is None else value)
-        self.wallet_value_stale_history.append(is_stale)
-        _trim(self.wallet_value_history, max_points)
-        _trim(self.wallet_value_stale_history, max_points)
+        record_sample(self, now_ms)
 
     def chart_window_points(self, width: int) -> int:
-        base_points = self.chart_display_points(width)
-        if self.time_zoom_level < 0:
-            return max(
-                MIN_CHART_WINDOW_POINTS,
-                base_points // (2 ** (-self.time_zoom_level)),
-            )
-        return min(MAX_CHART_HISTORY_POINTS, base_points * (2**self.time_zoom_level))
+        return chart_window_points(self.time_zoom_level, width)
 
     @staticmethod
     def chart_display_points(width: int) -> int:
-        chart_panel_width = width * 2 // 3 if width >= 110 else width
-        return max(
-            MIN_CHART_WINDOW_POINTS,
-            min(MAX_CHART_WINDOW_POINTS, chart_panel_width - 12),
-        )
+        return chart_display_points(width)
 
     def visible_time_range(self, width: int) -> tuple[float, float] | None:
-        timestamps = list(self.chart_sample_times)[-self.chart_window_points(width) :]
-        if not timestamps:
-            return None
-        return timestamps[0], timestamps[-1]
+        return visible_time_range(self.chart_sample_times, self.time_zoom_level, width)
 
     def zoom_time(self, direction: int) -> bool:
         updated_level = min(
@@ -267,7 +232,7 @@ class DashboardState:
         equity = self.portfolio.cash_usdc
         for position in self.portfolio.positions:
             book = self._current_book(position.token_id, now_ms)
-            mark = executable_mark(book, position.size)
+            mark = None if book is None else book.executable_mark(position.size)
             if mark is None:
                 return None
             equity += position.size * mark
@@ -290,10 +255,10 @@ class DashboardState:
         return max(0, int((monotonic() if now is None else now) - self.started_at))
 
     def average_wallet_lag_ms(self) -> int | None:
-        return _average(self.wallet_detection_lags_ms)
+        return average(self.wallet_detection_lags_ms)
 
     def average_broker_latency_ms(self) -> int | None:
-        return _average(self.broker_latencies_ms)
+        return average(self.broker_latencies_ms)
 
     def _remember_event(self, event: RuntimeEvent) -> None:
         occurred_at = getattr(event, "occurred_at", monotonic())
@@ -311,8 +276,27 @@ class DashboardState:
                 self._record_book_stream(event)
         elif kind is StreamKind.WALLET:
             self._record_wallet_stream(event)
+        elif kind is StreamKind.RESOLUTION:
+            self._record_resolution(event.item.event)
         else:
             self._record_market_hint(event)
+
+    def _record_resolution(self, event: MarketResolutionEvent) -> None:
+        for token_id in event.token_ids:
+            self._activate_chart_token(token_id)
+            self.resolved_prices[token_id] = event.payout_for(token_id)
+            label = self.market_labels.get(token_id, event.market_slug)
+            outcome = (
+                RESOLUTION_WINNER_LABEL
+                if token_id == event.winning_token_id
+                else RESOLUTION_LOSER_LABEL
+            )
+            self.market_labels[token_id] = f"{label} · resolved {outcome}"
+            self.pending_books.pop(token_id, None)
+        self._ticker(
+            "bold magenta",
+            f"RESOLVED {event.market_slug}: {event.winning_outcome}",
+        )
 
     def _record_book_stream(self, event: StreamReceived) -> None:
         book = event.item.event
@@ -323,7 +307,7 @@ class DashboardState:
                 label = f"{label} · {book.outcome}"
             self.market_labels[book.token_id] = label
         self._activate_chart_token(book.token_id)
-        midpoint = midpoint_for(book)
+        midpoint = None if book is None else book.midpoint()
         last_at = self.market_ticker_at.get(book.token_id)
         if midpoint is not None and (
             last_at is None
@@ -332,7 +316,7 @@ class DashboardState:
             self.market_ticker_at[book.token_id] = event.occurred_at
             self._ticker(
                 "cyan",
-                f"MARKET {short_token(book.token_id)} mid {midpoint:.4f}",
+                f"MARKET {format_token_label(book.token_id)} mid {midpoint:.4f}",
             )
 
     def _record_wallet_stream(self, event: StreamReceived) -> None:
@@ -341,11 +325,11 @@ class DashboardState:
             self._activate_wallet_lane(trade.wallet)
             timeline_event = WalletTimelineEvent(
                 source_key=trade.source_key,
-                wallet=trade.wallet.lower(),
+                wallet=normalize_wallet_address(trade.wallet),
                 trade_timestamp_ms=trade.trade_timestamp_ms,
                 side=trade.side,
                 notional=trade.price * trade.size,
-                market_label=_wallet_market_label(trade),
+                market_label=wallet_market_label(trade),
             )
             self.wallet_timeline.append(timeline_event)
             self.wallet_timeline_by_source[trade.source_key] = timeline_event
@@ -358,12 +342,12 @@ class DashboardState:
             )
             self._ticker(
                 _side_style(trade.side),
-                f"FOLLOW {trade.side.value} {trade.size} {_wallet_market_label(trade)} @ {trade.price}",
+                f"FOLLOW {trade.side.value} {trade.size} {wallet_market_label(trade)} @ {trade.price}",
             )
 
     def _record_market_hint(self, event: StreamReceived) -> None:
         hint = event.item.event
-        self._ticker("bright_cyan", f"MARKET HINT {short_token(hint.token_id)}")
+        self._ticker("bright_cyan", f"MARKET HINT {format_token_label(hint.token_id)}")
 
     def _dispatch_completed(self, event: DispatchCompleted) -> None:
         if self.require_accepted_books and event.kind is StreamKind.BOOK:
@@ -407,18 +391,14 @@ class DashboardState:
         return max(self.book_lags_ms) if self.book_lags_ms else None
 
     def stale_ratio(self) -> float:
-        return sum(self.book_stale_samples) / len(self.book_stale_samples) if self.book_stale_samples else 0.0
+        return ratio(sum(self.book_stale_samples), len(self.book_stale_samples))
 
     def cumulative_book_drop_ratio(self) -> float:
-        if self.book_received_count == 0:
-            return 0.0
-        return self.book_dropped_count / self.book_received_count
+        return ratio(self.book_dropped_count, self.book_received_count)
 
     def recent_book_drop_ratio(self) -> float:
         received = sum(sample[0] for sample in self.book_drop_samples)
-        if received == 0:
-            return 0.0
-        return sum(sample[1] for sample in self.book_drop_samples) / received
+        return ratio(sum(sample[1] for sample in self.book_drop_samples), received)
 
     def _record_book_drop_counters(self, event: StreamHealth) -> None:
         if (
@@ -457,30 +437,27 @@ class DashboardState:
             return
         self.fill_count += 1
         if fill.filled_size > 0:
-            self._activate_chart_token(fill.token_id)
-            self.pending_trade_markers.setdefault(fill.token_id, []).append(fill.side)
+            if self._activate_chart_token(fill.token_id):
+                self.pending_trade_markers.setdefault(fill.token_id, []).append(fill.side)
         price = "-" if fill.average_price is None else str(fill.average_price)
         self._ticker(
             _side_style(fill.side),
-            f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} {short_token(fill.token_id)} @ {price}",
+            f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} {format_token_label(fill.token_id)} @ {price}",
         )
 
-    def _activate_chart_token(self, token_id: str) -> None:
+    def _activate_chart_token(self, token_id: str) -> bool:
         if token_id in self.chart_tokens:
-            return
+            return True
         if len(self.chart_tokens) >= MAX_CHART_TOKENS:
-            removed = self.chart_tokens.popleft()
-            self.price_history.pop(removed, None)
-            self.price_stale_history.pop(removed, None)
-            self.trade_marker_history.pop(removed, None)
-            self.pending_trade_markers.pop(removed, None)
+            return False
         self.chart_tokens.append(token_id)
         self.price_history.setdefault(token_id, deque())
         self.price_stale_history.setdefault(token_id, deque())
         self.trade_marker_history.setdefault(token_id, deque())
+        return True
 
     def _activate_wallet_lane(self, wallet: str) -> None:
-        normalized = wallet.lower()
+        normalized = normalize_wallet_address(wallet)
         if normalized not in self.wallet_lanes:
             self.wallet_lanes.append(normalized)
 
@@ -500,7 +477,7 @@ class DashboardState:
         self.ticker.appendleft(TickerRow(style, safe_message))
 
     def market_label(self, token_id: str) -> str:
-        return self.market_labels.get(token_id, short_token(token_id))
+        return self.market_labels.get(token_id, format_token_label(token_id))
 
     def _trim_event_times(self, now: float) -> None:
         cutoff = now - EVENT_RATE_WINDOW_SECONDS
@@ -508,54 +485,8 @@ class DashboardState:
             self.event_times.popleft()
 
 
-def midpoint_for(book: BookSnapshot | None) -> Decimal | None:
-    bid = _best_bid(book)
-    ask = _best_ask(book)
-    if bid is None or ask is None:
-        return None
-    return (bid + ask) / 2
-
-
-def executable_mark(book: BookSnapshot | None, size: Decimal) -> Decimal | None:
-    """Mark at the quote required to liquidate a non-zero position."""
-    if size > 0:
-        return _best_bid(book)
-    if size < 0:
-        return _best_ask(book)
-    return None
-
-
-def _best_bid(book: BookSnapshot | None) -> Decimal | None:
-    if book is None or not book.bids:
-        return None
-    return max(level.price for level in book.bids)
-
-
-def _best_ask(book: BookSnapshot | None) -> Decimal | None:
-    if book is None or not book.asks:
-        return None
-    return min(level.price for level in book.asks)
-
-
-def short_token(token_id: str) -> str:
-    return token_id if len(token_id) <= 12 else f"{token_id[:7]}…{token_id[-4:]}"
-
-
 def _side_style(side: Side) -> str:
-    return "bold green" if side is Side.BUY else "bold red"
-
-
-def _average(values: deque[int]) -> int | None:
-    return None if not values else round(sum(values) / len(values))
-
-
-def _trim(values: deque[T], limit: int) -> None:
-    while len(values) > limit:
-        values.popleft()
-
-
-def _last_chart_value(values: deque[float]) -> float | None:
-    return next((value for value in reversed(values) if not isnan(value)), None)
+    return side_text_style(side, bold=True)
 
 
 def _safe_message(value: str) -> str:
@@ -563,9 +494,3 @@ def _safe_message(value: str) -> str:
         character if character.isprintable() else " "
         for character in value
     )
-
-
-def _wallet_market_label(trade: WalletTradeEvent) -> str:
-    if trade.market_slug and trade.outcome:
-        return f"{trade.market_slug} · {trade.outcome}"
-    return trade.market_slug or trade.outcome or short_token(trade.token_id)

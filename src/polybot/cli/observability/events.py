@@ -8,12 +8,13 @@ from enum import StrEnum
 from time import monotonic
 from typing import TYPE_CHECKING
 
-from polybot.framework.config import BotConfig, BotMode
+from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.events import FillEvent, OrderRequest
+from polybot.framework.events.resolutions import MarketSettlementEvent
 
 if TYPE_CHECKING:
-    from polybot.cli.streams import StreamEvent, StreamKind
+    from polybot.cli.streams.contracts import StreamEvent, StreamKind
     from polybot.execution.paper.portfolio import PaperPortfolio
 
 
@@ -128,6 +129,13 @@ class BrokerFailed:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketSettled:
+    settlement: MarketSettlementEvent
+    portfolio: PortfolioSnapshot
+    occurred_at: float
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeFailed:
     error: str
     occurred_at: float
@@ -142,5 +150,6 @@ RuntimeEvent = (
     | OrderSubmitted
     | FillCompleted
     | BrokerFailed
+    | MarketSettled
     | RuntimeFailed
 )

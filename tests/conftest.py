@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pytest
 
 from polybot.execution.broker import Broker
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
 from polybot.framework.events.books import BookSnapshot

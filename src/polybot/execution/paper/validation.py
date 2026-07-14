@@ -14,8 +14,14 @@ def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
     if not isinstance(order.side, Side):
         return FillRejectReason.BAD_SIDE, "order side is invalid"
     try:
-        if not order.price.is_finite() or not ORDER_VALUE_FLOOR < order.price <= BOOK_PRICE_CEILING:
-            return FillRejectReason.BAD_PRICE, "order price must be finite and between 0 and 1"
+        if (
+            not order.price.is_finite()
+            or not ORDER_VALUE_FLOOR < order.price <= BOOK_PRICE_CEILING
+        ):
+            return (
+                FillRejectReason.BAD_PRICE,
+                "order price must be finite and between 0 and 1",
+            )
         if not order.size.is_finite() or order.size <= ORDER_VALUE_FLOOR:
             return FillRejectReason.BAD_SIZE, "order size must be finite and positive"
     except (AttributeError, InvalidOperation, TypeError, ValueError):

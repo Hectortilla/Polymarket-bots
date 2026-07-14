@@ -10,6 +10,8 @@ import asciichartpy
 import pytest
 from rich.console import Console
 
+from polybot.cli.dashboard.copy import RUN_FAILED_PREFIX
+from polybot.async_io import run_blocking
 from polybot.cli.dashboard.render import (
     PRICE_CHART_MAX,
     PRICE_CHART_MIN,
@@ -48,10 +50,11 @@ from polybot.cli.observability.observer import (
     start_observer,
     stop_observer,
 )
-from polybot.cli.streams import BookStreamEvent, StreamKind, WalletStreamEvent
-from polybot.framework.config import BotConfig
+from polybot.cli.streams.contracts import BookStreamEvent, StreamKind, WalletStreamEvent
+from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillEvent, FillRejectReason, OrderRequest, OrderStatus, Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 
 
@@ -113,7 +116,7 @@ def test_dashboard_start_does_not_block_the_event_loop(monkeypatch) -> None:
     async def run() -> bool:
         dashboard = TerminalDashboard(Console(width=80, height=24))
         start_task = asyncio.create_task(dashboard.start(BotConfig(name="dashboard")))
-        await asyncio.to_thread(started.wait, 1)
+        await run_blocking(started.wait, 1)
         scheduled = False
 
         async def schedule() -> None:
@@ -159,7 +162,7 @@ def test_dashboard_render_is_threaded_and_stop_closes_live_session(monkeypatch) 
         dashboard = TerminalDashboard(Console(width=80, height=24))
         await dashboard.start(BotConfig(name="dashboard"))
         dashboard.emit(RuntimeStarted.from_config(BotConfig(name="dashboard")))
-        await asyncio.to_thread(update_started.wait, 1)
+        await run_blocking(update_started.wait, 1)
         scheduled = False
 
         async def schedule() -> None:
@@ -202,7 +205,7 @@ def test_dashboard_reports_render_loop_failure(monkeypatch) -> None:
         return function(*args, **kwargs)
 
     monkeypatch.setattr(
-        "polybot.cli.dashboard.controller.asyncio.to_thread",
+        "polybot.cli.dashboard.controller.run_blocking",
         inline_to_thread,
     )
 
@@ -275,16 +278,23 @@ def test_dashboard_pnl_is_unavailable_when_position_cannot_be_marked() -> None:
     assert state.executable_pnl() is None
 
 
-def test_dashboard_tracks_market_wallet_and_chart_events() -> None:
+def test_dashboard_keeps_chart_selection_stable_when_markets_exceed_capacity() -> None:
+    assert MAX_CHART_TOKENS == 20
+
     state = DashboardState()
-    for index in range(MAX_CHART_TOKENS + 1):
-        token_id = f"token-{index}"
-        state.apply(
-            StreamReceived(
-                BookStreamEvent(StreamKind.BOOK, _book(token_id, Decimal("0.4"), Decimal("0.6"))),
-                float(index),
+    for pass_index in range(2):
+        for index in range(MAX_CHART_TOKENS + 1):
+            token_id = f"token-{index}"
+            state.apply(
+                StreamReceived(
+                    BookStreamEvent(
+                        StreamKind.BOOK,
+                        _book(token_id, Decimal("0.4"), Decimal("0.6")),
+                    ),
+                    float(pass_index * (MAX_CHART_TOKENS + 1) + index),
+                )
             )
-        )
+        state.sample(80)
     trade = WalletTradeEvent(
         wallet="0xleader",
         condition_id="condition",
@@ -297,17 +307,36 @@ def test_dashboard_tracks_market_wallet_and_chart_events() -> None:
         observed_at_ms=1_125,
     )
     state.apply(StreamReceived(WalletStreamEvent(StreamKind.WALLET, trade), 6.0))
-    state.sample(80)
 
     expected_tokens = tuple(
         f"token-{index}"
-        for index in range(1, MAX_CHART_TOKENS + 1)
+        for index in range(MAX_CHART_TOKENS)
     )
     assert tuple(state.chart_tokens) == expected_tokens
     assert state.average_wallet_lag_ms() == 125
-    assert state.stream_counts[StreamKind.BOOK] == 5
+    assert state.stream_counts[StreamKind.BOOK] == 2 * (MAX_CHART_TOKENS + 1)
     assert state.stream_counts[StreamKind.WALLET] == 1
-    assert all(len(values) == 1 for values in state.price_history.values())
+    assert set(state.price_history) == set(expected_tokens)
+    assert all(len(values) == 2 for values in state.price_history.values())
+
+
+def test_dashboard_renders_all_twenty_chart_series() -> None:
+    state = DashboardState()
+    for index in range(MAX_CHART_TOKENS):
+        state.apply(
+            StreamReceived(
+                BookStreamEvent(
+                    StreamKind.BOOK,
+                    _book(f"token-{index}", Decimal("0.4"), Decimal("0.6")),
+                ),
+                float(index),
+            )
+        )
+    state.sample(160)
+
+    render_dashboard(state, 160, 40)
+
+    assert len(state.chart_tokens) == MAX_CHART_TOKENS
 
 
 def test_dashboard_tracks_stream_health_samples() -> None:
@@ -421,7 +450,7 @@ def test_dashboard_uses_market_slug_for_chart_labels() -> None:
                     asks=book.asks,
                     received_at_ms=book.received_at_ms,
                     market_slug="btc-up-or-down",
-                    outcome="Yes",
+                    outcome=YES_OUTCOME,
                 ),
             ),
             1.0,
@@ -532,8 +561,6 @@ def test_dashboard_skips_rejected_books_but_counts_them() -> None:
             1.0,
         )
     )
-    from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
-
     item = BookStreamEvent(StreamKind.BOOK, rejected_book)
     state.apply(
         DispatchCompleted(
@@ -553,8 +580,6 @@ def test_dashboard_promotes_accepted_books_for_valuation() -> None:
     book = _book("accepted", Decimal("0.40"), Decimal("0.60"), received_at_ms=1_000)
     item = BookStreamEvent(StreamKind.BOOK, book)
     state.apply(StreamReceived(item, 1.0))
-    from polybot.framework.dispatch import DispatchOutcome
-
     state.apply(DispatchCompleted(item, DispatchOutcome.accepted_event(), 2.0))
     state.portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("90"),
@@ -595,8 +620,6 @@ def test_dashboard_tracks_dispatch_skips_and_rejected_fills() -> None:
         reject_reason=FillRejectReason.BOOK_CROSSED,
         reject_message="crossed book",
     )
-    from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
-
     state.apply(
         DispatchCompleted(
             BookStreamEvent(StreamKind.BOOK, _book("token", Decimal("0.4"), Decimal("0.6"))),
@@ -980,14 +1003,14 @@ def test_dashboard_aggregates_consecutive_identical_ticker_events() -> None:
     state.apply(RuntimeFailed("repeated failure", 4.0))
 
     assert [(row.message, row.count) for row in state.ticker] == [
-        ("RUN FAILED repeated failure", 1),
-        ("RUN FAILED another failure", 1),
-        ("RUN FAILED repeated failure", 2),
+        (f"{RUN_FAILED_PREFIX} repeated failure", 1),
+        (f"{RUN_FAILED_PREFIX} another failure", 1),
+        (f"{RUN_FAILED_PREFIX} repeated failure", 2),
     ]
     output = StringIO()
     Console(file=output, width=80, height=24).print(render_dashboard(state, 80, 24))
 
-    assert "RUN FAILED repeated failure x2" in output.getvalue()
+    assert f"{RUN_FAILED_PREFIX} repeated failure x2" in output.getvalue()
 
 
 def _book(
@@ -1016,5 +1039,5 @@ def _wallet_trade(wallet: str, source_id: str, side: Side, timestamp_ms: int) ->
         trade_timestamp_ms=timestamp_ms,
         observed_at_ms=timestamp_ms + 10,
         market_slug="market",
-        outcome="Yes",
+        outcome=YES_OUTCOME,
     )

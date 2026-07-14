@@ -2,22 +2,30 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterable, Callable, Iterable
+from datetime import datetime, timezone
 
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
 
 from .contracts import (
-    DEFAULT_MAX_CONCURRENCY,
-    DEFAULT_WALLET_TRADE_LIMIT,
-    TRADE_ACTIVITY_TYPE,
     WalletActivityIssue,
     WalletDataClient,
+    WalletActivityError,
     WalletReadFailure,
     WalletTradeBatch,
     WalletTradeSelector,
-    current_time_ms,
+)
+from .constants import (
+    DATA_TRADES_PAGE_SIZE,
+    DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_WALLET_TRADE_LIMIT,
+    TRADE_ACTIVITY_TYPE,
 )
 from .normalization import normalize_wallet_trade, sort_key
+
+
+def current_time_ms() -> int:
+    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
 
 class WalletActivityClient:
@@ -37,11 +45,13 @@ class WalletActivityClient:
         wallet: str,
         limit: int = DEFAULT_WALLET_TRADE_LIMIT,
     ) -> tuple[WalletTradeEvent, ...]:
-        if limit <= 0:
+        if not _has_positive_limit(limit):
             return ()
         address = normalize_wallet_address(wallet)
         try:
-            paginator = self._client.list_trades(user=address, taker_only=False, page_size=limit)
+            paginator = self._client.list_trades(
+                user=address, taker_only=False, page_size=limit
+            )
         except TypeError:
             paginator = self._client.list_trades(user=address, page_size=limit)
         return await _collect_trades(
@@ -58,8 +68,10 @@ class WalletActivityClient:
         *,
         start: int | None = None,
         end: int | None = None,
-        limit: int = 499,
+        limit: int = DATA_TRADES_PAGE_SIZE,
     ) -> tuple[WalletTradeEvent, ...]:
+        if not _has_positive_limit(limit):
+            return ()
         paginator = self._client.list_trades(
             user=selector.wallet,
             market=selector.condition_ids or None,
@@ -70,7 +82,7 @@ class WalletActivityClient:
         )
         rows: list[WalletTradeEvent] = []
         async for page in paginator:
-            for source in page.items:
+            for source in _page_items(page):
                 trade = normalize_wallet_trade(
                     source,
                     observed_at_ms=self._now_ms(),
@@ -86,7 +98,7 @@ class WalletActivityClient:
         wallet: str,
         limit: int = DEFAULT_WALLET_TRADE_LIMIT,
     ) -> tuple[WalletTradeEvent, ...]:
-        if limit <= 0:
+        if not _has_positive_limit(limit):
             return ()
         address = normalize_wallet_address(wallet)
         paginator = self._client.list_activity(
@@ -109,7 +121,9 @@ class WalletActivityClient:
         limit: int = DEFAULT_WALLET_TRADE_LIMIT,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     ) -> WalletTradeBatch:
-        addresses = tuple(dict.fromkeys(normalize_wallet_address(wallet) for wallet in wallets))
+        addresses = tuple(
+            dict.fromkeys(normalize_wallet_address(wallet) for wallet in wallets)
+        )
         if max_concurrency <= 0:
             raise ValueError("max_concurrency must be positive")
         semaphore = asyncio.Semaphore(max_concurrency)
@@ -125,7 +139,9 @@ class WalletActivityClient:
                 except Exception:
                     return wallet, None
 
-        results = await asyncio.gather(*(read_wallet_trades(wallet) for wallet in addresses))
+        results = await asyncio.gather(
+            *(read_wallet_trades(wallet) for wallet in addresses)
+        )
         return _merge_wallet_results(tuple(results))
 
 
@@ -139,7 +155,7 @@ async def _collect_trades(
 ) -> tuple[WalletTradeEvent, ...]:
     rows: list[WalletTradeEvent] = []
     async for page in paginator:
-        for source in page.items:
+        for source in _page_items(page):
             trade = normalize_wallet_trade(
                 source,
                 observed_at_ms=observed_at_ms(),
@@ -170,3 +186,17 @@ def _merge_wallet_results(
 
 
 WalletActivityDataClient = WalletActivityClient
+
+
+def _has_positive_limit(limit: int) -> bool:
+    return limit > 0
+
+
+def _page_items(page: object) -> tuple[object, ...]:
+    items = getattr(page, "items", None)
+    if not isinstance(items, (list, tuple)):
+        raise WalletActivityError(
+            WalletActivityIssue.WALLET_READ_FAILED,
+            "wallet activity page items are malformed",
+        )
+    return tuple(items)

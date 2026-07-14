@@ -21,9 +21,10 @@ except ImportError:  # pragma: no cover - non-POSIX terminals do not support cbr
     tty = None
 
 from polybot.cli.dashboard.render import render_dashboard, wallet_lane_capacity
+from polybot.async_io import run_blocking
 from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.observability.events import RuntimeEvent
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 
 DASHBOARD_REFRESH_SECONDS = 0.25
 
@@ -42,7 +43,7 @@ class TerminalDashboard:
     async def start(self, config: BotConfig) -> None:
         self._loop = asyncio.get_running_loop()
         with self._state_lock:
-            self._state.book_max_age_ms = config.book_max_age_ms
+            self._state.book_max_age_ms = config.event_max_age_ms
             self._state.set_wallet_lanes(
                 tuple(
                     wallet
@@ -59,7 +60,7 @@ class TerminalDashboard:
             redirect_stderr=True,
         )
         try:
-            await asyncio.to_thread(self._live.start, refresh=True)
+            await run_blocking(self._live.start, refresh=True)
             self._task = asyncio.create_task(self._render_loop())
             self._input_task = asyncio.create_task(self._read_keys())
         except Exception as error:
@@ -85,7 +86,7 @@ class TerminalDashboard:
             return
         render_error: Exception | None = None
         try:
-            await asyncio.to_thread(self._render)
+            await run_blocking(self._render)
         except Exception as error:
             render_error = error
         cleanup_error = await self._close_live()
@@ -102,7 +103,7 @@ class TerminalDashboard:
                 except TimeoutError:
                     pass
                 self._wake.clear()
-                await asyncio.to_thread(self._render)
+                await run_blocking(self._render)
         except Exception as error:
             cleanup_error = await self._close_live()
             self._report_failure(error, cleanup_error)
@@ -110,7 +111,7 @@ class TerminalDashboard:
     async def _read_keys(self) -> None:
         if termios is None or tty is None or not sys.stdin.isatty():
             return
-        await asyncio.to_thread(self._read_terminal_keys)
+        await run_blocking(self._read_terminal_keys)
 
     def _read_terminal_keys(self) -> None:
         file_descriptor = sys.stdin.fileno()
@@ -118,7 +119,9 @@ class TerminalDashboard:
         try:
             tty.setcbreak(file_descriptor)
             while self._live is not None:
-                ready, _, _ = select.select((sys.stdin,), (), (), DASHBOARD_REFRESH_SECONDS)
+                ready, _, _ = select.select(
+                    (sys.stdin,), (), (), DASHBOARD_REFRESH_SECONDS
+                )
                 if ready:
                     self._handle_key(sys.stdin.read(1))
         finally:
@@ -177,7 +180,7 @@ class TerminalDashboard:
         if live is None:
             return None
         try:
-            await asyncio.to_thread(live.stop)
+            await run_blocking(live.stop)
         except Exception as error:
             return error
         return None

@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from polymarket.errors import PolymarketError
 
@@ -14,15 +13,29 @@ from scripts.polymarket_wallet_api import (
     fetch_positions,
     gamma_condition_id,
 )
-from scripts.wallet_analysis import classify_wallet_candidate, compute_metrics, market_trade_share
-from scripts.wallet_report import bad, dim, heading, print_wallet_report, verdict_label, warn
+from scripts.paths import BAD_FILE, GOOD_FILE, RESULTS_DIR
+from scripts.wallet_analysis.classification import classify_wallet_candidate
+from scripts.wallet_analysis.market_metrics import market_trade_share
+from scripts.wallet_analysis.metrics import compute_metrics
+from scripts.wallet_report import (
+    bad,
+    dim,
+    heading,
+    print_wallet_report,
+    verdict_label,
+    warn,
+)
 from scripts.wallet_results import append_wallet_result, load_seen_wallets
 from scripts.wallets_finder.records import result_note, unique_holders
-from scripts.wallets_finder.windows import BUCKET_SECONDS, current_bucket_start, seconds_to_next_window, slug_for_start, window_label
+from scripts.wallets_finder.windows import (
+    BUCKET_SECONDS,
+    current_bucket_start,
+    seconds_to_next_window,
+    slug_for_start,
+    window_label,
+)
 
-RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
-GOOD_FILE = RESULTS_DIR / "good_wallets.txt"
-BAD_FILE = RESULTS_DIR / "bad_wallets.txt"
+
 def resolve_target(
     back: int = 1,
     slug_override: str | None = None,
@@ -76,13 +89,15 @@ def scan_market(
             target_slug=slug,
             target_condition_id=condition_id,
         )
-        density = float(metrics["n_trades"]) / float(metrics["span_h"]) * 24
+        density = (
+            float(metrics["trade_count"]) / float(metrics["activity_span_hours"]) * 24
+        )
         note = result_note(
             classification.verdict,
             metrics,
             market_share,
             density,
-            classification.explanation,
+            classification.reason,
         )
         append_wallet_result(
             GOOD_FILE if classification.is_good else BAD_FILE,

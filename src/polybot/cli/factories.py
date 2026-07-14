@@ -7,7 +7,7 @@ import inspect
 from collections.abc import Callable
 
 from polybot.framework.base import BaseBot
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 
 
 def load_bot(spec: str, config: BotConfig) -> BaseBot:

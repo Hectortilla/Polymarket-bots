@@ -19,8 +19,9 @@ Start with:
 - `docs/implementation-plan.md`
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
-Slice 3 public market-data adapters, Slice 4 wallet activity inputs, and the
-Slice 5 paper runner CLI, with a terminal dashboard enabled by default. The
+Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
+paper runner CLI, Slice 10 terminal dashboard, and Slice 11 dynamic market
+tracking and resolution processing. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
@@ -28,6 +29,12 @@ use the pinned unified Polymarket SDK and normalize SDK models at the
 `polybot.polymarket` boundary. Authenticated runtime adapters remain intentionally
 unimplemented until their later slices; no arbitrary-wallet trade stream is
 bundled because the pinned SDK does not provide one.
+
+The paper runtime maintains one condition-keyed union of configured markets,
+accepted followed-wallet discoveries, and paper positions. Dynamically
+discovered markets remain subscribed until resolution. Resolution events settle
+paper and followed-wallet positions at contractual `1`/`0` payouts and are
+persisted before `BaseBot.on_market_resolved()` runs.
 
 Future Polymarket integrations must use an official Polymarket Python SDK or
 client wherever it supports the required capability. The unified
@@ -39,8 +46,8 @@ allowed only for a documented capability gap in the official libraries. See
 packages.
 
 The target v1 is event-driven from the start. Paper and live modes must consume
-the same market-book, wallet-trade, and fill event shapes so paper behavior
-stays close to live behavior.
+the same market-book, wallet-trade, resolution, and fill event shapes so paper
+behavior stays close to live behavior.
 
 The live framework is performance-first. WebSocket/streaming sources are the
 target live paths for fast-changing data. REST polling is for bootstrap,

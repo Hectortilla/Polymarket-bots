@@ -6,8 +6,10 @@ from collections.abc import Awaitable, Callable
 from itertools import count
 from time import time
 
+from polybot.async_io import run_blocking
+
 from polybot.execution.broker import Broker
-from polybot.framework.config import BotConfig
+from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BookClient, MarketClient
 from polybot.framework.events import (
     FillEvent,
@@ -15,30 +17,32 @@ from polybot.framework.events import (
     OrderRequest,
 )
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.resolutions import MarketResolutionEvent, SettledPosition
 
 from .fill_math import simulate_fill
-from .idempotency import SourceIdempotencyStore
+from .contracts import (
+    BAD_BOOK_LEVEL_MESSAGE,
+    BOOK_CROSSED_MESSAGE,
+    BOOK_FUTURE_DATED_MESSAGE,
+    BOOK_MISMATCH_MESSAGE,
+    BOOK_STALE_MESSAGE,
+    BOOK_UNAVAILABLE_MESSAGE,
+    NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
+    PAPER_ORDER_ID_PREFIX,
+)
+from .idempotency import DUPLICATE_SOURCE_MESSAGE, SourceIdempotencyStore
 from .market_data import (
     MARKET_FEE_INVALID_MESSAGE,
     MARKET_UNAVAILABLE_MESSAGE,
     latest_book,
     resolve_fee_rate,
 )
-from .portfolio import PaperPortfolio
+from .latency import sample_latency_ms
+from .portfolio import PaperPortfolio, PaperPortfolioSnapshot
 from .validation import classify_book, validate_order
 
 SleepFn = Callable[[float], Awaitable[None]]
 NowMsFn = Callable[[], int]
-
-PAPER_ORDER_ID_PREFIX = "paper-"
-NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE = "no book depth remained within the slippage cap"
-BOOK_UNAVAILABLE_MESSAGE = "fill-time book lookup failed"
-BOOK_MISMATCH_MESSAGE = "fill-time book did not match the requested order"
-BOOK_STALE_MESSAGE = "fill-time book was stale"
-BAD_BOOK_LEVEL_MESSAGE = "fill-time book contained invalid levels"
-BOOK_FUTURE_DATED_MESSAGE = "fill-time book was future-dated"
-BOOK_CROSSED_MESSAGE = "fill-time book was crossed"
-DUPLICATE_SOURCE_MESSAGE = "source event was already processed"
 
 
 class PaperBroker(Broker):
@@ -64,12 +68,49 @@ class PaperBroker(Broker):
         self._source_claim_lock = asyncio.Lock()
         self._fills_by_source_id: dict[str, asyncio.Future[FillEvent]] = {}
         self._source_store = source_store
+        self._settled_conditions: set[str] = set()
+        self._position_market_refs: dict[str, tuple[str, str]] = {}
 
     @property
     def portfolio(self) -> PaperPortfolio:
         return self._portfolio
 
+    @property
+    def position_market_refs(self) -> dict[str, tuple[str, str]]:
+        return self._position_market_refs.copy()
+
+    def snapshot(
+        self,
+    ) -> tuple[PaperPortfolioSnapshot, set[str], dict[str, tuple[str, str]],]:
+        return (
+            self._portfolio.snapshot(),
+            self._settled_conditions.copy(),
+            self._position_market_refs.copy(),
+        )
+
+    def restore(
+        self,
+        snapshot: tuple[
+            PaperPortfolioSnapshot,
+            set[str],
+            dict[str, tuple[str, str]],
+        ],
+    ) -> None:
+        portfolio_snapshot, settled_conditions, position_market_refs = snapshot
+        self._portfolio.restore(portfolio_snapshot)
+        self._settled_conditions = settled_conditions.copy()
+        self._position_market_refs = position_market_refs.copy()
+
     async def submit(self, order: OrderRequest) -> FillEvent:
+        validation_reject = validate_order(order)
+        if validation_reject is not None:
+            return self._rejected_fill(
+                f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}",
+                order,
+                received_at_ms=self._now_ms(),
+                reject_reason=validation_reject[0],
+                reject_message=validation_reject[1],
+            )
         if not order.source_id:
             return await self._submit_once(order)
 
@@ -84,7 +125,7 @@ class PaperBroker(Broker):
             return await claimed_fill
 
         try:
-            if self._source_store is not None and not await asyncio.to_thread(
+            if self._source_store is not None and not await run_blocking(
                 self._source_store.claim, order.source_id
             ):
                 fill = FillEvent.rejected(
@@ -105,28 +146,20 @@ class PaperBroker(Broker):
             if not claimed_fill.done():
                 claimed_fill.set_exception(exc)
             if self._source_store is not None:
-                await asyncio.to_thread(self._source_store.release, order.source_id)
+                await run_blocking(self._source_store.release, order.source_id)
             async with self._source_claim_lock:
                 if self._fills_by_source_id.get(order.source_id) is claimed_fill:
                     self._fills_by_source_id.pop(order.source_id, None)
             raise
 
     async def _submit_once(self, order: OrderRequest) -> FillEvent:
-
         order_id = f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}"
-        validation_reject = validate_order(order)
-        if validation_reject is not None:
-            fill = self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=self._now_ms(),
-                reject_reason=validation_reject[0],
-                reject_message=validation_reject[1],
-            )
-            return fill
-
         start_ms = self._now_ms()
-        latency_ms = self._sample_latency_ms()
+        latency_ms = sample_latency_ms(
+            self._config.paper_latency_ms,
+            self._config.paper_latency_jitter_ms,
+            self._rng,
+        )
         await self._sleep(latency_ms / 1000)
         book = await latest_book(self._books, order.token_id)
         fill_time_ms = max(start_ms + latency_ms, self._now_ms())
@@ -144,7 +177,7 @@ class PaperBroker(Broker):
             order,
             book,
             fill_time_ms,
-            self._config.book_max_age_ms,
+            self._config.event_max_age_ms,
         )
         if book_reject is not None:
             fill = self._rejected_fill(
@@ -185,19 +218,43 @@ class PaperBroker(Broker):
             )
 
         if fill.average_price is None:
-            raise AssertionError("simulated non-rejected fills require an average price")
+            raise AssertionError(
+                "simulated non-rejected fills require an average price"
+            )
 
-        self._portfolio.apply_fill(
+        updated_position = self._portfolio.apply_fill(
             token_id=order.token_id,
             side=order.side,
             filled_size=fill.filled_size,
             average_price=fill.average_price,
             fee_usdc=fill.fee_usdc,
         )
+        if updated_position.size == 0:
+            self._position_market_refs.pop(order.token_id, None)
+        else:
+            market_slug = order.market_slug or book.market_slug
+            condition_id = order.condition_id or book.condition_id
+            if market_slug and condition_id:
+                self._position_market_refs[order.token_id] = (
+                    market_slug,
+                    condition_id,
+                )
         return fill
 
     async def cancel_all(self) -> None:
         return None
+
+    def settle_market(
+        self,
+        event: MarketResolutionEvent,
+    ) -> tuple[SettledPosition, ...]:
+        if event.condition_id in self._settled_conditions:
+            return ()
+        settlements = self._portfolio.settle_market(event)
+        for token_id in event.token_ids:
+            self._position_market_refs.pop(token_id, None)
+        self._settled_conditions.add(event.condition_id)
+        return settlements
 
     @staticmethod
     def _book_reject_message(reason: FillRejectReason) -> str:
@@ -228,12 +285,6 @@ class PaperBroker(Broker):
             reject_reason=reject_reason,
             reject_message=reject_message,
         )
-
-    def _sample_latency_ms(self) -> int:
-        if self._config.paper_latency_jitter_ms <= 0:
-            return self._config.paper_latency_ms
-        jitter_ms = self._rng.randrange(self._config.paper_latency_jitter_ms + 1)
-        return self._config.paper_latency_ms + jitter_ms
 
 
 def _now_ms() -> int:
