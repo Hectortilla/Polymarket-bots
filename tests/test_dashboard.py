@@ -182,6 +182,39 @@ def test_dashboard_render_is_threaded_and_stop_closes_live_session(monkeypatch) 
     assert live_sessions[0].stopped
 
 
+def test_dashboard_stop_waits_for_terminal_reader_cleanup() -> None:
+    reader_finished = Event()
+    reader_cancelled = Event()
+
+    class LiveSession:
+        def update(self, renderable, *, refresh: bool) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+    async def run() -> None:
+        dashboard = TerminalDashboard(Console(width=80, height=24))
+        dashboard._live = LiveSession()
+
+        async def reader() -> None:
+            try:
+                while not dashboard._input_stop.is_set():
+                    await asyncio.sleep(0)
+            except asyncio.CancelledError:
+                reader_cancelled.set()
+                raise
+            reader_finished.set()
+
+        dashboard._input_task = asyncio.create_task(reader())
+        await dashboard.stop()
+
+    asyncio.run(run())
+
+    assert reader_finished.is_set()
+    assert not reader_cancelled.is_set()
+
+
 def test_dashboard_reports_render_loop_failure(monkeypatch) -> None:
     stopped = Event()
     output = StringIO()

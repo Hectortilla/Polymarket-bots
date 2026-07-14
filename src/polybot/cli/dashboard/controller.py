@@ -6,7 +6,7 @@ import asyncio
 from copy import deepcopy
 import select
 import sys
-from threading import Lock
+from threading import Event, Lock
 from traceback import format_exception
 
 from rich.console import Console
@@ -38,6 +38,7 @@ class TerminalDashboard:
         self._wake = asyncio.Event()
         self._state_lock = Lock()
         self._input_task: asyncio.Task[None] | None = None
+        self._input_stop = Event()
         self._loop: asyncio.AbstractEventLoop | None = None
 
     async def start(self, config: BotConfig) -> None:
@@ -62,6 +63,7 @@ class TerminalDashboard:
         try:
             await run_blocking(self._live.start, refresh=True)
             self._task = asyncio.create_task(self._render_loop())
+            self._input_stop.clear()
             self._input_task = asyncio.create_task(self._read_keys())
         except Exception as error:
             cleanup_error = await self._close_live()
@@ -74,9 +76,26 @@ class TerminalDashboard:
         self._wake.set()
 
     async def stop(self) -> None:
+        cleanup_task = asyncio.create_task(self._stop_impl())
+        cancellation: asyncio.CancelledError | None = None
+        while not cleanup_task.done():
+            try:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError as error:
+                # asyncio.run cancels the main task on Ctrl+C. Keep waiting
+                # for terminal restoration before allowing that cancellation
+                # to tear down the process.
+                cancellation = error
+        if cancellation is not None:
+            await asyncio.gather(cleanup_task, return_exceptions=True)
+            raise cancellation
+        await cleanup_task
+
+    async def _stop_impl(self) -> None:
         if self._input_task is not None:
-            self._input_task.cancel()
-            await asyncio.gather(self._input_task, return_exceptions=True)
+            self._input_stop.set()
+            input_task = self._input_task
+            await asyncio.gather(input_task, return_exceptions=True)
             self._input_task = None
         if self._task is not None:
             self._task.cancel()
@@ -118,7 +137,7 @@ class TerminalDashboard:
         settings = termios.tcgetattr(file_descriptor)
         try:
             tty.setcbreak(file_descriptor)
-            while self._live is not None:
+            while self._live is not None and not self._input_stop.is_set():
                 ready, _, _ = select.select(
                     (sys.stdin,), (), (), DASHBOARD_REFRESH_SECONDS
                 )
