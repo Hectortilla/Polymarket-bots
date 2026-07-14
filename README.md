@@ -20,7 +20,9 @@ Start with:
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, and the
-Slice 5 paper runner CLI, with a terminal dashboard enabled by default. Gamma
+Slice 5 paper runner CLI, with a terminal dashboard enabled by default. The
+dashboard has market-price and followed-wallet timeline views; press `v` to
+switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
 use the pinned unified Polymarket SDK and normalize SDK models at the
 `polybot.polymarket` boundary. Authenticated runtime adapters remain intentionally

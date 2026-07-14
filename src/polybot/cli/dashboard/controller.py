@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover - non-POSIX terminals do not support cbr
     termios = None
     tty = None
 
-from polybot.cli.dashboard.render import render_dashboard
+from polybot.cli.dashboard.render import render_dashboard, wallet_lane_capacity
 from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.observability.events import RuntimeEvent
 from polybot.framework.config import BotConfig
@@ -43,6 +43,13 @@ class TerminalDashboard:
         self._loop = asyncio.get_running_loop()
         with self._state_lock:
             self._state.book_max_age_ms = config.book_max_age_ms
+            self._state.set_wallet_lanes(
+                tuple(
+                    wallet
+                    for rule in config.stream_rules
+                    for wallet in rule.wallet_addresses
+                )
+            )
         self._live = Live(
             console=self._console,
             screen=True,
@@ -125,6 +132,25 @@ class TerminalDashboard:
                 changed = self._state.zoom_time(1)
             elif key.lower() == "r":
                 changed = self._state.reset_time_zoom()
+            elif key.lower() == "v":
+                self._state.toggle_view()
+                changed = True
+            elif key.lower() == "j":
+                changed = self._state.page_wallets(
+                    1,
+                    wallet_lane_capacity(
+                        self._console.size.width,
+                        self._console.size.height,
+                    ),
+                )
+            elif key.lower() == "k":
+                changed = self._state.page_wallets(
+                    -1,
+                    wallet_lane_capacity(
+                        self._console.size.width,
+                        self._console.size.height,
+                    ),
+                )
             else:
                 changed = False
         if changed:

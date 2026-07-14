@@ -17,14 +17,18 @@ from polybot.cli.dashboard.render import (
     _fixed_ms,
     _price_chart_height,
     _price_chart_series,
+    _wallet_bucket_glyph,
+    _wallet_timeline_buckets,
     render_dashboard,
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
 from polybot.cli.dashboard.state import (
+    DashboardView,
     MAX_CHART_HISTORY_POINTS,
     MAX_CHART_TOKENS,
     DashboardState,
 )
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import (
     BrokerFailed,
@@ -781,6 +785,88 @@ def test_dashboard_keyboard_time_zoom_controls_change_only_chart_window() -> Non
     assert dashboard._state.time_zoom_level == 0
 
 
+def test_dashboard_keyboard_switches_views_and_pages_wallets() -> None:
+    dashboard = TerminalDashboard(Console(width=80, height=24))
+    dashboard._state.set_wallet_lanes(tuple(f"0x{index:040x}" for index in range(20)))
+
+    dashboard._handle_key("v")
+    assert dashboard._state.view is DashboardView.WALLET
+    dashboard._handle_key("j")
+    assert dashboard._state.wallet_page == 1
+    dashboard._handle_key("k")
+    assert dashboard._state.wallet_page == 0
+    dashboard._handle_key("v")
+    assert dashboard._state.view is DashboardView.MARKET
+
+
+def test_dashboard_projects_wallet_trades_and_dispatch_status_by_wallet_source() -> None:
+    state = DashboardState()
+    first = _wallet_trade("0x" + "1" * 40, "same", Side.BUY, 1_000)
+    second = _wallet_trade("0x" + "2" * 40, "same", Side.SELL, 1_001)
+    first_item = WalletStreamEvent(StreamKind.WALLET, first)
+    second_item = WalletStreamEvent(StreamKind.WALLET, second)
+    state.apply(StreamReceived(first_item, 1.0))
+    state.apply(StreamReceived(second_item, 1.0))
+    state.apply(
+        DispatchCompleted(
+            first_item,
+            DispatchOutcome.skipped(DispatchSkipReason.DUPLICATE_SOURCE_EVENT),
+            2.0,
+        )
+    )
+    state.apply(DispatchCompleted(second_item, DispatchOutcome.accepted_event(), 2.0))
+
+    assert tuple(state.wallet_lanes) == (first.wallet, second.wallet)
+    assert [event.accepted for event in state.wallet_timeline] == [False, True]
+    assert [event.notional for event in state.wallet_timeline] == [Decimal("1"), Decimal("1")]
+
+
+def test_wallet_timeline_buckets_by_trade_time_and_styles_skipped_events() -> None:
+    state = DashboardState()
+    skipped = _wallet_trade("0x" + "3" * 40, "skipped", Side.BUY, 1_000)
+    accepted = _wallet_trade("0x" + "4" * 40, "accepted", Side.SELL, 1_500)
+    skipped_item = WalletStreamEvent(StreamKind.WALLET, skipped)
+    accepted_item = WalletStreamEvent(StreamKind.WALLET, accepted)
+    state.apply(StreamReceived(skipped_item, 1.0))
+    state.apply(StreamReceived(accepted_item, 1.0))
+    state.apply(
+        DispatchCompleted(
+            skipped_item,
+            DispatchOutcome.skipped(DispatchSkipReason.WALLET_NOT_TRACKED),
+            1.0,
+        )
+    )
+    state.apply(DispatchCompleted(accepted_item, DispatchOutcome.accepted_event(), 1.0))
+
+    buckets = _wallet_timeline_buckets(
+        state.wallet_timeline,
+        list(state.wallet_lanes),
+        1.0,
+        2.0,
+        10,
+    )
+    skipped_glyph, skipped_style = _wallet_bucket_glyph(buckets[skipped.wallet][0], Decimal("1"))
+    accepted_glyph, accepted_style = _wallet_bucket_glyph(buckets[accepted.wallet][5], Decimal("1"))
+
+    assert skipped_glyph == "◆"
+    assert skipped_style == "dim green"
+    assert accepted_glyph == "◆"
+    assert accepted_style == "bold red"
+
+
+def test_dashboard_renders_wallet_view_with_trade_time_lanes() -> None:
+    state = DashboardState(view=DashboardView.WALLET)
+    trade = _wallet_trade("0x" + "5" * 40, "trade", Side.BUY, 1_000)
+    state.apply(StreamReceived(WalletStreamEvent(StreamKind.WALLET, trade), 1.0))
+    state.sample(120, now_ms=1_000)
+    output = StringIO()
+
+    Console(file=output, width=120, height=35).print(render_dashboard(state, 120, 35))
+
+    assert "Followed wallet activity" in output.getvalue()
+    assert "0x5555" in output.getvalue()
+
+
 def test_dashboard_samples_executable_wallet_value() -> None:
     state = DashboardState(initial_cash_usdc=Decimal("100"))
     state.portfolio = PortfolioSnapshot(Decimal("125"), Decimal("0"), ())
@@ -915,4 +1001,20 @@ def _book(
         bids=(BookLevel(bid, Decimal("1")),),
         asks=(BookLevel(ask, Decimal("1")),),
         received_at_ms=received_at_ms,
+    )
+
+
+def _wallet_trade(wallet: str, source_id: str, side: Side, timestamp_ms: int) -> WalletTradeEvent:
+    return WalletTradeEvent(
+        wallet=wallet,
+        condition_id="condition",
+        token_id="token",
+        side=side,
+        size=Decimal("2"),
+        price=Decimal("0.5"),
+        source_id=source_id,
+        trade_timestamp_ms=timestamp_ms,
+        observed_at_ms=timestamp_ms + 10,
+        market_slug="market",
+        outcome="Yes",
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
+from enum import StrEnum
 from math import ceil, isnan, nan
 from time import monotonic, time
 from typing import TypeVar
@@ -32,6 +33,7 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 MAX_TICKER_ROWS = 40
 MAX_CHART_TOKENS = len(SERIES_PALETTE)
 MAX_CHART_HISTORY_POINTS = 720
+MAX_WALLET_TIMELINE_EVENTS = 5_000
 MIN_CHART_WINDOW_POINTS = 12
 MAX_CHART_WINDOW_POINTS = 120
 MIN_TIME_ZOOM_LEVEL = -3
@@ -48,6 +50,24 @@ class TickerRow:
     style: str
     message: str
     count: int = 1
+
+
+class DashboardView(StrEnum):
+    MARKET = "market"
+    WALLET = "wallet"
+
+
+@dataclass(slots=True)
+class WalletTimelineEvent:
+    """A dashboard-only projection of one detected leader trade."""
+
+    source_key: str
+    wallet: str
+    trade_timestamp_ms: int
+    side: Side
+    notional: Decimal
+    market_label: str
+    accepted: bool | None = None
 
 
 @dataclass(slots=True)
@@ -98,6 +118,11 @@ class DashboardState:
     chart_sample_times: deque[float] = field(default_factory=deque)
     time_zoom_level: int = 0
     market_ticker_at: dict[str, float] = field(default_factory=dict)
+    view: DashboardView = DashboardView.MARKET
+    wallet_lanes: deque[str] = field(default_factory=deque)
+    wallet_timeline: deque[WalletTimelineEvent] = field(default_factory=deque)
+    wallet_timeline_by_source: dict[str, WalletTimelineEvent] = field(default_factory=dict)
+    wallet_page: int = 0
 
     def apply(self, event: RuntimeEvent) -> None:
         self._remember_event(event)
@@ -213,6 +238,29 @@ class DashboardState:
         self.time_zoom_level = 0
         return True
 
+    def toggle_view(self) -> None:
+        self.view = (
+            DashboardView.WALLET
+            if self.view is DashboardView.MARKET
+            else DashboardView.MARKET
+        )
+        if self.view is DashboardView.WALLET:
+            self.wallet_page = 0
+
+    def page_wallets(self, direction: int, lanes_per_page: int) -> bool:
+        if self.view is not DashboardView.WALLET or lanes_per_page <= 0:
+            return False
+        maximum = max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
+        updated = min(maximum, max(0, self.wallet_page + direction))
+        if updated == self.wallet_page:
+            return False
+        self.wallet_page = updated
+        return True
+
+    def set_wallet_lanes(self, wallets: tuple[str, ...]) -> None:
+        for wallet in wallets:
+            self._activate_wallet_lane(wallet)
+
     def executable_equity(self, now_ms: int | None = None) -> Decimal | None:
         if self.portfolio is None:
             return None
@@ -290,12 +338,27 @@ class DashboardState:
     def _record_wallet_stream(self, event: StreamReceived) -> None:
         trade = event.item.event
         if isinstance(trade, WalletTradeEvent):
+            self._activate_wallet_lane(trade.wallet)
+            timeline_event = WalletTimelineEvent(
+                source_key=trade.source_key,
+                wallet=trade.wallet.lower(),
+                trade_timestamp_ms=trade.trade_timestamp_ms,
+                side=trade.side,
+                notional=trade.price * trade.size,
+                market_label=_wallet_market_label(trade),
+            )
+            self.wallet_timeline.append(timeline_event)
+            self.wallet_timeline_by_source[trade.source_key] = timeline_event
+            while len(self.wallet_timeline) > MAX_WALLET_TIMELINE_EVENTS:
+                expired = self.wallet_timeline.popleft()
+                if self.wallet_timeline_by_source.get(expired.source_key) is expired:
+                    self.wallet_timeline_by_source.pop(expired.source_key, None)
             self.wallet_detection_lags_ms.append(
                 trade.observed_at_ms - trade.trade_timestamp_ms
             )
             self._ticker(
                 _side_style(trade.side),
-                f"FOLLOW {trade.side.value} {trade.size} {short_token(trade.token_id)} @ {trade.price}",
+                f"FOLLOW {trade.side.value} {trade.size} {_wallet_market_label(trade)} @ {trade.price}",
             )
 
     def _record_market_hint(self, event: StreamReceived) -> None:
@@ -310,6 +373,10 @@ class DashboardState:
                 self._record_book_stream(StreamReceived(event.item, event.occurred_at))
         if event.outcome is None or event.kind is StreamKind.MARKET_HINT:
             return
+        if event.kind is StreamKind.WALLET and isinstance(event.item.event, WalletTradeEvent):
+            timeline_event = self.wallet_timeline_by_source.get(event.item.event.source_key)
+            if timeline_event is not None:
+                timeline_event.accepted = event.outcome.accepted
         if event.outcome.accepted:
             self.accepted_dispatches += 1
             self._record_rate(self.stream_dispatched_times, event.kind, event.occurred_at)
@@ -412,6 +479,11 @@ class DashboardState:
         self.price_stale_history.setdefault(token_id, deque())
         self.trade_marker_history.setdefault(token_id, deque())
 
+    def _activate_wallet_lane(self, wallet: str) -> None:
+        normalized = wallet.lower()
+        if normalized not in self.wallet_lanes:
+            self.wallet_lanes.append(normalized)
+
     def _current_book(self, token_id: str, now_ms: int | None) -> BookSnapshot | None:
         book = self.books.get(token_id)
         if book is None or self.book_max_age_ms is None:
@@ -491,3 +563,9 @@ def _safe_message(value: str) -> str:
         character if character.isprintable() else " "
         for character in value
     )
+
+
+def _wallet_market_label(trade: WalletTradeEvent) -> str:
+    if trade.market_slug and trade.outcome:
+        return f"{trade.market_slug} · {trade.outcome}"
+    return trade.market_slug or trade.outcome or short_token(trade.token_id)

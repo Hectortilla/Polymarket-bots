@@ -159,7 +159,14 @@ line in wallet-value green and red, respectively. Press `z` to narrow the
 displayed time window,
 `x` to widen it, and `r` to reset it. Zooming resamples history into a fixed
 chart width, and the visible range's start and end times are shown below the
-plots. These dashboard-only controls never affect bot execution.
+plots. Press `v` to switch between the market-price view and the followed-wallet
+view. The followed-wallet view is a trade-time event raster with one lane per
+configured or observed wallet: green is buy, red is sell, yellow is a mixed
+bucket, and `·`/`●`/`◆` show relative aggregate notional. Events skipped by the
+runner are dimmed. `j` and `k` page wallet lanes when the terminal cannot show
+all of them. It retains a bounded dashboard-only event history and uses the
+same selected time range as the market chart. These dashboard-only controls
+never affect bot execution.
 Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
 dashboard renders independently of bot execution.

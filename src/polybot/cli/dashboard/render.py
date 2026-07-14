@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from datetime import datetime
 from decimal import Decimal
 from math import isnan
@@ -18,7 +18,7 @@ from polybot.cli.streams import StreamKind
 from polybot.framework.events import Side
 
 from .palette import SERIES_PALETTE
-from .state import DashboardState, short_token
+from .state import DashboardState, DashboardView, WalletTimelineEvent, short_token
 
 MISSING_METRIC = "N/A"
 PRICE_CHART_MIN = 0.0
@@ -27,6 +27,8 @@ WALLET_VALUE_CHART_MARGIN_RATIO = 0.15
 WALLET_VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
 MIN_WALLET_VALUE_CHART_MARGIN = 0.01
 CHART_Y_AXIS_WIDTH = 10
+WALLET_LANE_LABEL_WIDTH = 13
+WALLET_LANE_SUMMARY_WIDTH = 21
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
 DIMMED_SERIES_COLORS = tuple(f"\033[2m{color}" for color in SERIES_COLORS)
 DIMMED_WALLET_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
@@ -50,21 +52,12 @@ def render_dashboard(state: DashboardState, width: int, height: int) -> Layout:
 
 
 def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
-    series, colors = _price_chart_series(state, width)
-    legend = _market_legend(state)
-    price = _chart(
-        series,
-        colors,
-        _price_chart_height(width, height),
-        "No two-sided market prices",
-        minimum=PRICE_CHART_MIN,
-        maximum=PRICE_CHART_MAX,
-    )
+    primary, title = _primary_chart(state, width, height)
     time_range = _chart_time_range(state, width)
     if height < 30:
         return Panel(
-            Group(legend, price, time_range),
-            title="Market price",
+            Group(primary, time_range),
+            title=title,
             border_style="cyan",
         )
     wallet_values, wallet_stale_samples = _visible_chart_samples(
@@ -84,8 +77,7 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
     )
     return Panel(
         Group(
-            legend,
-            price,
+            primary,
             Text("Executable wallet value", style="bold green"),
             Text(
                 f"green: current · dim green: stale · z/x time zoom ({_time_window_label(state.time_zoom_level)}) · r reset",
@@ -94,9 +86,129 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
             wallet_value,
             time_range,
         ),
-        title="Market price and paper wallet value",
+        title=title,
         border_style="cyan",
     )
+
+
+def _primary_chart(state: DashboardState, width: int, height: int) -> tuple[Group, str]:
+    if state.view is DashboardView.WALLET:
+        return _wallet_timeline(state, width, height), "Followed wallet activity and paper wallet value"
+    series, colors = _price_chart_series(state, width)
+    legend = _market_legend(state)
+    price = _chart(
+        series,
+        colors,
+        _price_chart_height(width, height),
+        "No two-sided market prices",
+        minimum=PRICE_CHART_MIN,
+        maximum=PRICE_CHART_MAX,
+    )
+    return Group(legend, price), "Market price and paper wallet value"
+
+
+def wallet_lane_capacity(width: int, height: int) -> int:
+    available_height = height - 5
+    if width < 110:
+        available_height = available_height * 2 // 3
+    wallet_value_height = 8 if height >= 30 else 0
+    return max(1, min(12, available_height - wallet_value_height - 4))
+
+
+def _wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
+    capacity = wallet_lane_capacity(width, height)
+    lane_count = len(state.wallet_lanes)
+    maximum_page = max(0, (lane_count - 1) // capacity)
+    page = min(state.wallet_page, maximum_page)
+    lanes = list(state.wallet_lanes)[page * capacity : (page + 1) * capacity]
+    columns = _wallet_timeline_columns(state, width)
+    visible_range = state.visible_time_range(width)
+    header = Text(
+        "green buy · red sell · yellow mixed · ·/●/◆ relative notional · dim skipped · v market · j/k wallets",
+        style="bright_cyan",
+    )
+    if not lanes:
+        return Group(header, Text("No followed wallets configured or detected", style="dim"))
+    if visible_range is None:
+        return Group(header, Text("Waiting for a dashboard time window", style="dim"))
+    start, end = visible_range
+    events_by_lane = _wallet_timeline_buckets(state.wallet_timeline, lanes, start, end, columns)
+    bucket_notionals = [
+        sum(event.notional for event in events)
+        for lane_buckets in events_by_lane.values()
+        for events in lane_buckets.values()
+    ]
+    maximum_notional = max(bucket_notionals, default=Decimal("0"))
+    page_label = f" wallets {page + 1}/{maximum_page + 1}" if maximum_page else ""
+    rows: list[Text] = [Text(f"Trade-time event timeline{page_label}", style="bold white")]
+    for wallet in lanes:
+        buckets = events_by_lane.get(wallet, {})
+        row = Text(f"{_short_wallet(wallet):<{WALLET_LANE_LABEL_WIDTH}}", style="cyan")
+        for bucket in range(columns):
+            glyph, style = _wallet_bucket_glyph(buckets.get(bucket, ()), maximum_notional)
+            row.append(glyph, style=style)
+        if width >= 155:
+            row.append(_wallet_lane_summary(buckets), style="dim")
+        rows.append(row)
+    return Group(header, *rows)
+
+
+def _wallet_timeline_columns(state: DashboardState, width: int) -> int:
+    summary_width = WALLET_LANE_SUMMARY_WIDTH if width >= 155 else 0
+    return max(12, state.chart_display_points(width) - WALLET_LANE_LABEL_WIDTH - summary_width)
+
+
+def _wallet_timeline_buckets(
+    events: deque[WalletTimelineEvent],
+    lanes: list[str],
+    start: float,
+    end: float,
+    columns: int,
+) -> dict[str, dict[int, list[WalletTimelineEvent]]]:
+    result: dict[str, dict[int, list[WalletTimelineEvent]]] = defaultdict(lambda: defaultdict(list))
+    lane_set = set(lanes)
+    span = end - start
+    for event in events:
+        timestamp = event.trade_timestamp_ms / 1_000
+        if event.wallet not in lane_set or timestamp < start or timestamp > end:
+            continue
+        bucket = columns - 1 if span <= 0 else min(columns - 1, int((timestamp - start) / span * columns))
+        result[event.wallet][bucket].append(event)
+    return result
+
+
+def _wallet_bucket_glyph(
+    events: list[WalletTimelineEvent] | tuple[WalletTimelineEvent, ...],
+    maximum_notional: Decimal,
+) -> tuple[str, str]:
+    if not events:
+        return " ", ""
+    sides = {event.side for event in events}
+    notional = sum((event.notional for event in events), Decimal("0"))
+    if maximum_notional <= 0 or notional <= maximum_notional / 3:
+        glyph = "·"
+    elif notional <= maximum_notional * 2 / 3:
+        glyph = "●"
+    else:
+        glyph = "◆"
+    style = "yellow" if len(sides) > 1 else ("green" if Side.BUY in sides else "red")
+    if all(event.accepted is False for event in events):
+        style = f"dim {style}"
+    elif glyph == "◆":
+        style = f"bold {style}"
+    return glyph, style
+
+
+def _wallet_lane_summary(buckets: dict[int, list[WalletTimelineEvent]]) -> str:
+    events = [event for bucket_events in buckets.values() for event in bucket_events]
+    buys = sum(event.side is Side.BUY for event in events)
+    sells = len(events) - buys
+    notional = sum((event.notional for event in events), Decimal("0"))
+    return f" B{buys} S{sells} ${notional:.0f}"
+
+
+def _short_wallet(wallet: str) -> str:
+    return wallet if len(wallet) <= 12 else f"{wallet[:6]}…{wallet[-4:]}"
 
 
 def _market_legend(state: DashboardState) -> Text:

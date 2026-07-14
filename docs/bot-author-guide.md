@@ -146,6 +146,11 @@ It shows market/wallet activity, paper orders and fills, multi-token prices,
 green buy and red sell markers anchored to the traded token's line, and
 executable paper wallet value without changing strategy behavior. When a
 market book expires, its last chart value stays visible in a dimmed color.
+Press `v` to switch from the market chart to a followed-wallet trade-time
+timeline. The timeline has one lane per wallet; green/red/yellow indicate
+buy/sell/mixed buckets, `·`/`●`/`◆` indicate relative notional, and dimmed
+events were skipped before bot dispatch. It shares `z`/`x`/`r` time controls
+with the market chart. Use `j`/`k` to page wallet lanes.
 
 Tools integrating the CLI may pass a custom
 `polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers

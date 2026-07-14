@@ -299,7 +299,9 @@ Status: done.
   fixed-width time-window controls: `z` zooms in, `x` zooms out, and `r`
   resets. Show the visible start and end times below the plots. Mark completed
   buys in wallet-value green and sells in red, anchored to the traded token's
-  line.
+  line. Add a `v`-toggled followed-wallet trade-time raster view with one lane
+  per wallet, relative-notional glyphs, dimmed skipped events, shared time
+  controls, and `j`/`k` wallet paging.
 - Extend stream health with run-lifetime raw/coalesced book counts, cumulative
   dropped/received ratio, and a recent ratio over the last 100 book-bearing
   health-counter deltas; retain these in telemetry state without displaying
