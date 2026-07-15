@@ -2,7 +2,7 @@
 
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.polymarket.types import Market, Position
+from polybot.polymarket.types import Market, Position, market_token_ids
 
 
 def validate_position_market_identity(
@@ -63,12 +63,12 @@ def _matches_market(
         and (
             (
                 token_id is not None
-                and token_id in {market.yes_token_id, market.no_token_id}
+                and token_id in set(market_token_ids(market))
             )
             or (
                 token_id is None
                 and len(token_ids) == 2
-                and set(token_ids) == {market.yes_token_id, market.no_token_id}
+                and set(token_ids) == set(market_token_ids(market))
             )
         )
         and (market_slug is None or market_slug == market.slug)

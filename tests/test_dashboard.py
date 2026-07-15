@@ -24,7 +24,7 @@ from polybot.cli.dashboard.render import (
     render_dashboard,
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
-from polybot.cli.dashboard.status import filled_progress_width
+from polybot.cli.dashboard.status import filled_progress_width, optional_money
 from polybot.cli.dashboard.state import (
     DashboardView,
     MAX_CHART_HISTORY_POINTS,
@@ -319,6 +319,164 @@ def test_dashboard_pnl_is_unavailable_when_position_cannot_be_marked() -> None:
 
     assert state.executable_equity() is None
     assert state.executable_pnl() is None
+
+
+def test_dashboard_uses_last_executable_mark_while_waiting_for_resolution() -> None:
+    state = DashboardState(book_max_age_ms=100, initial_cash_usdc=Decimal("100"))
+    state.books["closed"] = _book(
+        "closed",
+        Decimal("0.40"),
+        Decimal("0.60"),
+        received_at_ms=1_000,
+    )
+    state.books["active"] = _book(
+        "active",
+        Decimal("0.30"),
+        Decimal("0.50"),
+        received_at_ms=1_000,
+    )
+    state.portfolio = PortfolioSnapshot(
+        cash_usdc=Decimal("90"),
+        cumulative_fees_usdc=Decimal("0"),
+        positions=(
+            PortfolioPositionSnapshot("closed", Decimal("1"), Decimal("0.50")),
+            PortfolioPositionSnapshot("active", Decimal("2"), Decimal("0.40")),
+        ),
+    )
+
+    assert state.executable_equity(now_ms=1_000) == Decimal("91.00")
+    state.books["active"] = _book(
+        "active",
+        Decimal("0.30"),
+        Decimal("0.50"),
+        received_at_ms=1_200,
+    )
+    valuation = state.portfolio_valuation(now_ms=1_200)
+
+    assert valuation.equity == Decimal("91.00")
+    assert valuation.pnl == Decimal("-9.00")
+    assert valuation.is_stale is True
+    assert state.executable_equity(now_ms=1_200) is None
+    assert (
+        optional_money(valuation.equity, stale=valuation.is_stale)
+        == "$91.00 (stale)"
+    )
+    assert (
+        optional_money(valuation.pnl, stale=valuation.is_stale)
+        == "$-9.00 (stale)"
+    )
+
+
+def test_dashboard_reuses_stale_mark_after_position_size_changes() -> None:
+    state = DashboardState(book_max_age_ms=100)
+    state.books["token"] = _book(
+        "token",
+        Decimal("0.40"),
+        Decimal("0.60"),
+        received_at_ms=1_000,
+    )
+    state.portfolio = PortfolioSnapshot(
+        cash_usdc=Decimal("90"),
+        cumulative_fees_usdc=Decimal("0"),
+        positions=(PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.50")),),
+    )
+    assert state.executable_equity(now_ms=1_000) == Decimal("90.40")
+    state.portfolio = PortfolioSnapshot(
+        cash_usdc=Decimal("80"),
+        cumulative_fees_usdc=Decimal("0"),
+        positions=(PortfolioPositionSnapshot("token", Decimal("2"), Decimal("0.50")),),
+    )
+
+    valuation = state.portfolio_valuation(now_ms=1_101)
+
+    assert valuation.equity == Decimal("80.80")
+    assert valuation.is_stale is True
+
+
+def test_dashboard_refreshes_stale_mark_for_new_position_size_after_fill() -> None:
+    state = DashboardState(book_max_age_ms=100)
+    state.books["token"] = _book(
+        "token",
+        Decimal("0.40"),
+        Decimal("0.60"),
+        received_at_ms=1_000,
+    )
+    fill = FillEvent(
+        order_id="order",
+        token_id="token",
+        side=Side.BUY,
+        status=OrderStatus.FILLED,
+        requested_size=Decimal("2"),
+        filled_size=Decimal("2"),
+        average_price=Decimal("0.50"),
+        fee_usdc=Decimal("0"),
+        received_at_ms=1_050,
+    )
+    state.apply(
+        FillCompleted(
+            OrderRequest("token", Side.BUY, Decimal("0.50"), Decimal("2")),
+            fill,
+            PortfolioSnapshot(
+                cash_usdc=Decimal("89"),
+                cumulative_fees_usdc=Decimal("0"),
+                positions=(
+                    PortfolioPositionSnapshot("token", Decimal("2"), Decimal("0.50")),
+                ),
+            ),
+            latency_ms=1,
+            occurred_at=1.0,
+        )
+    )
+    state.books.clear()
+
+    valuation = state.portfolio_valuation(now_ms=1_051)
+
+    assert valuation.equity == Decimal("89.80")
+    assert valuation.is_stale is True
+
+
+def test_dashboard_refreshes_fill_mark_from_pending_book() -> None:
+    state = DashboardState(require_accepted_books=True, book_max_age_ms=100)
+    book = _book(
+        "token",
+        Decimal("0.40"),
+        Decimal("0.60"),
+        received_at_ms=1_000,
+    )
+    item = BookStreamEvent(StreamKind.BOOK, book)
+    state.apply(StreamReceived(item, 1.0))
+    fill = FillEvent(
+        order_id="order",
+        token_id="token",
+        side=Side.BUY,
+        status=OrderStatus.FILLED,
+        requested_size=Decimal("2"),
+        filled_size=Decimal("2"),
+        average_price=Decimal("0.50"),
+        fee_usdc=Decimal("0"),
+        received_at_ms=1_050,
+    )
+    state.apply(
+        FillCompleted(
+            OrderRequest("token", Side.BUY, Decimal("0.50"), Decimal("2")),
+            fill,
+            PortfolioSnapshot(
+                cash_usdc=Decimal("89"),
+                cumulative_fees_usdc=Decimal("0"),
+                positions=(
+                    PortfolioPositionSnapshot("token", Decimal("2"), Decimal("0.50")),
+                ),
+            ),
+            latency_ms=1,
+            occurred_at=1.0,
+        )
+    )
+    state.pending_books.clear()
+
+    valuation = state.portfolio_valuation(now_ms=1_051)
+
+    assert valuation.equity == Decimal("89.80")
+    assert valuation.is_stale is True
 
 
 def test_dashboard_keeps_chart_selection_stable_when_markets_exceed_capacity() -> None:

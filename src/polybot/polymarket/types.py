@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
-from collections.abc import Iterable
 
-from polybot.framework.events.resolutions import BinaryOutcome, NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+
 
 @dataclass(frozen=True, slots=True)
 class MarketOutcome:
@@ -18,16 +18,18 @@ class Market:
     condition_id: str
     slug: str
     question: str
-    yes_token_id: str
-    no_token_id: str
     minimum_tick_size: Decimal | None
     minimum_order_size: Decimal | None
     neg_risk: bool
     fee_rate: Decimal
-    outcomes: tuple[MarketOutcome, ...] = ()
+    outcomes: tuple[MarketOutcome, MarketOutcome]
     resolved: bool = False
     winning_token_id: str | None = None
-    winning_outcome: BinaryOutcome | None = None
+    winning_outcome: str | None = None
+
+    @property
+    def token_ids(self) -> tuple[str, str]:
+        return self.outcomes[0].token_id, self.outcomes[1].token_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +52,7 @@ class Position:
 
 
 def market_token_ids(market: Market) -> tuple[str, str]:
-    return market.yes_token_id, market.no_token_id
+    return market.token_ids
 
 
 def token_id_for_outcome(market: Market, label: str) -> str | None:
@@ -60,19 +62,13 @@ def token_id_for_outcome(market: Market, label: str) -> str | None:
         for outcome in market.outcomes
         if outcome.label.casefold().strip() == normalized
     ]
-    if matches:
-        return matches[0] if len(set(matches)) == 1 else None
-    return {"yes": market.yes_token_id, "no": market.no_token_id}.get(normalized)
+    return matches[0] if matches and len(set(matches)) == 1 else None
 
 
 def outcome_label_for_token(market: Market, token_id: str) -> str | None:
     for outcome in market.outcomes:
         if outcome.token_id == token_id:
             return outcome.label
-    if token_id == market.yes_token_id:
-        return YES_OUTCOME
-    if token_id == market.no_token_id:
-        return NO_OUTCOME
     return None
 
 

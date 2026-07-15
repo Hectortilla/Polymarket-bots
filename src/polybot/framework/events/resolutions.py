@@ -2,22 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from polybot.polymarket.types import Market
 
 
-class Outcome(StrEnum):
-    YES = "Yes"
-    NO = "No"
-
-
-YES_OUTCOME = Outcome.YES
-NO_OUTCOME = Outcome.NO
-BinaryOutcome = Outcome
-BINARY_OUTCOMES = frozenset((YES_OUTCOME, NO_OUTCOME))
+YES_OUTCOME = "Yes"
+NO_OUTCOME = "No"
 WINNING_PAYOUT_PER_TOKEN = Decimal("1")
 LOSING_PAYOUT_PER_TOKEN = Decimal("0")
 RESOLUTION_WINNING_TOKEN_ID_FIELD = "winning_token_id"
@@ -26,15 +18,6 @@ RESOLUTION_RESOLVED_AT_MS_FIELD = "resolved_at_ms"
 RESOLUTION_SETTLED_AT_MS_FIELD = "settled_at_ms"
 RESOLUTION_SOURCE_FIELD = "source"
 GAMMA_RECONCILIATION_SOURCE = "gamma_reconciliation"
-
-
-def normalize_outcome(value: object) -> Outcome | None:
-    if isinstance(value, Outcome):
-        return value
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip().casefold()
-    return {"yes": YES_OUTCOME, "no": NO_OUTCOME}.get(normalized)
 
 
 SETTLED_POSITION_OWNER_FIELD = "owner"
@@ -51,7 +34,7 @@ class MarketResolutionEvent:
     market_slug: str
     token_ids: tuple[str, str]
     winning_token_id: str
-    winning_outcome: BinaryOutcome
+    winning_outcome: str
     resolved_at_ms: int
     source: str
 
@@ -72,7 +55,7 @@ class MarketResolutionEvent:
         return cls(
             condition_id=market.condition_id,
             market_slug=market.slug,
-            token_ids=(market.yes_token_id, market.no_token_id),
+            token_ids=market.token_ids,
             winning_token_id=market.winning_token_id,
             winning_outcome=market.winning_outcome,
             resolved_at_ms=resolved_at_ms,
@@ -80,11 +63,12 @@ class MarketResolutionEvent:
         )
 
     def __post_init__(self) -> None:
-        try:
-            normalized_outcome = Outcome(self.winning_outcome)
-        except (TypeError, ValueError) as error:
-            raise ValueError("market resolution outcome is invalid") from error
-        object.__setattr__(self, "winning_outcome", normalized_outcome)
+        if (
+            not isinstance(self.winning_outcome, str)
+            or not self.winning_outcome.strip()
+        ):
+            raise ValueError("market resolution outcome is invalid")
+        object.__setattr__(self, "winning_outcome", self.winning_outcome.strip())
         if not self.condition_id or not self.market_slug:
             raise ValueError("market resolutions require market identity")
         if len(set(self.token_ids)) != 2 or any(
@@ -93,11 +77,7 @@ class MarketResolutionEvent:
             raise ValueError("market resolutions require two distinct token IDs")
         if self.winning_token_id not in self.token_ids:
             raise ValueError("winning token must belong to the resolved market")
-        if (
-            self.winning_outcome not in BINARY_OUTCOMES
-            or self.resolved_at_ms < 0
-            or not self.source
-        ):
+        if self.resolved_at_ms < 0 or not self.source:
             raise ValueError("market resolution payload is incomplete")
 
     @property

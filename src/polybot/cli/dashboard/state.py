@@ -72,6 +72,13 @@ class DashboardView(StrEnum):
     WALLET = "wallet"
 
 
+@dataclass(frozen=True, slots=True)
+class PortfolioValuation:
+    equity: Decimal | None
+    pnl: Decimal | None
+    is_stale: bool
+
+
 @dataclass(slots=True)
 class DashboardState:
     name: str = "-"
@@ -82,6 +89,7 @@ class DashboardState:
     require_accepted_books: bool = False
     book_max_age_ms: int | None = None
     books: dict[str, BookSnapshot] = field(default_factory=dict)
+    last_executable_marks: dict[str, Decimal] = field(default_factory=dict)
     market_labels: dict[str, str] = field(default_factory=dict)
     pending_books: dict[str, BookSnapshot] = field(default_factory=dict)
     portfolio: PortfolioSnapshot | None = None
@@ -230,22 +238,14 @@ class DashboardState:
             self._activate_wallet_lane(wallet)
 
     def executable_equity(self, now_ms: int | None = None) -> Decimal | None:
-        if self.portfolio is None:
-            return None
-        equity = self.portfolio.cash_usdc
-        for position in self.portfolio.positions:
-            book = self._current_book(position.token_id, now_ms)
-            mark = None if book is None else book.executable_mark(position.size)
-            if mark is None:
-                return None
-            equity += position.size * mark
-        return equity
+        return self._portfolio_valuation(now_ms, allow_stale_marks=False).equity
 
     def executable_pnl(self, now_ms: int | None = None) -> Decimal | None:
-        equity = self.executable_equity(now_ms)
-        if equity is None or self.initial_cash_usdc is None:
-            return None
-        return equity - self.initial_cash_usdc
+        return self._portfolio_valuation(now_ms, allow_stale_marks=False).pnl
+
+    def portfolio_valuation(self, now_ms: int | None = None) -> PortfolioValuation:
+        """Value unavailable positions at their last executable mark for display only."""
+        return self._portfolio_valuation(now_ms, allow_stale_marks=True)
 
     def event_rate(self, now: float | None = None) -> float:
         now = monotonic() if now is None else now
@@ -297,6 +297,7 @@ class DashboardState:
             self.resolved_market_count += 1
         for token_id in resolution.token_ids:
             self.books.pop(token_id, None)
+            self.last_executable_marks.pop(token_id, None)
             self.pending_books.pop(token_id, None)
             self.market_labels.pop(token_id, None)
             self.price_history.pop(token_id, None)
@@ -450,6 +451,7 @@ class DashboardState:
                 f"REJECT {fill.reject_reason.value if fill.reject_reason else 'unknown'}",
             )
             return
+        self._refresh_fill_mark(event)
         self.fill_count += 1
         if fill.filled_size > 0:
             if self._activate_chart_token(fill.token_id):
@@ -459,6 +461,33 @@ class DashboardState:
             _side_style(fill.side),
             f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} {format_token_label(fill.token_id)} @ {price}",
         )
+
+    def _refresh_fill_mark(self, event: FillCompleted) -> None:
+        if self.portfolio is None:
+            return
+        position = next(
+            (
+                candidate
+                for candidate in self.portfolio.positions
+                if candidate.token_id == event.fill.token_id
+            ),
+            None,
+        )
+        if position is None:
+            self.last_executable_marks.pop(event.fill.token_id, None)
+            return
+        book = self._current_book(event.fill.token_id, event.fill.received_at_ms)
+        if book is None:
+            # Fill telemetry is emitted before this book's dispatch-completed event.
+            pending = self.pending_books.get(event.fill.token_id)
+            if pending is not None and (
+                self.book_max_age_ms is None
+                or pending.is_fresh(event.fill.received_at_ms, self.book_max_age_ms)
+            ):
+                book = pending
+        price = None if book is None else book.executable_mark(position.size)
+        if price is not None:
+            self.last_executable_marks[position.token_id] = price
 
     def _activate_chart_token(self, token_id: str) -> bool:
         if token_id in self.chart_tokens:
@@ -482,6 +511,46 @@ class DashboardState:
             return book
         current_time_ms = int(time() * 1000) if now_ms is None else now_ms
         return book if book.is_fresh(current_time_ms, self.book_max_age_ms) else None
+
+    def _portfolio_valuation(
+        self,
+        now_ms: int | None,
+        *,
+        allow_stale_marks: bool,
+    ) -> PortfolioValuation:
+        if self.portfolio is None:
+            return PortfolioValuation(None, None, False)
+        equity = self.portfolio.cash_usdc
+        is_stale = False
+        for position in self.portfolio.positions:
+            mark = self._position_mark(position, now_ms, allow_stale_marks)
+            if mark is None:
+                return PortfolioValuation(None, None, False)
+            price, mark_is_stale = mark
+            equity += position.size * price
+            is_stale = is_stale or mark_is_stale
+        pnl = (
+            None
+            if self.initial_cash_usdc is None
+            else equity - self.initial_cash_usdc
+        )
+        return PortfolioValuation(equity, pnl, is_stale)
+
+    def _position_mark(
+        self,
+        position: PortfolioPositionSnapshot,
+        now_ms: int | None,
+        allow_stale_marks: bool,
+    ) -> tuple[Decimal, bool] | None:
+        book = self._current_book(position.token_id, now_ms)
+        price = None if book is None else book.executable_mark(position.size)
+        if price is not None:
+            self.last_executable_marks[position.token_id] = price
+            return price, False
+        cached = self.last_executable_marks.get(position.token_id)
+        if not allow_stale_marks or cached is None:
+            return None
+        return cached, True
 
     def _ticker(self, style: str, message: str) -> None:
         safe_message = _safe_message(message)

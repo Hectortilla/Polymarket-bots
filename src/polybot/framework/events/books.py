@@ -5,7 +5,6 @@ from decimal import Decimal, InvalidOperation
 
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events import Side
-from polybot.framework.events.resolutions import Outcome
 
 PRICE_FLOOR = Decimal("0")
 PRICE_CEILING = Decimal("1")
@@ -49,7 +48,7 @@ class BookSnapshot:
     received_at_ms: int
     market_slug: str | None = None
     condition_id: str | None = None
-    outcome: Outcome | None = None
+    outcome: str | None = None
 
     def is_fresh(self, now_ms: int, max_age_ms: int) -> bool:
         age_ms = now_ms - self.received_at_ms

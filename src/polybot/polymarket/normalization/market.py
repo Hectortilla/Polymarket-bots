@@ -11,9 +11,7 @@ from polybot.polymarket.types import (
 )
 from polybot.framework.events.resolutions import (
     LOSING_PAYOUT_PER_TOKEN,
-    NO_OUTCOME,
     WINNING_PAYOUT_PER_TOKEN,
-    YES_OUTCOME,
 )
 
 from .values import (
@@ -44,15 +42,25 @@ def normalize_market(source: SdkMarket) -> Market:
         MarketDataIssue.MISSING_QUESTION,
         "market question",
     )
-    yes_token_id = _required_text(
+    first_token_id = _required_text(
         _nested_value(source, "outcomes", "yes", "token_id"),
         MarketDataIssue.MISSING_TOKEN_ID,
-        "YES token ID",
+        "first outcome token ID",
     )
-    no_token_id = _required_text(
+    second_token_id = _required_text(
         _nested_value(source, "outcomes", "no", "token_id"),
         MarketDataIssue.MISSING_TOKEN_ID,
-        "NO token ID",
+        "second outcome token ID",
+    )
+    first_label = _required_text(
+        _nested_value(source, "outcomes", "yes", "label"),
+        MarketDataIssue.INVALID_MARKET_PARAMETERS,
+        "first outcome label",
+    )
+    second_label = _required_text(
+        _nested_value(source, "outcomes", "no", "label"),
+        MarketDataIssue.INVALID_MARKET_PARAMETERS,
+        "second outcome label",
     )
     minimum_tick_size = _optional_positive_decimal(
         _nested_value(source, "trading", "minimum_tick_size"),
@@ -89,8 +97,8 @@ def normalize_market(source: SdkMarket) -> Market:
             "fee rate",
         )
 
-    yes_price = _nested_value(source, "outcomes", "yes", "price")
-    no_price = _nested_value(source, "outcomes", "no", "price")
+    first_price = _nested_value(source, "outcomes", "yes", "price")
+    second_price = _nested_value(source, "outcomes", "no", "price")
     resolution_status = _nested_value(source, "resolution", "uma_resolution_status")
     status_value = getattr(resolution_status, "value", resolution_status)
     resolved = (
@@ -99,12 +107,20 @@ def normalize_market(source: SdkMarket) -> Market:
     )
     winning_token_id = None
     winning_outcome = None
-    if resolved and yes_price == WINNING_PAYOUT and no_price == LOSING_PAYOUT:
-        winning_token_id = yes_token_id
-        winning_outcome = YES_OUTCOME
-    elif resolved and no_price == WINNING_PAYOUT and yes_price == LOSING_PAYOUT:
-        winning_token_id = no_token_id
-        winning_outcome = NO_OUTCOME
+    if (
+        resolved
+        and first_price == WINNING_PAYOUT
+        and second_price == LOSING_PAYOUT
+    ):
+        winning_token_id = first_token_id
+        winning_outcome = first_label
+    elif (
+        resolved
+        and second_price == WINNING_PAYOUT
+        and first_price == LOSING_PAYOUT
+    ):
+        winning_token_id = second_token_id
+        winning_outcome = second_label
     else:
         resolved = False
 
@@ -112,15 +128,13 @@ def normalize_market(source: SdkMarket) -> Market:
         condition_id=condition_id,
         slug=slug,
         question=question,
-        yes_token_id=yes_token_id,
-        no_token_id=no_token_id,
         minimum_tick_size=minimum_tick_size,
         minimum_order_size=minimum_order_size,
         neg_risk=neg_risk,
         fee_rate=fee_rate,
         outcomes=(
-            MarketOutcome(YES_OUTCOME, yes_token_id),
-            MarketOutcome(NO_OUTCOME, no_token_id),
+            MarketOutcome(first_label, first_token_id),
+            MarketOutcome(second_label, second_token_id),
         ),
         resolved=resolved,
         winning_token_id=winning_token_id,

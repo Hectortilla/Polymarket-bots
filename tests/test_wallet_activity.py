@@ -130,6 +130,16 @@ def test_normalize_trade_converts_public_row_and_preserves_latency() -> None:
     assert trade.observed_at_ms - trade.trade_timestamp_ms == 1_250
 
 
+def test_normalize_trade_preserves_arbitrary_outcome_label() -> None:
+    trade = normalize_wallet_trade(
+        {**_row("0xLeader", "tx-1"), "outcome": "Candidate A"},
+        observed_at_ms=1_700_000_001_250,
+    )
+
+    assert trade is not None
+    assert trade.outcome == "Candidate A"
+
+
 def test_missing_required_trade_fields_are_rejected() -> None:
     assert normalize_wallet_trade(_row("0xleader", ""), observed_at_ms=1) is None
     assert (

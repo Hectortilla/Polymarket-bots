@@ -323,7 +323,11 @@ Acceptance:
 - Dashboard failures close the live display and leave a traceback in the
   terminal.
 - No strategy logging or rendering code is required.
-- PnL marks longs at best bid and shorts at best ask; missing marks show N/A.
+- PnL marks longs at best bid and shorts at best ask. If a held position loses
+  its book, including while its market awaits resolution, show a clearly
+  labeled stale estimate from that position's last executable unit mark,
+  multiplied by the current position size. A fill refreshes that mark when the
+  current book can execute the updated position.
 - The chart displays up to twenty tokens. Additional tracked tokens do not
   rotate visible series or reset their histories when repeated market snapshots
   arrive.
@@ -349,7 +353,10 @@ Status: done.
   in `polybot.cli.tracked_markets` and replace the union SDK handle because the
   pinned SDK cannot mutate it.
 - Normalize SDK `MarketResolvedEvent` into `MarketResolutionEvent`; reject
-  mismatched condition, token-pair, winner, or outcome identity.
+  mismatched condition, token-pair, winner, or outcome identity. Preserve
+  Gamma's public outcome labels (including `Up`/`Down`) through books, wallet
+  events, resolution events, and persistence. Use the winning token ID, never a
+  fixed label vocabulary, to determine contractual payout.
 - Reconcile unresolved markets through Gamma immediately after replacement and
   at the interval owned by `RESOLUTION_RECONCILIATION_SECONDS`.
 - Settle paper and followed-wallet positions at `1` for the winning token and

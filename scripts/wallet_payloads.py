@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping
 from math import isfinite
 
 from polybot.framework.events import Side
-from polybot.framework.events.resolutions import normalize_outcome
 
 from scripts.wallet_payload_contracts import (
     ACTIVITY_OUTCOME_FIELD,
@@ -95,7 +94,7 @@ def _normalize_activity_row(candidate: object) -> ActivityRow | None:
     row[CONDITION_ID_FIELD] = condition_id
     row[ACTIVITY_TYPE_FIELD] = activity_type
     raw_outcome = candidate.get(ACTIVITY_OUTCOME_FIELD)
-    outcome = normalize_outcome(raw_outcome)
+    outcome = _required_identifier(candidate, ACTIVITY_OUTCOME_FIELD)
     if raw_outcome is not None and outcome is None:
         return None
     if outcome is not None:

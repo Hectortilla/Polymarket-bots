@@ -1,6 +1,7 @@
 from scripts.wallet_analysis.metrics import compute_metrics
 from scripts.wallet_payloads import (
     ACTIVITY_PRICE_FIELD,
+    ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_SIDE_FIELD,
     ACTIVITY_SIZE_FIELD,
     ACTIVITY_TIMESTAMP_FIELD,
@@ -45,6 +46,14 @@ def test_activity_normalization_rejects_out_of_range_trade_values() -> None:
             }
         )
     ) == []
+
+
+def test_activity_normalization_preserves_arbitrary_outcome_label() -> None:
+    activity = normalize_activity_rows(
+        _trade_payload(**{ACTIVITY_OUTCOME_FIELD: "Candidate A"})
+    )
+
+    assert activity[0][ACTIVITY_OUTCOME_FIELD] == "Candidate A"
 
 
 def test_position_normalization_requires_nonnegative_size_and_value() -> None:

@@ -58,8 +58,6 @@ class _Markets:
             condition_id="condition",
             slug=slug,
             question="question",
-            yes_token_id="yes-token",
-            no_token_id="no-token",
             minimum_tick_size=Decimal("0.01"),
             minimum_order_size=Decimal("1"),
             neg_risk=False,

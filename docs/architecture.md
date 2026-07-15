@@ -25,6 +25,9 @@ fails closed when wallet
 addresses are configured without either the SDK-backed Data API client or an
 injected compatible source. The CLI supplies the SDK-backed polling client;
 an injected source is optional and can provide lower-latency wallet events.
+At the adapter boundary, SDK-specific positional outcome fields become an
+ordered pair of opaque `MarketOutcome(label, token_id)` values. Core framework
+and execution code use generic token IDs and never infer meaning from labels.
 CLI paper runs persist normalized source-event claims, followed-wallet epochs,
 baselines, movement journals, checkpoints, and settlements under `.bot-state/`.
 A restart cannot submit the same wallet-following source event twice or reapply
@@ -185,6 +188,11 @@ The official market subscription enables custom lifecycle events. Gamma checks
 all unresolved registry entries immediately after each subscription replacement
 and at `RESOLUTION_RECONCILIATION_SECONDS` so a disconnect or SDK queue loss
 cannot permanently hide a resolution.
+Live resolution validation compares the WebSocket winner label with Gamma's
+public outcome label, including arbitrary labels such as `Up`/`Down` or
+candidate names, and preserves that opaque label end to end. Settlement is
+label-agnostic: the winning token ID receives `1` and the other token receives
+`0`.
 
 `dispatch_book()` and `dispatch_wallet_trade()` return `DispatchOutcome`.
 Accepted events have no skip reason. Rejected events use the finite
@@ -224,7 +232,13 @@ same selected time range as the market chart. These dashboard-only controls
 never affect bot execution.
 Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
-dashboard renders independently of bot execution. During startup, its Activity
+status row continues to use fresh executable marks where they exist. If a held
+position's book disappears, including while the market awaits resolution, it
+instead shows a clearly marked stale estimate using that position's last
+executable unit mark, multiplied by its current size. A fill refreshes that
+mark when the current book can execute the updated position. Settlement is the
+only event that converts a position to its contractual `1`/`0` cash payout.
+The dashboard renders independently of bot execution. During startup, its Activity
 panel also reports fail-open wallet and market bootstrap progress as
 completed/total counters while configured markets and followed-wallet positions
 are loaded.

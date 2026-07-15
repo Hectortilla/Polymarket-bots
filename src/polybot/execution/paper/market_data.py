@@ -6,6 +6,7 @@ from polybot.framework.context import BookClient, MarketClient
 from polybot.framework.events import FillRejectReason, OrderRequest
 from polybot.framework.events.books import BookSnapshot
 from polybot.execution.paper.validation import valid_fee_rate
+from polybot.polymarket.types import Market, market_token_ids
 
 MARKET_UNAVAILABLE_MESSAGE = "fill-time market metadata was unavailable"
 MARKET_FEE_INVALID_MESSAGE = "fill-time market fee rate was invalid"
@@ -51,22 +52,21 @@ async def resolve_fee_rate(
 
 
 def _market_matches_order_and_book(
-    market: object, order: OrderRequest, book: BookSnapshot
+    market: Market, order: OrderRequest, book: BookSnapshot
 ) -> bool:
     market_slug = getattr(market, "slug", None)
     condition_id = getattr(market, "condition_id", None)
-    yes_token_id = getattr(market, "yes_token_id", None)
-    no_token_id = getattr(market, "no_token_id", None)
     if not all(
         isinstance(value, str) and value for value in (market_slug, condition_id)
     ):
         return False
     if book.market_slug != market_slug or book.condition_id != condition_id:
         return False
-    if book.token_id not in (yes_token_id, no_token_id):
+    token_ids = market_token_ids(market)
+    if book.token_id not in token_ids:
         return False
     if order.market_slug is not None and order.market_slug != market_slug:
         return False
     if order.condition_id is not None and order.condition_id != condition_id:
         return False
-    return order.token_id in (yes_token_id, no_token_id)
+    return order.token_id in token_ids

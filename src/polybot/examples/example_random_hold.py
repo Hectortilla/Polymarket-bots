@@ -11,8 +11,7 @@ from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
-from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
-from polybot.framework.outcomes import resolve_outcome_token
+from polybot.polymarket.types import market_token_ids
 
 RandomHoldAction = Literal["buy", "sell"]
 
@@ -41,7 +40,7 @@ class RandomHoldState:
 
 
 class ExampleRandomHoldBot(BaseBot):
-    """Toy bot that randomly buys Yes or No, holds it, then sells it."""
+    """Toy bot that randomly buys one outcome, holds it, then sells it."""
 
     def __init__(
         self,
@@ -63,8 +62,7 @@ class ExampleRandomHoldBot(BaseBot):
         self._monotonic = monotonic_fn
         self._market_slug: str | None = None
         self._condition_id: str | None = None
-        self._yes_token_id: str | None = None
-        self._no_token_id: str | None = None
+        self._token_ids: tuple[str, str] | None = None
         self._selected_token_id: str | None = None
         self._position_size = Decimal("0")
         self._bought_at: float | None = None
@@ -77,11 +75,9 @@ class ExampleRandomHoldBot(BaseBot):
             return
         await self._load_market(ctx, book.market_slug)
         if self._selected_token_id is None:
-            if self._yes_token_id is None or self._no_token_id is None:
+            if self._token_ids is None:
                 return
-            self._selected_token_id = self._rng.choice(
-                (self._yes_token_id, self._no_token_id)
-            )
+            self._selected_token_id = self._rng.choice(self._token_ids)
         action = RandomHoldState(
             self._selected_token_id,
             self._position_size,
@@ -100,12 +96,7 @@ class ExampleRandomHoldBot(BaseBot):
         market = await ctx.markets.find_by_slug(market_slug)
         self._market_slug = market_slug
         self._condition_id = None if market is None else market.condition_id
-        self._yes_token_id = (
-            None if market is None else resolve_outcome_token(market, YES_OUTCOME)
-        )
-        self._no_token_id = (
-            None if market is None else resolve_outcome_token(market, NO_OUTCOME)
-        )
+        self._token_ids = None if market is None else market_token_ids(market)
         self._selected_token_id = None
         self._position_size = Decimal("0")
         self._bought_at = None

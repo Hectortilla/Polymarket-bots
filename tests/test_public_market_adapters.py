@@ -60,8 +60,18 @@ def test_selected_polymarket_sdk_version_matches_project_pin() -> None:
 
 def test_index_markets_rejects_ambiguous_token_metadata() -> None:
     with pytest.raises(MarketDataError) as error:
+        second = _market("second")
         index_markets_by_token(
-            (_market("first"), replace(_market("second"), yes_token_id="yes-first"))
+            (
+                _market("first"),
+                replace(
+                    second,
+                    outcomes=(
+                        replace(second.outcomes[0], token_id="yes-first"),
+                        second.outcomes[1],
+                    ),
+                ),
+            )
         )
 
     assert error.value.issue is MarketDataIssue.AMBIGUOUS_MARKET_METADATA
@@ -252,6 +262,61 @@ def test_gamma_normalizes_sdk_market_and_rejects_missing_token_id() -> None:
     assert issue is MarketDataIssue.MISSING_TOKEN_ID
 
 
+def test_gamma_preserves_external_outcome_labels() -> None:
+    source = _sdk_market("up-down").model_copy(
+        update={
+            "outcomes": MarketOutcomes(
+                yes=MarketOutcome(label="Up", tokenId="yes-up-down"),
+                no=MarketOutcome(label="Down", tokenId="no-token"),
+            )
+        }
+    )
+
+    async def run() -> Market | None:
+        return await GammaClient(
+            FakePublicClient(markets={"up-down": [source]})  # type: ignore[arg-type]
+        ).find_by_slug("up-down")
+
+    market = asyncio.run(run())
+
+    assert market is not None
+    assert market.outcomes == (
+        NormalizedMarketOutcome("Up", "yes-up-down"),
+        NormalizedMarketOutcome("Down", "no-token"),
+    )
+
+
+def test_gamma_preserves_arbitrary_winning_outcome_label() -> None:
+    source = _sdk_market("threshold").model_copy(
+        update={
+            "state": MarketState(negRisk=False, closed=True),
+            "outcomes": MarketOutcomes(
+                yes=MarketOutcome(
+                    label="Above $100k",
+                    tokenId="yes-threshold",
+                    price=Decimal("1"),
+                ),
+                no=MarketOutcome(
+                    label="At or below $100k",
+                    tokenId="no-token",
+                    price=Decimal("0"),
+                ),
+            ),
+        }
+    )
+
+    async def run() -> Market | None:
+        return await GammaClient(
+            FakePublicClient(markets={"threshold": [source]})  # type: ignore[arg-type]
+        ).find_by_slug("threshold")
+
+    market = asyncio.run(run())
+
+    assert market is not None and market.resolved
+    assert market.winning_token_id == "yes-threshold"
+    assert market.winning_outcome == "Above $100k"
+
+
 def test_gamma_normalizes_missing_trading_limits_as_unknown() -> None:
     async def run() -> Market | None:
         client = GammaClient(
@@ -437,6 +502,27 @@ def test_clob_normalizes_and_sorts_order_book() -> None:
     assert book.condition_id == "condition-alpha"
     assert book.outcome == YES_OUTCOME
     assert book.received_at_ms == 1_234
+
+
+def test_clob_preserves_external_market_label_on_book() -> None:
+    market = replace(
+        _market("alpha"),
+        outcomes=(
+            NormalizedMarketOutcome("Up", "yes-alpha"),
+            NormalizedMarketOutcome("Down", "no-token"),
+        ),
+    )
+
+    async def run():
+        return await ClobClient(
+            FakePublicClient(book=_order_book(bids=(), asks=())),  # type: ignore[arg-type]
+            markets=(market,),
+        ).latest("yes-alpha")
+
+    book = asyncio.run(run())
+
+    assert book is not None
+    assert book.outcome == "Up"
 
 
 def test_clob_rejects_mismatched_market_identity() -> None:
@@ -660,8 +746,6 @@ def _market(slug: str) -> Market:
         condition_id=f"condition-{slug}",
         slug=slug,
         question=f"Question {slug}?",
-        yes_token_id=f"yes-{slug}",
-        no_token_id="no-token",
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,

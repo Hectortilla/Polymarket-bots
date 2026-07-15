@@ -7,7 +7,6 @@ from typing import Any
 
 from polybot.async_io import run_blocking
 from polybot.framework.events.resolutions import (
-    BINARY_OUTCOMES,
     MarketResolutionEvent,
     MarketSettlementEvent,
     RESOLUTION_RESOLVED_AT_MS_FIELD,
@@ -99,7 +98,8 @@ def _validated_records(value: object) -> dict[str, dict[str, Any]]:
         if (
             not isinstance(winning_token_id, str)
             or not winning_token_id
-            or winning_outcome not in BINARY_OUTCOMES
+            or not isinstance(winning_outcome, str)
+            or not winning_outcome.strip()
             or not isinstance(source, str)
             or not source
         ):

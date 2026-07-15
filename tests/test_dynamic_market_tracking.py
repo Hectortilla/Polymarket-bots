@@ -78,7 +78,7 @@ from polybot.framework.events.resolutions import (
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.polymarket.data import DataClient
-from polybot.polymarket.types import Market, Position
+from polybot.polymarket.types import Market, MarketOutcome, Position
 from polybot.polymarket.ws_market import MARKET_WEBSOCKET_SOURCE, MarketStream
 
 WALLET = "0x0000000000000000000000000000000000000001"
@@ -559,6 +559,72 @@ def test_market_stream_enables_custom_events_and_normalizes_resolution() -> None
             source=MARKET_WEBSOCKET_SOURCE,
         )
     ]
+
+
+def test_market_stream_preserves_up_down_resolution_label() -> None:
+    market = replace(
+        _market(),
+        outcomes=(
+            MarketOutcome("Up", "yes-market"),
+            MarketOutcome("Down", "no-market"),
+        ),
+    )
+    sdk_event = SdkMarketResolvedEvent.model_construct(
+        topic="market",
+        type="market_resolved",
+        payload=MarketResolvedPayload.model_construct(
+            id="1",
+            market="condition-market",
+            token_ids=("yes-market", "no-market"),
+            winning_token_id="yes-market",
+            winning_outcome="Up",
+            timestamp=datetime.fromtimestamp(2, tz=UTC),
+        ),
+    )
+
+    async def run() -> list[object]:
+        stream = MarketStream(
+            FakeStreamClient((sdk_event,)),  # type: ignore[arg-type]
+            markets=(market,),
+        )
+        return [event async for event in stream.events({"yes-market", "no-market"})]
+
+    events = asyncio.run(run())
+
+    assert len(events) == 1
+    assert events[0].winning_token_id == "yes-market"
+    assert events[0].winning_outcome == "Up"
+
+
+def test_market_stream_rejects_resolution_with_mismatched_outcome_label() -> None:
+    market = replace(
+        _market(),
+        outcomes=(
+            MarketOutcome("Up", "yes-market"),
+            MarketOutcome("Down", "no-market"),
+        ),
+    )
+    sdk_event = SdkMarketResolvedEvent.model_construct(
+        topic="market",
+        type="market_resolved",
+        payload=MarketResolvedPayload.model_construct(
+            id="1",
+            market="condition-market",
+            token_ids=("yes-market", "no-market"),
+            winning_token_id="yes-market",
+            winning_outcome="Down",
+            timestamp=None,
+        ),
+    )
+
+    async def run() -> list[object]:
+        stream = MarketStream(
+            FakeStreamClient((sdk_event,)),  # type: ignore[arg-type]
+            markets=(market,),
+        )
+        return [event async for event in stream.events({"yes-market", "no-market"})]
+
+    assert asyncio.run(run()) == []
 
 
 def test_market_stream_rejects_resolution_with_mismatched_identity() -> None:
@@ -1118,6 +1184,22 @@ def test_resolution_ledger_rejects_conflicting_winner_without_mutation(
     assert ledger.contains(event) is True
 
 
+def test_resolution_ledger_accepts_arbitrary_outcome_label(tmp_path) -> None:
+    ledger = ResolutionLedger(tmp_path / "resolutions.json")
+    event = replace(_resolution(), winning_outcome="Candidate A")
+
+    ledger.record(
+        MarketSettlementEvent(
+            resolution=event,
+            paper_positions=(),
+            followed_wallet_positions=(),
+            settled_at_ms=2_001,
+        )
+    )
+
+    assert ResolutionLedger(tmp_path / "resolutions.json").contains(event)
+
+
 def test_resolution_ledger_rejects_malformed_persisted_record(tmp_path) -> None:
     path = tmp_path / "resolutions.json"
     path.write_text(
@@ -1365,12 +1447,14 @@ def _market(slug: str = "market") -> Market:
         condition_id=f"condition-{slug}",
         slug=slug,
         question=slug,
-        yes_token_id=f"yes-{slug}",
-        no_token_id=f"no-{slug}",
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=Decimal("0"),
+        outcomes=(
+            MarketOutcome(YES_OUTCOME, f"yes-{slug}"),
+            MarketOutcome(NO_OUTCOME, f"no-{slug}"),
+        ),
     )
 
 

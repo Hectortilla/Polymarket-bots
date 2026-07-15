@@ -20,7 +20,7 @@ from polybot.framework.events import (
     Side,
 )
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.polymarket.types import Market
+from polybot.polymarket.types import Market, MarketOutcome
 from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 from polybot.execution.paper.latency import sample_latency_ms
 
@@ -66,12 +66,14 @@ def _market(
         condition_id=condition_id,
         slug=slug,
         question="Will BTC go up?",
-        yes_token_id=yes_token_id,
-        no_token_id=no_token_id,
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=fee_rate,
+        outcomes=(
+            MarketOutcome("Up", yes_token_id),
+            MarketOutcome("Down", no_token_id),
+        ),
     )
 
 

@@ -9,6 +9,7 @@ import pytest
 
 from polybot.async_io import run_blocking
 from polybot.cli.config import load_dotenv, parse_overrides
+from polybot.cli.dashboard.state import DashboardState
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
@@ -30,6 +31,7 @@ from polybot.cli.observability.events import (
     RuntimeState,
     RuntimeStateChanged,
     RuntimeFailed,
+    MarketSettled,
 )
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
@@ -42,7 +44,7 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import MarketPlan, MarketSubscription
 from polybot.framework.runner import BotRunner
 from polybot.execution.paper.portfolio import PaperPortfolio
-from polybot.polymarket.types import Market
+from polybot.polymarket.types import Market, MarketOutcome
 from polybot.polymarket.types import MarketTradeHint
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.cli.streams.contracts import BookStreamEvent
@@ -858,7 +860,28 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
     monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeRunner)
 
-    asyncio.run(run_bot(BaseBot(), BotConfig(name="resolution-rebuild"), client=object()))
+    class RecordingObserver:
+        def __init__(self) -> None:
+            self.events = []
+
+        async def start(self, config: BotConfig) -> None:
+            return None
+
+        def emit(self, event) -> None:
+            self.events.append(event)
+
+        async def stop(self) -> None:
+            return None
+
+    observer = RecordingObserver()
+    asyncio.run(
+        run_bot(
+            BaseBot(),
+            BotConfig(name="resolution-rebuild"),
+            client=object(),
+            observer=observer,
+        )
+    )
 
     first_tokens = frozenset(("yes-first", "no-first", "yes-second", "no-second"))
     assert FakeMarketStream.token_sets == [
@@ -868,6 +891,12 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
     assert FakeMarketStream.closed_token_sets == FakeMarketStream.token_sets
     assert FakeRunner.books == ["yes-second"]
     assert FakeRunner.resolutions == [markets["first"].condition_id]
+    assert any(isinstance(event, MarketSettled) for event in observer.events)
+
+    dashboard = DashboardState()
+    for event in observer.events:
+        dashboard.apply(event)
+    assert dashboard.resolved_market_count == 1
 
 
 def test_gamma_resolved_market_is_settled_before_stream_creation(
@@ -1053,12 +1082,14 @@ def _market(slug: str) -> Market:
         condition_id=f"condition-{slug}",
         slug=slug,
         question=slug,
-        yes_token_id=f"yes-{slug}",
-        no_token_id=f"no-{slug}",
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=Decimal("0"),
+        outcomes=(
+            MarketOutcome(YES_OUTCOME, f"yes-{slug}"),
+            MarketOutcome("No", f"no-{slug}"),
+        ),
     )
 
 

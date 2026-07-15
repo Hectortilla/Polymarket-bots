@@ -9,7 +9,11 @@ from polymarket import AsyncPublicClient, RequestRejectedError
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.book import normalize_book
-from polybot.polymarket.types import Market, index_markets_by_token, outcome_label_for_token
+from polybot.polymarket.types import (
+    Market,
+    index_markets_by_token,
+    outcome_label_for_token,
+)
 
 
 class ClobClient:

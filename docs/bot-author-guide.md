@@ -11,25 +11,28 @@ from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
 
 
-class BuyCheapYes(BaseBot):
-    def __init__(self, yes_token_id: str) -> None:
-        self.yes_token_id = yes_token_id
+class BuyCheapOutcome(BaseBot):
+    def __init__(self, outcome_token_id: str) -> None:
+        self.outcome_token_id = outcome_token_id
 
     async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
-        if book.token_id != self.yes_token_id or not book.asks:
+        if book.token_id != self.outcome_token_id or not book.asks:
             return
 
         best_ask = book.asks[0]
         if best_ask.price <= Decimal("0.45"):
             await ctx.broker.submit(
                 OrderRequest(
-                    token_id=self.yes_token_id,
+                    token_id=self.outcome_token_id,
                     side=Side.BUY,
                     price=best_ask.price,
                     size=min(best_ask.size, ctx.config.max_order_size),
                 )
             )
 ```
+
+Outcome labels are opaque market metadata. Resolve the label advertised by the
+market to its token ID; do not assume every market uses `Yes` and `No`.
 
 ## Rules For Bot Files
 

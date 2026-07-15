@@ -18,7 +18,6 @@ from polymarket.streams import MarketSpec
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.framework.events.resolutions import normalize_outcome
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.book import (
     normalize_book,
@@ -200,14 +199,17 @@ class MarketStream:
             market is None
             or token_ids is None
             or len(token_ids) != 2
-            or set(token_ids) != {market.yes_token_id, market.no_token_id}
+            or set(token_ids) != set(market.token_ids)
             or winning_token_id not in token_ids
-            or normalize_outcome(payload.winning_outcome) is None
         ):
             return None
-        normalized_payload_outcome = normalize_outcome(payload.winning_outcome)
-        expected_outcome = outcome_label_for_token(market, winning_token_id)
-        if expected_outcome is None or expected_outcome != normalized_payload_outcome:
+        payload_outcome = _identifier(payload.winning_outcome)
+        expected_label = outcome_label_for_token(market, winning_token_id)
+        if (
+            payload_outcome is None
+            or expected_label is None
+            or expected_label.casefold() != payload_outcome.casefold()
+        ):
             return None
         resolved_at_ms = self._now_ms()
         if payload.timestamp is not None:
@@ -218,9 +220,9 @@ class MarketStream:
         return MarketResolutionEvent(
             condition_id=condition_id,
             market_slug=market.slug,
-            token_ids=(market.yes_token_id, market.no_token_id),
+            token_ids=market.token_ids,
             winning_token_id=winning_token_id,
-            winning_outcome=expected_outcome,
+            winning_outcome=expected_label,
             resolved_at_ms=resolved_at_ms,
             source=MARKET_WEBSOCKET_SOURCE,
         )

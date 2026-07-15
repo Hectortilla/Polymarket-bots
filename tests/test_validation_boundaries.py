@@ -8,7 +8,7 @@ from polybot.execution.paper import PaperBroker
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.polymarket.types import Market
+from polybot.polymarket.types import Market, MarketOutcome
 
 
 @dataclass
@@ -180,12 +180,11 @@ def _broker(
         condition_id="condition",
         slug="market",
         question="Question?",
-        yes_token_id="token",
-        no_token_id="no",
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,
         fee_rate=Decimal("0"),
+        outcomes=(MarketOutcome("Up", "token"), MarketOutcome("Down", "no")),
     )
     return PaperBroker(
         BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),

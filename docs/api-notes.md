@@ -59,8 +59,17 @@ Official market-channel documentation states that this enables
 `market_resolved`, whose payload includes the condition/market ID, both asset
 IDs, winning asset, winning outcome, and timestamp. The pinned SDK exposes that
 payload as `MarketResolvedEvent`; the adapter validates it against Gamma market
-metadata before producing `MarketResolutionEvent`. No direct WebSocket
-implementation is required.
+metadata before producing `MarketResolutionEvent`. Gamma's two outcome slots
+retain their public labels, which may be values such as `Up` and `Down`; after
+validating that label against the winning asset, the adapter preserves it on the
+internal event. Settlement uses the winning asset ID, not a special set of
+outcome-label strings. No direct WebSocket implementation is required.
+
+The official SDK names its two positional outcome fields `yes` and `no` even
+when their labels are unrelated values. Those SDK field names stop at the Gamma
+adapter. Internal `Market` metadata stores the two `MarketOutcome(label,
+token_id)` values as its source of truth and exposes their generic token-ID
+pair; no internal token slot is assigned label semantics.
 
 The pinned SDK's open subscription handle cannot add token IDs. Registry
 additions are therefore batched at the interval owned by
@@ -107,8 +116,9 @@ they never bootstrap positions from unrelated markets. Only normalized open
 positions are accepted;
 missing wallet-market-token identity or invalid numeric values fail closed.
 The API's `outcome` field is an arbitrary string (for example, `Up` or `Down`),
-so position normalization preserves any non-empty string rather than restricting
-it to binary `Yes`/`No` labels.
+so position, wallet-trade, book, market, and resolution normalization preserve
+any non-empty string rather than restricting it to `Yes`/`No` labels. Outcome
+labels are display and selection metadata; token IDs are authoritative identity.
 Closed-position history and API lifetime PnL fields are deliberately ignored.
 Bootstrap CLOB marks are best-effort: a CLOB 404 or a book without an executable
 side stores the position with an unknown baseline and does not block market

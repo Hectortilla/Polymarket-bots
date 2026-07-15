@@ -6,7 +6,6 @@ from enum import StrEnum
 
 from polybot.framework.events import Side
 from polybot.framework.events.books import PRICE_CEILING, PRICE_FLOOR
-from polybot.framework.events.resolutions import Outcome
 from polybot.framework.wallets import normalize_wallet_address
 
 
@@ -30,7 +29,7 @@ class WalletTradeEvent:
     kind: WalletTradeKind = WalletTradeKind.TRADE
     market_slug: str | None = None
     transaction_hash: str | None = None
-    outcome: Outcome | None = None
+    outcome: str | None = None
 
     def is_valid(self) -> bool:
         try:

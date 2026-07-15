@@ -81,8 +81,9 @@ def status_panel(state: DashboardState) -> Panel:
     portfolio = state.portfolio
     cash = "-" if portfolio is None else money(portfolio.cash_usdc)
     fees = "-" if portfolio is None else money(portfolio.cumulative_fees_usdc)
-    equity = optional_money(state.executable_equity())
-    pnl = optional_money(state.executable_pnl())
+    valuation = state.portfolio_valuation()
+    equity = optional_money(valuation.equity, stale=valuation.is_stale)
+    pnl = optional_money(valuation.pnl, stale=valuation.is_stale)
     books = state.stream_counts.get(StreamKind.BOOK, 0)
     wallets = state.stream_counts.get(StreamKind.WALLET, 0)
     positions = 0 if portfolio is None else len(portfolio.positions)
@@ -129,8 +130,10 @@ def money(value: Decimal) -> str:
     return f"${value:.2f}"
 
 
-def optional_money(value: Decimal | None) -> str:
-    return MISSING_METRIC if value is None else money(value)
+def optional_money(value: Decimal | None, *, stale: bool = False) -> str:
+    if value is None:
+        return MISSING_METRIC
+    return f"{money(value)} (stale)" if stale else money(value)
 
 
 def optional_ms(value: int | None) -> str:

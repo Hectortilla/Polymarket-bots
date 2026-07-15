@@ -7,7 +7,6 @@ from decimal import Decimal, InvalidOperation
 from math import isfinite
 
 from polybot.framework.events import Side
-from polybot.framework.events.resolutions import normalize_outcome
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
 
@@ -84,7 +83,7 @@ def normalize_wallet_trade(
     normalized_price = _decimal(price)
     timestamp = _timestamp_ms(_get_trade_field(source, "timestamp"))
     raw_outcome = _get_trade_field(source, ACTIVITY_OUTCOME_FIELD)
-    outcome = normalize_outcome(raw_outcome)
+    outcome = _optional_text(raw_outcome)
     transaction_hash = _optional_text(_get_trade_field(source, "transaction_hash"))
     upstream_source_id = transaction_hash
     required_fields = (wallet, condition_id, token_id, upstream_source_id)
@@ -148,7 +147,7 @@ def normalize_stream_event(
     source_id = _required_text(source.source_id)
     if None in (wallet, condition_id, token_id, source_id):
         return None
-    normalized_outcome = normalize_outcome(source.outcome)
+    normalized_outcome = _optional_text(source.outcome)
     if source.outcome is not None and normalized_outcome is None:
         return None
     if not source.is_valid() or not isinstance(source.side, Side):

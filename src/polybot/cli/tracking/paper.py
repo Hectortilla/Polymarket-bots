@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from polybot.execution.paper import PaperBroker
 from polybot.polymarket.gamma import GammaClient
-from polybot.polymarket.types import Position
+from polybot.polymarket.types import Position, market_token_ids
 
 from ..market_identity import validate_position_market_identity
 from ..tracked_markets import MarketInterest, TrackedMarketRegistry
@@ -25,7 +25,7 @@ async def track_paper_positions(
         return
     tracked_tokens: set[str] = set()
     for entry in registry.entries:
-        market_tokens = (entry.market.yes_token_id, entry.market.no_token_id)
+        market_tokens = market_token_ids(entry.market)
         tracked_tokens.update(market_tokens)
         if position_tokens.intersection(market_tokens):
             registry.add(entry.market, MarketInterest.BROKER_POSITION)

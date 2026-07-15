@@ -42,7 +42,7 @@ def test_rebound_bot_does_not_buy_without_a_prior_decline(
     assert dummy_context.broker.submitted == []
 
 
-def test_outcome_resolution_supports_binary_and_arbitrary_labels() -> None:
+def test_outcome_resolution_matches_only_advertised_labels() -> None:
     market = _market("tutorial-market", "yes-token")
     assert resolve_outcome_token(market, "yes") == "yes-token"
     assert resolve_outcome_token(market, NO_OUTCOME) == "no-token"
@@ -53,6 +53,16 @@ def test_outcome_resolution_supports_binary_and_arbitrary_labels() -> None:
     )
     assert resolve_outcome_token(multi_market, "candidate a") == "candidate-a-token"
     assert resolve_outcome_token(multi_market, "missing") is None
+
+    up_down = replace(
+        market,
+        outcomes=(
+            MarketOutcome("Up", "up-token"),
+            MarketOutcome("Down", "down-token"),
+        ),
+    )
+    assert resolve_outcome_token(up_down, "up") == "up-token"
+    assert resolve_outcome_token(up_down, YES_OUTCOME) is None
 
 
 def _book(price: Decimal) -> BookSnapshot:
@@ -70,8 +80,6 @@ def _market(slug: str, yes_token_id: str) -> Market:
         condition_id="condition",
         slug=slug,
         question="question",
-        yes_token_id=yes_token_id,
-        no_token_id="no-token",
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),
         neg_risk=False,
