@@ -45,3 +45,8 @@ class ExampleDynamicRandomHoldBot(ExampleRandomHoldBot):
                 ),
             ),
         )
+
+
+def create_btc_version() -> ExampleDynamicRandomHoldBot:
+    """CLI factory."""
+    return ExampleDynamicRandomHoldBot(slug_prefix="btc-updown-5m")

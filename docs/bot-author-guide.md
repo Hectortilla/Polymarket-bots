@@ -256,6 +256,20 @@ class FiveMinuteBot(BaseBot):
 This lets a bot initialize in the middle of a bucket, receive events for the
 current market, and prepare the next slug before rollover.
 
+### Dynamic wallet-filtered example
+
+`polybot.my_bot:create` runs the separate dynamic random-hold wallet-filter
+example. It reads a JSON wallet list from the root `.env` file. The market
+slugs are generated from the time bucket:
+
+```dotenv
+EXAMPLE_DYNAMIC_RANDOM_HOLD_WALLETS='["0x0000000000000000000000000000000000000001","0x0000000000000000000000000000000000000002"]'
+```
+
+Each current and next bucket is then declared as a `filtered` stream rule for
+that complete wallet list. The bot fails closed at construction time when the
+list is empty.
+
 ## Cross-Market Bot
 
 Use one `on_book` handler and inspect `book.market_slug` to decide which market
