@@ -21,7 +21,10 @@ from polybot.cli.observability.observer import (
     start_observer,
     stop_observer,
 )
-from polybot.cli.observability.bootstrap import BootstrapProgressAdapter
+from polybot.cli.observability.bootstrap import (
+    BootstrapProgressAdapter,
+    emit_paper_position_book_bootstraps,
+)
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.runner import BotRunner
@@ -158,6 +161,13 @@ async def run_bot(
 
             stream_events = merge_streams(streams, telemetry=telemetry)
             next_event = asyncio.create_task(anext(stream_events))
+            position_book_bootstrap = asyncio.create_task(
+                emit_paper_position_book_bootstraps(
+                    paper_broker,
+                    clob,
+                    runtime_observer,
+                )
+            )
             plan_change = (
                 asyncio.create_task(wait_for_stream_plan_change(runner, plan))
                 if hasattr(runner, "refresh_stream_plan")
@@ -218,17 +228,25 @@ async def run_bot(
                     next_event = asyncio.create_task(anext(stream_events))
             finally:
                 next_event.cancel()
+                position_book_bootstrap.cancel()
                 if plan_change is not None:
                     plan_change.cancel()
                 registry_change.cancel()
                 await asyncio.gather(
                     next_event,
                     registry_change,
+                    position_book_bootstrap,
                     *(() if plan_change is None else (plan_change,)),
                     return_exceptions=True,
                 )
                 await stream_events.aclose()
-                del streams, stream_events, next_event, registry_change
+                del (
+                    streams,
+                    stream_events,
+                    next_event,
+                    registry_change,
+                    position_book_bootstrap,
+                )
                 if plan_change is not None:
                     del plan_change
     except BaseException as error:

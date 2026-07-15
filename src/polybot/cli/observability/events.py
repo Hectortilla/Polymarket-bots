@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.events import FillEvent, OrderRequest
+from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketSettlementEvent
 
 if TYPE_CHECKING:
@@ -71,6 +72,14 @@ class RuntimeStateChanged:
 @dataclass(frozen=True, slots=True)
 class StreamReceived:
     item: StreamEvent
+    occurred_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class PortfolioBookBootstrap:
+    """A CLOB mark fetched only to value an already-held paper position."""
+
+    book: BookSnapshot
     occurred_at: float
 
 
@@ -165,6 +174,7 @@ RuntimeEvent = (
     | RuntimeStateChanged
     | BootstrapProgress
     | StreamReceived
+    | PortfolioBookBootstrap
     | DispatchCompleted
     | StreamHealth
     | OrderSubmitted

@@ -72,6 +72,12 @@ class MarketStream:
                 "at least one non-empty token ID is required",
             )
 
+        # A subscription is one immutable market generation.  The runner may
+        # replace the next generation while an SDK event from this one is
+        # still being delivered; keep identity normalization tied to this
+        # generation instead of observing the mutable adapter-wide registry.
+        market_by_token = self._market_by_token.copy()
+        market_by_condition = self._market_by_condition.copy()
         depth: dict[str, tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]] = {}
         stream = await self._client.subscribe(
             MarketSpec(
@@ -82,7 +88,7 @@ class MarketStream:
         async with stream:
             async for event in stream:
                 if isinstance(event, MarketResolvedEvent):
-                    resolution = self._resolution(event)
+                    resolution = self._resolution(event, market_by_condition)
                     if resolution is not None:
                         yield resolution
                     continue
@@ -92,7 +98,7 @@ class MarketStream:
                     condition_id = _identifier(payload.market)
                     if token_id is None or condition_id is None:
                         continue
-                    market = self._market_by_token.get(token_id)
+                    market = market_by_token.get(token_id)
                     if token_id in normalized_token_ids:
                         yield MarketTradeHint(
                             condition_id=condition_id,
@@ -117,6 +123,7 @@ class MarketStream:
                         token_id,
                         condition_id,
                         *depth[token_id],
+                        market_by_token=market_by_token,
                     )
                     if snapshot is not None:
                         yield snapshot
@@ -169,6 +176,7 @@ class MarketStream:
                         token_id,
                         condition_id,
                         *bid_ask_levels,
+                        market_by_token=market_by_token,
                     )
                     if snapshot is not None:
                         depth[token_id] = bid_ask_levels
@@ -177,12 +185,13 @@ class MarketStream:
     def _resolution(
         self,
         event: MarketResolvedEvent,
+        market_by_condition: dict[str, Market],
     ) -> MarketResolutionEvent | None:
         payload = event.payload
         condition_id = _identifier(payload.market)
         if condition_id is None:
             return None
-        market = self._market_by_condition.get(condition_id)
+        market = market_by_condition.get(condition_id)
         token_ids = (
             None if payload.token_ids is None else _identifiers(payload.token_ids)
         )
@@ -222,8 +231,10 @@ class MarketStream:
         condition_id: str,
         bids: dict[Decimal, Decimal],
         asks: dict[Decimal, Decimal],
+        *,
+        market_by_token: dict[str, Market],
     ) -> BookSnapshot | None:
-        market = self._market_by_token.get(token_id)
+        market = market_by_token.get(token_id)
         try:
             return normalize_book(
                 token_id=token_id,

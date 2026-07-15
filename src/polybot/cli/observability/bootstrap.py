@@ -7,15 +7,19 @@ progress events.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from decimal import Decimal
+from time import monotonic
+from typing import Protocol
 
 from polybot.cli.followed_wallets.position_contracts import FollowPosition
 from polybot.cli.observability.events import (
     BootstrapPhase,
     BootstrapProgress,
+    PortfolioBookBootstrap,
 )
 from polybot.cli.observability.observer import RuntimeObserver, emit_observer
+from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.types import Market, Position
 
 from ..markets import MarketResolver
@@ -23,6 +27,42 @@ from ..tracking.wallets import FollowedWalletStore
 
 MarketProgressReporter = Callable[[tuple[str, ...], tuple[str, ...]], None]
 WalletProgressReporter = Callable[[int, int], None]
+
+
+class PaperPortfolioWithPositions(Protocol):
+    positions: Mapping[str, object]
+
+
+class PaperBrokerWithPositions(Protocol):
+    @property
+    def portfolio(self) -> PaperPortfolioWithPositions: ...
+
+
+class PositionBookClient(Protocol):
+    async def latest(self, token_id: str) -> BookSnapshot | None: ...
+
+
+async def emit_paper_position_book_bootstraps(
+    paper_broker: PaperBrokerWithPositions,
+    client: PositionBookClient,
+    observer: RuntimeObserver,
+) -> None:
+    """Refresh dashboard marks after a stream generation changes.
+
+    These snapshots never enter strategy dispatch: they value existing paper
+    holdings while the replacement WebSocket subscription establishes itself.
+    """
+    try:
+        positions = paper_broker.portfolio.positions
+    except AttributeError:
+        return
+    for token_id in sorted(positions):
+        try:
+            book = await client.latest(token_id)
+        except Exception:
+            continue
+        if book is not None and book.has_valid_levels() and not book.is_crossed():
+            emit_observer(observer, PortfolioBookBootstrap(book, monotonic()))
 
 
 class BootstrapProgressAdapter:

@@ -42,12 +42,14 @@ from polybot.cli.observability.events import (
     MarketSettled,
     OrderSubmitted,
     PortfolioPositionSnapshot,
+    PortfolioBookBootstrap,
     PortfolioSnapshot,
     RuntimeFailed,
     RuntimeStarted,
     StreamReceived,
     StreamHealth,
 )
+from polybot.cli.observability.bootstrap import emit_paper_position_book_bootstraps
 from polybot.cli.observability.observer import (
     RuntimeObserver,
     emit_observer,
@@ -653,6 +655,48 @@ def test_dashboard_promotes_accepted_books_for_valuation() -> None:
     assert state.pending_books == {}
     assert tuple(state.chart_tokens) == ("accepted",)
     assert state.executable_equity(now_ms=1_000) == Decimal("90.40")
+
+
+def test_dashboard_recovers_held_position_mark_from_subscription_bootstrap() -> None:
+    book = _book("held", Decimal("0.40"), Decimal("0.60"), received_at_ms=1_000)
+
+    state = DashboardState(require_accepted_books=True, initial_cash_usdc=Decimal("100"))
+    state.portfolio = PortfolioSnapshot(
+        cash_usdc=Decimal("90"),
+        cumulative_fees_usdc=Decimal("0"),
+        positions=(PortfolioPositionSnapshot("held", Decimal("1"), Decimal("0.50")),),
+    )
+    assert state.executable_equity(now_ms=1_000) is None
+
+    state.apply(PortfolioBookBootstrap(book, 1.0))
+
+    assert state.executable_equity(now_ms=1_000) == Decimal("90.40")
+
+
+def test_position_book_bootstrap_is_dashboard_only_and_rejects_crossed_books() -> None:
+    valid_book = _book("held", Decimal("0.40"), Decimal("0.60"))
+    crossed_book = _book("crossed", Decimal("0.70"), Decimal("0.60"))
+
+    class Paper:
+        class Portfolio:
+            positions = {"held": object(), "crossed": object()}
+
+        portfolio = Portfolio()
+
+    class Clob:
+        async def latest(self, token_id: str) -> BookSnapshot:
+            return {"held": valid_book, "crossed": crossed_book}[token_id]
+
+    async def run() -> list[object]:
+        observer = RecordingObserver()
+        await emit_paper_position_book_bootstraps(Paper(), Clob(), observer)
+        return observer.events
+
+    events = asyncio.run(run())
+
+    assert len(events) == 1
+    assert isinstance(events[0], PortfolioBookBootstrap)
+    assert events[0].book == valid_book
 
 
 def test_dashboard_marks_expired_books_unavailable() -> None:

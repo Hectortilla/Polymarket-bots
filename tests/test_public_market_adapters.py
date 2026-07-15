@@ -87,6 +87,57 @@ def test_market_stream_set_markets_replaces_token_metadata() -> None:
     }
 
 
+def test_market_stream_keeps_generation_metadata_during_market_switch() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    old_book = MarketBookEvent(
+        type="book",
+        payload=MarketBookPayload(
+            market="condition-old",
+            asset_id="yes-old",
+            bids=(_level("0.40", "2"),),
+            asks=(_level("0.60", "3"),),
+        ),
+    )
+
+    class DelayedStream:
+        async def __aenter__(self) -> DelayedStream:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        def __aiter__(self) -> AsyncIterator[object]:
+            return self._iterate()
+
+        async def _iterate(self) -> AsyncIterator[object]:
+            started.set()
+            await release.wait()
+            yield old_book
+
+    class DelayedClient(FakePublicClient):
+        async def subscribe(self, spec: object) -> DelayedStream:
+            return DelayedStream()
+
+    async def run() -> object:
+        stream = MarketStream(
+            DelayedClient(),  # type: ignore[arg-type]
+            markets=(_market("old"),),
+            now_ms=lambda: 2_000,
+        )
+        books = stream.books({"yes-old"})
+        next_book = asyncio.create_task(anext(books))
+        await started.wait()
+        stream.set_markets((_market("new"),))
+        release.set()
+        return await next_book
+
+    book = asyncio.run(run())
+
+    assert book.market_slug == "old"
+    assert book.condition_id == "condition-old"
+
+
 class FakeStream:
     def __init__(self, events: tuple[object, ...]) -> None:
         self._events = events

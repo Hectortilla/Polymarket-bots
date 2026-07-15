@@ -17,6 +17,7 @@ from polybot.cli.observability.events import (
     FillCompleted,
     MarketSettled,
     OrderSubmitted,
+    PortfolioBookBootstrap,
     PortfolioSnapshot,
     RuntimeEvent,
     RuntimeFailed,
@@ -148,6 +149,8 @@ class DashboardState:
                 self._bootstrap_progress(event)
             case StreamReceived():
                 self._stream_received(event)
+            case PortfolioBookBootstrap():
+                self._record_book(event.book, event.occurred_at)
             case DispatchCompleted():
                 self._dispatch_completed(event)
             case StreamHealth():
@@ -307,7 +310,11 @@ class DashboardState:
                 pass
 
     def _record_book_stream(self, event: StreamReceived) -> None:
-        book = event.item.event
+        self._record_book(event.item.event, event.occurred_at)
+
+    def _record_book(self, book: BookSnapshot, occurred_at: float) -> None:
+        if book.condition_id in self.resolved_condition_ids:
+            return
         self.books[book.token_id] = book
         if book.market_slug:
             label = book.market_slug
@@ -319,9 +326,9 @@ class DashboardState:
         last_at = self.market_ticker_at.get(book.token_id)
         if midpoint is not None and (
             last_at is None
-            or event.occurred_at - last_at >= MARKET_TICKER_INTERVAL_SECONDS
+            or occurred_at - last_at >= MARKET_TICKER_INTERVAL_SECONDS
         ):
-            self.market_ticker_at[book.token_id] = event.occurred_at
+            self.market_ticker_at[book.token_id] = occurred_at
             self._ticker(
                 "cyan",
                 f"MARKET {format_token_label(book.token_id)} mid {midpoint:.4f}",
