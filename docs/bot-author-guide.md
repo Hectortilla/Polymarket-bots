@@ -268,7 +268,10 @@ EXAMPLE_DYNAMIC_RANDOM_HOLD_WALLETS='["0x000000000000000000000000000000000000000
 
 Each current and next bucket is then declared as a `filtered` stream rule for
 that complete wallet list. The bot fails closed at construction time when the
-list is empty.
+list is empty. Its copied positions are tracked by normalized wallet,
+condition, and token, so a sell from one followed wallet can only reduce a
+position opened from that same wallet's buy; sells for untracked inventory are
+ignored.
 
 ## Cross-Market Bot
 

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from decimal import Decimal
 
 from polybot.framework.context import BotContext
-from polybot.framework.events import OrderRequest
+from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-
-from collections.abc import Iterable
 
 from polybot.examples.example_random_hold import ExampleRandomHoldBot
 from polybot.framework.config.models import BotConfig
@@ -34,9 +33,17 @@ class ExampleDynamicRandomHoldWalletFilterBot(ExampleRandomHoldBot):
         super().__init__(**kwargs)
         self.slug_prefix = slug_prefix
         self.bucket_seconds = bucket_seconds
-        self.wallet_addresses = wallet_addresses
+        self.wallet_addresses = tuple(
+            normalize_wallet_address(wallet) for wallet in wallet_addresses
+        )
         if not self.wallet_addresses:
             raise ValueError("wallet_addresses must contain at least one wallet")
+        self._open_positions: dict[tuple[str, str, str], Decimal] = {}
+
+    @property
+    def open_positions(self) -> dict[tuple[str, str, str], Decimal]:
+        """Return tracked position sizes keyed by wallet, condition, and token."""
+        return self._open_positions.copy()
 
     async def current_stream_rules(
         self,
@@ -65,12 +72,14 @@ class ExampleDynamicRandomHoldWalletFilterBot(ExampleRandomHoldBot):
             wallet_addresses=self.wallet_addresses,
         )
 
-    def order_for_trade(self, trade: WalletTradeEvent) -> OrderRequest:
+    def order_for_trade(
+        self, trade: WalletTradeEvent, *, size: Decimal | None = None
+    ) -> OrderRequest:
         return OrderRequest(
             token_id=trade.token_id,
             side=trade.side,
             price=trade.price,
-            size=COPY_TRADE_NOTIONAL_USDC / trade.price,
+            size=size if size is not None else COPY_TRADE_NOTIONAL_USDC / trade.price,
             market_slug=trade.market_slug,
             condition_id=trade.condition_id,
             source_id=trade.source_key,
@@ -78,7 +87,32 @@ class ExampleDynamicRandomHoldWalletFilterBot(ExampleRandomHoldBot):
         )
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
-        await ctx.broker.submit(self.order_for_trade(trade))
+        position_key = (
+            normalize_wallet_address(trade.wallet),
+            trade.condition_id,
+            trade.token_id,
+        )
+        open_size = self._open_positions.get(position_key, Decimal("0"))
+
+        if trade.side is Side.SELL:
+            if open_size <= 0:
+                return
+            requested_size = min(COPY_TRADE_NOTIONAL_USDC / trade.price, open_size)
+        else:
+            requested_size = COPY_TRADE_NOTIONAL_USDC / trade.price
+
+        fill = await ctx.broker.submit(self.order_for_trade(trade, size=requested_size))
+        if fill.filled_size <= 0:
+            return
+        if trade.side is Side.BUY:
+            self._open_positions[position_key] = open_size + fill.filled_size
+            return
+
+        remaining = max(Decimal("0"), open_size - fill.filled_size)
+        if remaining:
+            self._open_positions[position_key] = remaining
+        else:
+            self._open_positions.pop(position_key, None)
 
 
 def create_btc_version(wallet_addresses: Iterable[str]) -> ExampleDynamicRandomHoldWalletFilterBot:
