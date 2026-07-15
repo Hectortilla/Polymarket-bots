@@ -335,6 +335,74 @@ def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> 
     ) == Decimal("0.5")
 
 
+def test_filtered_wallet_bootstrap_reads_only_rule_markets(tmp_path) -> None:
+    positions = (
+        Position(
+            token_id="yes-allowed",
+            size=Decimal("1"),
+            condition_id="condition-allowed",
+            market_slug="allowed",
+        ),
+        Position(
+            token_id="yes-outside-rule",
+            size=Decimal("1"),
+            condition_id="condition-outside-rule",
+            market_slug="outside-rule",
+        ),
+    )
+    tracker = FollowedWalletTracker(tmp_path / "follow.json")
+    registry = TrackedMarketRegistry()
+
+    class PositionsClient:
+        def __init__(self) -> None:
+            self.requests: list[tuple[str, tuple[str, ...] | None]] = []
+
+        async def positions(
+            self,
+            wallet: str,
+            *,
+            condition_ids: tuple[str, ...] | None = None,
+        ) -> list[Position]:
+            self.requests.append((wallet, condition_ids))
+            return list(positions)
+
+    class Gamma:
+        async def find_many(self, slugs):
+            return tuple(_market(slug) for slug in slugs)
+
+    class Clob:
+        def __init__(self) -> None:
+            self.requested: list[str] = []
+
+        def set_markets(self, markets) -> None:
+            return None
+
+        async def latest(self, token_id: str) -> BookSnapshot | None:
+            self.requested.append(token_id)
+            return None
+
+    positions_client = PositionsClient()
+    clob = Clob()
+    asyncio.run(
+        synchronize_followed_wallets(
+            {WALLET: frozenset({"allowed"})},
+            tracker,
+            positions_client,  # type: ignore[arg-type]
+            Gamma(),  # type: ignore[arg-type]
+            clob,  # type: ignore[arg-type]
+            registry,
+            resolved_markets=(_market("allowed"),),
+        )
+    )
+
+    assert positions_client.requests == [(WALLET, ("condition-allowed",))]
+    assert clob.requested == ["yes-allowed"]
+    assert registry.markets == (_market("allowed"),)
+    state = tracker.state(WALLET)
+    assert state is not None
+    assert tuple(state.baselines) == ("yes-allowed",)
+
+
 def test_filtered_wallet_scope_is_strict_while_independent_wallet_can_discover() -> None:
     other_wallet = "0x0000000000000000000000000000000000000002"
     scopes = StreamPlan(
@@ -1249,6 +1317,47 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         asyncio.run(DataClient(Client((arbitrary_outcome,))).positions(WALLET))[0].outcome
         == "Up"
     )
+
+
+def test_data_client_passes_filtered_market_condition_ids_to_sdk() -> None:
+    class Client:
+        def __init__(self) -> None:
+            self.requests: list[dict[str, object]] = []
+
+        def list_positions(self, **kwargs):
+            self.requests.append(kwargs)
+
+            class Paginator:
+                def __aiter__(self):
+                    async def pages():
+                        yield type("Page", (), {"items": []})()
+
+                    return pages()
+
+            return Paginator()
+
+    client = Client()
+    asyncio.run(
+        DataClient(client).positions(
+            WALLET,
+            condition_ids=("condition-allowed", "condition-other"),
+        )
+    )
+
+    assert client.requests == [
+        {
+            "user": WALLET,
+            "market": ("condition-allowed", "condition-other"),
+            "size_threshold": 0,
+            "page_size": 100,
+        }
+    ]
+
+    client.requests.clear()
+    asyncio.run(DataClient(client).positions(WALLET))
+    assert client.requests == [
+        {"user": WALLET, "size_threshold": 0, "page_size": 100}
+    ]
 
 
 def _market(slug: str = "market") -> Market:

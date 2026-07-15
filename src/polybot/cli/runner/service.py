@@ -112,6 +112,7 @@ async def run_bot(
                 bootstrap_gamma,
                 clob,
                 registry,
+                resolved_markets=resolved.current,
             )
             await track_paper_positions(paper_broker, registry, gamma)
             await settle_resolved_markets(

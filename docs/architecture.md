@@ -372,6 +372,12 @@ match both the current wallet plan and the current market plan when both are
 declared. This permits one follower to watch many leaders across many markets
 without duplicating bot instances.
 
+Wallet bootstrap follows the same distinction. An independent wallet selector
+loads all current positions. A filtered selector resolves its rule market slugs
+to condition IDs and loads only those markets through the Data API position
+filter; the normalized result is checked against the slug allowlist again before
+it can affect follow state or market tracking.
+
 ## Configuration
 
 Configuration has two layers:

@@ -340,6 +340,9 @@ Status: done.
 - Bootstrap newly followed wallets from current open positions only. Persist
   follow epochs, executable baselines, deterministic movement journals, source
   IDs, checkpoints, and settlements atomically under `.bot-state/`.
+- Bootstrap absolute wallet follows from all current positions, but use the
+  Data API market condition-ID filter for filtered wallet follows so unrelated
+  positions are never loaded into follow state.
 - Replay gross PnL by `(trade_timestamp_ms, source_key)` without guessing fees.
 - Subscribe once with `MarketSpec(..., custom_feature_enabled=True)`. Batch new
   registry token pairs at the interval owned by `MARKET_ADDITION_BATCH_SECONDS`

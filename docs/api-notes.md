@@ -98,9 +98,13 @@ Data API: `https://data-api.polymarket.com`
 - Public, no authentication.
 - Relevant docs: `/market-data/overview`, `/api-reference/core/get-trades-for-a-user-or-markets`.
 
-Slice 11 bootstraps newly followed wallets through
-`AsyncPublicClient.list_positions(user=..., size_threshold=0)`, the official SDK
-binding for `GET /positions`. Only normalized open positions are accepted;
+Slice 11 bootstraps newly followed wallets through the official SDK binding for
+`GET /positions`. Absolute wallet follows call
+`AsyncPublicClient.list_positions(user=..., size_threshold=0)` without a market
+restriction. Filtered wallet follows resolve their stream-rule slugs to
+condition IDs first, then pass those IDs through the endpoint's `market` filter;
+they never bootstrap positions from unrelated markets. Only normalized open
+positions are accepted;
 missing wallet-market-token identity or invalid numeric values fail closed.
 The API's `outcome` field is an arbitrary string (for example, `Up` or `Down`),
 so position normalization preserves any non-empty string rather than restricting

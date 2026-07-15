@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 
 from polybot.async_io import run_blocking
@@ -13,13 +14,22 @@ class DataClient:
     def __init__(self, client: object) -> None:
         self._client = client
 
-    async def positions(self, wallet: str) -> list[Position]:
-        paginator = await run_blocking(
-            self._client.list_positions,
-            user=wallet,
-            size_threshold=0,
-            page_size=POSITIONS_PAGE_SIZE,
-        )
+    async def positions(
+        self,
+        wallet: str,
+        *,
+        condition_ids: Sequence[str] | None = None,
+    ) -> list[Position]:
+        if condition_ids is not None and not condition_ids:
+            return []
+        request: dict[str, object] = {
+            "user": wallet,
+            "size_threshold": 0,
+            "page_size": POSITIONS_PAGE_SIZE,
+        }
+        if condition_ids is not None:
+            request["market"] = tuple(condition_ids)
+        paginator = await run_blocking(self._client.list_positions, **request)
         positions: list[Position] = []
         async for page in paginator:
             for source in _page_items(page):

@@ -6,11 +6,10 @@ from decimal import Decimal
 from typing import Protocol
 
 from polybot.async_io import run_blocking
-from polybot.framework.streams import StreamPlan
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.data import DataClient
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.types import Position
+from polybot.polymarket.types import Market, Position
 
 from ..followed_wallets.position_contracts import FollowPosition
 from ..markets import MarketResolver
@@ -39,6 +38,7 @@ async def synchronize_followed_wallets(
     gamma: MarketResolver,
     clob: ClobClient,
     registry: TrackedMarketRegistry,
+    resolved_markets: tuple[Market, ...] = (),
 ) -> None:
     new_wallets = (
         ()
@@ -46,9 +46,26 @@ async def synchronize_followed_wallets(
         else await run_blocking(followed_wallets.synchronize, tuple(wallet_scopes))
     )
     for wallet in new_wallets:
-        positions = tuple(await position_client.positions(wallet))
         allowlist = wallet_scopes[wallet]
+        scoped_markets = await _resolve_scope_markets(
+            allowlist,
+            resolved_markets,
+            gamma,
+        )
+        if scoped_markets is None:
+            positions = tuple(await position_client.positions(wallet))
+        else:
+            positions = tuple(
+                await position_client.positions(
+                    wallet,
+                    condition_ids=tuple(
+                        market.condition_id for market in scoped_markets
+                    ),
+                )
+            )
         if allowlist is not None:
+            # Keep the scope check at the normalized contract boundary too. A
+            # compatible source must not be able to widen a filtered bootstrap.
             positions = tuple(
                 position for position in positions if position.market_slug in allowlist
             )
@@ -104,3 +121,27 @@ async def synchronize_followed_wallets(
                 MarketInterest.FOLLOWED_WALLET,
                 owner=wallet,
             )
+
+
+async def _resolve_scope_markets(
+    allowlist: frozenset[str] | None,
+    resolved_markets: tuple[Market, ...],
+    gamma: MarketResolver,
+) -> tuple[Market, ...] | None:
+    """Resolve filtered wallet slugs before making the scoped position read."""
+    if allowlist is None:
+        return None
+    by_slug = {market.slug: market for market in resolved_markets}
+    requested = tuple(sorted(allowlist))
+    missing = tuple(slug for slug in requested if slug not in by_slug)
+    if missing:
+        for market in await gamma.find_many(missing):
+            if market is not None:
+                by_slug[market.slug] = market
+    unresolved = tuple(slug for slug in requested if slug not in by_slug)
+    if unresolved:
+        raise RuntimeError(
+            "filtered wallet markets could not be resolved: "
+            + ", ".join(unresolved)
+        )
+    return tuple(by_slug[slug] for slug in requested)
