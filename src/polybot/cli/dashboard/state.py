@@ -11,6 +11,8 @@ from time import monotonic, time
 
 from polybot.cli.observability.events import (
     BrokerFailed,
+    BootstrapPhase,
+    BootstrapProgress,
     DispatchCompleted,
     FillCompleted,
     MarketSettled,
@@ -89,6 +91,10 @@ class DashboardState:
     portfolio: PortfolioSnapshot | None = None
     ticker: deque[TickerRow] = field(default_factory=lambda: deque(maxlen=MAX_TICKER_ROWS))
     stream_counts: dict[StreamKind, int] = field(default_factory=dict)
+    wallets_loaded: int = 0
+    wallets_total: int | None = None
+    markets_loaded: int = 0
+    markets_total: int | None = None
     accepted_dispatches: int = 0
     skipped_dispatches: int = 0
     order_count: int = 0
@@ -142,6 +148,8 @@ class DashboardState:
             case RuntimeStateChanged():
                 self.lifecycle = event.state
                 self._ticker("bold yellow", f"Runner {event.state.value}")
+            case BootstrapProgress():
+                self._bootstrap_progress(event)
             case StreamReceived():
                 self._stream_received(event)
             case DispatchCompleted():
@@ -280,6 +288,14 @@ class DashboardState:
             self._record_resolution(event.item.event)
         else:
             self._record_market_hint(event)
+
+    def _bootstrap_progress(self, event: BootstrapProgress) -> None:
+        if event.phase is BootstrapPhase.WALLETS:
+            self.wallets_loaded = event.completed
+            self.wallets_total = event.total
+        else:
+            self.markets_loaded = event.completed
+            self.markets_total = event.total
 
     def _record_resolution(self, event: MarketResolutionEvent) -> None:
         for token_id in event.token_ids:

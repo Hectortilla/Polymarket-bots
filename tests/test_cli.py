@@ -24,7 +24,13 @@ from polybot.cli.runner.streams import wait_for_stream_plan_change
 from polybot.cli.streams.contracts import ResolutionStreamEvent, StreamKind, WalletStreamEvent
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.streams.telemetry import StreamTelemetry
-from polybot.cli.observability.events import RuntimeFailed, RuntimeState, RuntimeStateChanged
+from polybot.cli.observability.events import (
+    BootstrapPhase,
+    BootstrapProgress,
+    RuntimeState,
+    RuntimeStateChanged,
+    RuntimeFailed,
+)
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig, BotMode
@@ -603,6 +609,19 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         def __init__(self, *args, **kwargs) -> None:
             pass
 
+    class RecordingObserver(RuntimeObserver):
+        def __init__(self) -> None:
+            self.events = []
+
+        async def start(self, config) -> None:
+            return None
+
+        def emit(self, event) -> None:
+            self.events.append(event)
+
+        async def stop(self) -> None:
+            return None
+
     monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
     monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
@@ -610,14 +629,30 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
     monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeBotRunner)
 
-    async def run() -> tuple[int, int, bool]:
+    async def run() -> tuple[int, int, bool, RecordingObserver]:
         client = FakeClient()
         monkeypatch.setattr("polybot.cli.runner.factory.AsyncPublicClient", lambda: client)
         bot = LifecycleBot()
-        await run_bot(bot, BotConfig(name="runner", market_slugs=("current",)))
-        return bot.started, bot.stopped, client.closed
+        observer = RecordingObserver()
+        await run_bot(
+            bot,
+            BotConfig(name="runner", market_slugs=("current",)),
+            observer=observer,
+        )
+        return bot.started, bot.stopped, client.closed, observer
 
-    assert asyncio.run(run()) == (1, 1, True)
+    started, stopped, closed, observer = asyncio.run(run())
+    assert (started, stopped, closed) == (1, 1, True)
+    assert [
+        (event.phase, event.completed, event.total)
+        for event in observer.events
+        if isinstance(event, BootstrapProgress)
+    ] == [
+        (BootstrapPhase.MARKETS, 0, 0),
+        (BootstrapPhase.MARKETS, 0, 1),
+        (BootstrapPhase.MARKETS, 1, 1),
+        (BootstrapPhase.WALLETS, 0, 0),
+    ]
 
 
 def test_run_bot_rejects_live_before_opening_client() -> None:

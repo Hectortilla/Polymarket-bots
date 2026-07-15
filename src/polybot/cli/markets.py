@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Protocol
 
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.types import Market
 
-if TYPE_CHECKING:
-    from polybot.polymarket.gamma import GammaClient
+
+class MarketResolver(Protocol):
+    async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +22,7 @@ class ResolvedMarketPlan:
 
 async def resolve_plan_markets(
     plan: StreamPlan,
-    gamma: GammaClient,
+    gamma: MarketResolver,
 ) -> ResolvedMarketPlan:
     """Resolve current markets strictly and next markets best-effort."""
     if hasattr(plan, "current_market_slugs"):

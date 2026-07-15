@@ -297,6 +297,8 @@ Status: done.
 - Keep terminal rendering outside bot, adapter, and execution code.
 - Emit optional fail-open runtime observer events for lifecycle, streams,
   dispatch outcomes, orders, fills, and paper portfolio snapshots.
+- Emit fail-open bootstrap progress for configured market resolution and
+  followed-wallet loading; render completed/total counters in Activity.
 - Decorate the CLI broker without changing its public order/fill contract.
 - Render a Rich dashboard with an `asciichartpy` fixed-scale multi-token price
   chart with a taller plotting area, variance-padded executable-wallet-value

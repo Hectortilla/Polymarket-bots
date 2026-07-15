@@ -26,6 +26,25 @@ class RuntimeState(StrEnum):
     FAILED = "failed"
 
 
+class BootstrapPhase(StrEnum):
+    MARKETS = "markets"
+    WALLETS = "wallets"
+
+
+@dataclass(frozen=True, slots=True)
+class BootstrapProgress:
+    phase: BootstrapPhase
+    completed: int
+    total: int
+    occurred_at: float = field(default_factory=monotonic)
+
+    def __post_init__(self) -> None:
+        if self.completed < 0 or self.total < 0:
+            raise ValueError("bootstrap progress values must not be negative")
+        if self.completed > self.total:
+            raise ValueError("bootstrap progress cannot exceed its total")
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeStarted:
     name: str
@@ -144,6 +163,7 @@ class RuntimeFailed:
 RuntimeEvent = (
     RuntimeStarted
     | RuntimeStateChanged
+    | BootstrapProgress
     | StreamReceived
     | DispatchCompleted
     | StreamHealth

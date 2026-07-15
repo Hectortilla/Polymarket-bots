@@ -21,6 +21,7 @@ from polybot.cli.observability.observer import (
     start_observer,
     stop_observer,
 )
+from polybot.cli.observability.bootstrap import BootstrapProgressAdapter
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.runner import BotRunner
@@ -75,6 +76,7 @@ async def run_bot(
     owned_client = runtime.owned_client
     runner = BotRunner(bot, ctx)
     telemetry = StreamTelemetry()
+    bootstrap_progress = BootstrapProgressAdapter(runtime_observer)
 
     await start_observer(runtime_observer, config)
     emit_observer(runtime_observer, RuntimeStarted.from_config(config))
@@ -91,14 +93,23 @@ async def run_bot(
         )
         while True:
             plan = await refresh_runner_plan(runner, config)
-            resolved = await resolve_plan_markets(plan, gamma)
+            bootstrap_progress.begin_cycle()
+            bootstrap_gamma = bootstrap_progress.wrap_gamma(gamma)
+            resolved = await resolve_plan_markets(plan, bootstrap_gamma)
             for market in resolved.current:
                 registry.add(market, MarketInterest.CONFIGURED)
-            await synchronize_followed_wallets(
-                plan.wallet_discovery_scopes(),
+            wallet_scopes = plan.wallet_discovery_scopes()
+            bootstrap_followed_wallets = bootstrap_progress.wrap_followed_wallets(
                 followed_wallets,
+                len(wallet_scopes),
+            )
+            if not wallet_scopes:
+                bootstrap_progress.report_wallet_progress(0, 0)
+            await synchronize_followed_wallets(
+                wallet_scopes,
+                bootstrap_followed_wallets,
                 position_client,
-                gamma,
+                bootstrap_gamma,
                 clob,
                 registry,
             )

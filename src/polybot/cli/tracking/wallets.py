@@ -2,24 +2,41 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Protocol
+
 from polybot.async_io import run_blocking
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.data import DataClient
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.types import Position
 
-from ..followed_wallets.tracker import FollowedWalletTracker
+from ..followed_wallets.position_contracts import FollowPosition
+from ..markets import MarketResolver
 from ..market_identity import validate_position_market_identity
 from ..tracked_markets import MarketInterest, TrackedMarketRegistry
 
 
+class FollowedWalletStore(Protocol):
+    def synchronize(self, wallets: tuple[str, ...]) -> tuple[str, ...]: ...
+
+    def bootstrap(
+        self,
+        wallet: str,
+        positions_with_baseline_marks: tuple[tuple[Position, Decimal | None], ...],
+    ) -> None: ...
+
+    def open_market_slugs(self) -> tuple[str, ...]: ...
+
+    def tracked_market_positions(self) -> tuple[tuple[str, FollowPosition], ...]: ...
+
+
 async def synchronize_followed_wallets(
     wallet_scopes: dict[str, frozenset[str] | None],
-    followed_wallets: FollowedWalletTracker,
+    followed_wallets: FollowedWalletStore,
     position_client: DataClient,
-    gamma: GammaClient,
+    gamma: MarketResolver,
     clob: ClobClient,
     registry: TrackedMarketRegistry,
 ) -> None:

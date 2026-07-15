@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.console import Group
 
+from polybot.cli.observability.events import BootstrapPhase
 from polybot.cli.streams.contracts import StreamKind
 
 from .state import DashboardState
@@ -25,8 +26,28 @@ def ticker_panel(state: DashboardState) -> Panel:
         )
         for row in state.ticker
     ]
+    progress_rows = []
+    if state.wallets_total is not None:
+        progress_rows.append(
+            progress_line(
+                BootstrapPhase.WALLETS.value,
+                state.wallets_loaded,
+                state.wallets_total,
+                "cyan",
+            )
+        )
+    if state.markets_total is not None:
+        progress_rows.append(
+            progress_line(
+                BootstrapPhase.MARKETS.value,
+                state.markets_loaded,
+                state.markets_total,
+                "magenta",
+            )
+        )
+    content = [*progress_rows, *rows]
     return Panel(
-        Group(*rows) if rows else Text("Waiting for runtime events", style="dim"),
+        Group(*content) if content else Text("Waiting for runtime events", style="dim"),
         title="Activity",
         border_style="bright_magenta",
     )
@@ -34,6 +55,21 @@ def ticker_panel(state: DashboardState) -> Panel:
 
 def ticker_message(message: str, count: int) -> str:
     return message if count == 1 else f"{message} x{count}"
+
+
+def progress_line(label: str, completed: int, total: int, style: str) -> Text:
+    bar_width = 12
+    filled = filled_progress_width(completed, total, bar_width=bar_width)
+    bar = "#" * filled + "-" * (bar_width - filled)
+    return Text(f"{label:<8} [{bar}] {completed}/{total}", style=style)
+
+
+def filled_progress_width(completed: int, total: int, *, bar_width: int) -> int:
+    if total == 0:
+        return 0
+    if completed == total:
+        return bar_width
+    return int(bar_width * completed / total)
 
 
 def status_panel(state: DashboardState) -> Panel:

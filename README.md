@@ -68,6 +68,10 @@ stable `DispatchSkipReason` instead of collapsing every skip into a boolean.
 The CLI enables the dashboard by default. Use `--no-dashboard` for headless
 operation:
 
+During startup, the Activity panel shows compact wallet and market bootstrap
+progress counters while configured markets and followed-wallet positions are
+loaded.
+
 ```sh
 BOT_MODE=paper \
 BOT_STREAM_RULES='<stream-rules-json>' \

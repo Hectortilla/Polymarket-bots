@@ -221,7 +221,10 @@ same selected time range as the market chart. These dashboard-only controls
 never affect bot execution.
 Expired market data retains its last plotted
 value in a dimmed series rather than being treated as a current quote. The
-dashboard renders independently of bot execution.
+dashboard renders independently of bot execution. During startup, its Activity
+panel also reports fail-open wallet and market bootstrap progress as
+completed/total counters while configured markets and followed-wallet positions
+are loaded.
 The market-price chart plots up to twenty tokens and keeps its admitted selection
 stable when more books are tracked than can be plotted. Overflow books still
 update runtime state and the activity ticker, but repeated union snapshots
@@ -245,6 +248,10 @@ Custom CLI integrations can pass a
 `start(config)`, `emit(event)`, and `stop()` methods receive
 `polybot.cli.observability.events.RuntimeEvent` values; observer exceptions are
 deliberately suppressed so telemetry cannot interrupt the paper runtime.
+Bootstrap progress is attached at this same boundary by
+`polybot.cli.observability.bootstrap.BootstrapProgressAdapter`, which wraps the
+market-resolution and followed-wallet ports without adding observer calls to
+the core workflows.
 
 The current paper CLI does not automatically call `BaseBot.on_fill()` after
 `broker.submit()`. Strategies that need immediate paper fill handling should

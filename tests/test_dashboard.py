@@ -24,6 +24,7 @@ from polybot.cli.dashboard.render import (
     render_dashboard,
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
+from polybot.cli.dashboard.status import filled_progress_width
 from polybot.cli.dashboard.state import (
     DashboardView,
     MAX_CHART_HISTORY_POINTS,
@@ -34,13 +35,15 @@ from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import (
     BrokerFailed,
+    BootstrapPhase,
+    BootstrapProgress,
     DispatchCompleted,
     FillCompleted,
     OrderSubmitted,
     PortfolioPositionSnapshot,
     PortfolioSnapshot,
-    RuntimeStarted,
     RuntimeFailed,
+    RuntimeStarted,
     StreamReceived,
     StreamHealth,
 )
@@ -383,6 +386,28 @@ def test_dashboard_tracks_stream_health_samples() -> None:
     assert state.book_lag_percentile(0.95) == 6_100
     assert state.maximum_book_lag_ms() == 6_100
     assert state.stale_ratio() == 0.5
+
+
+def test_dashboard_tracks_and_renders_bootstrap_progress() -> None:
+    state = DashboardState()
+    state.apply(BootstrapProgress(BootstrapPhase.WALLETS, 2, 5, 1.0))
+    state.apply(BootstrapProgress(BootstrapPhase.MARKETS, 7, 10, 2.0))
+
+    assert (state.wallets_loaded, state.wallets_total) == (2, 5)
+    assert (state.markets_loaded, state.markets_total) == (7, 10)
+
+    output = StringIO()
+    Console(file=output, width=80, height=24).print(render_dashboard(state, 80, 24))
+
+    rendered = output.getvalue()
+    assert BootstrapPhase.WALLETS.value in rendered and "2/5" in rendered
+    assert BootstrapPhase.MARKETS.value in rendered and "7/10" in rendered
+
+
+def test_dashboard_progress_width_handles_empty_partial_and_complete() -> None:
+    assert filled_progress_width(0, 0, bar_width=12) == 0
+    assert filled_progress_width(2, 5, bar_width=12) == 4
+    assert filled_progress_width(5, 5, bar_width=12) == 12
 
 
 def test_dashboard_formats_book_lag_with_stable_width() -> None:
