@@ -24,7 +24,7 @@ def ticker_panel(state: DashboardState) -> Panel:
             style=row.style,
             overflow="ellipsis",
         )
-        for row in state.ticker
+        for row in state.activity_ticker()
     ]
     progress_rows = []
     if state.wallets_total is not None:
@@ -48,7 +48,11 @@ def ticker_panel(state: DashboardState) -> Panel:
     content = [*progress_rows, *rows]
     return Panel(
         Group(*content) if content else Text("Waiting for runtime events", style="dim"),
-        title="Activity",
+        title=(
+            "Activity · m: market on"
+            if state.show_market_events
+            else "Activity · m: market off"
+        ),
         border_style="bright_magenta",
     )
 

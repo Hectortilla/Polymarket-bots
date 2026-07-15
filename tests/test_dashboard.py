@@ -56,7 +56,12 @@ from polybot.cli.observability.observer import (
     start_observer,
     stop_observer,
 )
-from polybot.cli.streams.contracts import BookStreamEvent, StreamKind, WalletStreamEvent
+from polybot.cli.streams.contracts import (
+    BookStreamEvent,
+    MarketHintStreamEvent,
+    StreamKind,
+    WalletStreamEvent,
+)
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillEvent, FillRejectReason, OrderRequest, OrderStatus, Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
@@ -66,6 +71,7 @@ from polybot.framework.events.resolutions import (
     YES_OUTCOME,
 )
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.polymarket.types import MarketTradeHint
 
 
 class RecordingObserver(RuntimeObserver):
@@ -682,6 +688,81 @@ def test_dashboard_uses_market_slug_for_chart_labels() -> None:
 
     assert state.market_label("token") == "btc-up-or-down · Yes"
     assert state.market_label("unknown-token") == "unknown…oken"
+
+
+def test_dashboard_hides_market_activity_by_default_and_labels_orders_and_fills() -> None:
+    state = DashboardState()
+    book = _book("blue-token", Decimal("0.4"), Decimal("0.6"))
+    state.apply(
+        StreamReceived(
+            BookStreamEvent(
+                StreamKind.BOOK,
+                BookSnapshot(
+                    token_id=book.token_id,
+                    bids=book.bids,
+                    asks=book.asks,
+                    received_at_ms=book.received_at_ms,
+                    market_slug="btc-up-or-down",
+                    outcome=YES_OUTCOME,
+                ),
+            ),
+            1.0,
+        )
+    )
+    state.apply(
+        StreamReceived(
+            MarketHintStreamEvent(
+                StreamKind.MARKET_HINT,
+                MarketTradeHint("condition", "hint-token", "market", 1),
+            ),
+            1.5,
+        )
+    )
+    order = OrderRequest("blue-token", Side.BUY, Decimal("0.5"), Decimal("2"))
+    fill = FillEvent(
+        order_id="order",
+        token_id="blue-token",
+        side=Side.BUY,
+        status=OrderStatus.FILLED,
+        requested_size=Decimal("2"),
+        filled_size=Decimal("2"),
+        average_price=Decimal("0.5"),
+        fee_usdc=Decimal("0"),
+        received_at_ms=1,
+    )
+    state.apply(OrderSubmitted(order, 2.0))
+    state.apply(FillCompleted(order, fill, None, 1, 3.0))
+
+    assert state.ticker[1].message == "ORDER BUY 2 btc-up-or-down · Yes"
+    assert state.ticker[0].message == "FILL BUY 2/2 btc-up-or-down · Yes @ 0.5"
+    assert state.market_ticker[0].message == "MARKET HINT hint-token"
+    assert state.market_ticker[1].message == "MARKET blue-token mid 0.5000"
+    assert [row.message for row in state.activity_ticker()] == [
+        "FILL BUY 2/2 btc-up-or-down · Yes @ 0.5",
+        "ORDER BUY 2 btc-up-or-down · Yes",
+    ]
+
+    hidden_output = StringIO()
+    Console(file=hidden_output, width=120, height=35).print(render_dashboard(state, 120, 35))
+    assert "Activity · m: market off" in hidden_output.getvalue()
+    assert "MARKET blue-token" not in hidden_output.getvalue()
+    assert "MARKET HINT hint-token" not in hidden_output.getvalue()
+
+    state.toggle_market_events()
+
+    shown_output = StringIO()
+    Console(file=shown_output, width=120, height=35).print(render_dashboard(state, 120, 35))
+    assert "Activity · m: market on" in shown_output.getvalue()
+    assert "MARKET blue-token mid 0.5000" in shown_output.getvalue()
+    assert "MARKET HINT hint-token" in shown_output.getvalue()
+
+
+def test_dashboard_m_key_toggles_market_activity() -> None:
+    dashboard = TerminalDashboard(Console(width=80, height=24))
+
+    dashboard._handle_key("m")
+
+    assert dashboard._state.show_market_events
 
 
 def test_observable_broker_returns_original_fill_and_emits_order_then_fill() -> None:

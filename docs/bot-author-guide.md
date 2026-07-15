@@ -164,7 +164,9 @@ Press `v` to switch from the market chart to a followed-wallet trade-time
 timeline. The timeline has one lane per wallet; green/red/yellow indicate
 buy/sell/mixed buckets, `·`/`●`/`◆` indicate relative notional, and dimmed
 events were skipped before bot dispatch. It shares `z`/`x`/`r` time controls
-with the market chart. Use `j`/`k` to page wallet lanes.
+with the market chart. Use `j`/`k` to page wallet lanes. Press `m` to show or
+hide blue market events in Activity; they are hidden by default. Order and fill
+rows show their market/outcome label after its metadata reaches the dashboard.
 
 Tools integrating the CLI may pass a custom
 `polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers

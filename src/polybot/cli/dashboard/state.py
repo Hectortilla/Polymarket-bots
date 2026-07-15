@@ -48,7 +48,7 @@ from .chart_state import (
     visible_time_range,
 )
 from .health import average, ratio
-from .token_labels import format_token_label
+from .token_labels import format_market_label, format_token_label
 from .wallet_state import WalletTimelineEvent, wallet_market_label
 
 MAX_TICKER_ROWS = 40
@@ -94,6 +94,10 @@ class DashboardState:
     pending_books: dict[str, BookSnapshot] = field(default_factory=dict)
     portfolio: PortfolioSnapshot | None = None
     ticker: deque[TickerRow] = field(default_factory=lambda: deque(maxlen=MAX_TICKER_ROWS))
+    market_ticker: deque[TickerRow] = field(
+        default_factory=lambda: deque(maxlen=MAX_TICKER_ROWS)
+    )
+    show_market_events: bool = False
     stream_counts: dict[StreamKind, int] = field(default_factory=dict)
     wallets_loaded: int = 0
     wallets_total: int | None = None
@@ -172,7 +176,7 @@ class DashboardState:
                 self.order_count += 1
                 self._ticker(
                     _side_style(event.order.side),
-                    f"ORDER {event.order.side.value} {event.order.size} {format_token_label(event.order.token_id)}",
+                    f"ORDER {event.order.side.value} {event.order.size} {self.market_label(event.order.token_id)}",
                 )
             case FillCompleted():
                 self._fill_completed(event)
@@ -222,6 +226,9 @@ class DashboardState:
         )
         if self.view is DashboardView.WALLET:
             self.wallet_page = 0
+
+    def toggle_market_events(self) -> None:
+        self.show_market_events = not self.show_market_events
 
     def page_wallets(self, direction: int, lanes_per_page: int) -> bool:
         if self.view is not DashboardView.WALLET or lanes_per_page <= 0:
@@ -317,11 +324,12 @@ class DashboardState:
         if book.condition_id in self.resolved_condition_ids:
             return
         self.books[book.token_id] = book
-        if book.market_slug:
-            label = book.market_slug
-            if book.outcome:
-                label = f"{label} · {book.outcome}"
-            self.market_labels[book.token_id] = label
+        if book.market_slug or book.outcome:
+            self.market_labels[book.token_id] = format_market_label(
+                book.token_id,
+                book.market_slug,
+                book.outcome,
+            )
         self._activate_chart_token(book.token_id)
         midpoint = None if book is None else book.midpoint()
         last_at = self.market_ticker_at.get(book.token_id)
@@ -333,6 +341,7 @@ class DashboardState:
             self._ticker(
                 "cyan",
                 f"MARKET {format_token_label(book.token_id)} mid {midpoint:.4f}",
+                market_event=True,
             )
 
     def _record_wallet_stream(self, event: StreamReceived) -> None:
@@ -363,7 +372,11 @@ class DashboardState:
 
     def _record_market_hint(self, event: StreamReceived) -> None:
         hint = event.item.event
-        self._ticker("bright_cyan", f"MARKET HINT {format_token_label(hint.token_id)}")
+        self._ticker(
+            "bright_cyan",
+            f"MARKET HINT {format_token_label(hint.token_id)}",
+            market_event=True,
+        )
 
     def _dispatch_completed(self, event: DispatchCompleted) -> None:
         if self.require_accepted_books and event.kind is StreamKind.BOOK:
@@ -459,7 +472,7 @@ class DashboardState:
         price = "-" if fill.average_price is None else str(fill.average_price)
         self._ticker(
             _side_style(fill.side),
-            f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} {format_token_label(fill.token_id)} @ {price}",
+            f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} {self.market_label(fill.token_id)} @ {price}",
         )
 
     def _refresh_fill_mark(self, event: FillCompleted) -> None:
@@ -552,13 +565,19 @@ class DashboardState:
             return None
         return cached, True
 
-    def _ticker(self, style: str, message: str) -> None:
+    def activity_ticker(self) -> list[TickerRow]:
+        if not self.show_market_events:
+            return list(self.ticker)
+        return list(self.market_ticker) + list(self.ticker)
+
+    def _ticker(self, style: str, message: str, *, market_event: bool = False) -> None:
         safe_message = _safe_message(message)
-        if self.ticker and self.ticker[0].message == safe_message:
-            previous = self.ticker[0]
-            self.ticker[0] = TickerRow(previous.style, safe_message, previous.count + 1)
+        ticker = self.market_ticker if market_event else self.ticker
+        if ticker and ticker[0].message == safe_message:
+            previous = ticker[0]
+            ticker[0] = TickerRow(previous.style, safe_message, previous.count + 1)
             return
-        self.ticker.appendleft(TickerRow(style, safe_message))
+        ticker.appendleft(TickerRow(style, safe_message))
 
     def market_label(self, token_id: str) -> str:
         return self.market_labels.get(token_id, format_token_label(token_id))

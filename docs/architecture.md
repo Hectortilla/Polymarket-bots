@@ -227,7 +227,11 @@ view. The followed-wallet view is a trade-time event raster with one lane per
 configured or observed wallet: green is buy, red is sell, yellow is a mixed
 bucket, and `·`/`●`/`◆` show relative aggregate notional. Events skipped by the
 runner are dimmed. `j` and `k` page wallet lanes when the terminal cannot show
-all of them. It retains a bounded dashboard-only event history and uses the
+all of them. Press `m` to show or hide blue market events in Activity; they are
+hidden by default. It retains separate bounded dashboard-only event histories
+so market noise cannot evict order, fill, or runtime activity. Order and fill
+rows use the market/outcome token label when market metadata has reached the
+dashboard. It uses the
 same selected time range as the market chart. These dashboard-only controls
 never affect bot execution.
 Expired market data retains its last plotted

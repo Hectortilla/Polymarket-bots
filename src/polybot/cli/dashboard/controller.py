@@ -157,6 +157,9 @@ class TerminalDashboard:
             elif key.lower() == "v":
                 self._state.toggle_view()
                 changed = True
+            elif key.lower() == "m":
+                self._state.toggle_market_events()
+                changed = True
             elif key.lower() == "j":
                 changed = self._state.page_wallets(
                     1,
