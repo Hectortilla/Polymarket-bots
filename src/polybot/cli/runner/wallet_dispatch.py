@@ -22,6 +22,8 @@ async def dispatch_wallet_trade(
     followed_wallets: FollowedWalletTracker | None,
 ) -> DispatchOutcome:
     event = stream_event.event
+    if registry is not None and registry.is_terminal(event.condition_id):
+        return DispatchOutcome.skipped(DispatchSkipReason.MARKET_RESOLVED)
     if not event.market_slug:
         return DispatchOutcome.skipped(DispatchSkipReason.MARKET_METADATA_MISSING)
     market = _known_market(registry, event.condition_id, event.market_slug)

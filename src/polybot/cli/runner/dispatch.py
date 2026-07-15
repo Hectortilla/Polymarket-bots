@@ -44,7 +44,7 @@ async def dispatch_stream_event(
     resolution: ResolutionDispatchDependencies | None = None,
 ) -> DispatchOutcome | None:
     if stream_event.kind is StreamKind.BOOK:
-        return await dispatch_book(runner, stream_event, followed_wallets)
+        return await dispatch_book(runner, stream_event, followed_wallets, registry)
     if stream_event.kind is StreamKind.WALLET:
         return await dispatch_wallet_trade(
             runner,

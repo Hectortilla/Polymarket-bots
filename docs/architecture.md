@@ -164,7 +164,10 @@ wallet-only and independent rules can discover new markets. Entries remain
 until resolution.
 The registry's admitted slugs are also supplied to `BotRunner` as runtime book
 routes. This lets wallet-only discoveries reach `on_book` while keeping
-filtered-rule allowlists strict at registry ingress.
+filtered-rule allowlists strict at registry ingress. Resolution makes a
+condition terminal for the runner lifetime and across restarts through the
+resolution ledger: terminal conditions cannot be admitted again by configured
+plans, wallet discoveries, or paper positions.
 
 Resolution follows a separate non-fill path:
 
@@ -229,9 +232,10 @@ The market-price chart plots up to twenty tokens and keeps its admitted selectio
 stable when more books are tracked than can be plotted. Overflow books still
 update runtime state and the activity ticker, but repeated union snapshots
 cannot rotate the visible lines or erase their histories.
-Resolved series similarly retain a dimmed final `1` or `0` value; their existing
-legend labels and the activity ticker identify the winning outcome. No separate
-tracked-markets panel is introduced.
+On successful settlement, both outcome tokens are removed from chart state,
+legend labels, and activity ticker rather than retaining a final payout series.
+The status row shows a deduplicated, run-lifetime `resolved N` count. No
+separate tracked-markets panel is introduced.
 
 Stream health distinguishes local book coalescing from upstream SDK loss. It
 reports run-lifetime raw book arrivals and pending snapshots superseded before

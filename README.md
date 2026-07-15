@@ -33,8 +33,9 @@ bundled because the pinned SDK does not provide one.
 The paper runtime maintains one condition-keyed union of configured markets,
 accepted followed-wallet discoveries, and paper positions. Dynamically
 discovered markets remain subscribed until resolution. Resolution events settle
-paper and followed-wallet positions at contractual `1`/`0` payouts and are
-persisted before `BaseBot.on_market_resolved()` runs.
+paper and followed-wallet positions at contractual `1`/`0` payouts, persist the
+terminal condition before `BaseBot.on_market_resolved()` runs, remove it from
+the active subscription, and prevent future re-admission after restart.
 
 Future Polymarket integrations must use an official Polymarket Python SDK or
 client wherever it supports the required capability. The unified

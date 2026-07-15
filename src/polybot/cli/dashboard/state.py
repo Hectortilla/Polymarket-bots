@@ -31,15 +31,10 @@ from polybot.cli.streams.contracts import StreamKind
 from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.config.models import BotMode
 from polybot.framework.wallets import normalize_wallet_address
 
-from .copy import (
-    RESOLUTION_LOSER_LABEL,
-    RESOLUTION_WINNER_LABEL,
-    RUN_FAILED_PREFIX,
-)
+from .copy import RUN_FAILED_PREFIX
 from .chart_state import (
     MAX_CHART_HISTORY_POINTS,
     MAX_CHART_WINDOW_POINTS,
@@ -133,7 +128,8 @@ class DashboardState:
     wallet_timeline: deque[WalletTimelineEvent] = field(default_factory=deque)
     wallet_timeline_by_source: dict[str, WalletTimelineEvent] = field(default_factory=dict)
     wallet_page: int = 0
-    resolved_prices: dict[str, Decimal] = field(default_factory=dict)
+    resolved_condition_ids: set[str] = field(default_factory=set)
+    resolved_market_count: int = 0
 
     def apply(self, event: RuntimeEvent) -> None:
         self._remember_event(event)
@@ -173,11 +169,7 @@ class DashboardState:
                 self._ticker("bold red", f"BROKER ERROR {event.error}")
             case MarketSettled():
                 self.portfolio = event.portfolio
-                self._ticker(
-                    "bold magenta",
-                    f"SETTLED {event.settlement.resolution.market_slug} paper payout "
-                    f"${event.settlement.paper_cash_payout_usdc}",
-                )
+                self._market_settled(event)
             case RuntimeFailed():
                 self.lifecycle = RuntimeState.FAILED
                 self._ticker("bold red", f"{RUN_FAILED_PREFIX} {event.error}")
@@ -284,9 +276,7 @@ class DashboardState:
                 self._record_book_stream(event)
         elif kind is StreamKind.WALLET:
             self._record_wallet_stream(event)
-        elif kind is StreamKind.RESOLUTION:
-            self._record_resolution(event.item.event)
-        else:
+        elif kind is StreamKind.MARKET_HINT:
             self._record_market_hint(event)
 
     def _bootstrap_progress(self, event: BootstrapProgress) -> None:
@@ -297,22 +287,24 @@ class DashboardState:
             self.markets_loaded = event.completed
             self.markets_total = event.total
 
-    def _record_resolution(self, event: MarketResolutionEvent) -> None:
-        for token_id in event.token_ids:
-            self._activate_chart_token(token_id)
-            self.resolved_prices[token_id] = event.payout_for(token_id)
-            label = self.market_labels.get(token_id, event.market_slug)
-            outcome = (
-                RESOLUTION_WINNER_LABEL
-                if token_id == event.winning_token_id
-                else RESOLUTION_LOSER_LABEL
-            )
-            self.market_labels[token_id] = f"{label} · resolved {outcome}"
+    def _market_settled(self, event: MarketSettled) -> None:
+        resolution = event.settlement.resolution
+        if resolution.condition_id not in self.resolved_condition_ids:
+            self.resolved_condition_ids.add(resolution.condition_id)
+            self.resolved_market_count += 1
+        for token_id in resolution.token_ids:
+            self.books.pop(token_id, None)
             self.pending_books.pop(token_id, None)
-        self._ticker(
-            "bold magenta",
-            f"RESOLVED {event.market_slug}: {event.winning_outcome}",
-        )
+            self.market_labels.pop(token_id, None)
+            self.price_history.pop(token_id, None)
+            self.price_stale_history.pop(token_id, None)
+            self.trade_marker_history.pop(token_id, None)
+            self.pending_trade_markers.pop(token_id, None)
+            self.market_ticker_at.pop(token_id, None)
+            try:
+                self.chart_tokens.remove(token_id)
+            except ValueError:
+                pass
 
     def _record_book_stream(self, event: StreamReceived) -> None:
         book = event.item.event

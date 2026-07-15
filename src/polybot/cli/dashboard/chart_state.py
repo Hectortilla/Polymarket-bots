@@ -26,13 +26,9 @@ def record_sample(state: DashboardState, now_ms: int | None = None) -> None:
         history = state.price_history[token_id]
         stale_history = state.price_stale_history[token_id]
         marker_history = state.trade_marker_history[token_id]
-        resolved_price = state.resolved_prices.get(token_id)
         book = state._current_book(token_id, now_ms)
         midpoint = None if book is None else book.midpoint()
-        if resolved_price is not None:
-            value = float(resolved_price)
-            is_stale = True
-        elif midpoint is not None:
+        if midpoint is not None:
             value = float(midpoint)
             is_stale = False
         elif book is None:

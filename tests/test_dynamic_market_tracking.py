@@ -43,13 +43,13 @@ from polybot.cli.followed_wallets.persistence.schema import (
     FOLLOW_WALLETS_FIELD,
     FOLLOWED_AT_MS_FIELD,
 )
-from polybot.cli.dashboard.copy import RESOLUTION_WINNER_LABEL
 from polybot.cli.observability.events import StreamReceived
 from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
 from polybot.cli.resolution import (
     GAMMA_RECONCILIATION_SOURCE,
     apply_resolution,
     reconcile_resolutions,
+    settle_resolved_markets,
 )
 from polybot.cli.tracking.paper import track_paper_positions
 from polybot.cli.tracking.wallets import synchronize_followed_wallets
@@ -135,6 +135,24 @@ def test_registry_deduplicates_wallet_interests_and_batches_token_changes() -> N
     assert rebuilt == 2
 
 
+def test_registry_never_readmits_terminal_conditions() -> None:
+    market = _market()
+    registry = TrackedMarketRegistry(
+        terminal_condition_ids=(market.condition_id,)
+    )
+
+    for interest in MarketInterest:
+        assert not registry.add(market, interest)
+    assert registry.markets == ()
+    assert registry.is_terminal(market.condition_id)
+
+    active_registry = TrackedMarketRegistry()
+    assert active_registry.add(market, MarketInterest.CONFIGURED)
+    assert active_registry.resolve(market.condition_id)
+    assert not active_registry.add(market, MarketInterest.BROKER_POSITION)
+    assert active_registry.markets == ()
+
+
 def test_wallet_dispatch_records_trade_and_registers_market_after_acceptance(
     tmp_path,
     dummy_context,
@@ -210,6 +228,39 @@ def test_wallet_dispatch_rejects_trade_without_market_slug(
     )
 
     assert outcome.skip_reason.value == "market_metadata_missing"
+
+
+def test_wallet_dispatch_skips_terminal_market_before_metadata_or_routing(
+    dummy_context,
+) -> None:
+    market = _market()
+    registry = TrackedMarketRegistry(
+        terminal_condition_ids=(market.condition_id,)
+    )
+
+    class Gamma:
+        async def find_by_slug(self, slug):
+            raise AssertionError("resolved trades must not fetch market metadata")
+
+    class Clob:
+        def has_market_slug(self, slug: str) -> bool:
+            raise AssertionError("resolved trades must not register CLOB metadata")
+
+    outcome = asyncio.run(
+        dispatch_wallet_trade(
+            BotRunner(BaseBot(), dummy_context, now_ms_fn=lambda: 1_000),
+            WalletStreamEvent(
+                StreamKind.WALLET,
+                _trade("resolved", Side.BUY, "1", "0.4", 1_000),
+            ),
+            gamma=Gamma(),  # type: ignore[arg-type]
+            clob=Clob(),  # type: ignore[arg-type]
+            registry=registry,
+            followed_wallets=None,
+        )
+    )
+
+    assert outcome.skip_reason.value == "market_resolved"
 
 
 def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> None:
@@ -684,6 +735,46 @@ def test_resolution_persists_before_hook_and_is_idempotent(tmp_path) -> None:
     assert registry.entries == ()
 
 
+def test_bootstrap_settles_resolved_market_before_any_subscription(tmp_path) -> None:
+    resolved_market = replace(
+        _market(),
+        resolved=True,
+        winning_token_id="yes-market",
+        winning_outcome=YES_OUTCOME,
+    )
+    registry = TrackedMarketRegistry()
+    registry.add(resolved_market, MarketInterest.CONFIGURED)
+    ledger = ResolutionLedger(tmp_path / "resolutions.json")
+    calls: list[str] = []
+
+    class Paper:
+        portfolio = PaperPortfolio(Decimal("100"))
+
+        def settle_market(self, event):
+            calls.append("paper")
+            return ()
+
+    class Runner:
+        async def dispatch_market_resolution(self, event):
+            calls.append("hook")
+
+    asyncio.run(
+        settle_resolved_markets(
+            Runner(),  # type: ignore[arg-type]
+            registry=registry,
+            followed_wallets=FollowedWalletTracker(tmp_path / "follow.json"),
+            paper_broker=Paper(),  # type: ignore[arg-type]
+            resolution_ledger=ledger,
+            observer=None,
+        )
+    )
+
+    assert calls == ["paper", "hook"]
+    assert registry.markets == ()
+    assert registry.is_terminal(resolved_market.condition_id)
+    assert ledger.resolved_condition_ids == {resolved_market.condition_id}
+
+
 def test_resolution_rolls_back_settlement_when_ledger_record_fails(tmp_path) -> None:
     registry = TrackedMarketRegistry()
     registry.add(_market(), MarketInterest.CONFIGURED)
@@ -1045,7 +1136,7 @@ def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ign
     assert registry.entries
 
 
-def test_resolution_stream_events_are_not_coalesced_and_update_dashboard() -> None:
+def test_resolution_stream_events_are_not_coalesced_or_charted() -> None:
     event = _resolution()
 
     async def source() -> AsyncIterator[MarketResolutionEvent]:
@@ -1064,12 +1155,8 @@ def test_resolution_stream_events_are_not_coalesced_and_update_dashboard() -> No
     state = DashboardState()
     state.apply(StreamReceived(items[0], 1.0))
     state.sample(80, now_ms=2_000)
-    assert state.resolved_prices == {
-        "yes-market": WINNING_PAYOUT_PER_TOKEN,
-        "no-market": LOSING_PAYOUT_PER_TOKEN,
-    }
-    assert RESOLUTION_WINNER_LABEL in state.market_label("yes-market")
-    assert state.price_stale_history["yes-market"][-1]
+    assert tuple(state.chart_tokens) == ()
+    assert state.price_history == {}
 
 
 def test_data_client_normalizes_current_positions_and_rejects_malformed() -> None:

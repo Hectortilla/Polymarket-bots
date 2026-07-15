@@ -97,7 +97,8 @@ def status_panel(state: DashboardState) -> Panel:
             style="bright_cyan",
         ),
         Text(
-            f"books {books} · follows {wallets} · skip {state.skipped_dispatches}",
+            f"books {books} · follows {wallets} · skip {state.skipped_dispatches} · "
+            f"resolved {state.resolved_market_count}",
             style="yellow",
         ),
         Text(

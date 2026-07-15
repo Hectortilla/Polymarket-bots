@@ -352,9 +352,11 @@ Status: done.
 - Settle paper and followed-wallet positions at `1` for the winning token and
   `0` for the losing token. Transfer paper payout to cash, archive wallet
   journals, persist idempotency, then invoke `BaseBot.on_market_resolved()`.
-- Emit non-coalesced resolution and observer settlement events. Update the
-  existing market series, legend, and ticker with dimmed final values; do not
-  add a second market panel.
+- Emit non-coalesced resolution and observer settlement events. A successful
+  settlement is terminal: remove the condition from the union subscription and
+  clear both outcome tokens from the dashboard series, legend, labels, ticker,
+  and cached chart state. The dashboard retains only a deduplicated,
+  run-lifetime `resolved N` status count; do not add a second market panel.
 
 Acceptance:
 
@@ -369,5 +371,8 @@ Acceptance:
 - Buys, sells, out-of-order delivery, duplicates, restarts, removal/re-add, and
   resolution produce deterministic gross accounting.
 - Resolution settlement is persisted before the bot hook and is idempotent.
-- Resolved markets leave the next union handle while unresolved entries remain.
+- Resolved markets leave the next union handle while unresolved entries remain,
+  cannot be re-admitted after restart from configured, wallet, or paper
+  position interests, and are settled before a bootstrap/rebuild can subscribe
+  to a Gamma-known resolved market.
 - Gamma reconciliation recovers lifecycle events missed by the stream.

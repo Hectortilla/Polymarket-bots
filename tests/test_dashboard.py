@@ -39,6 +39,7 @@ from polybot.cli.observability.events import (
     BootstrapProgress,
     DispatchCompleted,
     FillCompleted,
+    MarketSettled,
     OrderSubmitted,
     PortfolioPositionSnapshot,
     PortfolioSnapshot,
@@ -57,7 +58,11 @@ from polybot.cli.streams.contracts import BookStreamEvent, StreamKind, WalletStr
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillEvent, FillRejectReason, OrderRequest, OrderStatus, Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.events.resolutions import YES_OUTCOME
+from polybot.framework.events.resolutions import (
+    MarketResolutionEvent,
+    MarketSettlementEvent,
+    YES_OUTCOME,
+)
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 
 
@@ -981,6 +986,53 @@ def test_dashboard_retains_stale_chart_values_with_stale_markers() -> None:
     assert list(state.price_stale_history["token"]) == [False, True]
     assert list(state.wallet_value_history) == [90.4, 90.4]
     assert list(state.wallet_value_stale_history) == [False, True]
+
+
+def test_dashboard_removes_settled_market_state_and_counts_it_once() -> None:
+    state = DashboardState()
+    settled_yes = _book("settled-yes", Decimal("0.4"), Decimal("0.6"))
+    settled_no = _book("settled-no", Decimal("0.3"), Decimal("0.7"))
+    active = _book("active", Decimal("0.45"), Decimal("0.55"))
+    for book in (settled_yes, settled_no, active):
+        state.apply(StreamReceived(BookStreamEvent(StreamKind.BOOK, book), 1.0))
+    state.sample(80, now_ms=1_000)
+    state.pending_books[settled_yes.token_id] = settled_yes
+    state.pending_trade_markers[settled_no.token_id] = [Side.BUY]
+    resolution = MarketResolutionEvent(
+        condition_id="settled-condition",
+        market_slug="settled-market",
+        token_ids=(settled_yes.token_id, settled_no.token_id),
+        winning_token_id=settled_yes.token_id,
+        winning_outcome=YES_OUTCOME,
+        resolved_at_ms=1_000,
+        source="test",
+    )
+    settlement = MarketSettlementEvent(
+        resolution=resolution,
+        paper_positions=(),
+        followed_wallet_positions=(),
+        settled_at_ms=1_001,
+    )
+    event = MarketSettled(
+        settlement,
+        PortfolioSnapshot(Decimal("100"), Decimal("0"), ()),
+        2.0,
+    )
+
+    state.apply(event)
+    state.apply(event)
+
+    assert tuple(state.chart_tokens) == (active.token_id,)
+    assert settled_yes.token_id not in state.books
+    assert settled_no.token_id not in state.pending_books
+    assert settled_yes.token_id not in state.price_history
+    assert settled_no.token_id not in state.pending_trade_markers
+    assert active.token_id in state.price_history
+    assert state.resolved_market_count == 1
+    output = StringIO()
+    Console(file=output, width=120, height=35).print(render_dashboard(state, 120, 35))
+    assert "resolved 1" in output.getvalue()
+    assert "SETTLED settled-market" not in output.getvalue()
 
 
 def test_dashboard_renders_stale_samples_in_dimmed_series(monkeypatch) -> None:

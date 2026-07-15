@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -26,8 +27,11 @@ class TrackedMarket:
 class TrackedMarketRegistry:
     """Runtime-owned, condition-keyed union of every unresolved market interest."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, terminal_condition_ids: Iterable[str] = ()) -> None:
         self._entries: dict[str, TrackedMarket] = {}
+        self._terminal_condition_ids = frozenset(
+            condition_id for condition_id in terminal_condition_ids if condition_id
+        )
         self._revision = 0
         self._changed = asyncio.Event()
 
@@ -51,6 +55,13 @@ class TrackedMarketRegistry:
             for token_id in market_token_ids(entry.market)
         )
 
+    @property
+    def terminal_condition_ids(self) -> frozenset[str]:
+        return self._terminal_condition_ids
+
+    def is_terminal(self, condition_id: str) -> bool:
+        return condition_id in self._terminal_condition_ids
+
     def get(self, condition_id: str) -> TrackedMarket | None:
         return self._entries.get(condition_id)
 
@@ -61,6 +72,8 @@ class TrackedMarketRegistry:
         *,
         owner: str | None = None,
     ) -> bool:
+        if self.is_terminal(market.condition_id):
+            return False
         entry = self._entries.get(market.condition_id)
         subscription_changed = False
         if entry is None:
@@ -87,6 +100,7 @@ class TrackedMarketRegistry:
         return changed
 
     def resolve(self, condition_id: str) -> bool:
+        self._terminal_condition_ids = self._terminal_condition_ids | {condition_id}
         if self._entries.pop(condition_id, None) is None:
             return False
         self._notify_change()

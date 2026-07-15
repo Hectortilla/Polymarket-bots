@@ -29,7 +29,7 @@ from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
 from polybot.polymarket.wallet_activity.stream import WalletActivityStream
 
 from ..markets import resolve_plan_markets
-from ..resolution import reconcile_resolutions
+from ..resolution import reconcile_resolutions, settle_resolved_markets
 from ..tracked_markets import MarketInterest
 from ..tracking.paper import track_paper_positions
 from ..tracking.wallets import (
@@ -114,6 +114,14 @@ async def run_bot(
                 registry,
             )
             await track_paper_positions(paper_broker, registry, gamma)
+            await settle_resolved_markets(
+                runner,
+                registry=registry,
+                followed_wallets=followed_wallets,
+                paper_broker=paper_broker,
+                resolution_ledger=resolution_ledger,
+                observer=runtime_observer,
+            )
             clob.set_markets(registry.markets)
             market_stream.set_markets(registry.markets)
             runner.set_runtime_market_slugs(
@@ -141,6 +149,8 @@ async def run_bot(
                 ),
             )
             if not streams:
+                if resolved.current and not registry.markets:
+                    return
                 raise RuntimeError(
                     "the bot declared no current market or wallet subscriptions"
                 )

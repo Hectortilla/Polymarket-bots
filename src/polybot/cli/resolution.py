@@ -52,6 +52,35 @@ async def reconcile_resolutions(
         await asyncio.sleep(interval_seconds)
 
 
+async def settle_resolved_markets(
+    runner: BotRunner,
+    *,
+    registry: TrackedMarketRegistry,
+    followed_wallets: FollowedWalletTracker,
+    paper_broker: PaperBroker,
+    resolution_ledger: ResolutionLedger,
+    observer: RuntimeObserver | None,
+) -> None:
+    """Settle Gamma markets already marked resolved before opening streams."""
+
+    for market in registry.markets:
+        event = MarketResolutionEvent.from_market(
+            market,
+            resolved_at_ms=int(time() * 1_000),
+            source=GAMMA_RECONCILIATION_SOURCE,
+        )
+        if event is not None:
+            await apply_resolution(
+                runner,
+                event,
+                registry=registry,
+                followed_wallets=followed_wallets,
+                paper_broker=paper_broker,
+                resolution_ledger=resolution_ledger,
+                observer=observer,
+            )
+
+
 async def apply_resolution(
     runner: BotRunner,
     event: MarketResolutionEvent,

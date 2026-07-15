@@ -41,6 +41,7 @@ from polybot.framework.events.resolutions import MarketResolutionEvent, YES_OUTC
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import MarketPlan, MarketSubscription
 from polybot.framework.runner import BotRunner
+from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.polymarket.types import Market
 from polybot.polymarket.types import MarketTradeHint
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
@@ -751,6 +752,207 @@ def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(mo
         ("bucket-0", "bucket-300"),
         ("bucket-0", "bucket-300"),
     ]
+
+
+def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    plan = StreamPlan(
+        current=(StreamRule(StreamRelation.INDEPENDENT, ("first", "second")),),
+    )
+    markets = {slug: _market(slug) for slug in ("first", "second")}
+
+    class FakeGamma:
+        def __init__(self, client) -> None:
+            pass
+
+        async def find_many(self, slugs):
+            return tuple(markets[slug] for slug in slugs)
+
+    class FakeClob:
+        def __init__(self, client) -> None:
+            self.market_sets: list[tuple[str, ...]] = []
+
+        def set_markets(self, candidates) -> None:
+            self.market_sets.append(tuple(market.slug for market in candidates))
+
+    class FakeMarketStream:
+        token_sets: list[frozenset[str]] = []
+        closed_token_sets: list[frozenset[str]] = []
+
+        def __init__(self, client) -> None:
+            pass
+
+        def set_markets(self, candidates) -> None:
+            return None
+
+        async def events(self, token_ids):
+            subscribed = frozenset(token_ids)
+            self.token_sets.append(subscribed)
+            try:
+                if len(self.token_sets) == 1:
+                    yield MarketResolutionEvent(
+                        condition_id=markets["first"].condition_id,
+                        market_slug="first",
+                        token_ids=("yes-first", "no-first"),
+                        winning_token_id="yes-first",
+                        winning_outcome=YES_OUTCOME,
+                        resolved_at_ms=1,
+                        source="test",
+                    )
+                    yield replace(
+                        _book("yes-first", 1),
+                        condition_id=markets["first"].condition_id,
+                        market_slug="first",
+                    )
+                    await asyncio.Event().wait()
+                else:
+                    yield replace(
+                        _book("yes-second", 2),
+                        condition_id=markets["second"].condition_id,
+                        market_slug="second",
+                    )
+            finally:
+                self.closed_token_sets.append(subscribed)
+
+    class FakeWalletClient:
+        def __init__(self, client) -> None:
+            pass
+
+    class FakePaperBroker:
+        def __init__(self, *args, **kwargs) -> None:
+            self.portfolio = PaperPortfolio(Decimal("100"))
+            self.position_market_refs = {}
+
+        def settle_market(self, event):
+            return self.portfolio.settle_market(event)
+
+    class FakeRunner:
+        books: list[str] = []
+        resolutions: list[str] = []
+
+        def __init__(self, bot, ctx) -> None:
+            pass
+
+        def set_runtime_market_slugs(self, market_slugs) -> None:
+            return None
+
+        async def refresh_stream_plan(self):
+            return plan
+
+        async def dispatch_book(self, event) -> DispatchOutcome:
+            self.books.append(event.token_id)
+            return DispatchOutcome.accepted_event()
+
+        async def dispatch_market_resolution(self, event) -> None:
+            self.resolutions.append(event.condition_id)
+
+    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeClob)
+    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeMarketStream)
+    monkeypatch.setattr(
+        "polybot.cli.runner.factory.WalletActivityClient", FakeWalletClient
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
+    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeRunner)
+
+    asyncio.run(run_bot(BaseBot(), BotConfig(name="resolution-rebuild"), client=object()))
+
+    first_tokens = frozenset(("yes-first", "no-first", "yes-second", "no-second"))
+    assert FakeMarketStream.token_sets == [
+        first_tokens,
+        frozenset(("yes-second", "no-second")),
+    ]
+    assert FakeMarketStream.closed_token_sets == FakeMarketStream.token_sets
+    assert FakeRunner.books == ["yes-second"]
+    assert FakeRunner.resolutions == [markets["first"].condition_id]
+
+
+def test_gamma_resolved_market_is_settled_before_stream_creation(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    market = replace(
+        _market("resolved"),
+        resolved=True,
+        winning_token_id="yes-resolved",
+        winning_outcome=YES_OUTCOME,
+    )
+    plan = StreamPlan(
+        current=(StreamRule(StreamRelation.INDEPENDENT, (market.slug,)),),
+    )
+
+    class FakeGamma:
+        def __init__(self, client) -> None:
+            pass
+
+        async def find_many(self, slugs):
+            return tuple(market for _ in slugs)
+
+    class FakeClob:
+        def __init__(self, client) -> None:
+            pass
+
+        def set_markets(self, candidates) -> None:
+            assert tuple(candidates) == ()
+
+    class FakeMarketStream:
+        opened = False
+
+        def __init__(self, client) -> None:
+            pass
+
+        def set_markets(self, candidates) -> None:
+            return None
+
+        async def events(self, token_ids):
+            type(self).opened = True
+            raise AssertionError("resolved Gamma market must not open a stream")
+            yield  # pragma: no cover
+
+    class FakeWalletClient:
+        def __init__(self, client) -> None:
+            pass
+
+    class FakePaperBroker:
+        def __init__(self, *args, **kwargs) -> None:
+            self.portfolio = PaperPortfolio(Decimal("100"))
+            self.position_market_refs = {}
+
+        def settle_market(self, event):
+            return self.portfolio.settle_market(event)
+
+    class FakeRunner:
+        settled: list[str] = []
+
+        def __init__(self, bot, ctx) -> None:
+            pass
+
+        def set_runtime_market_slugs(self, market_slugs) -> None:
+            assert market_slugs == frozenset()
+
+        async def refresh_stream_plan(self):
+            return plan
+
+        async def dispatch_market_resolution(self, event) -> None:
+            self.settled.append(event.condition_id)
+
+    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeClob)
+    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeMarketStream)
+    monkeypatch.setattr(
+        "polybot.cli.runner.factory.WalletActivityClient", FakeWalletClient
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
+    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeRunner)
+
+    asyncio.run(run_bot(BaseBot(), BotConfig(name="gamma-resolved"), client=object()))
+
+    assert not FakeMarketStream.opened
+    assert FakeRunner.settled == [market.condition_id]
 
 
 def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None:

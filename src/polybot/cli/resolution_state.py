@@ -42,6 +42,10 @@ class ResolutionLedger:
     def contains(self, event: MarketResolutionEvent) -> bool:
         return self._existing_record(event) is not None
 
+    @property
+    def resolved_condition_ids(self) -> frozenset[str]:
+        return frozenset(self._records)
+
     def record(self, settlement: MarketSettlementEvent) -> None:
         event = settlement.resolution
         if self._existing_record(event) is not None:

@@ -68,7 +68,9 @@ async def create_runtime(
     resolution_ledger = await ResolutionLedger.create(
         state_path(config.name, RESOLUTION_LEDGER_SUFFIX)
     )
-    registry = TrackedMarketRegistry()
+    registry = TrackedMarketRegistry(
+        terminal_condition_ids=resolution_ledger.resolved_condition_ids
+    )
     paper_broker = PaperBroker(config, clob, gamma, source_store=source_store)
     broker = ObservableBroker(
         paper_broker,
