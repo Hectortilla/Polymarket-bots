@@ -8,8 +8,7 @@ from decimal import Decimal
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-
-from polybot.examples.example_random_hold import ExampleRandomHoldBot
+from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.markets import market_bucket_slug
@@ -20,7 +19,7 @@ COPY_TRADE_NOTIONAL_USDC = Decimal("10")
 FIXED_DOLLAR_COPY_REASON = "fixed_dollar_wallet_copy"
 
 
-class ExampleDynamicRandomHoldWalletFilterBot(ExampleRandomHoldBot):
+class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
     """Random-hold bot for consecutive five-minute buckets and wallet filters."""
 
     def __init__(
