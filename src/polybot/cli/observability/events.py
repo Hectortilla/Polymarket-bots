@@ -9,6 +9,7 @@ from time import monotonic
 from typing import TYPE_CHECKING
 
 from polybot.framework.config.models import BotConfig, BotMode
+from polybot.framework.activity import BotActivityEvent
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.events import FillEvent, OrderRequest
 from polybot.framework.events.books import BookSnapshot
@@ -182,4 +183,5 @@ RuntimeEvent = (
     | BrokerFailed
     | MarketSettled
     | RuntimeFailed
+    | BotActivityEvent
 )

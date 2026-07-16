@@ -32,6 +32,7 @@ from polybot.cli.dashboard.state import (
     DashboardState,
 )
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
+from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import (
     BrokerFailed,
@@ -763,6 +764,22 @@ def test_dashboard_m_key_toggles_market_activity() -> None:
     dashboard._handle_key("m")
 
     assert dashboard._state.show_market_events
+
+
+def test_dashboard_renders_bot_activity_with_severity_and_safe_message() -> None:
+    state = DashboardState()
+    state.apply(
+        BotActivityEvent(
+            "trigger\nconfirmed",
+            severity=ActivitySeverity.WARNING,
+            occurred_at=1.0,
+        )
+    )
+
+    row = state.activity_ticker()[0]
+
+    assert row.message == "BOT trigger confirmed"
+    assert row.style == "bold yellow"
 
 
 def test_observable_broker_returns_original_fill_and_emits_order_then_fill() -> None:

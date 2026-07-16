@@ -214,7 +214,9 @@ unchanged and still rejects a genuinely stale latest snapshot.
 The CLI enables its terminal dashboard by default and accepts `--no-dashboard`
 for headless operation. It may attach a fail-open `RuntimeObserver` without exposing it to bots,
 adapters, or paper execution. The observer receives lifecycle, stream,
-dispatch, order, fill, settlement, and portfolio events. Its Rich dashboard projects them
+dispatch, order, fill, settlement, portfolio, and bot-activity events. `BotContext.activity`
+is an async, fail-open framework sink; bots use it to emit a message with an
+`ActivitySeverity` without importing Dashboard or CLI types. Its Rich dashboard projects them
 in memory, uses `asciichartpy` for fixed-scale price and variance-padded
 executable-wallet-value charts. The price chart is taller for clearer y-axis
 resolution. Completed buys and sells are marked directly on the traded token's

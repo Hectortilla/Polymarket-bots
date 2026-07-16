@@ -154,8 +154,8 @@ Paper-broker tests should use deterministic latency and book sequences:
 ## Terminal Dashboard
 
 The CLI dashboard is enabled by default. It is an external observer: bots
-should not import dashboard classes or emit display events. Use
-`--no-dashboard` for headless runs.
+should not import dashboard classes, but may add custom Activity rows through
+the framework contract. Use `--no-dashboard` for headless runs.
 It shows market/wallet activity, paper orders and fills, multi-token prices,
 green buy and red sell markers anchored to the traded token's line, and
 executable paper wallet value without changing strategy behavior. When a
@@ -167,6 +167,20 @@ events were skipped before bot dispatch. It shares `z`/`x`/`r` time controls
 with the market chart. Use `j`/`k` to page wallet lanes. Press `m` to show or
 hide blue market events in Activity; they are hidden by default. Order and fill
 rows show their market/outcome label after its metadata reaches the dashboard.
+
+Emit bot activity from any async function that receives `ctx`:
+
+```python
+from polybot.framework.activity import ActivitySeverity
+
+await ctx.activity.emit(
+    "Rebound trigger confirmed",
+    severity=ActivitySeverity.SUCCESS,
+)
+```
+
+Activity is informational and fail-open: it cannot affect trading. The same
+typed event reaches a custom runtime observer in headless runs.
 
 Tools integrating the CLI may pass a custom
 `polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers

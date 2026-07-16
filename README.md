@@ -69,6 +69,10 @@ stable `DispatchSkipReason` instead of collapsing every skip into a boolean.
 The CLI enables the dashboard by default. Use `--no-dashboard` for headless
 operation:
 
+Bots can add typed informational rows to the Dashboard Activity panel with
+`await ctx.activity.emit(message, severity=ActivitySeverity.INFO)`. These
+events also reach custom runtime observers during headless runs.
+
 During startup, the Activity panel shows compact wallet and market bootstrap
 progress counters while configured markets and followed-wallet positions are
 loaded.

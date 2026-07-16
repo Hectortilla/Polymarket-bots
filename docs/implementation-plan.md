@@ -296,7 +296,8 @@ Status: done.
 
 - Keep terminal rendering outside bot, adapter, and execution code.
 - Emit optional fail-open runtime observer events for lifecycle, streams,
-  dispatch outcomes, orders, fills, and paper portfolio snapshots.
+  dispatch outcomes, orders, fills, paper portfolio snapshots, and bot-authored
+  activity messages with typed severities.
 - Emit fail-open bootstrap progress for configured market resolution and
   followed-wallet loading; render completed/total counters in Activity.
 - Decorate the CLI broker without changing its public order/fill contract.

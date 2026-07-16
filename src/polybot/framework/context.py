@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from polybot.execution.broker import Broker
+from polybot.framework.activity import ActivitySink, NullActivitySink
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
@@ -38,3 +39,4 @@ class BotContext:
     books: BookClient
     wallet_activity: WalletActivityClient
     positions: PositionClient | None = None
+    activity: ActivitySink = field(default_factory=NullActivitySink)

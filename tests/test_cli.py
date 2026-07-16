@@ -35,6 +35,7 @@ from polybot.cli.observability.events import (
 )
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
+from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
@@ -604,9 +605,11 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
 
         async def on_start(self, ctx) -> None:
             self.started += 1
+            await ctx.activity.emit("bot started", severity=ActivitySeverity.SUCCESS)
 
         async def on_stop(self, ctx) -> None:
             self.stopped += 1
+            await ctx.activity.emit("bot stopped")
 
     class FakeBroker:
         def __init__(self, *args, **kwargs) -> None:
@@ -655,6 +658,14 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         (BootstrapPhase.MARKETS, 0, 1),
         (BootstrapPhase.MARKETS, 1, 1),
         (BootstrapPhase.WALLETS, 0, 0),
+    ]
+    assert [
+        (event.message, event.severity)
+        for event in observer.events
+        if isinstance(event, BotActivityEvent)
+    ] == [
+        ("bot started", ActivitySeverity.SUCCESS),
+        ("bot stopped", ActivitySeverity.INFO),
     ]
 
 

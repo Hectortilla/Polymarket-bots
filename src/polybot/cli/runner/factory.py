@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from polymarket import AsyncPublicClient
 
 from polybot.cli.observability.broker import ObservableBroker
+from polybot.cli.observability.activity import ObserverActivitySink
 from polybot.cli.observability.events import PortfolioSnapshot
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.execution.paper import PaperBroker
@@ -97,5 +98,6 @@ async def create_runtime(
             books=clob,
             wallet_activity=wallet_client,
             positions=position_client,
+            activity=ObserverActivitySink(observer),
         ),
     )

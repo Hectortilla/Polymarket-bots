@@ -27,6 +27,7 @@ from polybot.cli.observability.events import (
     StreamReceived,
     StreamHealth,
 )
+from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.cli.dashboard.palette import SERIES_PALETTE, side_text_style
 from polybot.cli.streams.contracts import StreamKind
 from polybot.framework.events import OrderStatus, Side
@@ -188,6 +189,8 @@ class DashboardState:
             case RuntimeFailed():
                 self.lifecycle = RuntimeState.FAILED
                 self._ticker("bold red", f"{RUN_FAILED_PREFIX} {event.error}")
+            case BotActivityEvent():
+                self._ticker(_activity_style(event.severity), f"BOT {event.message}")
 
     def sample(self, width: int, now_ms: int | None = None) -> None:
         record_sample(self, now_ms)
@@ -590,6 +593,15 @@ class DashboardState:
 
 def _side_style(side: Side) -> str:
     return side_text_style(side, bold=True)
+
+
+def _activity_style(severity: ActivitySeverity) -> str:
+    return {
+        ActivitySeverity.INFO: "white",
+        ActivitySeverity.SUCCESS: "bold green",
+        ActivitySeverity.WARNING: "bold yellow",
+        ActivitySeverity.ERROR: "bold red",
+    }[severity]
 
 
 def _safe_message(value: str) -> str:
