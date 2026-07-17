@@ -278,8 +278,16 @@ Add examples one by one:
 - Wallet follower bot.
 - Spread watcher bot.
 - Small market-maker bot with inventory limits.
+- BTC five-minute Up/Down probability-momentum bot.
 
 Each example must stay short and avoid framework internals.
+
+Implementation note: the BTC example is implemented as a dynamic bucket bot.
+It consumes package-owned `BookSnapshot` contracts for both outcomes and adds
+paired-book freshness, microprice normalization, EMA/momentum/noise filters,
+book-confirmation, and explicit position exits without importing an SDK or
+adding a new network path. Its deterministic unit tests validate strategy rules;
+historical performance evaluation remains in the later backtesting slice.
 
 ## Slice 9: Backtesting Inputs
 

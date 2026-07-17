@@ -83,3 +83,21 @@ BOT_STREAM_RULES='<stream-rules-json>' \
 BOT_YES_TOKEN_ID=<yes-token-id> \
 uv run python -m polybot.cli --bot polybot.my_bot:create
 ```
+
+The paper-only BTC five-minute momentum example continuously rolls across the
+canonical `btc-updown-5m-<bucket-start>` markets:
+
+```sh
+BOT_MODE=paper \
+BOT_MAX_ORDER_SIZE=5 \
+uv run python -m polybot.cli \
+  --bot polybot.examples.example_btc_five_minute_momentum:create
+```
+
+It uses only normalized Up/Down order books: paired microprices, fast/slow EMA
+trend, rate-of-change, an adaptive noise floor, and top-of-book imbalance. It
+holds at most one outcome and has spread, depth, price, time-window, stop,
+target, reversal, cooldown, and pre-expiry guards. See
+`docs/bot-author-guide.md` for the full strategy explanation. Keep it in paper
+mode until its parameters have been evaluated on representative recorded data;
+unit tests validate deterministic behavior, not profitability.

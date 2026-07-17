@@ -275,6 +275,52 @@ class FiveMinuteBot(BaseBot):
 This lets a bot initialize in the middle of a bucket, receive events for the
 current market, and prepare the next slug before rollover.
 
+### BTC five-minute probability-momentum example
+
+`polybot.examples.example_btc_five_minute_momentum:create` is a complete
+paper-trading example for consecutive `btc-updown-5m` markets. It deliberately
+uses only the current Up and Down token books, so it demonstrates what can be
+done without an external BTC price feed.
+
+For each fresh pair of books it computes:
+
+- A microprice for each token, weighted by best-bid and best-ask size.
+- A normalized Up probability: `up_microprice / (up_microprice + down_microprice)`.
+- Fast and slow exponential moving averages of that probability.
+- Multi-sample probability momentum and the average absolute move over the same
+  window as a noise estimate.
+
+An entry needs EMA trend and momentum to agree and exceed both fixed minimums
+and their adaptive noise floors. The target token must also have positive
+three-level book imbalance. The imbalance is confirmation only because visible
+depth can be canceled; it never creates a trade by itself.
+
+The risk rules keep the example bounded:
+
+- At most one long Up or Down position; it never opens a naked short.
+- Both books must be fresh enough to pair, and both spreads must be acceptable.
+- The target book must have adequate bid/ask depth and a non-extreme entry
+  price.
+- No entry during the opening buffer or near bucket expiry.
+- Exit on executable-price stop, profit target, strong EMA reversal, maximum
+  hold time, or the pre-expiry deadline.
+- A cooldown after an exit prevents immediate churn.
+
+Run it through the normal CLI:
+
+```sh
+BOT_MODE=paper \
+BOT_MAX_ORDER_SIZE=5 \
+uv run python -m polybot.cli \
+  --bot polybot.examples.example_btc_five_minute_momentum:create
+```
+
+The defaults in `polybot.examples.btc_five_minute_strategy.MomentumSettings`
+are intentionally readable starting values, not optimized parameters. Unit
+tests cover its signal, confirmation, rollover, stop, and expiry behavior.
+Historical replay is not implemented until Slice 9, so those tests do not
+establish a live trading edge or expected return.
+
 ### Dynamic wallet-filtered example
 
 `polybot.my_bot:create` runs the separate dynamic random-hold wallet-filter
