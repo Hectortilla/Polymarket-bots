@@ -33,9 +33,14 @@ from polymarket.models.gamma.market import (
 )
 
 from polybot.framework.events import Side
+from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.recording_feed import MarketCapture, MarketRecordingFeed
+from polybot.polymarket.recording_feed import (
+    CaptureContinuityError,
+    MarketCapture,
+    MarketRecordingFeed,
+)
 from polybot.polymarket.recording_metadata import (
     RecordingMarket,
     RecordingMarketResolver,
@@ -45,7 +50,9 @@ from polybot.polymarket.types import Market, MarketOutcome
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookDeltaPayload,
+    CaptureFailureKind,
     PublicTradePayload,
+    RevisionFingerprint,
     ResolutionPayload,
     TickSizeChangePayload,
 )
@@ -298,6 +305,57 @@ def test_capture_combines_split_revision_before_validating_crossed_depth() -> No
     assert tuple(level.price for level in up_book.asks) == (Decimal("0.60"),)
 
 
+def test_capture_allows_a_matching_continuation_with_additional_token_hashes() -> None:
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _multi_price_change_event(
+            (
+                _price_change(
+                    token_id="up-token",
+                    price="0.50",
+                    size="0",
+                    side="SELL",
+                    source_hash="revision-up",
+                ),
+                _price_change(
+                    token_id="down-token",
+                    price="0.35",
+                    size="7",
+                    side="BUY",
+                    source_hash="revision-down",
+                ),
+            )
+        ),
+    )
+
+    async def run() -> tuple[CapturedMarketEvent, tuple[BookSnapshot, ...]]:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        combined = await anext(capture)
+        return combined, capture.projected_books(4_000)
+
+    combined, books = asyncio.run(run())
+
+    assert isinstance(combined.payload, BookDeltaPayload)
+    assert tuple(change.token_id for change in combined.payload.changes) == (
+        "up-token",
+        "up-token",
+        "down-token",
+    )
+    books_by_token = {book.token_id: book for book in books}
+    assert books_by_token["up-token"].bids[0].price == Decimal("0.55")
+    assert books_by_token["up-token"].asks[0].price == Decimal("0.60")
+    assert books_by_token["down-token"].bids[0].price == Decimal("0.35")
+
+
 def test_capture_rejects_crossed_fragments_from_different_revisions() -> None:
     events = _split_revision_prefix() + (
         _price_change_event(
@@ -312,23 +370,264 @@ def test_capture_rejects_crossed_fragments_from_different_revisions() -> None:
             side="SELL",
             source_hash="different-revision",
         ),
+        MarketTickSizeChangeEvent(
+            type="tick_size_change",
+            payload=MarketTickSizeChangePayload(
+                market="condition-bucket",
+                asset_id="up-token",
+                old_tick_size="0.01",
+                new_tick_size="0.001",
+                timestamp=datetime.fromtimestamp(4, tz=UTC),
+            ),
+        ),
     )
 
-    async def run() -> tuple[MarketDataIssue, CapturedMarketEvent]:
+    async def run() -> tuple[
+        CaptureContinuityError,
+        CapturedMarketEvent,
+        tuple[BookSnapshot, ...],
+    ]:
         capture = await MarketRecordingFeed(  # type: ignore[arg-type]
             FakeStreamClient(FakeHandle(events))
         ).open_capture(_market(), generation=7)
         await anext(capture)
         await anext(capture)
-        with pytest.raises(MarketDataError) as caught:
+        with pytest.raises(CaptureContinuityError) as caught:
             await anext(capture)
-        return caught.value.issue, await anext(capture)
+        next_event = await anext(capture)
+        return caught.value, next_event, capture.projected_books(4_000)
 
-    issue, next_event = asyncio.run(run())
+    error, next_event, books = asyncio.run(run())
 
-    assert issue is MarketDataIssue.CROSSED_BOOK
-    assert isinstance(next_event.payload, BookDeltaPayload)
-    assert next_event.payload.changes[0].source_hash == "different-revision"
+    assert error.issue is MarketDataIssue.CROSSED_BOOK
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_MISMATCH
+    assert error.expected_fingerprint == RevisionFingerprint(
+        condition_id="condition-bucket",
+        source_timestamp_ms=3_000,
+        source_hashes=(("up-token", "revision-up"),),
+    )
+    assert error.actual_fingerprint == RevisionFingerprint(
+        condition_id="condition-bucket",
+        source_timestamp_ms=3_000,
+        source_hashes=(("up-token", "different-revision"),),
+    )
+    assert error.matching_fragments == ()
+    assert error.mismatching_fragment is error.fragments[-1]
+    assert isinstance(error.mismatching_fragment.payload, BookDeltaPayload)
+    assert (
+        error.mismatching_fragment.payload.changes[0].source_hash
+        == "different-revision"
+    )
+    assert error.mismatching_fragment.payload.changes[0].best_bid == Decimal("0.55")
+    assert error.dropped_count_before == 0
+    assert error.dropped_count_after == 0
+    assert error.elapsed_seconds >= 0
+    assert isinstance(next_event.payload, TickSizeChangePayload)
+    up_book = next(book for book in books if book.token_id == "up-token")
+    assert up_book.bids[0].price == Decimal("0.40")
+    assert up_book.asks[0].price == Decimal("0.50")
+
+
+@pytest.mark.parametrize("mismatch", ("timestamp", "missing_hash", "unrelated"))
+def test_capture_rejects_unprovable_split_revision_continuations(
+    mismatch: str,
+) -> None:
+    if mismatch == "timestamp":
+        continuation: object = _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="revision-up",
+            timestamp_seconds=4,
+        )
+    elif mismatch == "missing_hash":
+        continuation = _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash=None,
+        )
+    else:
+        continuation = MarketLastTradePriceEvent(
+            type="last_trade_price",
+            payload=MarketLastTradePricePayload(
+                market="condition-bucket",
+                asset_id="up-token",
+                price="0.45",
+                size="1",
+                side="BUY",
+                timestamp=datetime.fromtimestamp(3, tz=UTC),
+            ),
+        )
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        continuation,
+    )
+
+    async def run() -> CaptureContinuityError:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_MISMATCH
+    assert error.mismatching_fragment is not None
+    if mismatch == "timestamp":
+        assert error.actual_fingerprint is not None
+        assert error.actual_fingerprint.source_timestamp_ms == 4_000
+    else:
+        assert error.actual_fingerprint is None
+
+
+def test_capture_rejects_an_unsupported_event_between_split_fragments() -> None:
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        object(),
+        _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="revision-up",
+        ),
+    )
+
+    async def run() -> CaptureContinuityError:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_MISMATCH
+    assert error.matching_fragments == ()
+    assert error.mismatching_fragment is None
+    assert error.actual_fingerprint is None
+
+
+def test_capture_allows_a_later_fragment_to_omit_an_added_token_hash() -> None:
+    events = _split_revision_with_added_hash(
+        (
+            _price_change(
+                token_id="up-token",
+                price="0.50",
+                size="0",
+                side="SELL",
+                source_hash="revision-up",
+            ),
+        )
+    )
+
+    async def run() -> CapturedMarketEvent:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        return await anext(capture)
+
+    combined = asyncio.run(run())
+
+    assert isinstance(combined.payload, BookDeltaPayload)
+    assert tuple(change.token_id for change in combined.payload.changes) == (
+        "up-token",
+        "up-token",
+        "down-token",
+        "up-token",
+    )
+
+
+def test_capture_rejects_a_changed_previously_added_token_hash() -> None:
+    events = _split_revision_with_added_hash(
+        (
+            _price_change(
+                token_id="up-token",
+                price="0.50",
+                size="0",
+                side="SELL",
+                source_hash="revision-up",
+            ),
+            _price_change(
+                token_id="down-token",
+                price="0.36",
+                size="1",
+                side="BUY",
+                source_hash="changed-down",
+            ),
+        )
+    )
+
+    async def run() -> CaptureContinuityError:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_MISMATCH
+    assert len(error.matching_fragments) == 1
+    assert error.expected_fingerprint == RevisionFingerprint(
+        condition_id="condition-bucket",
+        source_timestamp_ms=3_000,
+        source_hashes=(
+            ("up-token", "revision-up"),
+            ("down-token", "revision-down"),
+        ),
+    )
+    assert error.mismatching_fragment is not None
+
+
+def test_capture_rejects_a_crossed_first_fragment_without_a_hash() -> None:
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash=None,
+        ),
+    )
+
+    async def run() -> CaptureContinuityError:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_MISMATCH
+    assert error.expected_fingerprint is None
+    assert error.mismatching_fragment is None
+    assert len(error.fragments) == 1
 
 
 def test_capture_times_out_an_unfinished_split_revision() -> None:
@@ -355,7 +654,7 @@ def test_capture_times_out_an_unfinished_split_revision() -> None:
         async def close(self) -> None:
             self.closed = True
 
-    async def run() -> MarketDataIssue:
+    async def run() -> CaptureContinuityError:
         capture = MarketCapture(
             HangingHandle(),
             market=_market(),
@@ -364,11 +663,148 @@ def test_capture_times_out_an_unfinished_split_revision() -> None:
         )
         await anext(capture)
         await anext(capture)
-        with pytest.raises(MarketDataError) as caught:
+        with pytest.raises(CaptureContinuityError) as caught:
             await anext(capture)
-        return caught.value.issue
+        return caught.value
 
-    assert asyncio.run(run()) is MarketDataIssue.CROSSED_BOOK
+    error = asyncio.run(run())
+
+    assert error.issue is MarketDataIssue.CROSSED_BOOK
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_TIMEOUT
+    assert error.mismatching_fragment is None
+
+
+def test_capture_reports_an_ended_split_revision() -> None:
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+    )
+
+    async def run() -> CaptureContinuityError:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SPLIT_REVISION_END
+    assert error.expected_fingerprint is not None
+
+
+@pytest.mark.parametrize("drop_event_index", (2, 3))
+def test_capture_detects_sdk_drops_during_split_revision_assembly(
+    drop_event_index: int,
+) -> None:
+    class DroppingHandle(FakeHandle):
+        async def _iterate(self) -> AsyncIterator[object]:
+            for index, event in enumerate(self._events):
+                if index == drop_event_index:
+                    self.dropped += 1
+                yield event
+
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="revision-up",
+        ),
+    )
+
+    async def run() -> CaptureContinuityError:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(DroppingHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SDK_HANDLE_DROP
+    assert error.dropped_count_before == 0
+    assert error.dropped_count_after == 1
+    expected_fragment_count = 1 if drop_event_index == 2 else 2
+    assert len(error.fragments) == expected_fragment_count
+
+
+def test_capture_checks_sdk_drops_immediately_before_revision_commit() -> None:
+    class CommitDropHandle:
+        def __init__(self, events: tuple[object, ...]) -> None:
+            self._events = events
+            self._continuation_delivered = False
+            self._post_continuation_drop_reads = 0
+            self.closed = False
+
+        @property
+        def dropped(self) -> int:
+            if not self._continuation_delivered:
+                return 0
+            self._post_continuation_drop_reads += 1
+            return int(self._post_continuation_drop_reads >= 2)
+
+        def __aiter__(self) -> AsyncIterator[object]:
+            return self._iterate()
+
+        async def _iterate(self) -> AsyncIterator[object]:
+            for index, event in enumerate(self._events):
+                if index == 3:
+                    self._continuation_delivered = True
+                yield event
+
+        async def close(self) -> None:
+            self.closed = True
+
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="revision-up",
+        ),
+    )
+
+    async def run() -> tuple[CaptureContinuityError, tuple[BookSnapshot, ...]]:
+        capture = MarketCapture(
+            CommitDropHandle(events),
+            market=_market(),
+            generation=7,
+        )
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(CaptureContinuityError) as caught:
+            await anext(capture)
+        return caught.value, capture.projected_books(4_000)
+
+    error, books = asyncio.run(run())
+
+    assert error.failure_kind is CaptureFailureKind.SDK_HANDLE_DROP
+    up_book = next(book for book in books if book.token_id == "up-token")
+    assert up_book.bids[0].price == Decimal("0.40")
+    assert up_book.asks[0].price == Decimal("0.50")
 
 
 def test_capture_rejects_delta_before_baseline() -> None:
@@ -533,30 +969,91 @@ def _split_revision_prefix() -> tuple[MarketBookEvent, MarketBookEvent]:
     )
 
 
+def _split_revision_with_added_hash(
+    third_changes: tuple[PriceChange, ...],
+) -> tuple[object, ...]:
+    return _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _multi_price_change_event(
+            (
+                _price_change(
+                    token_id="up-token",
+                    price="0.56",
+                    size="2",
+                    side="BUY",
+                    source_hash="revision-up",
+                ),
+                _price_change(
+                    token_id="down-token",
+                    price="0.35",
+                    size="7",
+                    side="BUY",
+                    source_hash="revision-down",
+                ),
+            )
+        ),
+        _multi_price_change_event(third_changes),
+    )
+
+
 def _price_change_event(
     *,
     price: str,
     size: str,
     side: str,
-    source_hash: str,
+    source_hash: str | None,
+    timestamp_seconds: int = 3,
+) -> MarketPriceChangeEvent:
+    return _multi_price_change_event(
+        (
+            _price_change(
+                token_id="up-token",
+                price=price,
+                size=size,
+                side=side,
+                source_hash=source_hash,
+            ),
+        ),
+        timestamp_seconds=timestamp_seconds,
+    )
+
+
+def _multi_price_change_event(
+    changes: tuple[PriceChange, ...],
+    *,
+    timestamp_seconds: int = 3,
 ) -> MarketPriceChangeEvent:
     return MarketPriceChangeEvent(
         type="price_change",
         payload=MarketPriceChangePayload(
             market="condition-bucket",
-            price_changes=(
-                PriceChange(
-                    asset_id="up-token",
-                    price=price,
-                    size=size,
-                    side=side,
-                    hash=source_hash,
-                    best_bid="0.55",
-                    best_ask="0.60",
-                ),
-            ),
-            timestamp=datetime.fromtimestamp(3, tz=UTC),
+            price_changes=changes,
+            timestamp=datetime.fromtimestamp(timestamp_seconds, tz=UTC),
         ),
+    )
+
+
+def _price_change(
+    *,
+    token_id: str,
+    price: str,
+    size: str,
+    side: str,
+    source_hash: str | None,
+) -> PriceChange:
+    return PriceChange(
+        asset_id=token_id,
+        price=price,
+        size=size,
+        side=side,
+        hash=source_hash,
+        best_bid="0.55",
+        best_ask="0.60",
     )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from polymarket import PolymarketError
 
@@ -12,7 +13,11 @@ from polybot.framework.events.resolutions import GAMMA_RECONCILIATION_SOURCE
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.recording_feed import MarketCapture, MarketRecordingFeed
+from polybot.polymarket.recording_feed import (
+    CaptureContinuityError,
+    MarketCapture,
+    MarketRecordingFeed,
+)
 from polybot.polymarket.recording_metadata import (
     RecordingMarket,
     RecordingMarketResolver,
@@ -21,6 +26,10 @@ from polybot.recording.clock import ObservationClock
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookDeltaPayload,
+    CaptureAnomalyFragment,
+    CaptureAnomalyPayload,
+    CaptureBookDiagnostics,
+    CaptureFragmentRole,
     CoverageGapPayload,
     MarketIdentity,
     MarketMetadataPayload,
@@ -123,6 +132,10 @@ class RecordingCoordinator:
             for gap_id, condition_ids in (
                 {} if resumed_gap_condition_ids is None else resumed_gap_condition_ids
             ).items()
+        }
+        self._resumed_gap_affected_conditions = {
+            gap_id: frozenset(condition_ids)
+            for gap_id, condition_ids in self._resumed_gap_conditions.items()
         }
 
     @property
@@ -501,6 +514,8 @@ class RecordingCoordinator:
         reason: str,
         error: BaseException | None = None,
     ) -> None:
+        if isinstance(error, CaptureContinuityError):
+            await self._record_capture_anomaly(tracked, error)
         await self._close_capture(tracked)
         if tracked.coverage_started and not self._condition_has_gap(tracked):
             await self._open_gap(
@@ -514,6 +529,23 @@ class RecordingCoordinator:
                 ),
             )
         await self._ensure_captures()
+
+    async def _record_capture_anomaly(
+        self,
+        tracked: _TrackedMarket,
+        error: CaptureContinuityError,
+    ) -> None:
+        market = tracked.recording.market
+        async with self._record_lock:
+            await self._writer.record_anomaly(
+                _capture_anomaly_payload(error),
+                observed_at_ms=self._clock.now_ms(),
+                identity=MarketIdentity(
+                    condition_id=market.condition_id,
+                    market_slug=market.slug,
+                ),
+                subscription_generation=tracked.generation,
+            )
 
     async def _detect_drops(self) -> None:
         for tracked in tuple(self._tracked.values()):
@@ -561,38 +593,51 @@ class RecordingCoordinator:
         async with self._record_lock:
             observed_at_ms = self._clock.now_ms()
             for tracked in tuple(self._tracked.values()):
-                capture = tracked.capture
-                projector = tracked.projector
-                if (
-                    capture is None
-                    or projector is None
-                    or not set(tracked.recording.market.token_ids)
-                    <= projector.baseline_token_ids
-                    or self._condition_has_gap(tracked)
-                    or tracked.terminal_claimed
-                ):
+                if not self._can_checkpoint(tracked):
                     continue
-                for book in projector.snapshots(received_at_ms=observed_at_ms):
-                    await self._writer.checkpoint(
-                        BookBaselinePayload(
-                            token_id=book.token_id,
-                            bids=tuple(
-                                RecordedBookLevel(level.price, level.size)
-                                for level in book.bids
-                            ),
-                            asks=tuple(
-                                RecordedBookLevel(level.price, level.size)
-                                for level in book.asks
-                            ),
-                        ),
-                        observed_at_ms=observed_at_ms,
-                        identity=MarketIdentity(
-                            condition_id=book.condition_id,
-                            market_slug=book.market_slug,
-                            token_id=book.token_id,
-                        ),
-                        subscription_generation=capture.generation,
-                    )
+                await self._write_market_checkpoints(tracked, observed_at_ms)
+
+    def _can_checkpoint(self, tracked: _TrackedMarket) -> bool:
+        projector = tracked.projector
+        return (
+            tracked.capture is not None
+            and projector is not None
+            and set(tracked.recording.market.token_ids)
+            <= projector.baseline_token_ids
+            and not self._condition_has_open_gap(tracked)
+            and not tracked.terminal_claimed
+        )
+
+    async def _write_market_checkpoints(
+        self,
+        tracked: _TrackedMarket,
+        observed_at_ms: int,
+    ) -> None:
+        capture = tracked.capture
+        projector = tracked.projector
+        if capture is None or projector is None:
+            raise AssertionError("checkpoint market has no active capture")
+        for book in projector.snapshots(received_at_ms=observed_at_ms):
+            await self._writer.checkpoint(
+                BookBaselinePayload(
+                    token_id=book.token_id,
+                    bids=tuple(
+                        RecordedBookLevel(level.price, level.size)
+                        for level in book.bids
+                    ),
+                    asks=tuple(
+                        RecordedBookLevel(level.price, level.size)
+                        for level in book.asks
+                    ),
+                ),
+                observed_at_ms=observed_at_ms,
+                identity=MarketIdentity(
+                    condition_id=book.condition_id,
+                    market_slug=book.market_slug,
+                    token_id=book.token_id,
+                ),
+                subscription_generation=capture.generation,
+            )
 
     async def _reconcile_resolutions(self) -> None:
         tracked = tuple(
@@ -729,6 +774,8 @@ class RecordingCoordinator:
         tracked: _TrackedMarket,
         ended_at_ms: int,
     ) -> None:
+        checkpoint_condition_ids: set[str] = set()
+        closed_condition_gap = bool(tracked.gap_ids)
         for gap_id in sorted(tracked.gap_ids):
             await self._writer.close_gap(gap_id, ended_at_ms=ended_at_ms)
         tracked.gap_ids.clear()
@@ -741,12 +788,30 @@ class RecordingCoordinator:
                 continue
             await self._writer.close_gap(gap_id, ended_at_ms=ended_at_ms)
             self._resumed_gap_conditions.pop(gap_id, None)
+            checkpoint_condition_ids.update(
+                self._resumed_gap_affected_conditions.pop(gap_id)
+            )
+
+        if closed_condition_gap:
+            checkpoint_condition_ids.add(condition_id)
+        for recovered_condition_id in sorted(checkpoint_condition_ids):
+            recovered = self._tracked.get(recovered_condition_id)
+            if recovered is None or not self._can_checkpoint(recovered):
+                continue
+            await self._write_market_checkpoints(recovered, ended_at_ms)
 
     def _condition_has_gap(self, tracked: _TrackedMarket) -> bool:
         condition_id = tracked.recording.market.condition_id
         return bool(tracked.gap_ids) or any(
             condition_id in remaining
             for remaining in self._resumed_gap_conditions.values()
+        )
+
+    def _condition_has_open_gap(self, tracked: _TrackedMarket) -> bool:
+        condition_id = tracked.recording.market.condition_id
+        return bool(tracked.gap_ids) or any(
+            condition_id in self._resumed_gap_affected_conditions[gap_id]
+            for gap_id in self._resumed_gap_conditions
         )
 
     async def _close_capture(self, tracked: _TrackedMarket) -> None:
@@ -779,6 +844,86 @@ def _market_identity(metadata: MarketMetadataPayload) -> MarketIdentity:
     return MarketIdentity(
         condition_id=metadata.condition_id,
         market_slug=metadata.market_slug,
+    )
+
+
+def _capture_anomaly_payload(
+    error: CaptureContinuityError,
+) -> CaptureAnomalyPayload:
+    fragments = [
+        _capture_anomaly_fragment(
+            error.first_fragment,
+            CaptureFragmentRole.INITIAL,
+        )
+    ]
+    fragments.extend(
+        _capture_anomaly_fragment(
+            fragment,
+            CaptureFragmentRole.MATCHING_CONTINUATION,
+        )
+        for fragment in error.matching_fragments
+    )
+    if error.mismatching_fragment is not None:
+        fragments.append(
+            _capture_anomaly_fragment(
+                error.mismatching_fragment,
+                CaptureFragmentRole.MISMATCHING_CONTINUATION,
+            )
+        )
+    return CaptureAnomalyPayload(
+        failure_kind=error.failure_kind,
+        expected_fingerprint=error.expected_fingerprint,
+        actual_fingerprint=error.actual_fingerprint,
+        fragments=tuple(fragments),
+        book_diagnostics=_capture_book_diagnostics(error),
+        dropped_count_before=error.dropped_count_before,
+        dropped_count_after=error.dropped_count_after,
+        elapsed_ms=int(error.elapsed_seconds * 1_000),
+        details=f"{type(error).__name__}: {error}",
+    )
+
+
+def _capture_anomaly_fragment(
+    event: CapturedMarketEvent,
+    role: CaptureFragmentRole,
+) -> CaptureAnomalyFragment:
+    return CaptureAnomalyFragment(
+        role=role,
+        source_timestamp_ms=event.source_timestamp_ms,
+        identity=event.identity,
+        payload=event.payload,
+    )
+
+
+def _capture_book_diagnostics(
+    error: CaptureContinuityError,
+) -> tuple[CaptureBookDiagnostics, ...]:
+    projected = {
+        book.token_id: (
+            max((level.price for level in book.bids), default=None),
+            min((level.price for level in book.asks), default=None),
+        )
+        for book in error.projected_books
+    }
+    advertised: dict[str, tuple[Decimal | None, Decimal | None]] = {}
+    for fragment in error.fragments:
+        if not isinstance(fragment.payload, BookDeltaPayload):
+            continue
+        for change in fragment.payload.changes:
+            best_bid, best_ask = advertised.get(change.token_id, (None, None))
+            advertised[change.token_id] = (
+                change.best_bid if change.best_bid is not None else best_bid,
+                change.best_ask if change.best_ask is not None else best_ask,
+            )
+    return tuple(
+        CaptureBookDiagnostics(
+            token_id=token_id,
+            projected_best_bid=projected.get(token_id, (None, None))[0],
+            projected_best_ask=projected.get(token_id, (None, None))[1],
+            advertised_best_bid=advertised.get(token_id, (None, None))[0],
+            advertised_best_ask=advertised.get(token_id, (None, None))[1],
+        )
+        for token_id in sorted(projected.keys() | advertised.keys())
     )
 
 

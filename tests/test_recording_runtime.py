@@ -13,7 +13,9 @@ from polybot.framework.config.models import BotConfig
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
+from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.recording_events import CapturedMarketEvent
+from polybot.polymarket.recording_feed import CaptureContinuityError
 from polybot.polymarket.recording_metadata import RecordingMarket
 from polybot.polymarket.types import Market, MarketOutcome
 from polybot.recording import entrypoint
@@ -27,12 +29,17 @@ from polybot.recording.contracts import (
     BookChange,
     BookCheckpoint,
     BookDeltaPayload,
+    CaptureAnomalyPayload,
+    CaptureAnomalyRecord,
+    CaptureFailureKind,
+    CaptureFragmentRole,
     CoverageGapPayload,
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
     RecordedBookLevel,
     RecordedEvent,
+    RevisionFingerprint,
     ResolutionPayload,
 )
 from polybot.recording.coordinator import RecordingCoordinator
@@ -216,12 +223,14 @@ class MemoryWriter:
     def __init__(self, operations: list[str]) -> None:
         self.operations = operations
         self.events: list[RecordedEvent] = []
+        self.anomalies: list[CaptureAnomalyRecord] = []
         self.checkpoints: list[BookCheckpoint] = []
         self.closed_gaps: list[tuple[int, int]] = []
         self.failure: BaseException | None = None
         self.session_id = 1
         self._next_sequence = 1
         self._next_gap_id = 1
+        self._next_anomaly_id = 1
 
     async def record(
         self,
@@ -269,6 +278,27 @@ class MemoryWriter:
     async def close_gap(self, gap_id: int, *, ended_at_ms: int) -> None:
         self.closed_gaps.append((gap_id, ended_at_ms))
         self.operations.append(f"close-gap:{gap_id}")
+
+    async def record_anomaly(
+        self,
+        anomaly: CaptureAnomalyPayload,
+        *,
+        observed_at_ms: int,
+        identity: MarketIdentity,
+        subscription_generation: int,
+    ) -> CaptureAnomalyRecord:
+        record = CaptureAnomalyRecord(
+            anomaly_id=self._next_anomaly_id,
+            session_id=self.session_id,
+            subscription_generation=subscription_generation,
+            observed_at_ms=observed_at_ms,
+            identity=identity,
+            anomaly=anomaly,
+        )
+        self._next_anomaly_id += 1
+        self.anomalies.append(record)
+        self.operations.append(f"anomaly:{anomaly.failure_kind.value}")
+        return record
 
     async def checkpoint(
         self,
@@ -910,7 +940,13 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
         feed = FakeFeed(operations)
         provider = MutablePlanProvider(_plan(("alpha",)))
         resolver = MutableResolver({"alpha": market})
-        coordinator = _coordinator(provider, resolver, feed, writer)
+        coordinator = _coordinator(
+            provider,
+            resolver,
+            feed,
+            writer,
+            checkpoint_seconds=60.0,
+        )
         await coordinator.start(provider.current_plan, (market,))
         first = feed.latest(market.market.condition_id)
         shutdown = asyncio.Event()
@@ -940,8 +976,12 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
         await second.emit(_baseline_event(market, 0, 20))
         await asyncio.sleep(0.01)
         assert writer.closed_gaps == []
+        assert writer.checkpoints == []
         await second.emit(_baseline_event(market, 1, 21))
-        await _wait_for(lambda: len(writer.closed_gaps) == 1)
+        await _wait_for(
+            lambda: len(writer.closed_gaps) == 1
+            and len(writer.checkpoints) == 2
+        )
         shutdown.set()
         await task
         return writer, feed
@@ -950,13 +990,89 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
 
     assert len(feed.captures) == 2
     assert writer.closed_gaps[0][0] == 1
+    assert {checkpoint.book.token_id for checkpoint in writer.checkpoints} == set(
+        market.market.token_ids
+    )
+    assert {checkpoint.sequence for checkpoint in writer.checkpoints} == {
+        writer.events[-1].sequence
+    }
+    assert {checkpoint.observed_at_ms for checkpoint in writer.checkpoints} == {
+        writer.closed_gaps[0][1]
+    }
 
 
-def test_resumed_open_gap_closes_after_all_affected_markets_rebaseline() -> None:
+def test_split_revision_failures_are_quarantined_and_each_journaled() -> None:
+    market = _recording_market("alpha")
+
+    async def run() -> tuple[MemoryWriter, int]:
+        operations: list[str] = []
+        writer = MemoryWriter(operations)
+        feed = FakeFeed(operations)
+        provider = MutablePlanProvider(_plan(("alpha",)))
+        resolver = MutableResolver({"alpha": market})
+        coordinator = _coordinator(provider, resolver, feed, writer)
+        await coordinator.start(provider.current_plan, (market,))
+        first = feed.latest(market.market.condition_id)
+        shutdown = asyncio.Event()
+        task = asyncio.create_task(coordinator.run(shutdown))
+
+        await first.emit(_baseline_event(market, 0, 10))
+        await first.emit(_baseline_event(market, 1, 11))
+        await _wait_for(
+            lambda: sum(
+                isinstance(event.payload, BookBaselinePayload)
+                for event in writer.events
+            )
+            == 2
+        )
+        events_before_failures = len(writer.events)
+
+        await first.fail(_capture_continuity_error(market))
+        await _wait_for(lambda: len(feed.captures) == 2 and len(writer.anomalies) == 1)
+        second = feed.latest(market.market.condition_id)
+        await second.fail(_capture_continuity_error(market))
+        await _wait_for(lambda: len(feed.captures) == 3 and len(writer.anomalies) == 2)
+
+        shutdown.set()
+        await task
+        return writer, events_before_failures
+
+    writer, events_before_failures = asyncio.run(run())
+
+    gaps = [
+        event
+        for event in writer.events
+        if isinstance(event.payload, CoverageGapPayload)
+    ]
+    assert len(gaps) == 1
+    assert len(writer.events) == events_before_failures + 1
+    assert not any(
+        isinstance(event.payload, BookDeltaPayload) for event in writer.events
+    )
+    assert len(writer.anomalies) == 2
+    anomaly = writer.anomalies[0].anomaly
+    assert anomaly.failure_kind is CaptureFailureKind.SPLIT_REVISION_MISMATCH
+    assert tuple(fragment.role for fragment in anomaly.fragments) == (
+        CaptureFragmentRole.INITIAL,
+        CaptureFragmentRole.MISMATCHING_CONTINUATION,
+    )
+    assert anomaly.elapsed_ms == 12
+    up_diagnostics = next(
+        diagnostics
+        for diagnostics in anomaly.book_diagnostics
+        if diagnostics.token_id == market.market.token_ids[0]
+    )
+    assert up_diagnostics.projected_best_bid == Decimal("0.40")
+    assert up_diagnostics.projected_best_ask == Decimal("0.60")
+    assert up_diagnostics.advertised_best_bid == Decimal("0.62")
+    assert up_diagnostics.advertised_best_ask == Decimal("0.60")
+
+
+def test_resumed_open_gap_checkpoints_all_markets_at_final_rebaseline() -> None:
     alpha = _recording_market("alpha")
     beta = _recording_market("beta")
 
-    async def run() -> list[tuple[int, int]]:
+    async def run() -> MemoryWriter:
         operations: list[str] = []
         writer = MemoryWriter(operations)
         feed = FakeFeed(operations)
@@ -972,6 +1088,7 @@ def test_resumed_open_gap_closes_after_all_affected_markets_rebaseline() -> None
                     (alpha.market.condition_id, beta.market.condition_id)
                 )
             },
+            checkpoint_seconds=60.0,
         )
         await coordinator.start(provider.current_plan, (alpha, beta))
         captures = {
@@ -988,19 +1105,74 @@ def test_resumed_open_gap_closes_after_all_affected_markets_rebaseline() -> None
         )
         await asyncio.sleep(0.01)
         assert writer.closed_gaps == []
+        assert writer.checkpoints == []
 
         await captures[beta.market.condition_id].emit(
             _baseline_event(beta, 0, 12)
         )
+        await asyncio.sleep(0.01)
+        assert writer.checkpoints == []
         await captures[beta.market.condition_id].emit(
             _baseline_event(beta, 1, 13)
         )
+        await _wait_for(
+            lambda: len(writer.closed_gaps) == 1
+            and len(writer.checkpoints) == 4
+        )
+        shutdown.set()
+        await task
+        return writer
+
+    writer = asyncio.run(run())
+    gap_id, ended_at_ms = writer.closed_gaps[0]
+
+    assert gap_id == 41
+    assert {checkpoint.book.token_id for checkpoint in writer.checkpoints} == {
+        *alpha.market.token_ids,
+        *beta.market.token_ids,
+    }
+    assert {checkpoint.sequence for checkpoint in writer.checkpoints} == {
+        writer.events[-1].sequence
+    }
+    assert {checkpoint.observed_at_ms for checkpoint in writer.checkpoints} == {
+        ended_at_ms
+    }
+
+
+def test_resolution_closes_resumed_gap_without_fabricating_checkpoint() -> None:
+    market = _recording_market("alpha")
+
+    async def run() -> MemoryWriter:
+        operations: list[str] = []
+        writer = MemoryWriter(operations)
+        feed = FakeFeed(operations)
+        provider = MutablePlanProvider(_plan(("alpha",)))
+        resolver = MutableResolver({"alpha": market})
+        coordinator = _coordinator(
+            provider,
+            resolver,
+            feed,
+            writer,
+            checkpoint_seconds=60.0,
+            resumed_gap_condition_ids={
+                41: frozenset((market.market.condition_id,))
+            },
+        )
+        await coordinator.start(provider.current_plan, (market,))
+        capture = feed.latest(market.market.condition_id)
+        shutdown = asyncio.Event()
+        task = asyncio.create_task(coordinator.run(shutdown))
+
+        await capture.emit(_resolution_event(market, 20))
         await _wait_for(lambda: len(writer.closed_gaps) == 1)
         shutdown.set()
         await task
-        return writer.closed_gaps
+        return writer
 
-    assert asyncio.run(run())[0][0] == 41
+    writer = asyncio.run(run())
+
+    assert writer.closed_gaps[0][0] == 41
+    assert writer.checkpoints == []
 
 
 def test_resume_state_restores_a_prior_open_condition_gap(tmp_path) -> None:
@@ -1540,6 +1712,84 @@ def _delta_event(
                 ),
             )
         ),
+    )
+
+
+def _capture_continuity_error(
+    recording: RecordingMarket,
+) -> CaptureContinuityError:
+    market = recording.market
+    token_id = market.token_ids[0]
+    identity = MarketIdentity(
+        condition_id=market.condition_id,
+        market_slug=market.slug,
+    )
+    first = CapturedMarketEvent(
+        source_timestamp_ms=12,
+        identity=identity,
+        payload=BookDeltaPayload(
+            changes=(
+                BookChange(
+                    token_id=token_id,
+                    side=Side.BUY,
+                    price=Decimal("0.61"),
+                    size=Decimal("1"),
+                    source_hash="revision-hash",
+                    best_bid=Decimal("0.61"),
+                    best_ask=Decimal("0.60"),
+                ),
+            )
+        ),
+    )
+    mismatch = CapturedMarketEvent(
+        source_timestamp_ms=12,
+        identity=identity,
+        payload=BookDeltaPayload(
+            changes=(
+                BookChange(
+                    token_id=token_id,
+                    side=Side.BUY,
+                    price=Decimal("0.62"),
+                    size=Decimal("1"),
+                    source_hash="different-hash",
+                    best_bid=Decimal("0.62"),
+                    best_ask=Decimal("0.60"),
+                ),
+            )
+        ),
+    )
+    projected_books = tuple(
+        BookSnapshot(
+            token_id=outcome.token_id,
+            bids=(BookLevel(Decimal("0.40"), Decimal("2")),),
+            asks=(BookLevel(Decimal("0.60"), Decimal("3")),),
+            received_at_ms=12,
+            market_slug=market.slug,
+            condition_id=market.condition_id,
+            outcome=outcome.label,
+        )
+        for outcome in market.outcomes
+    )
+    return CaptureContinuityError(
+        MarketDataError(MarketDataIssue.CROSSED_BOOK, "projected book crossed"),
+        failure_kind=CaptureFailureKind.SPLIT_REVISION_MISMATCH,
+        first_fragment=first,
+        matching_fragments=(),
+        mismatching_fragment=mismatch,
+        expected_fingerprint=RevisionFingerprint(
+            condition_id=market.condition_id,
+            source_timestamp_ms=12,
+            source_hashes=((token_id, "revision-hash"),),
+        ),
+        actual_fingerprint=RevisionFingerprint(
+            condition_id=market.condition_id,
+            source_timestamp_ms=12,
+            source_hashes=((token_id, "different-hash"),),
+        ),
+        projected_books=projected_books,
+        dropped_count_before=0,
+        dropped_count_after=0,
+        elapsed_seconds=0.012,
     )
 
 

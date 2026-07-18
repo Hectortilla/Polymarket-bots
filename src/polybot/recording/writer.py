@@ -11,6 +11,8 @@ from .archive import RecordingArchive
 from .contracts import (
     BookBaselinePayload,
     BookCheckpoint,
+    CaptureAnomalyPayload,
+    CaptureAnomalyRecord,
     CoverageGapPayload,
     MarketIdentity,
     RecordedEvent,
@@ -63,6 +65,15 @@ class _CloseGapCommand:
 
 
 @dataclass(slots=True)
+class _CaptureAnomalyCommand:
+    anomaly: CaptureAnomalyPayload
+    observed_at_ms: int
+    identity: MarketIdentity
+    subscription_generation: int
+    completion: asyncio.Future[CaptureAnomalyRecord]
+
+
+@dataclass(slots=True)
 class _BarrierCommand:
     completion: asyncio.Future[None]
 
@@ -79,6 +90,7 @@ _WriterCommand = (
     | _CheckpointCommand
     | _OpenGapCommand
     | _CloseGapCommand
+    | _CaptureAnomalyCommand
     | _BarrierCommand
     | _StopCommand
 )
@@ -217,6 +229,31 @@ class AsyncRecordingWriter:
         self._put_nowait(_CloseGapCommand(gap_id, ended_at_ms, completion))
         await asyncio.shield(completion)
 
+    async def record_anomaly(
+        self,
+        anomaly: CaptureAnomalyPayload,
+        *,
+        observed_at_ms: int,
+        identity: MarketIdentity,
+        subscription_generation: int,
+    ) -> CaptureAnomalyRecord:
+        """Durably journal a non-replayable capture failure."""
+
+        self._raise_if_unavailable()
+        completion: asyncio.Future[CaptureAnomalyRecord] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self._put_nowait(
+            _CaptureAnomalyCommand(
+                anomaly=anomaly,
+                observed_at_ms=observed_at_ms,
+                identity=identity,
+                subscription_generation=subscription_generation,
+                completion=completion,
+            )
+        )
+        return await asyncio.shield(completion)
+
     async def flush(self) -> None:
         self._raise_if_unavailable()
         completion = asyncio.get_running_loop().create_future()
@@ -350,6 +387,9 @@ class AsyncRecordingWriter:
         if isinstance(command, _CloseGapCommand):
             await self._close_gap(command)
             return False
+        if isinstance(command, _CaptureAnomalyCommand):
+            await self._record_anomaly(command)
+            return False
         if isinstance(command, _BarrierCommand):
             _set_result(command.completion, None)
             return False
@@ -380,6 +420,20 @@ class AsyncRecordingWriter:
             _set_exception(command.completion, error)
             raise
         _set_result(command.completion, None)
+
+    async def _record_anomaly(self, command: _CaptureAnomalyCommand) -> None:
+        try:
+            record = await run_blocking(
+                self._archive.append_capture_anomaly,
+                command.anomaly,
+                observed_at_ms=command.observed_at_ms,
+                identity=command.identity,
+                subscription_generation=command.subscription_generation,
+            )
+        except BaseException as error:
+            _set_exception(command.completion, error)
+            raise
+        _set_result(command.completion, record)
 
     async def _close(self, command: _StopCommand) -> None:
         try:

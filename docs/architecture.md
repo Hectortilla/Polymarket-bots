@@ -266,13 +266,16 @@ One SQLite recording archive owns:
   recorder-owned arrival order;
 - full normalized book checkpoints from which replay can restart; and
 - explicit coverage gaps scoped to known conditions/tokens, with resumed
-  recorder downtime represented by a target-wide gap.
+  recorder downtime represented by a target-wide gap;
+- an additive diagnostic capture-anomaly journal whose rows never consume the
+  canonical replay sequence.
 
 `RecordingArchive` is the write boundary; `RecordingReader` exposes stored
-`RecordedEvent`, `BookCheckpoint`, `CoverageGapRecord`, and
-`SessionIntegrityStatus` values without leaking SQLite rows. Gap events use the
-package-owned `CoverageGapPayload` contract. These types preserve the artifact
-boundary consumed by Slice 9B.
+`RecordedEvent`, `BookCheckpoint`, `CoverageGapRecord`, `CaptureAnomalyRecord`,
+and `SessionIntegrityStatus` values without leaking SQLite rows. Gap events use
+the package-owned `CoverageGapPayload` contract, while the reader reports a
+typed unavailable error for sessions that predate anomaly diagnostics. These
+types preserve the artifact boundary consumed by Slice 9B.
 
 SQLite is an artifact format at the standalone package boundary. It does not
 reuse `.bot-state/`, open the Polyfollow application database, run application
@@ -290,18 +293,38 @@ hash lineage, missed-message replay, or resume cursor. The recorder therefore
 orders equal-timestamp arrivals by its own append order and never treats a hash
 as a sequence number. The source can split one logical price revision across
 consecutive level-update frames. If projecting the first fragment would cross
-the book, `MarketCapture` reads ahead for fragments with the exact same
-condition, source timestamp, and per-token hashes, preserves their change order,
-and records the transactionally valid revision as one delta. An incompatible
-fragment, end of stream, or bounded read-ahead timeout remains a capture failure
-rather than silently accepting an invalid book. A disconnect, SDK drop-oldest counter increase,
-condition-capture interruption, or other detected loss opens a coverage gap.
+the book, `MarketCapture` reads ahead for fragments with the same condition and
+source timestamp. Every token/hash fingerprint from the first fragment must be
+present and unchanged, while later fragments may add other token hashes. Added
+tokens need not recur in every later fragment, but a recurring token cannot
+change its first-seen hash. The capture preserves change order and records only
+a transactionally valid combined delta. An incompatible fragment is quarantined
+instead of being returned to the canonical stream. A mismatch, end of stream,
+bounded read-ahead timeout, SDK drop-oldest counter increase, or combined
+revision that remains crossed becomes a typed capture anomaly and capture
+failure. A disconnect, condition-capture interruption, or other detected loss
+opens a coverage gap.
 For continuing capture, the gap closes only after every affected token has a
 fresh source full-book baseline; price history or public trade history cannot
 silently repair it. A terminal resolution may instead end the gap interval, but
 the interval remains recorded and incomplete. Opening an additional condition
 handle for a newly resolved next market is not itself a gap in already active
 captures.
+
+Capture anomalies are normalized package-owned diagnostics: failure kind,
+revision fingerprints, quarantined fragments, before-failure projected books,
+advertised best prices, SDK drop counters, elapsed time, and details. They live
+in optional additive schema-v2 tables and never affect `events.sequence` or
+Slice 9B input. New archives enable the feature at session start; resuming a
+legacy schema-v2 archive creates the tables transactionally, while prior sessions
+correctly report journal availability as unavailable. Every failed split-revision
+recovery attempt is journaled even if a coverage gap is already open.
+
+Fresh two-token baselines close a condition gap and immediately produce a common
+checkpoint pair at the closure boundary. For a resumed target-wide gap, periodic
+checkpoints stay suppressed until every affected condition recovers; the final
+closure writes fresh common checkpoint pairs for all recovered markets. A
+resolution may close bookkeeping but never fabricates a book checkpoint.
 
 Integrity reporting uses the phrase `no detected gaps`, not
 `exchange-complete`. A clean report means the recorder observed no known loss

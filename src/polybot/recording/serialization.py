@@ -13,14 +13,21 @@ from .contracts import (
     BookBaselinePayload,
     BookChange,
     BookDeltaPayload,
+    CaptureAnomalyFragment,
+    CaptureAnomalyPayload,
+    CaptureBookDiagnostics,
+    CaptureFailureKind,
+    CaptureFragmentRole,
     CoverageGapPayload,
     FeeScheduleMetadata,
+    MarketIdentity,
     MarketEventMetadata,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
     PublicTradePayload,
     RecordedBookLevel,
     RecordedPayload,
+    RevisionFingerprint,
     ResolutionPayload,
     TickSizeChangePayload,
 )
@@ -72,6 +79,24 @@ def payload_from_json(kind: str | PayloadKind, raw_json: str) -> RecordedPayload
         raise ValueError(
             f"recording payload {normalized_kind.value!r} is malformed"
         ) from error
+
+
+def capture_anomaly_json(anomaly: CaptureAnomalyPayload) -> str:
+    if not isinstance(anomaly, CaptureAnomalyPayload):
+        raise ValueError("capture anomaly payload is invalid")
+    return canonical_json(_capture_anomaly_to_data(anomaly))
+
+
+def capture_anomaly_from_json(raw_json: str) -> CaptureAnomalyPayload:
+    data = _load_object(raw_json)
+    try:
+        return _capture_anomaly_from_data(data)
+    except (KeyError, TypeError, ValueError, InvalidOperation) as error:
+        if isinstance(error, ValueError) and str(error).startswith(
+            "recording capture anomaly"
+        ):
+            raise
+        raise ValueError("recording capture anomaly is malformed") from error
 
 
 def canonical_json(value: object) -> str:
@@ -139,6 +164,82 @@ def _payload_to_data(payload: RecordedPayload) -> dict[str, Any]:
             "started_at_ms": payload.started_at_ms,
         }
     raise ValueError("recording payload type is unsupported")
+
+
+def _capture_anomaly_to_data(anomaly: CaptureAnomalyPayload) -> dict[str, Any]:
+    return {
+        "actual_fingerprint": _fingerprint_to_data(anomaly.actual_fingerprint),
+        "book_diagnostics": [
+            _book_diagnostics_to_data(diagnostics)
+            for diagnostics in anomaly.book_diagnostics
+        ],
+        "details": anomaly.details,
+        "dropped_count_after": anomaly.dropped_count_after,
+        "dropped_count_before": anomaly.dropped_count_before,
+        "elapsed_ms": anomaly.elapsed_ms,
+        "expected_fingerprint": _fingerprint_to_data(
+            anomaly.expected_fingerprint
+        ),
+        "failure_kind": anomaly.failure_kind.value,
+        "fragments": [
+            _capture_fragment_to_data(fragment) for fragment in anomaly.fragments
+        ],
+    }
+
+
+def _fingerprint_to_data(
+    fingerprint: RevisionFingerprint | None,
+) -> dict[str, Any] | None:
+    if fingerprint is None:
+        return None
+    return {
+        "condition_id": fingerprint.condition_id,
+        "source_hashes": [
+            {"source_hash": source_hash, "token_id": token_id}
+            for token_id, source_hash in fingerprint.source_hashes
+        ],
+        "source_timestamp_ms": fingerprint.source_timestamp_ms,
+    }
+
+
+def _capture_fragment_to_data(
+    fragment: CaptureAnomalyFragment,
+) -> dict[str, Any]:
+    return {
+        "identity": _identity_to_data(fragment.identity),
+        "payload": _payload_to_data(fragment.payload),
+        "payload_kind": payload_kind(fragment.payload).value,
+        "role": fragment.role.value,
+        "source_timestamp_ms": fragment.source_timestamp_ms,
+    }
+
+
+def _identity_to_data(identity: MarketIdentity) -> dict[str, str | None]:
+    return {
+        "condition_id": identity.condition_id,
+        "market_slug": identity.market_slug,
+        "token_id": identity.token_id,
+    }
+
+
+def _book_diagnostics_to_data(
+    diagnostics: CaptureBookDiagnostics,
+) -> dict[str, str | None]:
+    return {
+        "advertised_best_ask": _optional_decimal(
+            diagnostics.advertised_best_ask
+        ),
+        "advertised_best_bid": _optional_decimal(
+            diagnostics.advertised_best_bid
+        ),
+        "projected_best_ask": _optional_decimal(
+            diagnostics.projected_best_ask
+        ),
+        "projected_best_bid": _optional_decimal(
+            diagnostics.projected_best_bid
+        ),
+        "token_id": diagnostics.token_id,
+    }
 
 
 def _metadata_to_data(payload: MarketMetadataPayload) -> dict[str, Any]:
@@ -439,6 +540,148 @@ def _coverage_gap_from_data(data: dict[str, Any]) -> CoverageGapPayload:
     )
 
 
+def _capture_anomaly_from_data(data: dict[str, Any]) -> CaptureAnomalyPayload:
+    _require_keys(data, _CAPTURE_ANOMALY_KEYS)
+    return CaptureAnomalyPayload(
+        failure_kind=_capture_failure_kind(data["failure_kind"]),
+        expected_fingerprint=_fingerprint_from_data(
+            data["expected_fingerprint"],
+            "expected revision fingerprint",
+        ),
+        actual_fingerprint=_fingerprint_from_data(
+            data["actual_fingerprint"],
+            "actual revision fingerprint",
+        ),
+        fragments=tuple(
+            _capture_fragment_from_data(value)
+            for value in _list(data["fragments"], "capture anomaly fragments")
+        ),
+        book_diagnostics=tuple(
+            _book_diagnostics_from_data(value)
+            for value in _list(
+                data["book_diagnostics"],
+                "capture anomaly book diagnostics",
+            )
+        ),
+        dropped_count_before=_int(
+            data["dropped_count_before"],
+            "capture anomaly initial drop count",
+        ),
+        dropped_count_after=_int(
+            data["dropped_count_after"],
+            "capture anomaly final drop count",
+        ),
+        elapsed_ms=_int(data["elapsed_ms"], "capture anomaly elapsed time"),
+        details=_optional_text(data["details"], "capture anomaly details"),
+    )
+
+
+def _capture_failure_kind(value: object) -> CaptureFailureKind:
+    if not isinstance(value, str):
+        raise ValueError("recording capture anomaly failure kind must be text")
+    try:
+        return CaptureFailureKind(value)
+    except ValueError as error:
+        raise ValueError(
+            "recording capture anomaly failure kind is invalid"
+        ) from error
+
+
+def _fingerprint_from_data(
+    value: object,
+    name: str,
+) -> RevisionFingerprint | None:
+    if value is None:
+        return None
+    data = _object(value, name)
+    _require_keys(data, _REVISION_FINGERPRINT_KEYS)
+    source_hashes: list[tuple[str, str]] = []
+    for entry in _list(data["source_hashes"], "revision source hashes"):
+        hash_data = _object(entry, "revision source hash")
+        _require_keys(hash_data, _REVISION_SOURCE_HASH_KEYS)
+        source_hashes.append(
+            (
+                _text(hash_data["token_id"], "revision source hash token ID"),
+                _text(hash_data["source_hash"], "revision source hash"),
+            )
+        )
+    return RevisionFingerprint(
+        condition_id=_text(data["condition_id"], "revision condition ID"),
+        source_timestamp_ms=_int(
+            data["source_timestamp_ms"],
+            "revision source timestamp",
+        ),
+        source_hashes=tuple(source_hashes),
+    )
+
+
+def _capture_fragment_from_data(value: object) -> CaptureAnomalyFragment:
+    data = _object(value, "capture anomaly fragment")
+    _require_keys(data, _CAPTURE_FRAGMENT_KEYS)
+    identity_data = _object(data["identity"], "capture anomaly identity")
+    _require_keys(identity_data, _MARKET_IDENTITY_KEYS)
+    payload_data = _object(data["payload"], "capture anomaly fragment payload")
+    try:
+        kind = PayloadKind(data["payload_kind"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "recording capture anomaly fragment payload kind is invalid"
+        ) from error
+    payload = _PAYLOAD_LOADERS[kind](payload_data)
+    try:
+        role = CaptureFragmentRole(data["role"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "recording capture anomaly fragment role is invalid"
+        ) from error
+    return CaptureAnomalyFragment(
+        role=role,
+        source_timestamp_ms=_optional_int(
+            data["source_timestamp_ms"],
+            "capture fragment source timestamp",
+        ),
+        identity=MarketIdentity(
+            condition_id=_optional_text(
+                identity_data["condition_id"],
+                "capture fragment condition ID",
+            ),
+            market_slug=_optional_text(
+                identity_data["market_slug"],
+                "capture fragment market slug",
+            ),
+            token_id=_optional_text(
+                identity_data["token_id"],
+                "capture fragment token ID",
+            ),
+        ),
+        payload=payload,
+    )
+
+
+def _book_diagnostics_from_data(value: object) -> CaptureBookDiagnostics:
+    data = _object(value, "capture anomaly book diagnostics")
+    _require_keys(data, _CAPTURE_BOOK_DIAGNOSTICS_KEYS)
+    return CaptureBookDiagnostics(
+        token_id=_text(data["token_id"], "capture diagnostics token ID"),
+        projected_best_bid=_optional_decimal_from_data(
+            data["projected_best_bid"],
+            "projected best bid",
+        ),
+        projected_best_ask=_optional_decimal_from_data(
+            data["projected_best_ask"],
+            "projected best ask",
+        ),
+        advertised_best_bid=_optional_decimal_from_data(
+            data["advertised_best_bid"],
+            "advertised best bid",
+        ),
+        advertised_best_ask=_optional_decimal_from_data(
+            data["advertised_best_ask"],
+            "advertised best ask",
+        ),
+    )
+
+
 def _load_object(raw_json: str) -> dict[str, Any]:
     return _object(_load_json(raw_json), "payload")
 
@@ -609,6 +852,36 @@ _COVERAGE_GAP_KEYS = frozenset(
         "ended_at_ms",
         "reason",
         "started_at_ms",
+    }
+)
+_CAPTURE_ANOMALY_KEYS = frozenset(
+    {
+        "actual_fingerprint",
+        "book_diagnostics",
+        "details",
+        "dropped_count_after",
+        "dropped_count_before",
+        "elapsed_ms",
+        "expected_fingerprint",
+        "failure_kind",
+        "fragments",
+    }
+)
+_REVISION_FINGERPRINT_KEYS = frozenset(
+    {"condition_id", "source_hashes", "source_timestamp_ms"}
+)
+_REVISION_SOURCE_HASH_KEYS = frozenset({"source_hash", "token_id"})
+_CAPTURE_FRAGMENT_KEYS = frozenset(
+    {"identity", "payload", "payload_kind", "role", "source_timestamp_ms"}
+)
+_MARKET_IDENTITY_KEYS = frozenset({"condition_id", "market_slug", "token_id"})
+_CAPTURE_BOOK_DIAGNOSTICS_KEYS = frozenset(
+    {
+        "advertised_best_ask",
+        "advertised_best_bid",
+        "projected_best_ask",
+        "projected_best_bid",
+        "token_id",
     }
 )
 

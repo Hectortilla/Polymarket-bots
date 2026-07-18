@@ -406,6 +406,41 @@ Acceptance:
 - Tests use synthetic or recorded official-SDK models and a temporary local
   SQLite file; they do not call live Polymarket services.
 
+## Slice 9A.1: Recorder Continuity Hardening
+
+Status: done.
+
+- Conservatively reassemble crossed intermediate price-change fragments using
+  the same condition and source timestamp plus a consistent revision
+  fingerprint: every initial token/hash must remain present and unchanged, while
+  continuations may add token hashes. Additions may be omitted later but cannot
+  change if they recur. Quarantine mismatches and never emit them as canonical
+  events.
+- Classify split-revision mismatch, timeout, stream end, and SDK drop detection
+  with typed adapter failures. Check the public handle drop counter throughout
+  bounded read-ahead; do not depend on private SDK internals.
+- Add an optional diagnostic-only schema-v2 capture-anomaly journal with feature
+  activation provenance. Persist normalized fragments, fingerprints, projected
+  and advertised best prices, drop counts, elapsed time, and details for every
+  failed split-revision recovery attempt without consuming archive replay
+  sequence numbers.
+  A resumed legacy-v2 archive gains the tables transactionally, while older
+  sessions report diagnostics unavailable rather than zero.
+- Preserve strict coverage gaps and fresh-baseline recovery. Do not repair gaps
+  from REST history or advertised best prices and do not add an allow-gaps mode.
+- On condition recovery, immediately write a common two-token checkpoint pair.
+  Keep periodic checkpoints suppressed for recovered members of a target-wide
+  resumed gap until all affected markets recover, then checkpoint every eligible
+  market at the final closure boundary. Resolution-only closure creates no book
+  checkpoint.
+- Test superset matching and all rejection paths, SDK drops during read-ahead,
+  quarantining, anomaly serialization/availability, legacy resume, repeated
+  attempts inside one open gap, and immediate single/target-wide checkpoints.
+
+The upstream market stream still lacks sequence/replay/resume guarantees, so
+this slice reduces avoidable gaps and makes remaining gaps diagnosable; it does
+not claim that capture can never have a gap.
+
 ## Slice 9B: Deterministic Backtest Replay
 
 Status: done.

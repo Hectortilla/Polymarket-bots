@@ -121,13 +121,23 @@ accepts the runner's existing `--dotenv` and `--override` options when loading a
 bot factory.
 
 The archive contains sessions, market metadata revisions, chronological
-recorded events, full book checkpoints, and explicit coverage gaps. An archive
+recorded events, full book checkpoints, explicit coverage gaps, and (for newly
+created or resumed archives) a non-replayable capture-anomaly journal. An archive
 can report `no detected gaps`; it cannot prove exchange-complete capture because
 the official prediction-market stream documents timestamps and book hashes but
 no sequence number, replay cursor, or resume protocol.
 Price revisions split across consecutive same-timestamp/hash level-update frames
 are combined transactionally when an intermediate fragment would otherwise look
-crossed; an incomplete or mismatched revision is still recorded as a gap.
+crossed. A continuation may add hashes for tokens not present in the first
+fragment, but every original token/hash must remain present and unchanged.
+Added tokens may be omitted from a later fragment; if they reappear, their
+first-seen hash must still match. Incomplete, mismatched, dropped, or
+still-crossed revisions are quarantined, journaled, and recorded as gaps rather
+than entering replay data. Once fresh full books recover a gap, the recorder
+writes an immediate common checkpoint pair so the clean post-gap range can be
+selected without waiting for the periodic checkpoint.
+The upstream stream has no replay cursor, so the recorder can reduce and explain
+gaps but cannot guarantee that they never occur.
 
 Slice 9A is market-only. It does not record arbitrary-wallet activity, private
 orders or fills, maker identities or queue position, or Binance, Chainlink,

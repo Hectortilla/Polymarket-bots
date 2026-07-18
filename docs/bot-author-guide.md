@@ -208,8 +208,28 @@ exchange-complete because Polymarket documents no market-stream sequence or
 resume cursor. Slice 9B refuses any gap affecting the selected interval; a
 clean subrange before or after a gap remains eligible.
 The recorder transactionally combines split same-timestamp/hash price revisions
-that would be crossed only in their intermediate form. A revision that does not
-finish with the expected identity remains a real coverage gap.
+that would be crossed only in their intermediate form. It accepts a continuation
+only when every token/hash named by the first fragment is still present and
+unchanged; extra token hashes are allowed because one logical revision can be
+split by token. An added token may be absent from a later fragment, but its hash
+cannot change if that token appears again. A mismatched, timed-out, dropped, or
+still-invalid revision is quarantined and remains a real coverage gap.
+
+New and resumed schema-v2 archives also contain a diagnostic-only capture
+anomaly journal. It records the failure kind, normalized quarantined fragments,
+revision fingerprints, projected/advertised top of book, SDK drop counters, and
+elapsed recovery time without consuming replay sequence numbers. Sessions made
+before the journal was activated report diagnostics as unavailable rather than
+claiming zero anomalies. These rows help explain a gap but never make it safe to
+replay. Recovery still requires fresh full-book baselines for both outcome
+tokens. The recorder writes a common checkpoint immediately when that recovery
+boundary closes (and for every affected market when a resumed target-wide gap
+finally closes), making the clean range after the gap usable promptly.
+
+Known gaps cannot always be prevented: the public stream has no documented
+sequence, replay, or resume mechanism. The recorder detects SDK queue drops and
+uses bounded conservative reassembly, then fails closed and resubscribes when it
+cannot prove continuity. It never fills a missing interval from REST history.
 
 The Slice 9A archive contains public market metadata and aggregated book data
 only. It cannot reproduce wallet-following hooks, private order/fill state,

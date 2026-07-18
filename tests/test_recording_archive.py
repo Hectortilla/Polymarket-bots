@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import time
 from dataclasses import replace
@@ -17,6 +18,7 @@ from polybot.recording.archive import (
     ArchiveFormatError,
     ArchiveIntegrityError,
     ArchiveLockedError,
+    CaptureAnomalyJournalUnavailableError,
     RecordingArchive,
     RecordingReader,
 )
@@ -25,6 +27,11 @@ from polybot.recording.contracts import (
     BookChange,
     BookCheckpoint,
     BookDeltaPayload,
+    CaptureAnomalyFragment,
+    CaptureAnomalyPayload,
+    CaptureBookDiagnostics,
+    CaptureFailureKind,
+    CaptureFragmentRole,
     CoverageGapPayload,
     FeeScheduleMetadata,
     MarketEventMetadata,
@@ -34,16 +41,20 @@ from polybot.recording.contracts import (
     PublicTradePayload,
     RecordedBookLevel,
     RecordedEvent,
+    RevisionFingerprint,
     ResolutionPayload,
     SessionIntegrityStatus,
     TickSizeChangePayload,
 )
 from polybot.recording.serialization import (
     PayloadKind,
+    capture_anomaly_from_json,
+    capture_anomaly_json,
     payload_from_json,
     payload_json,
     payload_kind,
 )
+from polybot.recording.writer import AsyncRecordingWriter
 
 
 def _metadata(*, condition_id: str = "condition-1") -> MarketMetadataPayload:
@@ -147,6 +158,55 @@ def _opened_archive(tmp_path) -> tuple[RecordingArchive, int]:
     )
 
 
+def _capture_anomaly(
+    *,
+    failure_kind: CaptureFailureKind = CaptureFailureKind.SPLIT_REVISION_MISMATCH,
+) -> CaptureAnomalyPayload:
+    delta = BookDeltaPayload(
+        changes=(
+            BookChange(
+                token_id="up-token",
+                side=Side.SELL,
+                price=Decimal("0.4200"),
+                size=Decimal("8.500"),
+                source_hash="up-hash",
+                best_bid=Decimal("0.4300"),
+                best_ask=Decimal("0.4200"),
+            ),
+        )
+    )
+    return CaptureAnomalyPayload(
+        failure_kind=failure_kind,
+        expected_fingerprint=RevisionFingerprint(
+            condition_id="condition-1",
+            source_timestamp_ms=12_345,
+            source_hashes=(("up-token", "up-hash"),),
+        ),
+        actual_fingerprint=None,
+        fragments=(
+            CaptureAnomalyFragment(
+                role=CaptureFragmentRole.INITIAL,
+                source_timestamp_ms=12_345,
+                identity=_identity("up-token"),
+                payload=delta,
+            ),
+        ),
+        book_diagnostics=(
+            CaptureBookDiagnostics(
+                token_id="up-token",
+                projected_best_bid=Decimal("0.4100"),
+                projected_best_ask=Decimal("0.4200"),
+                advertised_best_bid=Decimal("0.4300"),
+                advertised_best_ask=Decimal("0.4200"),
+            ),
+        ),
+        dropped_count_before=3,
+        dropped_count_after=3,
+        elapsed_ms=7,
+        details="continuation fingerprint did not match",
+    )
+
+
 def test_payload_serialization_is_canonical_exact_and_ordered() -> None:
     delta = BookDeltaPayload(
         changes=(
@@ -178,6 +238,17 @@ def test_payload_serialization_is_canonical_exact_and_ordered() -> None:
     assert encoded.index("first-hash") < encoded.index("second-hash")
     assert payload_kind(delta) is PayloadKind.BOOK_DELTA
     assert payload_from_json(PayloadKind.BOOK_DELTA, encoded) == delta
+
+
+def test_capture_anomaly_serialization_is_canonical_and_exact() -> None:
+    anomaly = _capture_anomaly()
+
+    encoded = capture_anomaly_json(anomaly)
+
+    assert encoded == capture_anomaly_json(anomaly)
+    assert '"projected_best_bid":"0.4100"' in encoded
+    assert '"price":"0.4200"' in encoded
+    assert capture_anomaly_from_json(encoded) == anomaly
 
 
 @pytest.mark.parametrize(
@@ -253,6 +324,190 @@ def test_create_refuses_overwrite_and_writer_lock_is_nonblocking(tmp_path) -> No
         assert archive._connection.execute("PRAGMA synchronous").fetchone()[0] == 2
     finally:
         archive.close()
+
+
+def test_capture_anomaly_journal_is_non_replayable_and_filterable(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    starting_sequence = archive.next_sequence
+    first = archive.append_capture_anomaly(
+        _capture_anomaly(),
+        observed_at_ms=started_at_ms + 1,
+        identity=_identity(),
+        subscription_generation=4,
+    )
+    second = archive.append_capture_anomaly(
+        _capture_anomaly(failure_kind=CaptureFailureKind.SDK_HANDLE_DROP),
+        observed_at_ms=started_at_ms + 2,
+        identity=_identity(),
+        subscription_generation=4,
+    )
+    assert archive.next_sequence == starting_sequence
+    archive.close()
+
+    with RecordingReader(archive.path) as reader:
+        provenance = reader.capture_anomaly_journal_provenance
+        assert reader.schema_version == SCHEMA_VERSION
+        assert reader.has_capture_anomaly_journal
+        assert provenance is not None
+        assert provenance.available_from_session_id == 1
+        assert reader.capture_anomaly_journal_available(1)
+        assert tuple(reader.iter_events()) == ()
+        assert reader.capture_anomalies() == (first, second)
+        assert reader.capture_anomalies(
+            failure_kind=CaptureFailureKind.SDK_HANDLE_DROP,
+        ) == (second,)
+        assert reader.capture_anomalies(
+            end_at_ms=started_at_ms + 1,
+            condition_id="condition-1",
+            market_slug="btc-updown-5m-1",
+        ) == (first,)
+
+
+@pytest.mark.parametrize(
+    ("column", "tampered_value"),
+    [
+        ("condition_id", "wrong-condition"),
+        ("market_slug", "wrong-slug"),
+        ("token_id", "down-token"),
+    ],
+)
+def test_reader_rejects_tampered_capture_anomaly_identity_index(
+    tmp_path,
+    column: str,
+    tampered_value: str,
+) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    archive.append_capture_anomaly(
+        _capture_anomaly(),
+        observed_at_ms=started_at_ms,
+        identity=_identity(),
+        subscription_generation=0,
+    )
+    path = archive.path
+    archive.close()
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        f"UPDATE capture_anomalies SET {column} = ? WHERE anomaly_id = 1",
+        (tampered_value,),
+    )
+    connection.commit()
+    connection.close()
+
+    with RecordingReader(path) as reader:
+        with pytest.raises(ArchiveFormatError, match="capture anomaly 1"):
+            reader.capture_anomalies()
+
+
+def test_reader_wraps_malformed_optional_diagnostic_tables(tmp_path) -> None:
+    archive, _ = _opened_archive(tmp_path)
+    path = archive.path
+    archive.close()
+
+    connection = sqlite3.connect(path)
+    connection.execute("ALTER TABLE capture_anomalies RENAME COLUMN anomaly_id TO bad_id")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(ArchiveFormatError, match="capture anomaly journal"):
+        RecordingReader(path)
+
+
+def test_reader_wraps_malformed_diagnostic_provenance(tmp_path) -> None:
+    archive, _ = _opened_archive(tmp_path)
+    path = archive.path
+    archive.close()
+
+    connection = sqlite3.connect(path)
+    connection.execute("DROP TABLE recording_features")
+    connection.execute(
+        "CREATE TABLE recording_features (feature_name TEXT PRIMARY KEY) STRICT"
+    )
+    connection.execute(
+        "INSERT INTO recording_features (feature_name) VALUES (?)",
+        ("capture_anomaly_journal",),
+    )
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(ArchiveFormatError, match="provenance"):
+        RecordingReader(path)
+
+
+def test_async_writer_journals_anomaly_without_consuming_sequence(tmp_path) -> None:
+    async def run() -> tuple[int, int]:
+        archive, started_at_ms = _opened_archive(tmp_path)
+        writer = AsyncRecordingWriter(archive)
+        next_sequence = writer.next_sequence
+        record = await writer.record_anomaly(
+            _capture_anomaly(),
+            observed_at_ms=started_at_ms,
+            identity=_identity(),
+            subscription_generation=0,
+        )
+        await writer.stop(clean=True)
+        return record.anomaly_id, next_sequence
+
+    anomaly_id, next_sequence = asyncio.run(run())
+
+    with RecordingReader(tmp_path / "capture.sqlite3") as reader:
+        assert anomaly_id == 1
+        assert reader.replay_cutoff_sequence == next_sequence - 1 == 0
+        assert len(reader.capture_anomalies(session_id=1)) == 1
+
+
+def test_resume_enables_anomaly_journal_only_for_new_legacy_sessions(
+    tmp_path,
+) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    archive.append_metadata(
+        _event(
+            archive,
+            _metadata(),
+            observed_at_ms=started_at_ms,
+            identity=_identity(),
+        )
+    )
+    path = archive.path
+    target_identity = archive.target_identity
+    archive.close()
+    with RecordingReader(path) as reader:
+        first_session = reader.sessions()[0]
+        resume_at_ms = first_session.ended_at_ms + 1  # type: ignore[operator]
+
+    connection = sqlite3.connect(path)
+    connection.execute("DROP TABLE capture_anomalies")
+    connection.execute("DROP TABLE recording_features")
+    connection.commit()
+    connection.close()
+
+    with RecordingReader(path) as reader:
+        assert reader.schema_version == SCHEMA_VERSION
+        assert not reader.has_capture_anomaly_journal
+        assert not reader.capture_anomaly_journal_available(1)
+        with pytest.raises(CaptureAnomalyJournalUnavailableError):
+            reader.capture_anomalies(session_id=1)
+
+    resumed = RecordingArchive.resume(
+        path,
+        target_identity=target_identity,
+        started_at_ms=resume_at_ms,
+    )
+    assert resumed.next_sequence == 2
+    resumed.close()
+
+    with RecordingReader(path) as reader:
+        provenance = reader.capture_anomaly_journal_provenance
+        assert provenance is not None
+        assert provenance.available_from_session_id == 2
+        assert [event.sequence for event in reader.iter_events()] == [1]
+        assert not reader.capture_anomaly_journal_available(1)
+        assert reader.capture_anomaly_journal_available(2)
+        assert reader.capture_anomalies(session_id=2) == ()
+        with pytest.raises(CaptureAnomalyJournalUnavailableError, match="sessions: 1"):
+            reader.capture_anomalies(session_id=1)
+        with pytest.raises(CaptureAnomalyJournalUnavailableError, match="sessions: 1"):
+            reader.capture_anomalies()
 
 
 def test_archive_requires_metadata_baselines_and_global_sequence(tmp_path) -> None:

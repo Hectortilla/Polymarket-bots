@@ -19,6 +19,9 @@ from .contracts import (
     BookBaselinePayload,
     BookCheckpoint,
     BookDeltaPayload,
+    CaptureAnomalyPayload,
+    CaptureAnomalyRecord,
+    CaptureFailureKind,
     CoverageGapPayload,
     CoverageGapRecord,
     MarketIdentity,
@@ -28,7 +31,14 @@ from .contracts import (
     SessionIntegrityStatus,
     event_token_ids,
 )
-from .serialization import PayloadKind, payload_from_json, payload_json, payload_kind
+from .serialization import (
+    PayloadKind,
+    capture_anomaly_from_json,
+    capture_anomaly_json,
+    payload_from_json,
+    payload_json,
+    payload_kind,
+)
 
 
 SCHEMA_VERSION = 2
@@ -36,6 +46,7 @@ SQLITE_APPLICATION_ID = 0x504F4C59
 RECORDER_DISTRIBUTION = "polymarket-polybot"
 SDK_DISTRIBUTION = "polymarket-client"
 INTERRUPTED_SESSION_REASON = "recording process ended before a clean close"
+CAPTURE_ANOMALY_JOURNAL_FEATURE = "capture_anomaly_journal"
 
 
 class RecordingArchiveError(RuntimeError):
@@ -66,6 +77,10 @@ class ArchiveClosedError(RecordingArchiveError):
     pass
 
 
+class CaptureAnomalyJournalUnavailableError(RecordingArchiveError):
+    """The selected session predates capture-anomaly diagnostics."""
+
+
 @dataclass(frozen=True, slots=True)
 class RecordingSession:
     session_id: int
@@ -86,6 +101,14 @@ class RecordingEventBounds:
     last_sequence: int
     start_at_ms: int
     end_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecordingFeatureProvenance:
+    feature_name: str
+    available_from_session_id: int
+    enabled_at_ms: int
+    recorder_version: str
 
 
 class RecordingArchive:
@@ -155,7 +178,14 @@ class RecordingArchive:
                 target_identity=normalized_target,
                 created_at_ms=started_at_ms,
             )
+            connection.execute("BEGIN IMMEDIATE")
+            _ensure_capture_anomaly_schema(connection)
             session_id = _insert_session(connection, started_at_ms)
+            _enable_capture_anomaly_journal(
+                connection,
+                available_from_session_id=session_id,
+                enabled_at_ms=started_at_ms,
+            )
             connection.commit()
             return cls(
                 path=archive_path,
@@ -224,6 +254,7 @@ class RecordingArchive:
             next_sequence = _last_sequence(connection) + 1
             metadata_by_condition = _latest_metadata(connection)
             connection.execute("BEGIN IMMEDIATE")
+            _ensure_capture_anomaly_schema(connection)
             if prior_session.integrity_status is SessionIntegrityStatus.ACTIVE:
                 connection.execute(
                     """
@@ -239,6 +270,11 @@ class RecordingArchive:
                     ),
                 )
             session_id = _insert_session(connection, started_at_ms)
+            _enable_capture_anomaly_journal(
+                connection,
+                available_from_session_id=session_id,
+                enabled_at_ms=started_at_ms,
+            )
             connection.commit()
             return cls(
                 path=archive_path,
@@ -424,6 +460,71 @@ class RecordingArchive:
             except sqlite3.Error as error:
                 self._connection.rollback()
                 raise RecordingArchiveError("failed to close coverage gap") from error
+
+    def append_capture_anomaly(
+        self,
+        anomaly: CaptureAnomalyPayload,
+        *,
+        observed_at_ms: int,
+        identity: MarketIdentity,
+        subscription_generation: int,
+    ) -> CaptureAnomalyRecord:
+        """Journal diagnostics without adding a canonical replay event."""
+
+        if not isinstance(anomaly, CaptureAnomalyPayload):
+            raise ArchiveIntegrityError(
+                "capture anomaly append requires a capture anomaly payload"
+            )
+        if not isinstance(identity, MarketIdentity):
+            raise ArchiveIntegrityError("capture anomaly identity is invalid")
+        _nonnegative_timestamp(observed_at_ms, "capture anomaly observation")
+        _nonnegative_int(
+            subscription_generation,
+            "capture anomaly subscription generation",
+        )
+        if not anomaly.matches_index_identity(identity):
+            raise ArchiveIntegrityError(
+                "capture anomaly identity does not match its initial fragment"
+            )
+        serialized = capture_anomaly_json(anomaly)
+        with self._lock:
+            self._ensure_open()
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                cursor = self._connection.execute(
+                    """
+                    INSERT INTO capture_anomalies (
+                        session_id, subscription_generation, observed_at_ms,
+                        condition_id, market_slug, token_id, failure_kind,
+                        payload_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        self._session_id,
+                        subscription_generation,
+                        observed_at_ms,
+                        identity.condition_id,
+                        identity.market_slug,
+                        identity.token_id,
+                        anomaly.failure_kind.value,
+                        serialized,
+                    ),
+                )
+                anomaly_id = int(cursor.lastrowid)
+                self._connection.commit()
+            except (sqlite3.Error, ValueError) as error:
+                self._connection.rollback()
+                raise RecordingArchiveError(
+                    "failed to append capture anomaly"
+                ) from error
+            return CaptureAnomalyRecord(
+                anomaly_id=anomaly_id,
+                session_id=self._session_id,
+                subscription_generation=subscription_generation,
+                observed_at_ms=observed_at_ms,
+                identity=identity,
+                anomaly=anomaly,
+            )
 
     def append_checkpoint(self, checkpoint: BookCheckpoint) -> None:
         self.append_checkpoints((checkpoint,))
@@ -678,6 +779,14 @@ class RecordingReader:
                     "SELECT * FROM sessions ORDER BY session_id"
                 ).fetchall()
             )
+            self._capture_anomaly_provenance = (
+                _capture_anomaly_journal_provenance(self._connection)
+            )
+            self._capture_anomaly_cutoff_id = (
+                0
+                if self._capture_anomaly_provenance is None
+                else _last_capture_anomaly_id(self._connection)
+            )
             self._last_observed_at_ms = _last_observed_at_ms(
                 self._connection,
                 sequence_cutoff=self._replay_cutoff_sequence,
@@ -699,6 +808,16 @@ class RecordingReader:
         """Last event sequence visible to this reader instance."""
 
         return self._replay_cutoff_sequence
+
+    @property
+    def has_capture_anomaly_journal(self) -> bool:
+        return self._capture_anomaly_provenance is not None
+
+    @property
+    def capture_anomaly_journal_provenance(
+        self,
+    ) -> RecordingFeatureProvenance | None:
+        return self._capture_anomaly_provenance
 
     @property
     def last_observed_at_ms(self) -> int | None:
@@ -1125,10 +1244,123 @@ class RecordingReader:
             self._ensure_open()
             return self._coverage_gaps(open_only=open_only, **selection)
 
+    def capture_anomaly_journal_available(self, session_id: int) -> bool:
+        selected_session = self.select_session(session_id)
+        provenance = self._capture_anomaly_provenance
+        return (
+            provenance is not None
+            and selected_session.session_id
+            >= provenance.available_from_session_id
+        )
+
+    def capture_anomalies(
+        self,
+        *,
+        start_at_ms: int | None = None,
+        end_at_ms: int | None = None,
+        session_id: int | None = None,
+        condition_id: str | None = None,
+        market_slug: str | None = None,
+        failure_kind: CaptureFailureKind | str | None = None,
+    ) -> tuple[CaptureAnomalyRecord, ...]:
+        """Read quarantined diagnostics, never canonical replay events."""
+
+        if start_at_ms is not None:
+            _nonnegative_timestamp(start_at_ms, "capture anomaly selection start")
+        if end_at_ms is not None:
+            _nonnegative_timestamp(end_at_ms, "capture anomaly selection end")
+        if (
+            start_at_ms is not None
+            and end_at_ms is not None
+            and end_at_ms < start_at_ms
+        ):
+            raise ValueError("capture anomaly selection cannot end before it starts")
+        normalized_session = (
+            None
+            if session_id is None
+            else self.select_session(session_id).session_id
+        )
+        normalized_condition = (
+            None
+            if condition_id is None
+            else _required_text(condition_id, "condition ID")
+        )
+        normalized_slug = (
+            None
+            if market_slug is None
+            else _required_text(market_slug, "market slug")
+        )
+        if failure_kind is None:
+            normalized_failure = None
+        else:
+            try:
+                normalized_failure = CaptureFailureKind(failure_kind)
+            except (TypeError, ValueError) as error:
+                raise ValueError("capture anomaly failure kind is invalid") from error
+        with self._lock:
+            self._ensure_open()
+            selected_sessions = _sessions_overlapping(
+                self._sessions,
+                start_at_ms=start_at_ms,
+                end_at_ms=end_at_ms,
+                session_id=normalized_session,
+            )
+            self._require_capture_anomaly_journal(selected_sessions)
+            clauses = ["anomaly_id <= ?"]
+            parameters: list[object] = [self._capture_anomaly_cutoff_id]
+            for column, value, operator in (
+                ("observed_at_ms", start_at_ms, ">="),
+                ("observed_at_ms", end_at_ms, "<="),
+                ("session_id", normalized_session, "="),
+                ("condition_id", normalized_condition, "="),
+                ("market_slug", normalized_slug, "="),
+                (
+                    "failure_kind",
+                    None if normalized_failure is None else normalized_failure.value,
+                    "=",
+                ),
+            ):
+                if value is not None:
+                    clauses.append(f"{column} {operator} ?")
+                    parameters.append(value)
+            try:
+                rows = self._connection.execute(
+                    "SELECT * FROM capture_anomalies WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY anomaly_id",
+                    tuple(parameters),
+                ).fetchall()
+            except sqlite3.Error as error:
+                raise ArchiveFormatError(
+                    "capture anomaly journal is malformed"
+                ) from error
+            return tuple(_capture_anomaly_from_row(row) for row in rows)
+
     def sessions(self) -> tuple[RecordingSession, ...]:
         with self._lock:
             self._ensure_open()
             return self._sessions
+
+    def _require_capture_anomaly_journal(
+        self,
+        selected_sessions: tuple[RecordingSession, ...],
+    ) -> None:
+        provenance = self._capture_anomaly_provenance
+        if provenance is None:
+            raise CaptureAnomalyJournalUnavailableError(
+                "capture anomaly diagnostics are unavailable for this archive"
+            )
+        unavailable = tuple(
+            session.session_id
+            for session in selected_sessions
+            if session.session_id < provenance.available_from_session_id
+        )
+        if unavailable:
+            session_list = ", ".join(str(value) for value in unavailable)
+            raise CaptureAnomalyJournalUnavailableError(
+                "capture anomaly diagnostics are unavailable for recording "
+                f"sessions: {session_list}"
+            )
 
     def unresolved_markets(
         self,
@@ -1642,6 +1874,132 @@ def _initialize_schema(
     )
 
 
+def _ensure_capture_anomaly_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS recording_features (
+            feature_name TEXT PRIMARY KEY,
+            available_from_session_id INTEGER NOT NULL
+                REFERENCES sessions(session_id),
+            enabled_at_ms INTEGER NOT NULL CHECK (enabled_at_ms >= 0),
+            recorder_version TEXT NOT NULL
+        ) STRICT
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS capture_anomalies (
+            anomaly_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL REFERENCES sessions(session_id),
+            subscription_generation INTEGER NOT NULL CHECK (
+                subscription_generation >= 0
+            ),
+            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
+            condition_id TEXT,
+            market_slug TEXT,
+            token_id TEXT,
+            failure_kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        ) STRICT
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS capture_anomalies_session_time_idx
+        ON capture_anomalies(session_id, observed_at_ms, anomaly_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS capture_anomalies_condition_idx
+        ON capture_anomalies(condition_id, observed_at_ms, anomaly_id)
+        """
+    )
+
+
+def _enable_capture_anomaly_journal(
+    connection: sqlite3.Connection,
+    *,
+    available_from_session_id: int,
+    enabled_at_ms: int,
+) -> None:
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO recording_features (
+            feature_name, available_from_session_id, enabled_at_ms,
+            recorder_version
+        ) VALUES (?, ?, ?, ?)
+        """,
+        (
+            CAPTURE_ANOMALY_JOURNAL_FEATURE,
+            available_from_session_id,
+            enabled_at_ms,
+            _distribution_version(RECORDER_DISTRIBUTION),
+        ),
+    )
+
+
+def _capture_anomaly_journal_provenance(
+    connection: sqlite3.Connection,
+) -> RecordingFeatureProvenance | None:
+    try:
+        if not _table_exists(connection, "recording_features"):
+            return None
+        row = connection.execute(
+            """
+            SELECT feature_name, available_from_session_id, enabled_at_ms,
+                   recorder_version
+            FROM recording_features
+            WHERE feature_name = ?
+            """,
+            (CAPTURE_ANOMALY_JOURNAL_FEATURE,),
+        ).fetchone()
+        if row is None:
+            return None
+        if not _table_exists(connection, "capture_anomalies"):
+            raise ArchiveFormatError(
+                "capture anomaly journal feature table is missing"
+            )
+        provenance = RecordingFeatureProvenance(
+            feature_name=_required_text(row["feature_name"], "feature name"),
+            available_from_session_id=_positive_int(
+                row["available_from_session_id"],
+                "feature activation session ID",
+            ),
+            enabled_at_ms=_nonnegative_timestamp(
+                row["enabled_at_ms"],
+                "feature activation timestamp",
+            ),
+            recorder_version=_required_text(
+                row["recorder_version"],
+                "feature recorder version",
+            ),
+        )
+        activation_session = connection.execute(
+            "SELECT 1 FROM sessions WHERE session_id = ?",
+            (provenance.available_from_session_id,),
+        ).fetchone()
+        if activation_session is None:
+            raise ArchiveFormatError(
+                "capture anomaly journal activation session does not exist"
+            )
+        return provenance
+    except ArchiveFormatError:
+        raise
+    except (IndexError, sqlite3.Error, TypeError, ValueError) as error:
+        raise ArchiveFormatError(
+            "capture anomaly journal provenance is malformed"
+        ) from error
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
 def sql_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
@@ -1772,6 +2130,40 @@ def _event_from_row(row: sqlite3.Row) -> RecordedEvent:
         sequence = row["sequence"] if "sequence" in row.keys() else "unknown"
         raise ArchiveFormatError(
             f"recording event {sequence} is malformed"
+        ) from error
+
+
+def _capture_anomaly_from_row(row: sqlite3.Row) -> CaptureAnomalyRecord:
+    try:
+        anomaly = capture_anomaly_from_json(row["payload_json"])
+        failure_kind = CaptureFailureKind(row["failure_kind"])
+        if anomaly.failure_kind is not failure_kind:
+            raise ValueError("capture anomaly failure kind index is inconsistent")
+        identity = _identity_from_row(row)
+        if identity is None:
+            raise ValueError("capture anomaly has no market identity")
+        if not anomaly.matches_index_identity(identity):
+            raise ValueError(
+                "capture anomaly identity index is inconsistent"
+            )
+        return CaptureAnomalyRecord(
+            anomaly_id=_strict_int(row["anomaly_id"], "capture anomaly ID"),
+            session_id=_strict_int(row["session_id"], "capture anomaly session"),
+            subscription_generation=_strict_int(
+                row["subscription_generation"],
+                "capture anomaly generation",
+            ),
+            observed_at_ms=_strict_int(
+                row["observed_at_ms"],
+                "capture anomaly observation",
+            ),
+            identity=identity,
+            anomaly=anomaly,
+        )
+    except (IndexError, TypeError, ValueError) as error:
+        anomaly_id = row["anomaly_id"] if "anomaly_id" in row.keys() else "unknown"
+        raise ArchiveFormatError(
+            f"capture anomaly {anomaly_id} is malformed"
         ) from error
 
 
@@ -2364,6 +2756,20 @@ def _last_sequence(connection: sqlite3.Connection) -> int:
     return int(row[0])
 
 
+def _last_capture_anomaly_id(connection: sqlite3.Connection) -> int:
+    try:
+        row = connection.execute(
+            "SELECT COALESCE(MAX(anomaly_id), 0) FROM capture_anomalies"
+        ).fetchone()
+        if row is None:
+            raise ValueError("capture anomaly cutoff query returned no row")
+        return _nonnegative_int(row[0], "capture anomaly cutoff ID")
+    except ArchiveFormatError:
+        raise
+    except (IndexError, sqlite3.Error, TypeError, ValueError) as error:
+        raise ArchiveFormatError("capture anomaly journal is malformed") from error
+
+
 def _last_observed_at_ms(
     connection: sqlite3.Connection,
     *,
@@ -2394,6 +2800,29 @@ def _required_text(value: object, name: str) -> str:
     return value.strip()
 
 
+def _sessions_overlapping(
+    sessions: tuple[RecordingSession, ...],
+    *,
+    start_at_ms: int | None,
+    end_at_ms: int | None,
+    session_id: int | None,
+) -> tuple[RecordingSession, ...]:
+    if session_id is not None:
+        return tuple(
+            session for session in sessions if session.session_id == session_id
+        )
+    return tuple(
+        session
+        for session in sessions
+        if (end_at_ms is None or session.started_at_ms <= end_at_ms)
+        and (
+            start_at_ms is None
+            or session.ended_at_ms is None
+            or session.ended_at_ms >= start_at_ms
+        )
+    )
+
+
 def _strict_int(value: object, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{name} must be an integer")
@@ -2416,3 +2845,7 @@ def _nonnegative_timestamp(value: object, name: str) -> int:
     if parsed < 0:
         raise ValueError(f"{name} must be nonnegative")
     return parsed
+
+
+def _nonnegative_int(value: object, name: str) -> int:
+    return _nonnegative_timestamp(value, name)

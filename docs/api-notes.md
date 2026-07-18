@@ -196,9 +196,15 @@ rejects deltas before a baseline. No direct-network exception is required.
 The market channel describes `price_change` values as individual level updates,
 and live traffic can deliver one logical revision in consecutive frames sharing
 the same timestamp and per-token hashes. If an intermediate fragment would
-cross the projected book, the recording adapter combines only exact-key
-continuations and validates the ordered changes as one transaction. Missing,
-mismatched, or late continuations retain fail-closed coverage-gap behavior.
+cross the projected book, the recording adapter accepts only same-condition,
+same-timestamp continuations that preserve every token/hash fingerprint required
+by the first fragment. A continuation may additionally name other token hashes;
+those additions need not recur, but any that do recur must keep their first-seen
+hash. It validates the ordered changes as one transaction. Missing, changed,
+unrelated, late, dropped, or still-crossed continuations are quarantined and
+retain fail-closed coverage-gap behavior. The public SDK handle's cumulative
+drop-oldest counter is checked during read-ahead as well as normal capture; the
+SDK does not expose a supported manager-wide malformed-message counter.
 WebSocket resolution is committed before closing its condition handle. Gamma
 metadata is reconciled immediately and retried until its final resolved state
 is available, without delaying persistence of the source resolution event.
@@ -214,6 +220,17 @@ does not interrupt existing captures or create a gap by itself. Integrity can
 therefore report `no detected gaps`, never `exchange-complete`. Recorder
 downtime between resumed sessions is stored as an explicit target-wide gap;
 restored unresolved conditions then resume their own condition-scoped capture.
+Recovery writes same-boundary common token checkpoints immediately instead of
+waiting for the periodic checkpoint cadence. The additive schema-v2 capture
+anomaly journal preserves normalized failure evidence without altering replay
+event order. Its feature-activation boundary distinguishes legacy sessions with
+unavailable diagnostics from enabled sessions that observed zero anomalies.
+
+This hardening cannot promise gap-free recording. The official market-channel
+contract still provides no sequence number, replay endpoint, hash lineage, or
+resume cursor. REST price/trade history and advertised best bid/ask values are
+diagnostic signals, not enough information to reconstruct missing L2 changes,
+so neither is used to erase a gap.
 
 The Slice 9A source set is limited to public prediction-market data. Public
 `last_trade_price` has no wallet identity, aggregated levels have no maker or
