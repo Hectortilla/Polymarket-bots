@@ -21,7 +21,8 @@ Start with:
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
 paper runner CLI, Slice 10 terminal dashboard, and Slice 11 dynamic market
-tracking and resolution processing. The
+tracking and resolution processing, plus Slice 9A's standalone historical
+market recorder. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
@@ -83,6 +84,54 @@ BOT_STREAM_RULES='<stream-rules-json>' \
 BOT_YES_TOKEN_ID=<yes-token-id> \
 uv run python -m polybot.cli --bot polybot.my_bot:create
 ```
+
+## Historical Market Recording
+
+Polymarket exposes current L2 books, historical token-price points, and public
+trade rows through different API surfaces. It does not document a public
+archive of historical L2 books. Slice 9A therefore records the live public
+market stream into a user-selected SQLite recording archive for later Slice 9B
+replay.
+
+Slice 9A's standalone command is `python -m polybot.recording`. Select either a
+bot factory, whose current and
+next market rules provide the recording topology, or one or more explicit
+market slugs. The two selection modes are mutually exclusive:
+
+```sh
+uv run python -m polybot.recording \
+  --market-slug btc-updown-5m-1767225600 \
+  --market-slug eth-updown-5m-1767225600 \
+  --output recordings/two-markets.sqlite \
+  --duration 2h
+```
+
+```sh
+uv run python -m polybot.recording \
+  --bot polybot.examples.example_btc_five_minute_momentum:create \
+  --output recordings/btc-five-minute.sqlite \
+  --duration 10d
+```
+
+Omit `--duration` to run until graceful interruption. Use `--resume` to append
+another recording session to an existing compatible archive with the same
+target selection. A normal run refuses to overwrite an existing output, and
+`--resume` records the offline interval as a coverage gap. The recorder also
+accepts the runner's existing `--dotenv` and `--override` options when loading a
+bot factory.
+
+The archive contains sessions, market metadata revisions, chronological
+recorded events, full book checkpoints, and explicit coverage gaps. An archive
+can report `no detected gaps`; it cannot prove exchange-complete capture because
+the official prediction-market stream documents timestamps and book hashes but
+no sequence number, replay cursor, or resume protocol.
+
+Slice 9A is market-only. It does not record arbitrary-wallet activity, private
+orders or fills, maker identities or queue position, or Binance, Chainlink,
+Pyth, or other external reference feeds. Strategies that require those inputs
+need additional future recording slices before their results can be reproduced.
+The SQLite file is a local artifact, not an application database or a dependency
+on the Polyfollow app.
 
 The paper-only BTC five-minute momentum example continuously rolls across the
 canonical `btc-updown-5m-<bucket-start>` markets:

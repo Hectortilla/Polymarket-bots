@@ -1,0 +1,141 @@
+"""Projection of normalized market-channel depth into framework books."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from decimal import Decimal
+
+from polymarket.models.clob.order_book import OrderBookLevel
+
+from polybot.framework.events import Side
+from polybot.framework.events.books import BookSnapshot
+from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+from polybot.polymarket.normalization.book import normalize_book
+from polybot.polymarket.types import (
+    Market,
+    index_markets_by_token,
+    outcome_label_for_token,
+)
+from polybot.recording.contracts import BookBaselinePayload, BookDeltaPayload
+
+
+type _DepthSides = tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]
+
+
+class BookDepthProjector:
+    """Own full depth and transactionally apply normalized channel messages."""
+
+    def __init__(self, markets: Iterable[Market]) -> None:
+        normalized = tuple(markets)
+        self._market_by_token = index_markets_by_token(normalized)
+        self._depth: dict[str, _DepthSides] = {}
+
+    @property
+    def baseline_token_ids(self) -> frozenset[str]:
+        return frozenset(self._depth)
+
+    def apply_baseline(
+        self,
+        payload: BookBaselinePayload,
+        *,
+        condition_id: str,
+        received_at_ms: int,
+    ) -> BookSnapshot:
+        market = self._market_for(payload.token_id, condition_id)
+        bids = {level.price: level.size for level in payload.bids}
+        asks = {level.price: level.size for level in payload.asks}
+        snapshot = self._snapshot(
+            market,
+            payload.token_id,
+            bids,
+            asks,
+            received_at_ms=received_at_ms,
+        )
+        self._depth[payload.token_id] = (bids, asks)
+        return snapshot
+
+    def apply_delta(
+        self,
+        payload: BookDeltaPayload,
+        *,
+        condition_id: str,
+        received_at_ms: int,
+    ) -> tuple[BookSnapshot, ...]:
+        candidates: dict[str, _DepthSides] = {}
+        for change in payload.changes:
+            self._market_for(change.token_id, condition_id)
+            current = self._depth.get(change.token_id)
+            if current is None:
+                raise MarketDataError(
+                    MarketDataIssue.MISSING_BOOK_BASELINE,
+                    f"price change arrived before a baseline for {change.token_id}",
+                )
+            candidate = candidates.setdefault(
+                change.token_id,
+                (current[0].copy(), current[1].copy()),
+            )
+            levels = candidate[0] if change.side is Side.BUY else candidate[1]
+            if change.size == 0:
+                levels.pop(change.price, None)
+            else:
+                levels[change.price] = change.size
+
+        snapshots: list[BookSnapshot] = []
+        for token_id, candidate in candidates.items():
+            market = self._market_for(token_id, condition_id)
+            snapshot = self._snapshot(
+                market,
+                token_id,
+                *candidate,
+                received_at_ms=received_at_ms,
+            )
+            snapshots.append(snapshot)
+
+        for snapshot in snapshots:
+            self._depth[snapshot.token_id] = candidates[snapshot.token_id]
+        return tuple(snapshots)
+
+    def snapshots(self, *, received_at_ms: int) -> tuple[BookSnapshot, ...]:
+        return tuple(
+            self._snapshot(
+                self._market_by_token[token_id],
+                token_id,
+                *sides,
+                received_at_ms=received_at_ms,
+            )
+            for token_id, sides in self._depth.items()
+        )
+
+    def _market_for(self, token_id: str, condition_id: str) -> Market:
+        market = self._market_by_token.get(token_id)
+        if market is None or market.condition_id != condition_id:
+            raise MarketDataError(
+                MarketDataIssue.BOOK_IDENTITY_MISMATCH,
+                "market-channel identity does not match resolved metadata",
+            )
+        return market
+
+    @staticmethod
+    def _snapshot(
+        market: Market,
+        token_id: str,
+        bids: dict[Decimal, Decimal],
+        asks: dict[Decimal, Decimal],
+        *,
+        received_at_ms: int,
+    ) -> BookSnapshot:
+        return normalize_book(
+            token_id=token_id,
+            bids=tuple(
+                OrderBookLevel(price=price, size=size) for price, size in bids.items()
+            ),
+            asks=tuple(
+                OrderBookLevel(price=price, size=size) for price, size in asks.items()
+            ),
+            received_at_ms=received_at_ms,
+            condition_id=market.condition_id,
+            market_slug=market.slug,
+            outcome=outcome_label_for_token(market, token_id),
+            expected_token_id=token_id,
+            expected_condition_id=market.condition_id,
+        )

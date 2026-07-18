@@ -145,6 +145,77 @@ User WebSocket:
 - Required for live fill confirmation.
 - Relevant docs: `/api-reference/wss/user`.
 
+## Historical Market Data Boundary
+
+The official prediction-market APIs expose several historical-looking surfaces,
+but only one contains L2 depth and it is live/current:
+
+- CLOB `GET /book` and batch `POST /books` return current full aggregated books.
+  The CLOB OpenAPI does not expose historical book snapshots, historical depth
+  deltas, or a book replay endpoint.
+- CLOB `GET /prices-history` returns `{t, p}` price points for one outcome token.
+  It accepts an absolute `startTs`/`endTs` range or a relative interval, plus a
+  fidelity in minutes. These points are a price series, not bids and asks.
+- Data API `GET /trades` returns executed public trade rows. Market/event-scoped
+  requests retain an approximately three-year floor and need time-window paging
+  beyond the endpoint's offset budget. Executions do not reveal the orders that
+  were placed and cancelled between trades.
+- Gamma can return closed market/event metadata with `closed=true`, but it is a
+  current metadata record rather than a revision history.
+
+Prediction-market orders are created and matched offchain, with matched trades
+settled onchain. Polygon settlement data therefore cannot reconstruct cancelled
+or unfilled orders and is not an alternative historical L2 source. Neither the
+price-history endpoint nor public trades can repair a missing book interval.
+
+The public market WebSocket emits a full `book` when first subscribed and after
+a trade affects the book, `price_change` updates for placements and
+cancellations, `last_trade_price`, `tick_size_change`, and optional lifecycle
+events. Documented payloads include timestamps; full books and price changes
+also include hashes. The docs do not define:
+
+- a monotonic sequence number or cross-message ordering contract;
+- the hash as a revision cursor or parent-linked hash chain;
+- replay of missed events; or
+- a reconnect/resume cursor.
+
+Consequently a new or reopened condition capture needs a fresh source full-book
+baseline for every token before its subsequent updates form a replayable
+segment. Source timestamps are stored alongside a local nondecreasing observed
+timestamp and a recorder-owned arrival order; equal or nonmonotonic source
+times are not guessed into a new exchange order. A documented hash is preserved
+for diagnostics but is never promoted to a sequence number.
+
+Slice 9A uses the pinned unified SDK's Gamma reads and the package-owned
+`polybot.polymarket.recording_feed.MarketRecordingFeed`, which keeps
+`AsyncPublicClient.subscribe(MarketSpec(...))` internal. A per-condition
+`MarketCapture` emits package-owned baseline, delta, public-trade, tick-size,
+and resolution values; `BookDepthProjector` rebaselines on full books and
+rejects deltas before a baseline. No direct-network exception is required.
+WebSocket resolution is committed before closing its condition handle. Gamma
+metadata is reconciled immediately and retried until its final resolved state
+is available, without delaying persistence of the source resolution event.
+
+The SQLite recording archive stores sessions, metadata revisions,
+chronological recorded events, book checkpoints, and coverage gaps. The
+recorder treats a disconnect, interrupted condition capture, or increase in
+`MarketCaptureDiagnostics.dropped_count` as a detected continuity break. A
+continuing segment requires new full books for all affected tokens; a terminal
+resolution can end the gap interval without repairing the missing interval.
+Each condition has its own SDK subscription handle, so adding another condition
+does not interrupt existing captures or create a gap by itself. Integrity can
+therefore report `no detected gaps`, never `exchange-complete`. Recorder
+downtime between resumed sessions is stored as an explicit target-wide gap;
+restored unresolved conditions then resume their own condition-scoped capture.
+
+The Slice 9A source set is limited to public prediction-market data. Public
+`last_trade_price` has no wallet identity, aggregated levels have no maker or
+queue identity, and the user WebSocket exposes only the authenticated account.
+Arbitrary-wallet activity, private order/fill state, and RTDS Binance,
+Chainlink, Pyth, sports, or other reference feeds are not recorded. A later
+slice must add each missing source before a strategy depending on it can be
+faithfully replayed.
+
 ## Authentication
 
 CLOB trading uses two levels:

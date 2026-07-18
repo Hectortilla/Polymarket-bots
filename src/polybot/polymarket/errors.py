@@ -13,6 +13,7 @@ class MarketDataIssue(StrEnum):
     INVALID_BOOK_LEVEL = "invalid_book_level"
     BOOK_UNAVAILABLE = "book_unavailable"
     INVALID_BOOK_SIDE = "invalid_book_side"
+    MISSING_BOOK_BASELINE = "missing_book_baseline"
     BOOK_IDENTITY_MISMATCH = "book_identity_mismatch"
     CROSSED_BOOK = "crossed_book"
     AMBIGUOUS_MARKET_METADATA = "ambiguous_market_metadata"

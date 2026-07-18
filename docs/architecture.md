@@ -14,7 +14,8 @@
 Slices 1 through 5, Slice 10, and Slice 11 are implemented: framework contracts,
 the paper fill engine, public Polymarket market-data adapters, wallet activity
 Data API inputs, the paper runner CLI and terminal dashboard, plus dynamic
-market tracking and resolution settlement.
+market tracking and resolution settlement, plus Slice 9A's standalone
+historical market recorder; deterministic archive replay remains Slice 9B.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -65,7 +66,8 @@ adapter behavior covered by contract tests, especially while
 
 - No FastAPI routes.
 - No frontend integration.
-- No database integration in v1.
+- No application database or database-service integration in v1. Slice 9A's
+  user-selected SQLite file is a standalone local artifact.
 - No mirror-follow app behavior.
 - No RFQ, combo, perps, bridge, or redemption support in v1.
 
@@ -112,6 +114,7 @@ polyfollow-polybot/
     ws_market.py  # SDK-backed public market stream and depth state.
     ws_user.py    # SDK-backed authenticated user stream adapter.
     types.py      # Polymarket-specific normalized types.
+  recording/        # Standalone market recorder and SQLite archive boundary.
   execution/
     broker.py     # Broker protocol used by polybot.
     paper/        # Orchestration, validation, fill math, market data, portfolio.
@@ -208,6 +211,104 @@ lossless FIFO order. Market-data memory is therefore bounded by the subscribed
 token and condition counts, while wallet traffic intentionally retains
 lossless semantics. The runner's five-second default freshness validation is
 unchanged and still rejects a genuinely stale latest snapshot.
+
+## Historical Recording Boundary
+
+Slice 9A records the public market data that a future Slice 9B backtester will
+replay. It is a separate process from the paper runner and never dispatches
+books to `BotRunner`, invokes strategy event hooks, or submits orders. In bot
+selection mode it instantiates the factory only to call
+`current_stream_rules()` and `next_stream_rules()` with a planning context whose
+broker and wallet activity source reject every operation. Explicit
+selection mode instead uses one or more static market slugs.
+
+```text
+bot current/next rules or repeated market slugs
+  -> Gamma metadata resolution and future-slug retry
+  -> current plus available next-market conditions
+  -> one MarketRecordingFeed / official SDK handle per condition
+  -> chronological package-owned events and BookDepthProjector state
+  -> integrity monitor and book checkpoints
+  -> local SQLite recording archive
+```
+
+`polybot.polymarket.recording_feed.MarketRecordingFeed` owns the SDK stream
+boundary. Each per-condition `MarketCapture` is an async context manager and
+iterator that emits package-owned book baseline/delta, public trade, tick-size,
+and resolution values without exposing the SDK handle. A full book rebaselines
+the shared `BookDepthProjector`; deltas before a baseline and identity-mismatched
+events fail closed. `MarketCaptureDiagnostics.dropped_count` surfaces the
+SDK's cumulative drop count to the integrity monitor.
+
+A WebSocket resolution is flushed before its condition handle closes. The
+recorder then reconciles Gamma metadata and keeps retrying without the handle
+until Gamma exposes final terminal metadata; the recorded WebSocket resolution
+remains the authoritative event-order boundary during that lag.
+
+The recorder uses the same Gamma adapter as the live paper runtime. For dynamic
+bucket bots it resolves both the current and next plan and subscribes the next
+market before rollover whenever Gamma has published it. Missing future slugs
+are retried without blocking current-market capture. The recorder opens one
+condition capture handle per resolved market; the SDK manager multiplexes those
+handles on its shared connection. Adding the next market therefore does not
+replace or interrupt an existing condition capture. An interrupted condition
+handle is reopened separately and must receive fresh full-book baselines before
+its incremental updates become replayable again.
+
+One SQLite recording archive owns:
+
+- recording sessions, including separate invocations appended with `--resume`;
+- immutable market metadata revisions and their outcome-token identity;
+- chronological recorded events with source time, local observed time, and a
+  recorder-owned arrival order;
+- full normalized book checkpoints from which replay can restart; and
+- explicit coverage gaps scoped to known conditions/tokens, with resumed
+  recorder downtime represented by a target-wide gap.
+
+`RecordingArchive` is the write boundary; `RecordingReader` exposes stored
+`RecordedEvent`, `BookCheckpoint`, `CoverageGapRecord`, and
+`SessionIntegrityStatus` values without leaking SQLite rows. Gap events use the
+package-owned `CoverageGapPayload` contract. These types preserve the artifact
+boundary that Slice 9B will consume later.
+
+SQLite is an artifact format at the standalone package boundary. It does not
+reuse `.bot-state/`, open the Polyfollow application database, run application
+migrations, or become a shared runtime service. The required `--output` path is
+owned by the caller and can be copied together with a bot experiment. A new run
+uses non-overwriting creation and refuses an existing path. `--resume` instead
+requires a schema-compatible archive with the exact stored target identity,
+marks an unclosed prior session interrupted, continues the archive-wide arrival
+order, and appends a new session. The offline interval becomes an explicit
+target-wide gap; it is never presented as continuously observed time.
+
+The prediction-market WebSocket documents a timestamp on market events and a
+hash on full books and price changes. It does not document a monotonic sequence,
+hash lineage, missed-message replay, or resume cursor. The recorder therefore
+orders equal-timestamp arrivals by its own append order and never treats a hash
+as a sequence number. A disconnect, SDK drop-oldest counter increase,
+condition-capture interruption, or other detected loss opens a coverage gap.
+For continuing capture, the gap closes only after every affected token has a
+fresh source full-book baseline; price history or public trade history cannot
+silently repair it. A terminal resolution may instead end the gap interval, but
+the interval remains recorded and incomplete. Opening an additional condition
+handle for a newly resolved next market is not itself a gap in already active
+captures.
+
+Integrity reporting uses the phrase `no detected gaps`, not
+`exchange-complete`. A clean report means the recorder observed no known loss
+between its checkpoints. It cannot prove that the upstream service emitted
+every exchange event because the official stream provides no sequence or replay
+contract. Recorded segments on either side of a gap remain inspectable, and
+Slice 9B must make an explicit policy decision before replaying across one. A
+cleanly closed session and a gap-free interval are separate facts: orderly
+shutdown does not erase an earlier integrity gap.
+
+Slice 9A is deliberately market-only. Aggregated L2 depth and public market
+lifecycle events do not reveal individual maker identities, FIFO queue
+position, private order/fill state, or arbitrary-wallet activity. The archive
+also excludes Binance, Chainlink, Pyth, sports scores, and other external
+reference feeds. A bot whose decision depends on one of those sources cannot be
+fully reproduced from this archive alone.
 
 ## Terminal Observability
 

@@ -7,6 +7,7 @@ from typing import Final
 from urllib.parse import urlencode
 
 from polymarket import AsyncPublicClient, RequestRejectedError
+from polymarket.models.gamma.market import Market as SdkMarket
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.market import normalize_market
@@ -24,16 +25,28 @@ class GammaClient:
         self._owns_client = client is None
 
     async def find_by_slug(self, slug: str) -> Market | None:
+        source = await self._find_source_by_slug(slug)
+        return None if source is None else normalize_market(source)
+
+    async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
+        sources = await self._find_many_sources(slugs)
+        return tuple(
+            None if source is None else normalize_market(source) for source in sources
+        )
+
+    async def _find_source_by_slug(self, slug: str) -> SdkMarket | None:
         self._validate_slug(slug)
         try:
-            source = await self._client.get_market(slug=slug)
+            return await self._client.get_market(slug=slug)
         except RequestRejectedError as error:
             if error.status == HTTPStatus.NOT_FOUND:
                 return None
             raise
-        return normalize_market(source)
 
-    async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
+    async def _find_many_sources(
+        self,
+        slugs: Iterable[str],
+    ) -> tuple[SdkMarket | None, ...]:
         requested_slugs = tuple(slugs)
         for slug in requested_slugs:
             self._validate_slug(slug)
@@ -41,13 +54,13 @@ class GammaClient:
         if not unique_slugs:
             return ()
 
-        markets_by_slug: dict[str, Market] = {}
-        await self._collect_markets(unique_slugs, markets_by_slug)
+        markets_by_slug: dict[str, SdkMarket] = {}
+        await self._collect_market_sources(unique_slugs, markets_by_slug)
         unresolved_slugs = tuple(
             slug for slug in unique_slugs if slug not in markets_by_slug
         )
         if unresolved_slugs:
-            await self._collect_markets(
+            await self._collect_market_sources(
                 unresolved_slugs,
                 markets_by_slug,
                 closed=True,
@@ -81,10 +94,10 @@ class GammaClient:
                 "market slug must not be empty",
             )
 
-    async def _collect_markets(
+    async def _collect_market_sources(
         self,
         slugs: Iterable[str],
-        markets_by_slug: dict[str, Market],
+        markets_by_slug: dict[str, SdkMarket],
         *,
         closed: bool | None = None,
     ) -> None:
@@ -96,7 +109,7 @@ class GammaClient:
             )
             async for source in paginator.iter_items():
                 market = normalize_market(source)
-                markets_by_slug[market.slug] = market
+                markets_by_slug[market.slug] = source
 
 
 def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:

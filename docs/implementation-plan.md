@@ -287,16 +287,144 @@ It consumes package-owned `BookSnapshot` contracts for both outcomes and adds
 paired-book freshness, microprice normalization, EMA/momentum/noise filters,
 book-confirmation, and explicit position exits without importing an SDK or
 adding a new network path. Its deterministic unit tests validate strategy rules;
-historical performance evaluation remains in the later backtesting slice.
+historical performance evaluation remains in Slice 9B after Slice 9A has
+captured representative market archives.
 
-## Slice 9: Backtesting Inputs
+## Slice 9A: Historical Market Recorder
+
+Status: done.
+
+Build a standalone, market-only recorder because Polymarket does not document a
+historical prediction-market L2 book endpoint. Historical price points and
+public trade rows are useful supplementary datasets, but neither reconstructs
+resting depth, placements, or cancellations.
+
+Command contract:
+
+- Run as `python -m polybot.recording`.
+- Require exactly one target mode: `--bot module:factory` or one or more repeated
+  `--market-slug SLUG` values.
+- Require `--output PATH` for the SQLite recording archive.
+- Accept `--duration <number>[s|m|h|d]`; without it, run until graceful
+  interruption.
+- Refuse to overwrite an existing output on a normal run. Accept `--resume`
+  only for an existing schema-compatible archive with the exact stored target
+  identity, and append a new session.
+- Reuse the runner's `--dotenv` and repeated `--override KEY=VALUE` options for
+  bot construction.
+
+Recording behavior:
+
+- Keep the recorder separate from `polybot.cli`: it records inputs and does not
+  run `BotRunner`, strategy event hooks, paper execution, or the dashboard.
+- In bot mode, call only `current_stream_rules()` and `next_stream_rules()` in a
+  read-only planning context. Make its broker reject order and cancellation
+  attempts and expose no wallet activity.
+- Resolve market slugs through the existing Gamma adapter. Record immutable
+  metadata revisions with condition ID, slug, outcomes, token IDs, time bounds,
+  and trading constraints needed to interpret later book events.
+- Maintain the union of current and available next markets. Retry missing future
+  slugs without blocking current capture and pre-subscribe both next-market
+  tokens before rollover.
+- Use `polybot.polymarket.recording_feed.MarketRecordingFeed`, backed by the
+  pinned unified SDK's public `MarketSpec` stream. Preserve its package-owned
+  baseline, delta, public-trade, tick-size, and resolution values in recorder
+  arrival order; use `BookDepthProjector` for full normalized depth.
+- Store source timestamp, local nondecreasing observed timestamp, event kind,
+  market/token identity, documented book hash where present, and normalized
+  payload needed for deterministic reconstruction. Do not use a timestamp or
+  hash as a fabricated exchange sequence.
+- Use one caller-owned SQLite file containing sessions, metadata revisions,
+  chronological recorded events, book checkpoints, and coverage gaps. Keep it
+  independent of `.bot-state/`, the Polyfollow database, and application
+  migrations.
+- Keep SQLite behind `RecordingArchive` and expose reads through
+  `RecordingReader`. Use package-owned `RecordedEvent`, `BookCheckpoint`,
+  `CoverageGapPayload`, `CoverageGapRecord`, and `SessionIntegrityStatus`
+  contracts rather than exposing database rows.
+- On `--resume`, preserve earlier sessions and gaps, mark an unclosed prior
+  session interrupted, continue archive-wide arrival order, and append a new
+  session. Store the target-wide offline interval as a coverage gap before
+  restored unresolved conditions resume capture.
+
+Integrity rules:
+
+- The official prediction-market stream documents timestamps and hashes but no
+  sequence, replay, or resume contract. Report `no detected gaps`, never
+  `exchange-complete`.
+- Open a coverage gap on disconnect, an increased
+  `MarketCaptureDiagnostics.dropped_count`, interrupted or reopened condition
+  capture, failed normalization after identity is known, or another detected
+  continuity loss. Associate it with the affected market/token set and reason.
+- Use a separate condition capture handle for every resolved market. Adding a
+  next-market handle must not interrupt an existing capture or create a gap by
+  itself.
+- Continue capture beyond a gap only after each affected token receives a fresh
+  source full-book baseline. A terminal resolution may end the gap interval but
+  does not repair it. Reject deltas received before their token baseline and do
+  not backfill book gaps from `/prices-history`, public `/trades`, or onchain
+  settlement data.
+- Preserve usable segments before and after a gap. Slice 9B must explicitly
+  reject, split, or otherwise handle a requested replay interval containing one.
+- Track clean session closure separately from capture integrity. A graceful
+  shutdown must not turn an earlier gapped session into a gap-free one.
+
+Deliberate limitations:
+
+- Record public market data only. Do not record arbitrary-wallet trades,
+  authenticated user orders/fills, paper orders/fills, or followed-wallet state.
+- Aggregated L2 does not contain maker identity, individual order IDs, or FIFO
+  queue position and cannot provide exact maker-fill simulation.
+- Do not record Binance, Chainlink, Pyth, sports scores, or other external
+  reference feeds. Bots that use them require a later input slice.
+- Do not implement replay, a historical broker, parameter sweeps, or performance
+  reporting in Slice 9A.
+
+Acceptance:
+
+- Static recording supports multiple explicit market slugs in one archive.
+- Bot recording follows dynamic current/next slug changes and has the next
+  market subscribed before rollover when Gamma publishes it in time.
+- Both outcome tokens have validated metadata and a source full-book baseline before
+  incremental changes are considered replayable.
+- Graceful shutdown commits the session state; resume appends without
+  overwriting previous sessions or hiding downtime. Normal creation refuses an
+  existing path, while resume rejects a missing, incompatible, or different-
+  target archive.
+- Injected disconnects, SDK drops, condition-handle interruptions, and malformed
+  known-identity events create stable coverage-gap records and recover only on
+  fresh baselines. Adding another condition leaves existing capture segments
+  continuous.
+- Archive inspection distinguishes open/closed gaps and can state
+  `no detected gaps` without making an exchange-completeness claim.
+- Tests use synthetic or recorded official-SDK models and a temporary local
+  SQLite file; they do not call live Polymarket services.
+
+## Slice 9B: Deterministic Backtest Replay
 
 Optional later slice.
 
-- Replay stored book snapshots into `BotRunner`.
-- Replay stored wallet trades into `BotRunner`.
-- Reuse the same `BaseBot` hooks.
-- Make latency deterministic for repeatable tests.
+- Read compatible Slice 9A SQLite recording archives without importing SDK
+  models into bot or execution code.
+- Select a session, markets, and time range and validate its metadata and gap
+  coverage before starting.
+- Replay stored book checkpoints and chronological market events into the same
+  package-owned `BookSnapshot` and lifecycle contracts used by `BotRunner`.
+- Supply archive-backed market and latest-book clients so existing bot hooks do
+  not need a replay-specific API.
+- Reuse `BaseBot` hooks and paper `OrderRequest`/`FillEvent` contracts.
+- Drive strategy time, latency, and jitter from a deterministic virtual clock so
+  repeated runs with the same inputs and seed produce the same result.
+- Advance that clock to each recorded observation. During simulated broker or
+  strategy latency, apply intervening market events to the latest-book cache
+  without re-entering the bot, retain only the newest pending callback per
+  token to match live coalescing, and fill against the virtual fill-time book.
+- Seed both latency jitter and strategy randomness, and route dynamic bucket
+  plans from recorded observation time rather than wall-clock time.
+- Define an explicit fail-closed gap policy; do not silently cross an archive
+  gap or infer missing depth.
+- Keep wallet, authenticated-user, maker-queue, and external-reference replay
+  out of scope until corresponding recording inputs exist.
 
 ## Slice 10: Terminal Dashboard and Runtime Observability
 

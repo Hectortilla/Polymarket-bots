@@ -3,34 +3,37 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncIterator
 from collections.abc import Callable, Iterable
-from decimal import Decimal
 
 from polymarket import AsyncPublicClient
 from polymarket.models.clob.market_events import (
     MarketBookEvent,
+    MarketEvent,
     MarketLastTradePriceEvent,
     MarketPriceChangeEvent,
     MarketResolvedEvent,
+    MarketTickSizeChangeEvent,
 )
-from polymarket.models.clob.order_book import OrderBookLevel
 from polymarket.streams import MarketSpec
 
-from polybot.framework.events import Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.normalization.book import (
-    normalize_book,
-    normalize_price_change_level,
+from polybot.polymarket.normalization.recording_events import (
+    MARKET_WEBSOCKET_SOURCE,
+    normalize_recording_event,
 )
 from polybot.polymarket.types import (
     Market,
     MarketTradeHint,
     index_markets_by_token,
-    outcome_label_for_token,
 )
-
-MARKET_WEBSOCKET_SOURCE = "market_websocket"
+from polybot.recording.contracts import (
+    BookBaselinePayload,
+    BookDeltaPayload,
+    PublicTradePayload,
+    ResolutionPayload,
+)
 
 
 class MarketStream:
@@ -77,7 +80,7 @@ class MarketStream:
         # generation instead of observing the mutable adapter-wide registry.
         market_by_token = self._market_by_token.copy()
         market_by_condition = self._market_by_condition.copy()
-        depth: dict[str, tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]] = {}
+        projector = BookDepthProjector(market_by_condition.values())
         stream = await self._client.subscribe(
             MarketSpec(
                 token_ids=tuple(sorted(normalized_token_ids)),
@@ -86,201 +89,100 @@ class MarketStream:
         )
         async with stream:
             async for event in stream:
-                if isinstance(event, MarketResolvedEvent):
-                    resolution = self._resolution(event, market_by_condition)
-                    if resolution is not None:
-                        yield resolution
+                market = _market_for_event(
+                    event,
+                    subscribed_token_ids=normalized_token_ids,
+                    market_by_token=market_by_token,
+                    market_by_condition=market_by_condition,
+                )
+                if market is None:
                     continue
-                if isinstance(event, MarketLastTradePriceEvent):
-                    payload = event.payload
-                    token_id = _identifier(payload.token_id)
-                    condition_id = _identifier(payload.market)
-                    if token_id is None or condition_id is None:
-                        continue
-                    market = market_by_token.get(token_id)
-                    if token_id in normalized_token_ids:
-                        yield MarketTradeHint(
-                            condition_id=condition_id,
-                            token_id=token_id,
-                            market_slug=market.slug if market else None,
-                            occurred_at_ms=self._now_ms(),
-                        )
+                try:
+                    captured = normalize_recording_event(event, market=market)
+                except (MarketDataError, ValueError):
                     continue
-                if isinstance(event, MarketBookEvent):
-                    payload = event.payload
-                    token_id = _identifier(payload.token_id)
-                    condition_id = _identifier(payload.market)
-                    if token_id is None or condition_id is None:
-                        continue
-                    if token_id not in normalized_token_ids:
-                        continue
-                    depth[token_id] = (
-                        {level.price: level.size for level in payload.bids},
-                        {level.price: level.size for level in payload.asks},
-                    )
-                    snapshot = self._snapshot(
-                        token_id,
-                        condition_id,
-                        *depth[token_id],
-                        market_by_token=market_by_token,
-                    )
-                    if snapshot is not None:
-                        yield snapshot
-                    else:
-                        depth.pop(token_id, None)
+                if captured is None:
                     continue
 
-                if not isinstance(event, MarketPriceChangeEvent):
-                    continue
-                condition_id = _identifier(event.payload.market)
+                condition_id = captured.identity.condition_id
                 if condition_id is None:
                     continue
-                pending_levels: dict[
-                    str,
-                    tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]],
-                ] = {}
-                invalid_tokens: set[str] = set()
-                for change in event.payload.price_changes:
-                    token_id = _identifier(change.token_id)
-                    if token_id is None:
-                        continue
-                    sides = depth.get(token_id)
-                    if token_id not in normalized_token_ids or sides is None:
-                        continue
-                    if token_id in invalid_tokens:
-                        continue
+                observed_at_ms = self._now_ms()
+                if isinstance(captured.payload, BookBaselinePayload):
                     try:
-                        side = _normalize_price_change_side(change.side)
-                        level = normalize_price_change_level(
-                            price=change.price,
-                            size=change.size,
+                        yield projector.apply_baseline(
+                            captured.payload,
+                            condition_id=condition_id,
+                            received_at_ms=observed_at_ms,
                         )
                     except MarketDataError:
-                        invalid_tokens.add(token_id)
-                        pending_levels.pop(token_id, None)
                         continue
-                    bid_ask_levels = pending_levels.setdefault(
-                        token_id,
-                        (sides[0].copy(), sides[1].copy()),
+                elif isinstance(captured.payload, BookDeltaPayload):
+                    changes = tuple(
+                        change
+                        for change in captured.payload.changes
+                        if change.token_id in normalized_token_ids
+                        and change.token_id in projector.baseline_token_ids
                     )
-                    levels = (
-                        bid_ask_levels[0] if side is Side.BUY else bid_ask_levels[1]
-                    )
-                    if level.size == 0:
-                        levels.pop(level.price, None)
-                    else:
-                        levels[level.price] = level.size
-                for token_id, bid_ask_levels in pending_levels.items():
-                    snapshot = self._snapshot(
-                        token_id,
-                        condition_id,
-                        *bid_ask_levels,
-                        market_by_token=market_by_token,
-                    )
-                    if snapshot is not None:
-                        depth[token_id] = bid_ask_levels
+                    if not changes:
+                        continue
+                    try:
+                        snapshots = projector.apply_delta(
+                            BookDeltaPayload(changes=changes),
+                            condition_id=condition_id,
+                            received_at_ms=observed_at_ms,
+                        )
+                    except MarketDataError:
+                        continue
+                    for snapshot in snapshots:
                         yield snapshot
-
-    def _resolution(
-        self,
-        event: MarketResolvedEvent,
-        market_by_condition: dict[str, Market],
-    ) -> MarketResolutionEvent | None:
-        payload = event.payload
-        condition_id = _identifier(payload.market)
-        if condition_id is None:
-            return None
-        market = market_by_condition.get(condition_id)
-        token_ids = (
-            None if payload.token_ids is None else _identifiers(payload.token_ids)
-        )
-        winning_token_id = _identifier(payload.winning_token_id)
-        if (
-            market is None
-            or token_ids is None
-            or len(token_ids) != 2
-            or set(token_ids) != set(market.token_ids)
-            or winning_token_id not in token_ids
-        ):
-            return None
-        payload_outcome = _identifier(payload.winning_outcome)
-        expected_label = outcome_label_for_token(market, winning_token_id)
-        if (
-            payload_outcome is None
-            or expected_label is None
-            or expected_label.casefold() != payload_outcome.casefold()
-        ):
-            return None
-        resolved_at_ms = self._now_ms()
-        if payload.timestamp is not None:
-            try:
-                resolved_at_ms = int(payload.timestamp.timestamp() * 1_000)
-            except (AttributeError, OverflowError, OSError, ValueError):
-                return None
-        return MarketResolutionEvent(
-            condition_id=condition_id,
-            market_slug=market.slug,
-            token_ids=market.token_ids,
-            winning_token_id=winning_token_id,
-            winning_outcome=expected_label,
-            resolved_at_ms=resolved_at_ms,
-            source=MARKET_WEBSOCKET_SOURCE,
-        )
-
-    def _snapshot(
-        self,
-        token_id: str,
-        condition_id: str,
-        bids: dict[Decimal, Decimal],
-        asks: dict[Decimal, Decimal],
-        *,
-        market_by_token: dict[str, Market],
-    ) -> BookSnapshot | None:
-        market = market_by_token.get(token_id)
-        try:
-            return normalize_book(
-                token_id=token_id,
-                bids=tuple(
-                    OrderBookLevel(price=price, size=size)
-                    for price, size in bids.items()
-                ),
-                asks=tuple(
-                    OrderBookLevel(price=price, size=size)
-                    for price, size in asks.items()
-                ),
-                received_at_ms=self._now_ms(),
-                condition_id=condition_id,
-                market_slug=market.slug if market else None,
-                outcome=outcome_label_for_token(market, token_id) if market else None,
-                expected_token_id=token_id,
-                expected_condition_id=market.condition_id if market else None,
-            )
-        except MarketDataError:
-            return None
+                elif isinstance(captured.payload, PublicTradePayload):
+                    yield MarketTradeHint(
+                        condition_id,
+                        captured.payload.token_id,
+                        market.slug,
+                        observed_at_ms,
+                    )
+                elif isinstance(captured.payload, ResolutionPayload):
+                    yield MarketResolutionEvent(
+                        condition_id=condition_id,
+                        market_slug=market.slug,
+                        token_ids=market.token_ids,
+                        winning_token_id=captured.payload.winning_token_id,
+                        winning_outcome=captured.payload.winning_outcome,
+                        resolved_at_ms=(
+                            captured.source_timestamp_ms
+                            if captured.source_timestamp_ms is not None
+                            else observed_at_ms
+                        ),
+                        source=captured.payload.source,
+                    )
 
     async def close(self) -> None:
         if self._owns_client:
             await self._client.close()
 
 
-def _normalize_price_change_side(raw_side: object) -> Side:
-    try:
-        return Side(raw_side)
-    except (TypeError, ValueError) as error:
-        raise MarketDataError(
-            MarketDataIssue.INVALID_BOOK_SIDE,
-            "price change side is invalid",
-        ) from error
-
-
 def _identifier(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _identifiers(values: object) -> tuple[str, ...] | None:
-    if not isinstance(values, (tuple, list)):
-        return None
-    identifiers = tuple(_identifier(value) for value in values)
-    if any(identifier is None for identifier in identifiers):
-        return None
-    return tuple(identifier for identifier in identifiers if identifier is not None)
+def _market_for_event(
+    event: MarketEvent,
+    *,
+    subscribed_token_ids: frozenset[str],
+    market_by_token: dict[str, Market],
+    market_by_condition: dict[str, Market],
+) -> Market | None:
+    if isinstance(event, (MarketPriceChangeEvent, MarketResolvedEvent)):
+        condition_id = _identifier(event.payload.market)
+        return None if condition_id is None else market_by_condition.get(condition_id)
+    if isinstance(
+        event,
+        (MarketBookEvent, MarketLastTradePriceEvent, MarketTickSizeChangeEvent),
+    ):
+        token_id = _identifier(event.payload.token_id)
+        if token_id is None or token_id not in subscribed_token_ids:
+            return None
+        return market_by_token.get(token_id)
+    return None

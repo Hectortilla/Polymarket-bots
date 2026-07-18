@@ -151,6 +151,60 @@ Paper-broker tests should use deterministic latency and book sequences:
 - Fill book at time T plus latency.
 - Expected fills, fees, and cash movements.
 
+## Recording Markets For Future Backtests
+
+Slice 9A defines the implemented standalone `python -m polybot.recording`
+command. The recorder does not run a strategy or
+paper broker. With `--bot`, it loads the factory only to evaluate the bot's
+current and next stream rules, rejects any attempted order, and records the
+markets named by those rules. This keeps dynamic slug generation in one place
+without turning data collection into a trading run.
+
+Record a dynamic bot's markets:
+
+```sh
+uv run python -m polybot.recording \
+  --bot polybot.examples.example_btc_five_minute_momentum:create \
+  --output recordings/btc-five-minute.sqlite \
+  --duration 10d
+```
+
+Record a fixed set instead by repeating `--market-slug`:
+
+```sh
+uv run python -m polybot.recording \
+  --market-slug btc-updown-5m-1767225600 \
+  --market-slug eth-updown-5m-1767225600 \
+  --output recordings/two-markets.sqlite \
+  --duration 2h
+```
+
+`--bot` and `--market-slug` are mutually exclusive, `--output` is required,
+and `--duration` accepts a positive integer followed by `s`, `m`, `h`, or `d`.
+Without a duration the process runs until graceful interruption. `--resume`
+requires an existing compatible SQLite recording archive with the same target
+selection and appends a new session. Without `--resume`, the recorder refuses to
+overwrite an existing output. A resumed run preserves the previous session and
+records the offline interval as a coverage gap. `--dotenv` and `--override` have
+their normal runner meanings when constructing the bot.
+
+Dynamic bots should keep current and next market generation deterministic. The
+recorder resolves both plans, subscribes to the current market, and
+pre-subscribes an available next market before rollover. A not-yet-published
+next slug is normal and is retried without interrupting the current stream.
+
+Before evaluating a strategy, inspect the archive's sessions and coverage gaps.
+`no detected gaps` means no loss was observed by the recorder; it does not mean
+exchange-complete because Polymarket documents no market-stream sequence or
+resume cursor. Slice 9B will own deterministic replay and the policy for gaps.
+
+The Slice 9A archive contains public market metadata and aggregated book data
+only. It cannot reproduce wallet-following hooks, private order/fill state,
+individual maker priority, or decisions based on an external reference feed.
+For example, the BTC five-minute momentum example is compatible because it uses
+only its two normalized outcome books. A bot that reads Binance or Chainlink
+prices needs those feeds recorded by a future input slice as well.
+
 ## Terminal Dashboard
 
 The CLI dashboard is enabled by default. It is an external observer: bots
@@ -318,8 +372,9 @@ uv run python -m polybot.cli \
 The defaults in `polybot.examples.btc_five_minute_strategy.MomentumSettings`
 are intentionally readable starting values, not optimized parameters. Unit
 tests cover its signal, confirmation, rollover, stop, and expiry behavior.
-Historical replay is not implemented until Slice 9, so those tests do not
-establish a live trading edge or expected return.
+Historical replay remains Slice 9B, so those tests do not establish a live
+trading edge or expected return. Slice 9A only gathers the market archive that
+replay will consume.
 
 ### Dynamic wallet-filtered example
 
