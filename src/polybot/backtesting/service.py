@@ -430,6 +430,10 @@ def _prime_to_start(
         end_at_ms=selection.start_at_ms,
         session_id=selection.session_id,
         market_slugs=selection.market_slugs,
+        # Each market's priming interval was validated above.
+        # The merged scan can begin before another market's checkpoint, so a
+        # set-wide gap check here would reject an otherwise clean subrange.
+        allow_gaps=True,
     )
     for event in events:
         if event.observed_at_ms >= selection.start_at_ms:

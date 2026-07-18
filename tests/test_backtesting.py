@@ -1030,6 +1030,117 @@ def test_clean_subrange_after_gap_replays_from_common_checkpoint(
     assert _summary(result.results_dir)["status"] == "completed"
 
 
+def test_clean_multi_market_subrange_uses_each_market_checkpoint(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "recovered-multi-market.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity="bot:tests.test_backtesting:create",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    first_checkpoint_sequence = archive_writer.next_sequence - 1
+    archive_writer.append_checkpoints(
+        tuple(
+            BookCheckpoint(
+                sequence=first_checkpoint_sequence,
+                session_id=archive_writer.session_id,
+                subscription_generation=1,
+                observed_at_ms=START_MS + 2,
+                identity=_identity(token_id),
+                book=_baseline(token_id),
+            )
+            for token_id in (UP_TOKEN, DOWN_TOKEN)
+        )
+    )
+    archive_writer.append_metadata(
+        _event(
+            archive_writer,
+            _next_metadata(),
+            observed_at_ms=START_MS + 3,
+            identity=_next_identity(),
+        )
+    )
+    for offset, token_id in enumerate(
+        (NEXT_UP_TOKEN, NEXT_DOWN_TOKEN),
+        start=4,
+    ):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS + offset,
+                identity=_next_identity(token_id),
+            )
+        )
+    gap_start = ROLLOVER_MS + 1
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason="disconnect",
+                started_at_ms=gap_start,
+                ended_at_ms=None,
+                affected_condition_ids=(NEXT_CONDITION_ID,),
+                affected_market_slugs=(NEXT_MARKET_SLUG,),
+                affected_token_ids=(NEXT_UP_TOKEN, NEXT_DOWN_TOKEN),
+            ),
+            observed_at_ms=gap_start,
+            identity=_next_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=ROLLOVER_MS + 2)
+    for offset, token_id in enumerate(
+        (NEXT_UP_TOKEN, NEXT_DOWN_TOKEN),
+        start=3,
+    ):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=ROLLOVER_MS + offset,
+                identity=_next_identity(token_id),
+            )
+        )
+    second_checkpoint_sequence = archive_writer.next_sequence - 1
+    archive_writer.append_checkpoints(
+        tuple(
+            BookCheckpoint(
+                sequence=second_checkpoint_sequence,
+                session_id=archive_writer.session_id,
+                subscription_generation=1,
+                observed_at_ms=ROLLOVER_MS + 4,
+                identity=_next_identity(token_id),
+                book=_baseline(token_id),
+            )
+            for token_id in (NEXT_UP_TOKEN, NEXT_DOWN_TOKEN)
+        )
+    )
+    replay_start_ms = ROLLOVER_MS + 5
+    end_ms = ROLLOVER_MS + 10
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "results",
+        config=_config(market_slugs=(MARKET_SLUG, NEXT_MARKET_SLUG)),
+        start_ms=replay_start_ms,
+    )
+
+    assert result.selection.start_at_ms == replay_start_ms
+    assert {book.token_id for book in bot.books} == {
+        UP_TOKEN,
+        DOWN_TOKEN,
+        NEXT_UP_TOKEN,
+        NEXT_DOWN_TOKEN,
+    }
+    assert _summary(result.results_dir)["status"] == "completed"
+
+
 def test_existing_output_directory_is_refused_and_bot_failure_is_partial(
     tmp_path: Path,
 ) -> None:
