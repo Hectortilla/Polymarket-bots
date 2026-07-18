@@ -287,8 +287,8 @@ It consumes package-owned `BookSnapshot` contracts for both outcomes and adds
 paired-book freshness, microprice normalization, EMA/momentum/noise filters,
 book-confirmation, and explicit position exits without importing an SDK or
 adding a new network path. Its deterministic unit tests validate strategy rules;
-historical performance evaluation remains in Slice 9B after Slice 9A has
-captured representative market archives.
+historical performance evaluation is available through Slice 9B after Slice 9A
+has captured representative market archives.
 
 ## Slice 9A: Historical Market Recorder
 
@@ -356,6 +356,11 @@ Integrity rules:
   `MarketCaptureDiagnostics.dropped_count`, interrupted or reopened condition
   capture, failed normalization after identity is known, or another detected
   continuity loss. Associate it with the affected market/token set and reason.
+- Treat consecutive price-change fragments with the same condition, source
+  timestamp, and per-token hashes as one logical revision only when an
+  intermediate fragment would cross the projected book. Preserve the ordered
+  changes and validate the combined delta transactionally. A mismatched,
+  unfinished, or timed-out revision is a capture failure and opens a gap.
 - Use a separate condition capture handle for every resolved market. Adding a
   next-market handle must not interrupt an existing capture or create a gap by
   itself.
@@ -364,8 +369,9 @@ Integrity rules:
   does not repair it. Reject deltas received before their token baseline and do
   not backfill book gaps from `/prices-history`, public `/trades`, or onchain
   settlement data.
-- Preserve usable segments before and after a gap. Slice 9B must explicitly
-  reject, split, or otherwise handle a requested replay interval containing one.
+- Preserve usable segments before and after a gap. Slice 9B rejects a requested
+  replay interval containing an affecting gap while permitting clean selected
+  subranges on either side.
 - Track clean session closure separately from capture integrity. A graceful
   shutdown must not turn an earlier gapped session into a gap-free one.
 
@@ -402,29 +408,86 @@ Acceptance:
 
 ## Slice 9B: Deterministic Backtest Replay
 
-Optional later slice.
+Status: done.
 
-- Read compatible Slice 9A SQLite recording archives without importing SDK
-  models into bot or execution code.
-- Select a session, markets, and time range and validate its metadata and gap
-  coverage before starting.
-- Replay stored book checkpoints and chronological market events into the same
-  package-owned `BookSnapshot` and lifecycle contracts used by `BotRunner`.
-- Supply archive-backed market and latest-book clients so existing bot hooks do
-  not need a replay-specific API.
-- Reuse `BaseBot` hooks and paper `OrderRequest`/`FillEvent` contracts.
-- Drive strategy time, latency, and jitter from a deterministic virtual clock so
-  repeated runs with the same inputs and seed produce the same result.
-- Advance that clock to each recorded observation. During simulated broker or
-  strategy latency, apply intervening market events to the latest-book cache
-  without re-entering the bot, retain only the newest pending callback per
-  token to match live coalescing, and fill against the virtual fill-time book.
-- Seed both latency jitter and strategy randomness, and route dynamic bucket
-  plans from recorded observation time rather than wall-clock time.
-- Define an explicit fail-closed gap policy; do not silently cross an archive
-  gap or infer missing depth.
-- Keep wallet, authenticated-user, maker-queue, and external-reference replay
-  out of scope until corresponding recording inputs exist.
+Command and selection contract:
+
+- Run through `python -m polybot.cli --bot module:factory --backtest ARCHIVE`.
+  Accept optional `--session ID`, inclusive `--start-ms`/`--end-ms`, repeated
+  `--market-slug`, `--seed` (default `0`), `--results-dir`, and
+  `--report-interval-ms` (default `1000`).
+- Default the sole closed session, all recorded markets, and its full event
+  range. Require an explicit session when multiple sessions exist. Refuse an
+  existing result directory; create a unique default when none is supplied.
+- Keep `BotConfig.mode=paper`, reject `BOT_MODE=live`, and run backtests
+  headless by default. Never construct SDK clients, perform network I/O, or
+  touch `.bot-state/` during replay.
+
+Replay behavior:
+
+- Accept schema-v2 archives only. Before invoking strategy hooks, check SQLite
+  integrity, require a closed non-failed session, validate range and market
+  selection, require time-correct metadata and baseline/checkpoint coverage,
+  and reject any affecting coverage gap. Complete sessions are eligible in
+  full; permit only an explicit clean subrange of an interrupted incomplete
+  session. Provide no gap override.
+- Keep SQLite rows behind `RecordingReader`. Snapshot an immutable archive
+  sequence cutoff, expose session/set selection and market enumeration, and
+  restore common same-observation checkpoints for both tokens at mid-session
+  starts without dispatching the priming events to the strategy.
+- Supply archive-backed market and latest-book clients and rejecting wallet and
+  position clients. Reuse `BaseBot`, `BotRunner`, `PaperBroker`,
+  `OrderRequest`, and `FillEvent`; reject wallet rules, private-user inputs,
+  maker queue assumptions, and external-reference dependencies with stable
+  backtest failure reasons.
+- Use archive-wide sequence as authoritative order and `observed_at_ms` as
+  virtual time. Apply metadata revisions as time-correct `Market` values,
+  baselines and deltas through `BookDepthProjector`, and recorded resolutions
+  as `MarketResolutionEvent`. Tick changes update the recorded market state;
+  public trades remain ordered replay inputs but produce no callback because no
+  current bot hook consumes them.
+- Recompute dynamic plans from virtual time. Suppress events for a recorded next
+  market until its slug becomes current, emit reconstructed bootstrap books at
+  admission, and retain previously admitted markets until recorded resolution.
+- During broker or `ctx.clock.sleep()` latency, consume intervening events
+  without re-entering the bot. Update the fill-time book cache, coalesce only
+  the newest pending callback per token in live marker order, and keep
+  resolutions non-coalesced. Reject latency beyond the selected interval as
+  `backtest_data_exhausted`; never fill from later data.
+- Call `on_start` and `on_stop` exactly once. Settle recorded positions at
+  contractual `1`/`0`, update the in-memory paper portfolio, emit settlement
+  telemetry, then call `on_market_resolved`. Do not force-liquidate positions
+  at the end.
+- Add system-backed `BotContext.clock` and `BotContext.rng` defaults. Replay
+  supplies a virtual clock and separately derived seed streams for strategy
+  behavior and broker jitter. Framework determinism covers bots using these
+  contracts; direct wall time, `asyncio.sleep`, private randomness, external
+  I/O, and parameter sweeps remain outside this slice.
+
+Performance artifacts:
+
+- Share executable portfolio valuation between dashboard and reporting. Mark
+  longs at fresh best bid and shorts at fresh best ask; expose a prior
+  executable estimate separately as stale and leave unavailable values null.
+  Calculate drawdown from available marked equity and report estimated or
+  incomplete history when stale or missing samples occur.
+- Sample at start, every configured virtual/real interval, fills, settlements,
+  and end. Stream exact-decimal `equity.csv` and `orders.csv` rows, then
+  atomically finalize `summary.json` with sanitized configuration, archive and
+  selection provenance, timing, event/dispatch/trading counts, cash/equity,
+  gross/net PnL, return, fees, filled notional, drawdown, resolutions, open
+  positions, and valuation status.
+- Backtests always produce artifacts and treat output failure as fatal. Failed
+  or interrupted runs retain an explicit partial status when finalization
+  succeeds, and completed commands print a compact final summary and artifact
+  path. Ordinary paper runs produce the same artifacts only with
+  `--results-dir`; their artifact failures remain fail-open with a visible
+  warning and the normal dashboard remains independently usable.
+
+Acceptance is covered by synthetic archive replay, broker timing and
+coalescing, dynamic rollover, validation/fail-closed, deterministic seed,
+artifact serialization/collision/partial-status, normal paper opt-in, and full
+suite tests.
 
 ## Slice 10: Terminal Dashboard and Runtime Observability
 

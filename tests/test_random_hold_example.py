@@ -15,18 +15,21 @@ def test_random_hold_bot_buys_holds_then_sells_and_starts_again(
     dummy_context: BotContext,
 ) -> None:
     async def run() -> None:
-        clock = [0.0]
-        context = replace(dummy_context, markets=_Markets())
+        clock = _Clock()
+        context = replace(
+            dummy_context,
+            markets=_Markets(),
+            clock=clock,
+            rng=random.Random(1),
+        )
         bot = ExampleRandomHoldBot(
             hold_seconds=5,
             order_size=Decimal("2"),
-            rng=random.Random(1),
-            monotonic_fn=lambda: clock[0],
         )
 
         await bot.on_book(context, _book("yes-token", asks=("0.40",), bids=("0.38",)))
         await bot.on_book(context, _book("yes-token", asks=("0.41",), bids=("0.39",)))
-        clock[0] = 5
+        clock.current_ms = 5_000
         await bot.on_book(context, _book("yes-token", asks=("0.42",), bids=("0.40",)))
         await bot.on_book(context, _book("yes-token", asks=("0.45",), bids=("0.43",)))
 
@@ -67,3 +70,14 @@ class _Markets:
                 MarketOutcome(NO_OUTCOME, "no-token"),
             ),
         )
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.current_ms = 0
+
+    def now_ms(self) -> int:
+        return self.current_ms
+
+    async def sleep(self, seconds: float) -> None:
+        self.current_ms += round(seconds * 1000)

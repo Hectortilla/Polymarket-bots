@@ -41,6 +41,8 @@ market to its token ID; do not assume every market uses `Yes` and `No`.
 - Use `ctx.broker` for orders.
 - Use `ctx.markets` for discovery.
 - Use `ctx.books` for latest cached books.
+- Use `ctx.clock` for current time and sleeps.
+- Use `ctx.rng` for strategy randomness.
 - Use `current_stream_rules()` for market, wallet, and mixed subscriptions.
 - Do not import `backend/app`.
 - Do not access `.env` directly from polybot.
@@ -151,7 +153,14 @@ Paper-broker tests should use deterministic latency and book sequences:
 - Fill book at time T plus latency.
 - Expected fills, fees, and cash movements.
 
-## Recording Markets For Future Backtests
+For replayable strategy behavior, do not read the wall clock directly, call
+`asyncio.sleep`, or create private entropy. Use `ctx.clock.now_ms()`, await
+`ctx.clock.sleep(...)`, and draw from `ctx.rng`. The framework can reproduce its
+own scheduling and paper execution for a fixed archive, selection, config, and
+seed; external I/O and code that bypasses these context contracts cannot be
+made deterministic by the runner.
+
+## Recording Markets For Backtests
 
 Slice 9A defines the implemented standalone `python -m polybot.recording`
 command. The recorder does not run a strategy or
@@ -196,7 +205,11 @@ next slug is normal and is retried without interrupting the current stream.
 Before evaluating a strategy, inspect the archive's sessions and coverage gaps.
 `no detected gaps` means no loss was observed by the recorder; it does not mean
 exchange-complete because Polymarket documents no market-stream sequence or
-resume cursor. Slice 9B will own deterministic replay and the policy for gaps.
+resume cursor. Slice 9B refuses any gap affecting the selected interval; a
+clean subrange before or after a gap remains eligible.
+The recorder transactionally combines split same-timestamp/hash price revisions
+that would be crossed only in their intermediate form. A revision that does not
+finish with the expected identity remains a real coverage gap.
 
 The Slice 9A archive contains public market metadata and aggregated book data
 only. It cannot reproduce wallet-following hooks, private order/fill state,
@@ -204,6 +217,76 @@ individual maker priority, or decisions based on an external reference feed.
 For example, the BTC five-minute momentum example is compatible because it uses
 only its two normalized outcome books. A bot that reads Binance or Chainlink
 prices needs those feeds recorded by a future input slice as well.
+
+## Running A Backtest
+
+Use the regular bot CLI and add `--backtest`:
+
+```sh
+BOT_MODE=paper \
+uv run python -m polybot.cli \
+  --bot polybot.examples.example_btc_five_minute_momentum:create \
+  --backtest recordings/btc-five-minute.sqlite \
+  --seed 0
+```
+
+A replay uses the same bot factory, hooks, `BotRunner`, paper broker, order
+requests, and fill events as a paper run. It is headless by default and reads
+only the selected archive: no SDK/network client is constructed and
+`.bot-state/` is not read or written. `BOT_MODE=live`, wallet stream rules,
+private-user inputs, maker-queue assumptions, and dependencies on unrecorded
+external reference feeds are rejected.
+
+The default selection is all markets and the full sole closed session. If the
+archive contains multiple sessions, choose one with `--session ID`. Narrow the
+inclusive interval with `--start-ms` and `--end-ms`, or repeat
+`--market-slug SLUG` to choose a subset. The session must be closed and not
+failed. Complete sessions are eligible in full; an incomplete session requires
+a clean selected subrange outside its recorded or unknown gap. The range must
+have time-correct metadata and a common book baseline/checkpoint for both
+outcome tokens, and no affecting coverage gap may cross it.
+
+Replay uses archive arrival sequence as authoritative order and
+`observed_at_ms` as virtual time. Dynamic `current_stream_rules()` and
+`next_stream_rules()` are recalculated from that time. A pre-recorded next
+market produces no callback until it becomes current, when the runtime emits
+reconstructed bootstrap books; an admitted prior market remains available
+until its recorded resolution. Strategy and broker sleeps consume intervening
+events without callback re-entry, and pending books coalesce per token before
+the next callback. The fill therefore uses the book that exists at virtual fill
+time. A sleep extending beyond the selected end produces the stable
+`backtest_data_exhausted` rejection.
+
+Every backtest writes `summary.json`, `equity.csv`, and `orders.csv`. Select a
+new directory with `--results-dir`; otherwise a unique default is created.
+Existing directories are refused. `--report-interval-ms` controls periodic
+equity samples and defaults to `1000`. `summary.json` includes sanitized config
+and archive identity, the exact selection and seed, event/dispatch/trading
+counts, PnL/return/fee/drawdown metrics, open positions, and valuation quality.
+CSV decimals are exact strings suitable for plotting or lossless decimal
+parsing. Start, fill, settlement, interval, and end samples can share a
+timestamp but never move backward. The command prints a compact final summary
+and the result directory when replay completes.
+
+Replay settles recorded resolutions at contractual `1`/`0` before
+`on_market_resolved` runs. It does not liquidate an open end-of-window position:
+fresh executable value, a labeled last-executable stale estimate, or a null
+unavailable value is reported instead. Interrupted or failed runs retain an
+explicit partial status when summary finalization succeeds.
+
+To collect the same performance files during an ordinary paper run, pass only
+`--results-dir`:
+
+```sh
+BOT_MODE=paper \
+uv run python -m polybot.cli \
+  --bot polybot.my_bot:create \
+  --results-dir results/paper-experiment
+```
+
+Normal paper runs create no artifacts without that flag. The dashboard remains
+enabled by default and can operate alongside performance recording;
+performance-output failures warn visibly but do not stop trading.
 
 ## Terminal Dashboard
 
@@ -372,9 +455,9 @@ uv run python -m polybot.cli \
 The defaults in `polybot.examples.btc_five_minute_strategy.MomentumSettings`
 are intentionally readable starting values, not optimized parameters. Unit
 tests cover its signal, confirmation, rollover, stop, and expiry behavior.
-Historical replay remains Slice 9B, so those tests do not establish a live
-trading edge or expected return. Slice 9A only gathers the market archive that
-replay will consume.
+Unit tests still do not establish a live trading edge or expected return. Use
+Slice 9B against representative Slice 9A archives to measure historical paper
+performance under the recorded market inputs.
 
 ### Dynamic wallet-filtered example
 

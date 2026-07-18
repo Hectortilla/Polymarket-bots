@@ -3,11 +3,13 @@ import os
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from polybot.async_io import run_blocking
+from polybot.backtesting.contracts import BacktestResult, BacktestSelection
 from polybot.cli.config import load_dotenv, parse_overrides
 from polybot.cli.dashboard.state import DashboardState
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
@@ -121,6 +123,143 @@ def test_main_treats_keyboard_interrupt_as_graceful_shutdown(monkeypatch) -> Non
     monkeypatch.setattr("polybot.cli.entrypoint.asyncio.run", raise_keyboard_interrupt)
 
     assert main(["--bot", "polybot.my_bot:create", "--no-dashboard"]) == 0
+
+
+def test_main_routes_backtest_selection_and_defaults_to_headless(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = tmp_path / "recording.sqlite"
+    results_dir = tmp_path / "results"
+    captured: dict[str, object] = {}
+
+    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
+    )
+
+    def dashboard_enabled(value: bool) -> bool:
+        captured["dashboard"] = value
+        return value
+
+    async def fake_run_backtest(bot, config, *, bot_spec, options):
+        captured["bot_spec"] = bot_spec
+        captured["options"] = options
+        return BacktestResult(
+            selection=BacktestSelection(7, 100, 200, ("one", "two"), 50),
+            results_dir=results_dir,
+            event_count=3,
+            accepted_dispatch_count=2,
+            skipped_dispatch_count=1,
+            resolution_count=0,
+        )
+
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint._dashboard_enabled", dashboard_enabled
+    )
+    monkeypatch.setattr("polybot.cli.entrypoint.run_backtest", fake_run_backtest)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint._print_backtest_summary",
+        lambda result: captured.setdefault("result", result),
+    )
+
+    assert main(
+        [
+            "--bot",
+            "polybot.my_bot:create",
+            "--backtest",
+            str(archive),
+            "--session",
+            "7",
+            "--start-ms",
+            "100",
+            "--end-ms",
+            "200",
+            "--market-slug",
+            "one",
+            "--market-slug",
+            "two",
+            "--seed",
+            "42",
+            "--results-dir",
+            str(results_dir),
+            "--report-interval-ms",
+            "250",
+        ]
+    ) == 0
+
+    options = captured["options"]
+    assert options.archive_path == archive
+    assert options.session_id == 7
+    assert options.start_at_ms == 100
+    assert options.end_at_ms == 200
+    assert options.market_slugs == ("one", "two")
+    assert options.seed == 42
+    assert options.results_dir == results_dir
+    assert options.report_interval_ms == 250
+    assert captured["dashboard"] is False
+
+
+def test_main_routes_results_directory_to_ordinary_paper_run(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
+    )
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint._dashboard_enabled", lambda value: False
+    )
+
+    async def fake_run_bot(bot, config, **kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("polybot.cli.entrypoint.run_bot", fake_run_bot)
+    results_dir = tmp_path / "paper-results"
+
+    assert main(
+        [
+            "--bot",
+            "polybot.my_bot:create",
+            "--no-dashboard",
+            "--results-dir",
+            str(results_dir),
+            "--report-interval-ms",
+            "500",
+        ]
+    ) == 0
+
+    assert captured["results_dir"] == results_dir
+    assert captured["bot_spec"] == "polybot.my_bot:create"
+    assert captured["report_interval_ms"] == 500
+
+
+def test_main_rejects_backtest_dashboard_and_live_mode(monkeypatch) -> None:
+    monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.load_bot",
+        lambda target, config: pytest.fail("bot must not be loaded"),
+    )
+    monkeypatch.setenv("BOT_MODE", "live")
+
+    with pytest.raises(SystemExit, match="2"):
+        main(["--bot", "polybot.my_bot:create", "--backtest", "archive.sqlite"])
+
+    monkeypatch.setenv("BOT_MODE", "paper")
+    with pytest.raises(SystemExit, match="2"):
+        main(
+            [
+                "--bot",
+                "polybot.my_bot:create",
+                "--backtest",
+                "archive.sqlite",
+                "--dashboard",
+            ]
+        )
 
 
 def test_merge_streams_preserves_typed_stream_kind() -> None:

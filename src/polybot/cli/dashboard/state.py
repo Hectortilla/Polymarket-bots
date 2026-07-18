@@ -35,6 +35,10 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.config.models import BotMode
 from polybot.framework.wallets import normalize_wallet_address
+from polybot.performance.valuation import (
+    PortfolioValuation,
+    value_portfolio,
+)
 
 from .copy import RUN_FAILED_PREFIX
 from .chart_state import (
@@ -71,13 +75,6 @@ class TickerRow:
 class DashboardView(StrEnum):
     MARKET = "market"
     WALLET = "wallet"
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioValuation:
-    equity: Decimal | None
-    pnl: Decimal | None
-    is_stale: bool
 
 
 @dataclass(slots=True)
@@ -535,38 +532,16 @@ class DashboardState:
         allow_stale_marks: bool,
     ) -> PortfolioValuation:
         if self.portfolio is None:
-            return PortfolioValuation(None, None, False)
-        equity = self.portfolio.cash_usdc
-        is_stale = False
-        for position in self.portfolio.positions:
-            mark = self._position_mark(position, now_ms, allow_stale_marks)
-            if mark is None:
-                return PortfolioValuation(None, None, False)
-            price, mark_is_stale = mark
-            equity += position.size * price
-            is_stale = is_stale or mark_is_stale
-        pnl = (
-            None
-            if self.initial_cash_usdc is None
-            else equity - self.initial_cash_usdc
+            return PortfolioValuation.unavailable()
+        return value_portfolio(
+            self.portfolio,
+            self.books,
+            now_ms=(int(time() * 1000) if now_ms is None else now_ms),
+            max_book_age_ms=self.book_max_age_ms,
+            initial_cash_usdc=self.initial_cash_usdc,
+            last_executable_marks=self.last_executable_marks,
+            allow_stale_marks=allow_stale_marks,
         )
-        return PortfolioValuation(equity, pnl, is_stale)
-
-    def _position_mark(
-        self,
-        position: PortfolioPositionSnapshot,
-        now_ms: int | None,
-        allow_stale_marks: bool,
-    ) -> tuple[Decimal, bool] | None:
-        book = self._current_book(position.token_id, now_ms)
-        price = None if book is None else book.executable_mark(position.size)
-        if price is not None:
-            self.last_executable_marks[position.token_id] = price
-            return price, False
-        cached = self.last_executable_marks.get(position.token_id)
-        if not allow_stale_marks or cached is None:
-            return None
-        return cached, True
 
     def activity_ticker(self) -> list[TickerRow]:
         if not self.show_market_events:

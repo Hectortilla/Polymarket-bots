@@ -101,7 +101,8 @@ Gamma API: `https://gamma-api.polymarket.com`
 Data API: `https://data-api.polymarket.com`
 
 - Public positions, trades, activity, analytics.
-- Useful for wallet state and backtesting inputs.
+- Useful for wallet state and possible future wallet-aware backtesting inputs;
+  Slice 9B consumes only Slice 9A's market archive.
 - Public wallet-following fallback through `/trades?user={address}` and
   `/activity?user={address}`.
 - Public, no authentication.
@@ -192,6 +193,12 @@ Slice 9A uses the pinned unified SDK's Gamma reads and the package-owned
 `MarketCapture` emits package-owned baseline, delta, public-trade, tick-size,
 and resolution values; `BookDepthProjector` rebaselines on full books and
 rejects deltas before a baseline. No direct-network exception is required.
+The market channel describes `price_change` values as individual level updates,
+and live traffic can deliver one logical revision in consecutive frames sharing
+the same timestamp and per-token hashes. If an intermediate fragment would
+cross the projected book, the recording adapter combines only exact-key
+continuations and validates the ordered changes as one transaction. Missing,
+mismatched, or late continuations retain fail-closed coverage-gap behavior.
 WebSocket resolution is committed before closing its condition handle. Gamma
 metadata is reconciled immediately and retried until its final resolved state
 is available, without delaying persistence of the source resolution event.
@@ -215,6 +222,28 @@ Arbitrary-wallet activity, private order/fill state, and RTDS Binance,
 Chainlink, Pyth, sports, or other reference feeds are not recorded. A later
 slice must add each missing source before a strategy depending on it can be
 faithfully replayed.
+
+Slice 9B adds no Polymarket API or SDK path. It accepts only the current
+schema-v2 SQLite artifact, snapshots an immutable archive sequence cutoff when
+opening it, and reconstructs package-owned `Market`, `BookSnapshot`, and
+`MarketResolutionEvent` values locally. Archive-wide recorder sequence orders
+events, including equal source or observation timestamps; `observed_at_ms`
+drives the virtual clock and source time remains diagnostic.
+
+Replay validates a closed, non-failed session, metadata and common two-token
+book checkpoint/baseline coverage, the inclusive selected bounds, and selected
+markets before invoking strategy hooks. Complete sessions are eligible in
+full; an incomplete session requires a clean subrange before or after its
+recorded or unknown gap. It rejects an affecting gap rather than using price
+history, public trades, onchain settlement, or data outside the selection to
+guess the missing book. Because the reader and virtual runtime are entirely
+local, backtesting constructs no official client, makes no network call, and
+does not introduce an exception to the official-library rule.
+
+Wallet activity, authenticated orders/fills, maker identity and queue position,
+and external reference sources remain unsupported replay inputs. Wallet rules
+or code that requests those archive-incompatible inputs fail closed instead of
+falling back to a live API during backtesting.
 
 ## Authentication
 

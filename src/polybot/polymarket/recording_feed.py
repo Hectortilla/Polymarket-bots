@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Self
@@ -11,12 +12,16 @@ from polymarket.streams import MarketSpec
 
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.book_projector import BookDepthProjector
+from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.recording_events import (
     normalize_recording_event,
 )
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.types import Market
 from polybot.recording.contracts import BookBaselinePayload, BookDeltaPayload
+
+
+SPLIT_REVISION_TIMEOUT_SECONDS = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,12 +40,17 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
         *,
         market: Market,
         generation: int,
+        split_revision_timeout_seconds: float = SPLIT_REVISION_TIMEOUT_SECONDS,
     ) -> None:
+        if split_revision_timeout_seconds <= 0:
+            raise ValueError("split revision timeout must be positive")
         self._handle = handle
         self._events = handle.__aiter__()  # type: ignore[attr-defined]
         self._market = market
         self._generation = generation
         self._projector = BookDepthProjector((market,))
+        self._split_revision_timeout_seconds = split_revision_timeout_seconds
+        self._pending: CapturedMarketEvent | None = None
 
     @property
     def generation(self) -> int:
@@ -78,12 +88,17 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
 
     async def __anext__(self) -> CapturedMarketEvent:
         while True:
-            event = await anext(self._events)
-            captured = normalize_recording_event(event, market=self._market)
+            captured = await self._next_captured()
             if captured is None:
                 continue
-            self._apply_depth(captured)
-            return captured
+            try:
+                self._apply_depth(captured)
+            except MarketDataError as error:
+                if error.issue is not MarketDataIssue.CROSSED_BOOK:
+                    raise
+                return await self._complete_split_revision(captured, error)
+            else:
+                return captured
 
     async def close(self) -> None:
         await self._handle.close()  # type: ignore[attr-defined]
@@ -111,6 +126,92 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
                 condition_id=condition_id,
                 received_at_ms=received_at_ms,
             )
+
+    async def _next_captured(self) -> CapturedMarketEvent | None:
+        if self._pending is not None:
+            pending = self._pending
+            self._pending = None
+            return pending
+        event = await anext(self._events)
+        return normalize_recording_event(event, market=self._market)
+
+    async def _complete_split_revision(
+        self,
+        first: CapturedMarketEvent,
+        crossed_error: MarketDataError,
+    ) -> CapturedMarketEvent:
+        """Join source fragments that are invalid only before their revision ends."""
+        revision_key = _delta_revision_key(first)
+        if revision_key is None:
+            raise crossed_error
+        combined = first
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._split_revision_timeout_seconds
+        while True:
+            remaining_seconds = deadline - loop.time()
+            if remaining_seconds <= 0:
+                raise crossed_error
+            try:
+                continuation = await asyncio.wait_for(
+                    self._next_captured(),
+                    timeout=remaining_seconds,
+                )
+            except (TimeoutError, StopAsyncIteration):
+                raise crossed_error from None
+            if continuation is None:
+                continue
+            if _delta_revision_key(continuation) != revision_key:
+                self._pending = continuation
+                raise crossed_error
+            first_payload = combined.payload
+            continuation_payload = continuation.payload
+            if not isinstance(first_payload, BookDeltaPayload) or not isinstance(
+                continuation_payload,
+                BookDeltaPayload,
+            ):
+                raise AssertionError("split revision key requires book deltas")
+            combined = CapturedMarketEvent(
+                source_timestamp_ms=combined.source_timestamp_ms,
+                identity=combined.identity,
+                payload=BookDeltaPayload(
+                    changes=first_payload.changes + continuation_payload.changes,
+                ),
+            )
+            try:
+                self._apply_depth(combined)
+            except MarketDataError as error:
+                if error.issue is MarketDataIssue.CROSSED_BOOK:
+                    continue
+                raise
+            return combined
+
+
+type _DeltaRevisionKey = tuple[str, int, tuple[tuple[str, str], ...]]
+
+
+def _delta_revision_key(event: CapturedMarketEvent) -> _DeltaRevisionKey | None:
+    payload = event.payload
+    condition_id = event.identity.condition_id
+    source_timestamp_ms = event.source_timestamp_ms
+    if (
+        not isinstance(payload, BookDeltaPayload)
+        or condition_id is None
+        or source_timestamp_ms is None
+    ):
+        return None
+    source_hashes: dict[str, str] = {}
+    for change in payload.changes:
+        source_hash = change.source_hash
+        if source_hash is None:
+            return None
+        existing = source_hashes.setdefault(change.token_id, source_hash)
+        if existing != source_hash:
+            return None
+    return (
+        condition_id,
+        source_timestamp_ms,
+        tuple(sorted(source_hashes.items())),
+    )
 
 
 class MarketRecordingFeed:

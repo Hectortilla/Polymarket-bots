@@ -27,6 +27,28 @@ class NullRuntimeObserver:
         return None
 
 
+class RuntimeObserverGroup:
+    """Fan runtime telemetry out to independent fail-open observers."""
+
+    def __init__(self, *observers: RuntimeObserver) -> None:
+        self._observers = list(observers)
+
+    def add(self, observer: RuntimeObserver) -> None:
+        self._observers.append(observer)
+
+    async def start(self, config: BotConfig) -> None:
+        for observer in self._observers:
+            await start_observer(observer, config)
+
+    def emit(self, event: RuntimeEvent) -> None:
+        for observer in self._observers:
+            emit_observer(observer, event)
+
+    async def stop(self) -> None:
+        for observer in reversed(self._observers):
+            await stop_observer(observer)
+
+
 async def start_observer(observer: RuntimeObserver, config: BotConfig) -> None:
     try:
         await observer.start(config)

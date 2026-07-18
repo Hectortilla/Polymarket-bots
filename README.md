@@ -20,9 +20,9 @@ Start with:
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
-paper runner CLI, Slice 10 terminal dashboard, and Slice 11 dynamic market
-tracking and resolution processing, plus Slice 9A's standalone historical
-market recorder. The
+paper runner CLI, Slice 9A historical market recorder, Slice 9B deterministic
+archive backtester and performance artifacts, Slice 10 terminal dashboard, and
+Slice 11 dynamic market tracking and resolution processing. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
@@ -90,7 +90,7 @@ uv run python -m polybot.cli --bot polybot.my_bot:create
 Polymarket exposes current L2 books, historical token-price points, and public
 trade rows through different API surfaces. It does not document a public
 archive of historical L2 books. Slice 9A therefore records the live public
-market stream into a user-selected SQLite recording archive for later Slice 9B
+market stream into a user-selected SQLite recording archive that Slice 9B can
 replay.
 
 Slice 9A's standalone command is `python -m polybot.recording`. Select either a
@@ -125,6 +125,9 @@ recorded events, full book checkpoints, and explicit coverage gaps. An archive
 can report `no detected gaps`; it cannot prove exchange-complete capture because
 the official prediction-market stream documents timestamps and book hashes but
 no sequence number, replay cursor, or resume protocol.
+Price revisions split across consecutive same-timestamp/hash level-update frames
+are combined transactionally when an intermediate fragment would otherwise look
+crossed; an incomplete or mismatched revision is still recorded as a gap.
 
 Slice 9A is market-only. It does not record arbitrary-wallet activity, private
 orders or fills, maker identities or queue position, or Binance, Chainlink,
@@ -132,6 +135,71 @@ Pyth, or other external reference feeds. Strategies that require those inputs
 need additional future recording slices before their results can be reproduced.
 The SQLite file is a local artifact, not an application database or a dependency
 on the Polyfollow app.
+
+## Backtesting and Performance Results
+
+Run the same bot factory through the normal CLI with `--backtest` to replace all
+live inputs with one schema-v2 recording archive:
+
+```sh
+BOT_MODE=paper \
+uv run python -m polybot.cli \
+  --bot polybot.examples.example_btc_five_minute_momentum:create \
+  --backtest recordings/btc-five-minute.sqlite \
+  --seed 0
+```
+
+Replay is headless by default and never constructs a Polymarket SDK client,
+performs a network read, or touches `.bot-state/`. `BOT_MODE=live` is rejected.
+The only replay inputs are metadata revisions, books, and lifecycle events from
+the selected archive interval. A deterministic virtual clock drives event
+delivery, strategy sleeps, paper latency, and broker jitter, so multi-day data
+runs as quickly as local SQLite reads and bot computation permit.
+
+By default the sole closed session, all its markets, and its full session range
+are selected. Use `--session ID` when an archive has multiple sessions,
+inclusive `--start-ms` and `--end-ms` for a subrange, and repeated
+`--market-slug` values for a subset. `--report-interval-ms` defaults to `1000`.
+Replay refuses active or failed sessions, unsupported schemas, missing
+metadata/baselines, invalid ranges, and coverage gaps that affect the selected
+interval. A clean subrange on either side of a gap remains usable.
+
+Every backtest creates a new result directory; pass `--results-dir PATH` to
+choose it, or let the CLI generate a unique path. Existing directories are
+never overwritten. The directory contains:
+
+- `summary.json`: sanitized run/archive identity, selection, seed, event and
+  dispatch counts, cash/equity/PnL/return/fees/drawdown metrics, order/fill/
+  rejection/resolution totals, open positions, and valuation completeness;
+- `equity.csv`: exact-decimal start, interval, fill, settlement, and end samples
+  ready for plotting; and
+- `orders.csv`: each submission and completion with requested and filled values,
+  rejection details, strategy reason, and source ID.
+
+Open positions are not force-liquidated at the end. Fresh executable marks are
+reported when available; last executable estimates are explicitly stale, and
+unavailable values remain null. Failed or interrupted replays retain partial
+CSV output and an explicit partial status when finalization can complete.
+On completion, the CLI also prints a compact performance summary and the result
+directory path.
+
+The same performance artifacts are opt-in for an ordinary paper run:
+
+```sh
+BOT_MODE=paper \
+uv run python -m polybot.cli \
+  --bot polybot.my_bot:create \
+  --results-dir results/paper-run
+```
+
+Without `--results-dir`, ordinary paper behavior is unchanged and the dashboard
+remains enabled by default. With it, dashboard rendering and performance
+recording can run together.
+
+For reproducible bots, read time from `ctx.clock.now_ms()`, await
+`ctx.clock.sleep(...)`, and draw randomness from `ctx.rng`. Direct wall-clock
+reads, `asyncio.sleep`, external I/O, and private randomness are outside the
+framework's determinism guarantee.
 
 The paper-only BTC five-minute momentum example continuously rolls across the
 canonical `btc-updown-5m-<bucket-start>` markets:

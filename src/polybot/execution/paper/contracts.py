@@ -11,3 +11,6 @@ BOOK_STALE_MESSAGE = "fill-time book was stale"
 BAD_BOOK_LEVEL_MESSAGE = "fill-time book contained invalid levels"
 BOOK_FUTURE_DATED_MESSAGE = "fill-time book was future-dated"
 BOOK_CROSSED_MESSAGE = "fill-time book was crossed"
+BACKTEST_DATA_EXHAUSTED_MESSAGE = (
+    "recorded market data ended before simulated order latency completed"
+)

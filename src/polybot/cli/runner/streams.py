@@ -6,11 +6,15 @@ import asyncio
 from typing import Any
 
 from polybot.framework.config.models import BotConfig
-from polybot.framework.streams import StreamPlan, StreamRelation
+from polybot.framework.streams import (
+    STREAM_PLAN_REFRESH_INTERVAL_MS,
+    StreamPlan,
+    StreamRelation,
+)
 from polybot.polymarket.types import Market
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSelector
 
-STREAM_PLAN_REFRESH_INTERVAL_SECONDS = 1.0
+STREAM_PLAN_REFRESH_INTERVAL_SECONDS = STREAM_PLAN_REFRESH_INTERVAL_MS / 1_000
 
 
 async def wait_for_stream_plan_change(

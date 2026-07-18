@@ -6,6 +6,8 @@ from enum import StrEnum
 from polybot.framework.wallets import normalize_wallet_address
 
 
+STREAM_PLAN_REFRESH_INTERVAL_MS = 1_000
+
 
 class StreamRelation(StrEnum):
     FILTERED = "filtered"

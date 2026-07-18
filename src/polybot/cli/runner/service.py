@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
+from dataclasses import replace
+from pathlib import Path
 from time import monotonic
+
+from polymarket import AsyncPublicClient
 
 from polybot.cli.observability.events import (
     DispatchCompleted,
@@ -17,6 +22,7 @@ from polybot.cli.observability.events import (
 from polybot.cli.observability.observer import (
     NullRuntimeObserver,
     RuntimeObserver,
+    RuntimeObserverGroup,
     emit_observer,
     start_observer,
     stop_observer,
@@ -30,6 +36,22 @@ from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
 from polybot.polymarket.wallet_activity.stream import WalletActivityStream
+from polybot.performance.artifacts import (
+    PerformanceArtifacts,
+    PerformanceOutputExistsError,
+)
+from polybot.performance.contracts import (
+    DEFAULT_REPORT_INTERVAL_MS,
+    PerformanceRunKind,
+    RunProvenance,
+    RunSelection,
+)
+from polybot.performance.paper import (
+    PaperPerformanceBroker,
+    PaperPerformanceObserver,
+    PaperPerformanceRecorder,
+    PaperPerformanceWarning,
+)
 
 from ..markets import resolve_plan_markets
 from ..resolution import reconcile_resolutions, settle_resolved_markets
@@ -54,11 +76,18 @@ async def run_bot(
     wallet_source: WalletTradeSource | None = None,
     client: AsyncPublicClient | None = None,
     observer: RuntimeObserver | None = None,
+    results_dir: str | Path | None = None,
+    bot_spec: str | None = None,
+    report_interval_ms: int = DEFAULT_REPORT_INTERVAL_MS,
 ) -> None:
     """Run one bot using public market data and the paper broker."""
     if config.mode is BotMode.LIVE:
         raise RuntimeError("live mode is not available in the paper runner CLI")
-    runtime_observer = observer or NullRuntimeObserver()
+    primary_observer = observer or NullRuntimeObserver()
+    observer_group = RuntimeObserverGroup(primary_observer)
+    runtime_observer: RuntimeObserver = (
+        observer_group if results_dir is not None else primary_observer
+    )
     runtime = await create_runtime(
         config,
         runtime_observer,
@@ -74,9 +103,55 @@ async def run_bot(
     resolution_ledger = runtime.resolution_ledger
     registry = runtime.registry
     paper_broker = runtime.paper_broker
-    broker = runtime.broker
     ctx = runtime.ctx
     owned_client = runtime.owned_client
+    performance_recorder: PaperPerformanceRecorder | None = None
+    if results_dir is not None:
+        try:
+            start_ms = ctx.clock.now_ms()
+            artifacts = PerformanceArtifacts(
+                results_dir,
+                provenance=RunProvenance(
+                    kind=PerformanceRunKind.PAPER,
+                    bot_spec=bot_spec or config.name,
+                    configuration=config,
+                ),
+                selection=RunSelection(
+                    session_id=None,
+                    start_ms=start_ms,
+                    end_ms=None,
+                    market_slugs=_configured_market_slugs(config),
+                ),
+                initial_cash_usdc=config.paper_portfolio_usdc,
+                report_interval_ms=report_interval_ms,
+                max_book_age_ms=config.event_max_age_ms,
+            )
+        except PerformanceOutputExistsError:
+            if owned_client:
+                await public_client.close()
+            raise
+        except Exception as error:
+            warnings.warn(
+                "paper performance recording could not start: "
+                f"{type(error).__name__}: {error}",
+                PaperPerformanceWarning,
+                stacklevel=2,
+            )
+        else:
+            performance_recorder = PaperPerformanceRecorder(
+                artifacts,
+                portfolio=paper_broker.portfolio,
+                clock=ctx.clock,
+            )
+            observer_group.add(PaperPerformanceObserver(performance_recorder))
+            ctx = replace(
+                ctx,
+                broker=PaperPerformanceBroker(
+                    runtime.broker,
+                    recorder=performance_recorder,
+                    clock=ctx.clock,
+                ),
+            )
     runner = BotRunner(bot, ctx)
     telemetry = StreamTelemetry()
     bootstrap_progress = BootstrapProgressAdapter(runtime_observer)
@@ -249,6 +324,10 @@ async def run_bot(
                 )
                 if plan_change is not None:
                     del plan_change
+    except asyncio.CancelledError:
+        if performance_recorder is not None:
+            performance_recorder.mark_cancelled()
+        raise
     except BaseException as error:
         if not isinstance(error, asyncio.CancelledError):
             failed = True
@@ -284,3 +363,18 @@ async def run_bot(
                     RuntimeStateChanged(RuntimeState.STOPPED, monotonic()),
                 )
             await stop_observer(runtime_observer)
+
+
+def _configured_market_slugs(config: BotConfig) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            (
+                *config.market_slugs,
+                *(
+                    slug
+                    for rule in config.stream_rules
+                    for slug in rule.market_slugs
+                ),
+            )
+        )
+    )

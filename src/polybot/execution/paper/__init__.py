@@ -4,11 +4,11 @@ import asyncio
 import random
 from collections.abc import Awaitable, Callable
 from itertools import count
-from time import time
 
 from polybot.async_io import run_blocking
 
 from polybot.execution.broker import Broker
+from polybot.framework.clock import Clock, ClockDataExhaustedError, SystemClock
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BookClient, MarketClient
 from polybot.framework.events import (
@@ -22,6 +22,7 @@ from polybot.framework.events.resolutions import MarketResolutionEvent, SettledP
 from .fill_math import simulate_fill
 from .contracts import (
     BAD_BOOK_LEVEL_MESSAGE,
+    BACKTEST_DATA_EXHAUSTED_MESSAGE,
     BOOK_CROSSED_MESSAGE,
     BOOK_FUTURE_DATED_MESSAGE,
     BOOK_MISMATCH_MESSAGE,
@@ -53,16 +54,20 @@ class PaperBroker(Broker):
         markets: MarketClient | None = None,
         *,
         rng: random.Random | None = None,
-        sleep_fn: SleepFn = asyncio.sleep,
+        clock: Clock | None = None,
+        sleep_fn: SleepFn | None = None,
         now_ms_fn: NowMsFn | None = None,
         source_store: SourceIdempotencyStore | None = None,
     ) -> None:
+        if clock is not None and (sleep_fn is not None or now_ms_fn is not None):
+            raise ValueError("clock cannot be combined with sleep_fn or now_ms_fn")
+        runtime_clock = clock if clock is not None else SystemClock()
         self._config = config
         self._books = books
         self._markets = markets
-        self._rng = rng or random.Random()
-        self._sleep = sleep_fn
-        self._now_ms = now_ms_fn or _now_ms
+        self._rng = rng if rng is not None else random.Random()
+        self._sleep = sleep_fn if sleep_fn is not None else runtime_clock.sleep
+        self._now_ms = now_ms_fn if now_ms_fn is not None else runtime_clock.now_ms
         self._order_ids = count(1)
         self._portfolio = PaperPortfolio(config.paper_portfolio_usdc)
         self._source_claim_lock = asyncio.Lock()
@@ -160,7 +165,16 @@ class PaperBroker(Broker):
             self._config.paper_latency_jitter_ms,
             self._rng,
         )
-        await self._sleep(latency_ms / 1000)
+        try:
+            await self._sleep(latency_ms / 1000)
+        except ClockDataExhaustedError:
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=self._now_ms(),
+                reject_reason=FillRejectReason.BACKTEST_DATA_EXHAUSTED,
+                reject_message=BACKTEST_DATA_EXHAUSTED_MESSAGE,
+            )
         book = await latest_book(self._books, order.token_id)
         fill_time_ms = max(start_ms + latency_ms, self._now_ms())
         if book is None:
@@ -285,7 +299,3 @@ class PaperBroker(Broker):
             reject_reason=reject_reason,
             reject_message=reject_message,
         )
-
-
-def _now_ms() -> int:
-    return int(time() * 1000)

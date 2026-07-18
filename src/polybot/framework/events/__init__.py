@@ -36,6 +36,7 @@ class FillRejectReason(StrEnum):
     MARKET_METADATA_MISMATCH = "market_metadata_mismatch"
     NO_DEPTH_WITHIN_SLIPPAGE = "no_depth_within_slippage"
     DUPLICATE_SOURCE_ID = "duplicate_source_id"
+    BACKTEST_DATA_EXHAUSTED = "backtest_data_exhausted"
 
 
 @dataclass(frozen=True, slots=True)

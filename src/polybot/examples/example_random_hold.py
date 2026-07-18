@@ -4,7 +4,6 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from time import monotonic
 from typing import Literal
 
 from polybot.framework.base import BaseBot
@@ -49,7 +48,7 @@ class ExampleRandomHoldBot(BaseBot):
         hold_seconds: float = 5.0,
         order_size: Decimal = Decimal("1"),
         rng: random.Random | None = None,
-        monotonic_fn: Callable[[], float] = monotonic,
+        monotonic_fn: Callable[[], float] | None = None,
     ) -> None:
         if hold_seconds < 0:
             raise ValueError("hold_seconds must be nonnegative")
@@ -58,7 +57,7 @@ class ExampleRandomHoldBot(BaseBot):
         self.market_slug = market_slug
         self.hold_seconds = hold_seconds
         self.order_size = order_size
-        self._rng = rng or random.Random()
+        self._rng = rng
         self._monotonic = monotonic_fn
         self._market_slug: str | None = None
         self._condition_id: str | None = None
@@ -77,13 +76,14 @@ class ExampleRandomHoldBot(BaseBot):
         if self._selected_token_id is None:
             if self._token_ids is None:
                 return
-            self._selected_token_id = self._rng.choice(self._token_ids)
+            rng = self._rng if self._rng is not None else ctx.rng
+            self._selected_token_id = rng.choice(self._token_ids)
         action = RandomHoldState(
             self._selected_token_id,
             self._position_size,
             self._bought_at,
             self._sell_in_flight,
-        ).decision(book, now=self._monotonic(), hold_seconds=self.hold_seconds)
+        ).decision(book, now=self._now(ctx), hold_seconds=self.hold_seconds)
         if action == "buy":
             await self._buy(ctx, book)
             return
@@ -119,7 +119,7 @@ class ExampleRandomHoldBot(BaseBot):
         )
         if fill.filled_size > 0:
             self._position_size = fill.filled_size
-            self._bought_at = self._monotonic()
+            self._bought_at = self._now(ctx)
 
     async def _sell(self, ctx: BotContext, book: BookSnapshot) -> None:
         if not book.bids:
@@ -144,3 +144,8 @@ class ExampleRandomHoldBot(BaseBot):
         if self._position_size == 0:
             self._selected_token_id = None
             self._bought_at = None
+
+    def _now(self, ctx: BotContext) -> float:
+        if self._monotonic is not None:
+            return self._monotonic()
+        return ctx.clock.now_ms() / 1000

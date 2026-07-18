@@ -2,12 +2,18 @@ import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 
-from polybot.execution.paper import PaperBroker
+import pytest
+
 from polybot.execution.orders import taker_fee_usdc
 from polybot.execution.paper import (
+    BACKTEST_DATA_EXHAUSTED_MESSAGE,
     MARKET_UNAVAILABLE_MESSAGE,
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
+    PaperBroker,
 )
+from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
+from polybot.execution.paper.latency import sample_latency_ms
+from polybot.framework.clock import ClockDataExhaustedError
 from polybot.framework.config.constants import (
     DEFAULT_MAX_SLIPPAGE_PCT,
     DEFAULT_PAPER_PORTFOLIO_USDC,
@@ -21,8 +27,6 @@ from polybot.framework.events import (
 )
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.polymarket.types import Market, MarketOutcome
-from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
-from polybot.execution.paper.latency import sample_latency_ms
 
 DEFAULT_MARKET_SLUG = "btc-up"
 DEFAULT_CONDITION_ID = "0xcondition"
@@ -52,6 +56,30 @@ class StaticMarkets:
 
     async def find_by_slug(self, slug: str) -> Market | None:
         return self.market
+
+
+@dataclass(slots=True)
+class RecordingClock:
+    current_ms: int
+    exhausted_at_ms: int | None = None
+    sleeps: list[float] | None = None
+
+    def now_ms(self) -> int:
+        return self.current_ms
+
+    async def sleep(self, seconds: float) -> None:
+        if self.sleeps is not None:
+            self.sleeps.append(seconds)
+        requested_ms = self.current_ms + round(seconds * 1000)
+        if self.exhausted_at_ms is not None and requested_ms > self.exhausted_at_ms:
+            self.current_ms = self.exhausted_at_ms
+            raise ClockDataExhaustedError
+        self.current_ms = requested_ms
+
+
+class UnexpectedBooks:
+    async def latest(self, token_id: str) -> BookSnapshot | None:
+        raise AssertionError("book lookup must not run after clock exhaustion")
 
 
 def _market(
@@ -124,6 +152,89 @@ def test_paper_broker_uses_fill_time_book_not_decision_time_book() -> None:
 
     assert average_price == Decimal("0.70")
     assert received_at_ms == 1_100
+
+
+def test_paper_broker_uses_supplied_clock_for_latency_and_fill_time() -> None:
+    async def run() -> tuple[Decimal | None, int, list[float]]:
+        sleeps: list[float] = []
+        clock = RecordingClock(1_000, sleeps=sleeps)
+        broker = PaperBroker(
+            BotConfig(
+                name="paper",
+                paper_latency_ms=100,
+                paper_latency_jitter_ms=0,
+            ),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_100,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            clock=clock,
+        )
+
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.average_price, fill.received_at_ms, sleeps
+
+    average_price, received_at_ms, sleeps = asyncio.run(run())
+
+    assert average_price == Decimal("0.40")
+    assert received_at_ms == 1_100
+    assert sleeps == [0.1]
+
+
+def test_paper_broker_maps_clock_exhaustion_to_stable_rejection() -> None:
+    async def run():
+        broker = PaperBroker(
+            BotConfig(
+                name="paper",
+                paper_latency_ms=100,
+                paper_latency_jitter_ms=0,
+            ),
+            UnexpectedBooks(),
+            StaticMarkets(_market()),
+            clock=RecordingClock(1_000, exhausted_at_ms=1_050),
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill, broker.portfolio.cash_usdc
+
+    fill, cash_usdc = asyncio.run(run())
+
+    assert fill.status is OrderStatus.REJECTED
+    assert fill.reject_reason is FillRejectReason.BACKTEST_DATA_EXHAUSTED
+    assert fill.reject_message == BACKTEST_DATA_EXHAUSTED_MESSAGE
+    assert fill.received_at_ms == 1_050
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
+
+
+def test_paper_broker_rejects_ambiguous_clock_overrides() -> None:
+    with pytest.raises(ValueError, match="clock cannot be combined"):
+        PaperBroker(
+            BotConfig(name="paper"),
+            StaticBooks(None),
+            StaticMarkets(None),
+            clock=RecordingClock(1_000),
+            sleep_fn=_noop_sleep,
+        )
 
 
 def test_paper_broker_rejects_persisted_duplicate_before_book_lookup(tmp_path) -> None:

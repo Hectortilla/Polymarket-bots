@@ -78,6 +78,16 @@ class RecordingSession:
     failure_reason: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class RecordingEventBounds:
+    """First and last event coordinates for one immutable reader selection."""
+
+    first_sequence: int
+    last_sequence: int
+    start_at_ms: int
+    end_at_ms: int
+
+
 class RecordingArchive:
     """Single-writer recording archive with process and thread serialization."""
 
@@ -660,6 +670,18 @@ class RecordingReader:
         self._closed = False
         try:
             self._target_identity = _validate_archive(self._connection)
+            self._connection.execute("BEGIN")
+            self._replay_cutoff_sequence = _last_sequence(self._connection)
+            self._sessions = tuple(
+                _session_from_row(row)
+                for row in self._connection.execute(
+                    "SELECT * FROM sessions ORDER BY session_id"
+                ).fetchall()
+            )
+            self._last_observed_at_ms = _last_observed_at_ms(
+                self._connection,
+                sequence_cutoff=self._replay_cutoff_sequence,
+            )
         except Exception:
             self._connection.close()
             raise
@@ -673,31 +695,144 @@ class RecordingReader:
         return SCHEMA_VERSION
 
     @property
+    def replay_cutoff_sequence(self) -> int:
+        """Last event sequence visible to this reader instance."""
+
+        return self._replay_cutoff_sequence
+
+    @property
     def last_observed_at_ms(self) -> int | None:
         with self._lock:
             self._ensure_open()
-            return _last_observed_at_ms(self._connection)
+            return self._last_observed_at_ms
 
     def iter_events(
         self,
         *,
         start_at_ms: int | None = None,
         end_at_ms: int | None = None,
+        session_id: int | None = None,
         condition_id: str | None = None,
+        condition_ids: Iterable[str] | None = None,
         market_slug: str | None = None,
+        market_slugs: Iterable[str] | None = None,
         token_id: str | None = None,
         allow_gaps: bool = False,
     ) -> Iterator[RecordedEvent]:
         selection = _selection(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
+            session_id=session_id,
             condition_id=condition_id,
+            condition_ids=condition_ids,
             market_slug=market_slug,
+            market_slugs=market_slugs,
             token_id=token_id,
         )
         with self._lock:
             self._ensure_open()
             return self._stream_events(selection, allow_gaps=allow_gaps)
+
+    def event_bounds(
+        self,
+        *,
+        start_at_ms: int | None = None,
+        end_at_ms: int | None = None,
+        session_id: int | None = None,
+        condition_id: str | None = None,
+        condition_ids: Iterable[str] | None = None,
+        market_slug: str | None = None,
+        market_slugs: Iterable[str] | None = None,
+        token_id: str | None = None,
+        allow_gaps: bool = False,
+    ) -> RecordingEventBounds | None:
+        """Return observed-time and sequence bounds for a validated selection."""
+
+        selection = _selection(
+            start_at_ms=start_at_ms,
+            end_at_ms=end_at_ms,
+            session_id=session_id,
+            condition_id=condition_id,
+            condition_ids=condition_ids,
+            market_slug=market_slug,
+            market_slugs=market_slugs,
+            token_id=token_id,
+        )
+        with self._lock:
+            self._ensure_open()
+            connection = _open_readonly_connection(self._path)
+            try:
+                connection.execute("BEGIN")
+                if not allow_gaps:
+                    self._reject_known_gaps(connection=connection, **selection)
+                query, parameters = _event_query(
+                    selection,
+                    replay_cutoff_sequence=self._replay_cutoff_sequence,
+                    ordered=False,
+                )
+                boundary_query = (
+                    "SELECT sequence, observed_at_ms FROM ("
+                    + query
+                    + ") AS selected_event WHERE payload_kind != ? "
+                    "ORDER BY sequence {} LIMIT 1"
+                )
+                boundary_parameters = (
+                    *parameters,
+                    PayloadKind.COVERAGE_GAP.value,
+                )
+                first = connection.execute(
+                    boundary_query.format("ASC"),
+                    boundary_parameters,
+                ).fetchone()
+                if first is None:
+                    return None
+                last = connection.execute(
+                    boundary_query.format("DESC"),
+                    boundary_parameters,
+                ).fetchone()
+                if last is None:
+                    raise ArchiveIntegrityError(
+                        "recording event bounds are inconsistent"
+                    )
+                return RecordingEventBounds(
+                    first_sequence=_strict_int(
+                        first["sequence"],
+                        "first event sequence",
+                    ),
+                    last_sequence=_strict_int(
+                        last["sequence"],
+                        "last event sequence",
+                    ),
+                    start_at_ms=_strict_int(
+                        first["observed_at_ms"],
+                        "first event timestamp",
+                    ),
+                    end_at_ms=_strict_int(
+                        last["observed_at_ms"],
+                        "last event timestamp",
+                    ),
+                )
+            finally:
+                connection.close()
+
+    def select_session(self, session_id: int | None = None) -> RecordingSession:
+        """Select one session, requiring an ID when the archive is ambiguous."""
+
+        with self._lock:
+            self._ensure_open()
+            if session_id is None:
+                if len(self._sessions) != 1:
+                    raise ArchiveFormatError(
+                        "recording archive requires an explicit session ID"
+                    )
+                return self._sessions[0]
+            normalized_session = _positive_int(session_id, "session ID")
+            for session in self._sessions:
+                if session.session_id == normalized_session:
+                    return session
+            raise ArchiveFormatError(
+                f"recording session {normalized_session} does not exist"
+            )
 
     def market_at(
         self,
@@ -714,81 +849,149 @@ class RecordingReader:
                 self._reject_known_gaps(
                     start_at_ms=observed_at_ms,
                     end_at_ms=observed_at_ms,
-                    condition_id=normalized_condition,
-                    market_slug=None,
+                    session_id=None,
+                    condition_ids=(normalized_condition,),
+                    market_slugs=None,
                     token_id=None,
                 )
-            row = self._connection.execute(
-                """
-                SELECT payload_json
-                FROM metadata_revisions
-                WHERE condition_id = ? AND observed_at_ms <= ?
-                ORDER BY observed_at_ms DESC, sequence DESC
-                LIMIT 1
-                """,
-                (normalized_condition, observed_at_ms),
-            ).fetchone()
-            if row is None:
-                return None
-            payload = _typed_payload(
-                PayloadKind.MARKET_METADATA,
-                row["payload_json"],
-                MarketMetadataPayload,
+            return self._market_at(
+                self._connection,
+                normalized_condition,
+                observed_at_ms,
             )
-            if payload.condition_id != normalized_condition:
-                raise ArchiveFormatError("metadata index identity is inconsistent")
-            resolution_row = self._connection.execute(
-                """
-                SELECT * FROM events
-                WHERE condition_id = ? AND payload_kind = ? AND observed_at_ms <= ?
-                ORDER BY observed_at_ms DESC, sequence DESC
-                LIMIT 1
-                """,
-                (
-                    normalized_condition,
-                    PayloadKind.RESOLUTION.value,
-                    observed_at_ms,
-                ),
-            ).fetchone()
-            if resolution_row is None:
-                return payload
-            resolution_event = _event_from_row(resolution_row)
-            if not isinstance(resolution_event.payload, ResolutionPayload):
-                raise ArchiveFormatError("resolution index contains a wrong payload")
-            _validate_payload_market_identity(resolution_event, payload)
-            return replace(
-                payload,
-                resolution_status=(
-                    payload.resolution_status if payload.resolved else "resolved"
-                ),
-                resolution_source=(
-                    payload.resolution_source or resolution_event.payload.source
-                ),
-                resolved=True,
-                winning_token_id=resolution_event.payload.winning_token_id,
-                winning_outcome=resolution_event.payload.winning_outcome,
-            )
+
+    def markets_at(
+        self,
+        observed_at_ms: int,
+        *,
+        session_id: int | None = None,
+        condition_ids: Iterable[str] | None = None,
+        market_slugs: Iterable[str] | None = None,
+        allow_gaps: bool = False,
+    ) -> tuple[MarketMetadataPayload, ...]:
+        """Enumerate latest market revisions visible at one replay time."""
+
+        selection = _selection(
+            start_at_ms=observed_at_ms,
+            end_at_ms=observed_at_ms,
+            session_id=session_id,
+            condition_id=None,
+            condition_ids=condition_ids,
+            market_slug=None,
+            market_slugs=market_slugs,
+            token_id=None,
+        )
+        with self._lock:
+            self._ensure_open()
+            if not allow_gaps:
+                self._reject_known_gaps(**selection)
+            clauses = [
+                "revision.observed_at_ms <= ?",
+                "revision.sequence <= ?",
+                "revision.sequence = ("
+                "SELECT MAX(candidate.sequence) "
+                "FROM metadata_revisions AS candidate "
+                "WHERE candidate.condition_id = revision.condition_id "
+                "AND candidate.observed_at_ms <= ? "
+                "AND candidate.sequence <= ?)",
+            ]
+            parameters: list[object] = [
+                observed_at_ms,
+                self._replay_cutoff_sequence,
+                observed_at_ms,
+                self._replay_cutoff_sequence,
+            ]
+            selected_conditions = selection["condition_ids"]
+            if selected_conditions is not None:
+                placeholders = ", ".join("?" for _ in selected_conditions)
+                clauses.append(f"revision.condition_id IN ({placeholders})")
+                parameters.extend(selected_conditions)
+            selected_slugs = selection["market_slugs"]
+            if selected_slugs is not None:
+                placeholders = ", ".join("?" for _ in selected_slugs)
+                clauses.append(
+                    f"metadata_event.market_slug IN ({placeholders})"
+                )
+                parameters.extend(selected_slugs)
+            selected_session = selection["session_id"]
+            if selected_session is not None:
+                clauses.append(
+                    "EXISTS (SELECT 1 FROM events AS participating_event "
+                    "WHERE participating_event.session_id = ? "
+                    "AND participating_event.condition_id = revision.condition_id "
+                    "AND participating_event.sequence <= ?)"
+                )
+                parameters.extend(
+                    (selected_session, self._replay_cutoff_sequence)
+                )
+            rows = self._connection.execute(
+                "SELECT revision.condition_id, revision.payload_json, "
+                "metadata_event.market_slug "
+                "FROM metadata_revisions AS revision "
+                "JOIN events AS metadata_event "
+                "ON metadata_event.sequence = revision.sequence WHERE "
+                + " AND ".join(clauses)
+                + " ORDER BY revision.condition_id",
+                tuple(parameters),
+            ).fetchall()
+            markets: list[MarketMetadataPayload] = []
+            for row in rows:
+                payload = _typed_payload(
+                    PayloadKind.MARKET_METADATA,
+                    row["payload_json"],
+                    MarketMetadataPayload,
+                )
+                if (
+                    payload.condition_id != row["condition_id"]
+                    or payload.market_slug != row["market_slug"]
+                ):
+                    raise ArchiveFormatError(
+                        "metadata index identity is inconsistent"
+                    )
+                markets.append(
+                    self._market_with_resolution(
+                        self._connection,
+                        payload,
+                        observed_at_ms,
+                    )
+                )
+            return tuple(markets)
 
     def checkpoint_before(
         self,
         token_id: str,
         observed_at_ms: int,
         *,
+        session_id: int | None = None,
         allow_gaps: bool = False,
     ) -> BookCheckpoint | None:
         normalized_token = _required_text(token_id, "token ID")
         _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+        normalized_session = (
+            None
+            if session_id is None
+            else _positive_int(session_id, "session ID")
+        )
         with self._lock:
             self._ensure_open()
+            session_clause = "" if normalized_session is None else "AND session_id = ?"
+            parameters: list[object] = [
+                normalized_token,
+                observed_at_ms,
+                self._replay_cutoff_sequence,
+            ]
+            if normalized_session is not None:
+                parameters.append(normalized_session)
             row = self._connection.execute(
-                """
+                f"""
                 SELECT *
                 FROM book_checkpoints
-                WHERE token_id = ? AND observed_at_ms <= ?
+                WHERE token_id = ? AND observed_at_ms <= ? AND sequence <= ?
+                  {session_clause}
                 ORDER BY observed_at_ms DESC, sequence DESC
                 LIMIT 1
                 """,
-                (normalized_token, observed_at_ms),
+                tuple(parameters),
             ).fetchone()
             if row is None:
                 return None
@@ -796,78 +999,126 @@ class RecordingReader:
                 self._reject_known_gaps(
                     start_at_ms=int(row["observed_at_ms"]),
                     end_at_ms=observed_at_ms,
-                    condition_id=row["condition_id"],
-                    market_slug=row["market_slug"],
+                    session_id=normalized_session,
+                    condition_ids=(row["condition_id"],),
+                    market_slugs=(row["market_slug"],),
                     token_id=normalized_token,
                 )
-            book = _typed_payload(
-                PayloadKind.BOOK_BASELINE,
-                row["payload_json"],
-                BookBaselinePayload,
+            return self._checkpoint_from_row(row, normalized_token)
+
+    def checkpoint_pair_before(
+        self,
+        condition_id: str,
+        observed_at_ms: int,
+        *,
+        session_id: int | None = None,
+        allow_gaps: bool = False,
+    ) -> tuple[BookCheckpoint, BookCheckpoint] | None:
+        """Return the newest same-boundary checkpoint for both market tokens."""
+
+        normalized_condition = _required_text(condition_id, "condition ID")
+        _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+        normalized_session = (
+            None
+            if session_id is None
+            else _positive_int(session_id, "session ID")
+        )
+        with self._lock:
+            self._ensure_open()
+            market = self._market_at(
+                self._connection,
+                normalized_condition,
+                observed_at_ms,
             )
-            metadata_row = self._connection.execute(
-                """
-                SELECT payload_json FROM metadata_revisions
-                WHERE condition_id = ? AND sequence <= ?
-                ORDER BY sequence DESC
+            if market is None:
+                return None
+            token_ids = tuple(outcome.token_id for outcome in market.outcomes)
+            session_clause = "" if normalized_session is None else "AND session_id = ?"
+            parameters: list[object] = [
+                normalized_condition,
+                *token_ids,
+                observed_at_ms,
+                self._replay_cutoff_sequence,
+            ]
+            if normalized_session is not None:
+                parameters.append(normalized_session)
+            boundary = self._connection.execute(
+                f"""
+                SELECT observed_at_ms, sequence, session_id,
+                       subscription_generation
+                FROM book_checkpoints
+                WHERE condition_id = ? AND token_id IN (?, ?)
+                  AND observed_at_ms <= ? AND sequence <= ?
+                  {session_clause}
+                GROUP BY observed_at_ms, sequence, session_id,
+                         subscription_generation
+                HAVING COUNT(DISTINCT token_id) = 2
+                ORDER BY observed_at_ms DESC, sequence DESC
                 LIMIT 1
                 """,
-                (row["condition_id"], row["sequence"]),
+                tuple(parameters),
             ).fetchone()
-            if metadata_row is None:
-                raise ArchiveIntegrityError(
-                    "book checkpoint has no preceding market metadata"
-                )
-            market = _typed_payload(
-                PayloadKind.MARKET_METADATA,
-                metadata_row["payload_json"],
-                MarketMetadataPayload,
-            )
-            if (
-                row["market_slug"] != market.market_slug
-                or normalized_token
-                not in {outcome.token_id for outcome in market.outcomes}
-            ):
-                raise ArchiveIntegrityError(
-                    "book checkpoint identity does not match market metadata"
-                )
-            try:
-                return BookCheckpoint(
-                    sequence=_strict_int(row["sequence"], "checkpoint sequence"),
-                    session_id=_strict_int(row["session_id"], "checkpoint session"),
-                    subscription_generation=_strict_int(
-                        row["subscription_generation"],
-                        "checkpoint generation",
-                    ),
-                    observed_at_ms=_strict_int(
-                        row["observed_at_ms"],
+            if boundary is None:
+                return None
+            if not allow_gaps:
+                self._reject_known_gaps(
+                    start_at_ms=_strict_int(
+                        boundary["observed_at_ms"],
                         "checkpoint timestamp",
                     ),
-                    identity=MarketIdentity(
-                        condition_id=row["condition_id"],
-                        market_slug=row["market_slug"],
-                        token_id=normalized_token,
-                    ),
-                    book=book,
+                    end_at_ms=observed_at_ms,
+                    session_id=normalized_session,
+                    condition_ids=(normalized_condition,),
+                    market_slugs=(market.market_slug,),
+                    token_id=None,
                 )
-            except ValueError as error:
-                raise ArchiveFormatError("book checkpoint is malformed") from error
+            rows = self._connection.execute(
+                """
+                SELECT * FROM book_checkpoints
+                WHERE condition_id = ? AND token_id IN (?, ?)
+                  AND observed_at_ms = ? AND sequence = ? AND session_id = ?
+                  AND subscription_generation = ?
+                """,
+                (
+                    normalized_condition,
+                    *token_ids,
+                    boundary["observed_at_ms"],
+                    boundary["sequence"],
+                    boundary["session_id"],
+                    boundary["subscription_generation"],
+                ),
+            ).fetchall()
+            rows_by_token = {row["token_id"]: row for row in rows}
+            if set(rows_by_token) != set(token_ids):
+                raise ArchiveIntegrityError(
+                    "common book checkpoint does not contain both market tokens"
+                )
+            return (
+                self._checkpoint_from_row(rows_by_token[token_ids[0]], token_ids[0]),
+                self._checkpoint_from_row(rows_by_token[token_ids[1]], token_ids[1]),
+            )
 
     def coverage_gaps(
         self,
         *,
         start_at_ms: int | None = None,
         end_at_ms: int | None = None,
+        session_id: int | None = None,
         condition_id: str | None = None,
+        condition_ids: Iterable[str] | None = None,
         market_slug: str | None = None,
+        market_slugs: Iterable[str] | None = None,
         token_id: str | None = None,
         open_only: bool = False,
     ) -> tuple[CoverageGapRecord, ...]:
         selection = _selection(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
+            session_id=session_id,
             condition_id=condition_id,
+            condition_ids=condition_ids,
             market_slug=market_slug,
+            market_slugs=market_slugs,
             token_id=token_id,
         )
         with self._lock:
@@ -877,10 +1128,7 @@ class RecordingReader:
     def sessions(self) -> tuple[RecordingSession, ...]:
         with self._lock:
             self._ensure_open()
-            rows = self._connection.execute(
-                "SELECT * FROM sessions ORDER BY session_id"
-            ).fetchall()
-            return tuple(_session_from_row(row) for row in rows)
+            return self._sessions
 
     def unresolved_markets(
         self,
@@ -895,28 +1143,39 @@ class RecordingReader:
                 query = """
                 SELECT condition_id, payload_json, sequence
                 FROM metadata_revisions AS revision
-                WHERE sequence = (
+                WHERE sequence <= ?
+                  AND sequence = (
                     SELECT MAX(candidate.sequence)
                     FROM metadata_revisions AS candidate
                     WHERE candidate.condition_id = revision.condition_id
+                      AND candidate.sequence <= ?
                 )
                 ORDER BY condition_id
                 """
-                parameters: tuple[object, ...] = ()
+                parameters: tuple[object, ...] = (
+                    self._replay_cutoff_sequence,
+                    self._replay_cutoff_sequence,
+                )
             else:
                 query = """
                 SELECT condition_id, payload_json, sequence
                 FROM metadata_revisions AS revision
-                WHERE observed_at_ms <= ?
+                WHERE observed_at_ms <= ? AND sequence <= ?
                   AND sequence = (
                     SELECT MAX(candidate.sequence)
                     FROM metadata_revisions AS candidate
                     WHERE candidate.condition_id = revision.condition_id
                       AND candidate.observed_at_ms <= ?
+                      AND candidate.sequence <= ?
                   )
                 ORDER BY condition_id
                 """
-                parameters = (at_ms, at_ms)
+                parameters = (
+                    at_ms,
+                    self._replay_cutoff_sequence,
+                    at_ms,
+                    self._replay_cutoff_sequence,
+                )
             rows = self._connection.execute(query, parameters).fetchall()
             unresolved: list[MarketMetadataPayload] = []
             for row in rows:
@@ -930,6 +1189,7 @@ class RecordingReader:
                 resolution_parameters: list[object] = [
                     payload.condition_id,
                     PayloadKind.RESOLUTION.value,
+                    self._replay_cutoff_sequence,
                 ]
                 resolution_time = ""
                 if at_ms is not None:
@@ -938,7 +1198,7 @@ class RecordingReader:
                 resolved_row = self._connection.execute(
                     f"""
                     SELECT 1 FROM events
-                    WHERE condition_id = ? AND payload_kind = ?
+                    WHERE condition_id = ? AND payload_kind = ? AND sequence <= ?
                     {resolution_time}
                     LIMIT 1
                     """,
@@ -947,6 +1207,143 @@ class RecordingReader:
                 if resolved_row is None:
                     unresolved.append(payload)
             return tuple(unresolved)
+
+    def _market_at(
+        self,
+        connection: sqlite3.Connection,
+        condition_id: str,
+        observed_at_ms: int,
+    ) -> MarketMetadataPayload | None:
+        row = connection.execute(
+            """
+            SELECT payload_json
+            FROM metadata_revisions
+            WHERE condition_id = ? AND observed_at_ms <= ? AND sequence <= ?
+            ORDER BY observed_at_ms DESC, sequence DESC
+            LIMIT 1
+            """,
+            (
+                condition_id,
+                observed_at_ms,
+                self._replay_cutoff_sequence,
+            ),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = _typed_payload(
+            PayloadKind.MARKET_METADATA,
+            row["payload_json"],
+            MarketMetadataPayload,
+        )
+        if payload.condition_id != condition_id:
+            raise ArchiveFormatError("metadata index identity is inconsistent")
+        return self._market_with_resolution(
+            connection,
+            payload,
+            observed_at_ms,
+        )
+
+    def _market_with_resolution(
+        self,
+        connection: sqlite3.Connection,
+        payload: MarketMetadataPayload,
+        observed_at_ms: int,
+    ) -> MarketMetadataPayload:
+        resolution_row = connection.execute(
+            """
+            SELECT * FROM events
+            WHERE condition_id = ? AND payload_kind = ?
+              AND observed_at_ms <= ? AND sequence <= ?
+            ORDER BY observed_at_ms DESC, sequence DESC
+            LIMIT 1
+            """,
+            (
+                payload.condition_id,
+                PayloadKind.RESOLUTION.value,
+                observed_at_ms,
+                self._replay_cutoff_sequence,
+            ),
+        ).fetchone()
+        if resolution_row is None:
+            return payload
+        resolution_event = _event_from_row(resolution_row)
+        if not isinstance(resolution_event.payload, ResolutionPayload):
+            raise ArchiveFormatError("resolution index contains a wrong payload")
+        _validate_payload_market_identity(resolution_event, payload)
+        return replace(
+            payload,
+            resolution_status=(
+                payload.resolution_status if payload.resolved else "resolved"
+            ),
+            resolution_source=(
+                payload.resolution_source or resolution_event.payload.source
+            ),
+            resolved=True,
+            winning_token_id=resolution_event.payload.winning_token_id,
+            winning_outcome=resolution_event.payload.winning_outcome,
+        )
+
+    def _checkpoint_from_row(
+        self,
+        row: sqlite3.Row,
+        token_id: str,
+    ) -> BookCheckpoint:
+        sequence = _strict_int(row["sequence"], "checkpoint sequence")
+        if sequence > self._replay_cutoff_sequence:
+            raise ArchiveIntegrityError("book checkpoint exceeds the replay cutoff")
+        book = _typed_payload(
+            PayloadKind.BOOK_BASELINE,
+            row["payload_json"],
+            BookBaselinePayload,
+        )
+        metadata_row = self._connection.execute(
+            """
+            SELECT payload_json FROM metadata_revisions
+            WHERE condition_id = ? AND sequence <= ?
+            ORDER BY sequence DESC
+            LIMIT 1
+            """,
+            (row["condition_id"], sequence),
+        ).fetchone()
+        if metadata_row is None:
+            raise ArchiveIntegrityError(
+                "book checkpoint has no preceding market metadata"
+            )
+        market = _typed_payload(
+            PayloadKind.MARKET_METADATA,
+            metadata_row["payload_json"],
+            MarketMetadataPayload,
+        )
+        if (
+            row["condition_id"] != market.condition_id
+            or row["market_slug"] != market.market_slug
+            or token_id not in {outcome.token_id for outcome in market.outcomes}
+            or book.token_id != token_id
+        ):
+            raise ArchiveIntegrityError(
+                "book checkpoint identity does not match market metadata"
+            )
+        try:
+            return BookCheckpoint(
+                sequence=sequence,
+                session_id=_strict_int(row["session_id"], "checkpoint session"),
+                subscription_generation=_strict_int(
+                    row["subscription_generation"],
+                    "checkpoint generation",
+                ),
+                observed_at_ms=_strict_int(
+                    row["observed_at_ms"],
+                    "checkpoint timestamp",
+                ),
+                identity=MarketIdentity(
+                    condition_id=row["condition_id"],
+                    market_slug=row["market_slug"],
+                    token_id=token_id,
+                ),
+                book=book,
+            )
+        except ValueError as error:
+            raise ArchiveFormatError("book checkpoint is malformed") from error
 
     def close(self) -> None:
         with self._lock:
@@ -972,7 +1369,10 @@ class RecordingReader:
             connection.execute("BEGIN")
             if not allow_gaps:
                 self._reject_known_gaps(connection=connection, **selection)
-            query, parameters = _event_query(selection)
+            query, parameters = _event_query(
+                selection,
+                replay_cutoff_sequence=self._replay_cutoff_sequence,
+            )
             cursor = connection.execute(query, parameters)
         except BaseException:
             connection.close()
@@ -989,8 +1389,8 @@ class RecordingReader:
                         and not _gap_affects(
                             event.identity,
                             event.payload,
-                            condition_id=selection["condition_id"],
-                            market_slug=selection["market_slug"],
+                            condition_ids=selection["condition_ids"],
+                            market_slugs=selection["market_slugs"],
                             token_id=selection["token_id"],
                         )
                     ):
@@ -1012,20 +1412,24 @@ class RecordingReader:
         *,
         start_at_ms: int | None,
         end_at_ms: int | None,
-        condition_id: str | None,
-        market_slug: str | None,
+        session_id: int | None,
+        condition_ids: tuple[str, ...] | None,
+        market_slugs: tuple[str, ...] | None,
         token_id: str | None,
         open_only: bool,
         connection: sqlite3.Connection | None = None,
     ) -> tuple[CoverageGapRecord, ...]:
-        clauses: list[str] = []
-        parameters: list[object] = []
+        clauses: list[str] = ["event_sequence <= ?"]
+        parameters: list[object] = [self._replay_cutoff_sequence]
         if start_at_ms is not None:
             clauses.append("(ended_at_ms IS NULL OR ended_at_ms > ?)")
             parameters.append(start_at_ms)
         if end_at_ms is not None:
             clauses.append("started_at_ms <= ?")
             parameters.append(end_at_ms)
+        if session_id is not None:
+            clauses.append("session_id = ?")
+            parameters.append(session_id)
         if open_only:
             clauses.append("ended_at_ms IS NULL")
         where = "" if not clauses else "WHERE " + " AND ".join(clauses)
@@ -1045,8 +1449,8 @@ class RecordingReader:
             if not _gap_affects(
                 identity,
                 payload,
-                condition_id=condition_id,
-                market_slug=market_slug,
+                condition_ids=condition_ids,
+                market_slugs=market_slugs,
                 token_id=token_id,
             ):
                 continue
@@ -1089,16 +1493,18 @@ class RecordingReader:
         *,
         start_at_ms: int | None,
         end_at_ms: int | None,
-        condition_id: str | None,
-        market_slug: str | None,
+        session_id: int | None,
+        condition_ids: tuple[str, ...] | None,
+        market_slugs: tuple[str, ...] | None,
         token_id: str | None,
         connection: sqlite3.Connection | None = None,
     ) -> None:
         gaps = self._coverage_gaps(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
-            condition_id=condition_id,
-            market_slug=market_slug,
+            session_id=session_id,
+            condition_ids=condition_ids,
+            market_slugs=market_slugs,
             token_id=token_id,
             open_only=False,
             connection=connection,
@@ -1651,8 +2057,8 @@ def _has_affecting_gap_after_baseline(
         if _gap_affects(
             gap_event.identity,
             gap_event.payload,
-            condition_id=identity.condition_id,
-            market_slug=identity.market_slug,
+            condition_ids=(identity.condition_id,),
+            market_slugs=(identity.market_slug,),
             token_id=token_id,
         ):
             return True
@@ -1704,8 +2110,11 @@ def _selection(
     *,
     start_at_ms: int | None,
     end_at_ms: int | None,
+    session_id: int | None,
     condition_id: str | None,
+    condition_ids: Iterable[str] | None,
     market_slug: str | None,
+    market_slugs: Iterable[str] | None,
     token_id: str | None,
 ) -> dict[str, object]:
     if start_at_ms is not None:
@@ -1717,25 +2126,61 @@ def _selection(
     return {
         "start_at_ms": start_at_ms,
         "end_at_ms": end_at_ms,
-        "condition_id": (
-            None
-            if condition_id is None
-            else _required_text(condition_id, "condition ID")
+        "session_id": (
+            None if session_id is None else _positive_int(session_id, "session ID")
         ),
-        "market_slug": (
-            None if market_slug is None else _required_text(market_slug, "market slug")
+        "condition_ids": _text_selection(
+            singular=condition_id,
+            plural=condition_ids,
+            singular_name="condition ID",
+            plural_name="condition IDs",
+        ),
+        "market_slugs": _text_selection(
+            singular=market_slug,
+            plural=market_slugs,
+            singular_name="market slug",
+            plural_name="market slugs",
         ),
         "token_id": None if token_id is None else _required_text(token_id, "token ID"),
     }
 
 
-def _event_query(selection: dict[str, object]) -> tuple[str, tuple[object, ...]]:
-    clauses: list[str] = []
-    parameters: list[object] = []
+def _text_selection(
+    *,
+    singular: str | None,
+    plural: Iterable[str] | None,
+    singular_name: str,
+    plural_name: str,
+) -> tuple[str, ...] | None:
+    if singular is not None and plural is not None:
+        raise ValueError(f"use either {singular_name} or {plural_name}, not both")
+    if singular is not None:
+        return (_required_text(singular, singular_name),)
+    if plural is None:
+        return None
+    if isinstance(plural, str):
+        raise ValueError(f"{plural_name} must be an iterable of strings")
+    normalized = tuple(
+        sorted({_required_text(value, singular_name) for value in plural})
+    )
+    if not normalized:
+        raise ValueError(f"{plural_name} must not be empty")
+    return normalized
+
+
+def _event_query(
+    selection: dict[str, object],
+    *,
+    replay_cutoff_sequence: int,
+    ordered: bool = True,
+) -> tuple[str, tuple[object, ...]]:
+    clauses: list[str] = ["event.sequence <= ?"]
+    parameters: list[object] = [replay_cutoff_sequence]
     start_at_ms = selection["start_at_ms"]
     end_at_ms = selection["end_at_ms"]
-    condition_id = selection["condition_id"]
-    market_slug = selection["market_slug"]
+    session_id = selection["session_id"]
+    condition_ids = selection["condition_ids"]
+    market_slugs = selection["market_slugs"]
     token_id = selection["token_id"]
     if start_at_ms is not None:
         clauses.append("event.observed_at_ms >= ?")
@@ -1743,12 +2188,21 @@ def _event_query(selection: dict[str, object]) -> tuple[str, tuple[object, ...]]
     if end_at_ms is not None:
         clauses.append("event.observed_at_ms <= ?")
         parameters.append(end_at_ms)
-    if condition_id is not None:
-        clauses.append("(event.condition_id = ? OR event.payload_kind = ?)")
-        parameters.extend((condition_id, PayloadKind.COVERAGE_GAP.value))
-    if market_slug is not None:
-        clauses.append("(event.market_slug = ? OR event.payload_kind = ?)")
-        parameters.extend((market_slug, PayloadKind.COVERAGE_GAP.value))
+    if session_id is not None:
+        clauses.append("event.session_id = ?")
+        parameters.append(session_id)
+    if condition_ids is not None:
+        placeholders = ", ".join("?" for _ in condition_ids)
+        clauses.append(
+            f"(event.condition_id IN ({placeholders}) OR event.payload_kind = ?)"
+        )
+        parameters.extend((*condition_ids, PayloadKind.COVERAGE_GAP.value))
+    if market_slugs is not None:
+        placeholders = ", ".join("?" for _ in market_slugs)
+        clauses.append(
+            f"(event.market_slug IN ({placeholders}) OR event.payload_kind = ?)"
+        )
+        parameters.extend((*market_slugs, PayloadKind.COVERAGE_GAP.value))
     if token_id is not None:
         clauses.append(
             """
@@ -1761,8 +2215,9 @@ def _event_query(selection: dict[str, object]) -> tuple[str, tuple[object, ...]]
         )
         parameters.extend((token_id, PayloadKind.COVERAGE_GAP.value))
     where = "" if not clauses else "WHERE " + " AND ".join(clauses)
+    order_by = " ORDER BY event.sequence" if ordered else ""
     return (
-        f"SELECT event.* FROM events AS event {where} ORDER BY event.sequence",
+        f"SELECT event.* FROM events AS event {where}{order_by}",
         tuple(parameters),
     )
 
@@ -1771,9 +2226,9 @@ def _gap_affects(
     identity: MarketIdentity | None,
     gap: CoverageGapPayload,
     *,
-    condition_id: object,
-    market_slug: object,
-    token_id: object,
+    condition_ids: tuple[str, ...] | None,
+    market_slugs: tuple[str, ...] | None,
+    token_id: str | None,
 ) -> bool:
     has_scope = bool(
         gap.affected_condition_ids
@@ -1783,31 +2238,42 @@ def _gap_affects(
     )
     if not has_scope:
         return True
-    comparisons = (
-        (
-            condition_id,
-            gap.affected_condition_ids,
-            None if identity is None else identity.condition_id,
-        ),
-        (
-            market_slug,
-            gap.affected_market_slugs,
-            None if identity is None else identity.market_slug,
-        ),
-        (
-            token_id,
-            gap.affected_token_ids,
-            None if identity is None else identity.token_id,
-        ),
+    return all(
+        _selected_scope_matches(
+            selected,
+            affected,
+            identity_value,
+        )
+        for selected, affected, identity_value in (
+            (
+                condition_ids,
+                gap.affected_condition_ids,
+                None if identity is None else identity.condition_id,
+            ),
+            (
+                market_slugs,
+                gap.affected_market_slugs,
+                None if identity is None else identity.market_slug,
+            ),
+            (
+                None if token_id is None else (token_id,),
+                gap.affected_token_ids,
+                None if identity is None else identity.token_id,
+            ),
+        )
     )
-    for selected, affected, identity_value in comparisons:
-        if selected is None:
-            continue
-        if affected and selected not in affected:
-            return False
-        if not affected and identity_value is not None and selected != identity_value:
-            return False
-    return True
+
+
+def _selected_scope_matches(
+    selected: tuple[str, ...] | None,
+    affected: tuple[str, ...],
+    identity_value: str | None,
+) -> bool:
+    if selected is None:
+        return True
+    if affected:
+        return not set(selected).isdisjoint(affected)
+    return identity_value is None or identity_value in selected
 
 
 def _archive_path(path: str | Path) -> Path:
@@ -1898,16 +2364,26 @@ def _last_sequence(connection: sqlite3.Connection) -> int:
     return int(row[0])
 
 
-def _last_observed_at_ms(connection: sqlite3.Connection) -> int | None:
+def _last_observed_at_ms(
+    connection: sqlite3.Connection,
+    *,
+    sequence_cutoff: int | None = None,
+) -> int | None:
+    event_cutoff = "" if sequence_cutoff is None else " WHERE sequence <= ?"
+    checkpoint_cutoff = "" if sequence_cutoff is None else " WHERE sequence <= ?"
+    parameters: tuple[object, ...] = (
+        () if sequence_cutoff is None else (sequence_cutoff, sequence_cutoff)
+    )
     value = connection.execute(
-        """
+        f"""
         SELECT MAX(observed_at_ms)
         FROM (
-            SELECT observed_at_ms FROM events
+            SELECT observed_at_ms FROM events{event_cutoff}
             UNION ALL
-            SELECT observed_at_ms FROM book_checkpoints
+            SELECT observed_at_ms FROM book_checkpoints{checkpoint_cutoff}
         )
-        """
+        """,
+        parameters,
     ).fetchone()[0]
     return None if value is None else int(value)
 

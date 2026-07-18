@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from polybot.execution.broker import Broker
 from polybot.framework.activity import ActivitySink, NullActivitySink
+from polybot.framework.clock import Clock, SystemClock
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
@@ -40,3 +42,5 @@ class BotContext:
     wallet_activity: WalletActivityClient
     positions: PositionClient | None = None
     activity: ActivitySink = field(default_factory=NullActivitySink)
+    clock: Clock = field(default_factory=SystemClock)
+    rng: random.Random = field(default_factory=random.Random)

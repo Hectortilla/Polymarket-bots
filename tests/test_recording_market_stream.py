@@ -34,7 +34,8 @@ from polymarket.models.gamma.market import (
 
 from polybot.framework.events import Side
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.recording_feed import MarketRecordingFeed
+from polybot.polymarket.recording_events import CapturedMarketEvent
+from polybot.polymarket.recording_feed import MarketCapture, MarketRecordingFeed
 from polybot.polymarket.recording_metadata import (
     RecordingMarket,
     RecordingMarketResolver,
@@ -253,6 +254,123 @@ def test_capture_preserves_typed_market_events_and_projects_full_depth() -> None
     )
 
 
+def test_capture_combines_split_revision_before_validating_crossed_depth() -> None:
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="revision-up",
+        ),
+    )
+
+    async def run():
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        captured = [event async for event in capture]
+        books = capture.projected_books(4_000)
+        return captured, books
+
+    captured, books = asyncio.run(run())
+
+    assert len(captured) == 3
+    combined = captured[-1]
+    assert isinstance(combined.payload, BookDeltaPayload)
+    assert tuple(
+        (change.side, change.price, change.size)
+        for change in combined.payload.changes
+    ) == (
+        (Side.BUY, Decimal("0.55"), Decimal("5")),
+        (Side.SELL, Decimal("0.50"), Decimal("0")),
+    )
+    up_book = next(book for book in books if book.token_id == "up-token")
+    assert tuple(level.price for level in up_book.bids) == (
+        Decimal("0.55"),
+        Decimal("0.40"),
+    )
+    assert tuple(level.price for level in up_book.asks) == (Decimal("0.60"),)
+
+
+def test_capture_rejects_crossed_fragments_from_different_revisions() -> None:
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="different-revision",
+        ),
+    )
+
+    async def run() -> tuple[MarketDataIssue, CapturedMarketEvent]:
+        capture = await MarketRecordingFeed(  # type: ignore[arg-type]
+            FakeStreamClient(FakeHandle(events))
+        ).open_capture(_market(), generation=7)
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(MarketDataError) as caught:
+            await anext(capture)
+        return caught.value.issue, await anext(capture)
+
+    issue, next_event = asyncio.run(run())
+
+    assert issue is MarketDataIssue.CROSSED_BOOK
+    assert isinstance(next_event.payload, BookDeltaPayload)
+    assert next_event.payload.changes[0].source_hash == "different-revision"
+
+
+def test_capture_times_out_an_unfinished_split_revision() -> None:
+    class HangingHandle:
+        dropped = 0
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __aiter__(self) -> AsyncIterator[object]:
+            return self._iterate()
+
+        async def _iterate(self) -> AsyncIterator[object]:
+            for event in _split_revision_prefix():
+                yield event
+            yield _price_change_event(
+                price="0.55",
+                size="5",
+                side="BUY",
+                source_hash="revision-up",
+            )
+            await asyncio.Event().wait()
+
+        async def close(self) -> None:
+            self.closed = True
+
+    async def run() -> MarketDataIssue:
+        capture = MarketCapture(
+            HangingHandle(),
+            market=_market(),
+            generation=7,
+            split_revision_timeout_seconds=0.01,
+        )
+        await anext(capture)
+        await anext(capture)
+        with pytest.raises(MarketDataError) as caught:
+            await anext(capture)
+        return caught.value.issue
+
+    assert asyncio.run(run()) is MarketDataIssue.CROSSED_BOOK
+
+
 def test_capture_rejects_delta_before_baseline() -> None:
     delta = MarketPriceChangeEvent(
         type="price_change",
@@ -394,6 +512,50 @@ def _book_event(
             asks=tuple(OrderBookLevel(price=price, size=size) for price, size in asks),
             hash=source_hash,
             timestamp=timestamp,
+        ),
+    )
+
+
+def _split_revision_prefix() -> tuple[MarketBookEvent, MarketBookEvent]:
+    return (
+        _book_event(
+            "up-token",
+            bids=(("0.40", "2"),),
+            asks=(("0.50", "3"), ("0.60", "4")),
+            timestamp=datetime.fromtimestamp(1, tz=UTC),
+        ),
+        _book_event(
+            "down-token",
+            bids=(("0.30", "5"),),
+            asks=(("0.70", "6"),),
+            timestamp=datetime.fromtimestamp(2, tz=UTC),
+        ),
+    )
+
+
+def _price_change_event(
+    *,
+    price: str,
+    size: str,
+    side: str,
+    source_hash: str,
+) -> MarketPriceChangeEvent:
+    return MarketPriceChangeEvent(
+        type="price_change",
+        payload=MarketPriceChangePayload(
+            market="condition-bucket",
+            price_changes=(
+                PriceChange(
+                    asset_id="up-token",
+                    price=price,
+                    size=size,
+                    side=side,
+                    hash=source_hash,
+                    best_bid="0.55",
+                    best_ask="0.60",
+                ),
+            ),
+            timestamp=datetime.fromtimestamp(3, tz=UTC),
         ),
     )
 

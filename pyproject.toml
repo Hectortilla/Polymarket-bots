@@ -41,6 +41,8 @@ packages = [
   "polybot.polymarket",
   "polybot.polymarket.wallet_activity",
   "polybot.polymarket.normalization",
+  "polybot.backtesting",
+  "polybot.performance",
   "polybot.recording",
   "scripts",
   "scripts.select_wallet_for_analysis",
