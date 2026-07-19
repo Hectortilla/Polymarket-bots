@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any
 
 from polybot.framework.events import Side
+from polybot.persistence.json_codec import loads_json
 
 from .contracts import (
     BookBaselinePayload,
@@ -19,6 +22,7 @@ from .contracts import (
     CaptureFailureKind,
     CaptureFragmentRole,
     CoverageGapPayload,
+    CoverageGapReason,
     FeeScheduleMetadata,
     MarketIdentity,
     MarketEventMetadata,
@@ -27,6 +31,7 @@ from .contracts import (
     PublicTradePayload,
     RecordedBookLevel,
     RecordedPayload,
+    RECORDED_PAYLOAD_TYPES,
     RevisionFingerprint,
     ResolutionPayload,
     TickSizeChangePayload,
@@ -44,21 +49,7 @@ class PayloadKind(StrEnum):
 
 
 def payload_kind(payload: RecordedPayload) -> PayloadKind:
-    if isinstance(payload, MarketMetadataPayload):
-        return PayloadKind.MARKET_METADATA
-    if isinstance(payload, BookBaselinePayload):
-        return PayloadKind.BOOK_BASELINE
-    if isinstance(payload, BookDeltaPayload):
-        return PayloadKind.BOOK_DELTA
-    if isinstance(payload, PublicTradePayload):
-        return PayloadKind.PUBLIC_TRADE
-    if isinstance(payload, TickSizeChangePayload):
-        return PayloadKind.TICK_SIZE_CHANGE
-    if isinstance(payload, ResolutionPayload):
-        return PayloadKind.RESOLUTION
-    if isinstance(payload, CoverageGapPayload):
-        return PayloadKind.COVERAGE_GAP
-    raise ValueError("recording payload type is unsupported")
+    return _codec_for_payload(payload).kind
 
 
 def payload_json(payload: RecordedPayload) -> str:
@@ -72,7 +63,7 @@ def payload_from_json(kind: str | PayloadKind, raw_json: str) -> RecordedPayload
         raise ValueError(f"unsupported recording payload kind: {kind!r}") from error
     data = _load_object(raw_json)
     try:
-        return _PAYLOAD_LOADERS[normalized_kind](data)
+        return _CODEC_BY_KIND[normalized_kind].decode(data)
     except (KeyError, TypeError, ValueError, InvalidOperation) as error:
         if isinstance(error, ValueError) and str(error).startswith("recording payload"):
             raise
@@ -124,46 +115,16 @@ def text_tuple_from_json(raw_json: str, name: str) -> tuple[str, ...]:
 
 
 def _payload_to_data(payload: RecordedPayload) -> dict[str, Any]:
-    if isinstance(payload, MarketMetadataPayload):
-        return _metadata_to_data(payload)
-    if isinstance(payload, BookBaselinePayload):
-        return _baseline_to_data(payload)
-    if isinstance(payload, BookDeltaPayload):
-        return {"changes": [_change_to_data(change) for change in payload.changes]}
-    if isinstance(payload, PublicTradePayload):
-        return {
-            "fee_rate_bps": _optional_decimal(payload.fee_rate_bps),
-            "price": str(payload.price),
-            "side": payload.side.value,
-            "size": str(payload.size),
-            "token_id": payload.token_id,
-            "transaction_hash": payload.transaction_hash,
-        }
-    if isinstance(payload, TickSizeChangePayload):
-        return {
-            "new_tick_size": str(payload.new_tick_size),
-            "old_tick_size": _optional_decimal(payload.old_tick_size),
-            "token_id": payload.token_id,
-        }
-    if isinstance(payload, ResolutionPayload):
-        return {
-            "resolution_id": payload.resolution_id,
-            "source": payload.source,
-            "token_ids": list(payload.token_ids),
-            "winning_outcome": payload.winning_outcome,
-            "winning_token_id": payload.winning_token_id,
-        }
-    if isinstance(payload, CoverageGapPayload):
-        return {
-            "affected_condition_ids": list(payload.affected_condition_ids),
-            "affected_market_slugs": list(payload.affected_market_slugs),
-            "affected_token_ids": list(payload.affected_token_ids),
-            "details": payload.details,
-            "ended_at_ms": payload.ended_at_ms,
-            "reason": payload.reason,
-            "started_at_ms": payload.started_at_ms,
-        }
-    raise ValueError("recording payload type is unsupported")
+    return _codec_for_payload(payload).encode(payload)
+
+
+def event_token_ids(payload: RecordedPayload) -> tuple[str, ...]:
+    return _codec_for_payload(payload).token_ids(payload)
+
+
+def payload_kind_sql_literals() -> str:
+    """Return the discriminator literals accepted by the SQLite schema."""
+    return ", ".join(f"'{codec.kind.value}'" for codec in PAYLOAD_CODECS)
 
 
 def _capture_anomaly_to_data(anomaly: CaptureAnomalyPayload) -> dict[str, Any]:
@@ -521,7 +482,7 @@ def _resolution_from_data(data: dict[str, Any]) -> ResolutionPayload:
 def _coverage_gap_from_data(data: dict[str, Any]) -> CoverageGapPayload:
     _require_keys(data, _COVERAGE_GAP_KEYS)
     return CoverageGapPayload(
-        reason=_text(data["reason"], "coverage gap reason"),
+        reason=CoverageGapReason(_text(data["reason"], "coverage gap reason")),
         started_at_ms=_int(data["started_at_ms"], "coverage gap start"),
         ended_at_ms=_optional_int(data["ended_at_ms"], "coverage gap end"),
         affected_condition_ids=_text_tuple(
@@ -627,7 +588,7 @@ def _capture_fragment_from_data(value: object) -> CaptureAnomalyFragment:
         raise ValueError(
             "recording capture anomaly fragment payload kind is invalid"
         ) from error
-    payload = _PAYLOAD_LOADERS[kind](payload_data)
+    payload = _CODEC_BY_KIND[kind].decode(payload_data)
     try:
         role = CaptureFragmentRole(data["role"])
     except (TypeError, ValueError) as error:
@@ -690,19 +651,9 @@ def _load_json(raw_json: str) -> object:
     if not isinstance(raw_json, str):
         raise ValueError("recording payload JSON must be text")
     try:
-        return json.loads(raw_json, object_pairs_hook=_unique_object)
+        return loads_json(raw_json)
     except (json.JSONDecodeError, TypeError, ValueError) as error:
         raise ValueError("recording payload JSON is malformed") from error
-
-
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"recording payload contains duplicate key {key!r}")
-        result[key] = value
-    return result
-
 
 def _object(value: object, name: str) -> dict[str, Any]:
     if not isinstance(value, dict) or not all(
@@ -885,12 +836,135 @@ _CAPTURE_BOOK_DIAGNOSTICS_KEYS = frozenset(
     }
 )
 
-_PAYLOAD_LOADERS = {
-    PayloadKind.MARKET_METADATA: _metadata_from_data,
-    PayloadKind.BOOK_BASELINE: _baseline_from_data,
-    PayloadKind.BOOK_DELTA: _delta_from_data,
-    PayloadKind.PUBLIC_TRADE: _public_trade_from_data,
-    PayloadKind.TICK_SIZE_CHANGE: _tick_size_change_from_data,
-    PayloadKind.RESOLUTION: _resolution_from_data,
-    PayloadKind.COVERAGE_GAP: _coverage_gap_from_data,
-}
+@dataclass(frozen=True, slots=True)
+class PayloadCodec:
+    kind: PayloadKind
+    payload_type: type
+    encode: Callable[[Any], dict[str, Any]]
+    decode: Callable[[dict[str, Any]], RecordedPayload]
+    token_ids: Callable[[Any], tuple[str, ...]]
+
+
+def _delta_to_data(payload: BookDeltaPayload) -> dict[str, Any]:
+    return {"changes": [_change_to_data(change) for change in payload.changes]}
+
+
+def _public_trade_to_data(payload: PublicTradePayload) -> dict[str, Any]:
+    return {
+        "fee_rate_bps": _optional_decimal(payload.fee_rate_bps),
+        "price": str(payload.price),
+        "side": payload.side.value,
+        "size": str(payload.size),
+        "token_id": payload.token_id,
+        "transaction_hash": payload.transaction_hash,
+    }
+
+
+def _tick_size_change_to_data(payload: TickSizeChangePayload) -> dict[str, Any]:
+    return {
+        "new_tick_size": str(payload.new_tick_size),
+        "old_tick_size": _optional_decimal(payload.old_tick_size),
+        "token_id": payload.token_id,
+    }
+
+
+def _resolution_to_data(payload: ResolutionPayload) -> dict[str, Any]:
+    return {
+        "resolution_id": payload.resolution_id,
+        "source": payload.source,
+        "token_ids": list(payload.token_ids),
+        "winning_outcome": payload.winning_outcome,
+        "winning_token_id": payload.winning_token_id,
+    }
+
+
+def _coverage_gap_to_data(payload: CoverageGapPayload) -> dict[str, Any]:
+    return {
+        "affected_condition_ids": list(payload.affected_condition_ids),
+        "affected_market_slugs": list(payload.affected_market_slugs),
+        "affected_token_ids": list(payload.affected_token_ids),
+        "details": payload.details,
+        "ended_at_ms": payload.ended_at_ms,
+        "reason": payload.reason.value,
+        "started_at_ms": payload.started_at_ms,
+    }
+
+
+def _metadata_tokens(payload: MarketMetadataPayload) -> tuple[str, ...]:
+    return tuple(outcome.token_id for outcome in payload.outcomes)
+
+
+def _delta_tokens(payload: BookDeltaPayload) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(change.token_id for change in payload.changes))
+
+
+def _single_token(payload: Any) -> tuple[str, ...]:
+    return (payload.token_id,)
+
+
+PAYLOAD_CODECS = (
+    PayloadCodec(
+        PayloadKind.MARKET_METADATA,
+        MarketMetadataPayload,
+        _metadata_to_data,
+        _metadata_from_data,
+        _metadata_tokens,
+    ),
+    PayloadCodec(
+        PayloadKind.BOOK_BASELINE,
+        BookBaselinePayload,
+        _baseline_to_data,
+        _baseline_from_data,
+        _single_token,
+    ),
+    PayloadCodec(
+        PayloadKind.BOOK_DELTA,
+        BookDeltaPayload,
+        _delta_to_data,
+        _delta_from_data,
+        _delta_tokens,
+    ),
+    PayloadCodec(
+        PayloadKind.PUBLIC_TRADE,
+        PublicTradePayload,
+        _public_trade_to_data,
+        _public_trade_from_data,
+        _single_token,
+    ),
+    PayloadCodec(
+        PayloadKind.TICK_SIZE_CHANGE,
+        TickSizeChangePayload,
+        _tick_size_change_to_data,
+        _tick_size_change_from_data,
+        _single_token,
+    ),
+    PayloadCodec(
+        PayloadKind.RESOLUTION,
+        ResolutionPayload,
+        _resolution_to_data,
+        _resolution_from_data,
+        lambda payload: payload.token_ids,
+    ),
+    PayloadCodec(
+        PayloadKind.COVERAGE_GAP,
+        CoverageGapPayload,
+        _coverage_gap_to_data,
+        _coverage_gap_from_data,
+        lambda payload: payload.affected_token_ids,
+    ),
+)
+_CODEC_BY_KIND = {codec.kind: codec for codec in PAYLOAD_CODECS}
+_CODEC_BY_TYPE = {codec.payload_type: codec for codec in PAYLOAD_CODECS}
+
+if (
+    len(_CODEC_BY_KIND) != len(PayloadKind)
+    or frozenset(_CODEC_BY_TYPE) != frozenset(RECORDED_PAYLOAD_TYPES)
+):
+    raise RuntimeError("recording payload codec registry is incomplete")
+
+
+def _codec_for_payload(payload: RecordedPayload) -> PayloadCodec:
+    codec = _CODEC_BY_TYPE.get(type(payload))
+    if codec is None:
+        raise ValueError("recording payload type is unsupported")
+    return codec

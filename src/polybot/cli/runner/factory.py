@@ -15,9 +15,9 @@ from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.polymarket.clob import ClobClient
-from polybot.polymarket.data import DataClient
+from polybot.polymarket.positions import PositionClient
 from polybot.polymarket.gamma import GammaClient
-from polybot.polymarket.wallet_activity.client import WalletActivityClient
+from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.ws_market import MarketStream
 
 from ..followed_wallets.tracker import FollowedWalletTracker
@@ -38,8 +38,8 @@ class RuntimeComponents:
     gamma: GammaClient
     clob: ClobClient
     market_stream: MarketStream
-    wallet_client: WalletActivityClient
-    position_client: DataClient
+    wallet_activity_client: PolymarketWalletActivityClient
+    position_client: PositionClient
     followed_wallets: FollowedWalletTracker
     resolution_ledger: ResolutionLedger
     registry: TrackedMarketRegistry
@@ -58,8 +58,8 @@ async def create_runtime(
     gamma = GammaClient(public_client)
     clob = ClobClient(public_client)
     market_stream = MarketStream(public_client)
-    wallet_client = WalletActivityClient(public_client)
-    position_client = DataClient(public_client)
+    wallet_activity_client = PolymarketWalletActivityClient(public_client)
+    position_client = PositionClient(public_client)
     source_store = FileSourceIdempotencyStore(
         state_path(config.name, SOURCE_ID_STORE_SUFFIX)
     )
@@ -84,7 +84,7 @@ async def create_runtime(
         gamma=gamma,
         clob=clob,
         market_stream=market_stream,
-        wallet_client=wallet_client,
+        wallet_activity_client=wallet_activity_client,
         position_client=position_client,
         followed_wallets=followed_wallets,
         resolution_ledger=resolution_ledger,
@@ -96,7 +96,7 @@ async def create_runtime(
             broker=broker,
             markets=gamma,
             books=clob,
-            wallet_activity=wallet_client,
+            wallet_activity=wallet_activity_client,
             positions=position_client,
             activity=ObserverActivitySink(observer),
         ),

@@ -9,7 +9,7 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.errors import MarketDataError
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookCheckpoint,
@@ -94,8 +94,12 @@ class ArchiveMarketState:
                 BacktestFailureReason.MISSING_MARKET_DATA,
                 f"recorded metadata changed immutable identity for {market.condition_id}",
             )
-        self._markets_by_condition[market.condition_id] = market
-        self._condition_by_slug[market.slug] = market.condition_id
+        slug_condition = self._condition_by_slug.get(market.slug)
+        if slug_condition is not None and slug_condition != market.condition_id:
+            raise BacktestError(
+                BacktestFailureReason.MISSING_MARKET_DATA,
+                f"market slug maps to multiple recorded markets: {market.slug}",
+            )
         for token_id in market.token_ids:
             existing = self._condition_by_token.get(token_id)
             if existing is not None and existing != market.condition_id:
@@ -103,6 +107,9 @@ class ArchiveMarketState:
                     BacktestFailureReason.MISSING_MARKET_DATA,
                     f"token ID maps to multiple recorded markets: {token_id}",
                 )
+        self._markets_by_condition[market.condition_id] = market
+        self._condition_by_slug[market.slug] = market.condition_id
+        for token_id in market.token_ids:
             self._condition_by_token[token_id] = market.condition_id
         self._projectors.setdefault(
             market.condition_id,
@@ -117,6 +124,7 @@ class ArchiveMarketState:
         checkpoints: tuple[BookCheckpoint, BookCheckpoint],
     ) -> None:
         try:
+            staged = []
             for checkpoint in checkpoints:
                 condition_id = checkpoint.identity.condition_id
                 if condition_id is None:
@@ -125,9 +133,16 @@ class ArchiveMarketState:
                         "book checkpoint has no condition identity",
                     )
                 projector = self._required_projector(condition_id)
-                snapshot = projector.apply_baseline(
+                snapshot = projector.preview_baseline(
                     checkpoint.book,
                     condition_id=condition_id,
+                    received_at_ms=checkpoint.observed_at_ms,
+                )
+                staged.append((projector, checkpoint, snapshot))
+            for projector, checkpoint, snapshot in staged:
+                projector.apply_baseline(
+                    checkpoint.book,
+                    condition_id=checkpoint.identity.condition_id or "",
                     received_at_ms=checkpoint.observed_at_ms,
                 )
                 self._books[snapshot.token_id] = snapshot
@@ -206,6 +221,15 @@ class ArchiveMarketState:
             return AppliedArchiveEvent()
         if isinstance(payload, ResolutionPayload):
             market = self._required_market(condition_id)
+            resolution = MarketResolutionEvent(
+                condition_id=condition_id,
+                market_slug=market.slug,
+                token_ids=payload.token_ids,
+                winning_token_id=payload.winning_token_id,
+                winning_outcome=payload.winning_outcome,
+                resolved_at_ms=event.observed_at_ms,
+                source=payload.source,
+            )
             updated = replace(
                 market,
                 resolved=True,
@@ -215,15 +239,7 @@ class ArchiveMarketState:
             self._markets_by_condition[condition_id] = updated
             self._resolved_conditions.add(condition_id)
             return AppliedArchiveEvent(
-                resolution=MarketResolutionEvent(
-                    condition_id=condition_id,
-                    market_slug=market.slug,
-                    token_ids=payload.token_ids,
-                    winning_token_id=payload.winning_token_id,
-                    winning_outcome=payload.winning_outcome,
-                    resolved_at_ms=event.observed_at_ms,
-                    source=payload.source,
-                )
+                resolution=resolution
             )
         raise TypeError(f"unsupported recorded payload: {type(payload).__name__}")
 

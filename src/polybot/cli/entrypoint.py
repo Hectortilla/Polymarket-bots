@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path
@@ -17,12 +16,16 @@ from polybot.backtesting.contracts import (
 from polybot.backtesting.service import run_backtest
 from polybot.framework.config.models import BotConfig, BotMode
 from polybot.performance.artifacts import PerformanceArtifactError
-from polybot.performance.contracts import DEFAULT_REPORT_INTERVAL_MS, SUMMARY_FILE_NAME
+from polybot.performance.contracts import (
+    DEFAULT_REPORT_INTERVAL_MS,
+    SUMMARY_FILE_NAME,
+    PerformanceSummaryV1,
+)
 
-from .config import load_dotenv, parse_overrides
+from .config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
-from .runner.service import run_bot
+from polybot.runtime import run_bot
 
 INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (
     "dashboard requires an interactive terminal; use --no-dashboard for headless runs"
@@ -106,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
 def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one Polymarket bot")
     parser.add_argument("--bot", required=True, help="bot factory as module:attribute")
-    parser.add_argument("--dotenv", default=".env")
+    parser.add_argument("--dotenv", default=DEFAULT_DOTENV_PATH)
     parser.add_argument("--override", action="append", default=[], metavar="FIELD=VALUE")
     parser.add_argument(
         "--dashboard",
@@ -153,9 +156,9 @@ def _positive_int(value: str) -> int:
 
 def _print_backtest_summary(result: BacktestResult) -> None:
     summary_path = result.results_dir / SUMMARY_FILE_NAME
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    metrics = summary["metrics"]
-    valuation = summary["valuation"]
+    summary = PerformanceSummaryV1.read(summary_path)
+    metrics = summary.metrics
+    valuation = summary.valuation
     if result.selection.uses_partial_session:
         print(
             f"{PARTIAL_RECORDING_WARNING}: "
@@ -164,17 +167,17 @@ def _print_backtest_summary(result: BacktestResult) -> None:
         )
     print(
         "Backtest completed: "
-        f"events={metrics['event_count']} "
-        f"orders={metrics['order_count']} fills={metrics['fill_count']}"
+        f"events={metrics.event_count} "
+        f"orders={metrics.order_count} fills={metrics.fill_count}"
     )
     print(
-        f"Net PnL: {metrics['net_pnl_usdc']} USDC; "
-        f"return: {metrics['return']}; "
-        f"max drawdown: {metrics['max_drawdown_usdc']} USDC"
+        f"Net PnL: {metrics.net_pnl_usdc} USDC; "
+        f"return: {metrics.return_fraction}; "
+        f"max drawdown: {metrics.max_drawdown_usdc} USDC"
     )
     print(
-        f"Valuation: {valuation['final_status']} "
-        f"(complete={str(valuation['complete']).lower()})"
+        f"Valuation: {valuation.final_status} "
+        f"(complete={str(valuation.complete).lower()})"
     )
     print(f"Results: {result.results_dir}")
 

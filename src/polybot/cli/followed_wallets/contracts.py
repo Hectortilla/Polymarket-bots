@@ -16,19 +16,18 @@ from .persistence.schema import (
     FOLLOW_BASELINES_FIELD,
     FOLLOW_BOOTSTRAPPED_FIELD,
     FOLLOW_CHECKPOINT_FIELD,
-    FOLLOW_CONDITION_ID_FIELD,
     FOLLOW_EPOCH_FIELD,
     FOLLOW_EPOCH_HISTORY_FIELD,
     FOLLOW_MOVEMENTS_FIELD,
     FOLLOW_SETTLEMENTS_FIELD,
     FOLLOW_SOURCE_IDS_FIELD,
     FOLLOWED_AT_MS_FIELD,
-    FOLLOW_GROSS_REALIZED_PNL_FIELD,
 )
 from .position_contracts import (
     FollowBaseline,
     FollowMovement,
     FollowPosition,
+    FollowSettlement,
     SettlementCalculation,
 )
 
@@ -44,23 +43,17 @@ class WalletFollowState:
     movements: dict[str, FollowMovement] = field(default_factory=dict)
     source_ids: set[str] = field(default_factory=set)
     checkpoint: tuple[int, str] | None = None
-    settlements: list[dict[str, Any]] = field(default_factory=list)
-    epoch_history: list[dict[str, Any]] = field(default_factory=list)
+    settlements: list[FollowSettlement] = field(default_factory=list)
+    epoch_history: list[WalletFollowState] = field(default_factory=list)
 
     def has_settlement(self, condition_id: str) -> bool:
-        return any(
-            settlement.get(FOLLOW_CONDITION_ID_FIELD) == condition_id
-            for settlement in self.settlements
-        )
+        return any(settlement.condition_id == condition_id for settlement in self.settlements)
 
     def gross_pnl(self, marks: dict[str, Decimal]) -> Decimal | None:
-        archived_values = [
-            settlement.get(FOLLOW_GROSS_REALIZED_PNL_FIELD)
-            for settlement in self.settlements
-        ]
+        archived_values = [settlement.gross_realized_pnl_usdc for settlement in self.settlements]
         if any(value is None for value in archived_values):
             return None
-        total = sum((Decimal(value) for value in archived_values), Decimal("0"))
+        total = sum((value for value in archived_values if value is not None), Decimal("0"))
         for position in self.replay_positions().values():
             if position.realized_pnl_usdc is None or position.average_basis is None:
                 return None
@@ -69,7 +62,8 @@ class WalletFollowState:
             if position.size != 0 and mark is None:
                 return None
             if position.size != 0:
-                total += position.size * (mark - position.average_basis)  # type: ignore[operator]
+                assert mark is not None
+                total += position.size * (mark - position.average_basis)
         return total
 
     def to_payload(self) -> dict[str, Any]:
@@ -90,14 +84,32 @@ class WalletFollowState:
                 if self.checkpoint is None
                 else [self.checkpoint[0], self.checkpoint[1]]
             ),
-            FOLLOW_SETTLEMENTS_FIELD: list(self.settlements),
-            FOLLOW_EPOCH_HISTORY_FIELD: list(self.epoch_history),
+            FOLLOW_SETTLEMENTS_FIELD: [
+                settlement.to_payload() for settlement in self.settlements
+            ],
+            FOLLOW_EPOCH_HISTORY_FIELD: [
+                historical.to_epoch_payload() for historical in self.epoch_history
+            ],
         }
 
     def to_epoch_payload(self) -> dict[str, Any]:
         payload = self.to_payload()
         payload.pop(FOLLOW_EPOCH_HISTORY_FIELD)
         return payload
+
+    def snapshot_epoch(self) -> WalletFollowState:
+        return WalletFollowState(
+            wallet=self.wallet,
+            epoch=self.epoch,
+            active=self.active,
+            followed_at_ms=self.followed_at_ms,
+            bootstrapped=self.bootstrapped,
+            baselines=dict(self.baselines),
+            movements=dict(self.movements),
+            source_ids=set(self.source_ids),
+            checkpoint=self.checkpoint,
+            settlements=list(self.settlements),
+        )
 
     def replay_positions(self) -> dict[str, FollowPosition]:
         positions: dict[str, FollowPosition] = {}
@@ -195,9 +207,9 @@ class WalletFollowState:
     def apply_settlement(
         self,
         calculation: SettlementCalculation,
-        settlement_row: dict[str, Any],
+        settlement: FollowSettlement,
     ) -> None:
-        self.settlements.append(settlement_row)
+        self.settlements.append(settlement)
         for baseline in calculation.baselines:
             self.baselines.pop(baseline.token_id, None)
         for movement in calculation.movements:
@@ -214,7 +226,7 @@ class WalletFollowState:
             return (), False
         self.apply_settlement(
             calculation,
-            calculation.to_payload(
+            calculation.to_record(
                 condition_id=event.condition_id,
                 winning_token_id=event.winning_token_id,
                 resolved_at_ms=event.resolved_at_ms,

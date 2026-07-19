@@ -6,21 +6,14 @@ from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from decimal import Decimal
 from enum import StrEnum
-
-
-SENSITIVE_CONFIGURATION_FIELDS = frozenset(
-    {
-        "api_key",
-        "api_passphrase",
-        "api_secret",
-        "funder_address",
-        "private_key",
-    }
-)
+from polybot.framework.config.models import BotConfig, sensitive_config_field_names
 
 
 def sanitized_configuration(configuration: object) -> dict[str, object]:
     """Return a JSON-ready configuration object with credentials omitted."""
+    if isinstance(configuration, BotConfig):
+        return configuration.identity_values()
+    sensitive_fields = sensitive_config_field_names()
     if is_dataclass(configuration) and not isinstance(configuration, type):
         values = {
             field.name: getattr(configuration, field.name)
@@ -33,7 +26,7 @@ def sanitized_configuration(configuration: object) -> dict[str, object]:
     return {
         str(key): _json_value(value)
         for key, value in values.items()
-        if str(key) not in SENSITIVE_CONFIGURATION_FIELDS
+        if str(key) not in sensitive_fields
     }
 
 
@@ -43,6 +36,7 @@ def json_value(value: object) -> object:
 
 
 def _json_value(value: object) -> object:
+    sensitive_fields = sensitive_config_field_names()
     if isinstance(value, StrEnum):
         return value.value
     if value is None or isinstance(value, (str, int, bool)):
@@ -55,13 +49,13 @@ def _json_value(value: object) -> object:
         return {
             field.name: _json_value(getattr(value, field.name))
             for field in fields(value)
-            if field.name not in SENSITIVE_CONFIGURATION_FIELDS
+            if field.name not in sensitive_fields
         }
     if isinstance(value, Mapping):
         return {
             str(key): _json_value(item)
             for key, item in value.items()
-            if str(key) not in SENSITIVE_CONFIGURATION_FIELDS
+            if str(key) not in sensitive_fields
         }
     if isinstance(value, (tuple, list)):
         return [_json_value(item) for item in value]

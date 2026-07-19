@@ -8,7 +8,8 @@ from polybot.framework.context import BotContext
 from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.polymarket.types import Market, Position
+from polybot.polymarket.markets import Market
+from polybot.polymarket.positions import Position
 
 
 @dataclass(slots=True)

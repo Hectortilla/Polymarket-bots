@@ -14,6 +14,8 @@ from polymarket.models.clob.market_events import (
 )
 
 from polybot.cli.dashboard.state import DashboardState
+from polybot.cli.followed_wallets.contracts import WalletFollowState
+from polybot.cli.followed_wallets.position_contracts import FollowSettlement
 from polybot.cli.followed_wallets.tracker import FollowedWalletTracker
 from polybot.cli.followed_wallets.persistence.serialization import (
     FOLLOW_STATE_VERSION,
@@ -46,7 +48,6 @@ from polybot.cli.followed_wallets.persistence.schema import (
 from polybot.cli.observability.events import StreamReceived
 from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
 from polybot.cli.resolution import (
-    GAMMA_RECONCILIATION_SOURCE,
     apply_resolution,
     reconcile_resolutions,
     settle_resolved_markets,
@@ -58,7 +59,8 @@ from polybot.cli.resolution_state import (
     RESOLUTION_LEDGER_VERSION_FIELD,
     RESOLUTION_RECORDS_FIELD,
 )
-from polybot.cli.resolution import RESOLUTION_RECONCILIATION_SECONDS
+from polybot.framework.cadence import RESOLUTION_RECONCILIATION_SECONDS
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.cli.streams.contracts import StreamKind, WalletStreamEvent
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.tracked_markets import MarketInterest, TrackedMarketRegistry
@@ -77,8 +79,9 @@ from polybot.framework.events.resolutions import (
 )
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-from polybot.polymarket.data import DataClient
-from polybot.polymarket.types import Market, MarketOutcome, Position
+from polybot.polymarket.positions import Position, PositionClient
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.polymarket.ws_market import MARKET_WEBSOCKET_SOURCE, MarketStream
 
 WALLET = "0x0000000000000000000000000000000000000001"
@@ -227,7 +230,7 @@ def test_wallet_dispatch_rejects_trade_without_market_slug(
         )
     )
 
-    assert outcome.skip_reason.value == "market_metadata_missing"
+    assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
 
 
 def test_wallet_dispatch_skips_terminal_market_before_metadata_or_routing(
@@ -260,7 +263,7 @@ def test_wallet_dispatch_skips_terminal_market_before_metadata_or_routing(
         )
     )
 
-    assert outcome.skip_reason.value == "market_resolved"
+    assert outcome.skip_reason is DispatchSkipReason.MARKET_RESOLVED
 
 
 def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> None:
@@ -716,6 +719,15 @@ def test_follow_bootstrap_replay_restart_and_new_epoch(tmp_path) -> None:
     assert restored.open_market_slugs() == ("market",)
     assert restored.settle(_resolution())[0].cash_payout_usdc == Decimal("3")
 
+    reloaded = FollowedWalletTracker(path)
+    reloaded_state = reloaded.state(WALLET)
+    assert reloaded_state is not None
+    assert isinstance(reloaded_state.epoch_history[0], WalletFollowState)
+    assert isinstance(
+        reloaded_state.epoch_history[0].settlements[0],
+        FollowSettlement,
+    )
+
 
 def test_follow_and_paper_resolution_settle_contractual_payout(tmp_path) -> None:
     tracker = FollowedWalletTracker(tmp_path / "follow.json", now_ms=lambda: 1_000)
@@ -1121,6 +1133,20 @@ def test_followed_wallet_state_rejects_malformed_nested_payload() -> None:
             ],
         ),
         (
+            FOLLOW_MOVEMENTS_FIELD,
+            [
+                {
+                    FOLLOW_CONDITION_ID_FIELD: "condition",
+                    FOLLOW_TOKEN_ID_FIELD: "token",
+                    FOLLOW_SIDE_FIELD: Side.BUY.value,
+                    FOLLOW_SIZE_FIELD: "1",
+                    FOLLOW_PRICE_FIELD: "1.1",
+                    FOLLOW_TRADE_TIMESTAMP_MS_FIELD: 1,
+                    FOLLOW_SOURCE_KEY_FIELD: "source",
+                }
+            ],
+        ),
+        (
             FOLLOW_SETTLEMENTS_FIELD,
             [
                 {
@@ -1182,6 +1208,58 @@ def test_resolution_ledger_rejects_conflicting_winner_without_mutation(
     with pytest.raises(ValueError, match="conflicting resolution"):
         ledger.contains(conflicting)
     assert ledger.contains(event) is True
+
+
+@pytest.mark.parametrize(
+    ("section", "value"),
+    (
+        (FOLLOW_SOURCE_IDS_FIELD, ["source", "source"]),
+        (
+            FOLLOW_BASELINES_FIELD,
+            [
+                {
+                    FOLLOW_CONDITION_ID_FIELD: "condition",
+                    FOLLOW_TOKEN_ID_FIELD: "token",
+                    FOLLOW_MARKET_SLUG_FIELD: "market",
+                    FOLLOW_SIZE_FIELD: "1",
+                    FOLLOW_BASIS_PRICE_FIELD: "0.5",
+                },
+                {
+                    FOLLOW_CONDITION_ID_FIELD: "condition",
+                    FOLLOW_TOKEN_ID_FIELD: "token",
+                    FOLLOW_MARKET_SLUG_FIELD: "market",
+                    FOLLOW_SIZE_FIELD: "2",
+                    FOLLOW_BASIS_PRICE_FIELD: "0.6",
+                },
+            ],
+        ),
+    ),
+)
+def test_followed_wallet_state_rejects_duplicate_contract_entries(
+    section: str,
+    value: object,
+) -> None:
+    state = {
+        FOLLOW_EPOCH_FIELD: 1,
+        FOLLOW_ACTIVE_FIELD: True,
+        FOLLOWED_AT_MS_FIELD: 0,
+        FOLLOW_BOOTSTRAPPED_FIELD: False,
+        FOLLOW_BASELINES_FIELD: [],
+        FOLLOW_MOVEMENTS_FIELD: [],
+        FOLLOW_SOURCE_IDS_FIELD: [],
+        FOLLOW_CHECKPOINT_FIELD: None,
+        FOLLOW_SETTLEMENTS_FIELD: [],
+        FOLLOW_EPOCH_HISTORY_FIELD: [],
+    }
+    state[section] = value
+
+    with pytest.raises(ValueError, match="duplicates"):
+        load_states(
+            {
+                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
+                FOLLOW_WALLETS_FIELD: {WALLET: state},
+            }
+        )
 
 
 def test_resolution_ledger_accepts_arbitrary_outcome_label(tmp_path) -> None:
@@ -1335,6 +1413,7 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         "SdkPosition",
         (),
         {
+            "wallet": WALLET,
             "token_id": "yes-market",
             "condition_id": "condition-market",
             "slug": "market",
@@ -1346,13 +1425,14 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
     )()
 
     assert (
-        asyncio.run(DataClient(Client((valid,))).positions(WALLET))[0].condition_id
+        asyncio.run(PositionClient(Client((valid,))).positions(WALLET))[0].condition_id
         == "condition-market"
     )
     malformed = type(
         "BadPosition",
         (),
         {
+            "wallet": WALLET,
             "token_id": None,
             "condition_id": "condition-market",
             "slug": "market",
@@ -1362,7 +1442,7 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         },
     )()
     try:
-        asyncio.run(DataClient(Client((malformed,))).positions(WALLET))
+        asyncio.run(PositionClient(Client((malformed,))).positions(WALLET))
     except ValueError:
         pass
     else:
@@ -1371,6 +1451,7 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         "InvalidOutcome",
         (),
         {
+            "wallet": WALLET,
             "token_id": "yes-market",
             "condition_id": "condition-market",
             "slug": "market",
@@ -1381,11 +1462,12 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         },
     )()
     with pytest.raises(ValueError):
-        asyncio.run(DataClient(Client((invalid_outcome,))).positions(WALLET))
+        asyncio.run(PositionClient(Client((invalid_outcome,))).positions(WALLET))
     arbitrary_outcome = type(
         "ArbitraryOutcome",
         (),
         {
+            "wallet": WALLET,
             "token_id": "up-market",
             "condition_id": "condition-market",
             "slug": "btc-up-or-down",
@@ -1396,7 +1478,7 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         },
     )()
     assert (
-        asyncio.run(DataClient(Client((arbitrary_outcome,))).positions(WALLET))[0].outcome
+        asyncio.run(PositionClient(Client((arbitrary_outcome,))).positions(WALLET))[0].outcome
         == "Up"
     )
 
@@ -1420,7 +1502,7 @@ def test_data_client_passes_filtered_market_condition_ids_to_sdk() -> None:
 
     client = Client()
     asyncio.run(
-        DataClient(client).positions(
+        PositionClient(client).positions(
             WALLET,
             condition_ids=("condition-allowed", "condition-other"),
         )
@@ -1436,9 +1518,20 @@ def test_data_client_passes_filtered_market_condition_ids_to_sdk() -> None:
     ]
 
     client.requests.clear()
-    asyncio.run(DataClient(client).positions(WALLET))
+    asyncio.run(PositionClient(client).positions(WALLET))
     assert client.requests == [
         {"user": WALLET, "size_threshold": 0, "page_size": 100}
+    ]
+
+    mixed_case_wallet = "0x" + "Ab" * 20
+    client.requests.clear()
+    asyncio.run(PositionClient(client).positions(mixed_case_wallet))
+    assert client.requests == [
+        {
+            "user": mixed_case_wallet.lower(),
+            "size_threshold": 0,
+            "page_size": 100,
+        }
     ]
 
 

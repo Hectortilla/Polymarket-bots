@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
-from polybot.framework.events.books import BookSnapshot
 from polybot.framework.markets import market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 
@@ -33,9 +32,6 @@ class WinnerTradingBot(BaseBot):
         now_ms: int,
     ) -> tuple[StreamRule, ...]:
         return (self._stream_rule(now_ms, bucket_offset=1),)
-
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
-        pass
 
     def _stream_rule(self, now_ms: int, *, bucket_offset: int) -> StreamRule:
         return StreamRule(

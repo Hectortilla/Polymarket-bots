@@ -24,7 +24,7 @@ from polybot.cli.entrypoint import (
 )
 from polybot.cli.factories import load_bot
 from polybot.cli.markets import resolve_plan_markets
-from polybot.cli.runner.service import run_bot
+from polybot.runtime import run_bot
 from polybot.cli.runner.dispatch import dispatch_stream_event
 from polybot.cli.runner.streams import wait_for_stream_plan_change
 from polybot.cli.streams.contracts import ResolutionStreamEvent, StreamKind, WalletStreamEvent
@@ -50,8 +50,8 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import MarketPlan, MarketSubscription
 from polybot.framework.runner import BotRunner
 from polybot.execution.paper.portfolio import PaperPortfolio
-from polybot.polymarket.types import Market, MarketOutcome
-from polybot.polymarket.types import MarketTradeHint
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.market_hints import MarketTradeHint
 from polybot.recording.contracts import SessionIntegrityStatus
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.cli.streams.contracts import BookStreamEvent
@@ -214,18 +214,48 @@ def test_backtest_summary_labels_partial_recording_source(
     (results_dir / "summary.json").write_text(
         json.dumps(
             {
+                "schema_version": 1,
+                "status": "completed",
+                "partial": False,
+                "error": None,
+                "provenance": {},
+                "selection": {},
+                "timing": {},
                 "metrics": {
+                    "initial_cash_usdc": "0",
+                    "initial_equity_usdc": "0",
+                    "final_cash_usdc": "0",
+                    "final_marked_position_value_usdc": "0",
+                    "final_equity_usdc": "0",
+                    "gross_pnl_usdc": "0",
                     "event_count": 3,
                     "order_count": 0,
                     "fill_count": 0,
+                    "rejected_order_count": 0,
+                    "resolution_count": 0,
+                    "dispatch_count": 0,
+                    "accepted_dispatch_count": 0,
+                    "skipped_dispatch_count": 0,
                     "net_pnl_usdc": "0",
                     "return": "0",
                     "max_drawdown_usdc": "0",
+                    "max_drawdown_fraction": "0",
+                    "fees_usdc": "0",
+                    "filled_notional_usdc": "0",
                 },
                 "valuation": {
-                    "final_status": "complete",
+                    "final_status": "fresh",
+                    "history_status": "fresh",
+                    "drawdown_status": "fresh",
                     "complete": True,
+                    "estimated": False,
+                    "sample_count": 1,
+                    "available_sample_count": 1,
+                    "stale_sample_count": 0,
+                    "unavailable_sample_count": 0,
                 },
+                "open_positions": [],
+                "artifacts": {},
             }
         ),
         encoding="utf-8",
@@ -680,6 +710,40 @@ def test_merge_streams_propagates_failure_and_cancels_sibling() -> None:
     assert cancelled is True
 
 
+def test_merge_streams_closes_every_source_when_one_close_fails() -> None:
+    class Source:
+        def __init__(self, *, fail_close: bool = False) -> None:
+            self.fail_close = fail_close
+            self.closed = False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await asyncio.Event().wait()
+            raise StopAsyncIteration
+
+        async def aclose(self) -> None:
+            self.closed = True
+            if self.fail_close:
+                raise RuntimeError("close failed")
+
+    async def run() -> tuple[bool, bool]:
+        first = Source(fail_close=True)
+        second = Source()
+        merger = merge_streams(
+            (
+                (StreamKind.BOOK, first),
+                (StreamKind.WALLET, second),
+            )
+        )
+        merger.__aiter__()
+        await merger.aclose()
+        return first.closed, second.closed
+
+    assert asyncio.run(run()) == (True, True)
+
+
 def test_resolve_plan_markets_requires_current_and_tolerates_next() -> None:
     class FakeGamma:
         async def find_many(self, slugs: tuple[str, ...]) -> tuple[Market | None, ...]:
@@ -824,9 +888,9 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
     monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
     monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
-    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeBotRunner)
+    monkeypatch.setattr("polybot.runtime.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[int, int, bool, RecordingObserver]:
         client = FakeClient()
@@ -945,9 +1009,9 @@ def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(mo
     monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
     monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
-    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", DynamicRunner)
+    monkeypatch.setattr("polybot.runtime.BotRunner", DynamicRunner)
     monkeypatch.setattr("polybot.cli.runner.streams.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
 
     asyncio.run(run_bot(BaseBot(), BotConfig(name="dynamic"), client=object()))
@@ -1059,10 +1123,10 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
     monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeClob)
     monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeMarketStream)
     monkeypatch.setattr(
-        "polybot.cli.runner.factory.WalletActivityClient", FakeWalletClient
+        "polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeWalletClient
     )
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
-    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeRunner)
+    monkeypatch.setattr("polybot.runtime.BotRunner", FakeRunner)
 
     class RecordingObserver:
         def __init__(self) -> None:
@@ -1177,10 +1241,10 @@ def test_gamma_resolved_market_is_settled_before_stream_creation(
     monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeClob)
     monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeMarketStream)
     monkeypatch.setattr(
-        "polybot.cli.runner.factory.WalletActivityClient", FakeWalletClient
+        "polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeWalletClient
     )
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
-    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeRunner)
+    monkeypatch.setattr("polybot.runtime.BotRunner", FakeRunner)
 
     asyncio.run(run_bot(BaseBot(), BotConfig(name="gamma-resolved"), client=object()))
 
@@ -1255,9 +1319,9 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
     monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
     monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.WalletActivityClient", FakeAdapter)
+    monkeypatch.setattr("polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeAdapter)
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
-    monkeypatch.setattr("polybot.cli.runner.service.BotRunner", FakeBotRunner)
+    monkeypatch.setattr("polybot.runtime.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[FakeClient, RecordingObserver]:
         client = FakeClient()

@@ -1,15 +1,12 @@
 """Environment parsing for typed stream rules."""
 
-import json
 import os
-import re
-from typing import Final
 
 from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.framework.wallets import validate_wallet_address
+from polybot.persistence.json_codec import loads_json
 
 from .constants import BOT_STREAM_RULES_ENV
-
-WALLET_ADDRESS_PATTERN: Final = re.compile(r"0x[a-fA-F0-9]{40}\Z")
 
 
 def env_stream_rules() -> tuple[StreamRule, ...]:
@@ -17,9 +14,13 @@ def env_stream_rules() -> tuple[StreamRule, ...]:
     if raw is None or not raw.strip():
         return ()
     try:
-        values = json.loads(raw)
-    except json.JSONDecodeError as error:
+        values = loads_json(raw)
+    except (ValueError, TypeError) as error:
         raise ValueError(f"{BOT_STREAM_RULES_ENV} must be valid JSON") from error
+    return parse_stream_rules(values)
+
+
+def parse_stream_rules(values: object) -> tuple[StreamRule, ...]:
     if not isinstance(values, list):
         raise ValueError(f"{BOT_STREAM_RULES_ENV} must be a JSON array")
     rules: list[StreamRule] = []
@@ -41,11 +42,20 @@ def env_stream_rules() -> tuple[StreamRule, ...]:
             raise ValueError("stream rules have invalid field types")
         if not all(isinstance(item, str) for item in [*markets, *wallets]):
             raise ValueError("stream rule selectors must be strings")
-        if any(WALLET_ADDRESS_PATTERN.fullmatch(wallet) is None for wallet in wallets):
+        try:
+            normalized_wallets = tuple(validate_wallet_address(wallet) for wallet in wallets)
+        except ValueError as error:
             raise ValueError(
                 "stream rule wallet addresses must be 0x-prefixed addresses"
-            )
+            ) from error
         rules.append(
-            StreamRule(StreamRelation(relation), tuple(markets), tuple(wallets))
+            StreamRule(StreamRelation(relation), tuple(markets), normalized_wallets)
         )
     return tuple(dict.fromkeys(rules))
+
+
+def parse_stream_rules_json(raw: str) -> tuple[StreamRule, ...]:
+    try:
+        return parse_stream_rules(loads_json(raw))
+    except (ValueError, TypeError) as error:
+        raise ValueError(f"{BOT_STREAM_RULES_ENV} must be valid JSON") from error

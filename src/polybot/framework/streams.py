@@ -6,12 +6,27 @@ from enum import StrEnum
 from polybot.framework.wallets import normalize_wallet_address
 
 
-STREAM_PLAN_REFRESH_INTERVAL_MS = 1_000
-
-
 class StreamRelation(StrEnum):
     FILTERED = "filtered"
     INDEPENDENT = "independent"
+
+
+@dataclass(frozen=True, slots=True)
+class StreamScope:
+    wallet_address: str | None = None
+    market_slugs: tuple[str, ...] = ()
+
+    def accepts_trade(self, wallet: str, market_slug: str | None) -> bool:
+        wallet_matches = (
+            self.wallet_address is None
+            or normalize_wallet_address(wallet) == self.wallet_address
+        )
+        market_matches = (
+            not self.market_slugs
+            or market_slug is not None
+            and market_slug in self.market_slugs
+        )
+        return wallet_matches and market_matches
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,11 +49,22 @@ class StreamRule:
             raise ValueError("independent stream rules require markets or wallets")
 
     def accepts_trade(self, wallet: str, market_slug: str | None) -> bool:
-        wallet_matches = normalize_wallet_address(wallet) in self.wallet_addresses
-        market_matches = market_slug is not None and market_slug in self.market_slugs
+        return any(scope.accepts_trade(wallet, market_slug) for scope in self.scopes)
+
+    @property
+    def scopes(self) -> tuple[StreamScope, ...]:
         if self.relation is StreamRelation.FILTERED:
-            return wallet_matches and market_matches
-        return wallet_matches or market_matches
+            return tuple(
+                StreamScope(wallet_address=wallet, market_slugs=self.market_slugs)
+                for wallet in self.wallet_addresses
+            )
+        scopes = [
+            StreamScope(wallet_address=wallet)
+            for wallet in self.wallet_addresses
+        ]
+        if self.market_slugs:
+            scopes.append(StreamScope(market_slugs=self.market_slugs))
+        return tuple(scopes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,13 +87,16 @@ class StreamPlan:
     def wallet_discovery_scopes(self) -> dict[str, frozenset[str] | None]:
         scopes: dict[str, set[str] | None] = {}
         for rule in self.current:
-            for wallet in rule.wallet_addresses:
-                if rule.relation is StreamRelation.INDEPENDENT:
+            for scope in rule.scopes:
+                wallet = scope.wallet_address
+                if wallet is None:
+                    continue
+                if not scope.market_slugs:
                     scopes[wallet] = None
                 elif wallet not in scopes:
-                    scopes[wallet] = set(rule.market_slugs)
+                    scopes[wallet] = set(scope.market_slugs)
                 elif scopes[wallet] is not None:
-                    scopes[wallet].update(rule.market_slugs)
+                    scopes[wallet].update(scope.market_slugs)
         return {
             wallet: None if slugs is None else frozenset(slugs)
             for wallet, slugs in scopes.items()

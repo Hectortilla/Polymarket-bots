@@ -76,21 +76,24 @@ adapter behavior covered by contract tests, especially while
 ```text
 polyfollow-polybot/
   src/polybot/       # Installed and imported as `polybot`.
+    runtime.py    # Public paper-runner lifecycle entrypoint.
   docs/
   framework/
     base.py       # BaseBot event hooks.
+    cadence.py    # Shared planning and resolution timing policy.
     clock.py      # System and replay-compatible clock contract.
+    coalescing.py # Shared latest-event-per-key behavior.
     config/       # Config model, defaults, environment, and stream-rule parsing.
     context.py    # Object passed to every bot hook.
     dedupe.py     # Source event dedupe for wallet-following inputs.
     dispatch.py   # Typed dispatch outcomes and stable skip reasons.
     events/       # Orders/fills plus book, wallet-trade, and resolution contracts.
+    factories.py  # Public bot-factory typing contract.
     markets.py    # Static and dynamic market subscription contracts.
     wallets.py    # Watched-wallet subscription contracts.
     runner/       # Dispatch orchestration plus owned validation policy.
   cli/
-    runner/       # Runtime lifecycle, stream planning, and event dispatch.
-      service.py
+    runner/       # Runtime construction, stream planning, and event dispatch.
       factory.py
       streams.py
       dispatch.py
@@ -104,18 +107,20 @@ polyfollow-polybot/
     followed_wallets/ # Follow contracts, position replay, and persistence.
     resolution.py # Gamma reconciliation and settlement ordering.
     resolution_state.py # Idempotent resolution ledger.
-    persistence.py # Atomic JSON file primitive.
+  persistence/      # Strict JSON decoding and atomic JSON file writes.
   polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
+    markets.py    # Normalized market and outcome contracts.
+    market_hints.py # Normalized market-trade wake hints.
     normalization/ # Market, book, and scalar SDK-payload normalization.
-    data.py       # SDK-backed normalized current-position adapter.
+    positions.py  # SDK-backed normalized current-position adapter.
+    resolution.py # Shared Gamma resolution source identity.
     clob.py       # Official-client-backed CLOB adapter.
     wallet_activity/  # Wallet trades/activity stream and fallback.
       constants.py
     ws_market.py  # SDK-backed public market stream and depth state.
     ws_user.py    # SDK-backed authenticated user stream adapter.
-    types.py      # Polymarket-specific normalized types.
-  recording/        # Standalone market recorder and SQLite archive boundary.
+  recording/        # Recorder, typed archive boundary, schema, and gap scope.
   backtesting/      # Archive validation, state projection, virtual replay.
   performance/      # Shared valuation, CSV streams, and atomic run summary.
   execution/
@@ -505,7 +510,8 @@ thread. A rendering failure closes the live display and prints its traceback to
 the terminal while the fail-open observer boundary lets bot execution continue.
 
 Custom CLI integrations can pass a
-`polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Its
+`polybot.cli.observability.observer.RuntimeObserver` to
+`polybot.runtime.run_bot()`. Its
 `start(config)`, `emit(event)`, and `stop()` methods receive
 `polybot.cli.observability.events.RuntimeEvent` values; observer exceptions are
 deliberately suppressed so telemetry cannot interrupt the paper runtime.

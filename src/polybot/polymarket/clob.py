@@ -9,10 +9,9 @@ from polymarket import AsyncPublicClient, RequestRejectedError
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.book import normalize_book
-from polybot.polymarket.types import (
+from polybot.polymarket.markets import (
     Market,
     index_markets_by_token,
-    outcome_label_for_token,
 )
 
 
@@ -68,7 +67,7 @@ class ClobClient:
             received_at_ms=self._now_ms(),
             condition_id=source.market,
             market_slug=market.slug if market else None,
-            outcome=outcome_label_for_token(market, token_id) if market else None,
+            outcome=market.outcome_label_for_token(token_id) if market else None,
             expected_token_id=token_id,
             expected_condition_id=market.condition_id if market else None,
         )

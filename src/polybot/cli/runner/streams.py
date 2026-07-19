@@ -6,16 +6,10 @@ import asyncio
 from typing import Any
 
 from polybot.framework.config.models import BotConfig
-from polybot.framework.streams import (
-    STREAM_PLAN_REFRESH_INTERVAL_MS,
-    StreamPlan,
-    StreamRelation,
-)
-from polybot.polymarket.types import Market
+from polybot.framework.cadence import STREAM_PLAN_REFRESH_INTERVAL_SECONDS
+from polybot.framework.streams import StreamPlan
+from polybot.polymarket.markets import Market
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSelector
-
-STREAM_PLAN_REFRESH_INTERVAL_SECONDS = STREAM_PLAN_REFRESH_INTERVAL_MS / 1_000
-
 
 async def wait_for_stream_plan_change(
     runner: Any, current_stream_plan: StreamPlan
@@ -35,17 +29,12 @@ def compile_selectors(
     by_slug = {market.slug: market.condition_id for market in markets}
     selectors: set[WalletTradeSelector] = set()
     for rule in plan.current:
-        condition_ids = tuple(by_slug[slug] for slug in rule.market_slugs)
-        if rule.relation is StreamRelation.FILTERED:
-            selectors.update(
-                WalletTradeSelector(wallet=wallet, condition_ids=condition_ids)
-                for wallet in rule.wallet_addresses
-            )
-        else:
-            if condition_ids:
-                selectors.add(WalletTradeSelector(condition_ids=condition_ids))
-            selectors.update(
-                WalletTradeSelector(wallet=wallet) for wallet in rule.wallet_addresses
+        for scope in rule.scopes:
+            selectors.add(
+                WalletTradeSelector(
+                    wallet=scope.wallet_address,
+                    condition_ids=tuple(by_slug[slug] for slug in scope.market_slugs),
+                )
             )
     return tuple(
         sorted(selectors, key=lambda item: (item.wallet or "", item.condition_ids))

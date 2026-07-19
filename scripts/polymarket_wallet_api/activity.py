@@ -15,7 +15,7 @@ from .constants import (
     SDK_PAGE_SIZE,
 )
 from .normalization import enrich_activity_with_market_slug
-from .sdk_payloads import activity_payload
+from .sdk_payloads import activity_payload, require_wallet_scope
 from scripts.wallet_payloads import normalize_activity_rows
 
 
@@ -55,9 +55,9 @@ def fetch_all_activity(
         truncated = True
     elif len(activity_models) >= MAX_ACTIVITY_OFFSET:
         truncated = True
-    rows = normalize_activity_rows(
-        [activity_payload(model) for model in activity_models]
-    )
+    payloads = [activity_payload(model) for model in activity_models]
+    require_wallet_scope(payloads, wallet)
+    rows = normalize_activity_rows(payloads)
     return enrich([dict(row) for row in rows]), truncated
 
 

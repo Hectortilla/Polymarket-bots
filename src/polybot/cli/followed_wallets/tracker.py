@@ -10,11 +10,11 @@ from time import time
 from typing import Any
 
 from polybot.async_io import run_blocking
-from polybot.cli.persistence import AtomicJsonFile
+from polybot.persistence.atomic_json import AtomicJsonFile
 from polybot.framework.events.resolutions import MarketResolutionEvent, SettledPosition
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.wallets import normalize_wallet_address
-from polybot.polymarket.types import Position
+from polybot.polymarket.positions import Position
 
 from .contracts import WalletFollowState
 from .position_contracts import FollowBaseline, FollowMovement, FollowPosition
@@ -76,7 +76,7 @@ class FollowedWalletTracker:
                 new_wallets.append(wallet)
                 changed = True
             elif not state.active:
-                state.epoch_history.append(state.to_epoch_payload())
+                state.epoch_history.append(state.snapshot_epoch())
                 state.epoch += 1
                 state.active = True
                 state.followed_at_ms = 0
@@ -99,9 +99,11 @@ class FollowedWalletTracker:
         wallet: str,
         positions: tuple[tuple[Position, Decimal | None], ...],
     ) -> None:
-        state = self._required_active(wallet)
+        staged_baselines: dict[str, FollowBaseline] = {}
         for position, mark in positions:
-            state.baselines[position.token_id] = FollowBaseline(
+            if position.token_id in staged_baselines:
+                raise ValueError("followed-wallet bootstrap contains duplicate tokens")
+            staged_baselines[position.token_id] = FollowBaseline(
                 condition_id=position.condition_id,
                 token_id=position.token_id,
                 market_slug=position.market_slug,
@@ -109,6 +111,8 @@ class FollowedWalletTracker:
                 basis_price=mark,
                 outcome=position.outcome,
             )
+        state = self._required_active(wallet)
+        state.baselines = staged_baselines
         state.followed_at_ms = self._now_ms()
         state.bootstrapped = True
         self.persist()

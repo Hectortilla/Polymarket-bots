@@ -16,6 +16,7 @@ from polybot.recording.contracts import (
     BookBaselinePayload,
     BookCheckpoint,
     CoverageGapPayload,
+    CoverageGapReason,
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
@@ -257,7 +258,7 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
         _event(
             archive,
             CoverageGapPayload(
-                reason="sdk_queue_drop",
+                reason=CoverageGapReason.SDK_QUEUE_DROP,
                 started_at_ms=second_end + 1,
                 ended_at_ms=None,
                 affected_condition_ids=(second_market.condition_id,),
@@ -385,7 +386,7 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
         _event(
             archive,
             CoverageGapPayload(
-                reason="disconnect",
+                reason=CoverageGapReason.DISCONNECT,
                 started_at_ms=gap_start,
                 ended_at_ms=None,
                 affected_condition_ids=(market.condition_id,),

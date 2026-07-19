@@ -26,7 +26,7 @@ from polybot.framework.events import (
     Side,
 )
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.polymarket.markets import Market, MarketOutcome
 
 DEFAULT_MARKET_SLUG = "btc-up"
 DEFAULT_CONDITION_ID = "0xcondition"

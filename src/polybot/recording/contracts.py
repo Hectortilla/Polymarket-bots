@@ -30,6 +30,17 @@ class CaptureFragmentRole(StrEnum):
     MISMATCHING_CONTINUATION = "mismatching_continuation"
 
 
+class CoverageGapReason(StrEnum):
+    CAPTURE_ENDED = "capture_ended"
+    CAPTURE_FAILURE = "capture_failure"
+    CURRENT_SLUG_UNAVAILABLE = "current_slug_unavailable"
+    DISCONNECT = "disconnect"
+    RECORDER_OFFLINE = "recorder_offline"
+    RECORDING_WRITE_FAILURE = "recording_write_failure"
+    SDK_HANDLE_DROP = "sdk_handle_drop"
+    SDK_QUEUE_DROP = "sdk_queue_drop"
+
+
 @dataclass(frozen=True, slots=True)
 class MarketIdentity:
     condition_id: str | None = None
@@ -360,7 +371,7 @@ class ResolutionPayload:
 
 @dataclass(frozen=True, slots=True)
 class CoverageGapPayload:
-    reason: str
+    reason: CoverageGapReason
     started_at_ms: int
     ended_at_ms: int | None
     affected_condition_ids: tuple[str, ...] = ()
@@ -369,7 +380,11 @@ class CoverageGapPayload:
     details: str | None = None
 
     def __post_init__(self) -> None:
-        _normalize_required_text_fields(self, ("reason",))
+        try:
+            normalized_reason = CoverageGapReason(self.reason)
+        except (TypeError, ValueError) as error:
+            raise ValueError("coverage gap reason is invalid") from error
+        object.__setattr__(self, "reason", normalized_reason)
         _normalize_optional_text_fields(self, ("details",))
         _validate_nonnegative_int(self.started_at_ms, "coverage gap start")
         if self.ended_at_ms is not None:
@@ -445,7 +460,7 @@ class CaptureAnomalyFragment:
             )
         if not isinstance(self.identity, MarketIdentity):
             raise ValueError("capture anomaly fragment identity is invalid")
-        if not isinstance(self.payload, _PAYLOAD_TYPES):
+        if not isinstance(self.payload, RECORDED_PAYLOAD_TYPES):
             raise ValueError("capture anomaly fragment payload type is unsupported")
         _validate_event_identity(self.identity, self.payload)
 
@@ -609,7 +624,7 @@ class RecordedEvent:
                 self.source_timestamp_ms,
                 "event source timestamp",
             )
-        if not isinstance(self.payload, _PAYLOAD_TYPES):
+        if not isinstance(self.payload, RECORDED_PAYLOAD_TYPES):
             raise ValueError("recording event payload type is unsupported")
         _validate_event_identity(self.identity, self.payload)
 
@@ -670,7 +685,7 @@ class CoverageGapRecord:
         return self.gap.ended_at_ms is None
 
 
-_PAYLOAD_TYPES = (
+RECORDED_PAYLOAD_TYPES = (
     MarketMetadataPayload,
     BookBaselinePayload,
     BookDeltaPayload,
@@ -681,7 +696,7 @@ _PAYLOAD_TYPES = (
 )
 
 
-def event_token_ids(payload: RecordedPayload) -> tuple[str, ...]:
+def _event_token_ids(payload: RecordedPayload) -> tuple[str, ...]:
     if isinstance(payload, MarketMetadataPayload):
         return tuple(outcome.token_id for outcome in payload.outcomes)
     if isinstance(payload, BookBaselinePayload):
@@ -714,7 +729,7 @@ def _validate_event_identity(
             raise ValueError("metadata identity does not match its event")
         return
     if isinstance(payload, BookDeltaPayload):
-        token_ids = event_token_ids(payload)
+        token_ids = _event_token_ids(payload)
         if identity.token_id is not None and (
             len(token_ids) != 1 or identity.token_id != token_ids[0]
         ):

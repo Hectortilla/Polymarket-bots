@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TextIO
 
-from polybot.cli.persistence import AtomicJsonFile
+from polybot.persistence.atomic_json import AtomicJsonFile
 from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
 from polybot.framework.events.books import BookSnapshot
 
@@ -21,6 +21,7 @@ from .contracts import (
     RESULT_SCHEMA_VERSION,
     SUMMARY_FILE_NAME,
     PerformanceCounters,
+    PerformanceSummaryV1,
     PerformanceRunStatus,
     RunProvenance,
     RunSelection,
@@ -298,13 +299,14 @@ class PerformanceArtifacts:
             SampleReason.END,
             portfolio,
         )
-        summary = self._summary(
+        raw_summary = self._summary(
             status=status,
             ended_at_ms=ended_at_ms,
             final_valuation=final_valuation,
             final_fees_usdc=portfolio.cumulative_fees_usdc,
             error=error,
         )
+        summary = PerformanceSummaryV1.from_dict(raw_summary).to_dict()
         self._close_csv_files()
         AtomicJsonFile(self.results_dir / SUMMARY_FILE_NAME).write(summary)
         self._finalized = True
@@ -352,7 +354,7 @@ class PerformanceArtifacts:
         *,
         flush: bool = True,
     ) -> PortfolioValuation:
-        valuation = value_portfolio(
+        valuation_result = value_portfolio(
             portfolio,
             self._books,
             now_ms=timestamp_ms,
@@ -361,7 +363,9 @@ class PerformanceArtifacts:
             last_executable_marks=self._last_executable_marks,
             allow_stale_marks=True,
         )
-        self._curve.record(timestamp_ms, valuation)
+        valuation = valuation_result.valuation
+        self._last_executable_marks = valuation_result.marks()
+        self._curve = self._curve.after_sample(timestamp_ms, valuation)
         self._required_equity_writer().writerow(
             {
                 "timestamp_ms": timestamp_ms,
@@ -415,7 +419,9 @@ class PerformanceArtifacts:
                     self.selection.replay_cutoff_sequence
                 ),
                 "session_integrity_status": (
-                    self.selection.session_integrity_status
+                    None
+                    if self.selection.session_integrity_status is None
+                    else self.selection.session_integrity_status.value
                 ),
                 "uses_partial_session": self.selection.uses_partial_session,
             },

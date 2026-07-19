@@ -81,3 +81,26 @@ def market_payload(market: object) -> dict[str, object]:
         MARKET_WINNING_OUTCOME_FIELD: getattr(resolution, "winning_outcome", None),
         MARKET_OUTCOMES_FIELD: getattr(market, "outcomes", None),
     }
+
+
+def require_wallet_scope(
+    payloads: list[dict[str, object]],
+    requested_wallet: str,
+) -> None:
+    normalized_wallet = requested_wallet.casefold()
+    if any(
+        str(payload.get(PROXY_WALLET_FIELD, "")).casefold() != normalized_wallet
+        for payload in payloads
+    ):
+        raise ValueError("SDK response did not match the requested wallet")
+
+
+def require_condition_scope(
+    payloads: list[dict[str, object]],
+    requested_condition_id: str,
+) -> None:
+    if any(
+        payload.get(CONDITION_ID_FIELD) != requested_condition_id
+        for payload in payloads
+    ):
+        raise ValueError("SDK response did not match the requested condition")

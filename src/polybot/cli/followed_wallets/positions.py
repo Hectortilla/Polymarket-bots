@@ -8,7 +8,6 @@ from polybot.framework.events.resolutions import MarketResolutionEvent, SettledP
 
 from .contracts import WalletFollowState
 from .position_contracts import FollowPosition
-from .persistence.serialization import state_from_payload
 
 
 def tracked_market_positions(
@@ -17,8 +16,7 @@ def tracked_market_positions(
     positions: list[tuple[str, FollowPosition]] = []
     for state in states.values():
         positions.extend((state.wallet, position) for position in state.positions())
-        for payload in state.epoch_history:
-            historical = state_from_payload(state.wallet, payload)
+        for historical in state.epoch_history:
             positions.extend(
                 (state.wallet, position) for position in historical.positions()
             )
@@ -35,11 +33,9 @@ def settle_states(
         current_settled, current_changed = state.settle(event)
         settled.extend(current_settled)
         changed = changed or current_changed
-        for index, payload in enumerate(state.epoch_history):
-            historical = state_from_payload(state.wallet, payload)
+        for historical in state.epoch_history:
             historical_settled, historical_changed = historical.settle(event)
             if historical_changed:
-                state.epoch_history[index] = historical.to_epoch_payload()
                 changed = True
             settled.extend(historical_settled)
     return tuple(settled), changed

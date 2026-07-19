@@ -11,10 +11,9 @@ from polybot.framework.events import Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.book import normalize_book
-from polybot.polymarket.types import (
+from polybot.polymarket.markets import (
     Market,
     index_markets_by_token,
-    outcome_label_for_token,
 )
 from polybot.recording.contracts import BookBaselinePayload, BookDeltaPayload
 
@@ -41,18 +40,32 @@ class BookDepthProjector:
         condition_id: str,
         received_at_ms: int,
     ) -> BookSnapshot:
-        market = self._market_for(payload.token_id, condition_id)
-        bids = {level.price: level.size for level in payload.bids}
-        asks = {level.price: level.size for level in payload.asks}
-        snapshot = self._snapshot(
-            market,
-            payload.token_id,
-            bids,
-            asks,
+        snapshot = self.preview_baseline(
+            payload,
+            condition_id=condition_id,
             received_at_ms=received_at_ms,
         )
+        bids = {level.price: level.size for level in payload.bids}
+        asks = {level.price: level.size for level in payload.asks}
         self._depth[payload.token_id] = (bids, asks)
         return snapshot
+
+    def preview_baseline(
+        self,
+        payload: BookBaselinePayload,
+        *,
+        condition_id: str,
+        received_at_ms: int,
+    ) -> BookSnapshot:
+        """Validate and project a baseline without changing owned depth."""
+        market = self._market_for(payload.token_id, condition_id)
+        return self._snapshot(
+            market,
+            payload.token_id,
+            {level.price: level.size for level in payload.bids},
+            {level.price: level.size for level in payload.asks},
+            received_at_ms=received_at_ms,
+        )
 
     def apply_delta(
         self,
@@ -135,7 +148,7 @@ class BookDepthProjector:
             received_at_ms=received_at_ms,
             condition_id=market.condition_id,
             market_slug=market.slug,
-            outcome=outcome_label_for_token(market, token_id),
+            outcome=market.outcome_label_for_token(token_id),
             expected_token_id=token_id,
             expected_condition_id=market.condition_id,
         )

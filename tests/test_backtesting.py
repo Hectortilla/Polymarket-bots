@@ -43,6 +43,7 @@ from polybot.recording.contracts import (
     BookCheckpoint,
     BookDeltaPayload,
     CoverageGapPayload,
+    CoverageGapReason,
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
@@ -966,7 +967,7 @@ def test_gap_missing_baseline_and_missing_midrange_checkpoint_fail_closed(
         _event(
             gap_archive,
             CoverageGapPayload(
-                reason="disconnect",
+                reason=CoverageGapReason.DISCONNECT,
                 started_at_ms=gap_start,
                 ended_at_ms=None,
                 affected_condition_ids=(CONDITION_ID,),
@@ -1035,7 +1036,7 @@ def test_clean_subrange_after_gap_replays_from_common_checkpoint(
         _event(
             archive_writer,
             CoverageGapPayload(
-                reason="disconnect",
+                reason=CoverageGapReason.DISCONNECT,
                 started_at_ms=gap_start,
                 ended_at_ms=None,
                 affected_condition_ids=(CONDITION_ID,),
@@ -1144,7 +1145,7 @@ def test_clean_multi_market_subrange_uses_each_market_checkpoint(
         _event(
             archive_writer,
             CoverageGapPayload(
-                reason="disconnect",
+                reason=CoverageGapReason.DISCONNECT,
                 started_at_ms=gap_start,
                 ended_at_ms=None,
                 affected_condition_ids=(NEXT_CONDITION_ID,),

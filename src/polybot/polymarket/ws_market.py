@@ -23,11 +23,11 @@ from polybot.polymarket.normalization.recording_events import (
     MARKET_WEBSOCKET_SOURCE,
     normalize_recording_event,
 )
-from polybot.polymarket.types import (
+from polybot.polymarket.markets import (
     Market,
-    MarketTradeHint,
     index_markets_by_token,
 )
+from polybot.polymarket.market_hints import MarketTradeHint
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookDeltaPayload,

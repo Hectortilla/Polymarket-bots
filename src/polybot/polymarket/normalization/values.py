@@ -24,7 +24,7 @@ def _optional_text(value: object) -> str | None:
         return None
     if not isinstance(value, str) or not value.strip():
         return None
-    return value
+    return value.strip()
 
 
 def _positive_decimal(value: object, field: str) -> Decimal:

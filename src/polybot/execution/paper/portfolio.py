@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from polybot.framework.events import Side
+from polybot.execution.position_transition import transition_signed_position
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     SettledPosition,
@@ -28,7 +29,6 @@ def calculate_after_fill(
     average_price: Decimal,
     fee_usdc: Decimal,
 ) -> tuple[Decimal, Decimal, PaperPosition]:
-    _require_positive_fill_size(filled_size)
     cash_delta = filled_size * average_price
     updated_cash = (
         cash_usdc - cash_delta - fee_usdc
@@ -67,47 +67,20 @@ class PaperPosition:
         filled_size: Decimal,
         fill_price: Decimal,
     ) -> PaperPosition:
-        _require_positive_fill_size(filled_size)
-        if self.size == EMPTY_POSITION_SIZE:
-            return PaperPosition(
-                token_id=self.token_id,
-                size=filled_size if side is Side.BUY else -filled_size,
-                average_entry_price=fill_price,
-            )
-        current_average = self.required_average_entry_price()
-        if self.size > EMPTY_POSITION_SIZE and side is Side.BUY:
-            new_size = self.size + filled_size
-            weighted_average = (
-                (self.size * current_average) + (filled_size * fill_price)
-            ) / new_size
-            return PaperPosition(self.token_id, new_size, weighted_average)
-        if self.size < EMPTY_POSITION_SIZE and side is Side.SELL:
-            current_short_size = -self.size
-            new_size = self.size - filled_size
-            weighted_average = (
-                (current_short_size * current_average) + (filled_size * fill_price)
-            ) / (-new_size)
-            return PaperPosition(self.token_id, new_size, weighted_average)
-        if self.size > EMPTY_POSITION_SIZE and side is Side.SELL:
-            if filled_size < self.size:
-                return PaperPosition(
-                    self.token_id, self.size - filled_size, current_average
-                )
-            if filled_size == self.size:
-                return PaperPosition(self.token_id)
-            return PaperPosition(self.token_id, -(filled_size - self.size), fill_price)
-        if self.size < EMPTY_POSITION_SIZE and side is Side.BUY:
-            current_short_size = -self.size
-            if filled_size < current_short_size:
-                return PaperPosition(
-                    self.token_id, self.size + filled_size, current_average
-                )
-            if filled_size == current_short_size:
-                return PaperPosition(self.token_id)
-            return PaperPosition(
-                self.token_id, filled_size - current_short_size, fill_price
-            )
-        raise ValueError(f"unsupported side: {side}")
+        transition = transition_signed_position(
+            current_size=self.size,
+            current_average_basis=self.average_entry_price,
+            side=side,
+            fill_size=filled_size,
+            fill_price=fill_price,
+        )
+        if transition.size != EMPTY_POSITION_SIZE and transition.average_basis is None:
+            raise ValueError("paper positions require a known average entry price")
+        return PaperPosition(
+            token_id=self.token_id,
+            size=transition.size,
+            average_entry_price=transition.average_basis,
+        )
 
 
 @dataclass(slots=True)
@@ -220,8 +193,3 @@ def calculate_settlement_for_positions(
         cash_delta=cash_delta,
         settled_token_ids=frozenset(settled_token_ids),
     )
-
-
-def _require_positive_fill_size(filled_size: Decimal) -> None:
-    if not filled_size.is_finite() or filled_size <= EMPTY_POSITION_SIZE:
-        raise ValueError("filled size must be positive and finite")

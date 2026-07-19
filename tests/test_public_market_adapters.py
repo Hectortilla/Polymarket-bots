@@ -37,7 +37,7 @@ from polybot.polymarket.gamma import (
     GAMMA_MARKETS_QUERY_BUDGET,
     GammaClient,
 )
-from polybot.polymarket.types import (
+from polybot.polymarket.markets import (
     Market,
     MarketOutcome as NormalizedMarketOutcome,
     index_markets_by_token,

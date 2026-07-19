@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -11,7 +11,7 @@ from typing import Protocol, cast
 from polybot.framework.events.books import BookSnapshot
 
 
-ZERO = Decimal("0")
+ZERO_MARKET_VALUE = Decimal("0")
 
 
 class ValuationStatus(StrEnum):
@@ -77,7 +77,9 @@ class PortfolioValuation:
         return len(self.positions)
 
     @classmethod
-    def unavailable(cls, cash_usdc: Decimal = ZERO) -> PortfolioValuation:
+    def unavailable(
+        cls, cash_usdc: Decimal = ZERO_MARKET_VALUE
+    ) -> PortfolioValuation:
         return cls(
             cash_usdc=cash_usdc,
             marked_position_value_usdc=None,
@@ -89,6 +91,15 @@ class PortfolioValuation:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PortfolioValuationResult:
+    valuation: PortfolioValuation
+    next_executable_marks: tuple[tuple[str, Decimal], ...]
+
+    def marks(self) -> dict[str, Decimal]:
+        return dict(self.next_executable_marks)
+
+
 def value_portfolio(
     portfolio: PortfolioLike,
     books: Mapping[str, BookSnapshot],
@@ -96,16 +107,17 @@ def value_portfolio(
     now_ms: int | None,
     max_book_age_ms: int | None,
     initial_cash_usdc: Decimal | None = None,
-    last_executable_marks: MutableMapping[str, Decimal] | None = None,
+    last_executable_marks: Mapping[str, Decimal] | None = None,
     allow_stale_marks: bool = True,
-) -> PortfolioValuation:
+) -> PortfolioValuationResult:
     """Mark open positions at the executable side of each current order book.
 
     Long positions are marked at the best bid and shorts at the best ask. A
     previously executable mark may be used only when ``allow_stale_marks`` is
     true, and the result is then explicitly classified as stale.
     """
-    marks = last_executable_marks if last_executable_marks is not None else {}
+    _validate_valuation_options(now_ms, max_book_age_ms)
+    marks = dict(last_executable_marks or {})
     position_values = tuple(
         _value_position(
             position,
@@ -126,15 +138,15 @@ def value_portfolio(
         market_values = tuple(
             _required_market_value(position) for position in position_values
         )
-        marked_value = sum(market_values, ZERO)
+        marked_value = sum(market_values, ZERO_MARKET_VALUE)
         equity = portfolio.cash_usdc + marked_value
-        exposure = sum((abs(value) for value in market_values), ZERO)
+        exposure = sum((abs(value) for value in market_values), ZERO_MARKET_VALUE)
     pnl = (
         None
         if equity is None or initial_cash_usdc is None
         else equity - initial_cash_usdc
     )
-    return PortfolioValuation(
+    valuation = PortfolioValuation(
         cash_usdc=portfolio.cash_usdc,
         marked_position_value_usdc=marked_value,
         equity_usdc=equity,
@@ -142,6 +154,10 @@ def value_portfolio(
         exposure_usdc=exposure,
         positions=position_values,
         status=status,
+    )
+    return PortfolioValuationResult(
+        valuation=valuation,
+        next_executable_marks=tuple(sorted(marks.items())),
     )
 
 
@@ -165,7 +181,7 @@ def _value_position(
     *,
     now_ms: int | None,
     max_book_age_ms: int | None,
-    last_executable_marks: MutableMapping[str, Decimal],
+    last_executable_marks: dict[str, Decimal],
     allow_stale_marks: bool,
 ) -> PositionValuation:
     book = _current_book(
@@ -225,12 +241,36 @@ def _current_book(
 def _portfolio_status(
     positions: tuple[PositionValuation, ...],
 ) -> ValuationStatus:
-    statuses = {position.status for position in positions}
-    if ValuationStatus.UNAVAILABLE in statuses:
+    return aggregate_valuation_status(position.status for position in positions)
+
+
+def aggregate_valuation_status(
+    statuses: Iterable[ValuationStatus],
+) -> ValuationStatus:
+    observed = set(statuses)
+    if ValuationStatus.UNAVAILABLE in observed:
         return ValuationStatus.UNAVAILABLE
-    if ValuationStatus.STALE in statuses:
+    if ValuationStatus.STALE in observed:
         return ValuationStatus.STALE
     return ValuationStatus.FRESH
+
+
+def _validate_valuation_options(
+    now_ms: int | None,
+    max_book_age_ms: int | None,
+) -> None:
+    if max_book_age_ms is not None and (
+        isinstance(max_book_age_ms, bool)
+        or not isinstance(max_book_age_ms, int)
+        or max_book_age_ms < 0
+    ):
+        raise ValueError("maximum book age must be a nonnegative integer")
+    if max_book_age_ms is not None and (
+        isinstance(now_ms, bool)
+        or not isinstance(now_ms, int)
+        or now_ms < 0
+    ):
+        raise ValueError("now_ms is required and must be nonnegative")
 
 
 def _required_market_value(position: PositionValuation) -> Decimal:

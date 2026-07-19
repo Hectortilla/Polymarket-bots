@@ -17,7 +17,7 @@ from polybot.examples.example_btc_five_minute_momentum import (
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.polymarket.markets import Market, MarketOutcome
 
 UP_TOKEN_ID = "up-token"
 DOWN_TOKEN_ID = "down-token"
@@ -43,10 +43,12 @@ def test_probability_trend_rejects_directionless_whipsaw() -> None:
     trend = ProbabilityTrend(_test_settings())
     metrics = None
     for value in ("0.50", "0.54", "0.50", "0.54"):
-        metrics = trend.observe(Decimal(value))
+        observation = trend.after_observation(Decimal(value))
+        trend = observation.trend
+        metrics = observation.metrics
 
     assert metrics is not None
-    assert trend.direction(metrics) is None
+    assert trend.settings.direction(metrics) is None
 
 
 def test_bot_buys_up_after_confirmed_probability_momentum(
@@ -107,6 +109,22 @@ def test_bot_rejects_a_wide_entry_spread(dummy_context: BotContext) -> None:
             probabilities=("0.44", "0.46", "0.49", "0.54"),
             favored_outcome="Up",
             half_spread=Decimal("0.03"),
+        )
+    )
+
+    assert dummy_context.broker.submitted == []
+
+
+def test_bot_rejects_an_equally_timestamped_stale_book_pair(
+    dummy_context: BotContext,
+) -> None:
+    settings = _test_settings()
+    asyncio.run(
+        _feed_probabilities(
+            dummy_context,
+            probabilities=("0.44", "0.46", "0.49", "0.54"),
+            favored_outcome="Up",
+            clock_lag_ms=settings.paired_book_max_age_ms + 1,
         )
     )
 
@@ -212,11 +230,14 @@ async def _feed_probabilities(
     favored_outcome: str,
     start_ms: int = 100_000,
     half_spread: Decimal = Decimal("0.01"),
+    clock_lag_ms: int = 0,
 ) -> BtcFiveMinuteMomentumBot:
-    market_context = replace(context, markets=_Markets())
+    clock = _TestClock(start_ms)
+    market_context = replace(context, markets=_Markets(), clock=clock)
     bot = BtcFiveMinuteMomentumBot(_test_settings())
     for index, raw_probability in enumerate(probabilities):
         timestamp_ms = start_ms + index * 1_000
+        clock.current_ms = timestamp_ms + clock_lag_ms
         up_probability = Decimal(raw_probability)
         await bot.on_book(
             market_context,
@@ -301,3 +322,14 @@ class _Markets:
                 MarketOutcome("Down", DOWN_TOKEN_ID),
             ),
         )
+
+
+class _TestClock:
+    def __init__(self, current_ms: int) -> None:
+        self.current_ms = current_ms
+
+    def now_ms(self) -> int:
+        return self.current_ms
+
+    async def sleep(self, seconds: float) -> None:
+        self.current_ms += int(seconds * 1_000)

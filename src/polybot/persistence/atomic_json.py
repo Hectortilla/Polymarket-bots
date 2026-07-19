@@ -1,4 +1,4 @@
-"""Small dependency-light persistence primitives for CLI state."""
+"""Atomic storage for strict JSON objects."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
+
+from .json_codec import loads_json
 
 
 class AtomicJsonFile:
@@ -17,7 +19,7 @@ class AtomicJsonFile:
 
     def read(self) -> dict[str, Any]:
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = loads_json(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return {}
         if not isinstance(payload, dict):

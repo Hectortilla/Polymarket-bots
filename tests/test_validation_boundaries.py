@@ -8,7 +8,8 @@ from polybot.execution.paper import PaperBroker
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.polymarket.markets import Market, MarketOutcome
 
 
 @dataclass
@@ -33,6 +34,14 @@ class MarketSource:
         if self.error:
             raise self.error
         return self.market
+
+
+@dataclass
+class SequencedBooks:
+    snapshots: list[BookSnapshot]
+
+    async def latest(self, token_id: str) -> BookSnapshot | None:
+        return self.snapshots.pop(0)
 
 
 @pytest.mark.parametrize(
@@ -122,6 +131,68 @@ def test_concurrent_source_claim_applies_one_fill() -> None:
     assert size == Decimal("1")
 
 
+def test_cancelled_duplicate_waiter_does_not_cancel_owned_fill() -> None:
+    async def run() -> tuple[object, object, Decimal]:
+        gate = asyncio.Event()
+
+        async def sleep(_: float) -> None:
+            await gate.wait()
+
+        broker = _broker(CountingBooks(snapshot=_book()), sleep_fn=sleep)
+        order = _order(source_id="leader\0cancelled-waiter")
+        owner = asyncio.create_task(broker.submit(order))
+        waiter = asyncio.create_task(broker.submit(order))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        gate.set()
+        owned_fill = await owner
+        replayed_fill = await broker.submit(order)
+        return owned_fill, replayed_fill, broker.portfolio.position("token").size
+
+    owned, replayed, size = asyncio.run(run())
+    assert replayed is owned
+    assert size == Decimal("1")
+
+
+def test_book_is_refetched_and_revalidated_after_market_lookup() -> None:
+    broker = _broker(
+        SequencedBooks(
+            snapshots=[
+                _book(received_at_ms=1_000),
+                _book(received_at_ms=800),
+            ]
+        )
+    )
+
+    fill = asyncio.run(broker.submit(_order()))
+
+    assert fill.reject_reason is FillRejectReason.BOOK_STALE
+    assert broker.portfolio.positions == {}
+
+
+def test_resolved_market_rejects_before_book_lookup() -> None:
+    books = CountingBooks(snapshot=_book())
+    broker = _broker(books)
+    broker.settle_market(
+        MarketResolutionEvent(
+            condition_id="condition",
+            market_slug="market",
+            token_ids=("token", "no"),
+            winning_token_id="token",
+            winning_outcome="Up",
+            resolved_at_ms=999,
+            source="test",
+        )
+    )
+
+    fill = asyncio.run(broker.submit(_order(condition_id="condition")))
+
+    assert fill.reject_reason is FillRejectReason.MARKET_RESOLVED
+    assert books.calls == 0
+
+
 def test_failed_source_claim_propagates_and_can_retry() -> None:
     async def run() -> tuple[list[type[BaseException]], Decimal]:
         broker = _broker(CountingBooks(snapshot=_book()))
@@ -187,7 +258,12 @@ def _broker(
         outcomes=(MarketOutcome("Up", "token"), MarketOutcome("Down", "no")),
     )
     return PaperBroker(
-        BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+        BotConfig(
+            name="paper",
+            paper_latency_ms=0,
+            paper_latency_jitter_ms=0,
+            event_max_age_ms=100,
+        ),
         books,
         markets or MarketSource(market),
         sleep_fn=sleep_fn or _noop_sleep,
@@ -199,13 +275,18 @@ async def _noop_sleep(_: float) -> None:
     return None
 
 
-def _order(source_id: str | None = None) -> OrderRequest:
+def _order(
+    source_id: str | None = None,
+    *,
+    condition_id: str | None = None,
+) -> OrderRequest:
     return OrderRequest(
         "token",
         Side.BUY,
         Decimal("0.6"),
         Decimal("1"),
         market_slug="market",
+        condition_id=condition_id,
         source_id=source_id,
     )
 

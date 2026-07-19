@@ -3,10 +3,11 @@ from dataclasses import replace
 from decimal import Decimal
 
 from polybot.framework.context import BotContext
+from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
-from polybot.examples.example_rebound import ExampleReboundBot
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.examples.example_rebound import REBOUND_ORDER_REASON, ExampleReboundBot
+from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.framework.outcomes import resolve_outcome_token
 
 
@@ -22,10 +23,10 @@ def test_rebound_bot_buys_after_decline_then_rise(dummy_context: BotContext) -> 
     asyncio.run(run())
 
     order = dummy_context.broker.submitted[0]
-    assert order.side.value == "BUY"
+    assert order.side is Side.BUY
     assert order.price == Decimal("0.47")
     assert order.size == Decimal("2")
-    assert order.reason == "price_rebound"
+    assert order.reason == REBOUND_ORDER_REASON
 
 
 def test_rebound_bot_does_not_buy_without_a_prior_decline(

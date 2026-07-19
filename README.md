@@ -80,10 +80,14 @@ loaded.
 
 ```sh
 BOT_MODE=paper \
-BOT_STREAM_RULES='<stream-rules-json>' \
-BOT_YES_TOKEN_ID=<yes-token-id> \
+BOT_MAX_ORDER_SIZE=5 \
 uv run python -m polybot.cli --bot polybot.my_bot:create
 ```
+
+`polybot.my_bot:create` is the default BTC five-minute momentum factory. Bot
+factories may accept no arguments or one validated `BotConfig`; the public type
+is `polybot.framework.factories.BotFactory`. Programmatic integrations can run
+a bot through `polybot.runtime.run_bot`.
 
 ## Historical Market Recording
 

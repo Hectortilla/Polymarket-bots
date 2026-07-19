@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.wallets import normalize_wallet_address
 
 
 class WalletActivityIssue(StrEnum):
@@ -67,3 +68,22 @@ class WalletTradeSelector:
     def __post_init__(self) -> None:
         if self.wallet is None and not self.condition_ids:
             raise ValueError("wallet trade selectors require a wallet or markets")
+        if self.wallet is not None:
+            if not isinstance(self.wallet, str) or not self.wallet.strip():
+                raise ValueError("wallet trade selector wallet is invalid")
+            object.__setattr__(
+                self,
+                "wallet",
+                normalize_wallet_address(self.wallet.strip()),
+            )
+        if not isinstance(self.condition_ids, tuple) or any(
+            not isinstance(condition_id, str) or not condition_id.strip()
+            for condition_id in self.condition_ids
+        ):
+            raise ValueError("wallet trade selector markets are invalid")
+        normalized_conditions = tuple(
+            condition_id.strip() for condition_id in self.condition_ids
+        )
+        if len(normalized_conditions) != len(set(normalized_conditions)):
+            raise ValueError("wallet trade selector markets contain duplicates")
+        object.__setattr__(self, "condition_ids", normalized_conditions)

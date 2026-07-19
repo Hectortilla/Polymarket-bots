@@ -1,20 +1,33 @@
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 
 from polybot.framework.events.books import BookSnapshot
 
 BTC_FIVE_MINUTE_SLUG_PREFIX = "btc-updown-5m"
-UP_OUTCOME = "Up"
-DOWN_OUTCOME = "Down"
+class MomentumDirection(StrEnum):
+    UP = "Up"
+    DOWN = "Down"
+
+
+class MomentumExitReason(StrEnum):
+    EXPIRY = "btc_5m_expiry_exit"
+    STOP = "btc_5m_stop_exit"
+    TARGET = "btc_5m_target_exit"
+    REVERSAL = "btc_5m_reversal_exit"
+    TIME = "btc_5m_time_exit"
+
+
+UP_OUTCOME = MomentumDirection.UP
+DOWN_OUTCOME = MomentumDirection.DOWN
 MOMENTUM_ENTRY_REASON = "btc_5m_probability_momentum"
-EXPIRY_EXIT_REASON = "btc_5m_expiry_exit"
-STOP_EXIT_REASON = "btc_5m_stop_exit"
-TARGET_EXIT_REASON = "btc_5m_target_exit"
-REVERSAL_EXIT_REASON = "btc_5m_reversal_exit"
-TIME_EXIT_REASON = "btc_5m_time_exit"
+EXPIRY_EXIT_REASON = MomentumExitReason.EXPIRY
+STOP_EXIT_REASON = MomentumExitReason.STOP
+TARGET_EXIT_REASON = MomentumExitReason.TARGET
+REVERSAL_EXIT_REASON = MomentumExitReason.REVERSAL
+TIME_EXIT_REASON = MomentumExitReason.TIME
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +38,7 @@ class MomentumSettings:
     order_size: Decimal = Decimal("5")
     sample_interval_ms: int = 750
     paired_book_max_skew_ms: int = 1_500
+    paired_book_max_age_ms: int = 5_000
     momentum_lookback: int = 6
     warmup_samples: int = 12
     fast_ema_alpha: Decimal = Decimal("0.40")
@@ -50,8 +64,12 @@ class MomentumSettings:
     def __post_init__(self) -> None:
         if self.bucket_seconds <= 0 or self.order_size <= 0:
             raise ValueError("bucket_seconds and order_size must be positive")
-        if self.sample_interval_ms <= 0 or self.paired_book_max_skew_ms < 0:
-            raise ValueError("sampling interval must be positive and skew nonnegative")
+        if (
+            self.sample_interval_ms <= 0
+            or self.paired_book_max_skew_ms < 0
+            or self.paired_book_max_age_ms < 0
+        ):
+            raise ValueError("sampling interval must be positive and book ages nonnegative")
         if (
             self.momentum_lookback <= 0
             or self.warmup_samples <= self.momentum_lookback
@@ -87,6 +105,66 @@ class MomentumSettings:
             raise ValueError("strategy thresholds must be finite and nonnegative")
         if not 0 <= self.minimum_imbalance <= 1:
             raise ValueError("minimum_imbalance must be within [0, 1]")
+
+    def direction(self, metrics: TrendMetrics) -> MomentumDirection | None:
+        trend_floor = max(
+            self.minimum_trend,
+            metrics.noise * self.noise_trend_multiple,
+        )
+        momentum_floor = max(
+            self.minimum_momentum,
+            metrics.noise * self.noise_momentum_multiple,
+        )
+        if metrics.trend >= trend_floor and metrics.momentum >= momentum_floor:
+            return MomentumDirection.UP
+        if metrics.trend <= -trend_floor and metrics.momentum <= -momentum_floor:
+            return MomentumDirection.DOWN
+        return None
+
+    def entry_quote_is_safe(
+        self,
+        quote: BookQuote | None,
+        other_quote: BookQuote | None,
+    ) -> bool:
+        if quote is None or other_quote is None:
+            return False
+        return (
+            quote.spread <= self.maximum_spread
+            and other_quote.spread <= self.maximum_spread
+            and quote.bid_depth >= self.minimum_depth
+            and quote.ask_depth >= self.minimum_depth
+            and quote.imbalance >= self.minimum_imbalance
+            and self.minimum_entry_price <= quote.best_ask <= self.maximum_entry_price
+        )
+
+    def exit_reason(
+        self,
+        position: OpenPosition,
+        *,
+        best_bid: Decimal,
+        now_ms: int,
+        current_condition_id: str | None,
+        metrics: TrendMetrics | None,
+    ) -> MomentumExitReason | None:
+        if position.bucket_end_ms - now_ms <= self.force_exit_ms:
+            return MomentumExitReason.EXPIRY
+        if best_bid <= position.average_price - self.stop_loss:
+            return MomentumExitReason.STOP
+        if best_bid >= position.average_price + self.take_profit:
+            return MomentumExitReason.TARGET
+        if now_ms - position.opened_at_ms >= self.maximum_hold_ms:
+            return MomentumExitReason.TIME
+        if current_condition_id != position.condition_id or metrics is None:
+            return None
+        if (
+            position.outcome is MomentumDirection.UP
+            and metrics.trend <= -self.reversal_trend
+        ) or (
+            position.outcome is MomentumDirection.DOWN
+            and metrics.trend >= self.reversal_trend
+        ):
+            return MomentumExitReason.REVERSAL
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,50 +215,43 @@ class TrendMetrics:
     noise: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class ProbabilityObservation:
+    trend: ProbabilityTrend
+    metrics: TrendMetrics | None
+
+
+@dataclass(frozen=True, slots=True)
 class ProbabilityTrend:
     """EMA trend plus rate-of-change, scaled by recent absolute movement."""
 
-    def __init__(self, settings: MomentumSettings) -> None:
-        self.settings = settings
-        self._history: deque[Decimal] = deque(maxlen=settings.warmup_samples * 2)
-        self._fast_ema: Decimal | None = None
-        self._slow_ema: Decimal | None = None
+    settings: MomentumSettings
+    history: tuple[Decimal, ...] = ()
+    fast_ema: Decimal | None = None
+    slow_ema: Decimal | None = None
 
-    def observe(self, probability: Decimal) -> TrendMetrics | None:
-        self._history.append(probability)
-        self._fast_ema = self._next_ema(
-            self._fast_ema, probability, self.settings.fast_ema_alpha
+    def after_observation(self, probability: Decimal) -> ProbabilityObservation:
+        history = (*self.history, probability)[-(self.settings.warmup_samples * 2) :]
+        fast_ema = self._next_ema(
+            self.fast_ema, probability, self.settings.fast_ema_alpha
         )
-        self._slow_ema = self._next_ema(
-            self._slow_ema, probability, self.settings.slow_ema_alpha
+        slow_ema = self._next_ema(
+            self.slow_ema, probability, self.settings.slow_ema_alpha
         )
-        if len(self._history) < self.settings.warmup_samples:
-            return None
-        recent = tuple(self._history)[-(self.settings.momentum_lookback + 1) :]
+        next_trend = ProbabilityTrend(self.settings, history, fast_ema, slow_ema)
+        if len(history) < self.settings.warmup_samples:
+            return ProbabilityObservation(next_trend, None)
+        recent = history[-(self.settings.momentum_lookback + 1) :]
         moves = tuple(
             abs(current - previous)
             for previous, current in zip(recent, recent[1:])
         )
-        return TrendMetrics(
-            trend=self._fast_ema - self._slow_ema,
+        assert fast_ema is not None and slow_ema is not None
+        return ProbabilityObservation(next_trend, TrendMetrics(
+            trend=fast_ema - slow_ema,
             momentum=recent[-1] - recent[0],
             noise=sum(moves, Decimal("0")) / len(moves),
-        )
-
-    def direction(self, metrics: TrendMetrics) -> str | None:
-        trend_floor = max(
-            self.settings.minimum_trend,
-            metrics.noise * self.settings.noise_trend_multiple,
-        )
-        momentum_floor = max(
-            self.settings.minimum_momentum,
-            metrics.noise * self.settings.noise_momentum_multiple,
-        )
-        if metrics.trend >= trend_floor and metrics.momentum >= momentum_floor:
-            return UP_OUTCOME
-        if metrics.trend <= -trend_floor and metrics.momentum <= -momentum_floor:
-            return DOWN_OUTCOME
-        return None
+        ))
 
     @staticmethod
     def _next_ema(previous: Decimal | None, value: Decimal, alpha: Decimal) -> Decimal:
@@ -215,55 +286,10 @@ class BucketTiming:
 @dataclass(frozen=True, slots=True)
 class OpenPosition:
     token_id: str
-    outcome: str
+    outcome: MomentumDirection
     condition_id: str
     market_slug: str
     size: Decimal
     average_price: Decimal
     opened_at_ms: int
     bucket_end_ms: int
-
-
-def entry_quote_is_safe(
-    settings: MomentumSettings,
-    quote: BookQuote | None,
-    other_quote: BookQuote | None,
-) -> bool:
-    if quote is None or other_quote is None:
-        return False
-    return (
-        quote.spread <= settings.maximum_spread
-        and other_quote.spread <= settings.maximum_spread
-        and quote.bid_depth >= settings.minimum_depth
-        and quote.ask_depth >= settings.minimum_depth
-        and quote.imbalance >= settings.minimum_imbalance
-        and settings.minimum_entry_price <= quote.best_ask <= settings.maximum_entry_price
-    )
-
-
-def exit_reason(
-    settings: MomentumSettings,
-    position: OpenPosition,
-    *,
-    best_bid: Decimal,
-    now_ms: int,
-    current_condition_id: str | None,
-    metrics: TrendMetrics | None,
-) -> str | None:
-    if position.bucket_end_ms - now_ms <= settings.force_exit_ms:
-        return EXPIRY_EXIT_REASON
-    if best_bid <= position.average_price - settings.stop_loss:
-        return STOP_EXIT_REASON
-    if best_bid >= position.average_price + settings.take_profit:
-        return TARGET_EXIT_REASON
-    if now_ms - position.opened_at_ms >= settings.maximum_hold_ms:
-        return TIME_EXIT_REASON
-    if current_condition_id != position.condition_id or metrics is None:
-        return None
-    if (
-        position.outcome == UP_OUTCOME and metrics.trend <= -settings.reversal_trend
-    ) or (
-        position.outcome == DOWN_OUTCOME and metrics.trend >= settings.reversal_trend
-    ):
-        return REVERSAL_EXIT_REASON
-    return None

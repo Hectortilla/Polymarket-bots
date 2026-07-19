@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from polybot.polymarket.types import Market
+    from polybot.polymarket.markets import Market
 
 
 YES_OUTCOME = "Yes"
@@ -17,9 +17,6 @@ RESOLUTION_WINNING_OUTCOME_FIELD = "winning_outcome"
 RESOLUTION_RESOLVED_AT_MS_FIELD = "resolved_at_ms"
 RESOLUTION_SETTLED_AT_MS_FIELD = "settled_at_ms"
 RESOLUTION_SOURCE_FIELD = "source"
-GAMMA_RECONCILIATION_SOURCE = "gamma_reconciliation"
-
-
 SETTLED_POSITION_OWNER_FIELD = "owner"
 SETTLED_POSITION_TOKEN_ID_FIELD = "token_id"
 SETTLED_POSITION_SIZE_FIELD = "size"
@@ -86,7 +83,11 @@ class MarketResolutionEvent:
 
     def payout_for(self, token_id: str) -> Decimal:
         self._validate_payout_token(token_id)
-        return _payout_for_winner(token_id == self.winning_token_id)
+        return (
+            WINNING_PAYOUT_PER_TOKEN
+            if token_id == self.winning_token_id
+            else LOSING_PAYOUT_PER_TOKEN
+        )
 
     def _validate_payout_token(self, token_id: str) -> None:
         if token_id not in self.token_ids:
@@ -113,6 +114,24 @@ class SettledPosition:
     payout_per_token: Decimal
     cash_payout_usdc: Decimal
     realized_pnl_usdc: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        if not self.owner or not self.token_id:
+            raise ValueError("settled positions require owner and token identity")
+        decimal_values = (
+            self.size,
+            self.payout_per_token,
+            self.cash_payout_usdc,
+        )
+        if not all(value.is_finite() for value in decimal_values):
+            raise ValueError("settled position values must be finite")
+        if not Decimal("0") <= self.payout_per_token <= Decimal("1"):
+            raise ValueError("settled position payout must be between zero and one")
+        if (
+            self.realized_pnl_usdc is not None
+            and not self.realized_pnl_usdc.is_finite()
+        ):
+            raise ValueError("settled position realized P&L must be finite")
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -145,7 +164,3 @@ class MarketSettlementEvent:
     @staticmethod
     def _cash_payout(positions: tuple[SettledPosition, ...]) -> Decimal:
         return sum((position.cash_payout_usdc for position in positions), Decimal("0"))
-
-
-def _payout_for_winner(is_winner: bool) -> Decimal:
-    return WINNING_PAYOUT_PER_TOKEN if is_winner else LOSING_PAYOUT_PER_TOKEN

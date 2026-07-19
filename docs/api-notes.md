@@ -114,8 +114,10 @@ Slice 11 bootstraps newly followed wallets through the official SDK binding for
 restriction. Filtered wallet follows resolve their stream-rule slugs to
 condition IDs first, then pass those IDs through the endpoint's `market` filter;
 they never bootstrap positions from unrelated markets. Only normalized open
-positions are accepted;
-missing wallet-market-token identity or invalid numeric values fail closed.
+positions are accepted. Each response row must match the requested normalized
+wallet and, when present, the requested condition-ID scope. Duplicate token
+rows, missing wallet-market-token identity, or invalid numeric values fail
+closed.
 The API's `outcome` field is an arbitrary string (for example, `Up` or `Down`),
 so position, wallet-trade, book, market, and resolution normalization preserve
 any non-empty string rather than restricting it to `Yes`/`No` labels. Outcome
@@ -342,8 +344,10 @@ safe. It also caps each slug-filter array at 100 values, matching Gamma's API
 validation. Because the list endpoint defaults to `closed=false`, unresolved
 slugs are retried together with `closed=true` so open wallet positions in closed
 or resolved markets can still be normalized. Batches are sent sequentially and
-the SDK paginator handles pagination inside each batch. A fixed inter-request
-delay is not needed for this path.
+the SDK paginator handles pagination inside each batch. Single-slug and list
+responses must match the requested slug scope; the adapter rejects unrequested
+rows and conflicting repeated rows instead of allowing ambiguous metadata into
+the runtime. A fixed inter-request delay is not needed for this path.
 
 ## Wallet Following
 
@@ -357,6 +361,10 @@ adapter therefore fans out through the official client per configured address,
 then normalizes, merges, deterministically sorts, and dedupes the resulting
 events. It must apply bounded concurrency and the documented Data API rate
 limits rather than issuing an unbounded request burst.
+
+Wallet and selector responses are checked against the requested user and
+condition-ID scope before normalized events leave the adapter. Out-of-scope
+rows fail closed rather than being silently attributed to the request.
 
 `/trades` rows include wallet, side, asset/token ID, condition ID, size, price,
 timestamp, and transaction hash. `/activity` rows include similar fields plus

@@ -55,7 +55,7 @@ def test_shared_valuation_marks_longs_at_bid_and_shorts_at_ask() -> None:
         now_ms=1_000,
         max_book_age_ms=100,
         initial_cash_usdc=Decimal("100"),
-    )
+    ).valuation
 
     assert valuation.status is ValuationStatus.FRESH
     assert valuation.marked_position_value_usdc == Decimal("-0.10")
@@ -75,26 +75,28 @@ def test_valuation_labels_cached_marks_stale_and_missing_marks_unavailable() -> 
         },
     )
     book = _book("held", "0.40", "0.60", received_at_ms=1_000)
-    fresh = value_portfolio(
+    fresh_result = value_portfolio(
         portfolio,
         {"held": book},
         now_ms=1_000,
         max_book_age_ms=100,
         last_executable_marks=marks,
     )
+    fresh = fresh_result.valuation
+    marks = fresh_result.marks()
     stale = value_portfolio(
         portfolio,
         {"held": book},
         now_ms=1_101,
         max_book_age_ms=100,
         last_executable_marks=marks,
-    )
+    ).valuation
     unavailable = value_portfolio(
         portfolio,
         {},
         now_ms=1_101,
         max_book_age_ms=100,
-    )
+    ).valuation
 
     assert fresh.status is ValuationStatus.FRESH
     assert stale.status is ValuationStatus.STALE

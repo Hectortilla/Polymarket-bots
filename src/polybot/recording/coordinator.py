@@ -9,7 +9,10 @@ from decimal import Decimal
 
 from polymarket import PolymarketError
 
-from polybot.framework.events.resolutions import GAMMA_RECONCILIATION_SOURCE
+from polybot.framework.cadence import (
+    RESOLUTION_RECONCILIATION_SECONDS,
+    STREAM_PLAN_REFRESH_INTERVAL_SECONDS,
+)
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.recording_events import CapturedMarketEvent
@@ -22,6 +25,7 @@ from polybot.polymarket.recording_metadata import (
     RecordingMarket,
     RecordingMarketResolver,
 )
+from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.recording.clock import ObservationClock
 from polybot.recording.contracts import (
     BookBaselinePayload,
@@ -31,6 +35,7 @@ from polybot.recording.contracts import (
     CaptureBookDiagnostics,
     CaptureFragmentRole,
     CoverageGapPayload,
+    CoverageGapReason,
     MarketIdentity,
     MarketMetadataPayload,
     RecordedBookLevel,
@@ -44,9 +49,7 @@ from polybot.recording.writer import (
 )
 
 
-PLAN_REFRESH_SECONDS = 1.0
 CHECKPOINT_SECONDS = 60.0
-RESOLUTION_RECONCILIATION_SECONDS = 30.0
 
 
 @dataclass(slots=True)
@@ -67,7 +70,7 @@ class _TrackedMarket:
 class _CaptureStopped:
     condition_id: str
     generation: int
-    reason: str
+    reason: CoverageGapReason
     error: BaseException | None = None
     fatal: bool = False
 
@@ -93,7 +96,7 @@ class RecordingCoordinator:
         writer: AsyncRecordingWriter,
         clock: ObservationClock,
         stop_when_terminal: bool,
-        plan_refresh_seconds: float = PLAN_REFRESH_SECONDS,
+        plan_refresh_seconds: float = STREAM_PLAN_REFRESH_INTERVAL_SECONDS,
         checkpoint_seconds: float = CHECKPOINT_SECONDS,
         resolution_reconciliation_seconds: float = (
             RESOLUTION_RECONCILIATION_SECONDS
@@ -379,7 +382,7 @@ class RecordingCoordinator:
                         _CaptureStopped(
                             tracked.recording.market.condition_id,
                             generation,
-                            "sdk_handle_drop",
+                            CoverageGapReason.SDK_HANDLE_DROP,
                         )
                     )
                     return
@@ -396,7 +399,7 @@ class RecordingCoordinator:
                         _CaptureStopped(
                             tracked.recording.market.condition_id,
                             generation,
-                            "recording_write_failure",
+                            CoverageGapReason.RECORDING_WRITE_FAILURE,
                             error=error,
                             fatal=True,
                         )
@@ -417,7 +420,7 @@ class RecordingCoordinator:
                         _CaptureStopped(
                             tracked.recording.market.condition_id,
                             generation,
-                            "sdk_handle_drop",
+                            CoverageGapReason.SDK_HANDLE_DROP,
                         )
                     )
                     return
@@ -428,7 +431,7 @@ class RecordingCoordinator:
                 _CaptureStopped(
                     tracked.recording.market.condition_id,
                     generation,
-                    "capture_failure",
+                    CoverageGapReason.CAPTURE_FAILURE,
                     error=error,
                 )
             )
@@ -437,7 +440,7 @@ class RecordingCoordinator:
             _CaptureStopped(
                 tracked.recording.market.condition_id,
                 generation,
-                "capture_ended",
+                CoverageGapReason.CAPTURE_ENDED,
             )
         )
 
@@ -518,7 +521,7 @@ class RecordingCoordinator:
         self,
         tracked: _TrackedMarket,
         *,
-        reason: str,
+        reason: CoverageGapReason,
         error: BaseException | None = None,
     ) -> None:
         if isinstance(error, CaptureContinuityError):
@@ -563,13 +566,16 @@ class RecordingCoordinator:
             if dropped_count <= tracked.dropped_count:
                 continue
             tracked.dropped_count = dropped_count
-            await self._restart_capture(tracked, reason="sdk_handle_drop")
+            await self._restart_capture(
+                tracked,
+                reason=CoverageGapReason.SDK_HANDLE_DROP,
+            )
 
     async def _open_gap(
         self,
         tracked: _TrackedMarket,
         *,
-        reason: str,
+        reason: CoverageGapReason,
         started_at_ms: int,
         details: str | None = None,
     ) -> None:

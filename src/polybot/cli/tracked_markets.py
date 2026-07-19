@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.types import Market, market_token_ids
+from polybot.polymarket.markets import Market
 
 MARKET_ADDITION_BATCH_SECONDS = 0.1
 
@@ -52,7 +52,7 @@ class TrackedMarketRegistry:
         return frozenset(
             token_id
             for entry in self._entries.values()
-            for token_id in market_token_ids(entry.market)
+            for token_id in entry.market.token_ids
         )
 
     @property
@@ -82,7 +82,7 @@ class TrackedMarketRegistry:
             changed = True
             subscription_changed = True
         else:
-            if set(market_token_ids(entry.market)) != set(market_token_ids(market)):
+            if set(entry.market.token_ids) != set(market.token_ids):
                 raise MarketDataError(
                     MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
                     f"condition ID maps to conflicting token pairs: {market.condition_id}",

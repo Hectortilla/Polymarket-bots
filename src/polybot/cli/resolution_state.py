@@ -16,7 +16,7 @@ from polybot.framework.events.resolutions import (
     RESOLUTION_WINNING_TOKEN_ID_FIELD,
 )
 
-from .persistence import AtomicJsonFile
+from polybot.persistence.atomic_json import AtomicJsonFile
 
 RESOLUTION_LEDGER_VERSION = 1
 RESOLUTION_LEDGER_VERSION_FIELD = "version"

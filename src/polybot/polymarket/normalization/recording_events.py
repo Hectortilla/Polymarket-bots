@@ -19,7 +19,7 @@ from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.book import normalize_price_change_level
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
 from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.types import Market, outcome_label_for_token
+from polybot.polymarket.markets import Market
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookChange,
@@ -172,7 +172,7 @@ def _resolution_event(
             "winning token ID is not part of the resolved market",
         )
     winning_outcome = _required_text(payload.winning_outcome, "winning outcome")
-    expected_outcome = outcome_label_for_token(market, winning_token_id)
+    expected_outcome = market.outcome_label_for_token(winning_token_id)
     if (
         expected_outcome is None
         or expected_outcome.casefold() != winning_outcome.casefold()

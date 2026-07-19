@@ -29,6 +29,8 @@ def gamma_condition_id(
     if not events:
         return None, None
     event = events[0]
+    if getattr(event, "slug", None) != slug:
+        return None, None
     market = event.markets[0] if event.markets else None
     closed = getattr(event.state, "closed", None)
     return str(market.condition_id) if market and market.condition_id else None, closed
@@ -48,4 +50,7 @@ def fetch_gamma_market(
             markets = page_items(market_page, context="SDK Gamma")
     except (PolymarketError, ValueError):
         return None
-    return market_payload(markets[0]) if markets else None
+    if not markets:
+        return None
+    payload = market_payload(markets[0])
+    return payload if payload.get("conditionId") == condition_id else None

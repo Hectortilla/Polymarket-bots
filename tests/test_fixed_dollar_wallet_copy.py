@@ -2,9 +2,11 @@ import asyncio
 from decimal import Decimal
 
 from polybot.examples.example_fixed_dollar_wallet_copy import (
+    FixedDollarWalletCopyBot,
+)
+from polybot.examples.wallet_copy import (
     COPY_TRADE_NOTIONAL_USDC,
     FIXED_DOLLAR_COPY_REASON,
-    FixedDollarWalletCopyBot,
 )
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side

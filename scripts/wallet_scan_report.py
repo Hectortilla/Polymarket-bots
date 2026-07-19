@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shlex
 import sys
+from math import isfinite
 from collections.abc import Iterable
 from typing import TypedDict
 
@@ -32,7 +33,7 @@ def parse_wallet_scan_report_line(line: str) -> WalletScanRecord | None:
             f"expected {WALLET_SCAN_RECORD_FIELD_COUNT} fields, got {len(fields)}"
         )
     wallet, label, net, hedge, volume, market_pct, density, reason, scanned_at = fields
-    return {
+    record: WalletScanRecord = {
         "wallet": wallet,
         "label": WalletVerdict(label),
         "net": float(_field_value(net, "net")),
@@ -43,6 +44,8 @@ def parse_wallet_scan_report_line(line: str) -> WalletScanRecord | None:
         "reason": WalletClassificationReason(reason),
         "scanned_at": scanned_at,
     }
+    _validate_scan_record(record)
+    return record
 
 
 def load_wallet_scan_report_rows(lines: Iterable[str]) -> list[WalletScanRecord]:
@@ -84,3 +87,21 @@ def _field_value(token: str, key: str) -> str:
     if not token.startswith(prefix):
         raise ValueError(f"expected token starting with {prefix!r}, got {token!r}")
     return token[len(prefix):]
+
+
+def _validate_scan_record(record: WalletScanRecord) -> None:
+    numeric_values = (
+        record["net"],
+        record["hedge"],
+        float(record["volume"]),
+        record["market_trade_pct"],
+        record["trade_density"],
+    )
+    if not all(isfinite(value) for value in numeric_values):
+        raise ValueError("wallet scan numeric fields must be finite")
+    if record["volume"] < 0 or record["trade_density"] < 0:
+        raise ValueError("wallet scan volume and density must be nonnegative")
+    if not 0 <= record["hedge"] <= 1:
+        raise ValueError("wallet scan hedge must be between 0 and 1")
+    if not 0 <= record["market_trade_pct"] <= 100:
+        raise ValueError("wallet scan market_trade_pct must be between 0 and 100")

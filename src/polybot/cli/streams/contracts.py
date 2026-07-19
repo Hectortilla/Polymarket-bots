@@ -10,7 +10,7 @@ from typing import Literal
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.polymarket.types import MarketTradeHint
+from polybot.polymarket.market_hints import MarketTradeHint
 
 
 class StreamKind(StrEnum):
