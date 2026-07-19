@@ -434,8 +434,9 @@ Status: done.
 - On condition recovery, immediately write a common two-token checkpoint pair.
   Keep periodic checkpoints suppressed for recovered members of a target-wide
   resumed gap until all affected markets recover, then checkpoint every eligible
-  market at the final closure boundary. Resolution-only closure creates no book
-  checkpoint.
+  market immediately after final closure using one fresh-timestamp,
+  archive-wide batch. Periodic multi-market checkpoints use the same batching
+  rule. Resolution-only closure creates no book checkpoint.
 - Test superset matching and all rejection paths, SDK drops during read-ahead,
   quarantining, anomaly serialization/availability, legacy resume, repeated
   attempts inside one open gap, and immediate single/target-wide checkpoints.
@@ -454,7 +455,9 @@ Status: done.
   concurrent events; do not retain acknowledged in-memory-only rows.
 - Add atomic writer batches for coupled metadata-plus-resolution events and
   common two-token checkpoints. Keep archive-wide sequence assignment inside
-  the single writer.
+  the single writer. Assemble periodic and recovery checkpoints across all
+  eligible markets into one fresh-timestamp batch so reverse task-resumption
+  order after a group commit cannot regress checkpoint observation time.
 - Drain and finalize the archive independently of capture/client cleanup.
   SIGINT/SIGTERM remains clean; cancellation and catchable failures end at the
   latest durable observation and retain their diagnostic status.

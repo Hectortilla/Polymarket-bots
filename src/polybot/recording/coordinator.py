@@ -598,11 +598,13 @@ class RecordingCoordinator:
 
     async def _write_checkpoints(self) -> None:
         async with self._record_lock:
-            observed_at_ms = self._clock.now_ms()
-            for tracked in tuple(self._tracked.values()):
-                if not self._can_checkpoint(tracked):
-                    continue
-                await self._write_market_checkpoints(tracked, observed_at_ms)
+            await self._write_checkpoint_batch(
+                tuple(
+                    tracked
+                    for tracked in self._tracked.values()
+                    if self._can_checkpoint(tracked)
+                )
+            )
 
     def _can_checkpoint(self, tracked: _TrackedMarket) -> bool:
         projector = tracked.projector
@@ -615,16 +617,31 @@ class RecordingCoordinator:
             and not tracked.terminal_claimed
         )
 
-    async def _write_market_checkpoints(
+    async def _write_checkpoint_batch(
+        self,
+        tracked_markets: tuple[_TrackedMarket, ...],
+    ) -> None:
+        if not tracked_markets:
+            return
+        observed_at_ms = self._clock.now_ms()
+        writes = tuple(
+            write
+            for tracked in tracked_markets
+            for write in self._checkpoint_writes(tracked, observed_at_ms)
+        )
+        if writes:
+            await self._writer.checkpoint_batch(writes)
+
+    def _checkpoint_writes(
         self,
         tracked: _TrackedMarket,
         observed_at_ms: int,
-    ) -> None:
+    ) -> tuple[RecordingCheckpointWrite, ...]:
         capture = tracked.capture
         projector = tracked.projector
         if capture is None or projector is None:
             raise AssertionError("checkpoint market has no active capture")
-        writes = tuple(
+        return tuple(
             RecordingCheckpointWrite(
                 book=BookBaselinePayload(
                     token_id=book.token_id,
@@ -647,8 +664,6 @@ class RecordingCoordinator:
             )
             for book in projector.snapshots(received_at_ms=observed_at_ms)
         )
-        if writes:
-            await self._writer.checkpoint_batch(writes)
 
     async def _reconcile_resolutions(self) -> None:
         tracked = tuple(
@@ -813,11 +828,12 @@ class RecordingCoordinator:
 
         if closed_condition_gap:
             checkpoint_condition_ids.add(condition_id)
+        recovered_markets: list[_TrackedMarket] = []
         for recovered_condition_id in sorted(checkpoint_condition_ids):
             recovered = self._tracked.get(recovered_condition_id)
-            if recovered is None or not self._can_checkpoint(recovered):
-                continue
-            await self._write_market_checkpoints(recovered, ended_at_ms)
+            if recovered is not None and self._can_checkpoint(recovered):
+                recovered_markets.append(recovered)
+        await self._write_checkpoint_batch(tuple(recovered_markets))
 
     def _condition_has_gap(self, tracked: _TrackedMarket) -> bool:
         condition_id = tracked.recording.market.condition_id

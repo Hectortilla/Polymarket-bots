@@ -201,7 +201,9 @@ Records, anomaly diagnostics, gap changes, and checkpoints return to the
 capture coordinator only after their SQLite transaction commits. Concurrent
 market events may be group-committed, while metadata-plus-resolution writes and
 common two-token checkpoints are stored atomically. This makes the committed
-prefix independent of final shutdown.
+prefix independent of final shutdown. Periodic and recovery checkpoints across
+markets also use one fresh-timestamp batch, so concurrent acknowledgements
+cannot make checkpoint observation time move backward.
 
 An uncatchable process kill can still leave the latest session marked `active`
 and committed rows in SQLite's `-wal` sidecar. Backtest replay acquires the

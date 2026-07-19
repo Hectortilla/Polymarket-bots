@@ -229,11 +229,13 @@ unavailable diagnostics from enabled sessions that observed zero anomalies.
 Archive durability is local and does not change the Polymarket integration.
 Each writer acknowledgement follows a committed WAL transaction with
 `synchronous=FULL`; queued events may be group-committed and common checkpoint
-pairs are atomic. Before replay, an exclusive archive lease refuses a live
-writer, recovers an abandoned active session at its last committed observation,
-and checkpoints any surviving WAL. This preserves recorded input but cannot
-recover an event that the process consumed without committing or an upstream
-message the recorder never received.
+pairs are atomic. Periodic and recovery checkpoint sets use one fresh
+observation timestamp and one archive-wide batch, independent of the order in
+which group-committed event tasks resume. Before replay, an exclusive archive
+lease refuses a live writer, recovers an abandoned active session at its last
+committed observation, and checkpoints any surviving WAL. This preserves
+recorded input but cannot recover an event that the process consumed without
+committing or an upstream message the recorder never received.
 
 This hardening cannot promise gap-free recording. The official market-channel
 contract still provides no sequence number, replay endpoint, hash lineage, or

@@ -131,8 +131,9 @@ no sequence number, replay cursor, or resume protocol.
 Every recorder mutation is acknowledged only after its SQLite transaction has
 committed with WAL mode and full synchronization. Concurrently queued market
 events may share one commit, metadata-plus-resolution writes and common
-two-token checkpoints are atomic, and shutdown drains the writer before sealing
-the session.
+two-token checkpoints are atomic, periodic and recovery checkpoints across
+markets share one fresh-timestamp batch, and shutdown drains the writer before
+sealing the session.
 
 SIGINT and SIGTERM request a clean shutdown, but process kills, power loss, and
 similar failures cannot be caught. The committed prefix still remains usable.

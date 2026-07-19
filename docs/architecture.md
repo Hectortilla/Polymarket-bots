@@ -338,10 +338,13 @@ legacy schema-v2 archive creates the tables transactionally, while prior session
 correctly report journal availability as unavailable. Every failed split-revision
 recovery attempt is journaled even if a coverage gap is already open.
 
-Fresh two-token baselines close a condition gap and immediately produce a common
-checkpoint pair at the closure boundary. For a resumed target-wide gap, periodic
-checkpoints stay suppressed until every affected condition recovers; the final
-closure writes fresh common checkpoint pairs for all recovered markets. A
+Fresh two-token baselines close a condition gap and immediately afterward
+produce a common checkpoint pair at a fresh observation timestamp. For a
+resumed target-wide gap, periodic checkpoints stay suppressed until every
+affected condition recovers; the final closure writes every eligible market's
+fresh checkpoint pair in one archive-wide batch. Periodic multi-market
+checkpoints use the same batching rule. This prevents reverse task-resumption
+order after a group commit from reusing an older observation timestamp. A
 resolution may close bookkeeping but never fabricates a book checkpoint.
 
 Integrity reporting uses the phrase `no detected gaps`, not

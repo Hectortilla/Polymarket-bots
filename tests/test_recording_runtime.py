@@ -1334,9 +1334,11 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
     assert {checkpoint.sequence for checkpoint in writer.checkpoints} == {
         writer.events[-1].sequence
     }
-    assert {checkpoint.observed_at_ms for checkpoint in writer.checkpoints} == {
-        writer.closed_gaps[0][1]
+    checkpoint_times = {
+        checkpoint.observed_at_ms for checkpoint in writer.checkpoints
     }
+    assert len(checkpoint_times) == 1
+    assert min(checkpoint_times) >= writer.closed_gaps[0][1]
 
 
 def test_split_revision_failures_are_quarantined_and_each_journaled() -> None:
@@ -1472,9 +1474,115 @@ def test_resumed_open_gap_checkpoints_all_markets_at_final_rebaseline() -> None:
     assert {checkpoint.sequence for checkpoint in writer.checkpoints} == {
         writer.events[-1].sequence
     }
-    assert {checkpoint.observed_at_ms for checkpoint in writer.checkpoints} == {
-        ended_at_ms
+    checkpoint_times = {
+        checkpoint.observed_at_ms for checkpoint in writer.checkpoints
     }
+    assert len(checkpoint_times) == 1
+    assert min(checkpoint_times) >= ended_at_ms
+
+
+def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> None:
+    alpha = _recording_market("alpha")
+    beta = _recording_market("beta")
+
+    class ReverseAckWriter(MemoryWriter):
+        def __init__(self, operations: list[str]) -> None:
+            super().__init__(operations)
+            self.alpha_final_started = asyncio.Event()
+            self.release_alpha = asyncio.Event()
+            self.checkpoint_batches: list[tuple[BookCheckpoint, ...]] = []
+
+        async def record(
+            self,
+            payload: object,
+            *,
+            observed_at_ms: int,
+            source_timestamp_ms: int | None,
+            identity: MarketIdentity | None,
+            subscription_generation: int,
+        ) -> RecordedEvent:
+            event = await super().record(
+                payload,
+                observed_at_ms=observed_at_ms,
+                source_timestamp_ms=source_timestamp_ms,
+                identity=identity,
+                subscription_generation=subscription_generation,
+            )
+            if (
+                isinstance(payload, BookBaselinePayload)
+                and payload.token_id == alpha.market.token_ids[1]
+            ):
+                self.alpha_final_started.set()
+                await self.release_alpha.wait()
+            return event
+
+        async def checkpoint_batch(
+            self,
+            writes: tuple[RecordingCheckpointWrite, ...],
+        ) -> tuple[BookCheckpoint, ...]:
+            checkpoints = await super().checkpoint_batch(writes)
+            self.checkpoint_batches.append(checkpoints)
+            return checkpoints
+
+    async def run() -> ReverseAckWriter:
+        operations: list[str] = []
+        writer = ReverseAckWriter(operations)
+        feed = FakeFeed(operations)
+        provider = MutablePlanProvider(_plan(("alpha", "beta")))
+        resolver = MutableResolver({"alpha": alpha, "beta": beta})
+        coordinator = _coordinator(
+            provider,
+            resolver,
+            feed,
+            writer,
+            resumed_gap_condition_ids={
+                41: frozenset(
+                    (alpha.market.condition_id, beta.market.condition_id)
+                )
+            },
+            checkpoint_seconds=60.0,
+        )
+        await coordinator.start(provider.current_plan, (alpha, beta))
+        captures = {
+            capture.market.condition_id: capture for capture in feed.captures
+        }
+        shutdown = asyncio.Event()
+        task = asyncio.create_task(coordinator.run(shutdown))
+
+        await captures[alpha.market.condition_id].emit(
+            _baseline_event(alpha, 0, 10)
+        )
+        await captures[beta.market.condition_id].emit(
+            _baseline_event(beta, 0, 11)
+        )
+        await captures[alpha.market.condition_id].emit(
+            _baseline_event(alpha, 1, 12)
+        )
+        await writer.alpha_final_started.wait()
+        await captures[beta.market.condition_id].emit(
+            _baseline_event(beta, 1, 13)
+        )
+        await _wait_for(
+            lambda: coordinator._resumed_gap_conditions[41]
+            == {alpha.market.condition_id}
+        )
+        writer.release_alpha.set()
+        await _wait_for(lambda: len(writer.checkpoints) == 4)
+        shutdown.set()
+        await task
+        return writer
+
+    writer = asyncio.run(run())
+
+    assert len(writer.checkpoint_batches) == 1
+    assert len(writer.checkpoint_batches[0]) == 4
+    checkpoint_times = {
+        checkpoint.observed_at_ms for checkpoint in writer.checkpoints
+    }
+    assert len(checkpoint_times) == 1
+    assert min(checkpoint_times) >= max(
+        event.observed_at_ms for event in writer.events
+    )
 
 
 def test_resolution_closes_resumed_gap_without_fabricating_checkpoint() -> None:
