@@ -4,6 +4,7 @@ import asyncio
 import threading
 import time
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -1937,7 +1938,7 @@ def test_recording_cli_parses_static_targets_duration_and_resume() -> None:
     assert args.resume is True
 
     with pytest.raises(SystemExit):
-        parser.parse_args(("--output", "capture.sqlite3"))
+        parser.parse_args(())
     with pytest.raises(SystemExit):
         parser.parse_args(
             (
@@ -1949,6 +1950,26 @@ def test_recording_cli_parses_static_targets_duration_and_resume() -> None:
                 "capture.sqlite3",
             )
         )
+
+
+def test_default_recording_output_path_uses_timestamped_directory() -> None:
+    path = entrypoint.default_output_path(
+        bot_spec=None,
+        market_slugs=("alpha", "beta"),
+        now=datetime(2026, 7, 19, 12, 34, 56),
+        recordings_dir=Path("recordings"),
+    )
+
+    assert path == Path("recordings/20260719-123456/markets.sqlite3")
+
+    bot_path = entrypoint.default_output_path(
+        bot_spec="polybot.examples.my_bot:create",
+        market_slugs=(),
+        now=datetime(2026, 7, 19, 12, 34, 56),
+    )
+    assert bot_path == Path(
+        "recordings/20260719-123456/bot-my_bot.sqlite3"
+    )
 
 
 def test_recording_cli_forwards_normalized_static_request(

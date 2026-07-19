@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
+from datetime import datetime
 from pathlib import Path
 
 from polybot.cli.config import load_dotenv, parse_overrides
@@ -17,11 +19,34 @@ from .service import record_markets
 
 
 RECORDING_CONFIG_NAME = "market-recorder"
+DEFAULT_RECORDINGS_DIR = Path("recordings")
+
+
+def default_output_path(
+    *,
+    bot_spec: str | None,
+    market_slugs: tuple[str, ...],
+    now: datetime | None = None,
+    recordings_dir: Path = DEFAULT_RECORDINGS_DIR,
+) -> Path:
+    """Return the conventional timestamped path for a new recording."""
+    timestamp = (now or datetime.now().astimezone()).strftime("%Y%m%d-%H%M%S")
+    if bot_spec is not None:
+        module, _, factory = bot_spec.rpartition(":")
+        description = f"bot-{module.rsplit('.', 1)[-1] or factory}"
+    elif len(market_slugs) == 1:
+        description = f"market-{market_slugs[0]}"
+    else:
+        description = "markets"
+    description = re.sub(r"[^A-Za-z0-9._-]+", "-", description).strip("-.")
+    return recordings_dir / timestamp / f"{description or 'recording'}.sqlite3"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _argument_parser()
     args = parser.parse_args(argv)
+    if args.resume and args.output is None:
+        parser.error("--resume requires --output")
     load_dotenv(args.dotenv)
 
     bot_spec: str | None = args.bot
@@ -45,6 +70,14 @@ def main(argv: list[str] | None = None) -> int:
         if bot_spec is not None
         else StaticStreamPlanProvider(tuple(args.market_slug)).market_slugs
     )
+    output_path = (
+        Path(args.output)
+        if args.output is not None
+        else default_output_path(
+            bot_spec=bot_spec,
+            market_slugs=market_slugs,
+        )
+    )
     target_identity = (
         bot_target_identity(bot_spec, config)
         if bot_spec is not None
@@ -55,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(
             record_markets(
                 config,
-                output_path=Path(args.output),
+                output_path=output_path,
                 target_identity=target_identity,
                 bot=bot,
                 market_slugs=market_slugs,
@@ -81,7 +114,13 @@ def _argument_parser() -> argparse.ArgumentParser:
         metavar="SLUG",
         help="static market slug to record; repeat for multiple markets",
     )
-    parser.add_argument("--output", required=True, help="SQLite archive path")
+    parser.add_argument(
+        "--output",
+        help=(
+            "SQLite archive path; defaults to "
+            "recordings/<timestamp>/<description>.sqlite3"
+        ),
+    )
     parser.add_argument(
         "--duration",
         type=parse_duration_seconds,

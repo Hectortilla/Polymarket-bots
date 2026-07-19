@@ -174,7 +174,6 @@ Record a dynamic bot's markets:
 ```sh
 uv run python -m polybot.recording \
   --bot polybot.examples.example_btc_five_minute_momentum:create \
-  --output recordings/btc-five-minute.sqlite \
   --duration 10d
 ```
 
@@ -184,13 +183,14 @@ Record a fixed set instead by repeating `--market-slug`:
 uv run python -m polybot.recording \
   --market-slug btc-updown-5m-1767225600 \
   --market-slug eth-updown-5m-1767225600 \
-  --output recordings/two-markets.sqlite \
   --duration 2h
 ```
 
-`--bot` and `--market-slug` are mutually exclusive, `--output` is required,
-and `--duration` accepts a positive integer followed by `s`, `m`, `h`, or `d`.
-Without a duration the process runs until graceful interruption. `--resume`
+`--bot` and `--market-slug` are mutually exclusive. When omitted, `--output`
+defaults to `recordings/<local-timestamp>/<description>.sqlite3`, with simple
+target-labelled filenames. `--duration` accepts a positive integer followed by
+`s`, `m`, `h`, or `d`. Without a duration the process runs until graceful
+interruption. `--resume`
 requires an existing compatible SQLite recording archive with the same target
 selection and appends a new session. Without `--resume`, the recorder refuses to
 overwrite an existing output. A resumed run preserves the previous session and

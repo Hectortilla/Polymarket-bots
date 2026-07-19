@@ -304,7 +304,10 @@ Command contract:
 - Run as `python -m polybot.recording`.
 - Require exactly one target mode: `--bot module:factory` or one or more repeated
   `--market-slug SLUG` values.
-- Require `--output PATH` for the SQLite recording archive.
+- Accept optional `--output PATH` for the SQLite recording archive. When omitted,
+  create `recordings/<local-timestamp>/<description>.sqlite3`; the timestamped
+  directory separates runs and the filename describes the target. `--resume`
+  still requires an explicit existing output path.
 - Accept `--duration <number>[s|m|h|d]`; without it, run until graceful
   interruption.
 - Refuse to overwrite an existing output on a normal run. Accept `--resume`

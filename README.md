@@ -90,8 +90,7 @@ uv run python -m polybot.cli --bot polybot.my_bot:create
 Polymarket exposes current L2 books, historical token-price points, and public
 trade rows through different API surfaces. It does not document a public
 archive of historical L2 books. Slice 9A therefore records the live public
-market stream into a user-selected SQLite recording archive that Slice 9B can
-replay.
+market stream into a local SQLite recording archive that Slice 9B can replay.
 
 Slice 9A's standalone command is `python -m polybot.recording`. Select either a
 bot factory, whose current and
@@ -102,16 +101,19 @@ market slugs. The two selection modes are mutually exclusive:
 uv run python -m polybot.recording \
   --market-slug btc-updown-5m-1767225600 \
   --market-slug eth-updown-5m-1767225600 \
-  --output recordings/two-markets.sqlite \
   --duration 2h
 ```
 
 ```sh
 uv run python -m polybot.recording \
   --bot polybot.examples.example_btc_five_minute_momentum:create \
-  --output recordings/btc-five-minute.sqlite \
   --duration 10d
 ```
+
+Without `--output`, recordings are written under
+`recordings/<local-timestamp>/markets.sqlite3` (or a descriptive bot/market
+filename). The timestamped directory separates runs. Use an explicit
+`--output` path with `--resume` to append to an existing archive.
 
 Omit `--duration` to run until graceful interruption. Use `--resume` to append
 another recording session to an existing compatible archive with the same
