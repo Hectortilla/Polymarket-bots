@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -31,7 +32,11 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.performance.artifacts import PerformanceOutputExistsError
-from polybot.recording.archive import RecordingArchive
+from polybot.recording.archive import (
+    INTERRUPTED_SESSION_REASON,
+    RecordingArchive,
+    RecordingReader,
+)
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookChange,
@@ -45,6 +50,7 @@ from polybot.recording.contracts import (
     RecordedBookLevel,
     RecordedEvent,
     ResolutionPayload,
+    SessionIntegrityStatus,
 )
 
 
@@ -783,7 +789,7 @@ def test_latency_past_selected_end_is_an_explicit_fill_rejection(
     assert _summary(result.results_dir)["status"] == "completed"
 
 
-def test_active_failed_and_ambiguous_sessions_fail_before_hooks(
+def test_active_session_is_locked_failed_prefix_replays_and_ambiguity_fails(
     tmp_path: Path,
 ) -> None:
     active_path = tmp_path / "active.sqlite3"
@@ -816,13 +822,33 @@ def test_active_failed_and_ambiguous_sessions_fail_before_hooks(
     _append_prefix(failed)
     _append_trade(failed, START_MS + 10)
     failed.close(clean=False, failure_reason="synthetic failure")
-    with pytest.raises(BacktestError) as failed_error:
+    failed_result = asyncio.run(
+        run_backtest(
+            BaseBot(),
+            _config(),
+            bot_spec="tests.test_backtesting:create",
+            options=BacktestOptions(
+                archive_path=failed_path,
+                results_dir=tmp_path / "failed-results",
+                report_interval_ms=5,
+            ),
+        )
+    )
+    assert failed_result.selection.session_integrity_status is (
+        SessionIntegrityStatus.FAILED
+    )
+    assert failed_result.selection.uses_partial_session is True
+    failed_summary = _summary(failed_result.results_dir)
+    assert failed_summary["partial"] is False
+    assert failed_summary["selection"]["session_integrity_status"] == "failed"
+    assert failed_summary["selection"]["uses_partial_session"] is True
+    with pytest.raises(BacktestError) as beyond_failure:
         _run(
             BaseBot(),
-            _ArchiveWindow(failed_path, START_MS, START_MS + 10),
-            tmp_path / "failed-results",
+            _ArchiveWindow(failed_path, START_MS, START_MS + 11),
+            tmp_path / "failed-beyond-results",
         )
-    assert failed_error.value.reason is BacktestFailureReason.SESSION_NOT_REPLAYABLE
+    assert beyond_failure.value.reason is BacktestFailureReason.INVALID_SELECTION
 
     ambiguous_path = tmp_path / "ambiguous.sqlite3"
     first = RecordingArchive.create(
@@ -849,6 +875,45 @@ def test_active_failed_and_ambiguous_sessions_fail_before_hooks(
             )
         )
     assert ambiguous_error.value.reason is BacktestFailureReason.INVALID_SELECTION
+
+
+def test_abandoned_session_is_sealed_and_replays_its_committed_prefix(
+    tmp_path: Path,
+) -> None:
+    archive_path = tmp_path / "abandoned.sqlite3"
+    process_id = os.fork()
+    if process_id == 0:
+        archive = RecordingArchive.create(
+            archive_path,
+            target_identity=f"slugs:{MARKET_SLUG}",
+            started_at_ms=START_MS,
+        )
+        _append_prefix(archive)
+        _append_trade(archive, START_MS + 10)
+        os._exit(17)
+    _, status = os.waitpid(process_id, 0)
+    assert os.waitstatus_to_exitcode(status) == 17
+
+    result = _run(
+        BaseBot(),
+        _ArchiveWindow(archive_path, START_MS, START_MS + 10),
+        tmp_path / "abandoned-results",
+    )
+
+    assert result.selection.end_at_ms == START_MS + 10
+    assert result.selection.session_integrity_status is (
+        SessionIntegrityStatus.INCOMPLETE
+    )
+    assert result.selection.uses_partial_session is True
+    with RecordingReader(archive_path) as reader:
+        (session,) = reader.sessions()
+        assert session.ended_at_ms == START_MS + 10
+        assert session.clean_close is False
+        assert session.integrity_status is SessionIntegrityStatus.INCOMPLETE
+        assert session.failure_reason == INTERRUPTED_SESSION_REASON
+        assert [event.sequence for event in reader.iter_events()] == [1, 2, 3, 4]
+    wal_path = archive_path.with_name(f"{archive_path.name}-wal")
+    assert not wal_path.exists() or wal_path.stat().st_size == 0
 
 
 def test_schema_v1_and_wallet_rules_are_rejected_before_strategy_start(

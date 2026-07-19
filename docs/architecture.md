@@ -243,7 +243,7 @@ the shared `BookDepthProjector`; deltas before a baseline and identity-mismatche
 events fail closed. `MarketCaptureDiagnostics.dropped_count` surfaces the
 SDK's cumulative drop count to the integrity monitor.
 
-A WebSocket resolution is flushed before its condition handle closes. The
+A WebSocket resolution is committed before its condition handle closes. The
 recorder then reconciles Gamma metadata and keeps retrying without the handle
 until Gamma exposes final terminal metadata; the recorded WebSocket resolution
 remains the authoritative event-order boundary during that lag.
@@ -277,6 +277,14 @@ the package-owned `CoverageGapPayload` contract, while the reader reports a
 typed unavailable error for sessions that predate anomaly diagnostics. These
 types preserve the artifact boundary consumed by Slice 9B.
 
+`AsyncRecordingWriter` is the sole archive sequence owner. Every event,
+checkpoint, gap mutation, and anomaly acknowledgement waits for a committed
+SQLite transaction under WAL mode with `synchronous=FULL`. Already queued
+events may share a group commit, while compound metadata-plus-resolution writes
+and common two-token checkpoint pairs use one atomic archive call. The capture
+coordinator therefore never treats an acknowledged row as an in-memory-only
+buffer.
+
 SQLite is an artifact format at the standalone package boundary. It does not
 reuse `.bot-state/`, open the Polyfollow application database, run application
 migrations, or become a shared runtime service. The required `--output` path is
@@ -286,6 +294,16 @@ requires a schema-compatible archive with the exact stored target identity,
 marks an unclosed prior session interrupted, continues the archive-wide arrival
 order, and appends a new session. The offline interval becomes an explicit
 target-wide gap; it is never presented as continuously observed time.
+
+Replay opens the archive through `RecordingReader.for_replay()`. That factory
+acquires and retains the exclusive writer lock, so an actively recording file
+is refused and cannot change during replay or hashing. If the lock is free and
+the latest session is still `active`, recovery marks it non-clean `incomplete`
+at the latest committed event/checkpoint observation and checkpoints the WAL
+before opening the immutable read transaction. A catchably failed session keeps
+its `failed` diagnostic status but exposes the same durable-prefix boundary.
+SQLite corruption, missing initial replay inputs, uncommitted work, and actual
+coverage gaps remain unrecoverable.
 
 The prediction-market WebSocket documents a timestamp on market events and a
 hash on full books and price changes. It does not document a monotonic sequence,
@@ -351,15 +369,14 @@ wallet and position clients. It does not create SDK clients, open network
 streams, or use live-runtime persistence under `.bot-state/`.
 
 Before any strategy lifecycle or event hook runs, the replay service accepts
-schema-v2 archives only,
-checks SQLite integrity, resolves an unambiguous closed, non-failed session,
-and validates the inclusive time and market selection. Complete sessions are
-eligible in full; an incomplete session is eligible only for a selected clean
-subrange that excludes its unknown or recorded gap. Metadata and baseline or
-checkpoint coverage must exist, and no coverage gap may affect the selected
-interval. The reader captures an immutable archive-wide sequence cutoff when
-it opens so rows appended concurrently cannot change an in-progress run.
-SQLite rows remain private to `RecordingReader`.
+schema-v2 archives only, checks SQLite integrity, takes the inactive-archive
+lease, resolves an unambiguous session, and validates the inclusive time and
+market selection. Complete sessions are eligible in full; failed and recovered
+sessions default to their last durable boundary and carry explicit
+partial-source provenance. Metadata and baseline or checkpoint coverage must
+exist, and no coverage gap may affect the selected interval. The reader
+captures an immutable archive-wide sequence cutoff when it opens. SQLite rows
+remain private to `RecordingReader`.
 
 For a mid-session start, replay restores a same-observation checkpoint pair for
 both outcome tokens, applies subsequent archive events without strategy

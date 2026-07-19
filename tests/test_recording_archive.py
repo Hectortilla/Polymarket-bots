@@ -326,6 +326,38 @@ def test_create_refuses_overwrite_and_writer_lock_is_nonblocking(tmp_path) -> No
         archive.close()
 
 
+def test_replay_reader_holds_the_writer_lock_for_its_snapshot(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    archive.append_metadata(
+        _event(
+            archive,
+            _metadata(),
+            observed_at_ms=started_at_ms,
+            identity=_identity(),
+        )
+    )
+    path = archive.path
+    target_identity = archive.target_identity
+    archive.close()
+
+    with RecordingReader.for_replay(path) as reader:
+        session = reader.select_session()
+        assert session.ended_at_ms is not None
+        with pytest.raises(ArchiveLockedError):
+            RecordingArchive.resume(
+                path,
+                target_identity=target_identity,
+                started_at_ms=session.ended_at_ms + 1,
+            )
+
+    resumed = RecordingArchive.resume(
+        path,
+        target_identity=target_identity,
+        started_at_ms=session.ended_at_ms + 1,
+    )
+    resumed.close()
+
+
 def test_capture_anomaly_journal_is_non_replayable_and_filterable(tmp_path) -> None:
     archive, started_at_ms = _opened_archive(tmp_path)
     starting_sequence = archive.next_sequence
@@ -714,6 +746,103 @@ def test_reader_reconstructs_events_metadata_and_checkpoint(tmp_path) -> None:
         assert checkpoint.book == _baseline()
         assert reader.last_observed_at_ms == started_at_ms + 62_000
         assert reader.unresolved_markets() == (_metadata(),)
+
+
+def test_common_checkpoint_batch_is_all_or_nothing(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    archive.append_events(
+        (
+            _event(
+                archive,
+                _metadata(),
+                observed_at_ms=started_at_ms,
+                identity=_identity(),
+                generation=1,
+            ),
+            RecordedEvent(
+                sequence=archive.next_sequence + 1,
+                session_id=archive.session_id,
+                subscription_generation=1,
+                observed_at_ms=started_at_ms + 1,
+                source_timestamp_ms=None,
+                identity=_identity("up-token"),
+                payload=_baseline("up-token"),
+            ),
+            RecordedEvent(
+                sequence=archive.next_sequence + 2,
+                session_id=archive.session_id,
+                subscription_generation=1,
+                observed_at_ms=started_at_ms + 1,
+                source_timestamp_ms=None,
+                identity=_identity("down-token"),
+                payload=_baseline("down-token"),
+            ),
+        )
+    )
+    sequence = archive.next_sequence - 1
+    up = BookCheckpoint(
+        sequence=sequence,
+        session_id=archive.session_id,
+        subscription_generation=1,
+        observed_at_ms=started_at_ms + 2,
+        identity=_identity("up-token"),
+        book=_baseline("up-token"),
+    )
+    wrong_session = BookCheckpoint(
+        sequence=sequence,
+        session_id=archive.session_id + 1,
+        subscription_generation=1,
+        observed_at_ms=started_at_ms + 2,
+        identity=_identity("down-token"),
+        book=_baseline("down-token"),
+    )
+
+    with pytest.raises(ArchiveIntegrityError, match="different recording session"):
+        archive.append_checkpoints((up, wrong_session))
+
+    count = archive._connection.execute(
+        "SELECT COUNT(*) FROM book_checkpoints"
+    ).fetchone()[0]
+    assert count == 0
+    archive.close()
+
+
+def test_metadata_and_resolution_batch_is_all_or_nothing(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    metadata = _event(
+        archive,
+        _metadata(),
+        observed_at_ms=started_at_ms,
+        identity=_identity(),
+    )
+    invalid_resolution = RecordedEvent(
+        sequence=archive.next_sequence + 1,
+        session_id=archive.session_id,
+        subscription_generation=0,
+        observed_at_ms=started_at_ms,
+        source_timestamp_ms=None,
+        identity=_identity(),
+        payload=ResolutionPayload(
+            token_ids=("up-token", "down-token"),
+            winning_token_id="up-token",
+            winning_outcome="Down",
+            source="gamma_reconciliation",
+        ),
+    )
+
+    with pytest.raises(ArchiveIntegrityError, match="resolution outcome"):
+        archive.append_events((metadata, invalid_resolution))
+
+    event_count = archive._connection.execute(
+        "SELECT COUNT(*) FROM events"
+    ).fetchone()[0]
+    metadata_count = archive._connection.execute(
+        "SELECT COUNT(*) FROM metadata_revisions"
+    ).fetchone()[0]
+    assert event_count == 0
+    assert metadata_count == 0
+    assert archive.next_sequence == 1
+    archive.close()
 
 
 def test_reader_checkpoint_and_events_rebuild_point_in_time_book(tmp_path) -> None:

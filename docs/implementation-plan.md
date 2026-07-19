@@ -441,6 +441,37 @@ The upstream market stream still lacks sequence/replay/resume guarantees, so
 this slice reduces avoidable gaps and makes remaining gaps diagnosable; it does
 not claim that capture can never have a gap.
 
+## Slice 9A.2: Crash-Durable Recording and Partial Recovery
+
+Status: done.
+
+- Make every event, anomaly, gap mutation, and checkpoint acknowledgement wait
+  for its committed SQLite transaction under WAL mode with
+  `synchronous=FULL`. Preserve bounded queueing and group commits for already
+  concurrent events; do not retain acknowledged in-memory-only rows.
+- Add atomic writer batches for coupled metadata-plus-resolution events and
+  common two-token checkpoints. Keep archive-wide sequence assignment inside
+  the single writer.
+- Drain and finalize the archive independently of capture/client cleanup.
+  SIGINT/SIGTERM remains clean; cancellation and catchable failures end at the
+  latest durable observation and retain their diagnostic status.
+- Add an exclusive replay lease. Refuse a live writer, recover an abandoned
+  `active` session as non-clean `incomplete` at its last committed event or
+  checkpoint, checkpoint the WAL, and retain the lock through replay and
+  archive hashing.
+- Permit failed and recovered sessions through their durable boundary by
+  default and record `session_integrity_status` plus `uses_partial_session` in
+  result selection provenance. Continue rejecting affecting coverage gaps,
+  invalid bounds, corruption, and missing metadata or book baselines.
+- Keep schema v2 compatible. Test blocking acknowledgements, atomic batches,
+  queue and disk failures, active-writer locking, abrupt `os._exit` recovery,
+  WAL checkpointing, partial-source replay, resume, and unchanged clean-session
+  behavior.
+
+“Recoverable” means the committed, internally valid prefix. It excludes an
+uncommitted event, a message never delivered by the upstream stream, damaged
+storage, and any interval already represented by a coverage gap.
+
 ## Slice 9B: Deterministic Backtest Replay
 
 Status: done.
@@ -451,7 +482,7 @@ Command and selection contract:
   Accept optional `--session ID`, inclusive `--start-ms`/`--end-ms`, repeated
   `--market-slug`, `--seed` (default `0`), `--results-dir`, and
   `--report-interval-ms` (default `1000`).
-- Default the sole closed session, all recorded markets, and its full event
+- Default the sole session, all recorded markets, and its replayable event
   range. Require an explicit session when multiple sessions exist. Refuse an
   existing result directory; create a unique default when none is supplied.
 - Keep `BotConfig.mode=paper`, reject `BOT_MODE=live`, and run backtests
@@ -460,12 +491,12 @@ Command and selection contract:
 
 Replay behavior:
 
-- Accept schema-v2 archives only. Before invoking strategy hooks, check SQLite
-  integrity, require a closed non-failed session, validate range and market
-  selection, require time-correct metadata and baseline/checkpoint coverage,
-  and reject any affecting coverage gap. Complete sessions are eligible in
-  full; permit only an explicit clean subrange of an interrupted incomplete
-  session. Provide no gap override.
+- Accept schema-v2 archives only. Before invoking strategy hooks, take the
+  inactive-archive replay lease, check SQLite integrity, validate range and
+  market selection, require time-correct metadata and baseline/checkpoint
+  coverage, and reject any affecting coverage gap. Complete sessions are
+  eligible in full; failed and recovered sessions default to their last durable
+  boundary and carry partial-source provenance. Provide no gap override.
 - Keep SQLite rows behind `RecordingReader`. Snapshot an immutable archive
   sequence cutoff, expose session/set selection and market enumeration, and
   restore common same-observation checkpoints for both tokens at mid-session

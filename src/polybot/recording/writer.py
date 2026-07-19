@@ -39,16 +39,33 @@ class OpenedCoverageGap:
     event: RecordedEvent
 
 
+@dataclass(frozen=True, slots=True)
+class RecordingEventWrite:
+    payload: RecordedPayload
+    observed_at_ms: int
+    source_timestamp_ms: int | None
+    identity: MarketIdentity | None
+    subscription_generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecordingCheckpointWrite:
+    book: BookBaselinePayload
+    observed_at_ms: int
+    identity: MarketIdentity
+    subscription_generation: int
+
+
 @dataclass(slots=True)
 class _EventCommand:
-    event: RecordedEvent
-    completion: asyncio.Future[None] | None
+    events: tuple[RecordedEvent, ...]
+    completion: asyncio.Future[None]
 
 
 @dataclass(slots=True)
 class _CheckpointCommand:
-    checkpoint: BookCheckpoint
-    completion: asyncio.Future[None] | None
+    checkpoints: tuple[BookCheckpoint, ...]
+    completion: asyncio.Future[None]
 
 
 @dataclass(slots=True)
@@ -148,26 +165,48 @@ class AsyncRecordingWriter:
         source_timestamp_ms: int | None,
         identity: MarketIdentity | None,
         subscription_generation: int,
-        flush: bool = False,
     ) -> RecordedEvent:
-        self._raise_if_unavailable()
-        completion = (
-            asyncio.get_running_loop().create_future() if flush else None
+        (event,) = await self.record_batch(
+            (
+                RecordingEventWrite(
+                    payload=payload,
+                    observed_at_ms=observed_at_ms,
+                    source_timestamp_ms=source_timestamp_ms,
+                    identity=identity,
+                    subscription_generation=subscription_generation,
+                ),
+            )
         )
-        event = RecordedEvent(
-            sequence=self._next_sequence,
-            session_id=self.session_id,
-            subscription_generation=subscription_generation,
-            observed_at_ms=observed_at_ms,
-            source_timestamp_ms=source_timestamp_ms,
-            identity=identity,
-            payload=payload,
-        )
-        self._put_nowait(_EventCommand(event, completion))
-        self._next_sequence += 1
-        if completion is not None:
-            await asyncio.shield(completion)
         return event
+
+    async def record_batch(
+        self,
+        writes: tuple[RecordingEventWrite, ...],
+    ) -> tuple[RecordedEvent, ...]:
+        """Commit one or more semantically coupled events atomically."""
+
+        self._raise_if_unavailable()
+        if not writes:
+            raise ValueError("recording event batch must not be empty")
+        events = tuple(
+            RecordedEvent(
+                sequence=self._next_sequence + offset,
+                session_id=self.session_id,
+                subscription_generation=write.subscription_generation,
+                observed_at_ms=write.observed_at_ms,
+                source_timestamp_ms=write.source_timestamp_ms,
+                identity=write.identity,
+                payload=write.payload,
+            )
+            for offset, write in enumerate(writes)
+        )
+        completion: asyncio.Future[None] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self._put_nowait(_EventCommand(events, completion))
+        self._next_sequence += len(events)
+        await asyncio.shield(completion)
+        return events
 
     async def checkpoint(
         self,
@@ -176,24 +215,46 @@ class AsyncRecordingWriter:
         observed_at_ms: int,
         identity: MarketIdentity,
         subscription_generation: int,
-        flush: bool = False,
     ) -> BookCheckpoint:
-        self._raise_if_unavailable()
-        completion = (
-            asyncio.get_running_loop().create_future() if flush else None
+        (checkpoint,) = await self.checkpoint_batch(
+            (
+                RecordingCheckpointWrite(
+                    book=book,
+                    observed_at_ms=observed_at_ms,
+                    identity=identity,
+                    subscription_generation=subscription_generation,
+                ),
+            )
         )
-        checkpoint = BookCheckpoint(
-            sequence=self.last_sequence,
-            session_id=self.session_id,
-            subscription_generation=subscription_generation,
-            observed_at_ms=observed_at_ms,
-            identity=identity,
-            book=book,
-        )
-        self._put_nowait(_CheckpointCommand(checkpoint, completion))
-        if completion is not None:
-            await asyncio.shield(completion)
         return checkpoint
+
+    async def checkpoint_batch(
+        self,
+        writes: tuple[RecordingCheckpointWrite, ...],
+    ) -> tuple[BookCheckpoint, ...]:
+        """Commit a common set of book checkpoints atomically."""
+
+        self._raise_if_unavailable()
+        if not writes:
+            raise ValueError("recording checkpoint batch must not be empty")
+        sequence = self.last_sequence
+        checkpoints = tuple(
+            BookCheckpoint(
+                sequence=sequence,
+                session_id=self.session_id,
+                subscription_generation=write.subscription_generation,
+                observed_at_ms=write.observed_at_ms,
+                identity=write.identity,
+                book=write.book,
+            )
+            for write in writes
+        )
+        completion: asyncio.Future[None] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self._put_nowait(_CheckpointCommand(checkpoints, completion))
+        await asyncio.shield(completion)
+        return checkpoints
 
     async def open_gap(
         self,
@@ -336,7 +397,8 @@ class AsyncRecordingWriter:
 
     async def _write_event_batch(self, first: _EventCommand) -> bool:
         commands = [first]
-        while len(commands) < self._batch_size:
+        event_count = len(first.events)
+        while event_count < self._batch_size:
             try:
                 candidate = self._queue.get_nowait()
             except asyncio.QueueEmpty:
@@ -349,6 +411,7 @@ class AsyncRecordingWriter:
                     raise
                 return await self._process_non_event(candidate)
             commands.append(candidate)
+            event_count += len(candidate.events)
         await self._write_events(commands)
         return False
 
@@ -356,26 +419,29 @@ class AsyncRecordingWriter:
         try:
             await run_blocking(
                 self._archive.append_events,
-                tuple(command.event for command in commands),
+                tuple(
+                    event
+                    for command in commands
+                    for event in command.events
+                ),
             )
         except BaseException as error:
             for command in commands:
-                if command.completion is not None:
-                    _set_exception(command.completion, error)
+                _set_exception(command.completion, error)
             raise
         for command in commands:
-            if command.completion is not None:
-                _set_result(command.completion, None)
+            _set_result(command.completion, None)
 
     async def _write_checkpoint(self, command: _CheckpointCommand) -> None:
         try:
-            await run_blocking(self._archive.append_checkpoint, command.checkpoint)
+            await run_blocking(
+                self._archive.append_checkpoints,
+                command.checkpoints,
+            )
         except BaseException as error:
-            if command.completion is not None:
-                _set_exception(command.completion, error)
+            _set_exception(command.completion, error)
             raise
-        if command.completion is not None:
-            _set_result(command.completion, None)
+        _set_result(command.completion, None)
 
     async def _process_non_event(self, command: _WriterCommand) -> bool:
         if isinstance(command, _CheckpointCommand):

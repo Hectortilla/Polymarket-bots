@@ -638,10 +638,14 @@ class RecordingArchive:
                 if clean
                 else SessionIntegrityStatus.FAILED
             )
-            ended_at_ms = max(
+            durable_boundary_ms = max(
                 self._session_started_at_ms,
                 self._last_observed_at_ms or 0,
-                time.time_ns() // 1_000_000,
+            )
+            ended_at_ms = (
+                max(durable_boundary_ms, time.time_ns() // 1_000_000)
+                if clean
+                else durable_boundary_ms
             )
             close_error: Exception | None = None
             try:
@@ -762,14 +766,28 @@ class RecordingArchive:
 class RecordingReader:
     """Read and validate one supported recording archive."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        _replay_lock_file: BinaryIO | None = None,
+    ) -> None:
         self._path = _archive_path(path)
+        self._replay_lock_file = _replay_lock_file
+        self._immutable = self._replay_lock_file is not None
         if not self._path.is_file():
+            if self._replay_lock_file is not None:
+                _release_writer_lock(self._replay_lock_file)
             raise ArchiveFormatError(f"recording archive does not exist: {self._path}")
-        self._connection = _open_readonly_connection(self._path)
         self._lock = RLock()
         self._closed = False
+        connection: sqlite3.Connection | None = None
         try:
+            connection = _open_readonly_connection(
+                self._path,
+                immutable=self._immutable,
+            )
+            self._connection = connection
             self._target_identity = _validate_archive(self._connection)
             self._connection.execute("BEGIN")
             self._replay_cutoff_sequence = _last_sequence(self._connection)
@@ -792,7 +810,40 @@ class RecordingReader:
                 sequence_cutoff=self._replay_cutoff_sequence,
             )
         except Exception:
-            self._connection.close()
+            if connection is not None:
+                connection.close()
+            if self._replay_lock_file is not None:
+                _release_writer_lock(self._replay_lock_file)
+                self._replay_lock_file = None
+            raise
+
+    @classmethod
+    def for_replay(cls, path: str | Path) -> RecordingReader:
+        """Recover and exclusively lease an inactive archive for replay."""
+
+        archive_path = _archive_path(path)
+        if not archive_path.is_file():
+            raise ArchiveFormatError(
+                f"recording archive does not exist: {archive_path}"
+            )
+        lock_file = _open_writer_lock_file(archive_path)
+        connection: sqlite3.Connection | None = None
+        try:
+            _acquire_writer_lock(lock_file, archive_path)
+            connection = _open_connection(archive_path)
+            _configure_writer(connection)
+            _validate_archive(connection)
+            _recover_interrupted_session(connection)
+            _checkpoint_wal(connection)
+            connection.close()
+            connection = None
+            return cls(archive_path, _replay_lock_file=lock_file)
+        except Exception:
+            if connection is not None:
+                with suppress(sqlite3.Error):
+                    connection.rollback()
+                connection.close()
+            _release_writer_lock(lock_file)
             raise
 
     @property
@@ -824,6 +875,18 @@ class RecordingReader:
         with self._lock:
             self._ensure_open()
             return self._last_observed_at_ms
+
+    def session_durable_end_at_ms(self, session_id: int) -> int | None:
+        """Return the latest committed observation in one session snapshot."""
+
+        normalized_session = _positive_int(session_id, "session ID")
+        with self._lock:
+            self._ensure_open()
+            return _last_session_observed_at_ms(
+                self._connection,
+                normalized_session,
+                sequence_cutoff=self._replay_cutoff_sequence,
+            )
 
     def iter_events(
         self,
@@ -879,7 +942,10 @@ class RecordingReader:
         )
         with self._lock:
             self._ensure_open()
-            connection = _open_readonly_connection(self._path)
+            connection = _open_readonly_connection(
+                self._path,
+                immutable=self._immutable,
+            )
             try:
                 connection.execute("BEGIN")
                 if not allow_gaps:
@@ -1581,8 +1647,13 @@ class RecordingReader:
         with self._lock:
             if self._closed:
                 return
-            self._connection.close()
-            self._closed = True
+            try:
+                self._connection.close()
+            finally:
+                if self._replay_lock_file is not None:
+                    _release_writer_lock(self._replay_lock_file)
+                    self._replay_lock_file = None
+                self._closed = True
 
     def __enter__(self) -> RecordingReader:
         return self
@@ -1596,7 +1667,10 @@ class RecordingReader:
         *,
         allow_gaps: bool,
     ) -> Iterator[RecordedEvent]:
-        connection = _open_readonly_connection(self._path)
+        connection = _open_readonly_connection(
+            self._path,
+            immutable=self._immutable,
+        )
         try:
             connection.execute("BEGIN")
             if not allow_gaps:
@@ -2053,6 +2127,42 @@ def _latest_session(connection: sqlite3.Connection) -> RecordingSession | None:
         "SELECT * FROM sessions ORDER BY session_id DESC LIMIT 1"
     ).fetchone()
     return None if row is None else _session_from_row(row)
+
+
+def _recover_interrupted_session(connection: sqlite3.Connection) -> None:
+    session = _latest_session(connection)
+    if session is None or session.integrity_status is not SessionIntegrityStatus.ACTIVE:
+        return
+    durable_end_at_ms = _last_session_observed_at_ms(
+        connection,
+        session.session_id,
+    )
+    ended_at_ms = max(
+        session.started_at_ms,
+        durable_end_at_ms or session.started_at_ms,
+    )
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """
+            UPDATE sessions
+            SET ended_at_ms = ?, clean_close = 0, integrity_status = ?,
+                failure_reason = ?
+            WHERE session_id = ?
+            """,
+            (
+                ended_at_ms,
+                SessionIntegrityStatus.INCOMPLETE.value,
+                INTERRUPTED_SESSION_REASON,
+                session.session_id,
+            ),
+        )
+        connection.commit()
+    except sqlite3.Error as error:
+        connection.rollback()
+        raise RecordingArchiveError(
+            "failed to recover interrupted recording session"
+        ) from error
 
 
 def _session_from_row(row: sqlite3.Row) -> RecordingSession:
@@ -2689,8 +2799,13 @@ def _open_connection(path: Path) -> sqlite3.Connection:
     return connection
 
 
-def _open_readonly_connection(path: Path) -> sqlite3.Connection:
-    uri = f"file:{quote(str(path))}?mode=ro"
+def _open_readonly_connection(
+    path: Path,
+    *,
+    immutable: bool = False,
+) -> sqlite3.Connection:
+    immutable_parameter = "&immutable=1" if immutable else ""
+    uri = f"file:{quote(str(path))}?mode=ro{immutable_parameter}"
     try:
         connection = sqlite3.connect(
             uri,
@@ -2714,6 +2829,19 @@ def _configure_writer(connection: sqlite3.Connection) -> None:
     if str(journal_mode).casefold() != "wal":
         raise RecordingArchiveError("recording archive could not enable WAL mode")
     connection.execute("PRAGMA synchronous = FULL")
+
+
+def _checkpoint_wal(connection: sqlite3.Connection) -> None:
+    try:
+        result = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    except sqlite3.Error as error:
+        raise RecordingArchiveError(
+            "recording archive WAL could not be checkpointed"
+        ) from error
+    if result is None or int(result[0]) != 0:
+        raise ArchiveLockedError(
+            "recording archive has an active reader and cannot be leased for replay"
+        )
 
 
 def _acquire_writer_lock(lock_file: BinaryIO, path: Path) -> None:
@@ -2787,6 +2915,35 @@ def _last_observed_at_ms(
             SELECT observed_at_ms FROM events{event_cutoff}
             UNION ALL
             SELECT observed_at_ms FROM book_checkpoints{checkpoint_cutoff}
+        )
+        """,
+        parameters,
+    ).fetchone()[0]
+    return None if value is None else int(value)
+
+
+def _last_session_observed_at_ms(
+    connection: sqlite3.Connection,
+    session_id: int,
+    *,
+    sequence_cutoff: int | None = None,
+) -> int | None:
+    event_cutoff = "" if sequence_cutoff is None else " AND sequence <= ?"
+    checkpoint_cutoff = "" if sequence_cutoff is None else " AND sequence <= ?"
+    parameters: tuple[object, ...] = (
+        (session_id, session_id)
+        if sequence_cutoff is None
+        else (session_id, sequence_cutoff, session_id, sequence_cutoff)
+    )
+    value = connection.execute(
+        f"""
+        SELECT MAX(observed_at_ms)
+        FROM (
+            SELECT observed_at_ms FROM events
+            WHERE session_id = ?{event_cutoff}
+            UNION ALL
+            SELECT observed_at_ms FROM book_checkpoints
+            WHERE session_id = ?{checkpoint_cutoff}
         )
         """,
         parameters,

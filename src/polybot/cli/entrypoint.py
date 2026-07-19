@@ -30,6 +30,7 @@ INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (
 TERM_ENV_KEY = "TERM"
 NON_INTERACTIVE_TERMINAL = "dumb"
 BACKTEST_DASHBOARD_MESSAGE = "backtests are headless; omit --dashboard"
+PARTIAL_RECORDING_WARNING = "Backtest source is a partial recording session"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -155,6 +156,12 @@ def _print_backtest_summary(result: BacktestResult) -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     metrics = summary["metrics"]
     valuation = summary["valuation"]
+    if result.selection.uses_partial_session:
+        print(
+            f"{PARTIAL_RECORDING_WARNING}: "
+            f"{result.selection.session_integrity_status.value}; "
+            f"committed through {result.selection.end_at_ms}"
+        )
     print(
         "Backtest completed: "
         f"events={metrics['event_count']} "

@@ -106,6 +106,8 @@ class RunSelection:
     end_ms: int | None
     market_slugs: tuple[str, ...]
     replay_cutoff_sequence: int | None = None
+    session_integrity_status: str | None = None
+    uses_partial_session: bool = False
 
     def __post_init__(self) -> None:
         if self.session_id is not None and (
@@ -136,6 +138,13 @@ class RunSelection:
             or self.replay_cutoff_sequence <= 0
         ):
             raise ValueError("performance replay cutoff must be positive")
+        if (
+            self.session_integrity_status is not None
+            and not self.session_integrity_status.strip()
+        ):
+            raise ValueError("performance session integrity status must not be empty")
+        if not isinstance(self.uses_partial_session, bool):
+            raise ValueError("performance partial-session marker must be boolean")
 
 
 @dataclass(slots=True)

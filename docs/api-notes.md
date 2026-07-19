@@ -226,6 +226,15 @@ anomaly journal preserves normalized failure evidence without altering replay
 event order. Its feature-activation boundary distinguishes legacy sessions with
 unavailable diagnostics from enabled sessions that observed zero anomalies.
 
+Archive durability is local and does not change the Polymarket integration.
+Each writer acknowledgement follows a committed WAL transaction with
+`synchronous=FULL`; queued events may be group-committed and common checkpoint
+pairs are atomic. Before replay, an exclusive archive lease refuses a live
+writer, recovers an abandoned active session at its last committed observation,
+and checkpoints any surviving WAL. This preserves recorded input but cannot
+recover an event that the process consumed without committing or an upstream
+message the recorder never received.
+
 This hardening cannot promise gap-free recording. The official market-channel
 contract still provides no sequence number, replay endpoint, hash lineage, or
 resume cursor. REST price/trade history and advertised best bid/ask values are
@@ -247,15 +256,15 @@ opening it, and reconstructs package-owned `Market`, `BookSnapshot`, and
 events, including equal source or observation timestamps; `observed_at_ms`
 drives the virtual clock and source time remains diagnostic.
 
-Replay validates a closed, non-failed session, metadata and common two-token
+Replay validates an inactive schema-v2 archive, metadata and common two-token
 book checkpoint/baseline coverage, the inclusive selected bounds, and selected
 markets before invoking strategy hooks. Complete sessions are eligible in
-full; an incomplete session requires a clean subrange before or after its
-recorded or unknown gap. It rejects an affecting gap rather than using price
-history, public trades, onchain settlement, or data outside the selection to
-guess the missing book. Because the reader and virtual runtime are entirely
-local, backtesting constructs no official client, makes no network call, and
-does not introduce an exception to the official-library rule.
+full; failed and recovered sessions default to their last durable boundary and
+are labeled partial sources. It rejects an affecting gap rather than using
+price history, public trades, onchain settlement, or data outside the selection
+to guess the missing book. Because recovery and the virtual runtime are
+entirely local, backtesting constructs no official client, makes no network
+call, and does not introduce an exception to the official-library rule.
 
 Wallet activity, authenticated orders/fills, maker identity and queue position,
 and external reference sources remain unsupported replay inputs. Wallet rules

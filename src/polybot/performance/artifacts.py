@@ -414,6 +414,10 @@ class PerformanceArtifacts:
                 "replay_cutoff_sequence": (
                     self.selection.replay_cutoff_sequence
                 ),
+                "session_integrity_status": (
+                    self.selection.session_integrity_status
+                ),
+                "uses_partial_session": self.selection.uses_partial_session,
             },
             "timing": {
                 "started_at_ms": self._started_at_ms,

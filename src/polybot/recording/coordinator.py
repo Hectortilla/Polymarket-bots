@@ -37,7 +37,11 @@ from polybot.recording.contracts import (
     ResolutionPayload,
 )
 from polybot.recording.planning import StreamPlanProvider
-from polybot.recording.writer import AsyncRecordingWriter
+from polybot.recording.writer import (
+    AsyncRecordingWriter,
+    RecordingCheckpointWrite,
+    RecordingEventWrite,
+)
 
 
 PLAN_REFRESH_SECONDS = 1.0
@@ -305,7 +309,7 @@ class RecordingCoordinator:
                 recording.metadata != existing.recording.metadata
                 and (not existing.terminal_claimed or recording.metadata.resolved)
             ):
-                await self._record_metadata(existing, recording, flush=True)
+                await self._record_metadata(existing, recording)
             return
 
         tracked = _TrackedMarket(
@@ -324,9 +328,11 @@ class RecordingCoordinator:
                     source_timestamp_ms=None,
                     identity=_market_identity(recording.metadata),
                     subscription_generation=0,
-                    flush=True,
                 )
-                tracked.last_observed_at_ms = observed_at_ms
+                tracked.last_observed_at_ms = max(
+                    tracked.last_observed_at_ms,
+                    observed_at_ms,
+                )
             if recording.metadata.resolved:
                 await self._record_gamma_resolution(tracked, recording)
             return
@@ -441,50 +447,51 @@ class RecordingCoordinator:
         capture: MarketCapture,
         captured: CapturedMarketEvent,
     ) -> bool:
-        async with self._record_lock:
-            if (
-                tracked.capture is not capture
-                or tracked.terminal_claimed
-                or self._stopping
-            ):
-                return False
-            is_resolution = isinstance(captured.payload, ResolutionPayload)
-            if is_resolution:
-                tracked.terminal_claimed = True
-            observed_at_ms = self._clock.now_ms()
-            projector = tracked.projector
-            if projector is None:
-                raise AssertionError("active capture has no book projector")
-            if isinstance(captured.payload, BookBaselinePayload):
-                projector.apply_baseline(
-                    captured.payload,
-                    condition_id=tracked.recording.market.condition_id,
-                    received_at_ms=observed_at_ms,
-                )
-            elif isinstance(captured.payload, BookDeltaPayload):
-                projector.apply_delta(
-                    captured.payload,
-                    condition_id=tracked.recording.market.condition_id,
-                    received_at_ms=observed_at_ms,
-                )
-            await self._writer.record(
+        if (
+            tracked.capture is not capture
+            or tracked.terminal_claimed
+            or self._stopping
+        ):
+            return False
+        is_resolution = isinstance(captured.payload, ResolutionPayload)
+        if is_resolution:
+            tracked.terminal_claimed = True
+        observed_at_ms = self._clock.now_ms()
+        projector = tracked.projector
+        if projector is None:
+            raise AssertionError("active capture has no book projector")
+        if isinstance(captured.payload, BookBaselinePayload):
+            projector.apply_baseline(
                 captured.payload,
-                observed_at_ms=observed_at_ms,
-                source_timestamp_ms=captured.source_timestamp_ms,
-                identity=captured.identity,
-                subscription_generation=capture.generation,
-                flush=is_resolution,
+                condition_id=tracked.recording.market.condition_id,
+                received_at_ms=observed_at_ms,
             )
-            tracked.last_observed_at_ms = observed_at_ms
-            ready = set(tracked.recording.market.token_ids) <= (
-                projector.baseline_token_ids
+        elif isinstance(captured.payload, BookDeltaPayload):
+            projector.apply_delta(
+                captured.payload,
+                condition_id=tracked.recording.market.condition_id,
+                received_at_ms=observed_at_ms,
             )
-            if ready:
-                await self._close_market_gaps(tracked, observed_at_ms)
-                tracked.coverage_started = True
-            elif is_resolution:
-                await self._close_market_gaps(tracked, observed_at_ms)
-            return is_resolution
+        await self._writer.record(
+            captured.payload,
+            observed_at_ms=observed_at_ms,
+            source_timestamp_ms=captured.source_timestamp_ms,
+            identity=captured.identity,
+            subscription_generation=capture.generation,
+        )
+        tracked.last_observed_at_ms = max(
+            tracked.last_observed_at_ms,
+            observed_at_ms,
+        )
+        ready = set(tracked.recording.market.token_ids) <= (
+            projector.baseline_token_ids
+        )
+        if ready:
+            await self._close_market_gaps(tracked, observed_at_ms)
+            tracked.coverage_started = True
+        elif is_resolution:
+            await self._close_market_gaps(tracked, observed_at_ms)
+        return is_resolution
 
     async def _handle_control(self, message: _ControlMessage) -> None:
         tracked = self._tracked.get(message.condition_id)
@@ -617,9 +624,9 @@ class RecordingCoordinator:
         projector = tracked.projector
         if capture is None or projector is None:
             raise AssertionError("checkpoint market has no active capture")
-        for book in projector.snapshots(received_at_ms=observed_at_ms):
-            await self._writer.checkpoint(
-                BookBaselinePayload(
+        writes = tuple(
+            RecordingCheckpointWrite(
+                book=BookBaselinePayload(
                     token_id=book.token_id,
                     bids=tuple(
                         RecordedBookLevel(level.price, level.size)
@@ -638,6 +645,10 @@ class RecordingCoordinator:
                 ),
                 subscription_generation=capture.generation,
             )
+            for book in projector.snapshots(received_at_ms=observed_at_ms)
+        )
+        if writes:
+            await self._writer.checkpoint_batch(writes)
 
     async def _reconcile_resolutions(self) -> None:
         tracked = tuple(
@@ -665,7 +676,7 @@ class RecordingCoordinator:
             _validate_revision(current.recording, recording)
             if current.terminal_claimed:
                 if recording.metadata != current.recording.metadata:
-                    await self._record_metadata(current, recording, flush=True)
+                    await self._record_metadata(current, recording)
                 if recording.metadata.resolved:
                     self._terminal_metadata_pending.discard(
                         current.recording.market.condition_id
@@ -675,7 +686,7 @@ class RecordingCoordinator:
                 await self._record_gamma_resolution(current, recording)
                 await self._close_capture(current)
             elif recording.metadata != current.recording.metadata:
-                await self._record_metadata(current, recording, flush=False)
+                await self._record_metadata(current, recording)
 
     async def _reconcile_terminal_metadata(
         self,
@@ -696,7 +707,7 @@ class RecordingCoordinator:
             return
         _validate_revision(tracked.recording, recording)
         if recording.metadata != tracked.recording.metadata:
-            await self._record_metadata(tracked, recording, flush=True)
+            await self._record_metadata(tracked, recording)
         if recording.metadata.resolved:
             self._terminal_metadata_pending.discard(condition_id)
         else:
@@ -706,8 +717,6 @@ class RecordingCoordinator:
         self,
         tracked: _TrackedMarket,
         recording: RecordingMarket,
-        *,
-        flush: bool,
     ) -> None:
         _validate_revision(tracked.recording, recording)
         async with self._record_lock:
@@ -718,10 +727,12 @@ class RecordingCoordinator:
                 source_timestamp_ms=None,
                 identity=_market_identity(recording.metadata),
                 subscription_generation=tracked.generation,
-                flush=flush,
             )
             tracked.recording = recording
-            tracked.last_observed_at_ms = observed_at_ms
+            tracked.last_observed_at_ms = max(
+                tracked.last_observed_at_ms,
+                observed_at_ms,
+            )
 
     async def _record_gamma_resolution(
         self,
@@ -741,32 +752,40 @@ class RecordingCoordinator:
                 return
             tracked.terminal_claimed = True
             observed_at_ms = self._clock.now_ms()
+            writes: list[RecordingEventWrite] = []
             if recording.metadata != tracked.recording.metadata:
-                await self._writer.record(
-                    recording.metadata,
+                writes.append(
+                    RecordingEventWrite(
+                        payload=recording.metadata,
+                        observed_at_ms=observed_at_ms,
+                        source_timestamp_ms=None,
+                        identity=_market_identity(recording.metadata),
+                        subscription_generation=tracked.generation,
+                    )
+                )
+            writes.append(
+                RecordingEventWrite(
+                    payload=ResolutionPayload(
+                        token_ids=market.token_ids,
+                        winning_token_id=market.winning_token_id,
+                        winning_outcome=market.winning_outcome,
+                        source=GAMMA_RECONCILIATION_SOURCE,
+                    ),
                     observed_at_ms=observed_at_ms,
                     source_timestamp_ms=None,
-                    identity=_market_identity(recording.metadata),
+                    identity=MarketIdentity(
+                        condition_id=market.condition_id,
+                        market_slug=market.slug,
+                    ),
                     subscription_generation=tracked.generation,
-                )
-            await self._writer.record(
-                ResolutionPayload(
-                    token_ids=market.token_ids,
-                    winning_token_id=market.winning_token_id,
-                    winning_outcome=market.winning_outcome,
-                    source=GAMMA_RECONCILIATION_SOURCE,
                 ),
-                observed_at_ms=observed_at_ms,
-                source_timestamp_ms=None,
-                identity=MarketIdentity(
-                    condition_id=market.condition_id,
-                    market_slug=market.slug,
-                ),
-                subscription_generation=tracked.generation,
-                flush=True,
             )
+            await self._writer.record_batch(tuple(writes))
             tracked.recording = recording
-            tracked.last_observed_at_ms = observed_at_ms
+            tracked.last_observed_at_ms = max(
+                tracked.last_observed_at_ms,
+                observed_at_ms,
+            )
             await self._close_market_gaps(tracked, observed_at_ms)
 
     async def _close_market_gaps(

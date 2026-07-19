@@ -126,6 +126,20 @@ created or resumed archives) a non-replayable capture-anomaly journal. An archiv
 can report `no detected gaps`; it cannot prove exchange-complete capture because
 the official prediction-market stream documents timestamps and book hashes but
 no sequence number, replay cursor, or resume protocol.
+Every recorder mutation is acknowledged only after its SQLite transaction has
+committed with WAL mode and full synchronization. Concurrently queued market
+events may share one commit, metadata-plus-resolution writes and common
+two-token checkpoints are atomic, and shutdown drains the writer before sealing
+the session.
+
+SIGINT and SIGTERM request a clean shutdown, but process kills, power loss, and
+similar failures cannot be caught. The committed prefix still remains usable.
+Replay takes the archive's exclusive writer lock, refuses a recorder that is
+still running, converts an abandoned active session to non-clean `incomplete`
+at its last durable event/checkpoint boundary, and checkpoints the surviving
+WAL before hashing or replay. Failed and recovered sessions are labeled partial
+sources. Do not delete or separate a crash-surviving `-wal` sidecar before this
+recovery; it is part of the SQLite archive until checkpointed.
 Price revisions split across consecutive same-timestamp/hash level-update frames
 are combined transactionally when an intermediate fragment would otherwise look
 crossed. A continuation may add hashes for tokens not present in the first
@@ -166,13 +180,16 @@ the selected archive interval. A deterministic virtual clock drives event
 delivery, strategy sleeps, paper latency, and broker jitter, so multi-day data
 runs as quickly as local SQLite reads and bot computation permit.
 
-By default the sole closed session, all its markets, and its full session range
-are selected. Use `--session ID` when an archive has multiple sessions,
+By default the sole session, all its markets, and its replayable range are
+selected. Use `--session ID` when an archive has multiple sessions,
 inclusive `--start-ms` and `--end-ms` for a subrange, and repeated
 `--market-slug` values for a subset. `--report-interval-ms` defaults to `1000`.
-Replay refuses active or failed sessions, unsupported schemas, missing
-metadata/baselines, invalid ranges, and coverage gaps that affect the selected
-interval. A clean subrange on either side of a gap remains usable.
+Replay refuses an archive whose recorder lock is still held, unsupported
+schemas, missing metadata/baselines, invalid ranges, and coverage gaps that
+affect the selected interval. Once the writer lock is released, abandoned and
+failed sessions default to their last committed boundary and are reported as
+partial recording sources. A clean subrange on either side of a real coverage
+gap remains usable; recovery never guesses across that gap.
 
 Every backtest creates a new result directory; pass `--results-dir PATH` to
 choose it, or let the CLI generate a unique path. Existing directories are

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -15,8 +16,10 @@ from polybot.cli.dashboard.state import DashboardState
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
+    PARTIAL_RECORDING_WARNING,
     TERM_ENV_KEY,
     _dashboard_enabled,
+    _print_backtest_summary,
     main,
 )
 from polybot.cli.factories import load_bot
@@ -49,6 +52,7 @@ from polybot.framework.runner import BotRunner
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.polymarket.types import Market, MarketOutcome
 from polybot.polymarket.types import MarketTradeHint
+from polybot.recording.contracts import SessionIntegrityStatus
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.cli.streams.contracts import BookStreamEvent
 
@@ -199,6 +203,56 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
     assert options.results_dir == results_dir
     assert options.report_interval_ms == 250
     assert captured["dashboard"] is False
+
+
+def test_backtest_summary_labels_partial_recording_source(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    (results_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "metrics": {
+                    "event_count": 3,
+                    "order_count": 0,
+                    "fill_count": 0,
+                    "net_pnl_usdc": "0",
+                    "return": "0",
+                    "max_drawdown_usdc": "0",
+                },
+                "valuation": {
+                    "final_status": "complete",
+                    "complete": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = BacktestResult(
+        selection=BacktestSelection(
+            1,
+            100,
+            200,
+            ("one",),
+            50,
+            session_integrity_status=SessionIntegrityStatus.INCOMPLETE,
+            uses_partial_session=True,
+        ),
+        results_dir=results_dir,
+        event_count=3,
+        accepted_dispatch_count=0,
+        skipped_dispatch_count=0,
+        resolution_count=0,
+    )
+
+    _print_backtest_summary(result)
+
+    output = capsys.readouterr().out
+    assert PARTIAL_RECORDING_WARNING in output
+    assert "incomplete" in output
+    assert "committed through 200" in output
 
 
 def test_main_routes_results_directory_to_ordinary_paper_run(

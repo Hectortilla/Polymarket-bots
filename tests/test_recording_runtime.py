@@ -37,13 +37,21 @@ from polybot.recording.contracts import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
+    PublicTradePayload,
     RecordedBookLevel,
     RecordedEvent,
     RevisionFingerprint,
     ResolutionPayload,
+    SessionIntegrityStatus,
+    TickSizeChangePayload,
 )
-from polybot.recording.coordinator import RecordingCoordinator
+from polybot.recording.coordinator import (
+    RecordingCoordinator,
+    _capture_anomaly_payload,
+)
 from polybot.recording.service import (
+    CANCELLED_RECORDING_REASON,
+    _finish_recording,
     _read_resume_state,
     _resolve_initial_markets,
     record_markets,
@@ -51,6 +59,8 @@ from polybot.recording.service import (
 from polybot.recording.writer import (
     AsyncRecordingWriter,
     OpenedCoverageGap,
+    RecordingCheckpointWrite,
+    RecordingEventWrite,
     RecordingWriteError,
     RecordingWriteQueueFullError,
 )
@@ -240,7 +250,6 @@ class MemoryWriter:
         source_timestamp_ms: int | None,
         identity: MarketIdentity | None,
         subscription_generation: int,
-        flush: bool = False,
     ) -> RecordedEvent:
         event = RecordedEvent(
             sequence=self._next_sequence,
@@ -255,6 +264,23 @@ class MemoryWriter:
         self.events.append(event)
         self.operations.append(f"record:{type(payload).__name__}")
         return event
+
+    async def record_batch(
+        self,
+        writes: tuple[RecordingEventWrite, ...],
+    ) -> tuple[RecordedEvent, ...]:
+        return tuple(
+            [
+                await self.record(
+                    write.payload,
+                    observed_at_ms=write.observed_at_ms,
+                    source_timestamp_ms=write.source_timestamp_ms,
+                    identity=write.identity,
+                    subscription_generation=write.subscription_generation,
+                )
+                for write in writes
+            ]
+        )
 
     async def open_gap(
         self,
@@ -307,7 +333,6 @@ class MemoryWriter:
         observed_at_ms: int,
         identity: MarketIdentity,
         subscription_generation: int,
-        flush: bool = False,
     ) -> BookCheckpoint:
         checkpoint = BookCheckpoint(
             sequence=self._next_sequence - 1,
@@ -321,6 +346,22 @@ class MemoryWriter:
         self.operations.append(f"checkpoint:{book.token_id}")
         return checkpoint
 
+    async def checkpoint_batch(
+        self,
+        writes: tuple[RecordingCheckpointWrite, ...],
+    ) -> tuple[BookCheckpoint, ...]:
+        return tuple(
+            [
+                await self.checkpoint(
+                    write.book,
+                    observed_at_ms=write.observed_at_ms,
+                    identity=write.identity,
+                    subscription_generation=write.subscription_generation,
+                )
+                for write in writes
+            ]
+        )
+
 
 class MemoryArchive:
     def __init__(self) -> None:
@@ -329,6 +370,7 @@ class MemoryArchive:
         self.events: list[RecordedEvent] = []
         self.event_batches: list[tuple[RecordedEvent, ...]] = []
         self.checkpoints: list[BookCheckpoint] = []
+        self.checkpoint_batches: list[tuple[BookCheckpoint, ...]] = []
         self.closed_gaps: list[tuple[int, int]] = []
         self.close_calls: list[tuple[bool, str | None]] = []
 
@@ -339,6 +381,11 @@ class MemoryArchive:
 
     def append_checkpoint(self, checkpoint: BookCheckpoint) -> None:
         self.checkpoints.append(checkpoint)
+
+    def append_checkpoints(self, checkpoints: Iterable[BookCheckpoint]) -> None:
+        batch = tuple(checkpoints)
+        self.checkpoint_batches.append(batch)
+        self.checkpoints.extend(batch)
 
     def append_gap(self, event: RecordedEvent) -> int:
         self.append_events((event,))
@@ -362,6 +409,60 @@ class BlockingArchive(MemoryArchive):
         if not self.release.wait(timeout=2):
             raise TimeoutError("test archive was not released")
         super().append_events(events)
+
+
+class BlockingCheckpointArchive(MemoryArchive):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def append_checkpoints(self, checkpoints: Iterable[BookCheckpoint]) -> None:
+        self.started.set()
+        if not self.release.wait(timeout=2):
+            raise TimeoutError("test checkpoint archive was not released")
+        super().append_checkpoints(checkpoints)
+
+
+class BlockingMutationArchive(MemoryArchive):
+    def __init__(self, operation: str) -> None:
+        super().__init__()
+        self.operation = operation
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def _block(self, operation: str) -> None:
+        if self.operation != operation:
+            return
+        self.started.set()
+        if not self.release.wait(timeout=2):
+            raise TimeoutError("test archive mutation was not released")
+
+    def append_gap(self, event: RecordedEvent) -> int:
+        self._block("open_gap")
+        return super().append_gap(event)
+
+    def close_gap(self, gap_id: int, *, ended_at_ms: int) -> None:
+        self._block("close_gap")
+        super().close_gap(gap_id, ended_at_ms=ended_at_ms)
+
+    def append_capture_anomaly(
+        self,
+        anomaly: CaptureAnomalyPayload,
+        *,
+        observed_at_ms: int,
+        identity: MarketIdentity,
+        subscription_generation: int,
+    ) -> CaptureAnomalyRecord:
+        self._block("anomaly")
+        return CaptureAnomalyRecord(
+            anomaly_id=1,
+            session_id=self.session_id,
+            subscription_generation=subscription_generation,
+            observed_at_ms=observed_at_ms,
+            identity=identity,
+            anomaly=anomaly,
+        )
 
 
 class FailingArchive(MemoryArchive):
@@ -412,6 +513,230 @@ def test_writer_preserves_global_multi_market_order_without_coalescing() -> None
     assert sum(len(batch) for batch in batches) == 3
 
 
+@pytest.mark.parametrize(
+    "payload_kind",
+    ("metadata", "book", "book_delta", "trade", "tick_change", "resolution"),
+)
+def test_recorded_payloads_do_not_acknowledge_before_commit_returns(
+    payload_kind: str,
+) -> None:
+    async def run() -> tuple[bool, list[RecordedEvent]]:
+        archive = BlockingArchive()
+        writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
+        recording = _recording_market("alpha")
+        token_id = recording.market.token_ids[0]
+        payloads = {
+            "metadata": recording.metadata,
+            "book": _baseline_payload(token_id),
+            "book_delta": BookDeltaPayload(
+                changes=(
+                    BookChange(
+                        token_id,
+                        Side.BUY,
+                        Decimal("0.40"),
+                        Decimal("2"),
+                    ),
+                )
+            ),
+            "trade": PublicTradePayload(
+                token_id,
+                Decimal("0.40"),
+                Decimal("2"),
+                Side.BUY,
+            ),
+            "tick_change": TickSizeChangePayload(
+                token_id,
+                Decimal("0.01"),
+                Decimal("0.001"),
+            ),
+            "resolution": ResolutionPayload(
+                recording.market.token_ids,
+                token_id,
+                recording.market.outcomes[0].label,
+                "market_websocket",
+            ),
+        }
+        payload = payloads[payload_kind]
+        write = asyncio.create_task(
+            writer.record(
+                payload,
+                observed_at_ms=10,
+                source_timestamp_ms=9,
+                identity=MarketIdentity(
+                    recording.market.condition_id,
+                    recording.market.slug,
+                    (
+                        None
+                        if payload_kind in {"metadata", "resolution"}
+                        else token_id
+                    ),
+                ),
+                subscription_generation=1,
+            )
+        )
+        await _wait_for(archive.started.is_set)
+        acknowledged_while_blocked = write.done()
+        archive.release.set()
+        await write
+        await writer.stop(clean=True)
+        return acknowledged_while_blocked, archive.events
+
+    acknowledged_while_blocked, events = asyncio.run(run())
+
+    assert acknowledged_while_blocked is False
+    assert [event.sequence for event in events] == [1]
+    assert events[0].payload is not None
+
+
+def test_checkpoint_does_not_acknowledge_before_commit_returns() -> None:
+    async def run() -> tuple[bool, list[BookCheckpoint]]:
+        archive = BlockingCheckpointArchive()
+        archive.next_sequence = 2
+        writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
+        write = asyncio.create_task(
+            writer.checkpoint(
+                _baseline_payload("alpha-up"),
+                observed_at_ms=10,
+                identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+                subscription_generation=1,
+            )
+        )
+        await _wait_for(archive.started.is_set)
+        acknowledged_while_blocked = write.done()
+        archive.release.set()
+        await write
+        await writer.stop(clean=True)
+        return acknowledged_while_blocked, archive.checkpoints
+
+    acknowledged_while_blocked, checkpoints = asyncio.run(run())
+
+    assert acknowledged_while_blocked is False
+    assert len(checkpoints) == 1
+
+
+@pytest.mark.parametrize("operation", ("open_gap", "close_gap", "anomaly"))
+def test_gap_and_anomaly_mutations_do_not_acknowledge_before_commit_returns(
+    operation: str,
+) -> None:
+    async def run() -> bool:
+        archive = BlockingMutationArchive(operation)
+        writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
+        market = _recording_market("alpha")
+        identity = MarketIdentity(
+            market.market.condition_id,
+            market.market.slug,
+        )
+        if operation == "open_gap":
+            mutation = asyncio.create_task(
+                writer.open_gap(
+                    CoverageGapPayload("disconnect", 10, None),
+                    observed_at_ms=10,
+                    identity=identity,
+                    subscription_generation=1,
+                )
+            )
+        elif operation == "close_gap":
+            mutation = asyncio.create_task(writer.close_gap(1, ended_at_ms=10))
+        else:
+            mutation = asyncio.create_task(
+                writer.record_anomaly(
+                    _capture_anomaly_payload(_capture_continuity_error(market)),
+                    observed_at_ms=10,
+                    identity=identity,
+                    subscription_generation=1,
+                )
+            )
+        await _wait_for(archive.started.is_set)
+        acknowledged_while_blocked = mutation.done()
+        archive.release.set()
+        await mutation
+        await writer.stop(clean=True)
+        return acknowledged_while_blocked
+
+    assert asyncio.run(run()) is False
+
+
+def test_concurrently_queued_records_share_one_group_commit() -> None:
+    async def run() -> MemoryArchive:
+        archive = MemoryArchive()
+        writer = AsyncRecordingWriter(archive, batch_size=16)  # type: ignore[arg-type]
+        writes = tuple(
+            asyncio.create_task(
+                writer.record(
+                    _baseline_payload(token_id),
+                    observed_at_ms=timestamp,
+                    source_timestamp_ms=timestamp - 1,
+                    identity=MarketIdentity(
+                        token_id.split("-", 1)[0],
+                        token_id.split("-", 1)[0],
+                        token_id,
+                    ),
+                    subscription_generation=1,
+                )
+            )
+            for token_id, timestamp in (
+                ("alpha-up", 10),
+                ("beta-down", 11),
+                ("gamma-up", 12),
+            )
+        )
+        await asyncio.gather(*writes)
+        await writer.stop(clean=True)
+        return archive
+
+    archive = asyncio.run(run())
+
+    assert [[event.sequence for event in batch] for batch in archive.event_batches] == [
+        [1, 2, 3]
+    ]
+
+
+def test_writer_commits_event_and_checkpoint_batches_atomically() -> None:
+    async def run() -> MemoryArchive:
+        archive = MemoryArchive()
+        writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
+        identities = (
+            MarketIdentity("alpha", "alpha", "alpha-up"),
+            MarketIdentity("alpha", "alpha", "alpha-down"),
+        )
+        await writer.record_batch(
+            tuple(
+                RecordingEventWrite(
+                    payload=_baseline_payload(identity.token_id or ""),
+                    observed_at_ms=10,
+                    source_timestamp_ms=9,
+                    identity=identity,
+                    subscription_generation=1,
+                )
+                for identity in identities
+            )
+        )
+        await writer.checkpoint_batch(
+            tuple(
+                RecordingCheckpointWrite(
+                    book=_baseline_payload(identity.token_id or ""),
+                    observed_at_ms=11,
+                    identity=identity,
+                    subscription_generation=1,
+                )
+                for identity in identities
+            )
+        )
+        await writer.stop(clean=True)
+        return archive
+
+    archive = asyncio.run(run())
+
+    assert [[event.sequence for event in batch] for batch in archive.event_batches] == [
+        [1, 2]
+    ]
+    assert len(archive.checkpoint_batches) == 1
+    assert [checkpoint.identity.token_id for checkpoint in archive.checkpoint_batches[0]] == [
+        "alpha-up",
+        "alpha-down",
+    ]
+
+
 def test_writer_queue_overflow_is_fatal_to_the_caller_not_lossy() -> None:
     async def run() -> tuple[list[int], list[tuple[bool, str | None]]]:
         archive = BlockingArchive()
@@ -420,21 +745,26 @@ def test_writer_queue_overflow_is_fatal_to_the_caller_not_lossy() -> None:
             queue_size=1,
             batch_size=1,
         )
-        await writer.record(
-            _baseline_payload("alpha-up"),
-            observed_at_ms=10,
-            source_timestamp_ms=9,
-            identity=MarketIdentity("alpha", "alpha", "alpha-up"),
-            subscription_generation=1,
+        first = asyncio.create_task(
+            writer.record(
+                _baseline_payload("alpha-up"),
+                observed_at_ms=10,
+                source_timestamp_ms=9,
+                identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+                subscription_generation=1,
+            )
         )
         await _wait_for(archive.started.is_set)
-        await writer.record(
-            _baseline_payload("alpha-down"),
-            observed_at_ms=11,
-            source_timestamp_ms=10,
-            identity=MarketIdentity("alpha", "alpha", "alpha-down"),
-            subscription_generation=1,
+        second = asyncio.create_task(
+            writer.record(
+                _baseline_payload("alpha-down"),
+                observed_at_ms=11,
+                source_timestamp_ms=10,
+                identity=MarketIdentity("alpha", "alpha", "alpha-down"),
+                subscription_generation=1,
+            )
         )
+        await asyncio.sleep(0)
         with pytest.raises(RecordingWriteQueueFullError):
             await writer.record(
                 _baseline_payload("beta-up"),
@@ -444,6 +774,7 @@ def test_writer_queue_overflow_is_fatal_to_the_caller_not_lossy() -> None:
                 subscription_generation=2,
             )
         archive.release.set()
+        await asyncio.gather(first, second)
         await writer.flush()
         await writer.stop(clean=True)
         return [event.sequence for event in archive.events], archive.close_calls
@@ -465,7 +796,6 @@ def test_writer_surfaces_archive_failure_and_marks_unclean_close() -> None:
                 source_timestamp_ms=9,
                 identity=MarketIdentity("alpha", "alpha", "alpha-up"),
                 subscription_generation=1,
-                flush=True,
             )
         await _wait_for(lambda: writer.failure is not None)
         with pytest.raises(RecordingWriteError, match="recording writer failed"):
@@ -480,26 +810,25 @@ def test_writer_surfaces_archive_failure_and_marks_unclean_close() -> None:
     assert "disk failed" in (close_calls[0][1] or "")
 
 
-def test_writer_failure_completes_a_dequeued_flush_barrier() -> None:
+def test_writer_failure_is_returned_by_the_acknowledged_record() -> None:
     async def run() -> BaseException | None:
         archive = FailingArchive()
         writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
-        await writer.record(
-            _baseline_payload("alpha-up"),
-            observed_at_ms=10,
-            source_timestamp_ms=9,
-            identity=MarketIdentity("alpha", "alpha", "alpha-up"),
-            subscription_generation=1,
-        )
         with pytest.raises(OSError, match="disk failed"):
-            await asyncio.wait_for(writer.flush(), timeout=1)
+            await writer.record(
+                _baseline_payload("alpha-up"),
+                observed_at_ms=10,
+                source_timestamp_ms=9,
+                identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+                subscription_generation=1,
+            )
         await _wait_for(lambda: writer.failure is not None)
         return writer.failure
 
     assert isinstance(asyncio.run(run()), OSError)
 
 
-def test_cancelled_flushed_write_does_not_fail_the_writer() -> None:
+def test_cancelled_durable_write_does_not_fail_the_writer() -> None:
     async def run() -> tuple[BaseException | None, list[RecordedEvent]]:
         archive = BlockingArchive()
         writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
@@ -508,10 +837,9 @@ def test_cancelled_flushed_write_does_not_fail_the_writer() -> None:
                 _baseline_payload("alpha-up"),
                 observed_at_ms=10,
                 source_timestamp_ms=9,
-                identity=MarketIdentity("alpha", "alpha", "alpha-up"),
-                subscription_generation=1,
-                flush=True,
-            )
+                    identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+                    subscription_generation=1,
+                )
         )
         await _wait_for(archive.started.is_set)
         write.cancel()
@@ -536,26 +864,35 @@ def test_writer_failure_wakes_shutdown_waiting_on_a_full_queue() -> None:
             queue_size=1,
             batch_size=1,
         )
-        await writer.record(
-            _baseline_payload("alpha-up"),
-            observed_at_ms=10,
-            source_timestamp_ms=9,
-            identity=MarketIdentity("alpha", "alpha", "alpha-up"),
-            subscription_generation=1,
+        first = asyncio.create_task(
+            writer.record(
+                _baseline_payload("alpha-up"),
+                observed_at_ms=10,
+                source_timestamp_ms=9,
+                identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+                subscription_generation=1,
+            )
         )
         await _wait_for(archive.started.is_set)
-        await writer.record(
-            _baseline_payload("alpha-down"),
-            observed_at_ms=11,
-            source_timestamp_ms=10,
-            identity=MarketIdentity("alpha", "alpha", "alpha-down"),
-            subscription_generation=1,
+        second = asyncio.create_task(
+            writer.record(
+                _baseline_payload("alpha-down"),
+                observed_at_ms=11,
+                source_timestamp_ms=10,
+                identity=MarketIdentity("alpha", "alpha", "alpha-down"),
+                subscription_generation=1,
+            )
         )
+        await asyncio.sleep(0)
         stop = asyncio.create_task(
             writer.stop(clean=False, failure_reason="disk failed")
         )
         await asyncio.sleep(0)
         archive.release.set()
+        with pytest.raises(OSError, match="disk failed"):
+            await first
+        with pytest.raises(OSError, match="disk failed"):
+            await second
         with pytest.raises(OSError, match="disk failed"):
             await asyncio.wait_for(stop, timeout=1)
         return writer.failure
@@ -1471,6 +1808,112 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
     assert gaps[0].gap.ended_at_ms is not None
     assert all(resolver.closed for resolver in resolvers)
     assert all(feed.closed for feed in feeds)
+
+
+def test_cancelled_recording_is_finalized_at_its_durable_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from polybot.recording import service
+
+    market = _recording_market("alpha")
+    coordinators: list[CancellingCoordinator] = []
+
+    class CancellingCoordinator:
+        def __init__(self, **kwargs: object) -> None:
+            self.writer = kwargs["writer"]
+            self.clock = kwargs["clock"]
+            self.boundary_ms: int | None = None
+            self.closed = False
+            coordinators.append(self)
+
+        async def start(
+            self,
+            plan: StreamPlan,
+            markets: tuple[RecordingMarket, ...],
+            **kwargs: object,
+        ) -> None:
+            recording = markets[0]
+            self.boundary_ms = self.clock.now_ms()
+            await self.writer.record(
+                recording.metadata,
+                observed_at_ms=self.boundary_ms,
+                source_timestamp_ms=None,
+                identity=MarketIdentity(
+                    recording.market.condition_id,
+                    recording.market.slug,
+                ),
+                subscription_generation=0,
+            )
+
+        async def run(self, shutdown: asyncio.Event) -> None:
+            raise asyncio.CancelledError
+
+        async def close(self) -> None:
+            self.closed = True
+
+    resolver = MutableResolver({"alpha": market})
+    feed = FakeFeed([])
+    monkeypatch.setattr(service, "RecordingMarketResolver", lambda client: resolver)
+    monkeypatch.setattr(service, "MarketRecordingFeed", lambda client: feed)
+    monkeypatch.setattr(service, "GammaClient", lambda client: object())
+    monkeypatch.setattr(service, "ClobClient", lambda client: object())
+    monkeypatch.setattr(service, "RecordingCoordinator", CancellingCoordinator)
+
+    output = tmp_path / "cancelled.sqlite3"
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            record_markets(
+                BotConfig(name="recorder"),
+                output_path=output,
+                target_identity="static-alpha",
+                market_slugs=("alpha",),
+                client=object(),
+            )
+        )
+
+    with RecordingReader(output) as reader:
+        (session,) = reader.sessions()
+    (coordinator,) = coordinators
+    assert session.ended_at_ms == coordinator.boundary_ms
+    assert session.clean_close is False
+    assert session.integrity_status is SessionIntegrityStatus.FAILED
+    assert session.failure_reason == CANCELLED_RECORDING_REASON
+    assert coordinator.closed is True
+    assert resolver.closed is True
+    assert feed.closed is True
+
+
+def test_finalization_still_marks_writer_failed_when_coordinator_cleanup_fails() -> None:
+    class FailingCoordinator:
+        async def close(self) -> None:
+            raise RuntimeError("capture cleanup failed")
+
+    class FinalizingWriter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[bool, str | None]] = []
+
+        async def stop(
+            self,
+            *,
+            clean: bool,
+            failure_reason: str | None = None,
+        ) -> None:
+            self.calls.append((clean, failure_reason))
+
+    async def run() -> FinalizingWriter:
+        writer = FinalizingWriter()
+        with pytest.raises(RuntimeError, match="capture cleanup failed"):
+            await _finish_recording(
+                FailingCoordinator(),  # type: ignore[arg-type]
+                writer,  # type: ignore[arg-type]
+                clean=True,
+            )
+        return writer
+
+    writer = asyncio.run(run())
+
+    assert writer.calls == [(False, "RuntimeError: capture cleanup failed")]
 
 
 def test_recording_cli_parses_static_targets_duration_and_resume() -> None:

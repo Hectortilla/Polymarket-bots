@@ -40,6 +40,8 @@ from polybot.recording.archive import (
     ArchiveCoverageError,
     ArchiveFormatError,
     ArchiveIntegrityError,
+    ArchiveLockedError,
+    RecordingArchiveError,
     RecordingReader,
     RecordingSession,
 )
@@ -64,8 +66,18 @@ async def run_backtest(
             "backtesting cannot run with BOT_MODE=live",
         )
     try:
-        reader = RecordingReader(options.archive_path)
+        reader = RecordingReader.for_replay(options.archive_path)
+    except ArchiveLockedError as error:
+        raise BacktestError(
+            BacktestFailureReason.SESSION_NOT_REPLAYABLE,
+            str(error),
+        ) from error
     except ArchiveFormatError as error:
+        raise BacktestError(
+            BacktestFailureReason.UNSUPPORTED_ARCHIVE,
+            str(error),
+        ) from error
+    except RecordingArchiveError as error:
         raise BacktestError(
             BacktestFailureReason.UNSUPPORTED_ARCHIVE,
             str(error),
@@ -120,6 +132,10 @@ async def run_backtest(
                     end_at_ms=selection.end_at_ms,
                     market_slugs=selection.market_slugs,
                     replay_cutoff_sequence=selection.replay_cutoff_sequence,
+                    session_integrity_status=(
+                        selection.session_integrity_status
+                    ),
+                    uses_partial_session=selection.uses_partial_session,
                 )
             results_dir = options.results_dir or _default_results_dir(
                 options.archive_path,
@@ -142,6 +158,10 @@ async def run_backtest(
                     end_ms=selection.end_at_ms,
                     market_slugs=selection.market_slugs,
                     replay_cutoff_sequence=selection.replay_cutoff_sequence,
+                    session_integrity_status=(
+                        selection.session_integrity_status.value
+                    ),
+                    uses_partial_session=selection.uses_partial_session,
                 ),
                 initial_cash_usdc=config.paper_portfolio_usdc,
                 report_interval_ms=options.report_interval_ms,
@@ -234,30 +254,11 @@ def _selection(
     session: RecordingSession,
     options: BacktestOptions,
 ) -> BacktestSelection:
-    if (
-        session.ended_at_ms is None
-        or session.integrity_status
-        in {SessionIntegrityStatus.ACTIVE, SessionIntegrityStatus.FAILED}
-        or (
-            session.integrity_status is SessionIntegrityStatus.COMPLETE
-            and not session.clean_close
-        )
-    ):
+    effective_end_at_ms = _replayable_session_end(reader, session)
+    if effective_end_at_ms is None:
         raise BacktestError(
             BacktestFailureReason.SESSION_NOT_REPLAYABLE,
             f"recording session {session.session_id} is not cleanly replayable",
-        )
-    if (
-        session.integrity_status is SessionIntegrityStatus.INCOMPLETE
-        and not session.clean_close
-        and (
-            options.end_at_ms is None
-            or options.end_at_ms >= session.ended_at_ms
-        )
-    ):
-        raise BacktestError(
-            BacktestFailureReason.SESSION_NOT_REPLAYABLE,
-            "incomplete recording sessions require an explicit clean subrange",
         )
     requested_start = (
         session.started_at_ms
@@ -265,11 +266,13 @@ def _selection(
         else options.start_at_ms
     )
     requested_end = (
-        session.ended_at_ms if options.end_at_ms is None else options.end_at_ms
+        effective_end_at_ms
+        if options.end_at_ms is None
+        else options.end_at_ms
     )
     if (
         requested_start < session.started_at_ms
-        or requested_end > session.ended_at_ms
+        or requested_end > effective_end_at_ms
         or requested_end < requested_start
     ):
         raise BacktestError(
@@ -317,7 +320,37 @@ def _selection(
         end_at_ms=requested_end,
         market_slugs=tuple(selected_slugs),
         replay_cutoff_sequence=reader.replay_cutoff_sequence,
+        session_integrity_status=session.integrity_status,
+        uses_partial_session=(
+            session.integrity_status is not SessionIntegrityStatus.COMPLETE
+        ),
     )
+
+
+def _replayable_session_end(
+    reader: RecordingReader,
+    session: RecordingSession,
+) -> int | None:
+    if session.integrity_status is SessionIntegrityStatus.ACTIVE:
+        return None
+    if (
+        session.integrity_status is SessionIntegrityStatus.COMPLETE
+        and not session.clean_close
+    ):
+        return None
+    if session.clean_close:
+        return session.ended_at_ms
+    if session.integrity_status not in {
+        SessionIntegrityStatus.INCOMPLETE,
+        SessionIntegrityStatus.FAILED,
+    }:
+        return None
+    durable_end_at_ms = reader.session_durable_end_at_ms(session.session_id)
+    if durable_end_at_ms is None:
+        return None
+    if session.ended_at_ms is None:
+        return durable_end_at_ms
+    return min(session.ended_at_ms, durable_end_at_ms)
 
 
 def _preflight_selection(

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from polybot.recording.contracts import SessionIntegrityStatus
+
 
 class BacktestFailureReason(StrEnum):
     UNSUPPORTED_ARCHIVE = "unsupported_archive"
@@ -88,6 +90,10 @@ class BacktestSelection:
     end_at_ms: int
     market_slugs: tuple[str, ...]
     replay_cutoff_sequence: int
+    session_integrity_status: SessionIntegrityStatus = (
+        SessionIntegrityStatus.COMPLETE
+    )
+    uses_partial_session: bool = False
 
 
 @dataclass(frozen=True, slots=True)

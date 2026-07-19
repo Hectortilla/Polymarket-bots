@@ -197,6 +197,19 @@ overwrite an existing output. A resumed run preserves the previous session and
 records the offline interval as a coverage gap. `--dotenv` and `--override` have
 their normal runner meanings when constructing the bot.
 
+Records, anomaly diagnostics, gap changes, and checkpoints return to the
+capture coordinator only after their SQLite transaction commits. Concurrent
+market events may be group-committed, while metadata-plus-resolution writes and
+common two-token checkpoints are stored atomically. This makes the committed
+prefix independent of final shutdown.
+
+An uncatchable process kill can still leave the latest session marked `active`
+and committed rows in SQLite's `-wal` sidecar. Backtest replay acquires the
+writer lock, refuses a recorder that is still running, seals an abandoned
+session as non-clean `incomplete` at its last committed event/checkpoint, and
+checkpoints the WAL. Keep the main archive and any crash-surviving SQLite
+sidecars together until that recovery runs.
+
 Dynamic bots should keep current and next market generation deterministic. The
 recorder resolves both plans, subscribes to the current market, and
 pre-subscribes an available next market before rollover. A not-yet-published
@@ -257,14 +270,17 @@ only the selected archive: no SDK/network client is constructed and
 private-user inputs, maker-queue assumptions, and dependencies on unrecorded
 external reference feeds are rejected.
 
-The default selection is all markets and the full sole closed session. If the
+The default selection is all markets and the full sole session. If the
 archive contains multiple sessions, choose one with `--session ID`. Narrow the
 inclusive interval with `--start-ms` and `--end-ms`, or repeat
-`--market-slug SLUG` to choose a subset. The session must be closed and not
-failed. Complete sessions are eligible in full; an incomplete session requires
-a clean selected subrange outside its recorded or unknown gap. The range must
-have time-correct metadata and a common book baseline/checkpoint for both
-outcome tokens, and no affecting coverage gap may cross it.
+`--market-slug SLUG` to choose a subset. The recorder must no longer hold the
+archive lock. Complete sessions are eligible in full. Failed and abandoned
+sessions default to their last durable event/checkpoint boundary, are labeled
+as partial recording sources, and may also be narrowed explicitly. The range
+must have time-correct metadata and a common book baseline/checkpoint for both
+outcome tokens, and no affecting coverage gap may cross it. Recovery cannot
+make a prefix replayable if the process died before those minimum inputs were
+committed.
 
 Replay uses archive arrival sequence as authoritative order and
 `observed_at_ms` as virtual time. Dynamic `current_stream_rules()` and

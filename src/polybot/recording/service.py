@@ -40,6 +40,7 @@ from polybot.recording.writer import AsyncRecordingWriter
 NO_CURRENT_MARKETS_MESSAGE = (
     "the recorder requires at least one current market subscription"
 )
+CANCELLED_RECORDING_REASON = "recording task was cancelled before clean shutdown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +149,13 @@ async def record_markets(
             duration_seconds=duration_seconds,
         )
     except asyncio.CancelledError:
-        await _finish_recording(coordinator, writer, clean=True)
+        await _finish_recording(
+            coordinator,
+            writer,
+            clean=False,
+            failure_reason=CANCELLED_RECORDING_REASON,
+            suppress_errors=True,
+        )
         raise
     except BaseException as error:
         await _finish_recording(
@@ -162,10 +169,11 @@ async def record_markets(
     else:
         await _finish_recording(coordinator, writer, clean=True)
     finally:
-        await feed.close()
-        await resolver.close()
-        if owns_client:
-            await public_client.close()
+        await _close_recording_sources(
+            feed,
+            resolver,
+            public_client if owns_client else None,
+        )
 
 
 async def _resolve_initial_markets(
@@ -357,16 +365,46 @@ async def _finish_recording(
     failure_reason: str | None = None,
     suppress_errors: bool = False,
 ) -> None:
-    async def finish() -> None:
-        if coordinator is not None:
+    cleanup_error: BaseException | None = None
+    if coordinator is not None:
+        try:
             await coordinator.close()
-        if writer is not None:
-            await writer.stop(clean=clean, failure_reason=failure_reason)
+        except BaseException as error:
+            cleanup_error = error
+    if writer is not None:
+        writer_clean = clean and cleanup_error is None
+        writer_reason = failure_reason
+        if not writer_clean and writer_reason is None:
+            writer_reason = (
+                "recording coordinator cleanup failed"
+                if cleanup_error is None
+                else f"{type(cleanup_error).__name__}: {cleanup_error}"
+            )
+        try:
+            await writer.stop(
+                clean=writer_clean,
+                failure_reason=writer_reason,
+            )
+        except BaseException as error:
+            if cleanup_error is None:
+                cleanup_error = error
+    if cleanup_error is not None and not suppress_errors:
+        raise cleanup_error
 
-    if not suppress_errors:
-        await finish()
-        return
-    try:
-        await finish()
-    except Exception:
-        pass
+
+async def _close_recording_sources(
+    feed: MarketRecordingFeed,
+    resolver: RecordingMarketResolver,
+    client: AsyncPublicClient | None,
+) -> None:
+    for close in (
+        feed.close,
+        resolver.close,
+        None if client is None else client.close,
+    ):
+        if close is None:
+            continue
+        try:
+            await close()
+        except BaseException:
+            pass
