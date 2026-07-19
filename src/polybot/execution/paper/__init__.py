@@ -35,7 +35,10 @@ from .idempotency import DUPLICATE_SOURCE_MESSAGE, SourceIdempotencyStore
 from .market_data import (
     MARKET_FEE_INVALID_MESSAGE,
     MARKET_UNAVAILABLE_MESSAGE,
+    MARKET_METADATA_MISMATCH_MESSAGE,
+    MARKET_RESOLVED_MESSAGE,
     latest_book,
+    market_matches_order_and_book,
     resolve_fee_rate,
 )
 from .latency import sample_latency_ms
@@ -127,12 +130,15 @@ class PaperBroker(Broker):
                 self._fills_by_source_id[order.source_id] = claimed_fill
 
         if not owns_claim:
-            return await claimed_fill
+            return await asyncio.shield(claimed_fill)
 
+        source_claimed = False
         try:
-            if self._source_store is not None and not await run_blocking(
-                self._source_store.claim, order.source_id
-            ):
+            if self._source_store is not None:
+                source_claimed = await run_blocking(
+                    self._source_store.claim, order.source_id
+                )
+            if self._source_store is not None and not source_claimed:
                 fill = FillEvent.rejected(
                     order_id=f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}",
                     token_id=order.token_id,
@@ -142,15 +148,15 @@ class PaperBroker(Broker):
                     reject_reason=FillRejectReason.DUPLICATE_SOURCE_ID,
                     reject_message=DUPLICATE_SOURCE_MESSAGE,
                 )
-                claimed_fill.set_result(fill)
+                _complete_claim(claimed_fill, fill)
                 return fill
             fill = await self._submit_once(order)
-            claimed_fill.set_result(fill)
+            _complete_claim(claimed_fill, fill)
             return fill
         except BaseException as exc:
             if not claimed_fill.done():
                 claimed_fill.set_exception(exc)
-            if self._source_store is not None:
+            if self._source_store is not None and source_claimed:
                 await run_blocking(self._source_store.release, order.source_id)
             async with self._source_claim_lock:
                 if self._fills_by_source_id.get(order.source_id) is claimed_fill:
@@ -174,6 +180,14 @@ class PaperBroker(Broker):
                 received_at_ms=self._now_ms(),
                 reject_reason=FillRejectReason.BACKTEST_DATA_EXHAUSTED,
                 reject_message=BACKTEST_DATA_EXHAUSTED_MESSAGE,
+            )
+        if self._is_settled(order.condition_id):
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=self._now_ms(),
+                reject_reason=FillRejectReason.MARKET_RESOLVED,
+                reject_message=MARKET_RESOLVED_MESSAGE,
             )
         book = await latest_book(self._books, order.token_id)
         fill_time_ms = max(start_ms + latency_ms, self._now_ms())
@@ -203,7 +217,7 @@ class PaperBroker(Broker):
             )
             return fill
 
-        fee_rate, fee_reject = await resolve_fee_rate(self._markets, order, book)
+        market_data, fee_reject = await resolve_fee_rate(self._markets, order, book)
         if fee_reject is not None:
             reject_reason, reject_message = fee_reject
             fill = self._rejected_fill(
@@ -214,10 +228,59 @@ class PaperBroker(Broker):
                 reject_message=reject_message,
             )
             return fill
+        assert market_data is not None
+        if self._is_settled(market_data.market.condition_id):
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=self._now_ms(),
+                reject_reason=FillRejectReason.MARKET_RESOLVED,
+                reject_message=MARKET_RESOLVED_MESSAGE,
+            )
+        book = await latest_book(self._books, order.token_id)
+        fill_time_ms = max(start_ms + latency_ms, self._now_ms())
+        if book is None:
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=fill_time_ms,
+                reject_reason=FillRejectReason.BOOK_UNAVAILABLE,
+                reject_message=BOOK_UNAVAILABLE_MESSAGE,
+            )
+        if not market_matches_order_and_book(market_data.market, order, book):
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=fill_time_ms,
+                reject_reason=FillRejectReason.MARKET_METADATA_MISMATCH,
+                reject_message=MARKET_METADATA_MISMATCH_MESSAGE,
+            )
+        book_reject = classify_book(
+            order,
+            book,
+            fill_time_ms,
+            self._config.event_max_age_ms,
+        )
+        if book_reject is not None:
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=fill_time_ms,
+                reject_reason=book_reject,
+                reject_message=self._book_reject_message(book_reject),
+            )
+        if self._is_settled(market_data.market.condition_id):
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=fill_time_ms,
+                reject_reason=FillRejectReason.MARKET_RESOLVED,
+                reject_message=MARKET_RESOLVED_MESSAGE,
+            )
         fill = simulate_fill(
             order=order,
             book=book,
-            fee_rate=fee_rate,
+            fee_rate=market_data.fee_rate,
             max_slippage_pct=self._config.max_slippage_pct,
             order_id=order_id,
             fill_time_ms=fill_time_ms,
@@ -254,6 +317,9 @@ class PaperBroker(Broker):
                     condition_id,
                 )
         return fill
+
+    def _is_settled(self, condition_id: str | None) -> bool:
+        return condition_id is not None and condition_id in self._settled_conditions
 
     async def cancel_all(self) -> None:
         return None
@@ -299,3 +365,8 @@ class PaperBroker(Broker):
             reject_reason=reject_reason,
             reject_message=reject_message,
         )
+
+
+def _complete_claim(future: asyncio.Future[FillEvent], fill: FillEvent) -> None:
+    if not future.done():
+        future.set_result(fill)

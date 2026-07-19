@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterable
 from typing import TYPE_CHECKING
 
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.polymarket.types import Market, market_token_ids
+from polybot.polymarket.markets import Market
 
 from .contracts import StreamKind, StreamSource
 
@@ -25,7 +25,7 @@ def build_streams(
 ) -> tuple[tuple[StreamKind, StreamSource], ...]:
     streams: list[tuple[StreamKind, StreamSource]] = []
     token_ids = {
-        token_id for market in markets for token_id in market_token_ids(market)
+        token_id for market in markets for token_id in market.token_ids
     }
     if token_ids:
         stream = (

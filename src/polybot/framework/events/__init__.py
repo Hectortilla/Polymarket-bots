@@ -34,6 +34,7 @@ class FillRejectReason(StrEnum):
     MARKET_UNAVAILABLE = "market_unavailable"
     MARKET_FEE_INVALID = "market_fee_invalid"
     MARKET_METADATA_MISMATCH = "market_metadata_mismatch"
+    MARKET_RESOLVED = "market_resolved"
     NO_DEPTH_WITHIN_SLIPPAGE = "no_depth_within_slippage"
     DUPLICATE_SOURCE_ID = "duplicate_source_id"
     BACKTEST_DATA_EXHAUSTED = "backtest_data_exhausted"

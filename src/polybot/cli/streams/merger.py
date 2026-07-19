@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.polymarket.types import MarketTradeHint
+from polybot.framework.coalescing import PendingByKey
+from polybot.polymarket.market_hints import MarketTradeHint
 
 from .contracts import (
     BookStreamEvent,
@@ -58,8 +59,8 @@ class StreamMerger:
         self._streams = streams
         self._telemetry = telemetry
         self._queue: asyncio.Queue[QueuedItem] = asyncio.Queue()
-        self._pending_books: dict[str, BookSnapshot] = {}
-        self._pending_market_hints: dict[str, MarketTradeHint] = {}
+        self._pending_books: PendingByKey[str, BookSnapshot] = PendingByKey()
+        self._pending_market_hints: PendingByKey[str, MarketTradeHint] = PendingByKey()
         self._tasks: list[asyncio.Task[None]] = []
         self._completed = 0
         self._started = False
@@ -121,10 +122,13 @@ class StreamMerger:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        for _, stream in self._streams:
-            close = getattr(stream, "aclose", None)
-            if close is not None:
-                await close()
+        close_operations = tuple(
+            close()
+            for _, stream in self._streams
+            if (close := getattr(stream, "aclose", None)) is not None
+        )
+        if close_operations:
+            await asyncio.gather(*close_operations, return_exceptions=True)
         self._tasks.clear()
         self._streams = ()
         if self._telemetry is not None:
@@ -163,21 +167,17 @@ class StreamMerger:
             return
         if self._telemetry is not None:
             self._telemetry.book_received()
-        if token_id in self._pending_books:
-            self._pending_books[token_id] = event
+        if not self._pending_books.update(token_id, event):
             if self._telemetry is not None:
                 self._telemetry.book_dropped()
             return
-        self._pending_books[token_id] = event
         self._queue.put_nowait(_BookMarker(token_id))
         if self._telemetry is not None:
             self._telemetry.enqueued()
 
     def _enqueue_market_hint(self, event: MarketTradeHint) -> None:
-        if event.condition_id in self._pending_market_hints:
-            self._pending_market_hints[event.condition_id] = event
+        if not self._pending_market_hints.update(event.condition_id, event):
             return
-        self._pending_market_hints[event.condition_id] = event
         self._queue.put_nowait(_MarketHintMarker(event.condition_id))
         if self._telemetry is not None:
             self._telemetry.enqueued()

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from polybot.framework.streams import StreamPlan
-from polybot.polymarket.types import Market
+from polybot.polymarket.markets import Market
 
 
 class MarketResolver(Protocol):

@@ -240,6 +240,15 @@ class DashboardState:
         self.wallet_page = updated
         return True
 
+    def revalidate_wallet_page(self, lanes_per_page: int) -> bool:
+        if lanes_per_page <= 0:
+            return False
+        maximum = max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
+        if self.wallet_page <= maximum:
+            return False
+        self.wallet_page = maximum
+        return True
+
     def set_wallet_lanes(self, wallets: tuple[str, ...]) -> None:
         for wallet in wallets:
             self._activate_wallet_lane(wallet)
@@ -533,7 +542,7 @@ class DashboardState:
     ) -> PortfolioValuation:
         if self.portfolio is None:
             return PortfolioValuation.unavailable()
-        return value_portfolio(
+        result = value_portfolio(
             self.portfolio,
             self.books,
             now_ms=(int(time() * 1000) if now_ms is None else now_ms),
@@ -542,6 +551,8 @@ class DashboardState:
             last_executable_marks=self.last_executable_marks,
             allow_stale_marks=allow_stale_marks,
         )
+        self.last_executable_marks = result.marks()
+        return result.valuation
 
     def activity_ticker(self) -> list[TickerRow]:
         if not self.show_market_events:

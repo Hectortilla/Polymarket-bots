@@ -9,10 +9,11 @@ from polybot.framework.config.constants import (
     DEFAULT_DATA_TRADES_BUDGET_PER_10S,
     DEFAULT_EVENT_MAX_AGE_MS,
 )
+from polybot.framework.dedupe import SourceEventDeduper
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.wallets import normalize_wallet_address
 
-from .client import WalletActivityClient, current_time_ms
+from .client import PolymarketWalletActivityClient, current_time_ms
 from .contracts import (
     WalletTradeSelector,
     WalletTradeSource,
@@ -21,7 +22,6 @@ from .contracts import (
 )
 from .constants import (
     DATA_TRADES_WINDOW_SECONDS,
-    WALLET_STREAM_DEDUPE_CAPACITY,
     WALLET_STREAM_POLL_INTERVAL_SECONDS,
     WALLET_STREAM_QUEUE_CAPACITY,
 )
@@ -30,6 +30,8 @@ from .normalization import normalize_stream_event
 
 class SlidingWindowLimiter:
     def __init__(self, budget: int, *, now: Callable[[], float] = monotonic) -> None:
+        if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+            raise ValueError("rate-limit budget must be a positive integer")
         self._budget = budget
         self._now = now
         self._timestamps: deque[float] = deque()
@@ -56,7 +58,7 @@ class WalletActivityStream:
 
     def __init__(
         self,
-        client: WalletActivityClient | WalletTradeSource | None = None,
+        client: PolymarketWalletActivityClient | WalletTradeSource | None = None,
         selectors: Iterable[WalletTradeSelector] = (),
         source: WalletTradeSource | None = None,
         *,
@@ -66,7 +68,7 @@ class WalletActivityStream:
     ) -> None:
         if max_trade_age_ms < 0:
             raise ValueError("max_trade_age_ms must be nonnegative")
-        if client is not None and not isinstance(client, WalletActivityClient):
+        if client is not None and not isinstance(client, PolymarketWalletActivityClient):
             source = client
             client = None
         self._client = client
@@ -107,23 +109,19 @@ class WalletActivityStream:
         )
         if self._source is not None:
             tasks.append(asyncio.create_task(self._push(queue)))
-        seen: set[str] = set()
-        order: deque[str] = deque()
+        deduper = SourceEventDeduper()
         try:
             while any(not task.done() for task in tasks) or not queue.empty():
+                _raise_task_failure(tasks)
                 try:
                     event = await asyncio.wait_for(
                         queue.get(), timeout=WALLET_STREAM_POLL_INTERVAL_SECONDS
                     )
                 except TimeoutError:
                     continue
-                if event.source_key in seen:
-                    continue
-                seen.add(event.source_key)
-                order.append(event.source_key)
-                if len(order) > WALLET_STREAM_DEDUPE_CAPACITY:
-                    seen.discard(order.popleft())
-                yield event
+                if deduper.remember(event.source_key):
+                    yield event
+            _raise_task_failure(tasks)
         finally:
             for task in tasks:
                 task.cancel()
@@ -188,3 +186,10 @@ class WalletActivityStream:
             trade = normalize_stream_event(source, observed_at_ms=self._now_ms())
             if trade is not None and trade.wallet in wallets:
                 await queue.put(trade)
+
+
+def _raise_task_failure(tasks: list[asyncio.Task[None]]) -> None:
+    for task in tasks:
+        if task.done() and not task.cancelled():
+            if (error := task.exception()) is not None:
+                raise error

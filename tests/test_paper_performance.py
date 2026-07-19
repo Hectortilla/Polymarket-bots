@@ -10,7 +10,7 @@ import pytest
 
 from polybot.cli.observability.events import DispatchCompleted, StreamReceived
 from polybot.cli.observability.observer import NullRuntimeObserver
-from polybot.cli.runner.service import run_bot
+from polybot.runtime import run_bot
 from polybot.cli.streams.contracts import BookStreamEvent, StreamKind
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.base import BaseBot
@@ -177,6 +177,7 @@ def test_paper_performance_failure_warns_and_does_not_block_broker(
             observer.emit(
                 StreamReceived(BookStreamEvent(StreamKind.BOOK, _book()), 0.0)
             )
+            await asyncio.sleep(0.02)
         fill = await PaperPerformanceBroker(
             Broker(), recorder=recorder, clock=clock
         ).submit(
@@ -245,7 +246,7 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
             "gamma": client,
             "clob": client,
             "market_stream": object(),
-            "wallet_client": client,
+            "wallet_activity_client": client,
             "position_client": client,
             "followed_wallets": object(),
             "resolution_ledger": object(),
@@ -260,10 +261,10 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
         return runtime
 
     monkeypatch.setattr(
-        "polybot.cli.runner.service.create_runtime", fake_create_runtime
+        "polybot.runtime.create_runtime", fake_create_runtime
     )
     monkeypatch.setattr(
-        "polybot.cli.runner.service.PerformanceArtifacts",
+        "polybot.runtime.PerformanceArtifacts",
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("read only")),
     )
     bot = Bot()

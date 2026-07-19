@@ -72,7 +72,7 @@ from polybot.framework.events.resolutions import (
     YES_OUTCOME,
 )
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.polymarket.types import MarketTradeHint
+from polybot.polymarket.market_hints import MarketTradeHint
 
 
 class RecordingObserver(RuntimeObserver):

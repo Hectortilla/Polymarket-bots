@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import StrEnum
 
 from polymarket.models.gamma.market import Market as SdkMarket
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.types import (
+from polybot.polymarket.markets import (
     Market,
     MarketOutcome,
 )
@@ -21,9 +22,12 @@ from .values import (
     _required_text,
 )
 
-RESOLVED_MARKET_STATUSES = frozenset({"resolved", "settled"})
-WINNING_PAYOUT = WINNING_PAYOUT_PER_TOKEN
-LOSING_PAYOUT = LOSING_PAYOUT_PER_TOKEN
+class MarketResolutionStatus(StrEnum):
+    RESOLVED = "resolved"
+    SETTLED = "settled"
+
+
+RESOLVED_MARKET_STATUSES = frozenset(MarketResolutionStatus)
 
 
 def normalize_market(source: SdkMarket) -> Market:
@@ -62,6 +66,11 @@ def normalize_market(source: SdkMarket) -> Market:
         MarketDataIssue.INVALID_MARKET_PARAMETERS,
         "second outcome label",
     )
+    if first_token_id == second_token_id:
+        raise MarketDataError(
+            MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+            "market outcomes must have distinct token IDs",
+        )
     minimum_tick_size = _optional_positive_decimal(
         _nested_value(source, "trading", "minimum_tick_size"),
         "minimum tick size",
@@ -101,23 +110,26 @@ def normalize_market(source: SdkMarket) -> Market:
     second_price = _nested_value(source, "outcomes", "no", "price")
     resolution_status = _nested_value(source, "resolution", "uma_resolution_status")
     status_value = getattr(resolution_status, "value", resolution_status)
+    normalized_status = (
+        status_value.strip().casefold() if isinstance(status_value, str) else status_value
+    )
     resolved = (
-        status_value in RESOLVED_MARKET_STATUSES
+        normalized_status in RESOLVED_MARKET_STATUSES
         or _nested_value(source, "state", "closed") is True
     )
     winning_token_id = None
     winning_outcome = None
     if (
         resolved
-        and first_price == WINNING_PAYOUT
-        and second_price == LOSING_PAYOUT
+        and first_price == WINNING_PAYOUT_PER_TOKEN
+        and second_price == LOSING_PAYOUT_PER_TOKEN
     ):
         winning_token_id = first_token_id
         winning_outcome = first_label
     elif (
         resolved
-        and second_price == WINNING_PAYOUT
-        and first_price == LOSING_PAYOUT
+        and second_price == WINNING_PAYOUT_PER_TOKEN
+        and first_price == LOSING_PAYOUT_PER_TOKEN
     ):
         winning_token_id = second_token_id
         winning_outcome = second_label

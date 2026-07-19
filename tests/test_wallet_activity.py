@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal
 
+import pytest
+
 from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
-from polybot.polymarket.wallet_activity.client import WalletActivityClient
+from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.wallet_activity.constants import TRADE_ACTIVITY_TYPE
 from polybot.polymarket.wallet_activity.contracts import (
     WalletActivityError,
@@ -44,7 +46,18 @@ class FakeClient:
     def list_trades(self, *, user: str, page_size: int) -> FakePaginator:
         if user in self.failing:
             raise RuntimeError("read failed")
-        return FakePaginator((Page(*self.rows),))
+        return FakePaginator(
+            (
+                Page(
+                    *(
+                        row
+                        for row in self.rows
+                        if not isinstance(row, dict)
+                        or str(row.get("proxyWallet", "")).lower() == user
+                    )
+                ),
+            )
+        )
 
     def list_activity(
         self,
@@ -153,7 +166,7 @@ def test_missing_required_trade_fields_are_rejected() -> None:
 def test_many_wallet_reads_are_sorted_and_report_failures() -> None:
     async def run():
         client = FakeClient((_row("0xfirst", "tx-1"),), {"0xfailing"})
-        return await WalletActivityClient(client).latest_trades_many(
+        return await PolymarketWalletActivityClient(client).latest_trades_many(
             ("0xfirst", "0xfailing")
         )
 
@@ -166,7 +179,7 @@ def test_many_wallet_reads_are_sorted_and_report_failures() -> None:
 def test_latest_activity_filters_trade_rows_and_marks_reconciliation() -> None:
     async def run():
         client = FakeClient((_row("0xleader", "tx-1"),))
-        trades = await WalletActivityClient(
+        trades = await PolymarketWalletActivityClient(
             client, now_ms=lambda: 1_700_000_001_000
         ).latest_activity(
             "0xLEADER",
@@ -183,7 +196,7 @@ def test_latest_activity_filters_trade_rows_and_marks_reconciliation() -> None:
 def test_many_wallet_reads_dedupe_per_wallet_but_not_across_wallets() -> None:
     async def run():
         rows = (_row("0xfirst", "same"), _row("0xsecond", "same"))
-        return await WalletActivityClient(FakeClient(rows)).latest_trades_many(
+        return await PolymarketWalletActivityClient(FakeClient(rows)).latest_trades_many(
             ("0xfirst", "0xsecond"),
         )
 
@@ -201,7 +214,7 @@ def test_many_wallet_reads_bound_concurrency_and_sort_results() -> None:
                 "0xthird": (_row("0xthird", "middle", 1_700_000_001),),
             }
         )
-        result = await WalletActivityClient(client).latest_trades_many(
+        result = await PolymarketWalletActivityClient(client).latest_trades_many(
             ("0xfirst", "0xsecond", "0xthird"), max_concurrency=2
         )
         return client, result
@@ -218,10 +231,12 @@ def test_many_wallet_reads_bound_concurrency_and_sort_results() -> None:
 def test_boundaries_reject_invalid_limits_and_concurrency() -> None:
     async def run():
         client = FakeClient(())
-        assert await WalletActivityClient(client).latest_trades("0xleader", 0) == ()
-        assert await WalletActivityClient(client).latest_activity("0xleader", -1) == ()
+        with pytest.raises(ValueError, match="positive integer"):
+            await PolymarketWalletActivityClient(client).latest_trades("0xleader", 0)
+        with pytest.raises(ValueError, match="positive integer"):
+            await PolymarketWalletActivityClient(client).latest_activity("0xleader", -1)
         try:
-            await WalletActivityClient(client).latest_trades_many((), max_concurrency=0)
+            await PolymarketWalletActivityClient(client).latest_trades_many((), max_concurrency=0)
         except ValueError:
             return
         raise AssertionError("invalid concurrency should be rejected")
@@ -294,6 +309,27 @@ def test_stream_requires_an_explicit_supported_source() -> None:
         raise AssertionError("stream should fail closed when no source is configured")
 
 
+def test_stream_propagates_push_failure_while_polling_is_active() -> None:
+    class FailingSource:
+        def trades(self, wallets: frozenset[str]):
+            async def fail():
+                raise RuntimeError("push failed")
+                yield None
+
+            return fail()
+
+    async def run() -> None:
+        stream = WalletActivityStream(
+            PolymarketWalletActivityClient(FakeClient(())),
+            selectors=(WalletTradeSelector(wallet="0xleader"),),
+            source=FailingSource(),  # type: ignore[arg-type]
+        )
+        with pytest.raises(RuntimeError, match="push failed"):
+            await asyncio.wait_for(anext(stream.trades()), timeout=0.2)
+
+    asyncio.run(run())
+
+
 def test_polling_starts_at_the_freshness_window_and_discards_stale_rows() -> None:
     now_ms = 1_700_000_010_000
 
@@ -305,7 +341,7 @@ def test_polling_starts_at_the_freshness_window_and_discards_stale_rows() -> Non
             )
         )
         stream = WalletActivityStream(
-            WalletActivityClient(client, now_ms=lambda: now_ms),
+            PolymarketWalletActivityClient(client, now_ms=lambda: now_ms),
             max_trade_age_ms=5_000,
             now_ms=lambda: now_ms,
         )

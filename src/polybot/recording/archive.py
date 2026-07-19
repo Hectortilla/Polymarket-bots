@@ -8,7 +8,7 @@ import sqlite3
 import time
 from collections.abc import Iterable, Iterator
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from threading import RLock
@@ -29,8 +29,24 @@ from .contracts import (
     RecordedEvent,
     ResolutionPayload,
     SessionIntegrityStatus,
-    event_token_ids,
 )
+from .archive_errors import (
+    ArchiveClosedError,
+    ArchiveCoverageError,
+    ArchiveExistsError,
+    ArchiveFormatError,
+    ArchiveIntegrityError,
+    ArchiveLockedError,
+    CaptureAnomalyJournalUnavailableError,
+    RecordingArchiveError,
+)
+from .archive_models import (
+    RecordingEventBounds,
+    RecordingFeatureProvenance,
+    RecordingSession,
+)
+from .archive_schema import ensure_capture_anomaly_schema, initialize_archive_schema
+from .coverage import CoverageScope
 from .serialization import (
     PayloadKind,
     capture_anomaly_from_json,
@@ -38,6 +54,7 @@ from .serialization import (
     payload_from_json,
     payload_json,
     payload_kind,
+    event_token_ids,
 )
 
 
@@ -47,68 +64,6 @@ RECORDER_DISTRIBUTION = "polymarket-polybot"
 SDK_DISTRIBUTION = "polymarket-client"
 INTERRUPTED_SESSION_REASON = "recording process ended before a clean close"
 CAPTURE_ANOMALY_JOURNAL_FEATURE = "capture_anomaly_journal"
-
-
-class RecordingArchiveError(RuntimeError):
-    """Base error for recording persistence failures."""
-
-
-class ArchiveExistsError(RecordingArchiveError):
-    pass
-
-
-class ArchiveLockedError(RecordingArchiveError):
-    pass
-
-
-class ArchiveFormatError(RecordingArchiveError):
-    pass
-
-
-class ArchiveIntegrityError(RecordingArchiveError):
-    pass
-
-
-class ArchiveCoverageError(RecordingArchiveError):
-    pass
-
-
-class ArchiveClosedError(RecordingArchiveError):
-    pass
-
-
-class CaptureAnomalyJournalUnavailableError(RecordingArchiveError):
-    """The selected session predates capture-anomaly diagnostics."""
-
-
-@dataclass(frozen=True, slots=True)
-class RecordingSession:
-    session_id: int
-    started_at_ms: int
-    ended_at_ms: int | None
-    clean_close: bool
-    integrity_status: SessionIntegrityStatus
-    recorder_version: str
-    sdk_version: str
-    failure_reason: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class RecordingEventBounds:
-    """First and last event coordinates for one immutable reader selection."""
-
-    first_sequence: int
-    last_sequence: int
-    start_at_ms: int
-    end_at_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class RecordingFeatureProvenance:
-    feature_name: str
-    available_from_session_id: int
-    enabled_at_ms: int
-    recorder_version: str
 
 
 class RecordingArchive:
@@ -173,13 +128,15 @@ class RecordingArchive:
             _acquire_writer_lock(lock_file, archive_path)
             connection = _open_connection(archive_path)
             _configure_writer(connection)
-            _initialize_schema(
+            initialize_archive_schema(
                 connection,
+                application_id=SQLITE_APPLICATION_ID,
+                schema_version=SCHEMA_VERSION,
                 target_identity=normalized_target,
                 created_at_ms=started_at_ms,
             )
             connection.execute("BEGIN IMMEDIATE")
-            _ensure_capture_anomaly_schema(connection)
+            ensure_capture_anomaly_schema(connection)
             session_id = _insert_session(connection, started_at_ms)
             _enable_capture_anomaly_journal(
                 connection,
@@ -254,7 +211,7 @@ class RecordingArchive:
             next_sequence = _last_sequence(connection) + 1
             metadata_by_condition = _latest_metadata(connection)
             connection.execute("BEGIN IMMEDIATE")
-            _ensure_capture_anomaly_schema(connection)
+            ensure_capture_anomaly_schema(connection)
             if prior_session.integrity_status is SessionIntegrityStatus.ACTIVE:
                 connection.execute(
                     """
@@ -1816,204 +1773,13 @@ class RecordingReader:
             connection=connection,
         )
         if gaps:
-            raise ArchiveCoverageError(
-                _coverage_gap_error_message(tuple(gap.gap_id for gap in gaps))
+            raise ArchiveCoverageError.for_gap_ids(
+                tuple(gap.gap_id for gap in gaps)
             )
 
     def _ensure_open(self) -> None:
         if self._closed:
             raise ArchiveClosedError("recording reader is closed")
-
-
-def _coverage_gap_error_message(gap_ids: tuple[int, ...]) -> str:
-    prefix = "selected recording interval crosses known coverage gaps"
-    gap_ids = tuple(sorted(gap_ids))
-    if len(gap_ids) <= 20:
-        return f"{prefix}: {', '.join(str(gap_id) for gap_id in gap_ids)}"
-
-    ranges: list[tuple[int, int]] = []
-    range_start = range_end = gap_ids[0]
-    for gap_id in gap_ids[1:]:
-        if gap_id == range_end + 1:
-            range_end = gap_id
-            continue
-        ranges.append((range_start, range_end))
-        range_start = range_end = gap_id
-    ranges.append((range_start, range_end))
-
-    displayed_ranges = ranges[:8]
-    summary = ", ".join(
-        str(start) if start == end else f"{start}-{end}"
-        for start, end in displayed_ranges
-    )
-    if len(ranges) > len(displayed_ranges):
-        summary = f"{summary}, ..."
-    return f"{prefix}: {len(gap_ids):,} gaps (IDs {summary})"
-
-
-def _initialize_schema(
-    connection: sqlite3.Connection,
-    *,
-    target_identity: str,
-    created_at_ms: int,
-) -> None:
-    connection.executescript(
-        f"""
-        BEGIN IMMEDIATE;
-        PRAGMA application_id = {SQLITE_APPLICATION_ID};
-        PRAGMA user_version = {SCHEMA_VERSION};
-
-        CREATE TABLE archive_meta (
-            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-            schema_version INTEGER NOT NULL,
-            target_identity TEXT NOT NULL,
-            created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0)
-        ) STRICT;
-
-        CREATE TABLE sessions (
-            session_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            started_at_ms INTEGER NOT NULL CHECK (started_at_ms >= 0),
-            ended_at_ms INTEGER CHECK (
-                ended_at_ms IS NULL OR ended_at_ms >= started_at_ms
-            ),
-            clean_close INTEGER NOT NULL DEFAULT 0 CHECK (clean_close IN (0, 1)),
-            integrity_status TEXT NOT NULL CHECK (
-                integrity_status IN ('active', 'complete', 'incomplete', 'failed')
-            ),
-            recorder_version TEXT NOT NULL,
-            sdk_version TEXT NOT NULL,
-            failure_reason TEXT
-        ) STRICT;
-
-        CREATE TABLE events (
-            sequence INTEGER PRIMARY KEY CHECK (sequence > 0),
-            session_id INTEGER NOT NULL REFERENCES sessions(session_id),
-            subscription_generation INTEGER NOT NULL CHECK (
-                subscription_generation >= 0
-            ),
-            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
-            source_timestamp_ms INTEGER CHECK (
-                source_timestamp_ms IS NULL OR source_timestamp_ms >= 0
-            ),
-            condition_id TEXT,
-            market_slug TEXT,
-            token_id TEXT,
-            payload_kind TEXT NOT NULL CHECK (
-                payload_kind IN (
-                    'market_metadata', 'book_baseline', 'book_delta',
-                    'public_trade', 'tick_size_change', 'resolution', 'coverage_gap'
-                )
-            ),
-            payload_json TEXT NOT NULL
-        ) STRICT;
-
-        CREATE TABLE event_tokens (
-            sequence INTEGER NOT NULL REFERENCES events(sequence) ON DELETE CASCADE,
-            token_id TEXT NOT NULL,
-            PRIMARY KEY (sequence, token_id)
-        ) WITHOUT ROWID;
-
-        CREATE TABLE metadata_revisions (
-            condition_id TEXT NOT NULL,
-            sequence INTEGER NOT NULL UNIQUE REFERENCES events(sequence),
-            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
-            payload_json TEXT NOT NULL,
-            PRIMARY KEY (condition_id, sequence)
-        ) WITHOUT ROWID;
-
-        CREATE TABLE book_checkpoints (
-            token_id TEXT NOT NULL,
-            sequence INTEGER NOT NULL REFERENCES events(sequence),
-            session_id INTEGER NOT NULL REFERENCES sessions(session_id),
-            subscription_generation INTEGER NOT NULL CHECK (
-                subscription_generation >= 0
-            ),
-            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
-            condition_id TEXT NOT NULL,
-            market_slug TEXT NOT NULL,
-            payload_json TEXT NOT NULL,
-            PRIMARY KEY (token_id, observed_at_ms, sequence)
-        ) WITHOUT ROWID;
-
-        CREATE TABLE coverage_gaps (
-            gap_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_sequence INTEGER NOT NULL UNIQUE REFERENCES events(sequence),
-            session_id INTEGER NOT NULL REFERENCES sessions(session_id),
-            subscription_generation INTEGER NOT NULL CHECK (
-                subscription_generation >= 0
-            ),
-            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
-            condition_id TEXT,
-            market_slug TEXT,
-            started_at_ms INTEGER NOT NULL CHECK (started_at_ms >= 0),
-            ended_at_ms INTEGER CHECK (
-                ended_at_ms IS NULL OR ended_at_ms >= started_at_ms
-            ),
-            reason TEXT NOT NULL,
-            payload_json TEXT NOT NULL
-        ) STRICT;
-
-        CREATE INDEX events_observed_idx ON events(observed_at_ms, sequence);
-        CREATE INDEX events_condition_idx
-            ON events(condition_id, observed_at_ms, sequence);
-        CREATE INDEX events_slug_idx ON events(market_slug, observed_at_ms, sequence);
-        CREATE INDEX event_tokens_token_idx ON event_tokens(token_id, sequence);
-        CREATE INDEX metadata_time_idx
-            ON metadata_revisions(condition_id, observed_at_ms, sequence);
-        CREATE INDEX checkpoints_time_idx
-            ON book_checkpoints(token_id, observed_at_ms, sequence);
-        CREATE INDEX coverage_gaps_time_idx
-            ON coverage_gaps(started_at_ms, ended_at_ms);
-
-        INSERT INTO archive_meta (
-            singleton, schema_version, target_identity, created_at_ms
-        ) VALUES (1, {SCHEMA_VERSION}, {sql_quote(target_identity)}, {created_at_ms});
-        COMMIT;
-        """
-    )
-
-
-def _ensure_capture_anomaly_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS recording_features (
-            feature_name TEXT PRIMARY KEY,
-            available_from_session_id INTEGER NOT NULL
-                REFERENCES sessions(session_id),
-            enabled_at_ms INTEGER NOT NULL CHECK (enabled_at_ms >= 0),
-            recorder_version TEXT NOT NULL
-        ) STRICT
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS capture_anomalies (
-            anomaly_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id INTEGER NOT NULL REFERENCES sessions(session_id),
-            subscription_generation INTEGER NOT NULL CHECK (
-                subscription_generation >= 0
-            ),
-            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
-            condition_id TEXT,
-            market_slug TEXT,
-            token_id TEXT,
-            failure_kind TEXT NOT NULL,
-            payload_json TEXT NOT NULL
-        ) STRICT
-        """
-    )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS capture_anomalies_session_time_idx
-        ON capture_anomalies(session_id, observed_at_ms, anomaly_id)
-        """
-    )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS capture_anomalies_condition_idx
-        ON capture_anomalies(condition_id, observed_at_ms, anomaly_id)
-        """
-    )
 
 
 def _enable_capture_anomaly_journal(
@@ -2097,10 +1863,6 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
         (table_name,),
     ).fetchone()
     return row is not None
-
-
-def sql_quote(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
 
 
 def _insert_session(connection: sqlite3.Connection, started_at_ms: int) -> int:
@@ -2426,27 +2188,11 @@ def _invalidate_gap_baselines(
     *,
     identity: MarketIdentity | None,
 ) -> None:
-    affected_tokens = set(gap.affected_token_ids)
-    affected_conditions = set(gap.affected_condition_ids)
-    affected_slugs = set(gap.affected_market_slugs)
-    has_payload_scope = bool(
-        affected_tokens or affected_conditions or affected_slugs
-    )
-    if not has_payload_scope and identity is not None:
-        if identity.token_id is not None:
-            affected_tokens.add(identity.token_id)
-        else:
-            if identity.condition_id is not None:
-                affected_conditions.add(identity.condition_id)
-            if identity.market_slug is not None:
-                affected_slugs.add(identity.market_slug)
-    for market in metadata.values():
-        if (
-            market.condition_id in affected_conditions
-            or market.market_slug in affected_slugs
-        ):
-            affected_tokens.update(outcome.token_id for outcome in market.outcomes)
-    if not affected_tokens and not affected_conditions and not affected_slugs:
+    affected_tokens = CoverageScope.from_gap(
+        gap,
+        identity,
+    ).resolved_token_ids(metadata.values())
+    if affected_tokens is None:
         baselines.clear()
         return
     baselines.difference_update(
@@ -2600,34 +2346,13 @@ def _invalidate_stored_gap_baselines(
     gap = event.payload
     if not isinstance(gap, CoverageGapPayload):
         raise AssertionError("baseline invalidation requires a coverage gap")
-    identity = event.identity
-    affected_tokens = set(gap.affected_token_ids)
-    if not affected_tokens and identity is not None and identity.token_id is not None:
-        affected_tokens.add(identity.token_id)
-    if affected_tokens:
-        baselines.difference_update(
-            {key for key in baselines if key[2] in affected_tokens}
-        )
-        return
-
-    affected_conditions = set(gap.affected_condition_ids)
-    affected_slugs = set(gap.affected_market_slugs)
-    if identity is not None:
-        if not affected_conditions and identity.condition_id is not None:
-            affected_conditions.add(identity.condition_id)
-        if not affected_slugs and identity.market_slug is not None:
-            affected_slugs.add(identity.market_slug)
-    if not affected_conditions and not affected_slugs:
+    affected_tokens = CoverageScope.from_gap(
+        gap,
+        event.identity,
+    ).resolved_token_ids(metadata.values())
+    if affected_tokens is None:
         baselines.clear()
         return
-    for market in metadata.values():
-        if (
-            market.condition_id in affected_conditions
-            or market.market_slug in affected_slugs
-        ):
-            affected_tokens.update(
-                outcome.token_id for outcome in market.outcomes
-            )
     baselines.difference_update(
         {key for key in baselines if key[2] in affected_tokens}
     )
@@ -2757,50 +2482,11 @@ def _gap_affects(
     market_slugs: tuple[str, ...] | None,
     token_id: str | None,
 ) -> bool:
-    has_scope = bool(
-        gap.affected_condition_ids
-        or gap.affected_market_slugs
-        or gap.affected_token_ids
-        or identity is not None
+    return CoverageScope.from_gap(gap, identity).affects(
+        condition_ids=condition_ids,
+        market_slugs=market_slugs,
+        token_id=token_id,
     )
-    if not has_scope:
-        return True
-    return all(
-        _selected_scope_matches(
-            selected,
-            affected,
-            identity_value,
-        )
-        for selected, affected, identity_value in (
-            (
-                condition_ids,
-                gap.affected_condition_ids,
-                None if identity is None else identity.condition_id,
-            ),
-            (
-                market_slugs,
-                gap.affected_market_slugs,
-                None if identity is None else identity.market_slug,
-            ),
-            (
-                None if token_id is None else (token_id,),
-                gap.affected_token_ids,
-                None if identity is None else identity.token_id,
-            ),
-        )
-    )
-
-
-def _selected_scope_matches(
-    selected: tuple[str, ...] | None,
-    affected: tuple[str, ...],
-    identity_value: str | None,
-) -> bool:
-    if selected is None:
-        return True
-    if affected:
-        return not set(selected).isdisjoint(affected)
-    return identity_value is None or identity_value in selected
 
 
 def _archive_path(path: str | Path) -> Path:

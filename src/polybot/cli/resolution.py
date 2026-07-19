@@ -4,10 +4,9 @@ import asyncio
 from collections.abc import AsyncIterator, Callable
 from time import monotonic, time
 
-from polybot.framework.events.resolutions import (
-    GAMMA_RECONCILIATION_SOURCE,
-    MarketResolutionEvent,
-)
+from polybot.framework.cadence import RESOLUTION_RECONCILIATION_SECONDS
+from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.framework.events.resolutions import MarketSettlementEvent
 from polybot.execution.paper import PaperBroker
 from polybot.framework.runner import BotRunner
@@ -19,9 +18,6 @@ from .followed_wallets.tracker import FollowedWalletTracker
 from .observability.events import MarketSettled, PortfolioSnapshot
 from .observability.observer import RuntimeObserver, emit_observer
 from .resolution_state import ResolutionLedger
-
-RESOLUTION_RECONCILIATION_SECONDS = 30.0
-
 
 async def reconcile_resolutions(
     registry: TrackedMarketRegistry,

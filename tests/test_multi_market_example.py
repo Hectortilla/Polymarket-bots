@@ -6,7 +6,7 @@ from polybot.examples.example_multi_market import CrossMarketRule, ExampleMultiM
 from polybot.framework.context import BotContext
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.polymarket.markets import Market, MarketOutcome
 
 
 def test_multi_market_example_trades_target_from_signal_market(

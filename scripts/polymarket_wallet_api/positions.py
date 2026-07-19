@@ -16,7 +16,7 @@ from .constants import (
     POSITION_SIZE_THRESHOLD,
     SDK_PAGE_SIZE,
 )
-from .sdk_payloads import position_payload
+from .sdk_payloads import position_payload, require_condition_scope, require_wallet_scope
 from .sdk_pagination import page_items
 from scripts.wallet_payloads import normalize_position_rows
 
@@ -36,9 +36,12 @@ def fetch_positions(
             position_models = page_items(position_page, context="SDK position")
     except (PolymarketError, ValueError):
         return []
-    return normalize_position_rows(
-        [position_payload(model) for model in position_models]
-    )
+    payloads = [position_payload(model) for model in position_models]
+    try:
+        require_wallet_scope(payloads, wallet)
+    except ValueError:
+        return []
+    return normalize_position_rows(payloads)
 
 
 def fetch_market_positions(
@@ -62,10 +65,10 @@ def fetch_market_positions(
                 limit,
             )
         )
-    return normalize_position_rows(
-        [
-            position_payload(position)
-            for model in position_models
-            for position in model.positions
-        ]
-    )
+    payloads = [
+        position_payload(position)
+        for model in position_models
+        for position in model.positions
+    ]
+    require_condition_scope(payloads, condition_id)
+    return normalize_position_rows(payloads)

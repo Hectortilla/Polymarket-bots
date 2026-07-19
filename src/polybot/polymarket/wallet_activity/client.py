@@ -28,7 +28,7 @@ def current_time_ms() -> int:
     return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
 
-class WalletActivityClient:
+class PolymarketWalletActivityClient:
     """Official-SDK-backed Data API reads for wallet bootstrap/reconciliation."""
 
     def __init__(
@@ -45,8 +45,7 @@ class WalletActivityClient:
         wallet: str,
         limit: int = DEFAULT_WALLET_TRADE_LIMIT,
     ) -> tuple[WalletTradeEvent, ...]:
-        if not _has_positive_limit(limit):
-            return ()
+        _require_positive_limit(limit)
         address = normalize_wallet_address(wallet)
         try:
             paginator = self._client.list_trades(
@@ -70,8 +69,7 @@ class WalletActivityClient:
         end: int | None = None,
         limit: int = DATA_TRADES_PAGE_SIZE,
     ) -> tuple[WalletTradeEvent, ...]:
-        if not _has_positive_limit(limit):
-            return ()
+        _require_positive_limit(limit)
         paginator = self._client.list_trades(
             user=selector.wallet,
             market=selector.condition_ids or None,
@@ -88,8 +86,13 @@ class WalletActivityClient:
                     observed_at_ms=self._now_ms(),
                     kind=WalletTradeKind.RECONCILIATION,
                 )
-                if trade is not None:
-                    rows.append(trade)
+                if trade is None:
+                    continue
+                _validate_trade_scope(trade, selector)
+                rows.append(trade)
+                if len(rows) >= limit:
+                    unique = {trade.source_key: trade for trade in rows}
+                    return tuple(sorted(unique.values(), key=sort_key))
         unique = {trade.source_key: trade for trade in rows}
         return tuple(sorted(unique.values(), key=sort_key))
 
@@ -98,8 +101,7 @@ class WalletActivityClient:
         wallet: str,
         limit: int = DEFAULT_WALLET_TRADE_LIMIT,
     ) -> tuple[WalletTradeEvent, ...]:
-        if not _has_positive_limit(limit):
-            return ()
+        _require_positive_limit(limit)
         address = normalize_wallet_address(wallet)
         paginator = self._client.list_activity(
             user=address,
@@ -124,6 +126,7 @@ class WalletActivityClient:
         addresses = tuple(
             dict.fromkeys(normalize_wallet_address(wallet) for wallet in wallets)
         )
+        _require_positive_limit(limit)
         if max_concurrency <= 0:
             raise ValueError("max_concurrency must be positive")
         semaphore = asyncio.Semaphore(max_concurrency)
@@ -161,7 +164,12 @@ async def _collect_trades(
                 observed_at_ms=observed_at_ms(),
                 kind=kind,
             )
-            if trade is not None and trade.wallet == wallet:
+            if trade is not None:
+                if trade.wallet != wallet:
+                    raise WalletActivityError(
+                        WalletActivityIssue.WALLET_READ_FAILED,
+                        "wallet activity response did not match the requested wallet",
+                    )
                 rows.append(trade)
             if len(rows) >= limit:
                 return tuple(sorted(rows, key=sort_key))
@@ -185,11 +193,9 @@ def _merge_wallet_results(
     return WalletTradeBatch(tuple(sorted(unique.values(), key=sort_key)), failures)
 
 
-WalletActivityDataClient = WalletActivityClient
-
-
-def _has_positive_limit(limit: int) -> bool:
-    return limit > 0
+def _require_positive_limit(limit: int) -> None:
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ValueError("wallet trade limit must be a positive integer")
 
 
 def _page_items(page: object) -> tuple[object, ...]:
@@ -200,3 +206,22 @@ def _page_items(page: object) -> tuple[object, ...]:
             "wallet activity page items are malformed",
         )
     return tuple(items)
+
+
+def _validate_trade_scope(
+    trade: WalletTradeEvent,
+    selector: WalletTradeSelector,
+) -> None:
+    if (
+        selector.wallet is not None
+        and trade.wallet != normalize_wallet_address(selector.wallet)
+    ):
+        raise WalletActivityError(
+            WalletActivityIssue.WALLET_READ_FAILED,
+            "wallet activity response did not match the requested wallet",
+        )
+    if selector.condition_ids and trade.condition_id not in selector.condition_ids:
+        raise WalletActivityError(
+            WalletActivityIssue.WALLET_READ_FAILED,
+            "wallet activity response did not match the requested market",
+        )

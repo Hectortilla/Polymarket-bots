@@ -7,9 +7,9 @@ from typing import Protocol
 
 from polybot.async_io import run_blocking
 from polybot.polymarket.clob import ClobClient
-from polybot.polymarket.data import DataClient
+from polybot.polymarket.positions import Position, PositionClient
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.types import Market, Position
+from polybot.polymarket.markets import Market
 
 from ..followed_wallets.position_contracts import FollowPosition
 from ..markets import MarketResolver
@@ -34,7 +34,7 @@ class FollowedWalletStore(Protocol):
 async def synchronize_followed_wallets(
     wallet_scopes: dict[str, frozenset[str] | None],
     followed_wallets: FollowedWalletStore,
-    position_client: DataClient,
+    position_client: PositionClient,
     gamma: MarketResolver,
     clob: ClobClient,
     registry: TrackedMarketRegistry,
@@ -77,6 +77,7 @@ async def synchronize_followed_wallets(
             )
         )
         by_slug = {market.slug: market for market in markets if market is not None}
+        position_markets: list[Market] = []
         for position in positions:
             market = by_slug.get(position.market_slug)
             validate_position_market_identity(
@@ -84,8 +85,7 @@ async def synchronize_followed_wallets(
                 market,
                 "current wallet position has unresolved market identity",
             )
-            registry.add(market, MarketInterest.FOLLOWED_WALLET, owner=wallet)
-        clob.set_markets(registry.markets)
+            position_markets.append(market)
         marked_positions = []
         for position in positions:
             book = await clob.latest(position.token_id)
@@ -98,6 +98,9 @@ async def synchronize_followed_wallets(
                 )
             mark = None if book is None else book.executable_mark(position.size)
             marked_positions.append((position, mark))
+        for market in position_markets:
+            registry.add(market, MarketInterest.FOLLOWED_WALLET, owner=wallet)
+        clob.set_markets(registry.markets)
         await run_blocking(followed_wallets.bootstrap, wallet, tuple(marked_positions))
 
     known_slugs = {market.slug for market in registry.markets}
@@ -114,13 +117,12 @@ async def synchronize_followed_wallets(
             "persisted followed-wallet markets could not be resolved: "
             + ", ".join(missing)
         )
+    registrations: list[tuple[str, Market]] = []
     for wallet, position in followed_wallets.tracked_market_positions():
         if position.market_slug in by_slug:
-            registry.add(
-                by_slug[position.market_slug],
-                MarketInterest.FOLLOWED_WALLET,
-                owner=wallet,
-            )
+            registrations.append((wallet, by_slug[position.market_slug]))
+    for wallet, market in registrations:
+        registry.add(market, MarketInterest.FOLLOWED_WALLET, owner=wallet)
 
 
 async def _resolve_scope_markets(

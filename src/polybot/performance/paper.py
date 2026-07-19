@@ -6,6 +6,7 @@ import asyncio
 import warnings
 from collections.abc import Callable
 
+from polybot.async_io import run_blocking
 from polybot.cli.observability.events import (
     DispatchCompleted,
     MarketSettled,
@@ -30,6 +31,11 @@ class PaperPerformanceWarning(RuntimeWarning):
     """Visible warning emitted when optional paper artifacts fail."""
 
 
+PAPER_ARTIFACT_QUEUE_CAPACITY = 1_024
+PAPER_RECORDING_DISABLED_MESSAGE = "paper performance recording disabled"
+PAPER_FINALIZATION_FAILED_MESSAGE = "paper performance artifact finalization failed"
+
+
 class PaperPerformanceRecorder:
     """Coordinate one optional paper artifact writer without risking trading."""
 
@@ -47,6 +53,10 @@ class PaperPerformanceRecorder:
         self._failure: str | None = None
         self._status = PerformanceRunStatus.COMPLETED
         self._sampler: asyncio.Task[None] | None = None
+        self._worker: asyncio.Task[None] | None = None
+        self._operations: asyncio.Queue[Callable[[], object] | None] = asyncio.Queue(
+            maxsize=PAPER_ARTIFACT_QUEUE_CAPACITY
+        )
         self._last_timestamp_ms = artifacts.selection.start_ms
         self._prior_books_by_event: dict[int, BookSnapshot | None] = {}
 
@@ -55,8 +65,17 @@ class PaperPerformanceRecorder:
         return self._enabled
 
     async def start(self) -> None:
-        self._record(lambda: self._artifacts.start(self._now_ms(), self._portfolio))
+        portfolio = self._portfolio_copy()
+        try:
+            await run_blocking(
+                self._artifacts.start,
+                self._now_ms(),
+                portfolio,
+            )
+        except Exception as error:
+            self._disable(error, stacklevel=2)
         if self._enabled:
+            self._worker = asyncio.create_task(self._run_operations())
             self._sampler = asyncio.create_task(self._sample_intervals())
 
     def emit(self, event: RuntimeEvent) -> None:
@@ -65,9 +84,9 @@ class PaperPerformanceRecorder:
             self._failure = event.error
             return
         if isinstance(event, StreamReceived):
+            timestamp_ms = self._now_ms()
             def record_stream() -> None:
-                timestamp_ms = self._now_ms()
-                self._artifacts.advance_to(timestamp_ms, self._portfolio)
+                self._artifacts.advance_to(timestamp_ms, portfolio)
                 self._artifacts.record_events()
                 if event.item.kind is StreamKind.BOOK:
                     self._prior_books_by_event[id(event.item)] = self._artifacts.books.get(
@@ -75,14 +94,17 @@ class PaperPerformanceRecorder:
                     )
                     self._artifacts.record_book(event.item.event)
 
-            self._record(record_stream)
+            portfolio = self._portfolio_copy()
+            self._enqueue(record_stream)
             return
         if isinstance(event, PortfolioBookBootstrap):
+            timestamp_ms = self._now_ms()
             def record_bootstrap() -> None:
-                self._artifacts.advance_to(self._now_ms(), self._portfolio)
+                self._artifacts.advance_to(timestamp_ms, portfolio)
                 self._artifacts.record_book(event.book)
 
-            self._record(record_bootstrap)
+            portfolio = self._portfolio_copy()
+            self._enqueue(record_bootstrap)
             return
         if isinstance(event, DispatchCompleted):
             accepted = None if event.outcome is None else event.outcome.accepted
@@ -100,17 +122,19 @@ class PaperPerformanceRecorder:
                 else:
                     self._artifacts.record_book(previous)
 
-            self._record(record_dispatch)
+            self._enqueue(record_dispatch)
             return
         if isinstance(event, MarketSettled):
+            timestamp_ms = self._now_ms()
             def record_settlement() -> None:
                 self._artifacts.record_settlement(
-                    timestamp_ms=self._now_ms(),
-                    portfolio=self._portfolio,
+                    timestamp_ms=timestamp_ms,
+                    portfolio=portfolio,
                 )
                 self._artifacts.remove_books(event.settlement.resolution.token_ids)
 
-            self._record(record_settlement)
+            portfolio = self._portfolio_copy()
+            self._enqueue(record_settlement)
 
     def record_fill(
         self,
@@ -119,12 +143,13 @@ class PaperPerformanceRecorder:
         order: OrderRequest,
         fill: FillEvent,
     ) -> None:
-        self._record(
+        portfolio = self._portfolio_copy()
+        self._enqueue(
             lambda: self._artifacts.record_fill(
                 submitted_at_ms=submitted_at_ms,
                 order=order,
                 fill=fill,
-                portfolio=self._portfolio,
+                portfolio=portfolio,
             )
         )
 
@@ -136,6 +161,11 @@ class PaperPerformanceRecorder:
             self._sampler.cancel()
             await asyncio.gather(self._sampler, return_exceptions=True)
             self._sampler = None
+        if self._worker is not None:
+            await self._operations.join()
+            await self._operations.put(None)
+            await self._worker
+            self._worker = None
         if not self._artifacts.started or self._artifacts.finalized:
             return
         status = self._status
@@ -144,15 +174,16 @@ class PaperPerformanceRecorder:
             status = PerformanceRunStatus.FAILED
             error = error or "optional paper performance recording failed"
         try:
-            self._artifacts.finalize(
+            await run_blocking(
+                self._artifacts.finalize,
                 status=status,
                 ended_at_ms=self._now_ms(),
-                portfolio=self._portfolio,
+                portfolio=self._portfolio_copy(),
                 error=error if status is PerformanceRunStatus.FAILED else None,
             )
         except Exception as finalization_error:
             warnings.warn(
-                "paper performance artifact finalization failed: "
+                f"{PAPER_FINALIZATION_FAILED_MESSAGE}: "
                 f"{type(finalization_error).__name__}: {finalization_error}",
                 PaperPerformanceWarning,
                 stacklevel=2,
@@ -162,24 +193,48 @@ class PaperPerformanceRecorder:
         interval_seconds = self._artifacts.report_interval_ms / 1_000
         while self._enabled:
             await self._clock.sleep(interval_seconds)
-            self._record(
-                lambda: self._artifacts.advance_to(self._now_ms(), self._portfolio)
+            portfolio = self._portfolio_copy()
+            timestamp_ms = self._now_ms()
+            self._enqueue(
+                lambda: self._artifacts.advance_to(timestamp_ms, portfolio)
             )
 
-    def _record(self, operation: Callable[[], object]) -> None:
+    def _enqueue(self, operation: Callable[[], object]) -> None:
         if not self._enabled:
             return
         try:
-            operation()
-        except Exception as error:
-            self._enabled = False
-            self._status = PerformanceRunStatus.FAILED
-            self._failure = f"{type(error).__name__}: {error}"
-            warnings.warn(
-                f"paper performance recording disabled: {self._failure}",
-                PaperPerformanceWarning,
-                stacklevel=3,
-            )
+            self._operations.put_nowait(operation)
+        except asyncio.QueueFull as error:
+            self._disable(error, stacklevel=3)
+
+    async def _run_operations(self) -> None:
+        while True:
+            operation = await self._operations.get()
+            try:
+                if operation is None:
+                    return
+                if self._enabled:
+                    await run_blocking(operation)
+            except Exception as error:
+                self._disable(error, stacklevel=2)
+            finally:
+                self._operations.task_done()
+
+    def _disable(self, error: BaseException, *, stacklevel: int) -> None:
+        if not self._enabled:
+            return
+        self._enabled = False
+        self._status = PerformanceRunStatus.FAILED
+        self._failure = f"{type(error).__name__}: {error}"
+        warnings.warn(
+            f"{PAPER_RECORDING_DISABLED_MESSAGE}: {self._failure}",
+            PaperPerformanceWarning,
+            stacklevel=stacklevel,
+        )
+
+    def _portfolio_copy(self) -> PaperPortfolio:
+        cash, fees, positions = self._portfolio.snapshot()
+        return PaperPortfolio(cash, fees, positions)
 
     def _now_ms(self) -> int:
         timestamp_ms = max(self._last_timestamp_ms, self._clock.now_ms())

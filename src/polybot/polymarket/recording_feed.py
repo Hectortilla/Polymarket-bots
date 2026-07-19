@@ -17,7 +17,7 @@ from polybot.polymarket.normalization.recording_events import (
     normalize_recording_event,
 )
 from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.types import Market
+from polybot.polymarket.markets import Market
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookDeltaPayload,

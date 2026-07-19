@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from collections.abc import Iterable
 from typing import Any
 
 from polybot.framework.events import Side
@@ -88,6 +89,23 @@ def validate_state_payload(
         validate_state_payload(
             wallet, historical_payload, allow_missing_epoch_history=True
         )
+    _reject_duplicates(
+        (baseline[FOLLOW_TOKEN_ID_FIELD] for baseline in baselines),
+        "baseline token IDs",
+    )
+    _reject_duplicates(
+        (movement[FOLLOW_SOURCE_KEY_FIELD] for movement in movements),
+        "movement source keys",
+    )
+    _reject_duplicates(source_ids, "source IDs")
+    _reject_duplicates(
+        (settlement[FOLLOW_CONDITION_ID_FIELD] for settlement in settlements),
+        "settlement condition IDs",
+    )
+    _reject_duplicates(
+        (historical[FOLLOW_EPOCH_FIELD] for historical in epoch_history),
+        "history epochs",
+    )
     return {
         **payload,
         FOLLOW_BASELINES_FIELD: baselines,
@@ -105,7 +123,12 @@ def _validate_baseline(payload: dict[str, Any]) -> None:
     _require_decimal(payload, FOLLOW_SIZE_FIELD, positive=True)
     basis_price = payload.get(FOLLOW_BASIS_PRICE_FIELD)
     if basis_price is not None:
-        _decimal_value(basis_price, FOLLOW_BASIS_PRICE_FIELD, non_negative=True)
+        _decimal_value(
+            basis_price,
+            FOLLOW_BASIS_PRICE_FIELD,
+            non_negative=True,
+            maximum=Decimal("1"),
+        )
     outcome = payload.get(FOLLOW_OUTCOME_FIELD)
     if outcome is not None and (not isinstance(outcome, str) or not outcome.strip()):
         raise ValueError("followed-wallet baseline outcome is invalid")
@@ -117,7 +140,12 @@ def _validate_movement(payload: dict[str, Any]) -> None:
     if payload.get(FOLLOW_SIDE_FIELD) not in {Side.BUY.value, Side.SELL.value}:
         raise ValueError("followed-wallet movement side is invalid")
     _require_decimal(payload, FOLLOW_SIZE_FIELD, positive=True)
-    _require_decimal(payload, FOLLOW_PRICE_FIELD, positive=True)
+    _decimal_value(
+        payload.get(FOLLOW_PRICE_FIELD),
+        FOLLOW_PRICE_FIELD,
+        positive=True,
+        maximum=Decimal("1"),
+    )
     _require_int(payload, FOLLOW_TRADE_TIMESTAMP_MS_FIELD, minimum=0)
     _require_text(payload, FOLLOW_SOURCE_KEY_FIELD)
     market_slug = payload.get(FOLLOW_MARKET_SLUG_FIELD)
@@ -144,6 +172,7 @@ def _validate_settlement(payload: dict[str, Any]) -> None:
             position.get(SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD),
             SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD,
             non_negative=True,
+            maximum=Decimal("1"),
         )
         _decimal_value(
             position.get(SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD),
@@ -161,6 +190,24 @@ def _validate_settlement(payload: dict[str, Any]) -> None:
         _validate_baseline(baseline)
     for movement in movements:
         _validate_movement(movement)
+    _reject_duplicates(
+        (position[SETTLED_POSITION_TOKEN_ID_FIELD] for position in positions),
+        "settlement position token IDs",
+    )
+    _reject_duplicates(
+        (baseline[FOLLOW_TOKEN_ID_FIELD] for baseline in baselines),
+        "settlement baseline token IDs",
+    )
+    _reject_duplicates(
+        (movement[FOLLOW_SOURCE_KEY_FIELD] for movement in movements),
+        "settlement movement source keys",
+    )
+
+
+def _reject_duplicates(values: Iterable[object], label: str) -> None:
+    sequence = tuple(values)
+    if len(sequence) != len(set(sequence)):
+        raise ValueError(f"followed-wallet {label} contain duplicates")
 
 
 def _require_list(payload: dict[str, Any], key: str) -> list[Any]:
@@ -217,6 +264,7 @@ def _decimal_value(
     *,
     positive: bool = False,
     non_negative: bool = False,
+    maximum: Decimal | None = None,
 ) -> Decimal:
     try:
         decimal = Decimal(str(value))
@@ -226,6 +274,7 @@ def _decimal_value(
         not decimal.is_finite()
         or (positive and decimal <= 0)
         or (non_negative and decimal < 0)
+        or (maximum is not None and decimal > maximum)
     ):
         raise ValueError(f"followed-wallet {key} is invalid")
     return decimal

@@ -10,9 +10,10 @@ from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
-from polybot.polymarket.types import market_token_ids
 
 RandomHoldAction = Literal["buy", "sell"]
+RANDOM_HOLD_BUY_REASON = "random_hold_buy"
+RANDOM_HOLD_SELL_REASON = "random_hold_sell"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +97,7 @@ class ExampleRandomHoldBot(BaseBot):
         market = await ctx.markets.find_by_slug(market_slug)
         self._market_slug = market_slug
         self._condition_id = None if market is None else market.condition_id
-        self._token_ids = None if market is None else market_token_ids(market)
+        self._token_ids = None if market is None else market.token_ids
         self._selected_token_id = None
         self._position_size = Decimal("0")
         self._bought_at = None
@@ -114,7 +115,7 @@ class ExampleRandomHoldBot(BaseBot):
                 size=min(self.order_size, ctx.config.max_order_size),
                 market_slug=book.market_slug,
                 condition_id=self._condition_id,
-                reason="random_hold_buy",
+                reason=RANDOM_HOLD_BUY_REASON,
             )
         )
         if fill.filled_size > 0:
@@ -135,7 +136,7 @@ class ExampleRandomHoldBot(BaseBot):
                     size=self._position_size,
                     market_slug=book.market_slug,
                     condition_id=self._condition_id,
-                    reason="random_hold_sell",
+                    reason=RANDOM_HOLD_SELL_REASON,
                 )
             )
         finally:

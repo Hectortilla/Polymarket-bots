@@ -7,8 +7,12 @@ from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
-from polybot.polymarket.types import Market, MarketOutcome
-from polybot.examples.example_random_hold import ExampleRandomHoldBot
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.examples.example_random_hold import (
+    RANDOM_HOLD_BUY_REASON,
+    RANDOM_HOLD_SELL_REASON,
+    ExampleRandomHoldBot,
+)
 
 
 def test_random_hold_bot_buys_holds_then_sells_and_starts_again(
@@ -40,8 +44,8 @@ def test_random_hold_bot_buys_holds_then_sells_and_starts_again(
         Side.SELL,
         Side.BUY,
     ]
-    assert dummy_context.broker.submitted[0].reason == "random_hold_buy"
-    assert dummy_context.broker.submitted[1].reason == "random_hold_sell"
+    assert dummy_context.broker.submitted[0].reason == RANDOM_HOLD_BUY_REASON
+    assert dummy_context.broker.submitted[1].reason == RANDOM_HOLD_SELL_REASON
     assert dummy_context.broker.submitted[1].price == Decimal("0.40")
 
 

@@ -10,6 +10,7 @@ from time import monotonic
 
 from polymarket import AsyncPublicClient
 
+from polybot.async_io import run_blocking
 from polybot.cli.observability.events import (
     DispatchCompleted,
     PortfolioSnapshot,
@@ -53,20 +54,27 @@ from polybot.performance.paper import (
     PaperPerformanceWarning,
 )
 
-from ..markets import resolve_plan_markets
-from ..resolution import reconcile_resolutions, settle_resolved_markets
-from ..tracked_markets import MarketInterest
-from ..tracking.paper import track_paper_positions
-from ..tracking.wallets import (
+from polybot.cli.markets import resolve_plan_markets
+from polybot.cli.resolution import reconcile_resolutions, settle_resolved_markets
+from polybot.cli.tracked_markets import MarketInterest
+from polybot.cli.tracking.paper import track_paper_positions
+from polybot.cli.tracking.wallets import (
     synchronize_followed_wallets,
 )
-from ..streams.builders import build_streams
-from ..streams.merger import merge_streams
-from ..streams.telemetry import StreamTelemetry
-from .dispatch import ResolutionDispatchDependencies, dispatch_stream_event
-from .factory import create_runtime
-from .health import stream_health
-from .streams import compile_selectors, refresh_runner_plan, wait_for_stream_plan_change
+from polybot.cli.streams.builders import build_streams
+from polybot.cli.streams.merger import merge_streams
+from polybot.cli.streams.telemetry import StreamTelemetry
+from polybot.cli.runner.dispatch import (
+    ResolutionDispatchDependencies,
+    dispatch_stream_event,
+)
+from polybot.cli.runner.factory import create_runtime
+from polybot.cli.runner.health import stream_health
+from polybot.cli.runner.streams import (
+    compile_selectors,
+    refresh_runner_plan,
+    wait_for_stream_plan_change,
+)
 
 
 async def run_bot(
@@ -97,7 +105,7 @@ async def run_bot(
     gamma = runtime.gamma
     clob = runtime.clob
     market_stream = runtime.market_stream
-    wallet_client = runtime.wallet_client
+    wallet_activity_client = runtime.wallet_activity_client
     position_client = runtime.position_client
     followed_wallets = runtime.followed_wallets
     resolution_ledger = runtime.resolution_ledger
@@ -109,7 +117,8 @@ async def run_bot(
     if results_dir is not None:
         try:
             start_ms = ctx.clock.now_ms()
-            artifacts = PerformanceArtifacts(
+            artifacts = await run_blocking(
+                PerformanceArtifacts,
                 results_dir,
                 provenance=RunProvenance(
                     kind=PerformanceRunKind.PAPER,
@@ -212,7 +221,7 @@ async def run_bot(
                 else ()
             )
             wallet_stream = WalletActivityStream(
-                wallet_client,
+                wallet_activity_client,
                 selectors,
                 wallet_source,
                 budget_per_10s=config.data_trades_budget_per_10s,

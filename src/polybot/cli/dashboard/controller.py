@@ -189,6 +189,9 @@ class TerminalDashboard:
         width = self._console.size.width
         height = self._console.size.height
         with self._state_lock:
+            self._state.revalidate_wallet_page(
+                wallet_lane_capacity(width, height)
+            )
             self._state.sample(width)
             state = deepcopy(self._state)
         live.update(

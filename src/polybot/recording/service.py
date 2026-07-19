@@ -25,10 +25,12 @@ from polybot.recording.archive import RecordingArchive, RecordingReader
 from polybot.recording.clock import ObservationClock
 from polybot.recording.contracts import (
     CoverageGapPayload,
+    CoverageGapReason,
     CoverageGapRecord,
     MarketMetadataPayload,
 )
 from polybot.recording.coordinator import RecordingCoordinator
+from polybot.recording.coverage import CoverageScope
 from polybot.recording.planning import (
     BotStreamPlanProvider,
     StaticStreamPlanProvider,
@@ -119,7 +121,7 @@ async def record_markets(
             session_started_at_ms = clock.now_ms()
             await writer.open_gap(
                 CoverageGapPayload(
-                    reason="recorder_offline",
+                    reason=CoverageGapReason.RECORDER_OFFLINE,
                     started_at_ms=gap_started_at_ms,
                     ended_at_ms=session_started_at_ms,
                 ),
@@ -257,9 +259,9 @@ def _explicit_gap_condition_ids(
 ) -> frozenset[str]:
     conditions: set[str] = set()
     for record in gaps:
-        conditions.update(record.gap.affected_condition_ids)
-        if record.identity is not None and record.identity.condition_id is not None:
-            conditions.add(record.identity.condition_id)
+        conditions.update(
+            CoverageScope.from_gap(record.gap, record.identity).condition_ids
+        )
     return frozenset(conditions)
 
 
@@ -267,48 +269,14 @@ def _open_gap_condition_ids(
     gaps: tuple[CoverageGapRecord, ...],
     unresolved: tuple[MarketMetadataPayload, ...],
 ) -> tuple[tuple[int, frozenset[str]], ...]:
-    by_slug = {market.market_slug: market.condition_id for market in unresolved}
-    by_token = {
-        outcome.token_id: market.condition_id
-        for market in unresolved
-        for outcome in market.outcomes
-    }
     all_conditions = frozenset(market.condition_id for market in unresolved)
     result: list[tuple[int, frozenset[str]]] = []
     for record in gaps:
-        gap = record.gap
-        has_payload_scope = bool(
-            gap.affected_condition_ids
-            or gap.affected_market_slugs
-            or gap.affected_token_ids
-        )
-        conditions = set(gap.affected_condition_ids)
-        conditions.update(
-            condition_id
-            for slug in gap.affected_market_slugs
-            if (condition_id := by_slug.get(slug)) is not None
-        )
-        conditions.update(
-            condition_id
-            for token_id in gap.affected_token_ids
-            if (condition_id := by_token.get(token_id)) is not None
-        )
-        identity = record.identity
-        if not has_payload_scope and identity is not None:
-            if identity.condition_id is not None:
-                conditions.add(identity.condition_id)
-            if (
-                identity.market_slug is not None
-                and (condition_id := by_slug.get(identity.market_slug)) is not None
-            ):
-                conditions.add(condition_id)
-            if (
-                identity.token_id is not None
-                and (condition_id := by_token.get(identity.token_id)) is not None
-            ):
-                conditions.add(condition_id)
-        if not has_payload_scope and identity is None:
-            conditions.update(all_conditions)
+        resolved = CoverageScope.from_gap(
+            record.gap,
+            record.identity,
+        ).resolved_condition_ids(unresolved)
+        conditions = all_conditions if resolved is None else resolved
         if conditions:
             result.append((record.gap_id, frozenset(conditions)))
     return tuple(result)

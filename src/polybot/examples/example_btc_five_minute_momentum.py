@@ -14,8 +14,6 @@ from polybot.examples.btc_five_minute_strategy import (
     OpenPosition,
     ProbabilityTrend,
     TrendMetrics,
-    entry_quote_is_safe,
-    exit_reason,
 )
 from polybot.framework.activity import ActivitySeverity
 from polybot.framework.base import BaseBot
@@ -25,7 +23,7 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
-from polybot.polymarket.types import Market, token_id_for_outcome
+from polybot.polymarket.markets import Market
 
 
 class BtcFiveMinuteMomentumBot(BaseBot):
@@ -82,7 +80,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
             return
 
         self._books[book.token_id] = book
-        sampled = self._sample_probability()
+        sampled = self._sample_probability(ctx.clock.now_ms())
         if self._position is not None:
             if book.token_id == self._position.token_id:
                 await self._maybe_exit(ctx, book)
@@ -107,8 +105,8 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         market = await ctx.markets.find_by_slug(slug)
         if market is None:
             return False
-        up_token_id = token_id_for_outcome(market, UP_OUTCOME)
-        down_token_id = token_id_for_outcome(market, DOWN_OUTCOME)
+        up_token_id = market.token_id_for_outcome(UP_OUTCOME)
+        down_token_id = market.token_id_for_outcome(DOWN_OUTCOME)
         if up_token_id is None or down_token_id is None:
             return False
         self._market = market
@@ -120,7 +118,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         self._last_sample_at_ms = None
         return True
 
-    def _sample_probability(self) -> bool:
+    def _sample_probability(self, now_ms: int) -> bool:
         if self._up_token_id is None or self._down_token_id is None:
             return False
         up_book = self._books.get(self._up_token_id)
@@ -137,6 +135,11 @@ class BtcFiveMinuteMomentumBot(BaseBot):
             > self.settings.paired_book_max_skew_ms
         ):
             return False
+        if not all(
+            book.is_fresh(now_ms, self.settings.paired_book_max_age_ms)
+            for book in (up_book, down_book)
+        ):
+            return False
         up_quote = BookQuote.from_book(up_book)
         down_quote = BookQuote.from_book(down_book)
         if up_quote is None or down_quote is None:
@@ -145,7 +148,11 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         if total_microprice <= 0:
             return False
         self._last_sample_at_ms = sample_at_ms
-        self._metrics = self._trend.observe(up_quote.microprice / total_microprice)
+        observation = self._trend.after_observation(
+            up_quote.microprice / total_microprice
+        )
+        self._trend = observation.trend
+        self._metrics = observation.metrics
         return True
 
     async def _maybe_enter(self, ctx: BotContext, now_ms: int) -> None:
@@ -158,7 +165,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         timing = BucketTiming.at(self.settings, now_ms)
         if not timing.allows_entry(self.settings):
             return
-        outcome = self._trend.direction(self._metrics)
+        outcome = self.settings.direction(self._metrics)
         token_id = self._up_token_id if outcome == UP_OUTCOME else self._down_token_id
         if outcome is None or token_id is None:
             return
@@ -172,7 +179,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
             if other_token_id is None
             else BookQuote.from_book(self._books[other_token_id])
         )
-        if not entry_quote_is_safe(self.settings, quote, other_quote):
+        if not self.settings.entry_quote_is_safe(quote, other_quote):
             return
         size = min(
             self.settings.order_size,
@@ -218,8 +225,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         quote = BookQuote.from_book(book)
         if position is None or quote is None:
             return
-        reason = exit_reason(
-            self.settings,
+        reason = self.settings.exit_reason(
             position,
             best_bid=quote.best_bid,
             now_ms=book.received_at_ms,

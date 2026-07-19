@@ -9,6 +9,8 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import YES_OUTCOME
 from polybot.framework.outcomes import resolve_outcome_token
 
+REBOUND_ORDER_REASON = "price_rebound"
+
 
 class ReboundState:
     def __init__(
@@ -42,7 +44,7 @@ class ReboundState:
                 size=min(order_size, max_order_size),
                 market_slug=book.market_slug,
                 condition_id=book.condition_id,
-                reason="price_rebound",
+                reason=REBOUND_ORDER_REASON,
             ),
             ReboundState(current_price),
         )

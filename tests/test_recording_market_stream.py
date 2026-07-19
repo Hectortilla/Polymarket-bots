@@ -46,7 +46,7 @@ from polybot.polymarket.recording_metadata import (
     RecordingMarketResolver,
     normalize_recording_market,
 )
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.recording.contracts import (
     BookBaselinePayload,
     BookDeltaPayload,
@@ -890,15 +890,22 @@ def test_recording_market_resolver_keeps_order_and_missing_entries() -> None:
     source = _sdk_market("alpha")
 
     class Paginator:
+        def __init__(self, include_source: bool) -> None:
+            self.include_source = include_source
+
         def iter_items(self) -> AsyncIterator[SdkMarket]:
             async def iterate() -> AsyncIterator[SdkMarket]:
-                yield source
+                if self.include_source:
+                    yield source
 
             return iterate()
 
     class Client:
         def list_markets(self, **kwargs: object) -> Paginator:
-            return Paginator()
+            requested = kwargs.get("slug", ())
+            return Paginator(
+                isinstance(requested, tuple) and "alpha" in requested
+            )
 
     async def run() -> tuple[RecordingMarket | None, ...]:
         resolver = RecordingMarketResolver(Client())  # type: ignore[arg-type]

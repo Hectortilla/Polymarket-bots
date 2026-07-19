@@ -34,18 +34,21 @@ class ExampleMultiMarketBot(BaseBot):
         if book.market_slug is None or not book.asks:
             return ()
         best_ask = min(book.asks, key=lambda level: level.price)
-        return tuple(
-            order
-            for rule in self.rules
-            for order in (
-                self._order_for_rule(
-                    rule, self._target_token_ids.get(rule.target_slug), max_order_size
-                )
-            ,)
-            if order is not None
-            and book.market_slug == rule.signal_slug
-            and best_ask.price <= rule.trigger_price
-        )
+        orders: list[OrderRequest] = []
+        for rule in self.rules:
+            if (
+                book.market_slug != rule.signal_slug
+                or best_ask.price > rule.trigger_price
+            ):
+                continue
+            order = self._order_for_rule(
+                rule,
+                self._target_token_ids.get(rule.target_slug),
+                max_order_size,
+            )
+            if order is not None:
+                orders.append(order)
+        return tuple(orders)
 
     @staticmethod
     def _order_for_rule(

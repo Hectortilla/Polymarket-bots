@@ -44,12 +44,6 @@ class BotRunner:
             await self.bot.on_stop(self.ctx)
 
     async def dispatch_book(self, book: BookSnapshot) -> DispatchOutcome:
-        await self.refresh_stream_plan()
-        if not self.stream_plan.accepts_book(book.market_slug) and (
-            book.market_slug is None
-            or book.market_slug not in self._runtime_market_slugs
-        ):
-            return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
         reason = book_skip_reason(
             book,
             now_ms=self._now_ms(),
@@ -57,6 +51,12 @@ class BotRunner:
         )
         if reason is not None:
             return DispatchOutcome.skipped(reason)
+        await self.refresh_stream_plan()
+        if not self.stream_plan.accepts_book(book.market_slug) and (
+            book.market_slug is None
+            or book.market_slug not in self._runtime_market_slugs
+        ):
+            return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
         await self.bot.on_book(self.ctx, book)
         return DispatchOutcome.accepted_event()
 
@@ -75,9 +75,6 @@ class BotRunner:
             await self.bot.on_stop(self.ctx)
 
     async def dispatch_wallet_trade(self, trade: WalletTradeEvent) -> DispatchOutcome:
-        await self.refresh_stream_plan()
-        if not self.stream_plan.accepts_trade(trade.wallet, trade.market_slug):
-            return DispatchOutcome.skipped(self._wallet_trade_plan_skip_reason(trade))
         reason = wallet_trade_skip_reason(
             trade,
             now_ms=self._now_ms(),
@@ -85,6 +82,9 @@ class BotRunner:
         )
         if reason is not None:
             return DispatchOutcome.skipped(reason)
+        await self.refresh_stream_plan()
+        if not self.stream_plan.accepts_trade(trade.wallet, trade.market_slug):
+            return DispatchOutcome.skipped(self._wallet_trade_plan_skip_reason(trade))
         if not self.deduper.remember(trade.source_key):
             return DispatchOutcome.skipped(DispatchSkipReason.DUPLICATE_SOURCE_EVENT)
         await self.bot.on_wallet_trade(self.ctx, trade)

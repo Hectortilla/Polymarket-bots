@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from polybot.cli.config import load_dotenv, parse_overrides
+from polybot.cli.config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from polybot.cli.factories import load_bot
 from polybot.framework.config.models import BotConfig, BotMode
 
@@ -55,14 +55,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     overrides = parse_overrides(args.override)
     config = BotConfig.from_env(config_name).with_overrides(**overrides)
-    config = config.with_overrides(
+    config = config.without_sensitive_values().with_overrides(
         mode=BotMode.PAPER,
         live_enabled=False,
-        private_key=None,
-        api_key=None,
-        api_secret=None,
-        api_passphrase=None,
-        funder_address=None,
     )
     bot = load_bot(bot_spec, config) if bot_spec is not None else None
     market_slugs = (
@@ -132,7 +127,7 @@ def _argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="resume a compatible existing archive and record the offline gap",
     )
-    parser.add_argument("--dotenv", default=".env")
+    parser.add_argument("--dotenv", default=DEFAULT_DOTENV_PATH)
     parser.add_argument(
         "--override",
         action="append",

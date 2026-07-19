@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from http import HTTPStatus
-from typing import Final
+from typing import Final, TypeVar
 from urllib.parse import urlencode
 
 from polymarket import AsyncPublicClient, RequestRejectedError
@@ -11,12 +11,13 @@ from polymarket.models.gamma.market import Market as SdkMarket
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.market import normalize_market
-from polybot.polymarket.types import Market
+from polybot.polymarket.markets import Market
 
 
 GAMMA_MARKETS_PAGE_SIZE: Final = 100
 GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST: Final = GAMMA_MARKETS_PAGE_SIZE
 GAMMA_MARKETS_QUERY_BUDGET: Final = 60_000
+MarketT = TypeVar("MarketT")
 
 
 class GammaClient:
@@ -26,7 +27,15 @@ class GammaClient:
 
     async def find_by_slug(self, slug: str) -> Market | None:
         source = await self._find_source_by_slug(slug)
-        return None if source is None else normalize_market(source)
+        if source is None:
+            return None
+        market = normalize_market(source)
+        if market.slug != slug:
+            raise MarketDataError(
+                MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                "Gamma response did not match the requested market slug",
+            )
+        return market
 
     async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
         sources = await self._find_many_sources(slugs)
@@ -74,13 +83,12 @@ class GammaClient:
         retry_delay_s: float,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> Market:
-        if retry_delay_s <= 0:
-            raise ValueError("retry delay must be positive")
-        while True:
-            market = await self.find_by_slug(slug)
-            if market is not None:
-                return market
-            await sleep(retry_delay_s)
+        return await wait_for_market(
+            self.find_by_slug,
+            slug,
+            retry_delay_s=retry_delay_s,
+            sleep=sleep,
+        )
 
     async def close(self) -> None:
         if self._owns_client:
@@ -102,6 +110,7 @@ class GammaClient:
         closed: bool | None = None,
     ) -> None:
         for slug_batch in _iter_slug_batches(slugs):
+            requested_batch = frozenset(slug_batch)
             paginator = self._client.list_markets(
                 slug=slug_batch,
                 closed=closed,
@@ -109,6 +118,17 @@ class GammaClient:
             )
             async for source in paginator.iter_items():
                 market = normalize_market(source)
+                if market.slug not in requested_batch:
+                    raise MarketDataError(
+                        MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                        "Gamma response contained an unrequested market slug",
+                    )
+                previous = markets_by_slug.get(market.slug)
+                if previous is not None and normalize_market(previous) != market:
+                    raise MarketDataError(
+                        MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                        f"Gamma returned conflicting rows for slug: {market.slug}",
+                    )
                 markets_by_slug[market.slug] = source
 
 
@@ -137,3 +157,19 @@ def _encoded_query_length(slugs: Iterable[str]) -> int:
     params = [("slug", slug) for slug in slugs]
     params.append(("limit", str(GAMMA_MARKETS_PAGE_SIZE)))
     return len(urlencode(params))
+
+
+async def wait_for_market(
+    find_by_slug: Callable[[str], Awaitable[MarketT | None]],
+    slug: str,
+    *,
+    retry_delay_s: float,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> MarketT:
+    if retry_delay_s <= 0:
+        raise ValueError("retry delay must be positive")
+    while True:
+        market = await find_by_slug(slug)
+        if market is not None:
+            return market
+        await sleep(retry_delay_s)

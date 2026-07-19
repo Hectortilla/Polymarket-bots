@@ -10,7 +10,7 @@ import pytest
 
 from polybot.framework.events import Side
 from polybot.polymarket.book_projector import BookDepthProjector
-from polybot.polymarket.types import Market, MarketOutcome
+from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.recording.archive import (
     SCHEMA_VERSION,
     ArchiveCoverageError,
@@ -33,6 +33,7 @@ from polybot.recording.contracts import (
     CaptureFailureKind,
     CaptureFragmentRole,
     CoverageGapPayload,
+    CoverageGapReason,
     FeeScheduleMetadata,
     MarketEventMetadata,
     MarketIdentity,
@@ -46,6 +47,8 @@ from polybot.recording.contracts import (
     SessionIntegrityStatus,
     TickSizeChangePayload,
 )
+from polybot.recording.archive_models import RecordingSession
+from polybot.recording.coverage import CoverageScope
 from polybot.recording.serialization import (
     PayloadKind,
     capture_anomaly_from_json,
@@ -55,6 +58,65 @@ from polybot.recording.serialization import (
     payload_kind,
 )
 from polybot.recording.writer import AsyncRecordingWriter
+
+
+@pytest.mark.parametrize(
+    ("status", "ended_at_ms", "clean_close", "failure_reason"),
+    (
+        (SessionIntegrityStatus.ACTIVE, 2, False, None),
+        (SessionIntegrityStatus.ACTIVE, None, True, None),
+        (SessionIntegrityStatus.COMPLETE, None, True, None),
+        (SessionIntegrityStatus.COMPLETE, 2, False, None),
+        (SessionIntegrityStatus.FAILED, 2, True, "failure"),
+        (SessionIntegrityStatus.FAILED, 2, False, None),
+        (SessionIntegrityStatus.INCOMPLETE, 2, True, "failure"),
+        (SessionIntegrityStatus.INCOMPLETE, 2, False, None),
+    ),
+)
+def test_recording_session_rejects_inconsistent_integrity_fields(
+    status: SessionIntegrityStatus,
+    ended_at_ms: int | None,
+    clean_close: bool,
+    failure_reason: str | None,
+) -> None:
+    with pytest.raises(ValueError, match="integrity fields"):
+        RecordingSession(
+            session_id=1,
+            started_at_ms=1,
+            ended_at_ms=ended_at_ms,
+            clean_close=clean_close,
+            integrity_status=status,
+            recorder_version="1",
+            sdk_version="1",
+            failure_reason=failure_reason,
+        )
+
+
+def test_coverage_scope_falls_back_to_event_identity() -> None:
+    scope = CoverageScope.from_gap(
+        CoverageGapPayload(
+            reason=CoverageGapReason.SDK_QUEUE_DROP,
+            started_at_ms=1,
+            ended_at_ms=None,
+        ),
+        MarketIdentity(
+            condition_id="condition-1",
+            market_slug="market-1",
+            token_id="token-1",
+        ),
+    )
+
+    assert not scope.is_global
+    assert scope.affects(
+        condition_ids=("condition-1",),
+        market_slugs=("market-1",),
+        token_id="token-1",
+    )
+    assert not scope.affects(
+        condition_ids=("condition-2",),
+        market_slugs=("market-1",),
+        token_id="token-1",
+    )
 
 
 def _metadata(*, condition_id: str = "condition-1") -> MarketMetadataPayload:
@@ -277,7 +339,7 @@ def test_capture_anomaly_serialization_is_canonical_and_exact() -> None:
             resolution_id="resolution-1",
         ),
         CoverageGapPayload(
-            reason="sdk_queue_drop",
+            reason=CoverageGapReason.SDK_QUEUE_DROP,
             started_at_ms=5_000,
             ended_at_ms=6_000,
             affected_condition_ids=("condition-1",),
@@ -984,7 +1046,7 @@ def test_gap_lifecycle_rejects_ranges_and_requires_fresh_baseline(tmp_path) -> N
         _event(
             archive,
             CoverageGapPayload(
-                reason="sdk_queue_drop",
+                reason=CoverageGapReason.SDK_QUEUE_DROP,
                 started_at_ms=started_at_ms + 2,
                 ended_at_ms=None,
                 affected_condition_ids=("condition-1",),
@@ -1044,7 +1106,7 @@ def test_large_coverage_gap_errors_compact_contiguous_ids(tmp_path) -> None:
             _event(
                 archive,
                 CoverageGapPayload(
-                    reason="sdk_handle_drop",
+                    reason=CoverageGapReason.SDK_HANDLE_DROP,
                     started_at_ms=started_at_ms + offset,
                     ended_at_ms=None,
                     affected_condition_ids=("condition-1",),
@@ -1088,7 +1150,7 @@ def test_reader_rejects_a_delta_without_a_post_gap_baseline(tmp_path) -> None:
         _event(
             archive,
             CoverageGapPayload(
-                reason="sdk_queue_drop",
+                reason=CoverageGapReason.SDK_QUEUE_DROP,
                 started_at_ms=started_at_ms + 2,
                 ended_at_ms=None,
                 affected_token_ids=("up-token",),
@@ -1158,7 +1220,7 @@ def test_event_iteration_and_gap_check_share_one_snapshot(tmp_path) -> None:
             _event(
                 archive,
                 CoverageGapPayload(
-                    reason="sdk_queue_drop",
+                    reason=CoverageGapReason.SDK_QUEUE_DROP,
                     started_at_ms=started_at_ms + 1,
                     ended_at_ms=None,
                     affected_condition_ids=("condition-1",),
@@ -1180,7 +1242,7 @@ def test_global_gap_can_cover_an_unresolved_dynamic_slug(tmp_path) -> None:
         _event(
             archive,
             CoverageGapPayload(
-                reason="current_slug_unavailable",
+                reason=CoverageGapReason.CURRENT_SLUG_UNAVAILABLE,
                 started_at_ms=started_at_ms,
                 ended_at_ms=None,
                 affected_market_slugs=("btc-updown-5m-next",),

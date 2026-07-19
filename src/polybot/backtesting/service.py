@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from polybot.backtesting.broker import BacktestPerformanceBroker
+from polybot.async_io import run_blocking
 from polybot.backtesting.clients import (
     RejectingPositionClient,
     RejectingPlanningBroker,
@@ -36,13 +37,15 @@ from polybot.performance.contracts import (
     RunProvenance,
     RunSelection,
 )
-from polybot.recording.archive import (
+from polybot.recording.archive import RecordingReader
+from polybot.recording.archive_errors import (
     ArchiveCoverageError,
     ArchiveFormatError,
     ArchiveIntegrityError,
     ArchiveLockedError,
     RecordingArchiveError,
-    RecordingReader,
+)
+from polybot.recording.archive_models import (
     RecordingSession,
 )
 from polybot.recording.contracts import (
@@ -66,7 +69,7 @@ async def run_backtest(
             "backtesting cannot run with BOT_MODE=live",
         )
     try:
-        reader = RecordingReader.for_replay(options.archive_path)
+        reader = await run_blocking(RecordingReader.for_replay, options.archive_path)
     except ArchiveLockedError as error:
         raise BacktestError(
             BacktestFailureReason.SESSION_NOT_REPLAYABLE,
@@ -83,13 +86,14 @@ async def run_backtest(
             str(error),
         ) from error
 
-    with reader:
+    try:
         try:
-            session = reader.select_session(options.session_id)
-            selection = _selection(reader, session, options)
-            _preflight_selection(reader, selection)
+            session = await run_blocking(reader.select_session, options.session_id)
+            selection = await run_blocking(_selection, reader, session, options)
+            await run_blocking(_preflight_selection, reader, selection)
             state = ArchiveMarketState()
-            prime_sequence = _prime_to_start(
+            prime_sequence = await run_blocking(
+                _prime_to_start,
                 reader,
                 state,
                 selection,
@@ -141,14 +145,16 @@ async def run_backtest(
                 options.archive_path,
                 config.name,
             )
-            artifacts = PerformanceArtifacts(
+            archive_sha256 = await run_blocking(_sha256, options.archive_path)
+            artifacts = await run_blocking(
+                PerformanceArtifacts,
                 results_dir,
                 provenance=RunProvenance(
                     kind=PerformanceRunKind.BACKTEST,
                     bot_spec=bot_spec,
                     configuration=config,
                     seed=options.seed,
-                    archive_sha256=_sha256(options.archive_path),
+                    archive_sha256=archive_sha256,
                     archive_schema_version=reader.schema_version,
                     archive_target_identity=reader.target_identity,
                 ),
@@ -159,7 +165,7 @@ async def run_backtest(
                     market_slugs=selection.market_slugs,
                     replay_cutoff_sequence=selection.replay_cutoff_sequence,
                     session_integrity_status=(
-                        selection.session_integrity_status.value
+                        selection.session_integrity_status
                     ),
                     uses_partial_session=selection.uses_partial_session,
                 ),
@@ -168,8 +174,12 @@ async def run_backtest(
                 max_book_age_ms=config.event_max_age_ms,
             )
             for book in state.books.values():
-                artifacts.record_book(book)
-            artifacts.start(clock.now_ms(), paper_broker.portfolio)
+                await run_blocking(artifacts.record_book, book)
+            await run_blocking(
+                artifacts.start,
+                clock.now_ms(),
+                paper_broker.portfolio,
+            )
             broker = BacktestPerformanceBroker(
                 paper_broker,
                 clock=clock,
@@ -187,7 +197,8 @@ async def run_backtest(
                 rng=strategy_rng,
             )
             runner = BotRunner(bot, ctx, now_ms_fn=clock.now_ms)
-            events = reader.iter_events(
+            events = await run_blocking(
+                reader.iter_events,
                 start_at_ms=selection.start_at_ms,
                 end_at_ms=selection.end_at_ms,
                 session_id=selection.session_id,
@@ -205,21 +216,24 @@ async def run_backtest(
             try:
                 await scheduler.run()
             except asyncio.CancelledError:
-                artifacts.finalize(
+                await run_blocking(
+                    artifacts.finalize,
                     status=PerformanceRunStatus.CANCELLED,
                     ended_at_ms=clock.now_ms(),
                     portfolio=paper_broker.portfolio,
                 )
                 raise
             except BaseException as error:
-                artifacts.finalize(
+                await run_blocking(
+                    artifacts.finalize,
                     status=PerformanceRunStatus.FAILED,
                     ended_at_ms=clock.now_ms(),
                     portfolio=paper_broker.portfolio,
                     error=f"{type(error).__name__}: {error}",
                 )
                 raise
-            artifacts.finalize(
+            await run_blocking(
+                artifacts.finalize,
                 status=PerformanceRunStatus.COMPLETED,
                 ended_at_ms=clock.now_ms(),
                 portfolio=paper_broker.portfolio,
@@ -247,6 +261,8 @@ async def run_backtest(
                 BacktestFailureReason.UNSUPPORTED_ARCHIVE,
                 str(error),
             ) from error
+    finally:
+        await run_blocking(reader.close)
 
 
 def _selection(
@@ -494,22 +510,25 @@ async def _advance_to_replayable_start(
 ) -> tuple[int, int]:
     if await _plan_is_replayable(bot, ctx, state):
         return selection.start_at_ms, prime_sequence
-    events = reader.iter_events(
+    events = await run_blocking(
+        reader.iter_events,
         start_at_ms=selection.start_at_ms,
         end_at_ms=selection.end_at_ms,
         session_id=selection.session_id,
         market_slugs=selection.market_slugs,
     )
-    for event in events:
-        if event.sequence <= prime_sequence:
-            continue
-        if explicit_start and event.observed_at_ms > selection.start_at_ms:
-            break
-        clock.move_to(event.observed_at_ms)
-        state.apply(event)
-        prime_sequence = event.sequence
-        if await _plan_is_replayable(bot, ctx, state):
-            return event.observed_at_ms, prime_sequence
+    cursor = ReplayCursor(events, after_sequence=prime_sequence)
+    try:
+        while (event := await cursor.pop()) is not None:
+            if explicit_start and event.observed_at_ms > selection.start_at_ms:
+                break
+            clock.move_to(event.observed_at_ms)
+            state.apply(event)
+            prime_sequence = event.sequence
+            if await _plan_is_replayable(bot, ctx, state):
+                return event.observed_at_ms, prime_sequence
+    finally:
+        await cursor.aclose()
     if explicit_start:
         raise BacktestError(
             BacktestFailureReason.MISSING_MARKET_DATA,

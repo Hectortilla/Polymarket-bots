@@ -10,7 +10,10 @@ from decimal import Decimal
 
 from polymarket import PolymarketError
 
-from polybot.framework.events.resolutions import GAMMA_RECONCILIATION_SOURCE
+from polybot.framework.cadence import (
+    RESOLUTION_RECONCILIATION_SECONDS,
+    STREAM_PLAN_REFRESH_INTERVAL_SECONDS,
+)
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.recording_events import CapturedMarketEvent
@@ -23,6 +26,7 @@ from polybot.polymarket.recording_metadata import (
     RecordingMarket,
     RecordingMarketResolver,
 )
+from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.recording.clock import ObservationClock
 from polybot.recording.contracts import (
     BookBaselinePayload,
@@ -32,6 +36,7 @@ from polybot.recording.contracts import (
     CaptureBookDiagnostics,
     CaptureFragmentRole,
     CoverageGapPayload,
+    CoverageGapReason,
     MarketIdentity,
     MarketMetadataPayload,
     RecordedBookLevel,
@@ -47,9 +52,7 @@ from polybot.recording.writer import (
 )
 
 
-PLAN_REFRESH_SECONDS = 1.0
 CHECKPOINT_SECONDS = 60.0
-RESOLUTION_RECONCILIATION_SECONDS = 30.0
 MAX_PENDING_CAPTURE_EVENTS = 64
 
 
@@ -71,7 +74,7 @@ class _TrackedMarket:
 class _CaptureStopped:
     condition_id: str
     generation: int
-    reason: str
+    reason: CoverageGapReason
     error: BaseException | None = None
     fatal: bool = False
 
@@ -104,7 +107,7 @@ class RecordingCoordinator:
         writer: AsyncRecordingWriter,
         clock: ObservationClock,
         stop_when_terminal: bool,
-        plan_refresh_seconds: float = PLAN_REFRESH_SECONDS,
+        plan_refresh_seconds: float = STREAM_PLAN_REFRESH_INTERVAL_SECONDS,
         checkpoint_seconds: float = CHECKPOINT_SECONDS,
         resolution_reconciliation_seconds: float = (
             RESOLUTION_RECONCILIATION_SECONDS
@@ -392,6 +395,7 @@ class RecordingCoordinator:
         )
         stopped: _CaptureStopped | None = None
         resolution_queued = False
+        capture_retired = False
         try:
             while capture_read is not None or pending:
                 waiters: list[asyncio.Future | asyncio.Task] = []
@@ -415,7 +419,7 @@ class RecordingCoordinator:
                         stopped = _CaptureStopped(
                             condition_id,
                             generation,
-                            "capture_ended",
+                            CoverageGapReason.CAPTURE_ENDED,
                         )
                     except asyncio.CancelledError:
                         raise
@@ -423,7 +427,7 @@ class RecordingCoordinator:
                         stopped = _CaptureStopped(
                             condition_id,
                             generation,
-                            "capture_failure",
+                            CoverageGapReason.CAPTURE_FAILURE,
                             error=error,
                         )
                     else:
@@ -433,7 +437,7 @@ class RecordingCoordinator:
                             stopped = _CaptureStopped(
                                 condition_id,
                                 generation,
-                                "sdk_handle_drop",
+                                CoverageGapReason.SDK_HANDLE_DROP,
                             )
                         else:
                             try:
@@ -446,17 +450,13 @@ class RecordingCoordinator:
                                 stopped = _CaptureStopped(
                                     condition_id,
                                     generation,
-                                    "recording_write_failure",
+                                    CoverageGapReason.RECORDING_WRITE_FAILURE,
                                     error=error,
                                     fatal=True,
                                 )
                             else:
                                 if queued is None:
-                                    stopped = _CaptureStopped(
-                                        condition_id,
-                                        generation,
-                                        "capture_retired",
-                                    )
+                                    capture_retired = True
                                 else:
                                     pending.append(queued)
                                     if isinstance(
@@ -475,7 +475,7 @@ class RecordingCoordinator:
                         stopped = _CaptureStopped(
                             condition_id,
                             generation,
-                            "recording_write_failure",
+                            CoverageGapReason.RECORDING_WRITE_FAILURE,
                             error=error,
                             fatal=True,
                         )
@@ -496,10 +496,10 @@ class RecordingCoordinator:
                         stopped = _CaptureStopped(
                             condition_id,
                             generation,
-                            "sdk_handle_drop",
+                            CoverageGapReason.SDK_HANDLE_DROP,
                         )
 
-                if stopped is not None or resolution_queued:
+                if stopped is not None or resolution_queued or capture_retired:
                     await _cancel_task(capture_read)
                     capture_read = None
                 elif (
@@ -515,9 +515,9 @@ class RecordingCoordinator:
                         _ResolutionStored(condition_id, generation)
                     )
                     return
+                if capture_retired:
+                    return
                 if stopped is not None:
-                    if stopped.reason == "capture_retired":
-                        return
                     await self._control.put(stopped)
                     return
         except asyncio.CancelledError:
@@ -531,7 +531,7 @@ class RecordingCoordinator:
                 _CaptureStopped(
                     condition_id,
                     generation,
-                    "capture_failure",
+                    CoverageGapReason.CAPTURE_FAILURE,
                     error=error,
                 )
             )
@@ -623,7 +623,7 @@ class RecordingCoordinator:
         self,
         tracked: _TrackedMarket,
         *,
-        reason: str,
+        reason: CoverageGapReason,
         error: BaseException | None = None,
     ) -> None:
         if isinstance(error, CaptureContinuityError):
@@ -668,13 +668,16 @@ class RecordingCoordinator:
             if dropped_count <= tracked.dropped_count:
                 continue
             tracked.dropped_count = dropped_count
-            await self._restart_capture(tracked, reason="sdk_handle_drop")
+            await self._restart_capture(
+                tracked,
+                reason=CoverageGapReason.SDK_HANDLE_DROP,
+            )
 
     async def _open_gap(
         self,
         tracked: _TrackedMarket,
         *,
-        reason: str,
+        reason: CoverageGapReason,
         started_at_ms: int,
         details: str | None = None,
     ) -> None:

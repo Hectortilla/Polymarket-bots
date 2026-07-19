@@ -18,8 +18,8 @@ from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed import CaptureContinuityError
 from polybot.polymarket.recording_metadata import RecordingMarket
-from polybot.polymarket.types import Market, MarketOutcome
-from polybot.recording import entrypoint
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.recording import entrypoint, service
 from polybot.recording.archive import (
     ArchiveExistsError,
     RecordingArchive,
@@ -35,6 +35,7 @@ from polybot.recording.contracts import (
     CaptureFailureKind,
     CaptureFragmentRole,
     CoverageGapPayload,
+    CoverageGapReason,
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
@@ -692,7 +693,7 @@ def test_gap_and_anomaly_mutations_do_not_acknowledge_before_commit_returns(
         if operation == "open_gap":
             mutation = asyncio.create_task(
                 writer.open_gap(
-                    CoverageGapPayload("disconnect", 10, None),
+                    CoverageGapPayload(CoverageGapReason.DISCONNECT, 10, None),
                     observed_at_ms=10,
                     identity=identity,
                     subscription_generation=1,
@@ -1260,7 +1261,7 @@ def test_sdk_drop_reopens_only_affected_condition_until_fresh_baselines() -> Non
         for event in writer.events
         if isinstance(event.payload, CoverageGapPayload)
     ]
-    assert gap_reasons == ["sdk_handle_drop"]
+    assert gap_reasons == [CoverageGapReason.SDK_HANDLE_DROP]
     assert len(feed.captures) == 2
 
 
@@ -1401,7 +1402,7 @@ def test_sdk_drop_gap_starts_at_last_known_good_event() -> None:
         await _wait_for(
             lambda: any(
                 isinstance(event.payload, CoverageGapPayload)
-                and event.payload.reason == "sdk_handle_drop"
+                and event.payload.reason is CoverageGapReason.SDK_HANDLE_DROP
                 for event in writer.events
             )
         )
@@ -1409,7 +1410,7 @@ def test_sdk_drop_gap_starts_at_last_known_good_event() -> None:
             event.payload
             for event in writer.events
             if isinstance(event.payload, CoverageGapPayload)
-            and event.payload.reason == "sdk_handle_drop"
+            and event.payload.reason is CoverageGapReason.SDK_HANDLE_DROP
         )
         delta_count = sum(
             isinstance(event.payload, BookDeltaPayload) for event in writer.events
@@ -1423,7 +1424,7 @@ def test_sdk_drop_gap_starts_at_last_known_good_event() -> None:
         event.payload
         for event in writer.events
         if isinstance(event.payload, CoverageGapPayload)
-        and event.payload.reason == "sdk_handle_drop"
+        and event.payload.reason is CoverageGapReason.SDK_HANDLE_DROP
     )
 
     assert gap.started_at_ms == last_good_observed_at_ms
@@ -1467,7 +1468,7 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
             event.payload
             for event in writer.events
             if isinstance(event.payload, CoverageGapPayload)
-            and event.payload.reason == "capture_failure"
+            and event.payload.reason is CoverageGapReason.CAPTURE_FAILURE
         )
         assert gap.details == "RuntimeError: subscription disconnected"
         assert first.closed is True
@@ -1824,7 +1825,7 @@ def test_resume_state_restores_a_prior_open_condition_gap(tmp_path) -> None:
                 market_slug=market.market.slug,
             ),
             payload=CoverageGapPayload(
-                reason="sdk_handle_drop",
+                reason=CoverageGapReason.SDK_HANDLE_DROP,
                 started_at_ms=started_at_ms + 1,
                 ended_at_ms=None,
                 affected_condition_ids=(market.market.condition_id,),
@@ -2006,8 +2007,6 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from polybot.recording import service
-
     market = _recording_market("alpha")
     resolvers: list[MutableResolver] = []
     feeds: list[FakeFeed] = []
@@ -2081,7 +2080,7 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
         gaps = reader.coverage_gaps()
 
     assert len(sessions) == 2
-    assert [gap.gap.reason for gap in gaps] == ["recorder_offline"]
+    assert [gap.gap.reason for gap in gaps] == [CoverageGapReason.RECORDER_OFFLINE]
     assert gaps[0].gap.ended_at_ms is not None
     assert all(resolver.closed for resolver in resolvers)
     assert all(feed.closed for feed in feeds)
@@ -2091,8 +2090,6 @@ def test_cancelled_recording_is_finalized_at_its_durable_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from polybot.recording import service
-
     market = _recording_market("alpha")
     coordinators: list[CancellingCoordinator] = []
 

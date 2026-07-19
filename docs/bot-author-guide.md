@@ -55,6 +55,11 @@ uses `ctx.markets`, `ctx.books`, normalized events, and `ctx.broker`; this keeps
 strategies independent of SDK releases and guarantees that paper and live modes
 continue to share package-owned contracts.
 
+Expose a CLI bot as a `module:create` factory. A factory may take no arguments,
+or accept the already-validated `BotConfig` when construction depends on stream
+rules or other framework configuration. The discoverable typing contract is
+`polybot.framework.factories.BotFactory`.
+
 ## Common Hooks
 
 `on_start`
@@ -362,7 +367,8 @@ Activity is informational and fail-open: it cannot affect trading. The same
 typed event reaches a custom runtime observer in headless runs.
 
 Tools integrating the CLI may pass a custom
-`polybot.cli.observability.observer.RuntimeObserver` to `run_bot()`. Observers
+`polybot.cli.observability.observer.RuntimeObserver` to
+`polybot.runtime.run_bot()`. Observers
 receive `polybot.cli.observability.events.RuntimeEvent` values and must remain
 non-essential: the runtime suppresses their lifecycle and event failures.
 
@@ -503,20 +509,21 @@ performance under the recorded market inputs.
 
 ### Dynamic wallet-filtered example
 
-`polybot.my_bot:create` runs the separate dynamic random-hold wallet-filter
-example. It reads a JSON wallet list from the root `.env` file. The market
-slugs are generated from the time bucket:
+`polybot.examples.example_dynamic_random_hold_wallet_filter_copy:create` runs
+the dynamic random-hold wallet-filter example. Its factory reads followed
+wallets from the standard validated `BOT_STREAM_RULES` config, while the bot
+generates market slugs from the current time bucket:
 
 ```dotenv
-EXAMPLE_DYNAMIC_RANDOM_HOLD_WALLETS='["0x0000000000000000000000000000000000000001","0x0000000000000000000000000000000000000002"]'
+BOT_STREAM_RULES='[{"relation":"independent","market_slugs":[],"wallet_addresses":["0x0000000000000000000000000000000000000001","0x0000000000000000000000000000000000000002"]}]'
 ```
 
 Each current and next bucket is then declared as a `filtered` stream rule for
-that complete wallet list. The bot fails closed at construction time when the
-list is empty. Its copied positions are tracked by normalized wallet,
-condition, and token, so a sell from one followed wallet can only reduce a
-position opened from that same wallet's buy; sells for untracked inventory are
-ignored.
+that complete wallet list. The bot fails closed at construction time when no
+wallet appears in the configured rules. Its copied positions are tracked by
+normalized wallet, condition, and token, so a sell from one followed wallet can
+only reduce a position opened from that same wallet's buy; sells for untracked
+inventory are ignored.
 
 ## Cross-Market Bot
 

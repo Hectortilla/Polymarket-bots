@@ -6,10 +6,10 @@ from decimal import Decimal
 from typing import Any
 
 from polybot.framework.events import Side
-from polybot.framework.wallets import normalize_wallet_address
+from polybot.framework.wallets import validate_wallet_address
 
 from ..contracts import WalletFollowState
-from ..position_contracts import FollowBaseline, FollowMovement
+from ..position_contracts import FollowBaseline, FollowMovement, FollowSettlement
 from .schema import (
     FOLLOW_ACTIVE_FIELD,
     FOLLOW_BASELINES_FIELD,
@@ -80,8 +80,14 @@ def state_from_payload(wallet: str, payload: dict[str, Any]) -> WalletFollowStat
         movements=movements,
         source_ids=set(payload[FOLLOW_SOURCE_IDS_FIELD]),
         checkpoint=None if checkpoint is None else (checkpoint[0], checkpoint[1]),
-        settlements=list(payload[FOLLOW_SETTLEMENTS_FIELD]),
-        epoch_history=list(payload[FOLLOW_EPOCH_HISTORY_FIELD]),
+        settlements=[
+            FollowSettlement.from_payload(settlement)
+            for settlement in payload[FOLLOW_SETTLEMENTS_FIELD]
+        ],
+        epoch_history=[
+            state_from_payload(wallet, historical)
+            for historical in payload[FOLLOW_EPOCH_HISTORY_FIELD]
+        ],
     )
 
 
@@ -102,7 +108,7 @@ def load_states(payload: dict[str, Any]) -> dict[str, WalletFollowState]:
             raise ValueError("followed-wallet state record must be an object")
         if FOLLOW_EPOCH_HISTORY_FIELD not in state_payload_value:
             raise ValueError("followed-wallet state is missing epoch history")
-        normalized_wallet = normalize_wallet_address(wallet.strip())
+        normalized_wallet = validate_wallet_address(wallet)
         if normalized_wallet in states:
             raise ValueError("followed-wallet state contains duplicate wallet keys")
         states[normalized_wallet] = state_from_payload(

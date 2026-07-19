@@ -20,7 +20,7 @@ async def dispatch_book(
         and event.event.condition_id is not None
         and registry.is_terminal(event.event.condition_id)
     ):
-        return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
+        return DispatchOutcome.skipped(DispatchSkipReason.MARKET_RESOLVED)
     outcome = await runner.dispatch_book(event.event)
     if outcome.accepted and followed_wallets is not None and event.event.bids:
         await run_blocking(

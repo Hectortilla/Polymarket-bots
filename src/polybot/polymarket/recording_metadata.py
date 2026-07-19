@@ -11,10 +11,10 @@ from polymarket import AsyncPublicClient
 from polymarket.models.gamma.market import Market as SdkMarket
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.gamma import GammaClient
+from polybot.polymarket.gamma import GammaClient, wait_for_market
 from polybot.polymarket.normalization.market import normalize_market
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
-from polybot.polymarket.types import Market
+from polybot.polymarket.markets import Market
 from polybot.recording.contracts import (
     FeeScheduleMetadata,
     MarketEventMetadata,
@@ -56,13 +56,12 @@ class RecordingMarketResolver:
         retry_delay_s: float,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> RecordingMarket:
-        if retry_delay_s <= 0:
-            raise ValueError("retry delay must be positive")
-        while True:
-            market = await self.find_by_slug(slug)
-            if market is not None:
-                return market
-            await sleep(retry_delay_s)
+        return await wait_for_market(
+            self.find_by_slug,
+            slug,
+            retry_delay_s=retry_delay_s,
+            sleep=sleep,
+        )
 
     async def close(self) -> None:
         await self._gamma.close()

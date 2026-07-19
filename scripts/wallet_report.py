@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from scripts.terminal import color_enabled
+from scripts.terminal import bad, dim, good, heading, warn
 from scripts.wallet_analysis.classification import (
     HEDGE_SCORE_THRESHOLD,
     classify_wallet_candidate,
@@ -15,30 +15,6 @@ from scripts.wallet_analysis.market_metrics import market_trade_share
 
 GOOD_VERDICT = "Good for the trader"
 BAD_VERDICT = "Bad"
-
-
-def _color(code: str, text: str) -> str:
-    return f"\033[{code}m{text}\033[0m" if color_enabled() else text
-
-
-def good(text: str) -> str:
-    return _color("32", text)
-
-
-def bad(text: str) -> str:
-    return _color("31", text)
-
-
-def warn(text: str) -> str:
-    return _color("33", text)
-
-
-def dim(text: str) -> str:
-    return _color("90", text)
-
-
-def heading(text: str) -> str:
-    return _color("1;36", text)
 
 
 def signed(value: float) -> str:

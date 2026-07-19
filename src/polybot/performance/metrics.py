@@ -5,13 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from .valuation import PortfolioValuation, ValuationStatus
+from .valuation import (
+    PortfolioValuation,
+    ValuationStatus,
+    aggregate_valuation_status,
+)
 
 
-ZERO = Decimal("0")
+ZERO_DRAWDOWN = Decimal("0")
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class EquityCurveMetrics:
     sample_count: int = 0
     available_sample_count: int = 0
@@ -24,7 +28,11 @@ class EquityCurveMetrics:
     last_timestamp_ms: int | None = None
     final_valuation: PortfolioValuation | None = None
 
-    def record(self, timestamp_ms: int, valuation: PortfolioValuation) -> None:
+    def after_sample(
+        self,
+        timestamp_ms: int,
+        valuation: PortfolioValuation,
+    ) -> EquityCurveMetrics:
         if (
             isinstance(timestamp_ms, bool)
             or not isinstance(timestamp_ms, int)
@@ -33,43 +41,74 @@ class EquityCurveMetrics:
             raise ValueError("equity sample timestamp must be nonnegative")
         if self.last_timestamp_ms is not None and timestamp_ms < self.last_timestamp_ms:
             raise ValueError("equity sample timestamps must be nondecreasing")
-        if self.first_timestamp_ms is None:
-            self.first_timestamp_ms = timestamp_ms
-        self.last_timestamp_ms = timestamp_ms
-        self.sample_count += 1
-        self.final_valuation = valuation
-        if valuation.status is ValuationStatus.STALE:
-            self.stale_sample_count += 1
-        elif valuation.status is ValuationStatus.UNAVAILABLE:
-            self.unavailable_sample_count += 1
-        if valuation.equity_usdc is None:
-            return
-        self.available_sample_count += 1
-        self._record_drawdown(valuation.equity_usdc)
+        stale_count = self.stale_sample_count + (
+            valuation.status is ValuationStatus.STALE
+        )
+        unavailable_count = self.unavailable_sample_count + (
+            valuation.status is ValuationStatus.UNAVAILABLE
+        )
+        available_count = self.available_sample_count + (
+            valuation.equity_usdc is not None
+        )
+        peak, max_drawdown, max_fraction = _after_drawdown(
+            valuation.equity_usdc,
+            peak_equity_usdc=self.peak_equity_usdc,
+            max_drawdown_usdc=self.max_drawdown_usdc,
+            max_drawdown_fraction=self.max_drawdown_fraction,
+        )
+        return EquityCurveMetrics(
+            sample_count=self.sample_count + 1,
+            available_sample_count=available_count,
+            stale_sample_count=stale_count,
+            unavailable_sample_count=unavailable_count,
+            peak_equity_usdc=peak,
+            max_drawdown_usdc=max_drawdown,
+            max_drawdown_fraction=max_fraction,
+            first_timestamp_ms=(
+                timestamp_ms if self.first_timestamp_ms is None else self.first_timestamp_ms
+            ),
+            last_timestamp_ms=timestamp_ms,
+            final_valuation=valuation,
+        )
 
     @property
     def history_status(self) -> ValuationStatus:
+        statuses = []
         if self.unavailable_sample_count:
-            return ValuationStatus.UNAVAILABLE
+            statuses.append(ValuationStatus.UNAVAILABLE)
         if self.stale_sample_count:
-            return ValuationStatus.STALE
-        return ValuationStatus.FRESH
+            statuses.append(ValuationStatus.STALE)
+        return aggregate_valuation_status(statuses)
 
     @property
     def drawdown_status(self) -> ValuationStatus:
         return self.history_status
 
-    def _record_drawdown(self, equity_usdc: Decimal) -> None:
-        if self.peak_equity_usdc is None or equity_usdc > self.peak_equity_usdc:
-            self.peak_equity_usdc = equity_usdc
-        peak = self.peak_equity_usdc
-        drawdown = max(peak - equity_usdc, ZERO)
-        if self.max_drawdown_usdc is None or drawdown > self.max_drawdown_usdc:
-            self.max_drawdown_usdc = drawdown
-        if peak > ZERO:
-            fraction = drawdown / peak
-            if (
-                self.max_drawdown_fraction is None
-                or fraction > self.max_drawdown_fraction
-            ):
-                self.max_drawdown_fraction = fraction
+
+
+def _after_drawdown(
+    equity_usdc: Decimal | None,
+    *,
+    peak_equity_usdc: Decimal | None,
+    max_drawdown_usdc: Decimal | None,
+    max_drawdown_fraction: Decimal | None,
+) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
+    if equity_usdc is None:
+        return peak_equity_usdc, max_drawdown_usdc, max_drawdown_fraction
+    peak = (
+        equity_usdc
+        if peak_equity_usdc is None or equity_usdc > peak_equity_usdc
+        else peak_equity_usdc
+    )
+    drawdown = max(peak - equity_usdc, ZERO_DRAWDOWN)
+    maximum = (
+        drawdown
+        if max_drawdown_usdc is None or drawdown > max_drawdown_usdc
+        else max_drawdown_usdc
+    )
+    fraction_maximum = max_drawdown_fraction
+    if peak > ZERO_DRAWDOWN:
+        fraction = drawdown / peak
+        if fraction_maximum is None or fraction > fraction_maximum:
+            fraction_maximum = fraction
+    return peak, maximum, fraction_maximum

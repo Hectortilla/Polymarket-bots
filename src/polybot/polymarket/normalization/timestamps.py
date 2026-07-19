@@ -17,9 +17,15 @@ def datetime_to_epoch_ms(value: object) -> int | None:
         )
     normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     try:
-        return int(normalized.timestamp() * 1_000)
+        timestamp_ms = int(normalized.timestamp() * 1_000)
     except (OverflowError, OSError, ValueError) as error:
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
             "market source timestamp is outside the supported range",
         ) from error
+    if timestamp_ms < 0:
+        raise MarketDataError(
+            MarketDataIssue.INVALID_MARKET_PARAMETERS,
+            "market source timestamp must not be negative",
+        )
+    return timestamp_ms

@@ -43,6 +43,7 @@ packages = [
   "polybot.polymarket.normalization",
   "polybot.backtesting",
   "polybot.performance",
+  "polybot.persistence",
   "polybot.recording",
   "scripts",
   "scripts.select_wallet_for_analysis",
