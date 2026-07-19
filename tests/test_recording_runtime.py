@@ -60,6 +60,7 @@ from polybot.recording.service import (
 from polybot.recording.writer import (
     AsyncRecordingWriter,
     OpenedCoverageGap,
+    PendingRecordingEvent,
     RecordingCheckpointWrite,
     RecordingEventWrite,
     RecordingWriteError,
@@ -244,6 +245,43 @@ class MemoryWriter:
         self._next_anomaly_id = 1
 
     async def record(
+        self,
+        payload: object,
+        *,
+        observed_at_ms: int,
+        source_timestamp_ms: int | None,
+        identity: MarketIdentity | None,
+        subscription_generation: int,
+    ) -> RecordedEvent:
+        return await self.enqueue_record(
+            payload,
+            observed_at_ms=observed_at_ms,
+            source_timestamp_ms=source_timestamp_ms,
+            identity=identity,
+            subscription_generation=subscription_generation,
+        ).wait()
+
+    def enqueue_record(
+        self,
+        payload: object,
+        *,
+        observed_at_ms: int,
+        source_timestamp_ms: int | None,
+        identity: MarketIdentity | None,
+        subscription_generation: int,
+    ) -> PendingRecordingEvent:
+        event = self._record_now(
+            payload,
+            observed_at_ms=observed_at_ms,
+            source_timestamp_ms=source_timestamp_ms,
+            identity=identity,
+            subscription_generation=subscription_generation,
+        )
+        completion = asyncio.get_running_loop().create_future()
+        completion.set_result(None)
+        return PendingRecordingEvent(event, completion)
+
+    def _record_now(
         self,
         payload: object,
         *,
@@ -587,6 +625,30 @@ def test_recorded_payloads_do_not_acknowledge_before_commit_returns(
     assert acknowledged_while_blocked is False
     assert [event.sequence for event in events] == [1]
     assert events[0].payload is not None
+
+
+def test_enqueued_record_exposes_no_durable_ack_before_commit() -> None:
+    async def run() -> tuple[bool, int]:
+        archive = BlockingArchive()
+        writer = AsyncRecordingWriter(archive)  # type: ignore[arg-type]
+        pending = writer.enqueue_record(
+            _baseline_payload("alpha-up"),
+            observed_at_ms=10,
+            source_timestamp_ms=9,
+            identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+            subscription_generation=1,
+        )
+        await _wait_for(archive.started.is_set)
+        completed_while_blocked = pending.done
+        archive.release.set()
+        event = await pending.wait()
+        await writer.stop(clean=True)
+        return completed_while_blocked, event.sequence
+
+    completed_while_blocked, sequence = asyncio.run(run())
+
+    assert completed_while_blocked is False
+    assert sequence == 1
 
 
 def test_checkpoint_does_not_acknowledge_before_commit_returns() -> None:
@@ -1202,6 +1264,105 @@ def test_sdk_drop_reopens_only_affected_condition_until_fresh_baselines() -> Non
     assert len(feed.captures) == 2
 
 
+def test_capture_pump_uses_bounded_commit_pipeline_during_event_burst() -> None:
+    market = _recording_market("alpha")
+    pending_limit = 16
+
+    class DeferredWriter(MemoryWriter):
+        def __init__(self, operations: list[str]) -> None:
+            super().__init__(operations)
+            self.defer = False
+            self.completions: list[asyncio.Future[None]] = []
+            self.high_watermark = 0
+
+        def enqueue_record(
+            self,
+            payload: object,
+            *,
+            observed_at_ms: int,
+            source_timestamp_ms: int | None,
+            identity: MarketIdentity | None,
+            subscription_generation: int,
+        ) -> PendingRecordingEvent:
+            event = self._record_now(
+                payload,
+                observed_at_ms=observed_at_ms,
+                source_timestamp_ms=source_timestamp_ms,
+                identity=identity,
+                subscription_generation=subscription_generation,
+            )
+            completion = asyncio.get_running_loop().create_future()
+            if self.defer:
+                self.completions.append(completion)
+                self.high_watermark = max(
+                    self.high_watermark,
+                    len(self.completions),
+                )
+            else:
+                completion.set_result(None)
+            return PendingRecordingEvent(event, completion)
+
+        def release_pending(self) -> None:
+            completions = tuple(self.completions)
+            self.completions.clear()
+            for completion in completions:
+                completion.set_result(None)
+
+    async def run() -> tuple[DeferredWriter, FakeCapture]:
+        operations: list[str] = []
+        writer = DeferredWriter(operations)
+        feed = FakeFeed(operations)
+        provider = MutablePlanProvider(_plan(("alpha",)))
+        resolver = MutableResolver({"alpha": market})
+        coordinator = _coordinator(
+            provider,
+            resolver,
+            feed,
+            writer,
+            max_pending_capture_events=pending_limit,
+            checkpoint_seconds=60.0,
+        )
+        await coordinator.start(provider.current_plan, (market,))
+        capture = feed.latest(market.market.condition_id)
+        writer.defer = True
+        shutdown = asyncio.Event()
+        task = asyncio.create_task(coordinator.run(shutdown))
+
+        captured = (
+            _baseline_event(market, 0, 10),
+            _baseline_event(market, 1, 11),
+            *(
+                _delta_event(market, "0.41", source_timestamp_ms)
+                for source_timestamp_ms in range(12, 44)
+            ),
+        )
+        for event in captured:
+            await capture.emit(event)
+
+        await _wait_for(lambda: len(writer.completions) == pending_limit)
+        expected_event_count = 1 + len(captured)
+        while len(writer.events) < expected_event_count:
+            previous_count = len(writer.events)
+            writer.release_pending()
+            await _wait_for(lambda: len(writer.events) > previous_count)
+        writer.release_pending()
+        await _wait_for(
+            lambda: coordinator._tracked[market.market.condition_id].last_observed_at_ms
+            == writer.events[-1].observed_at_ms
+        )
+        shutdown.set()
+        await task
+        return writer, capture
+
+    writer, capture = asyncio.run(run())
+
+    assert writer.high_watermark == pending_limit
+    assert capture.dropped_count == 0
+    assert not any(
+        isinstance(event.payload, CoverageGapPayload) for event in writer.events
+    )
+
+
 def test_sdk_drop_gap_starts_at_last_known_good_event() -> None:
     market = _recording_market("alpha")
 
@@ -1492,7 +1653,7 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
             self.release_alpha = asyncio.Event()
             self.checkpoint_batches: list[tuple[BookCheckpoint, ...]] = []
 
-        async def record(
+        def enqueue_record(
             self,
             payload: object,
             *,
@@ -1500,21 +1661,28 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
             source_timestamp_ms: int | None,
             identity: MarketIdentity | None,
             subscription_generation: int,
-        ) -> RecordedEvent:
-            event = await super().record(
+        ) -> PendingRecordingEvent:
+            event = self._record_now(
                 payload,
                 observed_at_ms=observed_at_ms,
                 source_timestamp_ms=source_timestamp_ms,
                 identity=identity,
                 subscription_generation=subscription_generation,
             )
+            completion = asyncio.get_running_loop().create_future()
             if (
                 isinstance(payload, BookBaselinePayload)
                 and payload.token_id == alpha.market.token_ids[1]
             ):
-                self.alpha_final_started.set()
-                await self.release_alpha.wait()
-            return event
+                async def complete_after_release() -> None:
+                    self.alpha_final_started.set()
+                    await self.release_alpha.wait()
+                    completion.set_result(None)
+
+                asyncio.create_task(complete_after_release())
+            else:
+                completion.set_result(None)
+            return PendingRecordingEvent(event, completion)
 
         async def checkpoint_batch(
             self,
@@ -2132,6 +2300,7 @@ def _coordinator(
     *,
     plan_refresh_seconds: float = 1.0,
     checkpoint_seconds: float = 1.0,
+    max_pending_capture_events: int = 64,
     resumed_gap_condition_ids: dict[int, frozenset[str]] | None = None,
 ) -> RecordingCoordinator:
     return RecordingCoordinator(
@@ -2144,6 +2313,7 @@ def _coordinator(
         plan_refresh_seconds=plan_refresh_seconds,
         checkpoint_seconds=checkpoint_seconds,
         resolution_reconciliation_seconds=60.0,
+        max_pending_capture_events=max_pending_capture_events,
         resumed_gap_condition_ids=resumed_gap_condition_ids,
     )
 

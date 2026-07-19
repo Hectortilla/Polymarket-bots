@@ -1037,6 +1037,32 @@ def test_gap_lifecycle_rejects_ranges_and_requires_fresh_baseline(tmp_path) -> N
         )
 
 
+def test_large_coverage_gap_errors_compact_contiguous_ids(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    for offset in range(25):
+        archive.append_gap(
+            _event(
+                archive,
+                CoverageGapPayload(
+                    reason="sdk_handle_drop",
+                    started_at_ms=started_at_ms + offset,
+                    ended_at_ms=None,
+                    affected_condition_ids=("condition-1",),
+                ),
+                observed_at_ms=started_at_ms + offset,
+                identity=_identity(),
+            )
+        )
+    archive.close()
+
+    with RecordingReader(archive.path) as reader:
+        with pytest.raises(
+            ArchiveCoverageError,
+            match=r"25 gaps \(IDs 1-25\)$",
+        ):
+            tuple(reader.iter_events(condition_id="condition-1"))
+
+
 def test_reader_rejects_a_delta_without_a_post_gap_baseline(tmp_path) -> None:
     archive, started_at_ms = _opened_archive(tmp_path)
     archive.append_events(

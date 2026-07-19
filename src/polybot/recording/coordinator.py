@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -34,11 +35,13 @@ from polybot.recording.contracts import (
     MarketIdentity,
     MarketMetadataPayload,
     RecordedBookLevel,
+    RecordedEvent,
     ResolutionPayload,
 )
 from polybot.recording.planning import StreamPlanProvider
 from polybot.recording.writer import (
     AsyncRecordingWriter,
+    PendingRecordingEvent,
     RecordingCheckpointWrite,
     RecordingEventWrite,
 )
@@ -47,6 +50,7 @@ from polybot.recording.writer import (
 PLAN_REFRESH_SECONDS = 1.0
 CHECKPOINT_SECONDS = 60.0
 RESOLUTION_RECONCILIATION_SECONDS = 30.0
+MAX_PENDING_CAPTURE_EVENTS = 64
 
 
 @dataclass(slots=True)
@@ -78,6 +82,13 @@ class _ResolutionStored:
     generation: int
 
 
+@dataclass(slots=True)
+class _PendingCaptureEvent:
+    write: PendingRecordingEvent
+    commit: asyncio.Task[RecordedEvent]
+    coverage_ready: bool
+
+
 type _ControlMessage = _CaptureStopped | _ResolutionStored
 
 
@@ -98,6 +109,7 @@ class RecordingCoordinator:
         resolution_reconciliation_seconds: float = (
             RESOLUTION_RECONCILIATION_SECONDS
         ),
+        max_pending_capture_events: int = MAX_PENDING_CAPTURE_EVENTS,
         resumed_gap_condition_ids: dict[int, frozenset[str]] | None = None,
     ) -> None:
         for value, name in (
@@ -110,6 +122,8 @@ class RecordingCoordinator:
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
+        if max_pending_capture_events <= 0:
+            raise ValueError("pending capture event limit must be positive")
         self._provider = provider
         self._resolver = resolver
         self._feed = feed
@@ -121,6 +135,7 @@ class RecordingCoordinator:
         self._resolution_reconciliation_seconds = (
             resolution_reconciliation_seconds
         )
+        self._max_pending_capture_events = max_pending_capture_events
         self._tracked: dict[str, _TrackedMarket] = {}
         self._condition_by_slug: dict[str, str] = {}
         self._plan_slugs: set[str] = set()
@@ -370,91 +385,170 @@ class RecordingCoordinator:
         capture: MarketCapture,
     ) -> None:
         generation = capture.generation
+        condition_id = tracked.recording.market.condition_id
+        pending: deque[_PendingCaptureEvent] = deque()
+        capture_read: asyncio.Task[CapturedMarketEvent] | None = asyncio.create_task(
+            anext(capture)
+        )
+        stopped: _CaptureStopped | None = None
+        resolution_queued = False
         try:
-            async for captured in capture:
-                dropped_count = capture.dropped_count
-                if dropped_count > tracked.dropped_count:
-                    tracked.dropped_count = dropped_count
-                    await self._control.put(
-                        _CaptureStopped(
-                            tracked.recording.market.condition_id,
+            while capture_read is not None or pending:
+                waiters: list[asyncio.Future | asyncio.Task] = []
+                if capture_read is not None:
+                    waiters.append(capture_read)
+                if pending:
+                    waiters.append(pending[0].commit)
+                if not waiters:
+                    raise AssertionError("capture pump has no pending work")
+                done, _ = await asyncio.wait(
+                    waiters,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if capture_read is not None and capture_read in done:
+                    completed_read = capture_read
+                    capture_read = None
+                    try:
+                        captured = completed_read.result()
+                    except StopAsyncIteration:
+                        stopped = _CaptureStopped(
+                            condition_id,
                             generation,
-                            "sdk_handle_drop",
+                            "capture_ended",
                         )
-                    )
-                    return
-                try:
-                    resolution_stored = await self._record_capture_event(
-                        tracked,
-                        capture,
-                        captured,
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except BaseException as error:
-                    await self._control.put(
-                        _CaptureStopped(
-                            tracked.recording.market.condition_id,
+                    except asyncio.CancelledError:
+                        raise
+                    except BaseException as error:
+                        stopped = _CaptureStopped(
+                            condition_id,
+                            generation,
+                            "capture_failure",
+                            error=error,
+                        )
+                    else:
+                        dropped_count = capture.dropped_count
+                        if dropped_count > tracked.dropped_count:
+                            tracked.dropped_count = dropped_count
+                            stopped = _CaptureStopped(
+                                condition_id,
+                                generation,
+                                "sdk_handle_drop",
+                            )
+                        else:
+                            try:
+                                queued = self._enqueue_capture_event(
+                                    tracked,
+                                    capture,
+                                    captured,
+                                )
+                            except BaseException as error:
+                                stopped = _CaptureStopped(
+                                    condition_id,
+                                    generation,
+                                    "recording_write_failure",
+                                    error=error,
+                                    fatal=True,
+                                )
+                            else:
+                                if queued is None:
+                                    stopped = _CaptureStopped(
+                                        condition_id,
+                                        generation,
+                                        "capture_retired",
+                                    )
+                                else:
+                                    pending.append(queued)
+                                    if isinstance(
+                                        queued.write.event.payload,
+                                        ResolutionPayload,
+                                    ):
+                                        resolution_queued = True
+
+                while pending and pending[0].commit.done():
+                    queued = pending.popleft()
+                    try:
+                        await self._commit_capture_event(tracked, queued)
+                    except asyncio.CancelledError:
+                        raise
+                    except BaseException as error:
+                        stopped = _CaptureStopped(
+                            condition_id,
                             generation,
                             "recording_write_failure",
                             error=error,
                             fatal=True,
                         )
-                    )
+                        break
+
+                if stopped is not None and stopped.fatal:
+                    await _cancel_task(capture_read)
+                    capture_read = None
+                    await _settle_pending_capture_events(pending)
+                    pending.clear()
+                    await self._control.put(stopped)
                     return
-                if resolution_stored:
-                    await self._control.put(
-                        _ResolutionStored(
-                            tracked.recording.market.condition_id,
-                            generation,
-                        )
-                    )
-                    return
-                dropped_count = capture.dropped_count
-                if dropped_count > tracked.dropped_count:
-                    tracked.dropped_count = dropped_count
-                    await self._control.put(
-                        _CaptureStopped(
-                            tracked.recording.market.condition_id,
+
+                if stopped is None and not resolution_queued:
+                    dropped_count = capture.dropped_count
+                    if dropped_count > tracked.dropped_count:
+                        tracked.dropped_count = dropped_count
+                        stopped = _CaptureStopped(
+                            condition_id,
                             generation,
                             "sdk_handle_drop",
                         )
+
+                if stopped is not None or resolution_queued:
+                    await _cancel_task(capture_read)
+                    capture_read = None
+                elif (
+                    capture_read is None
+                    and len(pending) < self._max_pending_capture_events
+                ):
+                    capture_read = asyncio.create_task(anext(capture))
+
+                if pending:
+                    continue
+                if resolution_queued:
+                    await self._control.put(
+                        _ResolutionStored(condition_id, generation)
                     )
                     return
+                if stopped is not None:
+                    if stopped.reason == "capture_retired":
+                        return
+                    await self._control.put(stopped)
+                    return
         except asyncio.CancelledError:
+            await _cancel_task(capture_read)
+            await _settle_pending_capture_events(pending)
             raise
         except BaseException as error:
+            await _cancel_task(capture_read)
+            await _settle_pending_capture_events(pending)
             await self._control.put(
                 _CaptureStopped(
-                    tracked.recording.market.condition_id,
+                    condition_id,
                     generation,
                     "capture_failure",
                     error=error,
                 )
             )
-            return
-        await self._control.put(
-            _CaptureStopped(
-                tracked.recording.market.condition_id,
-                generation,
-                "capture_ended",
-            )
-        )
 
-    async def _record_capture_event(
+    def _enqueue_capture_event(
         self,
         tracked: _TrackedMarket,
         capture: MarketCapture,
         captured: CapturedMarketEvent,
-    ) -> bool:
+    ) -> _PendingCaptureEvent | None:
         if (
             tracked.capture is not capture
             or tracked.terminal_claimed
             or self._stopping
         ):
-            return False
-        is_resolution = isinstance(captured.payload, ResolutionPayload)
-        if is_resolution:
+            return None
+        if isinstance(captured.payload, ResolutionPayload):
             tracked.terminal_claimed = True
         observed_at_ms = self._clock.now_ms()
         projector = tracked.projector
@@ -472,26 +566,37 @@ class RecordingCoordinator:
                 condition_id=tracked.recording.market.condition_id,
                 received_at_ms=observed_at_ms,
             )
-        await self._writer.record(
+        coverage_ready = set(tracked.recording.market.token_ids) <= (
+            projector.baseline_token_ids
+        )
+        write = self._writer.enqueue_record(
             captured.payload,
             observed_at_ms=observed_at_ms,
             source_timestamp_ms=captured.source_timestamp_ms,
             identity=captured.identity,
             subscription_generation=capture.generation,
         )
+        return _PendingCaptureEvent(
+            write=write,
+            commit=asyncio.create_task(write.wait()),
+            coverage_ready=coverage_ready,
+        )
+
+    async def _commit_capture_event(
+        self,
+        tracked: _TrackedMarket,
+        pending: _PendingCaptureEvent,
+    ) -> None:
+        event = await pending.commit
         tracked.last_observed_at_ms = max(
             tracked.last_observed_at_ms,
-            observed_at_ms,
+            event.observed_at_ms,
         )
-        ready = set(tracked.recording.market.token_ids) <= (
-            projector.baseline_token_ids
-        )
-        if ready:
-            await self._close_market_gaps(tracked, observed_at_ms)
+        if pending.coverage_ready:
+            await self._close_market_gaps(tracked, event.observed_at_ms)
             tracked.coverage_started = True
-        elif is_resolution:
-            await self._close_market_gaps(tracked, observed_at_ms)
-        return is_resolution
+        elif isinstance(event.payload, ResolutionPayload):
+            await self._close_market_gaps(tracked, event.observed_at_ms)
 
     async def _handle_control(self, message: _ControlMessage) -> None:
         tracked = self._tracked.get(message.condition_id)
@@ -959,6 +1064,25 @@ def _capture_book_diagnostics(
             advertised_best_ask=advertised.get(token_id, (None, None))[1],
         )
         for token_id in sorted(projected.keys() | advertised.keys())
+    )
+
+
+async def _cancel_task(task: asyncio.Task | None) -> None:
+    if task is None:
+        return
+    if not task.done():
+        task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+
+async def _settle_pending_capture_events(
+    pending: deque[_PendingCaptureEvent],
+) -> None:
+    if not pending:
+        return
+    await asyncio.gather(
+        *(queued.commit for queued in pending),
+        return_exceptions=True,
     )
 
 

@@ -451,8 +451,10 @@ Status: done.
 
 - Make every event, anomaly, gap mutation, and checkpoint acknowledgement wait
   for its committed SQLite transaction under WAL mode with
-  `synchronous=FULL`. Preserve bounded queueing and group commits for already
-  concurrent events; do not retain acknowledged in-memory-only rows.
+  `synchronous=FULL`. Capture pumps retain a bounded FIFO of unacknowledged
+  writes so SDK bursts can enter the single writer queue and share group
+  commits; queue admission assigns sequence order but is not a durability
+  acknowledgement. Do not retain acknowledged in-memory-only rows.
 - Add atomic writer batches for coupled metadata-plus-resolution events and
   common two-token checkpoints. Keep archive-wide sequence assignment inside
   the single writer. Assemble periodic and recovery checkpoints across all

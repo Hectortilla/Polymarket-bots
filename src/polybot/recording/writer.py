@@ -56,6 +56,24 @@ class RecordingCheckpointWrite:
     subscription_generation: int
 
 
+@dataclass(frozen=True, slots=True)
+class PendingRecordingEvent:
+    """One queued event whose sequence is assigned but commit is pending."""
+
+    event: RecordedEvent
+    _completion: asyncio.Future[None]
+
+    @property
+    def done(self) -> bool:
+        return self._completion.done()
+
+    async def wait(self) -> RecordedEvent:
+        """Return the event only after its SQLite transaction commits."""
+
+        await asyncio.shield(self._completion)
+        return self.event
+
+
 @dataclass(slots=True)
 class _EventCommand:
     events: tuple[RecordedEvent, ...]
@@ -166,7 +184,27 @@ class AsyncRecordingWriter:
         identity: MarketIdentity | None,
         subscription_generation: int,
     ) -> RecordedEvent:
-        (event,) = await self.record_batch(
+        pending = self.enqueue_record(
+            payload,
+            observed_at_ms=observed_at_ms,
+            source_timestamp_ms=source_timestamp_ms,
+            identity=identity,
+            subscription_generation=subscription_generation,
+        )
+        return await pending.wait()
+
+    def enqueue_record(
+        self,
+        payload: RecordedPayload,
+        *,
+        observed_at_ms: int,
+        source_timestamp_ms: int | None,
+        identity: MarketIdentity | None,
+        subscription_generation: int,
+    ) -> PendingRecordingEvent:
+        """Queue an event without treating it as durably acknowledged."""
+
+        events, completion = self._enqueue_event_batch(
             (
                 RecordingEventWrite(
                     payload=payload,
@@ -177,7 +215,7 @@ class AsyncRecordingWriter:
                 ),
             )
         )
-        return event
+        return PendingRecordingEvent(events[0], completion)
 
     async def record_batch(
         self,
@@ -185,6 +223,14 @@ class AsyncRecordingWriter:
     ) -> tuple[RecordedEvent, ...]:
         """Commit one or more semantically coupled events atomically."""
 
+        events, completion = self._enqueue_event_batch(writes)
+        await asyncio.shield(completion)
+        return events
+
+    def _enqueue_event_batch(
+        self,
+        writes: tuple[RecordingEventWrite, ...],
+    ) -> tuple[tuple[RecordedEvent, ...], asyncio.Future[None]]:
         self._raise_if_unavailable()
         if not writes:
             raise ValueError("recording event batch must not be empty")
@@ -205,8 +251,7 @@ class AsyncRecordingWriter:
         )
         self._put_nowait(_EventCommand(events, completion))
         self._next_sequence += len(events)
-        await asyncio.shield(completion)
-        return events
+        return events, completion
 
     async def checkpoint(
         self,

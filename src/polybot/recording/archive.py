@@ -1816,14 +1816,39 @@ class RecordingReader:
             connection=connection,
         )
         if gaps:
-            gap_ids = ", ".join(str(gap.gap_id) for gap in gaps)
             raise ArchiveCoverageError(
-                f"selected recording interval crosses known coverage gaps: {gap_ids}"
+                _coverage_gap_error_message(tuple(gap.gap_id for gap in gaps))
             )
 
     def _ensure_open(self) -> None:
         if self._closed:
             raise ArchiveClosedError("recording reader is closed")
+
+
+def _coverage_gap_error_message(gap_ids: tuple[int, ...]) -> str:
+    prefix = "selected recording interval crosses known coverage gaps"
+    gap_ids = tuple(sorted(gap_ids))
+    if len(gap_ids) <= 20:
+        return f"{prefix}: {', '.join(str(gap_id) for gap_id in gap_ids)}"
+
+    ranges: list[tuple[int, int]] = []
+    range_start = range_end = gap_ids[0]
+    for gap_id in gap_ids[1:]:
+        if gap_id == range_end + 1:
+            range_end = gap_id
+            continue
+        ranges.append((range_start, range_end))
+        range_start = range_end = gap_id
+    ranges.append((range_start, range_end))
+
+    displayed_ranges = ranges[:8]
+    summary = ", ".join(
+        str(start) if start == end else f"{start}-{end}"
+        for start, end in displayed_ranges
+    )
+    if len(ranges) > len(displayed_ranges):
+        summary = f"{summary}, ..."
+    return f"{prefix}: {len(gap_ids):,} gaps (IDs {summary})"
 
 
 def _initialize_schema(

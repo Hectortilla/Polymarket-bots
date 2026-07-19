@@ -129,11 +129,14 @@ can report `no detected gaps`; it cannot prove exchange-complete capture because
 the official prediction-market stream documents timestamps and book hashes but
 no sequence number, replay cursor, or resume protocol.
 Every recorder mutation is acknowledged only after its SQLite transaction has
-committed with WAL mode and full synchronization. Concurrently queued market
-events may share one commit, metadata-plus-resolution writes and common
-two-token checkpoints are atomic, periodic and recovery checkpoints across
-markets share one fresh-timestamp batch, and shutdown drains the writer before
-sealing the session.
+committed with WAL mode and full synchronization. Each market capture keeps a
+bounded pipeline of unacknowledged events so it can continue draining SDK
+bursts while the single writer commits; global sequence numbers are assigned
+when events enter that pipeline, and no event is reported durable early.
+Concurrently queued market events may share one commit,
+metadata-plus-resolution writes and common two-token checkpoints are atomic,
+periodic and recovery checkpoints across markets share one fresh-timestamp
+batch, and shutdown drains the writer before sealing the session.
 
 SIGINT and SIGTERM request a clean shutdown, but process kills, power loss, and
 similar failures cannot be caught. The committed prefix still remains usable.

@@ -279,11 +279,13 @@ types preserve the artifact boundary consumed by Slice 9B.
 
 `AsyncRecordingWriter` is the sole archive sequence owner. Every event,
 checkpoint, gap mutation, and anomaly acknowledgement waits for a committed
-SQLite transaction under WAL mode with `synchronous=FULL`. Already queued
-events may share a group commit, while compound metadata-plus-resolution writes
-and common two-token checkpoint pairs use one atomic archive call. The capture
-coordinator therefore never treats an acknowledged row as an in-memory-only
-buffer.
+SQLite transaction under WAL mode with `synchronous=FULL`. Market capture pumps
+keep a bounded FIFO of unacknowledged writes, allowing them to drain SDK bursts
+while the writer is synchronizing earlier events. Sequence numbers are assigned
+when those writes enter the single writer queue, and already queued events may
+share a group commit. Compound metadata-plus-resolution writes and common
+two-token checkpoint pairs use one atomic archive call. The capture coordinator
+therefore never treats an acknowledged row as an in-memory-only buffer.
 
 SQLite is an artifact format at the standalone package boundary. It does not
 reuse `.bot-state/`, open the Polyfollow application database, run application
