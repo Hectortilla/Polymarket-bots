@@ -168,20 +168,26 @@ class ReplayScheduler:
         clock.set_advance_driver(self._advance_during_callback)
 
     async def run(self) -> None:
+        fast_forwarded = False
         try:
             await self._bot.on_start(self._runner.ctx)
             new_slugs = await self._refresh_admissions()
             await self._enqueue_bootstraps(new_slugs)
             await self._drain_pending()
             while (event := await self._cursor.peek()) is not None:
+                if self._can_fast_forward():
+                    await self._fast_forward_to_end()
+                    fast_forwarded = True
+                    break
                 await self._advance_idle_to(event.observed_at_ms)
                 current = await self._cursor.pop()
                 if current is None:
                     break
                 await self._apply_event(current, queue_only=False)
                 await self._drain_pending()
-            await self._advance_idle_to(self._clock.end_at_ms)
-            await self._refresh_end_boundary()
+            if not fast_forwarded:
+                await self._advance_idle_to(self._clock.end_at_ms)
+                await self._refresh_end_boundary()
             await self._drain_pending()
         finally:
             await self._cursor.aclose()
@@ -244,10 +250,10 @@ class ReplayScheduler:
 
     async def _apply_event(self, event: RecordedEvent, *, queue_only: bool) -> None:
         self.event_count += 1
-        await run_blocking(self._artifacts.record_events)
+        self._artifacts.record_events()
         applied = self._state.apply(event)
         for book in applied.books:
-            await run_blocking(self._artifacts.record_book, book)
+            self._artifacts.record_book(book)
         admitted_before = self._admitted_slugs.copy()
         self._enqueue_books(
             tuple(
@@ -329,7 +335,7 @@ class ReplayScheduler:
             received_at_ms=self._clock.now_ms(),
         )
         for book in bootstraps:
-            await run_blocking(self._artifacts.record_book, book)
+            self._artifacts.record_book(book)
         self._enqueue_books(bootstraps)
         return {book.token_id for book in bootstraps}
 
@@ -371,18 +377,17 @@ class ReplayScheduler:
             frozenset(self._admitted_slugs.difference(self._terminal_slugs))
         )
         self.resolution_count += 1
-        await run_blocking(self._artifacts.counters.record_resolutions)
-        await run_blocking(
-            self._artifacts.record_transaction,
+        self._artifacts.counters.record_resolutions()
+        self._artifacts.record_transaction(
             self._clock.now_ms(),
             SampleReason.SETTLEMENT,
             self._paper_broker.portfolio,
         )
-        await run_blocking(self._artifacts.remove_books, event.token_ids)
+        self._artifacts.remove_books(event.token_ids)
         await self._runner.dispatch_market_resolution(settlement.resolution)
 
     async def _remember_outcome(self, outcome: DispatchOutcome) -> None:
-        await run_blocking(self._artifacts.counters.record_dispatch, outcome.accepted)
+        self._artifacts.counters.record_dispatch(outcome.accepted)
         if outcome.accepted:
             self.accepted_dispatch_count += 1
         else:
@@ -390,12 +395,21 @@ class ReplayScheduler:
 
     async def _move_to(self, target_ms: int) -> None:
         if target_ms > self._clock.now_ms():
-            await run_blocking(
-                self._artifacts.advance_to,
+            self._artifacts.advance_to(
                 target_ms,
                 self._paper_broker.portfolio,
             )
         self._clock.move_to(target_ms)
+
+    def _can_fast_forward(self) -> bool:
+        return (
+            not self._paper_broker.portfolio.positions
+            and self._bot.backtest_is_quiescent(self._runner.ctx)
+        )
+
+    async def _fast_forward_to_end(self) -> None:
+        """Advance a flat, explicitly finished strategy without replaying I/O."""
+        await self._move_to(self._clock.end_at_ms)
 
 
 def _next_interval(now_ms: int, interval_ms: int) -> int:
