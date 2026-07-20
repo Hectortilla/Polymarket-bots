@@ -76,5 +76,13 @@ class BaseBot:
     ) -> None:
         pass
 
+    def backtest_is_quiescent(self, ctx: BotContext) -> bool:
+        """Whether replay may skip remaining events after the portfolio is flat.
+
+        Live runners never consult this hook. Backtest schedulers may use it to
+        fast-forward a strategy that has explicitly finished all of its work.
+        """
+        return False
+
     async def on_stop(self, ctx: BotContext) -> None:
         pass
