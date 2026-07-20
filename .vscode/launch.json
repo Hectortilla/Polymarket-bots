@@ -49,8 +49,52 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "subProcess": true
+    },
+    {
+      "name": "Record BTC 5m buckets",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "polybot.recording",
+      "args": [
+        "--bot",
+        "polybot.examples.btc_5m:create"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true
+    },
+    {
+      "name": "Trim recording (pick file)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "polybot.recording.trim",
+      "args": [
+        "${input:pickRecordingFile}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true
     }
   ],
-  "compounds": [
+  "compounds": [],
+  "inputs": [
+    {
+      "id": "pickRecordingFile",
+      "type": "command",
+      "command": "extension.commandvariable.file.pickFile",
+      "args": {
+        "description": "Pick a recording SQLite archive to trim"
+      }
+    }
   ]
 }

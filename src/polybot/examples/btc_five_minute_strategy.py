@@ -7,6 +7,9 @@ from enum import StrEnum
 from polybot.framework.events.books import BookSnapshot
 
 BTC_FIVE_MINUTE_SLUG_PREFIX = "btc-updown-5m"
+BTC_FIVE_MINUTE_BUCKET_SECONDS = 300
+
+
 class MomentumDirection(StrEnum):
     UP = "Up"
     DOWN = "Down"
@@ -34,7 +37,7 @@ TIME_EXIT_REASON = MomentumExitReason.TIME
 class MomentumSettings:
     """Readable strategy and risk parameters, expressed in token-price units."""
 
-    bucket_seconds: int = 300
+    bucket_seconds: int = BTC_FIVE_MINUTE_BUCKET_SECONDS
     order_size: Decimal = Decimal("5")
     sample_interval_ms: int = 750
     paired_book_max_skew_ms: int = 1_500
