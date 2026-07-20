@@ -388,6 +388,70 @@ def test_create_refuses_overwrite_and_writer_lock_is_nonblocking(tmp_path) -> No
         archive.close()
 
 
+def test_archive_close_accepts_an_exact_historical_end(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    durable_boundary_ms = started_at_ms + 5
+    archive.append_metadata(
+        _event(
+            archive,
+            _metadata(),
+            observed_at_ms=durable_boundary_ms,
+            identity=_identity(),
+        )
+    )
+    historical_end_ms = durable_boundary_ms + 10
+    path = archive.path
+
+    archive.close(ended_at_ms=historical_end_ms)
+
+    with RecordingReader(path) as reader:
+        session = reader.select_session()
+    assert session.ended_at_ms == historical_end_ms
+    assert session.clean_close is True
+    assert session.integrity_status is SessionIntegrityStatus.COMPLETE
+
+
+def test_archive_close_rejects_invalid_historical_ends(tmp_path) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    durable_boundary_ms = started_at_ms + 5
+    archive.append_metadata(
+        _event(
+            archive,
+            _metadata(),
+            observed_at_ms=durable_boundary_ms,
+            identity=_identity(),
+        )
+    )
+    try:
+        with pytest.raises(ValueError, match="archive end must be nonnegative"):
+            archive.close(ended_at_ms=-1)
+        with pytest.raises(ValueError, match="cannot precede its durable boundary"):
+            archive.close(ended_at_ms=durable_boundary_ms - 1)
+
+        assert archive.next_sequence == 2
+    finally:
+        archive.close(ended_at_ms=durable_boundary_ms)
+
+
+def test_archive_close_without_an_end_keeps_wall_clock_behavior(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    wall_clock_end_ms = started_at_ms + 50
+    monkeypatch.setattr(
+        "polybot.recording.archive.time.time_ns",
+        lambda: wall_clock_end_ms * 1_000_000,
+    )
+    path = archive.path
+
+    archive.close()
+
+    with RecordingReader(path) as reader:
+        session = reader.select_session()
+    assert session.ended_at_ms == wall_clock_end_ms
+
+
 def test_replay_reader_holds_the_writer_lock_for_its_snapshot(tmp_path) -> None:
     archive, started_at_ms = _opened_archive(tmp_path)
     archive.append_metadata(
@@ -499,7 +563,9 @@ def test_reader_wraps_malformed_optional_diagnostic_tables(tmp_path) -> None:
     archive.close()
 
     connection = sqlite3.connect(path)
-    connection.execute("ALTER TABLE capture_anomalies RENAME COLUMN anomaly_id TO bad_id")
+    connection.execute(
+        "ALTER TABLE capture_anomalies RENAME COLUMN anomaly_id TO bad_id"
+    )
     connection.commit()
     connection.close()
 

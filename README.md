@@ -20,9 +20,10 @@ Start with:
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
-paper runner CLI, Slice 9A historical market recorder, Slice 9B deterministic
-archive backtester and performance artifacts, Slice 10 terminal dashboard, and
-Slice 11 dynamic market tracking and resolution processing. The
+paper runner CLI, Slice 9A historical market recorder and local trim
+maintenance, Slice 9B deterministic archive backtester and performance
+artifacts, Slice 10 terminal dashboard, and Slice 11 dynamic market tracking and
+resolution processing. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
@@ -163,6 +164,35 @@ selected without waiting for the periodic checkpoint.
 The upstream stream has no replay cursor, so the recorder can reduce and explain
 gaps but cannot guarantee that they never occur.
 
+To replace a gapped archive with its longest clean, archive-level all-market
+interval, run the local trim utility:
+
+```sh
+uv run python -m polybot.recording.trim recordings/capture.sqlite3
+```
+
+The sole session is selected by default; archives with multiple sessions require
+`--session ID`. Run `--dry-run` first to review the chosen interval without
+replacing the archive. A normal run prints that interval before it begins the
+export. Coverage gaps are half-open intervals: the clean range after a
+closed gap may begin at its recorded end, while the range before it must end
+before its start. A selected session with no relevant gaps retains its full
+event-bearing replayable interval. A fresh common recovery checkpoint recorded
+at or immediately after a gap's end can bootstrap the clean suffix even when
+its two recovery baselines straddle the gap boundary; in the latter case the
+suffix starts at the checkpoint. The replacement keeps the metadata and book
+bootstrap needed to make that range self-contained, and discards all other
+source sessions and times rather than pretending to repair missing data.
+
+Trimming refuses an active recorder, builds and validates a temporary archive in
+the same directory, retains the original as a hard-linked
+`ARCHIVE.pre-trim` backup by default (for example,
+`capture.sqlite3.pre-trim`), and atomically replaces the requested path only
+after validation. If that backup path already exists, the command refuses to
+replace the archive; move the existing backup aside or deliberately pass
+`--no-backup`. The operation is entirely local and performs no Polymarket or
+other network requests.
+
 Slice 9A is market-only. It does not record arbitrary-wallet activity, private
 orders or fills, maker identities or queue position, or Binance, Chainlink,
 Pyth, or other external reference feeds. Strategies that require those inputs
@@ -200,6 +230,10 @@ affect the selected interval. Once the writer lock is released, abandoned and
 failed sessions default to their last committed boundary and are reported as
 partial recording sources. A clean subrange on either side of a real coverage
 gap remains usable; recovery never guesses across that gap.
+
+After `polybot.recording.trim` succeeds, the replacement archive contains one
+self-contained clean interval, so ordinary backtest defaults can select it
+without `--session`, `--start-ms`, or `--end-ms`.
 
 Every backtest creates a new result directory; pass `--results-dir PATH` to
 choose it, or let the CLI generate a unique path. Existing directories are

@@ -14,8 +14,9 @@
 Slices 1 through 5 and Slices 9A through 11 are implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
-market recorder, deterministic archive replay and performance artifacts, the
-terminal dashboard, and dynamic market tracking and resolution settlement.
+market recorder and local trim maintenance, deterministic archive replay and
+performance artifacts, the terminal dashboard, and dynamic market tracking and
+resolution settlement.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -311,6 +312,30 @@ before opening the immutable read transaction. A catchably failed session keeps
 its `failed` diagnostic status but exposes the same durable-prefix boundary.
 SQLite corruption, missing initial replay inputs, uncommitted work, and actual
 coverage gaps remain unrecoverable.
+
+`python -m polybot.recording.trim` is the local maintenance boundary for
+discarding unusable archive time. It chooses the longest archive-level interval
+that is clean for all markets in one selected session; it does not optimize a
+market subset. Coverage gaps are modeled as half-open intervals, so a clean
+suffix may begin at a closed gap's end and a clean prefix must stop before its
+start. The derived archive retains the metadata and common book bootstrap state
+needed to replay its new start, while source sessions and canonical event time
+outside the chosen interval are discarded. No missing event is reconstructed
+and the result remains a schema-v2 recording artifact. A fresh common recovery
+checkpoint at or immediately after the gap end is authoritative recorded state,
+so it can bootstrap a suffix when the two recovery baselines straddle the gap
+boundary; when necessary, selection advances to that checkpoint. Trim verifies
+it against the canonical recovery events before using it. Once validated, that
+derived session is clean and complete; source failure/recovery diagnostics stay
+with the original archive retained by the default backup.
+
+Trim uses the same exclusive inactive-archive lease as replay, including
+abandoned-session recovery and WAL checkpointing. It writes a temporary archive
+beside the source, validates the complete derived artifact, creates a hard-linked
+`.pre-trim` backup unless explicitly disabled, and atomically replaces the
+source path only after validation. A dry run selects and reports the interval
+without replacement. The workflow is local SQLite maintenance: it constructs no
+SDK client and performs no network or protocol operation.
 
 The prediction-market WebSocket documents a timestamp on market events and a
 hash on full books and price changes. It does not document a monotonic sequence,

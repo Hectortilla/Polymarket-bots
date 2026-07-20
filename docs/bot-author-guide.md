@@ -255,6 +255,36 @@ sequence, replay, or resume mechanism. The recorder detects SDK queue drops and
 uses bounded conservative reassembly, then fails closed and resubscribes when it
 cannot prove continuity. It never fills a missing interval from REST history.
 
+When retaining only the largest usable portion is preferable to passing a
+manual range on every backtest, trim the archive locally:
+
+```sh
+uv run python -m polybot.recording.trim recordings/capture.sqlite3
+```
+
+The utility considers all markets in one source session and chooses its longest
+archive-level clean interval. It selects the sole session automatically and
+requires `--session ID` when the archive contains more than one. Gaps are
+half-open: a post-gap range can start at the gap's recorded end, while a pre-gap
+range ends before its start. Run `--dry-run` first to review the selection
+without replacing the archive; a normal run prints the same plan before export.
+Selecting a session with no relevant gaps retains that session's full
+event-bearing replayable interval, which can also extract it from a multi-session
+file. A common recovery checkpoint recorded at or immediately
+after the gap end can initialize the suffix when its fresh token baselines
+straddle that boundary; the selected suffix then starts at the checkpoint.
+
+The replacement is a self-contained replay source: required metadata and book
+bootstrap state are retained, while other times and source sessions are
+discarded. This does not repair or infer any missing book data. The command
+refuses an archive held by a recorder, builds and validates a same-directory
+temporary archive, retains the original as a hard-linked
+`ARCHIVE.pre-trim` backup by default (for example,
+`capture.sqlite3.pre-trim`), and then atomically replaces the requested path. An
+existing backup at that exact path makes the command refuse replacement; move it
+aside or use `--no-backup` only when the retained original is not wanted. No SDK
+client or network source is opened.
+
 The Slice 9A archive contains public market metadata and aggregated book data
 only. It cannot reproduce wallet-following hooks, private order/fill state,
 individual maker priority, or decisions based on an external reference feed.
@@ -292,6 +322,10 @@ must have time-correct metadata and a common book baseline/checkpoint for both
 outcome tokens, and no affecting coverage gap may cross it. Recovery cannot
 make a prefix replayable if the process died before those minimum inputs were
 committed.
+
+A successfully trimmed archive has one self-contained clean interval and can be
+passed to `--backtest` without the source `--session`, `--start-ms`, or
+`--end-ms` selection.
 
 Replay uses archive arrival sequence as authoritative order and
 `observed_at_ms` as virtual time. Dynamic `current_stream_rules()` and

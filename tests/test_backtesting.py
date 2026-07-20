@@ -6,7 +6,7 @@ import json
 import os
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -16,6 +16,12 @@ from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
     BacktestOptions,
+)
+from polybot.backtesting.selection import (
+    replayable_session_end,
+    resolve_backtest_selection,
+    validate_backtest_selection,
+    validate_backtest_selection_coverage,
 )
 from polybot.backtesting.service import run_backtest
 from polybot.framework.base import BaseBot
@@ -52,6 +58,7 @@ from polybot.recording.contracts import (
     RecordedEvent,
     ResolutionPayload,
     SessionIntegrityStatus,
+    TickSizeChangePayload,
 )
 
 
@@ -96,6 +103,18 @@ class _TrackingBot(BaseBot):
 
     async def on_stop(self, ctx: BotContext) -> None:
         self.stop_count += 1
+
+
+class _TickAtStartBot(_TrackingBot):
+    def __init__(self) -> None:
+        super().__init__()
+        self.minimum_tick_size: Decimal | None = None
+
+    async def on_start(self, ctx: BotContext) -> None:
+        await super().on_start(ctx)
+        market = await ctx.markets.find_by_slug(MARKET_SLUG)
+        assert market is not None
+        self.minimum_tick_size = market.minimum_tick_size
 
 
 class _BuyOnceBot(_TrackingBot):
@@ -487,6 +506,51 @@ def test_backtest_no_trade_runs_hooks_once_and_writes_complete_artifacts(
     assert _orders(result.results_dir) == []
 
 
+def test_indexed_selection_coverage_avoids_replay_event_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = _basic_archive(tmp_path)
+    with RecordingReader(archive.path) as reader:
+        session = reader.select_session()
+        assert replayable_session_end(reader, session) == session.ended_at_ms
+        selection = resolve_backtest_selection(
+            reader,
+            session,
+            BacktestOptions(
+                archive_path=archive.path,
+                end_at_ms=archive.end_ms,
+            ),
+        )
+
+        def unexpected_event_scan(*args: object, **kwargs: object) -> object:
+            raise AssertionError("selection validation scanned replay events")
+
+        monkeypatch.setattr(reader, "iter_events", unexpected_event_scan)
+        validate_backtest_selection_coverage(reader, selection)
+
+
+def test_semantic_preflight_rejects_malformed_event_before_bot_hooks(
+    tmp_path: Path,
+) -> None:
+    archive = _basic_archive(tmp_path)
+    connection = sqlite3.connect(archive.path)
+    try:
+        connection.execute(
+            "UPDATE events SET payload_json = '{}' "
+            "WHERE payload_kind = 'public_trade'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    bot = _TrackingBot()
+
+    with pytest.raises(BacktestError):
+        _run(bot, archive, tmp_path / "results")
+
+    assert (bot.start_count, bot.stop_count) == (0, 0)
+
+
 def test_backtest_partial_fill_fees_and_open_position_metrics(tmp_path: Path) -> None:
     archive = _basic_archive(
         tmp_path,
@@ -587,6 +651,183 @@ def test_backtest_settles_recorded_resolution_at_contractual_payout(
     assert metrics["net_pnl_usdc"] == "0.80000"
     assert metrics["resolution_count"] == 1
     assert summary["open_positions"] == []
+
+
+def test_resolution_at_initial_state_timestamp_is_replayed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "same-timestamp-resolution.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    archive_writer.append_metadata(
+        _event(
+            archive_writer,
+            _metadata(),
+            observed_at_ms=START_MS,
+            identity=_identity(),
+        )
+    )
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS,
+                identity=_identity(token_id),
+            )
+        )
+    archive_writer.append_event(
+        _event(
+            archive_writer,
+            ResolutionPayload(
+                token_ids=(UP_TOKEN, DOWN_TOKEN),
+                winning_token_id=UP_TOKEN,
+                winning_outcome="Up",
+                source="synthetic",
+                resolution_id="resolution-at-start",
+            ),
+            observed_at_ms=START_MS,
+            identity=_identity(),
+        )
+    )
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, START_MS),
+        tmp_path / "same-timestamp-resolution-results",
+    )
+
+    assert result.resolution_count == 1
+    assert [event.winning_token_id for event in bot.resolutions] == [UP_TOKEN]
+
+
+def test_resolved_metadata_and_resolution_at_initial_timestamp_are_replayed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "same-timestamp-metadata-resolution.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    archive_writer.append_metadata(
+        _event(
+            archive_writer,
+            _metadata(),
+            observed_at_ms=START_MS,
+            identity=_identity(),
+        )
+    )
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS,
+                identity=_identity(token_id),
+            )
+        )
+    resolved_metadata = replace(
+        _metadata(),
+        resolution_status="resolved",
+        resolution_source="synthetic",
+        resolved=True,
+        winning_token_id=UP_TOKEN,
+        winning_outcome="Up",
+    )
+    metadata_event = _event(
+        archive_writer,
+        resolved_metadata,
+        observed_at_ms=START_MS,
+        identity=_identity(),
+    )
+    resolution_event = replace(
+        _event(
+            archive_writer,
+            ResolutionPayload(
+                token_ids=(UP_TOKEN, DOWN_TOKEN),
+                winning_token_id=UP_TOKEN,
+                winning_outcome="Up",
+                source="synthetic",
+                resolution_id="metadata-resolution-at-start",
+            ),
+            observed_at_ms=START_MS,
+            identity=_identity(),
+        ),
+        sequence=metadata_event.sequence + 1,
+    )
+    archive_writer.append_events((metadata_event, resolution_event))
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, START_MS),
+        tmp_path / "same-timestamp-metadata-resolution-results",
+    )
+
+    assert (bot.start_count, bot.stop_count) == (1, 1)
+    assert result.resolution_count == 1
+    assert [event.winning_token_id for event in bot.resolutions] == [UP_TOKEN]
+
+
+def test_post_readiness_same_timestamp_delta_is_replayed_and_counted(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "same-timestamp-delta.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    archive_writer.append_metadata(
+        _event(
+            archive_writer,
+            _metadata(),
+            observed_at_ms=START_MS,
+            identity=_identity(),
+        )
+    )
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS,
+                identity=_identity(token_id),
+            )
+        )
+    _append_ask_change(
+        archive_writer,
+        observed_at_ms=START_MS,
+        token_id=UP_TOKEN,
+        old_price=Decimal("0.60"),
+        new_price=Decimal("0.70"),
+    )
+    end_ms = START_MS + 1
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "same-timestamp-delta-results",
+    )
+
+    assert result.event_count == 2
+    assert [
+        (book.token_id, book.asks[0].price) for book in bot.books
+    ] == [
+        (UP_TOKEN, Decimal("0.60")),
+        (DOWN_TOKEN, Decimal("0.60")),
+        (UP_TOKEN, Decimal("0.70")),
+    ]
 
 
 def test_broker_latency_uses_intervening_delta_for_fill_time_book(
@@ -1092,8 +1333,125 @@ def test_clean_subrange_after_gap_replays_from_common_checkpoint(
     )
 
     assert result.selection.start_at_ms == START_MS + 9
+
+
+def test_clean_subrange_can_start_on_post_gap_baseline_boundary(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "recovery-boundary.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    gap_start = START_MS + 5
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=gap_start,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=gap_start,
+            identity=_identity(),
+        )
+    )
+    recovery_ms = START_MS + 6
+    archive_writer.close_gap(gap_id, ended_at_ms=recovery_ms)
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=recovery_ms,
+                identity=_identity(token_id),
+            )
+        )
+    end_ms = START_MS + 10
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, recovery_ms, end_ms),
+        tmp_path / "recovery-boundary-results",
+        start_ms=recovery_ms,
+    )
+
+    assert result.selection.start_at_ms == recovery_ms
     assert [book.token_id for book in bot.books] == [UP_TOKEN, DOWN_TOKEN]
     assert _summary(result.results_dir)["status"] == "completed"
+
+
+def test_pre_gap_tick_state_survives_explicit_gap_end_start(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "gap-boundary-tick.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    archive_writer.append_event(
+        _event(
+            archive_writer,
+            TickSizeChangePayload(
+                token_id=UP_TOKEN,
+                old_tick_size=Decimal("0.01"),
+                new_tick_size=Decimal("0.02"),
+            ),
+            observed_at_ms=START_MS + 3,
+            identity=_identity(UP_TOKEN),
+        )
+    )
+    gap_start = START_MS + 5
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=gap_start,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=gap_start,
+            identity=_identity(),
+        )
+    )
+    recovery_ms = START_MS + 6
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=recovery_ms,
+                identity=_identity(token_id),
+            )
+        )
+    archive_writer.close_gap(gap_id, ended_at_ms=recovery_ms)
+    end_ms = START_MS + 10
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TickAtStartBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, recovery_ms, end_ms),
+        tmp_path / "gap-boundary-tick-results",
+        start_ms=recovery_ms,
+    )
+
+    assert result.selection.start_at_ms == recovery_ms
+    assert bot.minimum_tick_size == Decimal("0.02")
 
 
 def test_clean_multi_market_subrange_uses_each_market_checkpoint(

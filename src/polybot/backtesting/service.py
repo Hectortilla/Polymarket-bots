@@ -24,6 +24,11 @@ from polybot.backtesting.contracts import (
     BacktestSelection,
 )
 from polybot.backtesting.scheduler import ReplayCursor, ReplayScheduler
+from polybot.backtesting.selection import (
+    replay_start_checkpoint_pair,
+    resolve_backtest_selection,
+    validate_backtest_selection,
+)
 from polybot.backtesting.state import ArchiveMarketState
 from polybot.execution.paper import PaperBroker
 from polybot.framework.base import BaseBot
@@ -45,14 +50,10 @@ from polybot.recording.archive_errors import (
     ArchiveLockedError,
     RecordingArchiveError,
 )
-from polybot.recording.archive_models import (
-    RecordingSession,
-)
 from polybot.recording.contracts import (
     BookBaselinePayload,
     MarketMetadataPayload,
     RecordedEvent,
-    SessionIntegrityStatus,
 )
 
 
@@ -89,8 +90,13 @@ async def run_backtest(
     try:
         try:
             session = await run_blocking(reader.select_session, options.session_id)
-            selection = await run_blocking(_selection, reader, session, options)
-            await run_blocking(_preflight_selection, reader, selection)
+            selection = await run_blocking(
+                resolve_backtest_selection,
+                reader,
+                session,
+                options,
+            )
+            await run_blocking(validate_backtest_selection, reader, selection)
             state = ArchiveMarketState()
             prime_sequence = await run_blocking(
                 _prime_to_start,
@@ -265,166 +271,6 @@ async def run_backtest(
         await run_blocking(reader.close)
 
 
-def _selection(
-    reader: RecordingReader,
-    session: RecordingSession,
-    options: BacktestOptions,
-) -> BacktestSelection:
-    effective_end_at_ms = _replayable_session_end(reader, session)
-    if effective_end_at_ms is None:
-        raise BacktestError(
-            BacktestFailureReason.SESSION_NOT_REPLAYABLE,
-            f"recording session {session.session_id} is not cleanly replayable",
-        )
-    requested_start = (
-        session.started_at_ms
-        if options.start_at_ms is None
-        else options.start_at_ms
-    )
-    requested_end = (
-        effective_end_at_ms
-        if options.end_at_ms is None
-        else options.end_at_ms
-    )
-    if (
-        requested_start < session.started_at_ms
-        or requested_end > effective_end_at_ms
-        or requested_end < requested_start
-    ):
-        raise BacktestError(
-            BacktestFailureReason.INVALID_SELECTION,
-            "backtest range must lie inside the selected recording session",
-        )
-    available_markets = reader.markets_at(
-        requested_end,
-        session_id=session.session_id,
-        allow_gaps=True,
-    )
-    available_slugs = tuple(
-        sorted({market.market_slug for market in available_markets})
-    )
-    selected_slugs = options.market_slugs or available_slugs
-    missing = sorted(set(selected_slugs).difference(available_slugs))
-    if missing:
-        raise BacktestError(
-            BacktestFailureReason.MISSING_MARKET_DATA,
-            "selected markets are absent from the recording session: "
-            + ", ".join(missing),
-        )
-    if not selected_slugs:
-        raise BacktestError(
-            BacktestFailureReason.EMPTY_SELECTION,
-            "selected recording session contains no market data",
-        )
-    bounds = reader.event_bounds(
-        start_at_ms=requested_start,
-        end_at_ms=requested_end,
-        session_id=session.session_id,
-        market_slugs=selected_slugs,
-    )
-    if bounds is None:
-        raise BacktestError(
-            BacktestFailureReason.EMPTY_SELECTION,
-            "selected recording range contains no events",
-        )
-    start_at_ms = (
-        bounds.start_at_ms if options.start_at_ms is None else requested_start
-    )
-    return BacktestSelection(
-        session_id=session.session_id,
-        start_at_ms=start_at_ms,
-        end_at_ms=requested_end,
-        market_slugs=tuple(selected_slugs),
-        replay_cutoff_sequence=reader.replay_cutoff_sequence,
-        session_integrity_status=session.integrity_status,
-        uses_partial_session=(
-            session.integrity_status is not SessionIntegrityStatus.COMPLETE
-        ),
-    )
-
-
-def _replayable_session_end(
-    reader: RecordingReader,
-    session: RecordingSession,
-) -> int | None:
-    if session.integrity_status is SessionIntegrityStatus.ACTIVE:
-        return None
-    if (
-        session.integrity_status is SessionIntegrityStatus.COMPLETE
-        and not session.clean_close
-    ):
-        return None
-    if session.clean_close:
-        return session.ended_at_ms
-    if session.integrity_status not in {
-        SessionIntegrityStatus.INCOMPLETE,
-        SessionIntegrityStatus.FAILED,
-    }:
-        return None
-    durable_end_at_ms = reader.session_durable_end_at_ms(session.session_id)
-    if durable_end_at_ms is None:
-        return None
-    if session.ended_at_ms is None:
-        return durable_end_at_ms
-    return min(session.ended_at_ms, durable_end_at_ms)
-
-
-def _preflight_selection(
-    reader: RecordingReader,
-    selection: BacktestSelection,
-) -> None:
-    baseline_tokens: dict[tuple[str, int], set[str]] = {}
-    events = reader.iter_events(
-        start_at_ms=selection.start_at_ms,
-        end_at_ms=selection.end_at_ms,
-        session_id=selection.session_id,
-        market_slugs=selection.market_slugs,
-    )
-    for event in events:
-        if not isinstance(event.payload, BookBaselinePayload):
-            continue
-        condition_id = None if event.identity is None else event.identity.condition_id
-        if condition_id is None:
-            raise BacktestError(
-                BacktestFailureReason.MISSING_MARKET_DATA,
-                f"book baseline event {event.sequence} has no market identity",
-            )
-        baseline_tokens.setdefault(
-            (condition_id, event.subscription_generation),
-            set(),
-        ).add(event.payload.token_id)
-
-    prime_at_ms = selection.start_at_ms - 1
-    markets = reader.markets_at(
-        selection.end_at_ms,
-        session_id=selection.session_id,
-        market_slugs=selection.market_slugs,
-    )
-    for market in markets:
-        required_tokens = {outcome.token_id for outcome in market.outcomes}
-        if any(
-            condition_id == market.condition_id
-            and required_tokens.issubset(tokens)
-            for (condition_id, _), tokens in baseline_tokens.items()
-        ):
-            continue
-        checkpoint_pair = (
-            None
-            if prime_at_ms < 0
-            else reader.checkpoint_pair_before(
-                market.condition_id,
-                prime_at_ms,
-                session_id=selection.session_id,
-            )
-        )
-        if checkpoint_pair is None:
-            raise BacktestError(
-                BacktestFailureReason.MISSING_MARKET_DATA,
-                "selected market has no complete two-token baseline or checkpoint: "
-                f"{market.market_slug}",
-            )
-
-
 def _prime_to_start(
     reader: RecordingReader,
     state: ArchiveMarketState,
@@ -440,19 +286,34 @@ def _prime_to_start(
             prime_at_ms,
             session_id=selection.session_id,
             market_slugs=selection.market_slugs,
+            allow_gaps=True,
         )
     )
     for market in markets:
-        state.add_metadata(market)
+        materialized = reader.market_state_at(
+            market.condition_id,
+            prime_at_ms,
+            allow_gaps=True,
+        )
+        state.add_metadata(materialized or market)
     checkpoint_sequences: dict[str, int] = {}
     scan_start_ms = selection.start_at_ms
     for market in markets:
-        checkpoints = reader.checkpoint_pair_before(
-            market.condition_id,
-            prime_at_ms,
+        has_in_range_baselines = reader.has_complete_baseline_pair(
+            market,
+            start_at_ms=selection.start_at_ms,
+            end_at_ms=selection.end_at_ms,
+            session_id=selection.session_id,
+        )
+        checkpoints = replay_start_checkpoint_pair(
+            reader,
+            condition_id=market.condition_id,
+            start_at_ms=selection.start_at_ms,
             session_id=selection.session_id,
         )
         if checkpoints is None:
+            if has_in_range_baselines:
+                continue
             bounds = reader.event_bounds(
                 end_at_ms=selection.start_at_ms,
                 session_id=selection.session_id,
@@ -468,8 +329,20 @@ def _prime_to_start(
                     "mid-session replay requires a common two-token checkpoint "
                     f"for {market.market_slug}",
                 )
-            scan_start_ms = min(scan_start_ms, _session_start(reader, selection.session_id))
+            scan_start_ms = min(
+                scan_start_ms,
+                _session_start(reader, selection.session_id),
+            )
             continue
+        if checkpoints[0].observed_at_ms == selection.start_at_ms:
+            boundary_metadata = reader.market_state_at(
+                market.condition_id,
+                selection.start_at_ms,
+                sequence_cutoff=checkpoints[0].sequence,
+                allow_gaps=True,
+            )
+            if boundary_metadata is not None:
+                state.add_metadata(boundary_metadata)
         state.seed_checkpoints(checkpoints)
         checkpoint_sequences[market.condition_id] = checkpoints[0].sequence
         scan_start_ms = min(scan_start_ms, checkpoints[0].observed_at_ms)
@@ -525,6 +398,18 @@ async def _advance_to_replayable_start(
             clock.move_to(event.observed_at_ms)
             state.apply(event)
             prime_sequence = event.sequence
+            if not await _plan_is_replayable(bot, ctx, state):
+                continue
+            while (
+                (same_boundary := await cursor.peek()) is not None
+                and same_boundary.observed_at_ms == event.observed_at_ms
+                and _is_priming_state_event(same_boundary)
+            ):
+                current = await cursor.pop()
+                if current is None:
+                    break
+                state.apply(current)
+                prime_sequence = current.sequence
             if await _plan_is_replayable(bot, ctx, state):
                 return event.observed_at_ms, prime_sequence
     finally:
@@ -537,6 +422,13 @@ async def _advance_to_replayable_start(
     raise BacktestError(
         BacktestFailureReason.MISSING_MARKET_DATA,
         "recording never provides complete books for the bot's current markets",
+    )
+
+
+def _is_priming_state_event(event: RecordedEvent) -> bool:
+    return isinstance(event.payload, BookBaselinePayload) or (
+        isinstance(event.payload, MarketMetadataPayload)
+        and not event.payload.resolved
     )
 
 

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import sqlite3
 import time
+from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
+import polybot.recording.archive as archive_module
 from polybot.recording.archive import (
     ArchiveCoverageError,
     ArchiveFormatError,
@@ -22,6 +26,7 @@ from polybot.recording.contracts import (
     MarketOutcomeMetadata,
     RecordedBookLevel,
     RecordedEvent,
+    TickSizeChangePayload,
 )
 
 
@@ -151,6 +156,96 @@ def _checkpoint(
         identity=_identity(market, token_id),
         book=_book(token_id),
     )
+
+
+def test_replay_lease_reuses_its_validated_archive_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "single-validation.sqlite3"
+    archive = RecordingArchive.create(
+        path,
+        target_identity="slugs:market-one",
+        started_at_ms=1_000,
+    )
+    _append_market(
+        archive,
+        _market("condition-1", "market-one", "one"),
+        observed_at_ms=1_000,
+    )
+    archive.close(ended_at_ms=1_010)
+
+    original_validate = archive_module._validate_archive
+    validation_count = 0
+
+    def count_validation(connection: sqlite3.Connection) -> str:
+        nonlocal validation_count
+        validation_count += 1
+        return original_validate(connection)
+
+    monkeypatch.setattr(archive_module, "_validate_archive", count_validation)
+
+    with RecordingReader.for_replay(path) as reader:
+        assert reader.target_identity == "slugs:market-one"
+
+    assert validation_count == 1
+
+
+def test_market_state_orders_tick_changes_with_metadata_revisions(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "market-state.sqlite3"
+    market = _market("condition-1", "market-one", "one")
+    archive = RecordingArchive.create(
+        path,
+        target_identity="slugs:market-one",
+        started_at_ms=1_000,
+    )
+    archive.append_metadata(
+        _event(
+            archive,
+            market,
+            observed_at_ms=1_000,
+            identity=_identity(market),
+        )
+    )
+    archive.append_event(
+        _event(
+            archive,
+            TickSizeChangePayload(
+                token_id=market.outcomes[0].token_id,
+                old_tick_size=Decimal("0.01"),
+                new_tick_size=Decimal("0.02"),
+            ),
+            observed_at_ms=1_001,
+            identity=_identity(market, market.outcomes[0].token_id),
+        )
+    )
+    archive.append_metadata(
+        _event(
+            archive,
+            replace(market, minimum_tick_size=Decimal("0.01")),
+            observed_at_ms=1_002,
+            identity=_identity(market),
+        )
+    )
+    archive.close(ended_at_ms=1_010)
+
+    with RecordingReader.for_replay(path) as reader:
+        after_tick = reader.market_state_at(market.condition_id, 1_001)
+        after_revision = reader.market_state_at(market.condition_id, 1_002)
+        before_revision_sequence = reader.market_state_at(
+            market.condition_id,
+            1_002,
+            sequence_cutoff=2,
+        )
+
+    assert after_tick is not None
+    assert after_tick.minimum_tick_size == Decimal("0.02")
+    assert after_revision is not None
+    assert after_revision.minimum_tick_size == Decimal("0.01")
+    assert before_revision_sequence is not None
+    assert before_revision_sequence.minimum_tick_size == Decimal("0.02")
 
 
 def test_reader_session_selection_market_enumeration_and_cutoff(tmp_path) -> None:
@@ -300,12 +395,19 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
         assert reader.coverage_gaps(
             condition_ids={first_market.condition_id}
         ) == ()
+        assert reader.event_count(
+            condition_ids={first_market.condition_id}
+        ) == 3
         assert [
             gap.gap_id
             for gap in reader.coverage_gaps(
                 market_slugs={second_market.market_slug}
             )
         ] == [gap_id]
+        assert reader.event_count(
+            market_slugs={second_market.market_slug},
+            allow_gaps=True,
+        ) == 5
         with pytest.raises(ArchiveCoverageError):
             tuple(
                 reader.iter_events(
@@ -315,6 +417,8 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
                     }
                 )
             )
+        with pytest.raises(ArchiveCoverageError):
+            reader.event_count(market_slugs={second_market.market_slug})
         with pytest.raises(ValueError, match="either condition ID or condition IDs"):
             tuple(
                 reader.iter_events(
@@ -322,6 +426,71 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
                     condition_ids={first_market.condition_id},
                 )
             )
+
+
+def test_complete_baseline_pair_requires_both_tokens_in_one_generation(
+    tmp_path,
+) -> None:
+    path = tmp_path / "baseline-pair.sqlite3"
+    started_at_ms = time.time_ns() // 1_000_000
+    market = _market("condition-1", "market-one", "one")
+    first_token, second_token = (
+        outcome.token_id for outcome in market.outcomes
+    )
+    archive = RecordingArchive.create(
+        path,
+        target_identity="slugs:market-one",
+        started_at_ms=started_at_ms,
+    )
+    archive.append_metadata(
+        _event(
+            archive,
+            market,
+            observed_at_ms=started_at_ms,
+            identity=_identity(market),
+        )
+    )
+    archive.append_event(
+        _event(
+            archive,
+            _book(first_token),
+            observed_at_ms=started_at_ms + 1,
+            identity=_identity(market, first_token),
+        )
+    )
+    archive.append_event(
+        _event(
+            archive,
+            _book(second_token),
+            observed_at_ms=started_at_ms + 2,
+            identity=_identity(market, second_token),
+            generation=2,
+        )
+    )
+    archive.append_event(
+        _event(
+            archive,
+            _book(first_token),
+            observed_at_ms=started_at_ms + 3,
+            identity=_identity(market, first_token),
+            generation=2,
+        )
+    )
+    archive.close()
+
+    with RecordingReader(path) as reader:
+        assert not reader.has_complete_baseline_pair(
+            market,
+            start_at_ms=started_at_ms,
+            end_at_ms=started_at_ms + 2,
+            session_id=1,
+        )
+        assert reader.has_complete_baseline_pair(
+            market,
+            start_at_ms=started_at_ms + 2,
+            end_at_ms=started_at_ms + 3,
+            session_id=1,
+        )
 
 
 def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None:
@@ -439,6 +608,14 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
         )
         assert {checkpoint.sequence for checkpoint in pair} == {3}
         assert {checkpoint.observed_at_ms for checkpoint in pair} == {common_at_ms}
+        assert reader.checkpoint_pair_at(
+            market.condition_id,
+            common_at_ms,
+        ) == pair
+        assert reader.checkpoint_pair_at(
+            market.condition_id,
+            common_at_ms + 1,
+        ) is None
         with pytest.raises(ArchiveCoverageError):
             reader.checkpoint_pair_before(
                 market.condition_id,
@@ -453,3 +630,8 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
         assert {
             checkpoint.observed_at_ms for checkpoint in recovered_pair
         } == {recovered_at_ms}
+        assert reader.checkpoint_pair_at(
+            market.condition_id,
+            recovered_at_ms,
+            session_id=1,
+        ) == recovered_pair

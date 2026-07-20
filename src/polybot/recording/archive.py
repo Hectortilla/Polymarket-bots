@@ -6,7 +6,7 @@ import fcntl
 import os
 import sqlite3
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
@@ -29,6 +29,7 @@ from .contracts import (
     RecordedEvent,
     ResolutionPayload,
     SessionIntegrityStatus,
+    TickSizeChangePayload,
 )
 from .archive_errors import (
     ArchiveClosedError,
@@ -576,6 +577,7 @@ class RecordingArchive:
         *,
         clean: bool = True,
         failure_reason: str | None = None,
+        ended_at_ms: int | None = None,
     ) -> None:
         with self._lock:
             if self._closed:
@@ -599,11 +601,18 @@ class RecordingArchive:
                 self._session_started_at_ms,
                 self._last_observed_at_ms or 0,
             )
-            ended_at_ms = (
-                max(durable_boundary_ms, time.time_ns() // 1_000_000)
-                if clean
-                else durable_boundary_ms
-            )
+            if ended_at_ms is None:
+                ended_at_ms = (
+                    max(durable_boundary_ms, time.time_ns() // 1_000_000)
+                    if clean
+                    else durable_boundary_ms
+                )
+            else:
+                _nonnegative_timestamp(ended_at_ms, "archive end")
+                if ended_at_ms < durable_boundary_ms:
+                    raise ValueError(
+                        "archive end cannot precede its durable boundary"
+                    )
             close_error: Exception | None = None
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
@@ -728,8 +737,13 @@ class RecordingReader:
         path: str | Path,
         *,
         _replay_lock_file: BinaryIO | None = None,
+        _validated_target_identity: str | None = None,
     ) -> None:
         self._path = _archive_path(path)
+        if _validated_target_identity is not None and _replay_lock_file is None:
+            raise ValueError(
+                "prevalidated archive identity requires an exclusive replay lease"
+            )
         self._replay_lock_file = _replay_lock_file
         self._immutable = self._replay_lock_file is not None
         if not self._path.is_file():
@@ -745,7 +759,11 @@ class RecordingReader:
                 immutable=self._immutable,
             )
             self._connection = connection
-            self._target_identity = _validate_archive(self._connection)
+            self._target_identity = (
+                _validate_archive(self._connection)
+                if _validated_target_identity is None
+                else _validated_target_identity
+            )
             self._connection.execute("BEGIN")
             self._replay_cutoff_sequence = _last_sequence(self._connection)
             self._sessions = tuple(
@@ -789,12 +807,16 @@ class RecordingReader:
             _acquire_writer_lock(lock_file, archive_path)
             connection = _open_connection(archive_path)
             _configure_writer(connection)
-            _validate_archive(connection)
+            target_identity = _validate_archive(connection)
             _recover_interrupted_session(connection)
             _checkpoint_wal(connection)
             connection.close()
             connection = None
-            return cls(archive_path, _replay_lock_file=lock_file)
+            return cls(
+                archive_path,
+                _replay_lock_file=lock_file,
+                _validated_target_identity=target_identity,
+            )
         except Exception:
             if connection is not None:
                 with suppress(sqlite3.Error):
@@ -957,6 +979,60 @@ class RecordingReader:
             finally:
                 connection.close()
 
+    def event_count(
+        self,
+        *,
+        start_at_ms: int | None = None,
+        end_at_ms: int | None = None,
+        session_id: int | None = None,
+        condition_id: str | None = None,
+        condition_ids: Iterable[str] | None = None,
+        market_slug: str | None = None,
+        market_slugs: Iterable[str] | None = None,
+        token_id: str | None = None,
+        allow_gaps: bool = False,
+    ) -> int:
+        """Count non-gap events in one validated reader selection."""
+
+        selection = _selection(
+            start_at_ms=start_at_ms,
+            end_at_ms=end_at_ms,
+            session_id=session_id,
+            condition_id=condition_id,
+            condition_ids=condition_ids,
+            market_slug=market_slug,
+            market_slugs=market_slugs,
+            token_id=token_id,
+        )
+        with self._lock:
+            self._ensure_open()
+            connection = _open_readonly_connection(
+                self._path,
+                immutable=self._immutable,
+            )
+            try:
+                connection.execute("BEGIN")
+                if not allow_gaps:
+                    self._reject_known_gaps(connection=connection, **selection)
+                query, parameters = _event_query(
+                    selection,
+                    replay_cutoff_sequence=self._replay_cutoff_sequence,
+                    ordered=False,
+                )
+                row = connection.execute(
+                    "SELECT COUNT(*) FROM ("
+                    + query
+                    + ") AS selected_event WHERE payload_kind != ?",
+                    (*parameters, PayloadKind.COVERAGE_GAP.value),
+                ).fetchone()
+                if row is None:
+                    raise ArchiveIntegrityError(
+                        "recording event count is unavailable"
+                    )
+                return _nonnegative_int(row[0], "recording event count")
+            finally:
+                connection.close()
+
     def select_session(self, session_id: int | None = None) -> RecordingSession:
         """Select one session, requiring an ID when the archive is ambiguous."""
 
@@ -1099,6 +1175,187 @@ class RecordingReader:
                 )
             return tuple(markets)
 
+    def market_state_at(
+        self,
+        condition_id: str,
+        observed_at_ms: int,
+        *,
+        sequence_cutoff: int | None = None,
+        allow_gaps: bool = False,
+    ) -> MarketMetadataPayload | None:
+        """Return metadata plus the latest ordered tick and resolution state."""
+
+        normalized_condition = _required_text(condition_id, "condition ID")
+        _nonnegative_timestamp(observed_at_ms, "market-state timestamp")
+        normalized_cutoff = (
+            self._replay_cutoff_sequence
+            if sequence_cutoff is None
+            else _positive_int(sequence_cutoff, "market-state sequence cutoff")
+        )
+        if normalized_cutoff > self._replay_cutoff_sequence:
+            raise ValueError("market-state sequence cutoff exceeds the replay cutoff")
+        with self._lock:
+            self._ensure_open()
+            if not allow_gaps:
+                self._reject_known_gaps(
+                    start_at_ms=observed_at_ms,
+                    end_at_ms=observed_at_ms,
+                    session_id=None,
+                    condition_ids=(normalized_condition,),
+                    market_slugs=None,
+                    token_id=None,
+                )
+            market = self._market_at(
+                self._connection,
+                normalized_condition,
+                observed_at_ms,
+                sequence_cutoff=normalized_cutoff,
+            )
+            if market is None:
+                return None
+            row = self._connection.execute(
+                """
+                SELECT * FROM events
+                WHERE condition_id = ? AND payload_kind IN (?, ?)
+                  AND observed_at_ms <= ? AND sequence <= ?
+                ORDER BY observed_at_ms DESC, sequence DESC
+                LIMIT 1
+                """,
+                (
+                    normalized_condition,
+                    PayloadKind.MARKET_METADATA.value,
+                    PayloadKind.TICK_SIZE_CHANGE.value,
+                    observed_at_ms,
+                    normalized_cutoff,
+                ),
+            ).fetchone()
+            if row is None or row["payload_kind"] == PayloadKind.MARKET_METADATA.value:
+                return market
+            event = _event_from_row(row)
+            if not isinstance(event.payload, TickSizeChangePayload):
+                raise ArchiveFormatError(
+                    "tick-size state index contains a wrong payload"
+                )
+            _validate_payload_market_identity(event, market)
+            return replace(market, minimum_tick_size=event.payload.new_tick_size)
+
+    def has_complete_baseline_pair(
+        self,
+        market: MarketMetadataPayload,
+        *,
+        start_at_ms: int,
+        end_at_ms: int,
+        session_id: int | None = None,
+        after_sequence_by_token: Mapping[str, int] | None = None,
+    ) -> bool:
+        """Return whether one generation baselines both market tokens in-range."""
+
+        return (
+            self.first_complete_baseline_pair_at_or_after(
+                market,
+                start_at_ms=start_at_ms,
+                end_at_ms=end_at_ms,
+                session_id=session_id,
+                after_sequence_by_token=after_sequence_by_token,
+            )
+            is not None
+        )
+
+    def first_complete_baseline_pair_at_or_after(
+        self,
+        market: MarketMetadataPayload,
+        *,
+        start_at_ms: int,
+        end_at_ms: int,
+        session_id: int | None = None,
+        after_sequence_by_token: Mapping[str, int] | None = None,
+    ) -> int | None:
+        """Return the earliest in-range time both token baselines are available."""
+
+        if not isinstance(market, MarketMetadataPayload):
+            raise ValueError("baseline-pair market metadata is invalid")
+        _nonnegative_timestamp(start_at_ms, "baseline-pair start")
+        _nonnegative_timestamp(end_at_ms, "baseline-pair end")
+        if end_at_ms < start_at_ms:
+            raise ValueError("baseline-pair selection cannot end before it starts")
+        normalized_session = (
+            None
+            if session_id is None
+            else _positive_int(session_id, "session ID")
+        )
+        token_ids = tuple(outcome.token_id for outcome in market.outcomes)
+        unknown_tokens = set(after_sequence_by_token or ()).difference(token_ids)
+        if unknown_tokens:
+            raise ValueError("baseline sequence cutoffs contain an unknown token")
+        sequence_cutoffs = tuple(
+            _nonnegative_int(
+                0
+                if after_sequence_by_token is None
+                else after_sequence_by_token.get(token_id, 0),
+                "baseline sequence cutoff",
+            )
+            for token_id in token_ids
+        )
+        with self._lock:
+            self._ensure_open()
+            session_clause = (
+                "" if normalized_session is None else "AND event.session_id = ?"
+            )
+            parameters: list[object] = [
+                PayloadKind.BOOK_BASELINE.value,
+                market.condition_id,
+                start_at_ms,
+                end_at_ms,
+                self._replay_cutoff_sequence,
+                *token_ids,
+                token_ids[0],
+                sequence_cutoffs[0],
+                token_ids[1],
+                sequence_cutoffs[1],
+            ]
+            if normalized_session is not None:
+                parameters.append(normalized_session)
+            row = self._connection.execute(
+                f"""
+                WITH first_token_baseline AS (
+                    SELECT event.subscription_generation,
+                           selected_token.token_id,
+                           MIN(event.observed_at_ms) AS first_observed_at_ms
+                    FROM events AS event
+                    JOIN event_tokens AS selected_token
+                      ON selected_token.sequence = event.sequence
+                    WHERE event.payload_kind = ? AND event.condition_id = ?
+                      AND event.observed_at_ms >= ?
+                      AND event.observed_at_ms <= ?
+                      AND event.sequence <= ?
+                      AND selected_token.token_id IN (?, ?)
+                      AND (
+                          (selected_token.token_id = ? AND event.sequence > ?)
+                          OR
+                          (selected_token.token_id = ? AND event.sequence > ?)
+                      )
+                      {session_clause}
+                    GROUP BY event.subscription_generation,
+                             selected_token.token_id
+                )
+                SELECT MAX(first_observed_at_ms) AS complete_at_ms
+                FROM first_token_baseline
+                GROUP BY subscription_generation
+                HAVING COUNT(DISTINCT token_id) = 2
+                ORDER BY complete_at_ms
+                LIMIT 1
+                """,
+                tuple(parameters),
+            ).fetchone()
+            return (
+                None
+                if row is None
+                else _nonnegative_int(
+                    row["complete_at_ms"],
+                    "complete baseline-pair timestamp",
+                )
+            )
+
     def checkpoint_before(
         self,
         token_id: str,
@@ -1240,6 +1497,118 @@ class RecordingReader:
                 self._checkpoint_from_row(rows_by_token[token_ids[1]], token_ids[1]),
             )
 
+    def checkpoint_pair_at(
+        self,
+        condition_id: str,
+        observed_at_ms: int,
+        *,
+        session_id: int | None = None,
+        allow_gaps: bool = False,
+    ) -> tuple[BookCheckpoint, BookCheckpoint] | None:
+        """Return a common pair only when it is exactly on one time boundary."""
+
+        normalized_condition = _required_text(condition_id, "condition ID")
+        _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+        normalized_session = (
+            None
+            if session_id is None
+            else _positive_int(session_id, "session ID")
+        )
+        checkpoints = self.checkpoint_pair_before(
+            normalized_condition,
+            observed_at_ms,
+            session_id=normalized_session,
+            allow_gaps=True,
+        )
+        if (
+            checkpoints is None
+            or checkpoints[0].observed_at_ms != observed_at_ms
+        ):
+            return None
+        if not allow_gaps:
+            with self._lock:
+                self._ensure_open()
+                self._reject_known_gaps(
+                    start_at_ms=observed_at_ms,
+                    end_at_ms=observed_at_ms,
+                    session_id=normalized_session,
+                    condition_ids=(normalized_condition,),
+                    market_slugs=(checkpoints[0].identity.market_slug or "",),
+                    token_id=None,
+                )
+        return checkpoints
+
+    def checkpoint_pair_at_or_after(
+        self,
+        condition_id: str,
+        observed_at_ms: int,
+        *,
+        end_at_ms: int,
+        session_id: int | None = None,
+        allow_gaps: bool = False,
+    ) -> tuple[BookCheckpoint, BookCheckpoint] | None:
+        """Return the first common pair inside one inclusive time range."""
+
+        normalized_condition = _required_text(condition_id, "condition ID")
+        _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+        _nonnegative_timestamp(end_at_ms, "checkpoint lookup end")
+        if end_at_ms < observed_at_ms:
+            raise ValueError("checkpoint lookup end cannot precede its start")
+        normalized_session = (
+            None
+            if session_id is None
+            else _positive_int(session_id, "session ID")
+        )
+        with self._lock:
+            self._ensure_open()
+            market = self._market_at(
+                self._connection,
+                normalized_condition,
+                end_at_ms,
+            )
+            if market is None:
+                return None
+            token_ids = tuple(outcome.token_id for outcome in market.outcomes)
+            session_clause = (
+                "" if normalized_session is None else "AND session_id = ?"
+            )
+            parameters: list[object] = [
+                normalized_condition,
+                *token_ids,
+                observed_at_ms,
+                end_at_ms,
+                self._replay_cutoff_sequence,
+            ]
+            if normalized_session is not None:
+                parameters.append(normalized_session)
+            row = self._connection.execute(
+                f"""
+                SELECT observed_at_ms
+                FROM book_checkpoints
+                WHERE condition_id = ? AND token_id IN (?, ?)
+                  AND observed_at_ms >= ? AND observed_at_ms <= ?
+                  AND sequence <= ? {session_clause}
+                GROUP BY observed_at_ms, sequence, session_id,
+                         subscription_generation
+                HAVING COUNT(DISTINCT token_id) = 2
+                ORDER BY observed_at_ms, sequence
+                LIMIT 1
+                """,
+                tuple(parameters),
+            ).fetchone()
+            if row is None:
+                return None
+            boundary_ms = _strict_int(
+                row["observed_at_ms"],
+                "checkpoint timestamp",
+            )
+            return self.checkpoint_pair_at(
+                normalized_condition,
+                boundary_ms,
+                session_id=normalized_session,
+                allow_gaps=allow_gaps,
+            )
+
     def coverage_gaps(
         self,
         *,
@@ -1287,6 +1656,29 @@ class RecordingReader:
         failure_kind: CaptureFailureKind | str | None = None,
     ) -> tuple[CaptureAnomalyRecord, ...]:
         """Read quarantined diagnostics, never canonical replay events."""
+
+        return tuple(
+            self.iter_capture_anomalies(
+                start_at_ms=start_at_ms,
+                end_at_ms=end_at_ms,
+                session_id=session_id,
+                condition_id=condition_id,
+                market_slug=market_slug,
+                failure_kind=failure_kind,
+            )
+        )
+
+    def iter_capture_anomalies(
+        self,
+        *,
+        start_at_ms: int | None = None,
+        end_at_ms: int | None = None,
+        session_id: int | None = None,
+        condition_id: str | None = None,
+        market_slug: str | None = None,
+        failure_kind: CaptureFailureKind | str | None = None,
+    ) -> Iterator[CaptureAnomalyRecord]:
+        """Stream quarantined diagnostics from an immutable reader snapshot."""
 
         if start_at_ms is not None:
             _nonnegative_timestamp(start_at_ms, "capture anomaly selection start")
@@ -1346,18 +1738,7 @@ class RecordingReader:
                 if value is not None:
                     clauses.append(f"{column} {operator} ?")
                     parameters.append(value)
-            try:
-                rows = self._connection.execute(
-                    "SELECT * FROM capture_anomalies WHERE "
-                    + " AND ".join(clauses)
-                    + " ORDER BY anomaly_id",
-                    tuple(parameters),
-                ).fetchall()
-            except sqlite3.Error as error:
-                raise ArchiveFormatError(
-                    "capture anomaly journal is malformed"
-                ) from error
-            return tuple(_capture_anomaly_from_row(row) for row in rows)
+            return self._stream_capture_anomalies(clauses, tuple(parameters))
 
     def sessions(self) -> tuple[RecordingSession, ...]:
         with self._lock:
@@ -1468,7 +1849,14 @@ class RecordingReader:
         connection: sqlite3.Connection,
         condition_id: str,
         observed_at_ms: int,
+        *,
+        sequence_cutoff: int | None = None,
     ) -> MarketMetadataPayload | None:
+        selected_cutoff = (
+            self._replay_cutoff_sequence
+            if sequence_cutoff is None
+            else sequence_cutoff
+        )
         row = connection.execute(
             """
             SELECT payload_json
@@ -1480,7 +1868,7 @@ class RecordingReader:
             (
                 condition_id,
                 observed_at_ms,
-                self._replay_cutoff_sequence,
+                selected_cutoff,
             ),
         ).fetchone()
         if row is None:
@@ -1496,6 +1884,7 @@ class RecordingReader:
             connection,
             payload,
             observed_at_ms,
+            sequence_cutoff=selected_cutoff,
         )
 
     def _market_with_resolution(
@@ -1503,7 +1892,14 @@ class RecordingReader:
         connection: sqlite3.Connection,
         payload: MarketMetadataPayload,
         observed_at_ms: int,
+        *,
+        sequence_cutoff: int | None = None,
     ) -> MarketMetadataPayload:
+        selected_cutoff = (
+            self._replay_cutoff_sequence
+            if sequence_cutoff is None
+            else sequence_cutoff
+        )
         resolution_row = connection.execute(
             """
             SELECT * FROM events
@@ -1516,7 +1912,7 @@ class RecordingReader:
                 payload.condition_id,
                 PayloadKind.RESOLUTION.value,
                 observed_at_ms,
-                self._replay_cutoff_sequence,
+                selected_cutoff,
             ),
         ).fetchone()
         if resolution_row is None:
@@ -1649,12 +2045,16 @@ class RecordingReader:
                     event = _event_from_row(row)
                     if (
                         isinstance(event.payload, CoverageGapPayload)
-                        and not _gap_affects(
-                            event.identity,
-                            event.payload,
-                            condition_ids=selection["condition_ids"],
-                            market_slugs=selection["market_slugs"],
-                            token_id=selection["token_id"],
+                        and (
+                            event.payload.ended_at_ms
+                            == event.payload.started_at_ms
+                            or not _gap_affects(
+                                event.identity,
+                                event.payload,
+                                condition_ids=selection["condition_ids"],
+                                market_slugs=selection["market_slugs"],
+                                token_id=selection["token_id"],
+                            )
                         )
                     ):
                         continue
@@ -1665,6 +2065,42 @@ class RecordingReader:
                         verified_baselines,
                     )
                     yield event
+            finally:
+                connection.close()
+
+        return iterate()
+
+    def _stream_capture_anomalies(
+        self,
+        clauses: list[str],
+        parameters: tuple[object, ...],
+    ) -> Iterator[CaptureAnomalyRecord]:
+        connection = _open_readonly_connection(
+            self._path,
+            immutable=self._immutable,
+        )
+        try:
+            connection.execute("BEGIN")
+            cursor = connection.execute(
+                "SELECT * FROM capture_anomalies WHERE "
+                + " AND ".join(clauses)
+                + " ORDER BY anomaly_id",
+                parameters,
+            )
+        except sqlite3.Error as error:
+            connection.close()
+            raise ArchiveFormatError(
+                "capture anomaly journal is malformed"
+            ) from error
+
+        def iterate() -> Iterator[CaptureAnomalyRecord]:
+            try:
+                for row in cursor:
+                    yield _capture_anomaly_from_row(row)
+            except sqlite3.Error as error:
+                raise ArchiveFormatError(
+                    "capture anomaly journal is malformed"
+                ) from error
             finally:
                 connection.close()
 
@@ -1682,7 +2118,10 @@ class RecordingReader:
         open_only: bool,
         connection: sqlite3.Connection | None = None,
     ) -> tuple[CoverageGapRecord, ...]:
-        clauses: list[str] = ["event_sequence <= ?"]
+        clauses: list[str] = [
+            "event_sequence <= ?",
+            "(ended_at_ms IS NULL OR ended_at_ms > started_at_ms)",
+        ]
         parameters: list[object] = [self._replay_cutoff_sequence]
         if start_at_ms is not None:
             clauses.append("(ended_at_ms IS NULL OR ended_at_ms > ?)")

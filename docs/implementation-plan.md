@@ -480,6 +480,62 @@ Status: done.
 uncommitted event, a message never delivered by the upstream stream, damaged
 storage, and any interval already represented by a coverage gap.
 
+## Slice 9A.3: Recording Trim Maintenance
+
+Status: done.
+
+Command and selection contract:
+
+- Run as `python -m polybot.recording.trim ARCHIVE`; accept optional
+  `--session ID`, `--dry-run`, and `--no-backup`.
+- Select the sole session by default and require an explicit session when the
+  source archive contains more than one. Keep selection archive-level and
+  all-market; do not add market-subset optimization.
+- Within the selected replayable session, choose the longest interval unaffected
+  by any relevant coverage gap. Treat gaps as half-open `[start, end)` ranges:
+  a clean suffix may start at a closed gap's end, while a clean prefix ends
+  before its start. An open gap has no clean suffix. If the selected session
+  has no relevant gaps, retain its full event-bearing replayable interval.
+- Accept a fresh common recovery checkpoint at or immediately after the gap end
+  as the clean suffix bootstrap, including when the two recovery baselines
+  straddle that boundary. Advance the suffix start to the checkpoint when
+  necessary. Verify its generation and depth against canonical recovery events
+  before materializing it; do not infer missing state.
+- Report the selected source session, start, end, duration, retained event count,
+  selected-session gap count, and whole-archive size. `--dry-run` performs
+  selection and reporting without replacing the archive or creating its backup.
+
+Rewrite and safety behavior:
+
+- Produce one self-contained schema-v2 replay source. Retain or synthesize the
+  time-correct metadata, resolution state, and common two-token book bootstrap
+  needed at the new start, then preserve canonical event order inside the clean
+  interval. Discard source sessions and canonical event time outside it. Mark
+  the validated derived session clean and complete; source failure or recovery
+  diagnostics remain available in the retained original backup.
+- Never delete gap evidence while retaining events on both sides, infer a book
+  across a gap, or describe trimming as gap repair. Refuse a selection that
+  cannot be made independently replayable.
+- Acquire the exclusive inactive-archive lease, recover an abandoned active
+  session at its durable boundary, and checkpoint the WAL before reading the
+  source. Refuse a recorder that still owns the archive.
+- Build the replacement in a temporary file in the source directory and fully
+  validate its schema, integrity, session, metadata, book bootstrap, range, and
+  lack of affecting gaps before replacement.
+- Preserve the checkpointed original through a hard-linked sibling backup at
+  `ARCHIVE.pre-trim` by default; `--no-backup` opts out. Atomically replace the
+  requested archive path only after the temporary artifact validates, and leave
+  the original usable if any earlier step fails.
+- Keep the operation local. It creates no Polymarket SDK/client, makes no network
+  request, changes no protocol behavior, and does not use REST history to repair
+  the recording.
+
+Acceptance covers prefix/middle/suffix selection, overlapping and open gaps,
+half-open and common-recovery-checkpoint boundary behavior, multi-session
+ambiguity, self-contained mid-session bootstrap, active-writer refusal, dry-run
+reporting, backup behavior, failed temporary validation, atomic replacement,
+and a default backtest of the trimmed archive without source selection flags.
+
 ## Slice 9B: Deterministic Backtest Replay
 
 Status: done.

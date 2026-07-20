@@ -256,6 +256,11 @@ Chainlink, Pyth, sports, or other reference feeds are not recorded. A later
 slice must add each missing source before a strategy depending on it can be
 faithfully replayed.
 
+The `polybot.recording.trim` utility is local schema-v2 SQLite maintenance. It
+selects the longest gap-free all-market interval already present and rewrites a
+self-contained archive; it does not fetch history, reconstruct a missing event,
+instantiate an official client, or change any Polymarket protocol behavior.
+
 Slice 9B adds no Polymarket API or SDK path. It accepts only the current
 schema-v2 SQLite artifact, snapshots an immutable archive sequence cutoff when
 opening it, and reconstructs package-owned `Market`, `BookSnapshot`, and
