@@ -243,15 +243,20 @@ def test_cli_prints_general_recording_information(
     assert inspect_cli.main([str(path)]) == 0
 
     output = capsys.readouterr().out
-    assert f"Recording: {path.resolve()}" in output
-    assert "schema=v2" in output
-    assert f"Target: static {MARKET_SLUG}" in output
-    assert "sessions=1 markets=1 captured=0.020s events=3" in output
-    assert "detected_gaps=1 open_gaps=0" in output
-    assert "metadata=1 book_baselines=2" in output
-    assert f"slug={MARKET_SLUG}" in output
-    assert "reason=sdk_queue_drop" in output
-    assert f"scope={MARKET_SLUG}" in output
+    assert "Recording inspector" in output
+    assert "Schema" in output
+    assert "v2" in output
+    assert f"static {MARKET_SLUG}" in output
+    assert "Captured time" in output
+    assert "0.020s" in output
+    assert "Replay events" in output
+    assert "Sessions" in output
+    assert "Event mix" in output
+    assert "Meta" in output
+    assert "Markets" in output
+    assert MARKET_SLUG in output
+    assert "Coverage gaps" in output
+    assert "sdk_queue_drop" in output
     assert "Detected gaps require a clean selected range" in output
     assert "does not prove exchange-complete" not in output
 

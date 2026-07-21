@@ -4,13 +4,27 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import UTC, datetime
 from pathlib import Path
+
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from .archive_errors import RecordingArchiveError
 from .archive_models import RecordingEventCounts
 from .contracts import CoverageGapRecord, SessionIntegrityStatus
 from .inspection import RecordingInspection, inspect_recording
+from .terminal import (
+    ACCENT_STYLE,
+    DANGER_STYLE,
+    MUTED_STYLE,
+    SUCCESS_STYLE,
+    WARNING_STYLE,
+    format_bytes,
+    format_duration,
+    format_timestamp,
+    recording_console,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,129 +47,167 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 
 def _print_inspection(inspection: RecordingInspection) -> None:
-    print(f"Recording: {inspection.archive_path}")
-    print(
-        f"Archive: schema=v{inspection.schema_version} "
-        f"size={_format_bytes(inspection.archive_size_bytes)}"
-    )
-    print(f"Target: {_format_target_identity(inspection.target_identity)}")
+    console = recording_console()
+    archive = Table.grid(padding=(0, 1))
+    archive.add_column(style="bold")
+    archive.add_column(overflow="fold")
+    archive.add_row("Recording", str(inspection.archive_path))
+    archive.add_row("Target", _format_target_identity(inspection.target_identity))
+    archive.add_row("Schema", f"v{inspection.schema_version}")
+    archive.add_row("Archive size", format_bytes(inspection.archive_size_bytes))
     if inspection.sidecar_size_bytes:
-        print(f"SQLite sidecars: {_format_bytes(inspection.sidecar_size_bytes)}")
+        archive.add_row("SQLite sidecars", format_bytes(inspection.sidecar_size_bytes))
+    if inspection.event_start_at_ms is not None:
+        archive.add_row(
+            "Event range",
+            f"{format_timestamp(inspection.event_start_at_ms)} → "
+            f"{format_timestamp(inspection.event_end_at_ms)}",
+        )
+    console.print(
+        Panel(
+            archive,
+            border_style=ACCENT_STYLE,
+            title="[bold bright_cyan]Recording inspector[/]",
+        )
+    )
+
     anomaly_summary = str(inspection.known_anomaly_count)
     if inspection.anomaly_unavailable_session_count:
         anomaly_summary += (
             f" ({inspection.anomaly_unavailable_session_count} session(s) unavailable)"
         )
-    print(
-        "Summary: "
-        f"sessions={len(inspection.sessions)} "
-        f"markets={inspection.market_count} "
-        f"captured={_format_duration(inspection.captured_duration_ms)} "
-        f"events={inspection.replay_event_count:,} "
-        f"checkpoints={inspection.checkpoint_count:,} "
-        f"detected_gaps={inspection.gap_count} "
-        f"open_gaps={inspection.open_gap_count} "
-        f"capture_anomalies={anomaly_summary}"
+    summary = Table(show_header=False, box=None, padding=(0, 2))
+    summary.add_column(style="bold")
+    summary.add_column(justify="right")
+    summary.add_column(style="bold")
+    summary.add_column(justify="right")
+    summary.add_row(
+        "Sessions",
+        str(len(inspection.sessions)),
+        "Markets",
+        str(inspection.market_count),
     )
-    if inspection.event_start_at_ms is not None:
-        print(
-            "Event range: "
-            f"{_format_timestamp(inspection.event_start_at_ms)} -> "
-            f"{_format_timestamp(inspection.event_end_at_ms)}"
-        )
+    summary.add_row(
+        "Captured time",
+        format_duration(inspection.captured_duration_ms),
+        "Replay events",
+        f"{inspection.replay_event_count:,}",
+    )
+    summary.add_row(
+        "Checkpoints",
+        f"{inspection.checkpoint_count:,}",
+        "Detected gaps",
+        str(inspection.gap_count),
+    )
+    summary.add_row(
+        "Open gaps",
+        str(inspection.open_gap_count),
+        "Capture anomalies",
+        anomaly_summary,
+    )
+    console.print(Panel(summary, border_style=ACCENT_STYLE, title="[bold]Summary[/]"))
 
-    print("\nSessions:")
+    sessions = Table(header_style=f"bold {ACCENT_STYLE}")
+    sessions.add_column("ID", justify="right")
+    sessions.add_column("Status")
+    sessions.add_column("Time", justify="right")
+    sessions.add_column("Markets", justify="right")
+    sessions.add_column("Events", justify="right")
+    sessions.add_column("CPs", justify="right")
+    sessions.add_column("Gaps", justify="right")
+    sessions.add_column("Anoms", justify="right")
     for session in inspection.sessions:
         statistics = session.statistics
-        stored = statistics.event_counts.stored_event_count
         anomaly_count = statistics.capture_anomaly_count
         anomaly_text = "unavailable" if anomaly_count is None else str(anomaly_count)
-        bounds = statistics.event_bounds
-        range_text = (
-            "no replay events"
-            if bounds is None
-            else (
-                f"{_format_timestamp(bounds.start_at_ms)} -> "
-                f"{_format_timestamp(bounds.end_at_ms)}"
-            )
+        status = statistics.session.integrity_status
+        sessions.add_row(
+            str(statistics.session.session_id),
+            Text(status.value, style=_session_style(status)),
+            format_duration(statistics.duration_ms),
+            str(len(statistics.markets)),
+            f"{statistics.event_counts.replay_event_count:,}",
+            f"{statistics.checkpoint_count:,}",
+            _gap_cell(session.open_gap_count, len(session.coverage_gaps)),
+            anomaly_text,
         )
-        print(
-            f"  {statistics.session.session_id}: "
-            f"status={statistics.session.integrity_status.value} "
-            f"captured={_format_duration(statistics.duration_ms)} "
-            f"markets={len(statistics.markets)} "
-            f"events={statistics.event_counts.replay_event_count:,} "
-            f"stored_rows={stored:,} "
-            f"checkpoints={statistics.checkpoint_count:,} "
-            f"gaps={len(session.coverage_gaps)} "
-            f"open_gaps={session.open_gap_count} "
-            f"anomalies={anomaly_text}"
-        )
-        lifecycle_end = (
-            "active"
-            if statistics.session.ended_at_ms is None
-            else _format_timestamp(statistics.session.ended_at_ms)
-        )
-        print(
-            f"     session_window="
-            f"{_format_timestamp(statistics.session.started_at_ms)} -> "
-            f"{lifecycle_end}"
-        )
-        print(f"     event_range={range_text}")
-        if statistics.session.failure_reason:
-            print(f"     failure={statistics.session.failure_reason}")
+    console.print(Panel(sessions, border_style=ACCENT_STYLE, title="[bold]Sessions[/]"))
 
     event_counts = _total_event_counts(inspection)
-    print("\nEvent types:")
-    print(
-        "  "
-        f"metadata={event_counts.market_metadata:,} "
-        f"book_baselines={event_counts.book_baseline:,} "
-        f"book_deltas={event_counts.book_delta:,} "
-        f"public_trades={event_counts.public_trade:,} "
-        f"tick_changes={event_counts.tick_size_change:,} "
-        f"resolutions={event_counts.resolution:,} "
-        f"gap_records={event_counts.coverage_gap:,}"
+    event_types = Table(header_style=f"bold {ACCENT_STYLE}")
+    event_types.add_column("Meta", justify="right")
+    event_types.add_column("Bases", justify="right")
+    event_types.add_column("Deltas", justify="right")
+    event_types.add_column("Trades", justify="right")
+    event_types.add_column("Ticks", justify="right")
+    event_types.add_column("Resolved", justify="right")
+    event_types.add_column("Gaps", justify="right")
+    event_types.add_row(
+        f"{event_counts.market_metadata:,}",
+        f"{event_counts.book_baseline:,}",
+        f"{event_counts.book_delta:,}",
+        f"{event_counts.public_trade:,}",
+        f"{event_counts.tick_size_change:,}",
+        f"{event_counts.resolution:,}",
+        f"{event_counts.coverage_gap:,}",
     )
+    console.print(Panel(event_types, border_style=ACCENT_STYLE, title="[bold]Event mix[/]"))
 
-    print("\nMarkets:")
     markets = tuple(
         (session.statistics.session.session_id, market)
         for session in inspection.sessions
         for market in session.statistics.markets
     )
+    market_table = Table(header_style=f"bold {ACCENT_STYLE}")
+    market_table.add_column("Session", justify="right")
+    market_table.add_column("Market slug")
+    market_table.add_column("Captured", justify="right")
+    market_table.add_column("Events", justify="right")
+    market_table.add_column("Condition ID", style=MUTED_STYLE)
     if not markets:
-        print("  none")
+        market_table.add_row("–", "No markets", "–", "–", "–")
     for session_id, market in markets:
-        print(
-            f"  session={session_id} "
-            f"slug={market.market_slug} "
-            f"captured={_format_duration(market.duration_ms)} "
-            f"events={market.event_count:,} "
-            f"condition={market.condition_id}"
+        market_table.add_row(
+            str(session_id),
+            market.market_slug,
+            format_duration(market.duration_ms),
+            f"{market.event_count:,}",
+            market.condition_id,
         )
+    console.print(Panel(market_table, border_style=ACCENT_STYLE, title="[bold]Markets[/]"))
 
     if inspection.gap_count:
-        print("\nCoverage gaps:")
+        gaps = Table(header_style=f"bold {WARNING_STYLE}")
+        gaps.add_column("Session", justify="right")
+        gaps.add_column("Gap", justify="right")
+        gaps.add_column("Reason")
+        gaps.add_column("Interval")
+        gaps.add_column("Scope")
         for session in inspection.sessions:
             for record in session.coverage_gaps:
                 gap = record.gap
                 gap_end = (
                     "open"
                     if gap.ended_at_ms is None
-                    else _format_timestamp(gap.ended_at_ms)
+                    else format_timestamp(gap.ended_at_ms)
                 )
-                print(
-                    f"  session={record.session_id} "
-                    f"gap={record.gap_id} "
-                    f"reason={gap.reason.value} "
-                    f"range={_format_timestamp(gap.started_at_ms)} -> {gap_end} "
-                    f"scope={_format_gap_scope(record)}"
+                gaps.add_row(
+                    str(record.session_id),
+                    str(record.gap_id),
+                    gap.reason.value,
+                    f"{format_timestamp(gap.started_at_ms)} → {gap_end}",
+                    _format_gap_scope(record),
                 )
+        console.print(Panel(gaps, border_style=WARNING_STYLE, title="[bold]Coverage gaps[/]"))
 
-    print("\nBacktest notes:")
-    for note in _backtest_notes(inspection):
-        print(f"  - {note}")
+    notes = "\n".join(f"• {note}" for note in _backtest_notes(inspection))
+    console.print(
+        Panel(
+            notes,
+            border_style=WARNING_STYLE if inspection.gap_count else SUCCESS_STYLE,
+            title="[bold]Backtest notes[/]",
+        )
+    )
 
 
 def _total_event_counts(inspection: RecordingInspection) -> RecordingEventCounts:
@@ -218,42 +270,6 @@ def _backtest_notes(inspection: RecordingInspection) -> tuple[str, ...]:
     return tuple(notes)
 
 
-def _format_timestamp(timestamp_ms: int | None) -> str:
-    if timestamp_ms is None:
-        return "n/a"
-    return (
-        datetime.fromtimestamp(timestamp_ms / 1_000, tz=UTC)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
-
-
-def _format_duration(duration_ms: int) -> str:
-    remaining_seconds, milliseconds = divmod(duration_ms, 1_000)
-    hours, remaining_seconds = divmod(remaining_seconds, 3_600)
-    minutes, seconds = divmod(remaining_seconds, 60)
-    parts: list[str] = []
-    if hours:
-        parts.append(f"{hours}h")
-    if minutes or hours:
-        parts.append(f"{minutes}m")
-    if milliseconds:
-        parts.append(f"{seconds}.{milliseconds:03d}s")
-    else:
-        parts.append(f"{seconds}s")
-    return " ".join(parts)
-
-
-def _format_bytes(size_bytes: int) -> str:
-    value = float(size_bytes)
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    for unit in units:
-        if value < 1_024 or unit == units[-1]:
-            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.2f} {unit}"
-        value /= 1_024
-    raise AssertionError("byte unit selection is unreachable")
-
-
 def _format_target_identity(target_identity: str) -> str:
     try:
         value = json.loads(target_identity)
@@ -281,6 +297,22 @@ def _format_gap_scope(record: CoverageGapRecord) -> str:
     if gap.affected_token_ids:
         return f"{len(gap.affected_token_ids)} token(s)"
     return "all target markets"
+
+
+def _session_style(status: SessionIntegrityStatus) -> str:
+    if status is SessionIntegrityStatus.COMPLETE:
+        return SUCCESS_STYLE
+    if status is SessionIntegrityStatus.FAILED:
+        return DANGER_STYLE
+    return WARNING_STYLE
+
+
+def _gap_cell(open_gaps: int, total_gaps: int) -> Text:
+    if open_gaps:
+        return Text(f"{total_gaps} ({open_gaps} open)", style=DANGER_STYLE)
+    if total_gaps:
+        return Text(str(total_gaps), style=WARNING_STYLE)
+    return Text("0", style=SUCCESS_STYLE)
 
 
 if __name__ == "__main__":  # pragma: no cover

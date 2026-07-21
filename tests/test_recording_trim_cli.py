@@ -104,14 +104,15 @@ def test_main_forwards_dry_run_and_prints_plan(
         "on_plan": trim_cli._print_plan,
     }
     output = capsys.readouterr().out
-    assert "session=7" in output
-    assert "start_ms=250" in output
-    assert "end_ms=800" in output
-    assert "duration_ms=550" in output
-    assert "retained_events=321" in output
-    assert "selected_session_gaps=4" in output
-    assert "archive_size_bytes=12345" in output
-    assert f"Dry run: archive not replaced: {plan.archive_path}" in output
+    assert "Trim plan" in output
+    assert "Clean interval" in output
+    assert "250 → 800" in output
+    assert "0.550s" in output
+    assert "321" in output
+    assert "12.06 KiB" in output
+    assert "Dry run complete" in output
+    assert "Archive unchanged" in output
+    assert plan.archive_path.name in output
 
 
 @pytest.mark.parametrize("keep_backup", (True, False))
@@ -149,13 +150,16 @@ def test_main_prints_replacement_backup_and_trimmed_size(
     assert trim_cli.main(arguments) == 0
 
     output = capsys.readouterr().out
-    assert f"Recording replaced: {plan.archive_path}" in output
-    assert "Trimmed size: 6789 bytes" in output
+    assert "Recording trim complete" in output
+    assert plan.archive_path.name in output
+    assert "Trimmed size" in output
+    assert "6.63 KiB" in output
     if backup_path is None:
-        assert "Warning: recording replaced without a backup" in output
+        assert "Not retained (--no-backup)" in output
     else:
-        assert f"Backup: {backup_path}" in output
-        assert "without a backup" not in output
+        assert "Backup" in output
+        assert backup_path.name in output
+        assert "Not retained" not in output
 
 
 @pytest.mark.parametrize(

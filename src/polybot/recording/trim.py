@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from rich.panel import Panel
+from rich.table import Table
+
 from polybot.backtesting.contracts import BacktestError
 
 from .archive_errors import RecordingArchiveError
@@ -14,6 +17,14 @@ from .trim_contracts import (
     RecordingTrimResult,
 )
 from .trimming import trim_recording
+from .terminal import (
+    ACCENT_STYLE,
+    SUCCESS_STYLE,
+    WARNING_STYLE,
+    format_bytes,
+    format_duration,
+    recording_console,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,32 +79,57 @@ def _positive_int(value: str) -> int:
 
 def _print_result(result: RecordingTrimResult) -> None:
     plan = result.plan
+    console = recording_console()
     if not result.replaced:
-        print(f"Dry run: archive not replaced: {plan.archive_path}")
+        console.print(
+            Panel.fit(
+                f"[bold {WARNING_STYLE}]Dry run complete[/]\n"
+                f"[dim]Archive unchanged[/]: {plan.archive_path}",
+                border_style=WARNING_STYLE,
+                title="[bold]Recording trim[/]",
+            )
+        )
         return
 
-    print(f"Recording replaced: {plan.archive_path}")
+    details = Table.grid(padding=(0, 1))
+    details.add_column(style="bold")
+    details.add_column(overflow="fold")
+    details.add_row("Archive", str(plan.archive_path))
+    details.add_row("Trimmed size", format_bytes(result.trimmed_size_bytes))
     if result.backup_path is None:
-        print("Warning: recording replaced without a backup (--no-backup).")
+        details.add_row(
+            "Backup",
+            f"[{WARNING_STYLE}]Not retained (--no-backup)[/]",
+        )
     else:
-        print(f"Backup: {result.backup_path}")
-    print(f"Trimmed size: {result.trimmed_size_bytes} bytes")
+        details.add_row("Backup", str(result.backup_path))
+    console.print(
+        Panel(
+            details,
+            border_style=SUCCESS_STYLE,
+            title=f"[bold {SUCCESS_STYLE}]Recording trim complete[/]",
+        )
+    )
 
 
 def _print_plan(plan: RecordingTrimPlan) -> None:
-    print(
-        "Trim plan: "
-        f"session={plan.source_session.session_id} "
-        f"start_ms={plan.start_at_ms} "
-        f"end_ms={plan.end_at_ms} "
-        f"duration_ms={plan.duration_ms}"
+    table = Table(show_header=True, header_style=f"bold {ACCENT_STYLE}")
+    table.add_column("Session", justify="right")
+    table.add_column("Clean interval", no_wrap=True)
+    table.add_column("Duration", justify="right")
+    table.add_column("Retained events", justify="right")
+    table.add_column("Source gaps", justify="right")
+    table.add_column("Archive size", justify="right")
+    table.add_row(
+        str(plan.source_session.session_id),
+        f"{plan.start_at_ms} → {plan.end_at_ms}",
+        format_duration(plan.duration_ms),
+        f"{plan.source_event_count:,}",
+        str(plan.source_gap_count),
+        format_bytes(plan.source_size_bytes),
     )
-    print(
-        "Source: "
-        f"retained_events={plan.source_event_count} "
-        f"selected_session_gaps={plan.source_gap_count} "
-        f"archive_size_bytes={plan.source_size_bytes}",
-        flush=True,
+    recording_console().print(
+        Panel(table, border_style=ACCENT_STYLE, title="[bold]Trim plan[/]"),
     )
 
 

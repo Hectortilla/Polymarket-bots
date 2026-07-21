@@ -8,6 +8,9 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from rich.panel import Panel
+from rich.table import Table
+
 from polybot.cli.config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from polybot.cli.factories import load_bot
 from polybot.framework.config.models import BotConfig, BotMode
@@ -16,6 +19,7 @@ from .duration import parse_duration_seconds
 from .identity import bot_target_identity, static_target_identity
 from .planning import StaticStreamPlanProvider
 from .service import record_markets
+from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_console
 
 
 RECORDING_CONFIG_NAME = "market-recorder"
@@ -78,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
         if bot_spec is not None
         else static_target_identity(market_slugs)
     )
+    _print_recording_start(
+        output_path=output_path,
+        bot_spec=bot_spec,
+        market_slugs=market_slugs,
+        duration_seconds=args.duration,
+        resume=args.resume,
+    )
 
     try:
         asyncio.run(
@@ -92,7 +103,23 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     except KeyboardInterrupt:
+        recording_console().print(
+            Panel.fit(
+                "[bold yellow]Recording interrupted[/]\n"
+                f"[dim]Committed data remains at[/] {output_path}",
+                border_style=WARNING_STYLE,
+                title="[bold]Market recorder[/]",
+            )
+        )
         return 0
+    recording_console().print(
+        Panel.fit(
+            "[bold green]Recording complete[/]\n"
+            f"[dim]Archive[/] {output_path}",
+            border_style=SUCCESS_STYLE,
+            title="[bold]Market recorder[/]",
+        )
+    )
     return 0
 
 
@@ -135,3 +162,35 @@ def _argument_parser() -> argparse.ArgumentParser:
         metavar="FIELD=VALUE",
     )
     return parser
+
+
+def _print_recording_start(
+    *,
+    output_path: Path,
+    bot_spec: str | None,
+    market_slugs: tuple[str, ...],
+    duration_seconds: int | None,
+    resume: bool,
+) -> None:
+    details = Table.grid(padding=(0, 1))
+    details.add_column(style="bold")
+    details.add_column(overflow="fold")
+    if bot_spec is not None:
+        details.add_row("Planning", f"Bot: {bot_spec}")
+    else:
+        details.add_row("Planning", f"Static: {', '.join(market_slugs)}")
+    details.add_row("Output", str(output_path))
+    details.add_row(
+        "Run time",
+        "Until interrupted"
+        if duration_seconds is None
+        else f"{duration_seconds:,} seconds",
+    )
+    details.add_row("Mode", "Resume existing archive" if resume else "New archive")
+    recording_console().print(
+        Panel(
+            details,
+            border_style=ACCENT_STYLE,
+            title="[bold bright_cyan]Market recorder[/]",
+        )
+    )

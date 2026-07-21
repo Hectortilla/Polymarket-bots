@@ -2247,6 +2247,7 @@ def test_default_recording_output_path_uses_timestamped_directory() -> None:
 
 def test_recording_cli_forwards_normalized_static_request(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     captured: dict[str, object] = {}
 
@@ -2287,6 +2288,10 @@ def test_recording_cli_forwards_normalized_static_request(
     config = captured["config"]
     assert isinstance(config, BotConfig)
     assert config.live_enabled is False
+    output = capsys.readouterr().out
+    assert "Market recorder" in output
+    assert "Static: alpha, beta" in output
+    assert "Recording complete" in output
 
 
 def _coordinator(
