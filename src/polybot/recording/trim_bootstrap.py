@@ -48,11 +48,15 @@ def write_trim_bootstrap(
     prime_at_ms = plan.start_at_ms - 1
     if prime_at_ms < 0:
         return 0
-    markets = source.markets_at(
-        prime_at_ms,
-        session_id=plan.source_session.session_id,
-        market_slugs=plan.market_slugs,
-        allow_gaps=True,
+    markets = tuple(
+        market
+        for market in source.markets_at(
+            prime_at_ms,
+            session_id=plan.source_session.session_id,
+            market_slugs=plan.market_slugs,
+            allow_gaps=True,
+        )
+        if not market.resolved
     )
     events: list[RecordedEvent] = []
     books_by_condition: dict[str, tuple[_BootstrapBook, ...]] = {}

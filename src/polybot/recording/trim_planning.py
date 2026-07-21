@@ -113,6 +113,27 @@ def plan_recording_trim(
                 end_at_ms=candidate.end_at_ms,
             )
             selection = resolve_backtest_selection(reader, session, options)
+            retained_market_slugs = _retained_market_slugs(
+                reader,
+                selection=selection,
+                session=session,
+            )
+            if not retained_market_slugs:
+                raise BacktestError(
+                    BacktestFailureReason.EMPTY_SELECTION,
+                    "selected recording range contains no active market data",
+                )
+            selection = resolve_backtest_selection(
+                reader,
+                session,
+                BacktestOptions(
+                    archive_path=archive_path,
+                    session_id=session.session_id,
+                    start_at_ms=candidate.start_at_ms,
+                    end_at_ms=candidate.end_at_ms,
+                    market_slugs=retained_market_slugs,
+                ),
+            )
             _validate_trim_selection_coverage(reader, selection, session)
         except (BacktestError, RecordingArchiveError, ValueError) as error:
             failures.append(str(error))
@@ -165,6 +186,45 @@ def plan_recording_trim(
 
 def _candidate_sort_key(value: _CleanInterval) -> tuple[int, int, int]:
     return (-value.duration_ms, value.start_at_ms, value.end_at_ms)
+
+
+def _retained_market_slugs(
+    reader: RecordingReader,
+    *,
+    selection: BacktestSelection,
+    session: RecordingSession,
+) -> tuple[str, ...]:
+    """Keep market state needed at the boundary or observed inside the interval."""
+
+    markets_at_start = (
+        ()
+        if selection.start_at_ms == 0
+        else reader.markets_at(
+            selection.start_at_ms - 1,
+            session_id=session.session_id,
+            market_slugs=selection.market_slugs,
+            allow_gaps=True,
+        )
+    )
+    known_at_start = {market.market_slug for market in markets_at_start}
+    active_at_start = {
+        market.market_slug
+        for market in markets_at_start
+        if not market.resolved
+    }
+    introduced_in_range = set(
+        reader.market_slugs_with_metadata_revisions(
+            start_at_ms=selection.start_at_ms,
+            end_at_ms=selection.end_at_ms,
+            session_id=session.session_id,
+            market_slugs=selection.market_slugs,
+            allow_gaps=True,
+        )
+    ) - known_at_start
+    # A resolved market can still receive a metadata refresh after its resolution.
+    # It has no replayable state at the new boundary, so retaining that refresh
+    # would make the trimmed archive fail its own baseline validation.
+    return tuple(sorted(active_at_start | introduced_in_range))
 
 
 def _validate_trim_selection_coverage(

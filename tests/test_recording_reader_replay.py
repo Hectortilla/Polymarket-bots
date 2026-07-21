@@ -398,6 +398,16 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
         assert reader.event_count(
             condition_ids={first_market.condition_id}
         ) == 3
+        assert reader.market_slugs_with_metadata_revisions(
+            start_at_ms=started_at_ms,
+            end_at_ms=first_end,
+            session_id=1,
+        ) == (first_market.market_slug,)
+        assert reader.market_slugs_with_metadata_revisions(
+            start_at_ms=second_start,
+            end_at_ms=second_end,
+            session_id=1,
+        ) == (second_market.market_slug,)
         assert [
             gap.gap_id
             for gap in reader.coverage_gaps(

@@ -1033,6 +1033,75 @@ class RecordingReader:
             finally:
                 connection.close()
 
+    def market_slugs_with_metadata_revisions(
+        self,
+        *,
+        start_at_ms: int,
+        end_at_ms: int,
+        session_id: int,
+        market_slugs: Iterable[str] | None = None,
+        allow_gaps: bool = False,
+    ) -> tuple[str, ...]:
+        """Return selected slugs whose metadata changed inside the selection."""
+
+        selection = _selection(
+            start_at_ms=start_at_ms,
+            end_at_ms=end_at_ms,
+            session_id=session_id,
+            condition_id=None,
+            condition_ids=None,
+            market_slug=None,
+            market_slugs=market_slugs,
+            token_id=None,
+        )
+        with self._lock:
+            self._ensure_open()
+            connection = _open_readonly_connection(
+                self._path,
+                immutable=self._immutable,
+            )
+            try:
+                connection.execute("BEGIN")
+                if not allow_gaps:
+                    self._reject_known_gaps(connection=connection, **selection)
+                clauses = [
+                    "revision.observed_at_ms >= ?",
+                    "revision.observed_at_ms <= ?",
+                    "revision.sequence <= ?",
+                    "metadata_event.session_id = ?",
+                ]
+                parameters: list[object] = [
+                    start_at_ms,
+                    end_at_ms,
+                    self._replay_cutoff_sequence,
+                    session_id,
+                ]
+                selected_slugs = selection["market_slugs"]
+                if selected_slugs is not None:
+                    placeholders = ", ".join("?" for _ in selected_slugs)
+                    clauses.append(
+                        f"metadata_event.market_slug IN ({placeholders})"
+                    )
+                    parameters.extend(selected_slugs)
+                rows = connection.execute(
+                    "SELECT DISTINCT metadata_event.market_slug "
+                    "FROM metadata_revisions AS revision "
+                    "JOIN events AS metadata_event "
+                    "ON metadata_event.sequence = revision.sequence WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY metadata_event.market_slug",
+                    tuple(parameters),
+                ).fetchall()
+                return tuple(
+                    _required_text(
+                        row["market_slug"],
+                        "metadata revision market slug",
+                    )
+                    for row in rows
+                )
+            finally:
+                connection.close()
+
     def select_session(self, session_id: int | None = None) -> RecordingSession:
         """Select one session, requiring an ID when the archive is ambiguous."""
 

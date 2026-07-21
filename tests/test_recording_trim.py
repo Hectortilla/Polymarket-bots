@@ -40,6 +40,7 @@ from polybot.recording.contracts import (
     PublicTradePayload,
     RecordedBookLevel,
     RecordedEvent,
+    ResolutionPayload,
     SessionIntegrityStatus,
     TickSizeChangePayload,
 )
@@ -273,6 +274,95 @@ def _gapped_archive(path: Path) -> Path:
     )
     archive.close_gap(gap_id, ended_at_ms=GAP_END_MS)
     _append_baselines(archive, observed_at_ms=GAP_END_MS, generation=2)
+    archive.append_event(
+        _event(
+            archive,
+            PublicTradePayload(
+                token_id=UP_TOKEN,
+                price=Decimal("0.55"),
+                size=Decimal("2"),
+                side=Side.BUY,
+            ),
+            observed_at_ms=END_MS - 10,
+            identity=_identity(UP_TOKEN),
+            generation=2,
+        )
+    )
+    archive.close(ended_at_ms=END_MS)
+    return path
+
+
+def _gapped_archive_with_resolved_history(path: Path) -> Path:
+    primary = _market()
+    historical = _other_market()
+    archive = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG},{OTHER_MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    for market in (primary, historical):
+        archive.append_metadata(
+            _event(
+                archive,
+                market,
+                observed_at_ms=START_MS,
+                identity=_identity_for(market),
+                generation=1,
+            )
+        )
+    for market in (primary, historical):
+        _append_market_baselines(
+            archive,
+            market=market,
+            observed_at_ms=START_MS + 1,
+            generation=1,
+        )
+    archive.append_event(
+        _event(
+            archive,
+            ResolutionPayload(
+                token_ids=(OTHER_UP_TOKEN, OTHER_DOWN_TOKEN),
+                winning_token_id=OTHER_UP_TOKEN,
+                winning_outcome="Up",
+                source="test",
+            ),
+            observed_at_ms=GAP_START_MS - 1,
+            identity=_identity_for(historical),
+            generation=1,
+        )
+    )
+    gap_id = archive.append_gap(
+        _event(
+            archive,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=GAP_START_MS,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=GAP_START_MS,
+            identity=_identity(),
+            generation=1,
+        )
+    )
+    archive.close_gap(gap_id, ended_at_ms=GAP_END_MS)
+    _append_market_baselines(
+        archive,
+        market=primary,
+        observed_at_ms=GAP_END_MS,
+        generation=2,
+    )
+    archive.append_metadata(
+        _event(
+            archive,
+            historical,
+            observed_at_ms=GAP_END_MS + 1,
+            identity=_identity_for(historical),
+            generation=1,
+        )
+    )
     archive.append_event(
         _event(
             archive,
@@ -705,6 +795,24 @@ def test_trim_replaces_archive_with_self_contained_gap_free_session(
         assert selection.end_at_ms == END_MS
         assert selection.market_slugs == (MARKET_SLUG,)
         assert reader.event_count(session_id=session.session_id) == 4
+
+
+def test_trim_discards_history_resolved_before_the_selected_interval(
+    tmp_path: Path,
+) -> None:
+    path = _gapped_archive_with_resolved_history(tmp_path / "capture.sqlite3")
+
+    result = trim_recording(path, keep_backup=False)
+
+    assert result.plan.market_slugs == (MARKET_SLUG,)
+    with RecordingReader.for_replay(path) as reader:
+        session = reader.select_session()
+        selection = resolve_backtest_selection(
+            reader,
+            session,
+            BacktestOptions(archive_path=path),
+        )
+        assert selection.market_slugs == (MARKET_SLUG,)
 
 
 def test_trimmed_archive_runs_a_default_backtest_without_selection_flags(
