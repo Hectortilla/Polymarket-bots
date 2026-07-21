@@ -261,6 +261,13 @@ selects the longest gap-free all-market interval already present and rewrites a
 self-contained archive; it does not fetch history, reconstruct a missing event,
 instantiate an official client, or change any Polymarket protocol behavior.
 
+The `polybot.recording.inspect` utility is also entirely local. It reads one
+immutable SQLite snapshot and reports archive, session, event-kind, market,
+checkpoint, gap, and capture-anomaly statistics without constructing an SDK
+client or decoding the complete canonical event stream. It does not recover an
+active session or certify a selection as replayable; those mutating recovery and
+strict validation steps remain behind the inactive-archive replay boundary.
+
 Slice 9B adds no Polymarket API or SDK path. It accepts only the current
 schema-v2 SQLite artifact, snapshots an immutable archive sequence cutoff when
 opening it, and reconstructs package-owned `Market`, `BookSnapshot`, and

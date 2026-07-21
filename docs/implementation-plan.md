@@ -536,6 +536,29 @@ ambiguity, self-contained mid-session bootstrap, active-writer refusal, dry-run
 reporting, backup behavior, failed temporary validation, atomic replacement,
 and a default backtest of the trimmed archive without source selection flags.
 
+## Slice 9A.4: Recording Archive Inspector
+
+Status: done.
+
+- Run as `python -m polybot.recording.inspect ARCHIVE` and remain entirely
+  local and read-only.
+- Open a validated immutable `RecordingReader` snapshot without taking the
+  exclusive replay lease, recovering an abandoned session, or blocking an
+  active recorder. Clearly label active-session output as point-in-time only.
+- Report archive path, size, schema, target identity, session status and event
+  ranges, summed captured duration, unique markets, replay and stored event
+  counts by kind, checkpoints, detected/open gaps, capture-anomaly counts or
+  unavailability, and per-market spans.
+- Aggregate event statistics in SQLite without deserializing every canonical
+  event payload so multi-gigabyte recordings remain practical to inspect.
+- Preserve integrity language: `no detected gaps` is not an exchange-complete
+  claim. Present backtest caveats without certifying replayability; Slice 9B
+  retains strict metadata, two-token bootstrap, range, and gap validation.
+
+Acceptance covers typed reader aggregation, human-readable CLI reporting,
+missing-archive errors, gaps and partial-session guidance, anomaly availability,
+and documentation of the read-only/no-network boundary.
+
 ## Slice 9B: Deterministic Backtest Replay
 
 Status: done.

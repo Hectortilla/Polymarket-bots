@@ -45,8 +45,10 @@ from .archive_models import (
     RecordingEventBounds,
     RecordingFeatureProvenance,
     RecordingSession,
+    RecordingSessionStatistics,
 )
 from .archive_schema import ensure_capture_anomaly_schema, initialize_archive_schema
+from .archive_statistics import read_recording_statistics
 from .coverage import CoverageScope
 from .serialization import (
     PayloadKind,
@@ -1813,6 +1815,19 @@ class RecordingReader:
         with self._lock:
             self._ensure_open()
             return self._sessions
+
+    def statistics(self) -> tuple[RecordingSessionStatistics, ...]:
+        """Summarize the immutable reader snapshot without decoding event JSON."""
+
+        with self._lock:
+            self._ensure_open()
+            return read_recording_statistics(
+                self._connection,
+                sessions=self._sessions,
+                replay_cutoff_sequence=self._replay_cutoff_sequence,
+                anomaly_cutoff_id=self._capture_anomaly_cutoff_id,
+                anomaly_provenance=self._capture_anomaly_provenance,
+            )
 
     def _require_capture_anomaly_journal(
         self,

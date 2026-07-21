@@ -226,11 +226,22 @@ recorder resolves both plans, subscribes to the current market, and
 pre-subscribes an available next market before rollover. A not-yet-published
 next slug is normal and is retried without interrupting the current stream.
 
-Before evaluating a strategy, inspect the archive's sessions and coverage gaps.
-`no detected gaps` means no loss was observed by the recorder; it does not mean
-exchange-complete because Polymarket documents no market-stream sequence or
-resume cursor. Slice 9B refuses any gap affecting the selected interval; a
-clean subrange before or after a gap remains eligible.
+Before evaluating a strategy, inspect the archive:
+
+```sh
+uv run python -m polybot.recording.inspect recordings/capture.sqlite3
+```
+
+The read-only report includes total captured event time, session status, unique
+market count and per-market spans, event-kind counts, checkpoints, detected and
+open gaps, capture anomalies, archive size, and target/schema provenance. It can
+take a point-in-time snapshot of an active recording, but the recorder must stop
+before replay. `no detected gaps` means no loss was observed by the recorder; it
+does not mean exchange-complete because Polymarket documents no market-stream
+sequence or resume cursor. The report is orientation rather than a replayability
+certificate: Slice 9B still validates metadata, book bootstrap, range, and
+coverage, and refuses any gap affecting the selected interval. A clean subrange
+before or after a gap remains eligible.
 The recorder transactionally combines split same-timestamp/hash price revisions
 that would be crossed only in their intermediate form. It accepts a continuation
 only when every token/hash named by the first fragment is still present and

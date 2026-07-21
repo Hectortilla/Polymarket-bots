@@ -337,6 +337,17 @@ source path only after validation. A dry run selects and reports the interval
 without replacement. The workflow is local SQLite maintenance: it constructs no
 SDK client and performs no network or protocol operation.
 
+`python -m polybot.recording.inspect` is the read-only archive-orientation
+boundary used before replay selection. It opens a validated immutable reader
+snapshot without taking the exclusive replay lease, so it can describe an active
+recorder at one point in time without recovering or mutating its session. Typed
+reader statistics aggregate event kinds, event bounds, checkpoints, and
+per-market counts in SQLite rather than decoding the potentially multi-gigabyte
+event stream. The inspector combines those values with sessions, gaps, and
+capture-anomaly availability, then reports backtest caveats. It does not certify
+replayability; Slice 9B still validates metadata, common two-token bootstrap,
+selection bounds, and affecting coverage gaps under the inactive-archive lease.
+
 The prediction-market WebSocket documents a timestamp on market events and a
 hash on full books and price changes. It does not document a monotonic sequence,
 hash lineage, missed-message replay, or resume cursor. The recorder therefore

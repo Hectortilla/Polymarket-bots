@@ -164,6 +164,22 @@ selected without waiting for the periodic checkpoint.
 The upstream stream has no replay cursor, so the recorder can reduce and explain
 gaps but cannot guarantee that they never occur.
 
+Before choosing a recording for backtesting, inspect its contents locally:
+
+```sh
+uv run python -m polybot.recording.inspect recordings/capture.sqlite3
+```
+
+The report shows archive size and schema, target identity, total captured event
+time, session count and status, unique markets, replay-event counts by kind,
+checkpoints, detected/open gaps, capture-anomaly availability, and a per-market
+breakdown. It uses an immutable read snapshot and aggregates SQLite indexes and
+rows without decoding every event payload. An active recording can be inspected,
+but its report is only a point-in-time snapshot and the recorder must stop before
+backtesting. `no detected gaps` still does not mean exchange-complete, and the
+backtester remains responsible for validating metadata, book bootstrap, range,
+and selected-market coverage.
+
 To replace a gapped archive with its longest clean, archive-level all-market
 interval, run the local trim utility:
 

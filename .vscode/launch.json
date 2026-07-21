@@ -69,6 +69,23 @@
       "subProcess": true
     },
     {
+      "name": "Inspect recording (pick file)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "polybot.recording.inspect",
+      "args": [
+        "${input:pickRecordingFileToInspect}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true
+    },
+    {
       "name": "Trim recording (pick file)",
       "type": "debugpy",
       "request": "launch",
@@ -88,6 +105,14 @@
   ],
   "compounds": [],
   "inputs": [
+    {
+      "id": "pickRecordingFileToInspect",
+      "type": "command",
+      "command": "extension.commandvariable.file.pickFile",
+      "args": {
+        "description": "Pick a recording SQLite archive to inspect"
+      }
+    },
     {
       "id": "pickRecordingFile",
       "type": "command",
