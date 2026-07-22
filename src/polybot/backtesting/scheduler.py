@@ -9,9 +9,10 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from threading import Event
 
-from polybot.backtesting.clock import ReplayClock
 from polybot.async_io import run_blocking
+from polybot.backtesting.clock import ReplayClock
 from polybot.backtesting.contracts import BacktestError, BacktestFailureReason
+from polybot.backtesting.coverage import ReplayCoverage
 from polybot.backtesting.state import ArchiveMarketState
 from polybot.execution.paper import PaperBroker
 from polybot.framework.base import BaseBot
@@ -26,7 +27,7 @@ from polybot.framework.events.resolutions import (
 from polybot.framework.runner import BotRunner
 from polybot.performance.artifacts import PerformanceArtifacts
 from polybot.performance.contracts import SampleReason
-from polybot.recording.contracts import RecordedEvent
+from polybot.recording.contracts import CoverageGapPayload, RecordedEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +145,7 @@ class ReplayScheduler:
         clock: ReplayClock,
         cursor: ReplayCursor,
         artifacts: PerformanceArtifacts,
+        coverage: ReplayCoverage | None = None,
     ) -> None:
         self._bot = bot
         self._runner = runner
@@ -152,6 +154,7 @@ class ReplayScheduler:
         self._clock = clock
         self._cursor = cursor
         self._artifacts = artifacts
+        self._coverage = coverage
         self._admitted_slugs: set[str] = set()
         self._terminal_slugs: set[str] = set()
         self._pending_markers: deque[PendingMarker] = deque()
@@ -170,6 +173,7 @@ class ReplayScheduler:
     async def run(self) -> None:
         fast_forwarded = False
         try:
+            self._activate_blackouts_through(self._clock.now_ms())
             await self._bot.on_start(self._runner.ctx)
             new_slugs = await self._refresh_admissions()
             await self._enqueue_bootstraps(new_slugs)
@@ -251,6 +255,8 @@ class ReplayScheduler:
     async def _apply_event(self, event: RecordedEvent, *, queue_only: bool) -> None:
         self.event_count += 1
         self._artifacts.record_events()
+        if isinstance(event.payload, CoverageGapPayload):
+            return
         applied = self._state.apply(event)
         for book in applied.books:
             self._artifacts.record_book(book)
@@ -307,6 +313,7 @@ class ReplayScheduler:
                     for slug in current_slugs
                     if slug not in self._admitted_slugs
                     and not self._state.has_complete_book(slug)
+                    and not self._state.is_blacked_out(slug)
                 )
                 if missing_books:
                     raise BacktestError(
@@ -394,6 +401,28 @@ class ReplayScheduler:
             self.skipped_dispatch_count += 1
 
     async def _move_to(self, target_ms: int) -> None:
+        if target_ms < self._clock.now_ms():
+            raise ValueError("replay time cannot move backwards")
+        while (
+            self._coverage is not None
+            and (boundary_ms := self._coverage.next_boundary_at_ms) is not None
+            and boundary_ms <= target_ms
+        ):
+            if boundary_ms > self._clock.now_ms():
+                self._artifacts.advance_to(
+                    boundary_ms - 1,
+                    self._paper_broker.portfolio,
+                )
+                self._clock.move_to(boundary_ms)
+            self._activate_blackouts_through(boundary_ms)
+            self._release_blackouts_through(boundary_ms)
+            self._artifacts.advance_to(
+                boundary_ms,
+                self._paper_broker.portfolio,
+            )
+        await self._move_clock_to(target_ms)
+
+    async def _move_clock_to(self, target_ms: int) -> None:
         if target_ms > self._clock.now_ms():
             self._artifacts.advance_to(
                 target_ms,
@@ -401,9 +430,56 @@ class ReplayScheduler:
             )
         self._clock.move_to(target_ms)
 
+    def _activate_blackouts_through(self, boundary_ms: int) -> None:
+        if self._coverage is None:
+            return
+        records = self._coverage.pop_start_records_through(boundary_ms)
+        if not records:
+            return
+        invalidated_token_ids: set[str] = set()
+        for record in records:
+            invalidated_token_ids.update(self._state.begin_blackout(record))
+        if not invalidated_token_ids:
+            return
+        affected_positions = invalidated_token_ids.intersection(
+            self._paper_broker.portfolio.positions
+        )
+        self._artifacts.record_coverage_gap_affected_positions(
+            affected_positions
+        )
+        invalidated = tuple(sorted(invalidated_token_ids))
+        self._artifacts.remove_books(invalidated)
+        for token_id in invalidated:
+            self._pending_books.discard(token_id)
+        self._pending_markers = deque(
+            marker
+            for marker in self._pending_markers
+            if not (
+                isinstance(marker, _BookMarker)
+                and marker.token_id in invalidated_token_ids
+            )
+        )
+
+    def _release_blackouts_through(self, boundary_ms: int) -> None:
+        if self._coverage is None:
+            return
+        if not self._coverage.pop_end_records_through(boundary_ms):
+            return
+        books = self._state.recover_books_at(boundary_ms)
+        for book in books:
+            self._artifacts.record_book(book)
+        self._enqueue_books(
+            tuple(
+                book
+                for book in books
+                if book.market_slug in self._admitted_slugs
+            )
+        )
+
     def _can_fast_forward(self) -> bool:
         return (
-            not self._paper_broker.portfolio.positions
+            (self._coverage is None or self._coverage.next_boundary_at_ms is None)
+            and not self._paper_broker.portfolio.positions
             and self._bot.backtest_is_quiescent(self._runner.ctx)
         )
 

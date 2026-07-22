@@ -19,6 +19,11 @@ class BacktestFailureReason(StrEnum):
     EMPTY_SELECTION = "empty_selection"
 
 
+class BacktestGapPolicy(StrEnum):
+    STRICT = "strict"
+    BLACKOUT = "blackout"
+
+
 class BacktestError(RuntimeError):
     def __init__(self, reason: BacktestFailureReason, message: str) -> None:
         super().__init__(message)
@@ -35,11 +40,17 @@ class BacktestOptions:
     seed: int = 0
     results_dir: Path | None = None
     report_interval_ms: int = 1_000
+    gap_policy: BacktestGapPolicy = BacktestGapPolicy.STRICT
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "archive_path", Path(self.archive_path))
         if self.results_dir is not None:
             object.__setattr__(self, "results_dir", Path(self.results_dir))
+        try:
+            normalized_gap_policy = BacktestGapPolicy(self.gap_policy)
+        except (TypeError, ValueError) as error:
+            raise ValueError("backtest gap policy is invalid") from error
+        object.__setattr__(self, "gap_policy", normalized_gap_policy)
         if self.session_id is not None and (
             isinstance(self.session_id, bool)
             or not isinstance(self.session_id, int)
@@ -94,6 +105,38 @@ class BacktestSelection:
         SessionIntegrityStatus.COMPLETE
     )
     uses_partial_session: bool = False
+    gap_policy: BacktestGapPolicy = BacktestGapPolicy.STRICT
+    coverage_gap_ids: tuple[int, ...] = ()
+    coverage_gap_duration_ms: int = 0
+    coverage_gap_open_count: int = 0
+
+    def __post_init__(self) -> None:
+        try:
+            normalized_gap_policy = BacktestGapPolicy(self.gap_policy)
+        except (TypeError, ValueError) as error:
+            raise ValueError("backtest selection gap policy is invalid") from error
+        object.__setattr__(self, "gap_policy", normalized_gap_policy)
+        if any(
+            isinstance(gap_id, bool)
+            or not isinstance(gap_id, int)
+            or gap_id <= 0
+            for gap_id in self.coverage_gap_ids
+        ):
+            raise ValueError("backtest coverage gap IDs must be positive")
+        normalized_gap_ids = tuple(sorted(set(self.coverage_gap_ids)))
+        object.__setattr__(self, "coverage_gap_ids", normalized_gap_ids)
+        for value, label in (
+            (self.coverage_gap_duration_ms, "duration"),
+            (self.coverage_gap_open_count, "open count"),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(
+                    f"backtest coverage gap {label} must be nonnegative"
+                )
+        if self.coverage_gap_open_count > len(normalized_gap_ids):
+            raise ValueError(
+                "backtest coverage gap open count exceeds the gap count"
+            )
 
 
 @dataclass(frozen=True, slots=True)

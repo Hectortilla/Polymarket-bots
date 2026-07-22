@@ -10,6 +10,7 @@ from pathlib import Path
 
 from polybot.backtesting.contracts import (
     BacktestError,
+    BacktestGapPolicy,
     BacktestOptions,
     BacktestResult,
 )
@@ -34,6 +35,7 @@ TERM_ENV_KEY = "TERM"
 NON_INTERACTIVE_TERMINAL = "dumb"
 BACKTEST_DASHBOARD_MESSAGE = "backtests are headless; omit --dashboard"
 PARTIAL_RECORDING_WARNING = "Backtest source is a partial recording session"
+BLACKOUT_GAP_WARNING = "Backtest used blackout coverage-gap handling"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--session, --start-ms, and --end-ms require --backtest")
     if args.backtest is None and args.market_slug:
         parser.error("--market-slug requires --backtest")
+    if args.backtest is None and args.gap_policy is not None:
+        parser.error("--gap-policy requires --backtest")
     if args.backtest is not None and args.dashboard is True:
         parser.error(BACKTEST_DASHBOARD_MESSAGE)
     bot = load_bot(args.bot, config)
@@ -72,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
                     seed=args.seed,
                     results_dir=args.results_dir,
                     report_interval_ms=args.report_interval_ms,
+                    gap_policy=args.gap_policy or BacktestGapPolicy.STRICT,
                 )
             except ValueError as error:
                 parser.error(str(error))
@@ -132,6 +137,13 @@ def _argument_parser() -> argparse.ArgumentParser:
         default=[],
         help="limit replay to one market slug; may be repeated",
     )
+    parser.add_argument(
+        "--gap-policy",
+        type=BacktestGapPolicy,
+        choices=tuple(BacktestGapPolicy),
+        default=None,
+        help="coverage-gap handling for backtests (default: strict)",
+    )
     parser.add_argument("--seed", type=int, default=0, help="deterministic replay seed")
     parser.add_argument(
         "--results-dir",
@@ -164,6 +176,14 @@ def _print_backtest_summary(result: BacktestResult) -> None:
             f"{PARTIAL_RECORDING_WARNING}: "
             f"{result.selection.session_integrity_status.value}; "
             f"committed through {result.selection.end_at_ms}"
+        )
+    if result.selection.gap_policy is BacktestGapPolicy.BLACKOUT:
+        print(
+            f"{BLACKOUT_GAP_WARNING}: "
+            f"gaps={len(result.selection.coverage_gap_ids)} "
+            f"duration={result.selection.coverage_gap_duration_ms}ms "
+            f"open={result.selection.coverage_gap_open_count}; "
+            "results are approximate"
         )
     print(
         "Backtest completed: "

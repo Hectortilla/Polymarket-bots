@@ -113,6 +113,10 @@ class RunSelection:
     replay_cutoff_sequence: int | None = None
     session_integrity_status: SessionIntegrityStatus | None = None
     uses_partial_session: bool = False
+    gap_policy: str | None = None
+    coverage_gap_ids: tuple[int, ...] = ()
+    coverage_gap_duration_ms: int = 0
+    coverage_gap_open_count: int = 0
 
     def __post_init__(self) -> None:
         if self.session_id is not None and (
@@ -149,6 +153,38 @@ class RunSelection:
             raise ValueError("performance session integrity status is invalid")
         if not isinstance(self.uses_partial_session, bool):
             raise ValueError("performance partial-session marker must be boolean")
+        if self.gap_policy is not None:
+            if not isinstance(self.gap_policy, str) or not self.gap_policy.strip():
+                raise ValueError("performance gap policy must be text or null")
+            object.__setattr__(self, "gap_policy", self.gap_policy.strip())
+        if not isinstance(self.coverage_gap_ids, tuple) or any(
+            isinstance(gap_id, bool)
+            or not isinstance(gap_id, int)
+            or gap_id <= 0
+            for gap_id in self.coverage_gap_ids
+        ):
+            raise ValueError("performance coverage gap IDs must be positive integers")
+        object.__setattr__(
+            self,
+            "coverage_gap_ids",
+            tuple(sorted(set(self.coverage_gap_ids))),
+        )
+        for value, name in (
+            (self.coverage_gap_duration_ms, "duration"),
+            (self.coverage_gap_open_count, "open count"),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"performance coverage gap {name} must be nonnegative")
+        if self.coverage_gap_open_count > len(self.coverage_gap_ids):
+            raise ValueError(
+                "performance open coverage gap count exceeds selected gaps"
+            )
+        if self.gap_policy is None and (
+            self.coverage_gap_ids
+            or self.coverage_gap_duration_ms
+            or self.coverage_gap_open_count
+        ):
+            raise ValueError("performance coverage gaps require a gap policy")
 
 
 @dataclass(slots=True)
@@ -198,6 +234,7 @@ class PerformanceMetricsSummary:
     order_count: int
     fill_count: int
     rejected_order_count: int
+    coverage_gap_rejected_order_count: int
     resolution_count: int
     event_count: int
     dispatch_count: int
@@ -224,6 +261,10 @@ class PerformanceMetricsSummary:
             order_count=_nonnegative_int(payload, "order_count"),
             fill_count=_nonnegative_int(payload, "fill_count"),
             rejected_order_count=_nonnegative_int(payload, "rejected_order_count"),
+            coverage_gap_rejected_order_count=_optional_nonnegative_int(
+                payload,
+                "coverage_gap_rejected_order_count",
+            ),
             resolution_count=_nonnegative_int(payload, "resolution_count"),
             event_count=_nonnegative_int(payload, "event_count"),
             dispatch_count=_nonnegative_int(payload, "dispatch_count"),
@@ -250,6 +291,9 @@ class PerformanceMetricsSummary:
             "order_count": self.order_count,
             "fill_count": self.fill_count,
             "rejected_order_count": self.rejected_order_count,
+            "coverage_gap_rejected_order_count": (
+                self.coverage_gap_rejected_order_count
+            ),
             "resolution_count": self.resolution_count,
             "event_count": self.event_count,
             "dispatch_count": self.dispatch_count,
@@ -416,6 +460,12 @@ def _nonnegative_int(payload: Mapping[str, object], key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"performance summary {key} must be nonnegative")
     return value
+
+
+def _optional_nonnegative_int(payload: Mapping[str, object], key: str) -> int:
+    if key not in payload:
+        return 0
+    return _nonnegative_int(payload, key)
 
 
 def _required_bool(payload: Mapping[str, object], key: str) -> bool:

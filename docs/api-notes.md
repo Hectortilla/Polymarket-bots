@@ -279,11 +279,31 @@ Replay validates an inactive schema-v2 archive, metadata and common two-token
 book checkpoint/baseline coverage, the inclusive selected bounds, and selected
 markets before invoking strategy hooks. Complete sessions are eligible in
 full; failed and recovered sessions default to their last durable boundary and
-are labeled partial sources. It rejects an affecting gap rather than using
-price history, public trades, onchain settlement, or data outside the selection
-to guess the missing book. Because recovery and the virtual runtime are
-entirely local, backtesting constructs no official client, makes no network
-call, and does not introduce an exception to the official-library rule.
+are labeled partial sources. Its default strict policy rejects an affecting gap
+rather than using price history, public trades, onchain settlement, or data
+outside the selection to guess the missing book. Because recovery and the
+virtual runtime are entirely local, backtesting constructs no official client,
+makes no network call, and does not introduce an exception to the
+official-library rule.
+
+Slice 9B.1 adds an explicit local `blackout` replay policy; it does not add a
+Polymarket API surface. The policy uses the archive's existing typed gap scope
+and exact recorded start boundary to make affected books unavailable while
+unaffected markets continue. It restores a closed affected market only from the
+canonical fresh full-book baselines for both outcome tokens in one subscription
+generation. Open gaps remain unavailable through the selected end. It never
+uses `/prices-history`, public trades, advertised best prices, hashes, onchain
+data, or a network lookup to interpolate price, depth, spread, liquidity, or
+fills. Orders whose simulated latency crosses an affecting interval reject
+instead of filling against the recovered future book.
+
+This approximate mode does not weaken the upstream limitation: the official
+market channel still documents no monotonic sequence, missed-message replay,
+hash lineage, or reconnect cursor, and the public APIs still expose no
+historical L2 replay source. Blackout preserves surrounding local state; it
+cannot determine which market changes or strategy decisions were missed and
+does not repair or relabel the source archive. Strict remains the default for
+results that require a wholly gap-free selected interval.
 
 Wallet activity, authenticated orders/fills, maker identity and queue position,
 and external reference sources remain unsupported replay inputs. Wallet rules

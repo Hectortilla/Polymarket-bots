@@ -15,8 +15,8 @@ Slices 1 through 5 and Slices 9A through 11 are implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
 market recorder and local trim maintenance, deterministic archive replay and
-performance artifacts, the terminal dashboard, and dynamic market tracking and
-resolution settlement.
+performance artifacts, opt-in coverage-gap blackout replay, the terminal
+dashboard, and dynamic market tracking and resolution settlement.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -311,7 +311,9 @@ at the latest committed event/checkpoint observation and checkpoints the WAL
 before opening the immutable read transaction. A catchably failed session keeps
 its `failed` diagnostic status but exposes the same durable-prefix boundary.
 SQLite corruption, missing initial replay inputs, uncommitted work, and actual
-coverage gaps remain unrecoverable.
+coverage-gap contents remain unrecoverable. Strict replay rejects an affecting
+gap. Slice 9B.1's explicit blackout policy can preserve state and replay around
+one, but it does not recover the missing messages or make the interval clean.
 
 `python -m polybot.recording.trim` is the local maintenance boundary for
 discarding unusable archive time. It chooses the longest archive-level interval
@@ -347,6 +349,8 @@ event stream. The inspector combines those values with sessions, gaps, and
 capture-anomaly availability, then reports backtest caveats. It does not certify
 replayability; Slice 9B still validates metadata, common two-token bootstrap,
 selection bounds, and affecting coverage gaps under the inactive-archive lease.
+Strict replay rejects them, while Slice 9B.1 requires an explicit approximate
+blackout policy.
 
 The prediction-market WebSocket documents a timestamp on market events and a
 hash on full books and price changes. It does not document a monotonic sequence,
@@ -395,9 +399,11 @@ Integrity reporting uses the phrase `no detected gaps`, not
 between its checkpoints. It cannot prove that the upstream service emitted
 every exchange event because the official stream provides no sequence or replay
 contract. Recorded segments on either side of a gap remain inspectable. Slice
-9B rejects an affecting gap but permits a selected clean subrange on either
-side. A cleanly closed session and a gap-free interval are separate facts:
-orderly shutdown does not erase an earlier integrity gap.
+9B's default strict policy rejects an affecting gap but permits a selected clean
+subrange on either side. Slice 9B.1 may instead replay around that known interval
+with explicit blackout semantics; it never changes the archive's integrity
+classification. A cleanly closed session and a gap-free interval are separate
+facts: orderly shutdown does not erase an earlier integrity gap.
 
 Slice 9A is deliberately market-only. Aggregated L2 depth and public market
 lifecycle events do not reveal individual maker identities, FIFO queue
@@ -420,7 +426,8 @@ lease, resolves an unambiguous session, and validates the inclusive time and
 market selection. Complete sessions are eligible in full; failed and recovered
 sessions default to their last durable boundary and carry explicit
 partial-source provenance. Metadata and baseline or checkpoint coverage must
-exist, and no coverage gap may affect the selected interval. The reader
+exist. The default `strict` gap policy rejects an affecting coverage gap;
+Slice 9B.1 adds an explicit `blackout` policy for approximate replay. The reader
 captures an immutable archive-wide sequence cutoff when it opens. SQLite rows
 remain private to `RecordingReader`.
 
@@ -443,6 +450,40 @@ schema-v2 RecordingReader selection
   -> performance artifacts
 ```
 
+### Coverage-Gap Replay Policy
+
+The CLI accepts `--gap-policy {strict,blackout}` and defaults to `strict`.
+Strict mode preserves Slice 9B behavior: any affecting coverage gap rejects the
+selection before strategy hooks run. `blackout` is deliberately opt-in and
+labels its result approximate because exchange events and strategy callbacks
+inside a gap are unknowable.
+
+Blackout replay preloads the selected `CoverageGapRecord` values and schedules
+each half-open interval from its payload's exact `started_at_ms`, which may be
+earlier than the time at which the recorder detected and appended the gap.
+Activation at a timestamp precedes market events at that same timestamp. The
+scheduler resolves the conservative gap scope to selected conditions and
+tokens, invalidates those markets' projected books and executable marks, and
+removes their pending coalesced book callbacks. Metadata, virtual time, bot
+state, portfolio positions, and unaffected markets continue normally. An open
+gap remains active through the selected end.
+
+Affected book events cannot make the market executable during the missing
+interval. Recovery uses only canonical post-gap input: both outcome tokens must
+receive fresh full-book baselines after the gap event in archive sequence and
+in one subscription generation. The baselines may straddle the closed gap's
+`ended_at_ms`, but the pair becomes visible atomically only once virtual time
+reaches that verified recovery boundary. A single-token or mixed-generation
+baseline cannot restore either book. Resolution remains a terminal lifecycle
+event and never fabricates a recovery book.
+
+No blackout path interpolates price, depth, spread, or liquidity, and none
+rewrites or marks the source archive clean. An order submitted during an
+affecting blackout, or whose simulated latency interval crosses one, is rejected
+with `backtest_coverage_gap`; recovery before its nominal fill time does not
+make that order safe. Orders for unaffected markets retain ordinary fill-time
+paper semantics.
+
 `BotContext.clock` and `BotContext.rng` have system-backed defaults for normal
 runs. Replay supplies a virtual clock plus separately derived deterministic RNG
 streams for strategy decisions and broker jitter. The scheduler advances to
@@ -455,8 +496,10 @@ If a bot or broker sleeps during a callback, the scheduler consumes intervening
 events without re-entering that callback. The fill-time latest-book cache still
 advances, pending books coalesce to the newest value per token in live marker
 order, and resolutions remain non-coalesced. A paper order therefore fills from
-the virtual fill-time book. Latency beyond the inclusive replay end is rejected
-as `backtest_data_exhausted`; replay never borrows later archive data.
+the virtual fill-time book when its market remains continuously covered.
+Latency beyond the inclusive replay end is rejected as
+`backtest_data_exhausted`; blackout-crossing latency is rejected separately as
+`backtest_coverage_gap`. Replay never borrows later archive data.
 
 Recorded resolution settles paper inventory at contractual `1`/`0`, emits
 settlement telemetry, and invokes `on_market_resolved` afterward. `on_start`
@@ -480,9 +523,13 @@ at start, each configured interval (one second by default), fills, settlements,
 and end. The summary contains sanitized configuration, archive provenance and
 selection, virtual duration, event/dispatch and trading totals, cash, equity,
 gross/net PnL, return, fees, filled notional, drawdown, resolutions, open
-positions, and valuation status. Existing result directories are refused, and
-failed or interrupted runs remain explicitly partial. Output failures are fatal
-to a backtest. A completed command prints the final metrics and result path.
+positions, and valuation status. Backtest selection provenance also records the
+gap policy, sorted gap IDs, gap count, clipped half-open union duration, open-gap
+count, and affected position token IDs; metrics count orders rejected for a
+coverage gap. Existing result directories are refused, and failed or
+interrupted runs remain explicitly partial. Output failures are fatal to a
+backtest. A completed blackout command also prints an approximate-results
+warning with its gap count, duration, and open count.
 
 Ordinary paper runs create the same artifacts only when `--results-dir` is
 provided. The dashboard can remain active at the same time. Paper recording is
@@ -724,7 +771,9 @@ Paper runs write no performance files unless the CLI receives `--results-dir`.
 Backtesting is the paper execution contract driven by a selected recording
 archive and a deterministic virtual clock. It is requested with `--backtest`,
 rejects live mode, does not perform network or persistent live-runtime I/O, and
-always writes a performance result directory.
+always writes a performance result directory. Its default `strict` gap policy
+requires a clean selected interval; explicit `blackout` mode preserves
+continuity around known gaps without synthesizing their missing market data.
 
 ### Live
 

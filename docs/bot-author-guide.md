@@ -240,8 +240,10 @@ before replay. `no detected gaps` means no loss was observed by the recorder; it
 does not mean exchange-complete because Polymarket documents no market-stream
 sequence or resume cursor. The report is orientation rather than a replayability
 certificate: Slice 9B still validates metadata, book bootstrap, range, and
-coverage, and refuses any gap affecting the selected interval. A clean subrange
-before or after a gap remains eligible.
+coverage. Its default strict policy refuses any gap affecting the selected
+interval, while Slice 9B.1 requires an explicit approximate blackout policy to
+continue around one. A clean subrange before or after a gap remains eligible in
+strict mode.
 The recorder transactionally combines split same-timestamp/hash price revisions
 that would be crossed only in their intermediate form. It accepts a continuation
 only when every token/hash named by the first fragment is still present and
@@ -255,11 +257,13 @@ anomaly journal. It records the failure kind, normalized quarantined fragments,
 revision fingerprints, projected/advertised top of book, SDK drop counters, and
 elapsed recovery time without consuming replay sequence numbers. Sessions made
 before the journal was activated report diagnostics as unavailable rather than
-claiming zero anomalies. These rows help explain a gap but never make it safe to
-replay. Recovery still requires fresh full-book baselines for both outcome
-tokens. The recorder writes a common checkpoint immediately when that recovery
-boundary closes (and for every affected market when a resumed target-wide gap
-finally closes), making the clean range after the gap usable promptly.
+claiming zero anomalies. These rows help explain a gap but never reconstruct its
+missing data. Strict replay still rejects it. Approximate blackout replay may
+preserve the surrounding state without treating those diagnostic rows as market
+data. Recovery still requires fresh full-book baselines for both outcome tokens.
+The recorder writes a common checkpoint immediately when that recovery boundary
+closes (and for every affected market when a resumed target-wide gap finally
+closes), making the clean range after the gap usable promptly.
 
 Known gaps cannot always be prevented: the public stream has no documented
 sequence, replay, or resume mechanism. The recorder detects SDK queue drops and
@@ -329,10 +333,38 @@ inclusive interval with `--start-ms` and `--end-ms`, or repeat
 archive lock. Complete sessions are eligible in full. Failed and abandoned
 sessions default to their last durable event/checkpoint boundary, are labeled
 as partial recording sources, and may also be narrowed explicitly. The range
-must have time-correct metadata and a common book baseline/checkpoint for both
-outcome tokens, and no affecting coverage gap may cross it. Recovery cannot
-make a prefix replayable if the process died before those minimum inputs were
-committed.
+must have time-correct metadata and an initial common book baseline/checkpoint
+for both outcome tokens. The default `--gap-policy strict` rejects an affecting
+coverage gap. Recovery cannot make a prefix replayable if the process died
+before those minimum inputs were committed.
+
+Use `--gap-policy blackout` only when keeping the continuous strategy and
+portfolio state around known gaps is more useful than a strictly clean replay:
+
+```sh
+BOT_MODE=paper \
+uv run python -m polybot.cli \
+  --bot polybot.examples.example_btc_five_minute_momentum:create \
+  --backtest recordings/btc-five-minute.sqlite \
+  --gap-policy blackout
+```
+
+Blackout mode is approximate, not interpolation. At the exact recorded gap
+start it removes the affected market books and any pending callbacks and marks
+affected positions unavailable. Virtual time, strategy state, the paper
+portfolio, and unrelated markets continue. `ctx.books.latest(token_id)` returns
+no book for an affected token and the bot receives no affected `on_book`
+callback until real fresh full-book baselines for both outcomes establish one
+post-gap subscription generation. Open gaps remain unavailable through the
+selected end. Bot code should treat this as missing input, not as a price move
+or zero liquidity.
+
+The broker rejects an affected order submitted inside a blackout or whose
+simulated latency crosses one with `backtest_coverage_gap`. This remains true if
+the market recovers before the nominal fill time, because the unknown interval
+could have changed execution. Orders for unaffected markets continue normally.
+Blackout never creates a price, depth level, spread, trade, or fill and never
+modifies the source archive.
 
 A successfully trimmed archive has one self-contained clean interval and can be
 passed to `--backtest` without the source `--session`, `--start-ms`, or
@@ -346,8 +378,10 @@ reconstructed bootstrap books; an admitted prior market remains available
 until its recorded resolution. Strategy and broker sleeps consume intervening
 events without callback re-entry, and pending books coalesce per token before
 the next callback. The fill therefore uses the book that exists at virtual fill
-time. A sleep extending beyond the selected end produces the stable
-`backtest_data_exhausted` rejection.
+time when that market has continuous coverage. A sleep extending beyond the
+selected end produces the stable `backtest_data_exhausted` rejection; a broker
+latency interval crossing an affecting blackout produces
+`backtest_coverage_gap`.
 
 Every backtest writes `summary.json`, `equity.csv`, and `orders.csv`. Select a
 new directory with `--results-dir`; otherwise a unique default is created.
@@ -358,7 +392,11 @@ counts, PnL/return/fee/drawdown metrics, open positions, and valuation quality.
 CSV decimals are exact strings suitable for plotting or lossless decimal
 parsing. Start, fill, settlement, interval, and end samples can share a
 timestamp but never move backward. The command prints a compact final summary
-and the result directory when replay completes.
+and the result directory when replay completes. For every run, selection
+provenance records `gap_policy`; blackout runs also record sorted coverage-gap
+IDs, count, clipped half-open union duration, open count, and affected position
+token IDs. Metrics include the number of orders rejected for coverage gaps, and
+the CLI prints an explicit approximate-results warning for blackout runs.
 
 Replay settles recorded resolutions at contractual `1`/`0` before
 `on_market_resolved` runs. It does not liquidate an open end-of-window position:

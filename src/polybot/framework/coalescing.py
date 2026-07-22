@@ -22,5 +22,9 @@ class PendingByKey(Generic[KeyT, ValueT]):
     def pop(self, key: KeyT) -> ValueT:
         return self._values.pop(key)
 
+    def discard(self, key: KeyT) -> bool:
+        """Discard a pending value and report whether it was present."""
+        return self._values.pop(key, None) is not None
+
     def __contains__(self, key: object) -> bool:
         return key in self._values

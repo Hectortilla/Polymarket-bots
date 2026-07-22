@@ -15,6 +15,7 @@ import pytest
 from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
+    BacktestGapPolicy,
     BacktestOptions,
 )
 from polybot.backtesting.selection import (
@@ -307,11 +308,12 @@ def _event(
     *,
     observed_at_ms: int,
     identity: MarketIdentity | None,
+    subscription_generation: int = 1,
 ) -> RecordedEvent:
     return RecordedEvent(
         sequence=archive.next_sequence,
         session_id=archive.session_id,
-        subscription_generation=1,
+        subscription_generation=subscription_generation,
         observed_at_ms=observed_at_ms,
         source_timestamp_ms=observed_at_ms - 1,
         identity=identity,
@@ -440,6 +442,8 @@ def _run(
     config: BotConfig | None = None,
     seed: int = 0,
     start_ms: int | None = None,
+    gap_policy: BacktestGapPolicy = BacktestGapPolicy.STRICT,
+    market_slugs: tuple[str, ...] = (),
 ):
     return asyncio.run(
         run_backtest(
@@ -450,9 +454,11 @@ def _run(
                 archive_path=archive.path,
                 start_at_ms=start_ms,
                 end_at_ms=archive.end_ms,
+                market_slugs=market_slugs,
                 seed=seed,
                 results_dir=results_dir,
                 report_interval_ms=5,
+                gap_policy=gap_policy,
             ),
         )
     )
@@ -464,6 +470,14 @@ def _summary(results_dir: Path) -> dict[str, object]:
 
 def _orders(results_dir: Path) -> list[dict[str, str]]:
     with (results_dir / "orders.csv").open(
+        encoding="utf-8",
+        newline="",
+    ) as source:
+        return list(csv.DictReader(source))
+
+
+def _equity(results_dir: Path) -> list[dict[str, str]]:
+    with (results_dir / "equity.csv").open(
         encoding="utf-8",
         newline="",
     ) as source:
@@ -1260,6 +1274,512 @@ def test_gap_missing_baseline_and_missing_midrange_checkpoint_fail_closed(
             start_ms=START_MS + 5,
         )
     assert checkpoint_error.value.reason is BacktestFailureReason.MISSING_MARKET_DATA
+
+
+def test_blackout_does_not_replace_initial_complete_book_requirement(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-missing-bootstrap.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer, include_down=False)
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 2,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=START_MS + 2,
+            identity=_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=START_MS + 3)
+    archive_writer.append_event(
+        _event(
+            archive_writer,
+            _baseline(DOWN_TOKEN),
+            observed_at_ms=START_MS + 4,
+            identity=_identity(DOWN_TOKEN),
+        )
+    )
+    end_ms = START_MS + 10
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    with pytest.raises(BacktestError) as error:
+        _run(
+            bot,
+            _ArchiveWindow(path, START_MS, end_ms),
+            tmp_path / "blackout-missing-bootstrap-results",
+            gap_policy=BacktestGapPolicy.BLACKOUT,
+        )
+
+    assert error.value.reason is BacktestFailureReason.MISSING_MARKET_DATA
+    assert bot.start_count == 0
+
+
+def test_blackout_can_start_inside_gap_with_valid_pre_gap_checkpoint(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-mid-gap-start.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    checkpoint_sequence = archive_writer.next_sequence - 1
+    archive_writer.append_checkpoints(
+        tuple(
+            BookCheckpoint(
+                sequence=checkpoint_sequence,
+                session_id=archive_writer.session_id,
+                subscription_generation=1,
+                observed_at_ms=START_MS + 2,
+                identity=_identity(token_id),
+                book=_baseline(token_id),
+            )
+            for token_id in (UP_TOKEN, DOWN_TOKEN)
+        )
+    )
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 4,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=START_MS + 4,
+            identity=_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=START_MS + 10)
+    for offset, token_id in ((11, UP_TOKEN), (12, DOWN_TOKEN)):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS + offset,
+                identity=_identity(token_id),
+                subscription_generation=2,
+            )
+        )
+    end_ms = START_MS + 15
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS + 5, end_ms),
+        tmp_path / "blackout-mid-gap-start-results",
+        start_ms=START_MS + 5,
+        gap_policy=BacktestGapPolicy.BLACKOUT,
+    )
+
+    assert result.selection.start_at_ms == START_MS + 5
+    assert result.selection.coverage_gap_ids == (gap_id,)
+    assert bot.start_count == 1
+    assert [(book.token_id, book.received_at_ms) for book in bot.books] == [
+        (UP_TOKEN, START_MS + 12),
+        (DOWN_TOKEN, START_MS + 12),
+    ]
+
+
+def test_strict_suffix_can_start_at_half_open_gap_end(tmp_path: Path) -> None:
+    path = tmp_path / "strict-gap-end.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    gap_end_ms = START_MS + 5
+    archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.RECORDER_OFFLINE,
+                started_at_ms=START_MS + 3,
+                ended_at_ms=gap_end_ms,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=gap_end_ms,
+            identity=_identity(),
+        )
+    )
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=gap_end_ms,
+                identity=_identity(token_id),
+                subscription_generation=2,
+            )
+        )
+    end_ms = START_MS + 10
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, gap_end_ms, end_ms),
+        tmp_path / "strict-gap-end-results",
+        start_ms=gap_end_ms,
+    )
+
+    assert result.selection.start_at_ms == gap_end_ms
+    assert [book.token_id for book in bot.books] == [UP_TOKEN, DOWN_TOKEN]
+
+
+def test_blackout_provenance_excludes_unselected_condition_only_gap(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-selected-scope.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity="bot:tests.test_backtesting:create",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    archive_writer.append_metadata(
+        _event(
+            archive_writer,
+            _next_metadata(),
+            observed_at_ms=START_MS + 3,
+            identity=_next_identity(),
+        )
+    )
+    for offset, token_id in enumerate((NEXT_UP_TOKEN, NEXT_DOWN_TOKEN), start=4):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS + offset,
+                identity=_next_identity(token_id),
+            )
+        )
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 6,
+                ended_at_ms=None,
+                affected_condition_ids=(NEXT_CONDITION_ID,),
+            ),
+            observed_at_ms=START_MS + 6,
+            identity=_next_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=START_MS + 7)
+    end_ms = START_MS + 10
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "blackout-selected-scope-results",
+        gap_policy=BacktestGapPolicy.BLACKOUT,
+        market_slugs=(MARKET_SLUG,),
+    )
+
+    assert result.selection.coverage_gap_ids == ()
+    assert [book.market_slug for book in bot.books] == [
+        MARKET_SLUG,
+        MARKET_SLUG,
+    ]
+
+
+def test_blackout_gap_starts_at_backdated_boundary_and_recovers_atomically(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-recovery.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    _append_ask_change(
+        archive_writer,
+        observed_at_ms=START_MS + 4,
+        token_id=UP_TOKEN,
+        old_price=Decimal("0.60"),
+        new_price=Decimal("0.70"),
+    )
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 4,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=START_MS + 8,
+            identity=_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=START_MS + 9)
+    archive_writer.append_event(
+        _event(
+            archive_writer,
+            _baseline(UP_TOKEN),
+            observed_at_ms=START_MS + 10,
+            identity=_identity(UP_TOKEN),
+            subscription_generation=2,
+        )
+    )
+    archive_writer.append_event(
+        _event(
+            archive_writer,
+            _baseline(DOWN_TOKEN),
+            observed_at_ms=START_MS + 12,
+            identity=_identity(DOWN_TOKEN),
+            subscription_generation=2,
+        )
+    )
+    end_ms = START_MS + 15
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _TrackingBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "blackout-recovery-results",
+        gap_policy=BacktestGapPolicy.BLACKOUT,
+    )
+    summary = _summary(result.results_dir)
+
+    assert [(book.token_id, book.received_at_ms) for book in bot.books] == [
+        (UP_TOKEN, START_MS + 2),
+        (DOWN_TOKEN, START_MS + 2),
+        (UP_TOKEN, START_MS + 12),
+        (DOWN_TOKEN, START_MS + 12),
+    ]
+    assert summary["selection"] == {
+        "session_id": result.selection.session_id,
+        "start_ms": START_MS + 2,
+        "end_ms": end_ms,
+        "market_slugs": [MARKET_SLUG],
+        "replay_cutoff_sequence": 8,
+        "session_integrity_status": "incomplete",
+        "uses_partial_session": True,
+        "gap_policy": "blackout",
+        "coverage_gap_ids": [gap_id],
+        "coverage_gap_count": 1,
+        "coverage_gap_duration_ms": 5,
+        "coverage_gap_open_count": 0,
+        "coverage_gap_affected_position_token_ids": [],
+        "coverage_gap_affected_position_count": 0,
+    }
+
+
+def test_blackout_rejects_order_when_latency_crosses_recovered_gap(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-latency.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 4,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=START_MS + 8,
+            identity=_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=START_MS + 8)
+    for offset, token_id in ((9, UP_TOKEN), (10, DOWN_TOKEN)):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS + offset,
+                identity=_identity(token_id),
+                subscription_generation=2,
+            )
+        )
+    end_ms = START_MS + 20
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _BuyOnceBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "blackout-latency-results",
+        config=_config(paper_latency_ms=10),
+        gap_policy=BacktestGapPolicy.BLACKOUT,
+    )
+    summary = _summary(result.results_dir)
+    orders = _orders(result.results_dir)
+
+    assert bot.fill is not None
+    assert bot.fill.status is OrderStatus.REJECTED
+    assert bot.fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP
+    assert bot.fill.received_at_ms == START_MS + 12
+    assert [(book.token_id, book.received_at_ms) for book in bot.books] == [
+        (UP_TOKEN, START_MS + 2),
+        (UP_TOKEN, START_MS + 10),
+        (DOWN_TOKEN, START_MS + 10),
+    ]
+    assert orders[0]["reject_reason"] == "backtest_coverage_gap"
+    assert orders[0]["completed_at_ms"] == str(START_MS + 12)
+    assert summary["selection"]["coverage_gap_ids"] == [gap_id]
+    assert summary["metrics"]["coverage_gap_rejected_order_count"] == 1
+
+
+def test_blackout_releases_staged_pair_at_gap_end_and_restores_valuation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-end-boundary.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 4,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=START_MS + 8,
+            identity=_identity(),
+        )
+    )
+    archive_writer.close_gap(gap_id, ended_at_ms=START_MS + 10)
+    for token_id in (UP_TOKEN, DOWN_TOKEN):
+        archive_writer.append_event(
+            _event(
+                archive_writer,
+                _baseline(token_id),
+                observed_at_ms=START_MS + 9,
+                identity=_identity(token_id),
+                subscription_generation=2,
+            )
+        )
+    end_ms = START_MS + 15
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _BuyOnceBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "blackout-end-boundary-results",
+        gap_policy=BacktestGapPolicy.BLACKOUT,
+    )
+    summary = _summary(result.results_dir)
+
+    assert [(book.token_id, book.received_at_ms) for book in bot.books] == [
+        (UP_TOKEN, START_MS + 2),
+        (DOWN_TOKEN, START_MS + 2),
+        (UP_TOKEN, START_MS + 10),
+        (DOWN_TOKEN, START_MS + 10),
+    ]
+    assert [row["valuation_status"] for row in _equity(result.results_dir)] == [
+        "fresh",
+        "fresh",
+        "unavailable",
+        "fresh",
+        "fresh",
+    ]
+    assert summary["valuation"]["final_status"] == "fresh"
+    assert summary["selection"]["coverage_gap_affected_position_token_ids"] == [
+        UP_TOKEN
+    ]
+
+
+def test_open_blackout_keeps_position_and_final_valuation_unavailable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "blackout-open.sqlite3"
+    archive_writer = RecordingArchive.create(
+        path,
+        target_identity=f"slugs:{MARKET_SLUG}",
+        started_at_ms=START_MS,
+    )
+    _append_prefix(archive_writer)
+    gap_id = archive_writer.append_gap(
+        _event(
+            archive_writer,
+            CoverageGapPayload(
+                reason=CoverageGapReason.DISCONNECT,
+                started_at_ms=START_MS + 4,
+                ended_at_ms=None,
+                affected_condition_ids=(CONDITION_ID,),
+                affected_market_slugs=(MARKET_SLUG,),
+                affected_token_ids=(UP_TOKEN, DOWN_TOKEN),
+            ),
+            observed_at_ms=START_MS + 6,
+            identity=_identity(),
+        )
+    )
+    end_ms = START_MS + 15
+    _append_trade(archive_writer, end_ms)
+    archive_writer.close()
+    bot = _BuyOnceBot()
+
+    result = _run(
+        bot,
+        _ArchiveWindow(path, START_MS, end_ms),
+        tmp_path / "blackout-open-results",
+        gap_policy=BacktestGapPolicy.BLACKOUT,
+    )
+    summary = _summary(result.results_dir)
+
+    assert bot.fill is not None
+    assert bot.fill.status is OrderStatus.FILLED
+    assert summary["selection"]["coverage_gap_ids"] == [gap_id]
+    assert summary["selection"]["coverage_gap_open_count"] == 1
+    assert summary["selection"]["coverage_gap_affected_position_token_ids"] == [
+        UP_TOKEN
+    ]
+    assert summary["metrics"]["final_equity_usdc"] is None
+    assert summary["valuation"]["final_status"] == "unavailable"
+    assert summary["open_positions"][0]["token_id"] == UP_TOKEN
 
 
 def test_clean_subrange_after_gap_replays_from_common_checkpoint(

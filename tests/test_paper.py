@@ -6,11 +6,13 @@ import pytest
 
 from polybot.execution.orders import taker_fee_usdc
 from polybot.execution.paper import (
+    BACKTEST_COVERAGE_GAP_MESSAGE,
     BACKTEST_DATA_EXHAUSTED_MESSAGE,
     MARKET_UNAVAILABLE_MESSAGE,
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
     PaperBroker,
 )
+from polybot.execution.paper.continuity import BookContinuity
 from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 from polybot.execution.paper.latency import sample_latency_ms
 from polybot.framework.clock import ClockDataExhaustedError
@@ -80,6 +82,14 @@ class RecordingClock:
 class UnexpectedBooks:
     async def latest(self, token_id: str) -> BookSnapshot | None:
         raise AssertionError("book lookup must not run after clock exhaustion")
+
+
+@dataclass(slots=True)
+class MutableContinuity:
+    value: BookContinuity
+
+    def book_continuity(self, token_id: str) -> BookContinuity | None:
+        return self.value if token_id == "123" else None
 
 
 def _market(
@@ -222,6 +232,89 @@ def test_paper_broker_maps_clock_exhaustion_to_stable_rejection() -> None:
     assert fill.status is OrderStatus.REJECTED
     assert fill.reject_reason is FillRejectReason.BACKTEST_DATA_EXHAUSTED
     assert fill.reject_message == BACKTEST_DATA_EXHAUSTED_MESSAGE
+    assert fill.received_at_ms == 1_050
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
+
+
+def test_paper_broker_rejects_latency_that_crosses_a_book_blackout() -> None:
+    async def run():
+        continuity = MutableContinuity(BookContinuity(revision=0, blackout=False))
+
+        async def sleep_fn(_: float) -> None:
+            continuity.value = BookContinuity(revision=1, blackout=False)
+
+        broker = PaperBroker(
+            BotConfig(
+                name="paper",
+                paper_latency_ms=100,
+                paper_latency_jitter_ms=0,
+            ),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_100,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            sleep_fn=sleep_fn,
+            now_ms_fn=lambda: 1_100,
+            continuity_source=continuity,
+        )
+
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill, broker.portfolio.cash_usdc
+
+    fill, cash_usdc = asyncio.run(run())
+
+    assert fill.status is OrderStatus.REJECTED
+    assert fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP
+    assert fill.reject_message == BACKTEST_COVERAGE_GAP_MESSAGE
+    assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
+
+
+def test_blackout_rejection_precedes_data_exhaustion_for_affected_order() -> None:
+    async def run():
+        clock = RecordingClock(1_000, exhausted_at_ms=1_050)
+        broker = PaperBroker(
+            BotConfig(
+                name="paper",
+                paper_latency_ms=100,
+                paper_latency_jitter_ms=0,
+            ),
+            UnexpectedBooks(),
+            StaticMarkets(_market()),
+            clock=clock,
+            continuity_source=MutableContinuity(
+                BookContinuity(revision=1, blackout=True)
+            ),
+        )
+
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill, broker.portfolio.cash_usdc
+
+    fill, cash_usdc = asyncio.run(run())
+
+    assert fill.status is OrderStatus.REJECTED
+    assert fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP
+    assert fill.reject_message == BACKTEST_COVERAGE_GAP_MESSAGE
     assert fill.received_at_ms == 1_050
     assert cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
 

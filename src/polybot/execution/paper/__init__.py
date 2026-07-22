@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable
 from itertools import count
 
 from polybot.async_io import run_blocking
-
 from polybot.execution.broker import Broker
 from polybot.framework.clock import Clock, ClockDataExhaustedError, SystemClock
 from polybot.framework.config.models import BotConfig
@@ -22,6 +21,7 @@ from polybot.framework.events.resolutions import MarketResolutionEvent, SettledP
 from .fill_math import simulate_fill
 from .contracts import (
     BAD_BOOK_LEVEL_MESSAGE,
+    BACKTEST_COVERAGE_GAP_MESSAGE,
     BACKTEST_DATA_EXHAUSTED_MESSAGE,
     BOOK_CROSSED_MESSAGE,
     BOOK_FUTURE_DATED_MESSAGE,
@@ -31,6 +31,7 @@ from .contracts import (
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
     PAPER_ORDER_ID_PREFIX,
 )
+from .continuity import BookContinuity, BookContinuitySource
 from .idempotency import DUPLICATE_SOURCE_MESSAGE, SourceIdempotencyStore
 from .market_data import (
     MARKET_FEE_INVALID_MESSAGE,
@@ -61,6 +62,7 @@ class PaperBroker(Broker):
         sleep_fn: SleepFn | None = None,
         now_ms_fn: NowMsFn | None = None,
         source_store: SourceIdempotencyStore | None = None,
+        continuity_source: BookContinuitySource | None = None,
     ) -> None:
         if clock is not None and (sleep_fn is not None or now_ms_fn is not None):
             raise ValueError("clock cannot be combined with sleep_fn or now_ms_fn")
@@ -76,6 +78,7 @@ class PaperBroker(Broker):
         self._source_claim_lock = asyncio.Lock()
         self._fills_by_source_id: dict[str, asyncio.Future[FillEvent]] = {}
         self._source_store = source_store
+        self._continuity_source = continuity_source
         self._settled_conditions: set[str] = set()
         self._position_market_refs: dict[str, tuple[str, str]] = {}
 
@@ -166,6 +169,7 @@ class PaperBroker(Broker):
     async def _submit_once(self, order: OrderRequest) -> FillEvent:
         order_id = f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}"
         start_ms = self._now_ms()
+        initial_continuity = self._book_continuity(order.token_id)
         latency_ms = sample_latency_ms(
             self._config.paper_latency_ms,
             self._config.paper_latency_jitter_ms,
@@ -174,6 +178,9 @@ class PaperBroker(Broker):
         try:
             await self._sleep(latency_ms / 1000)
         except ClockDataExhaustedError:
+            current_continuity = self._book_continuity(order.token_id)
+            if _crossed_book_blackout(initial_continuity, current_continuity):
+                return self._coverage_gap_rejection(order_id, order)
             return self._rejected_fill(
                 order_id,
                 order,
@@ -181,6 +188,9 @@ class PaperBroker(Broker):
                 reject_reason=FillRejectReason.BACKTEST_DATA_EXHAUSTED,
                 reject_message=BACKTEST_DATA_EXHAUSTED_MESSAGE,
             )
+        current_continuity = self._book_continuity(order.token_id)
+        if _crossed_book_blackout(initial_continuity, current_continuity):
+            return self._coverage_gap_rejection(order_id, order)
         if self._is_settled(order.condition_id):
             return self._rejected_fill(
                 order_id,
@@ -321,6 +331,24 @@ class PaperBroker(Broker):
     def _is_settled(self, condition_id: str | None) -> bool:
         return condition_id is not None and condition_id in self._settled_conditions
 
+    def _book_continuity(self, token_id: str) -> BookContinuity | None:
+        if self._continuity_source is None:
+            return None
+        return self._continuity_source.book_continuity(token_id)
+
+    def _coverage_gap_rejection(
+        self,
+        order_id: str,
+        order: OrderRequest,
+    ) -> FillEvent:
+        return self._rejected_fill(
+            order_id,
+            order,
+            received_at_ms=self._now_ms(),
+            reject_reason=FillRejectReason.BACKTEST_COVERAGE_GAP,
+            reject_message=BACKTEST_COVERAGE_GAP_MESSAGE,
+        )
+
     async def cancel_all(self) -> None:
         return None
 
@@ -370,3 +398,17 @@ class PaperBroker(Broker):
 def _complete_claim(future: asyncio.Future[FillEvent], fill: FillEvent) -> None:
     if not future.done():
         future.set_result(fill)
+
+
+def _crossed_book_blackout(
+    initial: BookContinuity | None,
+    current: BookContinuity | None,
+) -> bool:
+    if initial is None:
+        return False
+    return (
+        initial.blackout
+        or current is None
+        or current.blackout
+        or current.revision != initial.revision
+    )

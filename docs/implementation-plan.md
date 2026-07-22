@@ -372,9 +372,10 @@ Integrity rules:
   does not repair it. Reject deltas received before their token baseline and do
   not backfill book gaps from `/prices-history`, public `/trades`, or onchain
   settlement data.
-- Preserve usable segments before and after a gap. Slice 9B rejects a requested
-  replay interval containing an affecting gap while permitting clean selected
-  subranges on either side.
+- Preserve usable segments before and after a gap. Slice 9B's default strict
+  policy rejects a requested replay interval containing an affecting gap while
+  permitting clean selected subranges on either side; Slice 9B.1 later adds an
+  explicit approximate blackout policy without changing recorder integrity.
 - Track clean session closure separately from capture integrity. A graceful
   shutdown must not turn an earlier gapped session into a gap-free one.
 
@@ -429,8 +430,10 @@ Status: done.
   sequence numbers.
   A resumed legacy-v2 archive gains the tables transactionally, while older
   sessions report diagnostics unavailable rather than zero.
-- Preserve strict coverage gaps and fresh-baseline recovery. Do not repair gaps
-  from REST history or advertised best prices and do not add an allow-gaps mode.
+- Preserve strict coverage-gap evidence and fresh-baseline recovery. Do not
+  repair gaps from REST history or advertised best prices and do not add a
+  recorder-side or implicit allow-gaps mode. Slice 9B.1's later explicit
+  blackout replay policy consumes the same evidence without mutating it.
 - On condition recovery, immediately write a common two-token checkpoint pair.
   Keep periodic checkpoints suppressed for recovered members of a target-wide
   resumed gap until all affected markets recover, then checkpoint every eligible
@@ -469,8 +472,9 @@ Status: done.
   archive hashing.
 - Permit failed and recovered sessions through their durable boundary by
   default and record `session_integrity_status` plus `uses_partial_session` in
-  result selection provenance. Continue rejecting affecting coverage gaps,
-  invalid bounds, corruption, and missing metadata or book baselines.
+  result selection provenance. Continue rejecting affecting coverage gaps in
+  default strict replay, plus invalid bounds, corruption, and missing metadata
+  or book baselines. Slice 9B.1 later adds only an explicit approximate policy.
 - Keep schema v2 compatible. Test blocking acknowledgements, atomic batches,
   queue and disk failures, active-writer locking, abrupt `os._exit` recovery,
   WAL checkpointing, partial-source replay, resume, and unchanged clean-session
@@ -553,7 +557,8 @@ Status: done.
   event payload so multi-gigabyte recordings remain practical to inspect.
 - Preserve integrity language: `no detected gaps` is not an exchange-complete
   claim. Present backtest caveats without certifying replayability; Slice 9B
-  retains strict metadata, two-token bootstrap, range, and gap validation.
+  retains strict metadata, two-token bootstrap, and range validation. It rejects
+  gaps by default; Slice 9B.1 requires an explicit approximate blackout choice.
 
 Acceptance covers typed reader aggregation, human-readable CLI reporting,
 missing-archive errors, gaps and partial-session guidance, anomaly availability,
@@ -581,9 +586,11 @@ Replay behavior:
 - Accept schema-v2 archives only. Before invoking strategy hooks, take the
   inactive-archive replay lease, check SQLite integrity, validate range and
   market selection, require time-correct metadata and baseline/checkpoint
-  coverage, and reject any affecting coverage gap. Complete sessions are
-  eligible in full; failed and recovered sessions default to their last durable
-  boundary and carry partial-source provenance. Provide no gap override.
+  coverage, and reject any affecting coverage gap under the default `strict`
+  policy. Complete sessions are eligible in full; failed and recovered sessions
+  default to their last durable boundary and carry partial-source provenance.
+  Slice 9B.1 adds only an explicit `blackout` policy; there is no implicit gap
+  override.
 - Keep SQLite rows behind `RecordingReader`. Snapshot an immutable archive
   sequence cutoff, expose session/set selection and market enumeration, and
   restore common same-observation checkpoints for both tokens at mid-session
@@ -641,6 +648,83 @@ Acceptance is covered by synthetic archive replay, broker timing and
 coalescing, dynamic rollover, validation/fail-closed, deterministic seed,
 artifact serialization/collision/partial-status, normal paper opt-in, and full
 suite tests.
+
+## Slice 9B.1: Approximate Coverage-Gap Blackout Replay
+
+Status: done.
+
+Command and policy contract:
+
+- Extend the backtest CLI with `--gap-policy {strict,blackout}`. Keep `strict`
+  as the default and preserve Slice 9B's pre-hook rejection of every affecting
+  coverage gap. Require the caller to select `blackout` explicitly and label
+  its completed result approximate.
+- Retain the inactive-archive lease, immutable replay cutoff, schema and SQLite
+  integrity checks, selected-session/range/market validation, and initial
+  time-correct metadata plus common two-token baseline/checkpoint requirements.
+  Blackout is not a corruption, missing-bootstrap, or invalid-range override.
+- Resolve only gaps that affect the selected markets. Keep the archive
+  read-only, construct no SDK/client, make no network call, and never change a
+  session or gap's stored integrity status.
+
+Blackout scheduling and state:
+
+- Preload the selected `CoverageGapRecord` values. Schedule a gap from the
+  payload's exact `started_at_ms`, even when loss was detected and its canonical
+  gap event was appended later. At an equal timestamp, activate the blackout
+  before applying or dispatching market events. Treat closed intervals as
+  half-open `[start, end)` and clip accounting to the selected replay range.
+- Resolve condition-, slug-, token-, and target-wide scope conservatively. At
+  activation, invalidate the affected market projectors and latest books,
+  remove affected performance books and last executable marks, and purge
+  pending coalesced callbacks for the affected tokens. Preserve bot state,
+  virtual time, paper cash and positions, metadata, and unaffected market
+  processing.
+- Do not dispatch affected book callbacks or expose an executable affected book
+  during a blackout. Continue ordinary callbacks, fills, dynamic planning, and
+  valuation for unaffected markets. Overlapping scopes keep a market unavailable
+  until every affecting blackout permits recovery.
+- Recover only from canonical recorder evidence. For a closed affected market,
+  require fresh full-book baselines for both outcome tokens after the gap opened
+  and in one subscription generation; make the pair visible atomically only at
+  the verified recovery boundary. A single-token, mixed-generation, stale, or
+  pre-gap baseline cannot restore either book. A resolution is terminal and
+  never fabricates a recovery book. An open gap remains unavailable through the
+  selected end.
+
+Execution safety and approximation boundary:
+
+- Reject an order for an affected market when it is submitted during a
+  blackout or when its simulated submission-to-fill latency interval crosses
+  one. Use the stable `backtest_coverage_gap` fill rejection even if a real
+  paired book has recovered by nominal fill time. Leave unaffected-market
+  orders and `backtest_data_exhausted` end-of-selection behavior unchanged.
+- Never interpolate, tween, hold forward, or synthesize price, spread, depth,
+  liquidity, a public trade, strategy callback, or fill. Do not use
+  `/prices-history`, public trades, onchain settlement, advertised best prices,
+  or later book state to populate the interval. Blackout preserves surrounding
+  state but cannot recover the exchange events or decisions that were missed.
+- Keep affected open positions in the paper portfolio. Their valuation is
+  unavailable while their executable books and marks are invalid; a real paired
+  recovery can make subsequent valuation fresh again.
+
+Provenance and acceptance:
+
+- Add deterministic selection provenance for `gap_policy`, sorted
+  `coverage_gap_ids`, `coverage_gap_count`, clipped half-open union
+  `coverage_gap_duration_ms`, `coverage_gap_open_count`, sorted
+  `coverage_gap_affected_position_token_ids`, and
+  `coverage_gap_affected_position_count`. Add
+  `coverage_gap_rejected_order_count` to performance metrics, while preserving
+  each order's stable rejection in `orders.csv`.
+- Print `Backtest used blackout coverage-gap handling: gaps=N duration=Nms
+  open=N; results are approximate` after a completed blackout run.
+- Acceptance covers unchanged default strict rejection, backdated exact-start
+  activation, same-timestamp ordering, scoped multi-market continuation,
+  pending-callback purge, same-generation paired recovery, open and overlapping
+  gaps, unavailable-then-fresh position valuation, latency-crossing order
+  rejection after recovery, deterministic provenance, and no synthetic fills or
+  archive mutation.
 
 ## Slice 10: Terminal Dashboard and Runtime Observability
 

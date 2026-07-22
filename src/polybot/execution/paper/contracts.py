@@ -14,3 +14,6 @@ BOOK_CROSSED_MESSAGE = "fill-time book was crossed"
 BACKTEST_DATA_EXHAUSTED_MESSAGE = (
     "recorded market data ended before simulated order latency completed"
 )
+BACKTEST_COVERAGE_GAP_MESSAGE = (
+    "recorded market coverage was unavailable during simulated order latency"
+)

@@ -33,6 +33,10 @@ class BookDepthProjector:
     def baseline_token_ids(self) -> frozenset[str]:
         return frozenset(self._depth)
 
+    def clear(self) -> None:
+        """Forget projected depth while retaining immutable market identity."""
+        self._depth.clear()
+
     def apply_baseline(
         self,
         payload: BookBaselinePayload,

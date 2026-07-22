@@ -6,10 +6,11 @@ import asyncio
 import hashlib
 import random
 import time
+from dataclasses import replace
 from pathlib import Path
 
-from polybot.backtesting.broker import BacktestPerformanceBroker
 from polybot.async_io import run_blocking
+from polybot.backtesting.broker import BacktestPerformanceBroker
 from polybot.backtesting.clients import (
     RejectingPositionClient,
     RejectingPlanningBroker,
@@ -19,14 +20,17 @@ from polybot.backtesting.clock import ReplayClock
 from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
+    BacktestGapPolicy,
     BacktestOptions,
     BacktestResult,
     BacktestSelection,
 )
+from polybot.backtesting.coverage import ReplayCoverage, gaps_affecting_markets
 from polybot.backtesting.scheduler import ReplayCursor, ReplayScheduler
 from polybot.backtesting.selection import (
     replay_start_checkpoint_pair,
     resolve_backtest_selection,
+    selection_starts_in_market_gap,
     validate_backtest_selection,
 )
 from polybot.backtesting.state import ArchiveMarketState
@@ -52,6 +56,8 @@ from polybot.recording.archive_errors import (
 )
 from polybot.recording.contracts import (
     BookBaselinePayload,
+    CoverageGapPayload,
+    CoverageGapRecord,
     MarketMetadataPayload,
     RecordedEvent,
 )
@@ -97,6 +103,7 @@ async def run_backtest(
                 options,
             )
             await run_blocking(validate_backtest_selection, reader, selection)
+            bootstrap_coverage = await _load_replay_coverage(reader, selection)
             state = ArchiveMarketState()
             prime_sequence = await run_blocking(
                 _prime_to_start,
@@ -104,6 +111,11 @@ async def run_backtest(
                 state,
                 selection,
                 require_checkpoint_pairs=options.start_at_ms is not None,
+            )
+            _activate_bootstrap_blackouts(
+                state,
+                bootstrap_coverage,
+                through_ms=selection.start_at_ms,
             )
             clock = ReplayClock(selection.start_at_ms, selection.end_at_ms)
             broker_rng = random.Random(_derived_seed(options.seed, "broker"))
@@ -114,6 +126,7 @@ async def run_backtest(
                 state,
                 rng=broker_rng,
                 clock=clock,
+                continuity_source=state,
             )
             planning_context = BotContext(
                 config=config,
@@ -133,19 +146,23 @@ async def run_backtest(
                 clock,
                 selection,
                 prime_sequence,
+                coverage=bootstrap_coverage,
                 explicit_start=options.start_at_ms is not None,
             )
             if effective_start != selection.start_at_ms:
-                selection = BacktestSelection(
-                    session_id=selection.session_id,
-                    start_at_ms=effective_start,
-                    end_at_ms=selection.end_at_ms,
-                    market_slugs=selection.market_slugs,
-                    replay_cutoff_sequence=selection.replay_cutoff_sequence,
-                    session_integrity_status=(
-                        selection.session_integrity_status
-                    ),
-                    uses_partial_session=selection.uses_partial_session,
+                selection = replace(selection, start_at_ms=effective_start)
+            coverage = await _load_replay_coverage(reader, selection)
+            _activate_bootstrap_blackouts(
+                state,
+                coverage,
+                through_ms=selection.start_at_ms,
+            )
+            if coverage is not None:
+                selection = replace(
+                    selection,
+                    coverage_gap_ids=coverage.gap_ids,
+                    coverage_gap_duration_ms=coverage.duration_ms,
+                    coverage_gap_open_count=coverage.open_gap_count,
                 )
             results_dir = options.results_dir or _default_results_dir(
                 options.archive_path,
@@ -174,6 +191,12 @@ async def run_backtest(
                         selection.session_integrity_status
                     ),
                     uses_partial_session=selection.uses_partial_session,
+                    gap_policy=selection.gap_policy.value,
+                    coverage_gap_ids=selection.coverage_gap_ids,
+                    coverage_gap_duration_ms=(
+                        selection.coverage_gap_duration_ms
+                    ),
+                    coverage_gap_open_count=selection.coverage_gap_open_count,
                 ),
                 initial_cash_usdc=config.paper_portfolio_usdc,
                 report_interval_ms=options.report_interval_ms,
@@ -209,6 +232,9 @@ async def run_backtest(
                 end_at_ms=selection.end_at_ms,
                 session_id=selection.session_id,
                 market_slugs=selection.market_slugs,
+                allow_gaps=(
+                    selection.gap_policy is BacktestGapPolicy.BLACKOUT
+                ),
             )
             scheduler = ReplayScheduler(
                 bot=bot,
@@ -218,6 +244,7 @@ async def run_backtest(
                 clock=clock,
                 cursor=ReplayCursor(events, after_sequence=prime_sequence),
                 artifacts=artifacts,
+                coverage=coverage,
             )
             try:
                 await scheduler.run()
@@ -310,6 +337,14 @@ def _prime_to_start(
             condition_id=market.condition_id,
             start_at_ms=selection.start_at_ms,
             session_id=selection.session_id,
+            allow_pre_gap_checkpoint=(
+                selection.gap_policy is BacktestGapPolicy.BLACKOUT
+                and selection_starts_in_market_gap(
+                    reader,
+                    selection,
+                    market,
+                )
+            ),
         )
         if checkpoints is None:
             if has_in_range_baselines:
@@ -318,6 +353,9 @@ def _prime_to_start(
                 end_at_ms=selection.start_at_ms,
                 session_id=selection.session_id,
                 market_slugs=(market.market_slug,),
+                allow_gaps=(
+                    selection.gap_policy is BacktestGapPolicy.BLACKOUT
+                ),
             )
             if (
                 require_checkpoint_pairs
@@ -366,6 +404,11 @@ def _prime_to_start(
             continue
         if isinstance(event.payload, MarketMetadataPayload):
             continue
+        if (
+            selection.gap_policy is BacktestGapPolicy.BLACKOUT
+            and isinstance(event.payload, CoverageGapPayload)
+        ):
+            continue
         state.apply(event)
     return prime_sequence
 
@@ -379,9 +422,16 @@ async def _advance_to_replayable_start(
     selection: BacktestSelection,
     prime_sequence: int,
     *,
+    coverage: ReplayCoverage | None,
     explicit_start: bool,
 ) -> tuple[int, int]:
-    if await _plan_is_replayable(bot, ctx, state):
+    allow_blackouts = selection.gap_policy is BacktestGapPolicy.BLACKOUT
+    if await _plan_is_replayable(
+        bot,
+        ctx,
+        state,
+        allow_blackouts=allow_blackouts,
+    ):
         return selection.start_at_ms, prime_sequence
     events = await run_blocking(
         reader.iter_events,
@@ -389,16 +439,29 @@ async def _advance_to_replayable_start(
         end_at_ms=selection.end_at_ms,
         session_id=selection.session_id,
         market_slugs=selection.market_slugs,
+        allow_gaps=allow_blackouts,
     )
     cursor = ReplayCursor(events, after_sequence=prime_sequence)
     try:
         while (event := await cursor.pop()) is not None:
             if explicit_start and event.observed_at_ms > selection.start_at_ms:
                 break
+            _advance_bootstrap_coverage(
+                state,
+                clock,
+                coverage,
+                through_ms=event.observed_at_ms,
+            )
             clock.move_to(event.observed_at_ms)
-            state.apply(event)
+            if not isinstance(event.payload, CoverageGapPayload):
+                state.apply(event)
             prime_sequence = event.sequence
-            if not await _plan_is_replayable(bot, ctx, state):
+            if not await _plan_is_replayable(
+                bot,
+                ctx,
+                state,
+                allow_blackouts=allow_blackouts,
+            ):
                 continue
             while (
                 (same_boundary := await cursor.peek()) is not None
@@ -410,7 +473,12 @@ async def _advance_to_replayable_start(
                     break
                 state.apply(current)
                 prime_sequence = current.sequence
-            if await _plan_is_replayable(bot, ctx, state):
+            if await _plan_is_replayable(
+                bot,
+                ctx,
+                state,
+                allow_blackouts=allow_blackouts,
+            ):
                 return event.observed_at_ms, prime_sequence
     finally:
         await cursor.aclose()
@@ -436,6 +504,8 @@ async def _plan_is_replayable(
     bot: BaseBot,
     ctx: BotContext,
     state: ArchiveMarketState,
+    *,
+    allow_blackouts: bool = False,
 ) -> bool:
     now_ms = ctx.clock.now_ms()
     current = await bot.current_stream_rules(ctx, now_ms)
@@ -449,8 +519,106 @@ async def _plan_is_replayable(
         slug for rule in current for slug in rule.market_slugs
     }
     if current_slugs:
-        return all(state.has_complete_book(slug) for slug in current_slugs)
-    return any(state.has_complete_book(slug) for slug in state.market_slugs)
+        return all(
+            _market_is_replayable(
+                state,
+                slug,
+                allow_blackouts=allow_blackouts,
+            )
+            for slug in current_slugs
+        )
+    return any(
+        _market_is_replayable(
+            state,
+            slug,
+            allow_blackouts=allow_blackouts,
+        )
+        for slug in state.market_slugs
+    )
+
+
+def _market_is_replayable(
+    state: ArchiveMarketState,
+    market_slug: str,
+    *,
+    allow_blackouts: bool,
+) -> bool:
+    return state.has_complete_book(market_slug) or (
+        allow_blackouts
+        and state.is_blacked_out(market_slug)
+        and state.has_bootstrap_evidence(market_slug)
+    )
+
+
+async def _load_replay_coverage(
+    reader: RecordingReader,
+    selection: BacktestSelection,
+) -> ReplayCoverage | None:
+    if selection.gap_policy is BacktestGapPolicy.STRICT:
+        return None
+    records = await run_blocking(
+        _selected_coverage_gaps,
+        reader,
+        selection,
+    )
+    return ReplayCoverage(
+        records,
+        start_at_ms=selection.start_at_ms,
+        end_at_ms=selection.end_at_ms,
+    )
+
+
+def _selected_coverage_gaps(
+    reader: RecordingReader,
+    selection: BacktestSelection,
+) -> tuple[CoverageGapRecord, ...]:
+    markets = reader.markets_at(
+        selection.end_at_ms,
+        session_id=selection.session_id,
+        market_slugs=selection.market_slugs,
+        allow_gaps=True,
+    )
+    records = reader.coverage_gaps(
+        start_at_ms=selection.start_at_ms,
+        end_at_ms=selection.end_at_ms,
+        session_id=selection.session_id,
+    )
+    return gaps_affecting_markets(records, markets)
+
+
+def _activate_bootstrap_blackouts(
+    state: ArchiveMarketState,
+    coverage: ReplayCoverage | None,
+    *,
+    through_ms: int,
+) -> None:
+    if coverage is None:
+        return
+    for record in coverage.pop_start_records_through(through_ms):
+        state.begin_blackout(record)
+
+
+def _advance_bootstrap_coverage(
+    state: ArchiveMarketState,
+    clock: ReplayClock,
+    coverage: ReplayCoverage | None,
+    *,
+    through_ms: int,
+) -> None:
+    if coverage is None:
+        return
+    while (
+        (boundary_ms := coverage.next_boundary_at_ms) is not None
+        and boundary_ms <= through_ms
+    ):
+        clock.move_to(boundary_ms)
+        _activate_bootstrap_blackouts(
+            state,
+            coverage,
+            through_ms=boundary_ms,
+        )
+        if coverage.pop_end_records_through(boundary_ms):
+            state.recover_books_at(boundary_ms)
 
 
 def _session_start(reader: RecordingReader, session_id: int) -> int:

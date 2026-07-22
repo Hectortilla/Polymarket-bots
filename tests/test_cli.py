@@ -10,11 +10,16 @@ from types import SimpleNamespace
 import pytest
 
 from polybot.async_io import run_blocking
-from polybot.backtesting.contracts import BacktestResult, BacktestSelection
+from polybot.backtesting.contracts import (
+    BacktestGapPolicy,
+    BacktestResult,
+    BacktestSelection,
+)
 from polybot.cli.config import load_dotenv, parse_overrides
 from polybot.cli.dashboard.state import DashboardState
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
+    BLACKOUT_GAP_WARNING,
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
     PARTIAL_RECORDING_WARNING,
     TERM_ENV_KEY,
@@ -184,6 +189,8 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
             "one",
             "--market-slug",
             "two",
+            "--gap-policy",
+            "blackout",
             "--seed",
             "42",
             "--results-dir",
@@ -202,6 +209,7 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
     assert options.seed == 42
     assert options.results_dir == results_dir
     assert options.report_interval_ms == 250
+    assert options.gap_policy is BacktestGapPolicy.BLACKOUT
     assert captured["dashboard"] is False
 
 
@@ -285,6 +293,52 @@ def test_backtest_summary_labels_partial_recording_source(
     assert "committed through 200" in output
 
 
+def test_backtest_summary_labels_blackout_gap_handling(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.PerformanceSummaryV1.read",
+        lambda path: SimpleNamespace(
+            metrics=SimpleNamespace(
+                event_count=3,
+                order_count=1,
+                fill_count=0,
+                net_pnl_usdc="0",
+                return_fraction="0",
+                max_drawdown_usdc="0",
+            ),
+            valuation=SimpleNamespace(final_status="fresh", complete=True),
+        ),
+    )
+    result = BacktestResult(
+        selection=BacktestSelection(
+            1,
+            100,
+            200,
+            ("one",),
+            50,
+            gap_policy=BacktestGapPolicy.BLACKOUT,
+            coverage_gap_ids=(3, 8),
+            coverage_gap_duration_ms=125,
+            coverage_gap_open_count=1,
+        ),
+        results_dir=tmp_path / "results",
+        event_count=3,
+        accepted_dispatch_count=0,
+        skipped_dispatch_count=0,
+        resolution_count=0,
+    )
+
+    _print_backtest_summary(result)
+
+    output = capsys.readouterr().out
+    assert BLACKOUT_GAP_WARNING in output
+    assert "gaps=2 duration=125ms open=1" in output
+    assert "results are approximate" in output
+
+
 def test_main_routes_results_directory_to_ordinary_paper_run(
     tmp_path: Path,
     monkeypatch,
@@ -320,6 +374,25 @@ def test_main_routes_results_directory_to_ordinary_paper_run(
     assert captured["results_dir"] == results_dir
     assert captured["bot_spec"] == "polybot.my_bot:create"
     assert captured["report_interval_ms"] == 500
+
+
+def test_main_rejects_gap_policy_without_backtest(monkeypatch) -> None:
+    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.load_bot",
+        lambda target, config: pytest.fail("bot must not be loaded"),
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        main(
+            [
+                "--bot",
+                "polybot.my_bot:create",
+                "--gap-policy",
+                "blackout",
+            ]
+        )
 
 
 def test_main_rejects_backtest_dashboard_and_live_mode(monkeypatch) -> None:

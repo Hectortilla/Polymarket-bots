@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import csv
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from pathlib import Path
 from typing import TextIO
 
 from polybot.persistence.atomic_json import AtomicJsonFile
-from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
+from polybot.framework.events import (
+    FillEvent,
+    FillRejectReason,
+    OrderRequest,
+    OrderStatus,
+)
 from polybot.framework.events.books import BookSnapshot
 
 from .contracts import (
@@ -101,6 +106,8 @@ class PerformanceArtifacts:
         self._fill_count = 0
         self._recorded_fill_order_ids: set[str] = set()
         self._rejected_count = 0
+        self._coverage_gap_rejected_order_count = 0
+        self._coverage_gap_affected_position_token_ids: set[str] = set()
         self._filled_notional_usdc = ZERO
         self._finalized = False
         self._equity_file: TextIO | None = None
@@ -132,6 +139,22 @@ class PerformanceArtifacts:
         for token_id in token_ids:
             self._books.pop(token_id, None)
             self._last_executable_marks.pop(token_id, None)
+
+    def record_coverage_gap_affected_positions(
+        self,
+        token_ids: Iterable[str],
+    ) -> None:
+        self._require_open()
+        normalized_token_ids: set[str] = set()
+        for token_id in token_ids:
+            if not isinstance(token_id, str) or not token_id.strip():
+                raise ValueError(
+                    "performance coverage-gap position token IDs must be text"
+                )
+            normalized_token_ids.add(token_id.strip())
+        self._coverage_gap_affected_position_token_ids.update(
+            normalized_token_ids
+        )
 
     def record_events(self, count: int = 1) -> None:
         self._require_open()
@@ -236,6 +259,8 @@ class PerformanceArtifacts:
         self._order_count += 1
         if fill.status is OrderStatus.REJECTED:
             self._rejected_count += 1
+        if fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP:
+            self._coverage_gap_rejected_order_count += 1
         is_new_fill = (
             fill.filled_size > ZERO
             and fill.order_id not in self._recorded_fill_order_ids
@@ -424,6 +449,21 @@ class PerformanceArtifacts:
                     else self.selection.session_integrity_status.value
                 ),
                 "uses_partial_session": self.selection.uses_partial_session,
+                "gap_policy": self.selection.gap_policy,
+                "coverage_gap_ids": list(self.selection.coverage_gap_ids),
+                "coverage_gap_count": len(self.selection.coverage_gap_ids),
+                "coverage_gap_duration_ms": (
+                    self.selection.coverage_gap_duration_ms
+                ),
+                "coverage_gap_open_count": (
+                    self.selection.coverage_gap_open_count
+                ),
+                "coverage_gap_affected_position_token_ids": sorted(
+                    self._coverage_gap_affected_position_token_ids
+                ),
+                "coverage_gap_affected_position_count": len(
+                    self._coverage_gap_affected_position_token_ids
+                ),
             },
             "timing": {
                 "started_at_ms": self._started_at_ms,
@@ -458,6 +498,9 @@ class PerformanceArtifacts:
                 "order_count": self._order_count,
                 "fill_count": self._fill_count,
                 "rejected_order_count": self._rejected_count,
+                "coverage_gap_rejected_order_count": (
+                    self._coverage_gap_rejected_order_count
+                ),
                 "resolution_count": self.counters.resolution_count,
                 "event_count": self.counters.event_count,
                 "dispatch_count": self.counters.dispatch_count,

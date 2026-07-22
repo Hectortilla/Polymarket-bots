@@ -22,8 +22,8 @@ The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
 paper runner CLI, Slice 9A historical market recorder and local trim
 maintenance, Slice 9B deterministic archive backtester and performance
-artifacts, Slice 10 terminal dashboard, and Slice 11 dynamic market tracking and
-resolution processing. The
+artifacts, Slice 9B.1 opt-in coverage-gap blackout replay, Slice 10 terminal
+dashboard, and Slice 11 dynamic market tracking and resolution processing. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
@@ -231,21 +231,47 @@ uv run python -m polybot.cli \
 
 Replay is headless by default and never constructs a Polymarket SDK client,
 performs a network read, or touches `.bot-state/`. `BOT_MODE=live` is rejected.
-The only replay inputs are metadata revisions, books, and lifecycle events from
-the selected archive interval. A deterministic virtual clock drives event
-delivery, strategy sleeps, paper latency, and broker jitter, so multi-day data
-runs as quickly as local SQLite reads and bot computation permit.
+The only replay inputs are metadata revisions, books, lifecycle events, and
+coverage-gap evidence from the selected archive interval. A deterministic
+virtual clock drives event delivery, strategy sleeps, paper latency, and broker
+jitter, so multi-day data runs as quickly as local SQLite reads and bot
+computation permit.
 
 By default the sole session, all its markets, and its replayable range are
 selected. Use `--session ID` when an archive has multiple sessions,
 inclusive `--start-ms` and `--end-ms` for a subrange, and repeated
 `--market-slug` values for a subset. `--report-interval-ms` defaults to `1000`.
 Replay refuses an archive whose recorder lock is still held, unsupported
-schemas, missing metadata/baselines, invalid ranges, and coverage gaps that
-affect the selected interval. Once the writer lock is released, abandoned and
-failed sessions default to their last committed boundary and are reported as
-partial recording sources. A clean subrange on either side of a real coverage
-gap remains usable; recovery never guesses across that gap.
+schemas, missing initial metadata/baselines, and invalid ranges. The default
+`--gap-policy strict` also rejects every coverage gap affecting the selected
+interval. Once the writer lock is released, abandoned and failed sessions
+default to their last committed boundary and are reported as partial recording
+sources. A clean subrange on either side of a real coverage gap remains usable
+in strict mode; recovery never guesses across that gap.
+
+For a deliberately approximate run that preserves the rest of a long gapped
+recording, opt into blackout handling:
+
+```sh
+BOT_MODE=paper \
+uv run python -m polybot.cli \
+  --bot polybot.examples.example_btc_five_minute_momentum:create \
+  --backtest recordings/btc-five-minute.sqlite \
+  --gap-policy blackout
+```
+
+Blackout replay does not interpolate, tween, or synthesize a book. At each
+gap's exact recorded `started_at_ms` boundary it invalidates only the affected
+market books, clears their pending callbacks and executable valuation marks,
+and keeps virtual time, strategy and portfolio state, and unaffected markets
+running. Affected books become executable again only after real post-gap full
+book baselines for both outcome tokens arrive in one subscription generation.
+An open gap remains unavailable through the selected end. An order whose
+simulated submission-to-fill latency crosses an affecting blackout is rejected
+as `backtest_coverage_gap`, even if a fresh book exists again by fill time.
+Because strategy callbacks and exchange changes inside each gap are unknown,
+the CLI labels the completed result approximate and prints the gap count,
+clipped union duration, and open-gap count.
 
 After `polybot.recording.trim` succeeds, the replacement archive contains one
 self-contained clean interval, so ordinary backtest defaults can select it
@@ -257,7 +283,8 @@ never overwritten. The directory contains:
 
 - `summary.json`: sanitized run/archive identity, selection, seed, event and
   dispatch counts, cash/equity/PnL/return/fees/drawdown metrics, order/fill/
-  rejection/resolution totals, open positions, and valuation completeness;
+  rejection/resolution totals, open positions, valuation completeness, and
+  selected gap-policy provenance and blackout impact metrics;
 - `equity.csv`: exact-decimal start, interval, fill, settlement, and end samples
   ready for plotting; and
 - `orders.csv`: each submission and completion with requested and filled values,
@@ -265,8 +292,11 @@ never overwritten. The directory contains:
 
 Open positions are not force-liquidated at the end. Fresh executable marks are
 reported when available; last executable estimates are explicitly stale, and
-unavailable values remain null. Failed or interrupted replays retain partial
-CSV output and an explicit partial status when finalization can complete.
+unavailable values remain null. During an affecting blackout the current and
+last executable marks are deliberately cleared, so an affected open position is
+reported unavailable until a real paired-book recovery. Failed or interrupted
+replays retain partial CSV output and an explicit partial status when
+finalization can complete.
 On completion, the CLI also prints a compact performance summary and the result
 directory path.
 

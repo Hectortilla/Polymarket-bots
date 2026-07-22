@@ -38,6 +38,7 @@ class FillRejectReason(StrEnum):
     NO_DEPTH_WITHIN_SLIPPAGE = "no_depth_within_slippage"
     DUPLICATE_SOURCE_ID = "duplicate_source_id"
     BACKTEST_DATA_EXHAUSTED = "backtest_data_exhausted"
+    BACKTEST_COVERAGE_GAP = "backtest_coverage_gap"
 
 
 @dataclass(frozen=True, slots=True)

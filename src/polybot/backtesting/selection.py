@@ -5,9 +5,11 @@ from __future__ import annotations
 from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
+    BacktestGapPolicy,
     BacktestOptions,
     BacktestSelection,
 )
+from polybot.backtesting.coverage import gaps_affecting_markets
 from polybot.recording.archive import RecordingReader
 from polybot.recording.archive_errors import ArchiveCoverageError
 from polybot.recording.archive_models import RecordingSession
@@ -24,6 +26,8 @@ def resolve_backtest_selection(
     options: BacktestOptions,
 ) -> BacktestSelection:
     """Resolve and gap-check one requested session, range, and market set."""
+
+    allow_gaps = options.gap_policy is BacktestGapPolicy.BLACKOUT
 
     effective_end_at_ms = replayable_session_end(reader, session)
     if effective_end_at_ms is None:
@@ -76,6 +80,7 @@ def resolve_backtest_selection(
         end_at_ms=requested_end,
         session_id=session.session_id,
         market_slugs=selected_slugs,
+        allow_gaps=allow_gaps,
     )
     if bounds is None:
         raise BacktestError(
@@ -95,6 +100,7 @@ def resolve_backtest_selection(
         uses_partial_session=(
             session.integrity_status is not SessionIntegrityStatus.COMPLETE
         ),
+        gap_policy=options.gap_policy,
     )
 
 
@@ -132,12 +138,15 @@ def validate_backtest_selection(
 ) -> None:
     """Semantically validate selected events and their replay bootstrap."""
 
+    allow_gaps = selection.gap_policy is BacktestGapPolicy.BLACKOUT
+
     baseline_tokens: dict[tuple[str, int], set[str]] = {}
     for event in reader.iter_events(
         start_at_ms=selection.start_at_ms,
         end_at_ms=selection.end_at_ms,
         session_id=selection.session_id,
         market_slugs=selection.market_slugs,
+        allow_gaps=allow_gaps,
     ):
         if not isinstance(event.payload, BookBaselinePayload):
             continue
@@ -156,6 +165,7 @@ def validate_backtest_selection(
         selection.end_at_ms,
         session_id=selection.session_id,
         market_slugs=selection.market_slugs,
+        allow_gaps=allow_gaps,
     )
     for market in markets:
         required_tokens = {outcome.token_id for outcome in market.outcomes}
@@ -170,6 +180,14 @@ def validate_backtest_selection(
             condition_id=market.condition_id,
             start_at_ms=selection.start_at_ms,
             session_id=selection.session_id,
+            allow_pre_gap_checkpoint=(
+                selection.gap_policy is BacktestGapPolicy.BLACKOUT
+                and selection_starts_in_market_gap(
+                    reader,
+                    selection,
+                    market,
+                )
+            ),
         )
         if checkpoint_pair is None:
             raise BacktestError(
@@ -185,10 +203,13 @@ def validate_backtest_selection_coverage(
 ) -> None:
     """Validate indexed bootstrap coverage without scanning all replay events."""
 
+    allow_gaps = selection.gap_policy is BacktestGapPolicy.BLACKOUT
+
     markets = reader.markets_at(
         selection.end_at_ms,
         session_id=selection.session_id,
         market_slugs=selection.market_slugs,
+        allow_gaps=allow_gaps,
     )
     for market in markets:
         if reader.has_complete_baseline_pair(
@@ -203,6 +224,14 @@ def validate_backtest_selection_coverage(
             condition_id=market.condition_id,
             start_at_ms=selection.start_at_ms,
             session_id=selection.session_id,
+            allow_pre_gap_checkpoint=(
+                selection.gap_policy is BacktestGapPolicy.BLACKOUT
+                and selection_starts_in_market_gap(
+                    reader,
+                    selection,
+                    market,
+                )
+            ),
         )
         if checkpoint_pair is None:
             raise BacktestError(
@@ -218,8 +247,9 @@ def replay_start_checkpoint_pair(
     condition_id: str,
     start_at_ms: int,
     session_id: int,
+    allow_pre_gap_checkpoint: bool = False,
 ) -> tuple[BookCheckpoint, BookCheckpoint] | None:
-    """Find a clean pre-start pair or a common recovery pair at the boundary."""
+    """Find a clean pair, optionally retained only as active-gap evidence."""
 
     prime_at_ms = start_at_ms - 1
     if prime_at_ms >= 0:
@@ -228,13 +258,31 @@ def replay_start_checkpoint_pair(
                 condition_id,
                 prime_at_ms,
                 session_id=session_id,
+                allow_gaps=allow_pre_gap_checkpoint,
             )
         except ArchiveCoverageError:
             checkpoints = None
         if checkpoints is not None:
             return checkpoints
+    if allow_pre_gap_checkpoint:
+        return None
     return reader.checkpoint_pair_at(
         condition_id,
         start_at_ms,
         session_id=session_id,
     )
+
+
+def selection_starts_in_market_gap(
+    reader: RecordingReader,
+    selection: BacktestSelection,
+    market: MarketMetadataPayload,
+) -> bool:
+    """Return whether an affecting half-open gap contains the selected start."""
+
+    records = reader.coverage_gaps(
+        start_at_ms=selection.start_at_ms,
+        end_at_ms=selection.start_at_ms,
+        session_id=selection.session_id,
+    )
+    return bool(gaps_affecting_markets(records, (market,)))

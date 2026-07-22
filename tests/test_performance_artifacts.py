@@ -243,6 +243,7 @@ def test_performance_artifacts_stream_exact_rows_and_finalize_summary(
         "order_count": 2,
         "fill_count": 1,
         "rejected_order_count": 1,
+        "coverage_gap_rejected_order_count": 0,
         "resolution_count": 1,
         "event_count": 3,
         "dispatch_count": 3,
@@ -266,6 +267,81 @@ def test_performance_artifacts_stream_exact_rows_and_finalize_summary(
     assert not tuple(results_dir.glob(".summary.json.*"))
     with pytest.raises(PerformanceArtifactStateError, match="finalized"):
         artifacts.record_book(_book("token", "0.3", "0.6"))
+
+
+def test_blackout_gap_provenance_and_effects_are_durable(tmp_path: Path) -> None:
+    artifacts = PerformanceArtifacts(
+        tmp_path / "blackout",
+        provenance=_provenance(),
+        selection=RunSelection(
+            session_id=1,
+            start_ms=1_000,
+            end_ms=2_000,
+            market_slugs=("market",),
+            gap_policy=" blackout ",
+            coverage_gap_ids=(9, 3, 9),
+            coverage_gap_duration_ms=125,
+            coverage_gap_open_count=1,
+        ),
+        initial_cash_usdc=Decimal("100"),
+    )
+    portfolio = PaperPortfolio(Decimal("100"))
+    artifacts.start(1_000, portfolio)
+    artifacts.record_coverage_gap_affected_positions(("token-b", "token-a"))
+    artifacts.record_coverage_gap_affected_positions(("token-a",))
+    artifacts.record_order_result(
+        submitted_at_ms=1_000,
+        order=OrderRequest(
+            token_id="token-a",
+            side=Side.BUY,
+            price=Decimal("0.60"),
+            size=Decimal("1"),
+        ),
+        fill=FillEvent.rejected(
+            order_id="paper-1",
+            token_id="token-a",
+            side=Side.BUY,
+            requested_size=Decimal("1"),
+            received_at_ms=1_000,
+            reject_reason=FillRejectReason.BACKTEST_COVERAGE_GAP,
+            reject_message="recorded coverage gap crossed order latency",
+        ),
+    )
+
+    summary = artifacts.finalize(
+        status=PerformanceRunStatus.COMPLETED,
+        ended_at_ms=2_000,
+        portfolio=portfolio,
+    )
+
+    assert summary["selection"] == {
+        "session_id": 1,
+        "start_ms": 1_000,
+        "end_ms": 2_000,
+        "market_slugs": ["market"],
+        "replay_cutoff_sequence": None,
+        "session_integrity_status": None,
+        "uses_partial_session": False,
+        "gap_policy": "blackout",
+        "coverage_gap_ids": [3, 9],
+        "coverage_gap_count": 2,
+        "coverage_gap_duration_ms": 125,
+        "coverage_gap_open_count": 1,
+        "coverage_gap_affected_position_token_ids": ["token-a", "token-b"],
+        "coverage_gap_affected_position_count": 2,
+    }
+    assert summary["metrics"]["coverage_gap_rejected_order_count"] == 1
+
+
+def test_run_selection_rejects_gap_provenance_without_policy() -> None:
+    with pytest.raises(ValueError, match="require a gap policy"):
+        RunSelection(
+            session_id=1,
+            start_ms=1_000,
+            end_ms=2_000,
+            market_slugs=("market",),
+            coverage_gap_ids=(1,),
+        )
 
 
 @pytest.mark.parametrize(
