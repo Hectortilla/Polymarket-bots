@@ -3,13 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from polybot.framework.events import Side, require_side
 from polybot.framework.events.book_validation import BookValidationIssue
-from polybot.framework.events import Side
+from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
 
-PRICE_FLOOR = Decimal("0")
-PRICE_CEILING = Decimal("1")
-BOOK_LEVEL_VALUE_FLOOR = PRICE_FLOOR
-BOOK_PRICE_CEILING = PRICE_CEILING
+BOOK_LEVEL_SIZE_FLOOR = Decimal("0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,13 +21,16 @@ class BookLevel:
 
     def is_valid_price(self) -> bool:
         try:
-            return self.price.is_finite() and PRICE_FLOOR < self.price <= PRICE_CEILING
+            return (
+                self.price.is_finite()
+                and OUTCOME_PRICE_FLOOR < self.price <= OUTCOME_PRICE_CEILING
+            )
         except (AttributeError, InvalidOperation, TypeError, ValueError):
             return False
 
     def is_valid_size(self, *, allow_zero: bool = False) -> bool:
         try:
-            lower_bound = BOOK_LEVEL_VALUE_FLOOR
+            lower_bound = BOOK_LEVEL_SIZE_FLOOR
             return self.size.is_finite() and (
                 self.size >= lower_bound if allow_zero else self.size > lower_bound
             )
@@ -62,7 +63,13 @@ class BookSnapshot:
                 isinstance(level, BookLevel) and level.is_valid()
                 for level in (*self.bids, *self.asks)
             )
+            and self._has_unique_prices(self.bids)
+            and self._has_unique_prices(self.asks)
         )
+
+    @staticmethod
+    def _has_unique_prices(levels: tuple[BookLevel, ...]) -> bool:
+        return len({level.price for level in levels}) == len(levels)
 
     def is_crossed(self) -> bool:
         if not self.bids or not self.asks:
@@ -72,6 +79,7 @@ class BookSnapshot:
         )
 
     def executable_levels(self, side: Side) -> tuple[BookLevel, ...]:
+        require_side(side)
         if side is Side.BUY:
             return tuple(sorted(self.asks, key=lambda level: level.price))
         return tuple(sorted(self.bids, key=lambda level: level.price, reverse=True))

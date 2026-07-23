@@ -6,7 +6,7 @@ class SourceEventDeduper:
     def __init__(self) -> None:
         self._seen: set[str] = set()
 
-    def remember(self, source_id: str) -> bool:
+    def claim_if_new(self, source_id: str) -> bool:
         if not source_id:
             return False
         if source_id in self._seen:

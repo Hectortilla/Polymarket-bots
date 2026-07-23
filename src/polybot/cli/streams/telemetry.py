@@ -8,7 +8,7 @@ class StreamTelemetry:
     queue_depth: int = 0
     peak_queue_depth: int = 0
     book_received_count: int = 0
-    book_dropped_count: int = 0
+    book_coalesced_count: int = 0
 
     def enqueued(self) -> None:
         self.queue_depth += 1
@@ -20,14 +20,14 @@ class StreamTelemetry:
     def book_received(self) -> None:
         self.book_received_count += 1
 
-    def book_dropped(self) -> None:
-        self.book_dropped_count += 1
+    def book_coalesced(self) -> None:
+        self.book_coalesced_count += 1
 
     def reset_queue_depth(self) -> None:
         self.queue_depth = 0
 
     @property
-    def book_drop_ratio(self) -> float:
+    def book_coalescing_ratio(self) -> float:
         if self.book_received_count == 0:
             return 0.0
-        return self.book_dropped_count / self.book_received_count
+        return self.book_coalesced_count / self.book_received_count

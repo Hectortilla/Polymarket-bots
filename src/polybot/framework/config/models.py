@@ -7,7 +7,9 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, TypedDict, Unpack
 
-from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.framework.streams import StreamRule
+from polybot.framework.wallets import validate_wallet_address
+
 from .constants import (
     DEFAULT_DATA_TRADES_BUDGET_PER_10S,
     DEFAULT_BOT_MODE as DEFAULT_BOT_MODE_NAME,
@@ -18,7 +20,8 @@ from .constants import (
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
-from .environment import config_values_from_env
+from .environment import config_values_from_env, parse_bool
+from .stream_rules import parse_stream_rules_json
 
 DECIMAL_CONFIG_FIELDS = frozenset(
     {"max_order_size", "max_slippage_pct", "paper_portfolio_usdc"}
@@ -41,8 +44,7 @@ class ConfigOverrideKind(StrEnum):
     TEXT = "text"
     MODE = "mode"
     STREAM_RULES = "stream_rules"
-    MARKET_SLUGS = "market_slugs"
-    WALLET_ADDRESSES = "wallet_addresses"
+    WALLET_ADDRESS = "wallet_address"
     INTEGER = "integer"
     DECIMAL = "decimal"
     BOOLEAN = "boolean"
@@ -77,8 +79,6 @@ class BotConfigOverrides(TypedDict, total=False):
     name: str
     mode: BotMode
     stream_rules: tuple[StreamRule, ...]
-    market_slugs: tuple[str, ...]
-    wallet_addresses: tuple[str, ...]
     data_trades_budget_per_10s: int
     max_order_size: Decimal
     max_slippage_pct: Decimal
@@ -104,14 +104,6 @@ class BotConfig:
     stream_rules: tuple[StreamRule, ...] = _config_field(
         (),
         override_kind=ConfigOverrideKind.STREAM_RULES,
-    )
-    market_slugs: tuple[str, ...] = _config_field(
-        (),
-        override_kind=ConfigOverrideKind.MARKET_SLUGS,
-    )
-    wallet_addresses: tuple[str, ...] = _config_field(
-        (),
-        override_kind=ConfigOverrideKind.WALLET_ADDRESSES,
     )
     data_trades_budget_per_10s: int = _config_field(
         DEFAULT_DATA_TRADES_BUDGET_PER_10S,
@@ -168,22 +160,19 @@ class BotConfig:
     )
     funder_address: str | None = _config_field(
         None,
-        override_kind=ConfigOverrideKind.TEXT,
+        override_kind=ConfigOverrideKind.WALLET_ADDRESS,
         sensitive=True,
         identity=False,
     )
 
     def __post_init__(self) -> None:
-        if not self.stream_rules and (self.market_slugs or self.wallet_addresses):
-            relation = (
-                StreamRelation.FILTERED
-                if self.market_slugs and self.wallet_addresses
-                else StreamRelation.INDEPENDENT
-            )
+        if self.funder_address is not None:
+            if not isinstance(self.funder_address, str):
+                raise ValueError("funder_address must be a wallet address")
             object.__setattr__(
                 self,
-                "stream_rules",
-                (StreamRule(relation, self.market_slugs, self.wallet_addresses),),
+                "funder_address",
+                validate_wallet_address(self.funder_address),
             )
         for field_name in DECIMAL_CONFIG_FIELDS:
             if not getattr(self, field_name).is_finite():
@@ -225,68 +214,60 @@ class BotConfig:
 
     def identity_values(self) -> dict[str, object]:
         return {
-            field_info.name: _configuration_json_value(getattr(self, field_info.name))
+            field_info.name: self._configuration_json_value(
+                getattr(self, field_info.name)
+            )
             for field_info in fields(self)
             if field_info.metadata[CONFIG_IDENTITY]
         }
+
+    @classmethod
+    def sensitive_field_names(cls) -> frozenset[str]:
+        return frozenset(
+            field_info.name
+            for field_info in fields(cls)
+            if field_info.metadata[CONFIG_SENSITIVE]
+        )
+
+    @classmethod
+    def parse_override_value(cls, key: str, raw: str) -> object:
+        field_by_name = {field_info.name: field_info for field_info in fields(cls)}
+        field_info = field_by_name.get(key)
+        kind = None if field_info is None else field_info.metadata[CONFIG_OVERRIDE_KIND]
+        if kind is None:
+            raise ValueError(f"invalid config override: {key}={raw}")
+        if kind is ConfigOverrideKind.MODE:
+            return BotMode(raw)
+        if kind is ConfigOverrideKind.STREAM_RULES:
+            return parse_stream_rules_json(raw)
+        if kind is ConfigOverrideKind.WALLET_ADDRESS:
+            return validate_wallet_address(raw)
+        if kind is ConfigOverrideKind.INTEGER:
+            return int(raw)
+        if kind is ConfigOverrideKind.DECIMAL:
+            return Decimal(raw)
+        if kind is ConfigOverrideKind.BOOLEAN:
+            return parse_bool(raw, key=key)
+        return raw
+
+    @staticmethod
+    def _configuration_json_value(value: object) -> object:
+        if isinstance(value, StrEnum):
+            return value.value
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, StreamRule):
+            return {
+                "relation": value.relation.value,
+                "market_slugs": list(value.market_slugs),
+                "wallet_addresses": list(value.wallet_addresses),
+            }
+        if isinstance(value, tuple):
+            return [BotConfig._configuration_json_value(item) for item in value]
+        return value
 
     @classmethod
     def from_env(cls, name: str) -> BotConfig:
         values = config_values_from_env()
         values["mode"] = BotMode(values["mode"])
         return cls(name=name, **values)
-
-
-def sensitive_config_field_names() -> frozenset[str]:
-    return frozenset(
-        field_info.name
-        for field_info in fields(BotConfig)
-        if field_info.metadata[CONFIG_SENSITIVE]
-    )
-
-
-def parse_config_override_value(key: str, raw: str) -> object:
-    from polybot.framework.config.environment import parse_bool
-    from polybot.framework.config.stream_rules import parse_stream_rules_json
-    from polybot.framework.wallets import validate_wallet_address
-
-    field_by_name = {field_info.name: field_info for field_info in fields(BotConfig)}
-    field_info = field_by_name.get(key)
-    kind = None if field_info is None else field_info.metadata[CONFIG_OVERRIDE_KIND]
-    if kind is None:
-        raise ValueError(f"invalid config override: {key}={raw}")
-    if kind is ConfigOverrideKind.MODE:
-        return BotMode(raw)
-    if kind is ConfigOverrideKind.STREAM_RULES:
-        return parse_stream_rules_json(raw)
-    if kind is ConfigOverrideKind.MARKET_SLUGS:
-        return tuple(part.strip() for part in raw.split(",") if part.strip())
-    if kind is ConfigOverrideKind.WALLET_ADDRESSES:
-        return tuple(
-            validate_wallet_address(part)
-            for part in raw.split(",")
-            if part.strip()
-        )
-    if kind is ConfigOverrideKind.INTEGER:
-        return int(raw)
-    if kind is ConfigOverrideKind.DECIMAL:
-        return Decimal(raw)
-    if kind is ConfigOverrideKind.BOOLEAN:
-        return parse_bool(raw, key=key)
-    return raw
-
-
-def _configuration_json_value(value: object) -> object:
-    if isinstance(value, StrEnum):
-        return value.value
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, StreamRule):
-        return {
-            "relation": value.relation.value,
-            "market_slugs": list(value.market_slugs),
-            "wallet_addresses": list(value.wallet_addresses),
-        }
-    if isinstance(value, tuple):
-        return [_configuration_json_value(item) for item in value]
-    return value

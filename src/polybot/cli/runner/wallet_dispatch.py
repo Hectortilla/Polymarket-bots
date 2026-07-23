@@ -4,10 +4,11 @@ from polybot.async_io import run_blocking
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.clob import ClobClient
+from polybot.polymarket.errors import MarketDataError
 from polybot.polymarket.gamma import GammaClient
 
 from ..followed_wallets.tracker import FollowedWalletTracker
-from ..market_identity import validate_wallet_trade_market_identity
+from ..market_identity import MarketIdentity
 from ..streams.contracts import StreamEvent
 from ..tracked_markets import MarketInterest, TrackedMarketRegistry
 
@@ -30,13 +31,15 @@ async def dispatch_wallet_trade(
     if market is None:
         market = await _find_market(gamma, event.market_slug)
     try:
-        validate_wallet_trade_market_identity(
-            event,
-            market,
-            "wallet trade market identity is incomplete or mismatched",
-        )
+        if market is None or not MarketIdentity.from_wallet_trade(event).matches(market):
+            raise RuntimeError("wallet trade market identity is incomplete or mismatched")
     except RuntimeError:
         return DispatchOutcome.skipped(DispatchSkipReason.MARKET_METADATA_MISSING)
+    if registry is not None and market is not None:
+        try:
+            registry.ensure_compatible(market)
+        except MarketDataError:
+            return DispatchOutcome.skipped(DispatchSkipReason.MARKET_METADATA_MISSING)
     if not clob.has_market_slug(event.market_slug):
         try:
             clob.add_market(market)

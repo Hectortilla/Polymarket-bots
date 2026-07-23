@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
-
 
 def market_bucket_slug(
     prefix: str,
@@ -24,33 +22,30 @@ def _market_bucket_start(now_ms: int, bucket_seconds: int, bucket_offset: int) -
     return (now_ms // 1000 // bucket_seconds + bucket_offset) * bucket_seconds
 
 
-class MarketSubscriptionRole(StrEnum):
-    PRIMARY = "primary"
-
-
 @dataclass(frozen=True, slots=True)
-class MarketSubscription:
-    slug: str
-    role: MarketSubscriptionRole = MarketSubscriptionRole.PRIMARY
-    activate_at_ms: int | None = None
-    expire_at_ms: int | None = None
+class FixedBucketTiming:
+    """Elapsed and remaining time for one fixed-width Unix-time bucket."""
+
+    elapsed_ms: int
+    remaining_ms: int
+    bucket_end_ms: int
 
     @classmethod
-    def from_slugs(cls, slugs: tuple[str, ...]) -> tuple[MarketSubscription, ...]:
-        return tuple(cls(slug=slug) for slug in slugs)
+    def at(cls, now_ms: int, bucket_seconds: int) -> FixedBucketTiming:
+        if now_ms < 0:
+            raise ValueError("now_ms must be nonnegative")
+        if bucket_seconds <= 0:
+            raise ValueError("bucket_seconds must be positive")
+        bucket_ms = bucket_seconds * 1_000
+        elapsed_ms = now_ms % bucket_ms
+        return cls(
+            elapsed_ms=elapsed_ms,
+            remaining_ms=bucket_ms - elapsed_ms,
+            bucket_end_ms=now_ms - elapsed_ms + bucket_ms,
+        )
 
-
-@dataclass(frozen=True, slots=True)
-class MarketPlan:
-    current: tuple[MarketSubscription, ...]
-    next: tuple[MarketSubscription, ...] = ()
-
-    @property
-    def active_slugs(self) -> frozenset[str]:
-        return frozenset(market.slug for market in self.current)
-
-    def accepts_slug(self, market_slug: str | None) -> bool:
-        active_slugs = self.active_slugs
-        if not active_slugs:
-            return True
-        return market_slug is not None and market_slug in active_slugs
+    def allows_entry(self, *, delay_ms: int, cutoff_ms: int) -> bool:
+        """Whether a strategy's entry window remains open in this bucket."""
+        if delay_ms < 0 or cutoff_ms < 0:
+            raise ValueError("entry-window bounds must be nonnegative")
+        return self.elapsed_ms >= delay_ms and self.remaining_ms > cutoff_ms

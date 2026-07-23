@@ -20,9 +20,12 @@ from .persistence.schema import (
     FOLLOW_EPOCH_HISTORY_FIELD,
     FOLLOW_MOVEMENTS_FIELD,
     FOLLOW_SETTLEMENTS_FIELD,
+    FOLLOW_SOURCE_KEY_FIELD,
     FOLLOW_SOURCE_IDS_FIELD,
+    FOLLOW_TOKEN_ID_FIELD,
     FOLLOWED_AT_MS_FIELD,
 )
+from .persistence.validation import validate_state_payload
 from .position_contracts import (
     FollowBaseline,
     FollowMovement,
@@ -42,9 +45,54 @@ class WalletFollowState:
     baselines: dict[str, FollowBaseline] = field(default_factory=dict)
     movements: dict[str, FollowMovement] = field(default_factory=dict)
     source_ids: set[str] = field(default_factory=set)
-    checkpoint: tuple[int, str] | None = None
+    latest_processed_trade_cursor: tuple[int, str] | None = None
     settlements: list[FollowSettlement] = field(default_factory=list)
     epoch_history: list[WalletFollowState] = field(default_factory=list)
+
+    @classmethod
+    def from_payload(cls, wallet: str, payload: dict[str, Any]) -> WalletFollowState:
+        """Restore one validated persisted state, including its archived epochs."""
+        validated = validate_state_payload(
+            wallet,
+            payload,
+            allow_missing_epoch_history=True,
+        )
+        baselines = {
+            baseline_payload[FOLLOW_TOKEN_ID_FIELD]: FollowBaseline.from_payload(
+                baseline_payload
+            )
+            for baseline_payload in validated[FOLLOW_BASELINES_FIELD]
+        }
+        movements = {
+            movement_payload[FOLLOW_SOURCE_KEY_FIELD]: FollowMovement.from_payload(
+                movement_payload
+            )
+            for movement_payload in validated[FOLLOW_MOVEMENTS_FIELD]
+        }
+        serialized_cursor = validated[FOLLOW_CHECKPOINT_FIELD]
+        return cls(
+            wallet=wallet,
+            epoch=validated[FOLLOW_EPOCH_FIELD],
+            active=validated[FOLLOW_ACTIVE_FIELD],
+            followed_at_ms=validated[FOLLOWED_AT_MS_FIELD],
+            bootstrapped=validated[FOLLOW_BOOTSTRAPPED_FIELD],
+            baselines=baselines,
+            movements=movements,
+            source_ids=set(validated[FOLLOW_SOURCE_IDS_FIELD]),
+            latest_processed_trade_cursor=(
+                None
+                if serialized_cursor is None
+                else (serialized_cursor[0], serialized_cursor[1])
+            ),
+            settlements=[
+                FollowSettlement.from_payload(settlement)
+                for settlement in validated[FOLLOW_SETTLEMENTS_FIELD]
+            ],
+            epoch_history=[
+                cls.from_payload(wallet, historical)
+                for historical in validated[FOLLOW_EPOCH_HISTORY_FIELD]
+            ],
+        )
 
     def has_settlement(self, condition_id: str) -> bool:
         return any(settlement.condition_id == condition_id for settlement in self.settlements)
@@ -81,8 +129,8 @@ class WalletFollowState:
             FOLLOW_SOURCE_IDS_FIELD: sorted(self.source_ids),
             FOLLOW_CHECKPOINT_FIELD: (
                 None
-                if self.checkpoint is None
-                else [self.checkpoint[0], self.checkpoint[1]]
+                if self.latest_processed_trade_cursor is None
+                else [self.latest_processed_trade_cursor[0], self.latest_processed_trade_cursor[1]]
             ),
             FOLLOW_SETTLEMENTS_FIELD: [
                 settlement.to_payload() for settlement in self.settlements
@@ -107,7 +155,7 @@ class WalletFollowState:
             baselines=dict(self.baselines),
             movements=dict(self.movements),
             source_ids=set(self.source_ids),
-            checkpoint=self.checkpoint,
+            latest_processed_trade_cursor=self.latest_processed_trade_cursor,
             settlements=list(self.settlements),
         )
 
@@ -198,7 +246,7 @@ class WalletFollowState:
                 )
             )
         return SettlementCalculation(
-            settled=tuple(settled),
+            settled_positions=tuple(settled),
             baselines=market_baselines,
             movements=market_movements,
             gross_realized_pnl_usdc=gross_realized,
@@ -232,4 +280,4 @@ class WalletFollowState:
                 resolved_at_ms=event.resolved_at_ms,
             ),
         )
-        return calculation.settled, True
+        return calculation.settled_positions, True

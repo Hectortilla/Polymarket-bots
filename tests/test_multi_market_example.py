@@ -5,7 +5,7 @@ from decimal import Decimal
 from polybot.examples.example_multi_market import CrossMarketRule, ExampleMultiMarketBot
 from polybot.framework.context import BotContext
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
+from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.markets import Market, MarketOutcome
 
 
@@ -56,8 +56,8 @@ def test_multi_market_example_declares_all_signal_and_target_markets(
             )
         )
 
-        markets = await bot.current_markets(dummy_context, now_ms=0)
-        return tuple(market.slug for market in markets)
+        rules = await bot.current_stream_rules(dummy_context, now_ms=0)
+        return rules[0].market_slugs
 
     assert asyncio.run(run()) == ("btc-up", "eth-down")
 

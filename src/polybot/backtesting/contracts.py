@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from polybot.recording.contracts import SessionIntegrityStatus
+from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
 class BacktestFailureReason(StrEnum):
@@ -22,6 +22,11 @@ class BacktestFailureReason(StrEnum):
 class BacktestGapPolicy(StrEnum):
     STRICT = "strict"
     BLACKOUT = "blackout"
+
+    @property
+    def allows_gaps(self) -> bool:
+        """Whether replay may retain and explicitly blackout coverage gaps."""
+        return self is BacktestGapPolicy.BLACKOUT
 
 
 class BacktestError(RuntimeError):

@@ -9,7 +9,7 @@ from scripts.polymarket_wallet_api.constants import (
     MAX_ACTIVITY_OFFSET,
 )
 from scripts.wallet_payload_contracts import POSITION_SIZE_FIELD
-from polybot.framework.events.resolutions import YES_OUTCOME
+from polybot.framework.outcomes import YES_OUTCOME
 
 
 class FakePaginator:

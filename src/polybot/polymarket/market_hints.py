@@ -8,4 +8,4 @@ class MarketTradeHint:
     condition_id: str
     token_id: str
     market_slug: str | None
-    occurred_at_ms: int
+    observed_at_ms: int

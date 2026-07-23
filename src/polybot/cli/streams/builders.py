@@ -28,12 +28,7 @@ def build_streams(
         token_id for market in markets for token_id in market.token_ids
     }
     if token_ids:
-        stream = (
-            market_stream.events(token_ids)
-            if hasattr(market_stream, "events")
-            else market_stream.books(token_ids)
-        )
-        streams.append((StreamKind.BOOK, stream))
+        streams.append((StreamKind.BOOK, market_stream.events(token_ids)))
     if wallet_enabled:
         streams.append((StreamKind.WALLET, wallet_stream.trades()))
     if resolution_stream is not None:

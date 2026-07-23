@@ -7,7 +7,7 @@ from typing import Any
 
 from dotenv import load_dotenv as _load_dotenv
 
-from polybot.framework.config.models import parse_config_override_value
+from polybot.framework.config.models import BotConfig
 
 
 DEFAULT_DOTENV_PATH = Path(".env")
@@ -15,7 +15,7 @@ DEFAULT_DOTENV_PATH = Path(".env")
 
 def parse_config_override(key: str, raw: str) -> tuple[str, object]:
     """Parse one CLI override according to the BotConfig contract."""
-    return key, parse_config_override_value(key, raw)
+    return key, BotConfig.parse_override_value(key, raw)
 
 
 def load_dotenv(path: str | Path = DEFAULT_DOTENV_PATH) -> None:

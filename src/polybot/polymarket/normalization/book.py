@@ -66,6 +66,11 @@ def normalize_book(
         condition_id=normalized_condition_id,
         outcome=normalized_outcome,
     )
+    if not snapshot.has_valid_levels():
+        raise MarketDataError(
+            MarketDataIssue.INVALID_BOOK_LEVEL,
+            f"book for token {normalized_token_id} contains duplicate price levels",
+        )
     if snapshot.is_crossed():
         raise MarketDataError(
             MarketDataIssue.CROSSED_BOOK,

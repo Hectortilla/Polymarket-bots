@@ -1,0 +1,1 @@
+"""Public Polymarket adapter assemblies."""

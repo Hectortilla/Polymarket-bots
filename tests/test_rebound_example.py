@@ -5,10 +5,9 @@ from decimal import Decimal
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
+from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME, resolve_outcome_token
 from polybot.examples.example_rebound import REBOUND_ORDER_REASON, ExampleReboundBot
 from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.framework.outcomes import resolve_outcome_token
 
 
 def test_rebound_bot_buys_after_decline_then_rise(dummy_context: BotContext) -> None:

@@ -1,13 +1,11 @@
-"""Paper-latency sampling kept separate from order and portfolio mutation."""
-
-import random
+"""Deterministic paper-latency arithmetic."""
 
 
-def sample_latency_ms(
+def latency_ms(
     base_latency_ms: int,
     jitter_ms: int,
-    rng: random.Random,
+    jitter_offset_ms: int,
 ) -> int:
-    if jitter_ms <= 0:
-        return base_latency_ms
-    return base_latency_ms + rng.randrange(jitter_ms + 1)
+    if jitter_offset_ms < 0 or jitter_offset_ms > jitter_ms:
+        raise ValueError("paper latency jitter offset is outside the configured range")
+    return base_latency_ms + jitter_offset_ms

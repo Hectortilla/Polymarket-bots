@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from polybot.recording.contracts import CoverageGapRecord, MarketMetadataPayload
+from polybot.recording.contracts.records import CoverageGapRecord
+from polybot.recording.contracts.market import MarketMetadataPayload
 from polybot.recording.coverage import CoverageScope
 
 
@@ -46,17 +47,13 @@ class ReplayCoverage:
         ):
             raise ValueError("replay coverage records must be coverage gaps")
 
+        self._start_at_ms = start_at_ms
+        self._end_at_ms = end_at_ms
         selected = tuple(
             record
             for record in records
-            if _overlaps_selection(
-                record,
-                start_at_ms=start_at_ms,
-                end_at_ms=end_at_ms,
-            )
+            if self._overlaps_selection(record)
         )
-        self._start_at_ms = start_at_ms
-        self._end_at_ms = end_at_ms
         self._records = tuple(
             sorted(
                 selected,
@@ -103,11 +100,7 @@ class ReplayCoverage:
             interval
             for record in self._records
             if (
-                interval := _clipped_interval(
-                    record,
-                    start_at_ms=self._start_at_ms,
-                    end_at_ms=self._end_at_ms,
-                )
+                interval := self._clipped_interval(record)
             )
             is not None
         )
@@ -194,41 +187,32 @@ class ReplayCoverage:
             self._next_end_index += 1
         return self._end_records[start : self._next_end_index]
 
+    def _overlaps_selection(self, record: CoverageGapRecord) -> bool:
+        gap = record.gap
+        return (
+            gap.ended_at_ms != gap.started_at_ms
+            and gap.started_at_ms <= self._end_at_ms
+            and (gap.ended_at_ms is None or gap.ended_at_ms > self._start_at_ms)
+        )
 
-def _overlaps_selection(
-    record: CoverageGapRecord,
-    *,
-    start_at_ms: int,
-    end_at_ms: int,
-) -> bool:
-    gap = record.gap
-    return (
-        gap.ended_at_ms != gap.started_at_ms
-        and gap.started_at_ms <= end_at_ms
-        and (gap.ended_at_ms is None or gap.ended_at_ms > start_at_ms)
-    )
-
-
-def _clipped_interval(
-    record: CoverageGapRecord,
-    *,
-    start_at_ms: int,
-    end_at_ms: int,
-) -> tuple[int, int] | None:
-    gap = record.gap
-    clipped_start = max(start_at_ms, gap.started_at_ms)
-    selection_end_exclusive = end_at_ms + 1
-    clipped_end = min(
-        selection_end_exclusive,
-        (
-            selection_end_exclusive
-            if gap.ended_at_ms is None
-            else gap.ended_at_ms
-        ),
-    )
-    if clipped_end <= clipped_start:
-        return None
-    return clipped_start, clipped_end
+    def _clipped_interval(
+        self,
+        record: CoverageGapRecord,
+    ) -> tuple[int, int] | None:
+        gap = record.gap
+        clipped_start = max(self._start_at_ms, gap.started_at_ms)
+        selection_end_exclusive = self._end_at_ms + 1
+        clipped_end = min(
+            selection_end_exclusive,
+            (
+                selection_end_exclusive
+                if gap.ended_at_ms is None
+                else gap.ended_at_ms
+            ),
+        )
+        if clipped_end <= clipped_start:
+            return None
+        return clipped_start, clipped_end
 
 
 def _validate_timestamp(value: int, label: str) -> None:

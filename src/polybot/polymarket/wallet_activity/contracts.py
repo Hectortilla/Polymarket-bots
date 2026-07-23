@@ -87,3 +87,12 @@ class WalletTradeSelector:
         if len(normalized_conditions) != len(set(normalized_conditions)):
             raise ValueError("wallet trade selector markets contain duplicates")
         object.__setattr__(self, "condition_ids", normalized_conditions)
+
+    def accepts(self, trade: WalletTradeEvent) -> bool:
+        return (
+            (self.wallet is None or trade.wallet == self.wallet)
+            and (
+                not self.condition_ids
+                or trade.condition_id in self.condition_ids
+            )
+        )

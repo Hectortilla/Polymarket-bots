@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
-from typing import Protocol, cast
+from typing import Protocol
 
 from polybot.framework.events.books import BookSnapshot
 
@@ -19,6 +19,11 @@ class ValuationStatus(StrEnum):
     STALE = "stale"
     UNAVAILABLE = "unavailable"
 
+    @property
+    def is_complete(self) -> bool:
+        """Whether the valuation contains no stale or unavailable samples."""
+        return self is ValuationStatus.FRESH
+
 
 class PositionLike(Protocol):
     token_id: str
@@ -29,6 +34,7 @@ class PositionLike(Protocol):
 class PortfolioLike(Protocol):
     cash_usdc: Decimal
     cumulative_fees_usdc: Decimal
+    positions: Mapping[str, PositionLike] | tuple[PositionLike, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,16 +63,6 @@ class PortfolioValuation:
     exposure_usdc: Decimal | None
     positions: tuple[PositionValuation, ...]
     status: ValuationStatus
-
-    @property
-    def equity(self) -> Decimal | None:
-        """Compatibility alias used by the terminal dashboard."""
-        return self.equity_usdc
-
-    @property
-    def pnl(self) -> Decimal | None:
-        """Compatibility alias used by the terminal dashboard."""
-        return self.pnl_usdc
 
     @property
     def is_stale(self) -> bool:
@@ -162,17 +158,12 @@ def value_portfolio(
 
 
 def _portfolio_positions(portfolio: PortfolioLike) -> tuple[PositionLike, ...]:
-    raw_positions = getattr(portfolio, "positions", ())
+    raw_positions = portfolio.positions
     if isinstance(raw_positions, Mapping):
-        values: Iterable[object] = raw_positions.values()
+        values: Iterable[PositionLike] = raw_positions.values()
     else:
-        values = cast(Iterable[object], raw_positions)
-    return tuple(
-        sorted(
-            cast(Iterable[PositionLike], values),
-            key=lambda position: position.token_id,
-        )
-    )
+        values = raw_positions
+    return tuple(sorted(values, key=lambda position: position.token_id))
 
 
 def _value_position(
@@ -233,8 +224,7 @@ def _current_book(
 ) -> BookSnapshot | None:
     if book is None or max_book_age_ms is None:
         return book
-    if now_ms is None:
-        raise ValueError("now_ms is required when book freshness is enforced")
+    assert now_ms is not None  # Validated by value_portfolio at the public boundary.
     return book if book.is_fresh(now_ms, max_book_age_ms) else None
 
 
@@ -253,6 +243,20 @@ def aggregate_valuation_status(
     if ValuationStatus.STALE in observed:
         return ValuationStatus.STALE
     return ValuationStatus.FRESH
+
+
+def history_valuation_status(
+    *,
+    stale_sample_count: int,
+    unavailable_sample_count: int,
+) -> ValuationStatus:
+    """Derive an equity-history status from its persisted sample counters."""
+    statuses = []
+    if unavailable_sample_count:
+        statuses.append(ValuationStatus.UNAVAILABLE)
+    if stale_sample_count:
+        statuses.append(ValuationStatus.STALE)
+    return aggregate_valuation_status(statuses)
 
 
 def _validate_valuation_options(

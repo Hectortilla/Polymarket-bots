@@ -20,7 +20,7 @@ from polybot.cli.charting import (
     split_stale_samples as _split_stale_samples,
 )
 from polybot.framework.events import Side
-from polybot.framework.events.books import PRICE_CEILING, PRICE_FLOOR
+from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
 
 from .layout import (
     DASHBOARD_NARROW_WIDTH,
@@ -29,7 +29,8 @@ from .layout import (
     primary_chart_available_height,
 )
 from .palette import SERIES_PALETTE, side_chart_color
-from .state import DashboardState, DashboardView
+from .state import DashboardState
+from .view_state import DashboardView
 from .status import fixed_ms as _fixed_ms
 from .status import money as _money
 from .status import optional_money as _optional_money
@@ -46,8 +47,8 @@ from .wallet_timeline import (
     wallet_lane_capacity,
 )
 
-PRICE_CHART_MIN = float(PRICE_FLOOR)
-PRICE_CHART_MAX = float(PRICE_CEILING)
+PRICE_CHART_MIN = float(OUTCOME_PRICE_FLOOR)
+PRICE_CHART_MAX = float(OUTCOME_PRICE_CEILING)
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
 DIMMED_SERIES_COLORS = tuple(f"\033[2m{color}" for color in SERIES_COLORS)
 DIMMED_WALLET_VALUE_COLOR = DIMMED_VALUE_COLOR

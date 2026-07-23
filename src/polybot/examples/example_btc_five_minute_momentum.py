@@ -9,9 +9,9 @@ from polybot.examples.btc_five_minute_strategy import (
     MOMENTUM_ENTRY_REASON,
     UP_OUTCOME,
     BookQuote,
-    BucketTiming,
     MomentumSettings,
     OpenPosition,
+    ProbabilitySampleTransition,
     ProbabilityTrend,
     TrendMetrics,
 )
@@ -21,7 +21,7 @@ from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.framework.markets import market_bucket_slug
+from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
 
@@ -125,34 +125,19 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         down_book = self._books.get(self._down_token_id)
         if up_book is None or down_book is None:
             return False
-        sample_at_ms = min(up_book.received_at_ms, down_book.received_at_ms)
-        if self._last_sample_at_ms is not None and (
-            sample_at_ms - self._last_sample_at_ms < self.settings.sample_interval_ms
-        ):
-            return False
-        if (
-            abs(up_book.received_at_ms - down_book.received_at_ms)
-            > self.settings.paired_book_max_skew_ms
-        ):
-            return False
-        if not all(
-            book.is_fresh(now_ms, self.settings.paired_book_max_age_ms)
-            for book in (up_book, down_book)
-        ):
-            return False
-        up_quote = BookQuote.from_book(up_book)
-        down_quote = BookQuote.from_book(down_book)
-        if up_quote is None or down_quote is None:
-            return False
-        total_microprice = up_quote.microprice + down_quote.microprice
-        if total_microprice <= 0:
-            return False
-        self._last_sample_at_ms = sample_at_ms
-        observation = self._trend.after_observation(
-            up_quote.microprice / total_microprice
+        transition = ProbabilitySampleTransition.from_book_pair(
+            settings=self.settings,
+            trend=self._trend,
+            prior_sample_at_ms=self._last_sample_at_ms,
+            now_ms=now_ms,
+            up_book=up_book,
+            down_book=down_book,
         )
-        self._trend = observation.trend
-        self._metrics = observation.metrics
+        if transition is None:
+            return False
+        self._last_sample_at_ms = transition.sampled_at_ms
+        self._trend = transition.trend
+        self._metrics = transition.metrics
         return True
 
     async def _maybe_enter(self, ctx: BotContext, now_ms: int) -> None:
@@ -162,8 +147,11 @@ class BtcFiveMinuteMomentumBot(BaseBot):
             or now_ms < self._cooldown_until_ms
         ):
             return
-        timing = BucketTiming.at(self.settings, now_ms)
-        if not timing.allows_entry(self.settings):
+        timing = FixedBucketTiming.at(now_ms, self.settings.bucket_seconds)
+        if not timing.allows_entry(
+            delay_ms=self.settings.entry_delay_ms,
+            cutoff_ms=self.settings.entry_cutoff_ms,
+        ):
             return
         outcome = self.settings.direction(self._metrics)
         token_id = self._up_token_id if outcome == UP_OUTCOME else self._down_token_id

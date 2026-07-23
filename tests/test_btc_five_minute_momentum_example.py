@@ -9,6 +9,7 @@ from polybot.examples.btc_five_minute_strategy import (
     STOP_EXIT_REASON,
     TARGET_EXIT_REASON,
     MomentumSettings,
+    ProbabilitySampleTransition,
     ProbabilityTrend,
 )
 from polybot.examples.example_btc_five_minute_momentum import (
@@ -49,6 +50,30 @@ def test_probability_trend_rejects_directionless_whipsaw() -> None:
 
     assert metrics is not None
     assert trend.settings.direction(metrics) is None
+
+
+def test_probability_sample_transition_rejects_unsynchronized_books() -> None:
+    settings = _test_settings()
+    transition = ProbabilitySampleTransition.from_book_pair(
+        settings=settings,
+        trend=ProbabilityTrend(settings),
+        prior_sample_at_ms=None,
+        now_ms=1_001,
+        up_book=_book(
+            UP_TOKEN_ID,
+            midpoint=Decimal("0.55"),
+            timestamp_ms=1_000,
+            positive_imbalance=True,
+        ),
+        down_book=_book(
+            DOWN_TOKEN_ID,
+            midpoint=Decimal("0.45"),
+            timestamp_ms=1_001,
+            positive_imbalance=False,
+        ),
+    )
+
+    assert transition is None
 
 
 def test_bot_buys_up_after_confirmed_probability_momentum(

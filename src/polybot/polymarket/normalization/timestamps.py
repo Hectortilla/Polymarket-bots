@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
@@ -15,9 +15,20 @@ def datetime_to_epoch_ms(value: object) -> int | None:
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
             "market source timestamp is malformed",
         )
-    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     try:
-        timestamp_ms = int(normalized.timestamp() * 1_000)
+        offset = value.utcoffset()
+    except (OverflowError, OSError, ValueError) as error:
+        raise MarketDataError(
+            MarketDataIssue.INVALID_MARKET_PARAMETERS,
+            "market source timestamp is outside the supported range",
+        ) from error
+    if value.tzinfo is None or offset is None:
+        raise MarketDataError(
+            MarketDataIssue.INVALID_MARKET_PARAMETERS,
+            "market source timestamp must include a UTC offset",
+        )
+    try:
+        timestamp_ms = int(value.timestamp() * 1_000)
     except (OverflowError, OSError, ValueError) as error:
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,

@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .contracts import CoverageGapPayload, MarketIdentity, MarketMetadataPayload
+from .contracts.gaps import CoverageGapPayload
+from .contracts.market import (
+    MarketIdentity,
+    MarketMetadataPayload,
+)
 
 
 @dataclass(frozen=True, slots=True)

@@ -190,7 +190,7 @@ times are not guessed into a new exchange order. A documented hash is preserved
 for diagnostics but is never promoted to a sequence number.
 
 Slice 9A uses the pinned unified SDK's Gamma reads and the package-owned
-`polybot.polymarket.recording_feed.MarketRecordingFeed`, which keeps
+`polybot.polymarket.recording_feed.feed.MarketRecordingFeed`, which keeps
 `AsyncPublicClient.subscribe(MarketSpec(...))` internal. A per-condition
 `MarketCapture` emits package-owned baseline, delta, public-trade, tick-size,
 and resolution values; `BookDepthProjector` rebaselines on full books and
@@ -445,4 +445,4 @@ layer should then resolve the slug as soon as the market exists. Missing future
 markets are normal for ephemeral markets and should be retried without blocking
 the current market's hot path. `GammaClient.wait_for_slug()` provides that
 cancel-safe async retry primitive; stream-plan orchestration schedules it in a
-separate task when consuming `MarketPlan.next`.
+separate task when consuming `StreamPlan.next`.

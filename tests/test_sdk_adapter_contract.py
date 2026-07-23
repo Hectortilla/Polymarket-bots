@@ -6,8 +6,8 @@ from polymarket.models.data.portfolio import Position
 from polymarket.models.gamma.market import Market
 
 from polybot.framework.events import Side
-from polybot.framework.events.resolutions import YES_OUTCOME
-from polybot.polymarket.wallet_activity.constants import (
+from polybot.framework.outcomes import YES_OUTCOME
+from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIZE_FIELD,

@@ -5,8 +5,8 @@ from polybot.framework.runner import BotRunner
 
 from ..followed_wallets.tracker import FollowedWalletTracker
 from ..observability.observer import RuntimeObserver
-from ..resolution import apply_resolution
-from ..resolution_state import ResolutionLedger
+from ..resolution.settlement import apply_resolution
+from ..resolution_state.ledger import ResolutionLedger
 from ..streams.contracts import StreamEvent
 from ..tracked_markets import TrackedMarketRegistry
 

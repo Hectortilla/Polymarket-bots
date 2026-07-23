@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import os
 from pathlib import Path
 from typing import Protocol
 
@@ -42,6 +43,8 @@ class FileSourceIdempotencyStore:
                 handle.seek(0, 2)
                 handle.write(source_id + "\n")
                 handle.flush()
+                os.fsync(handle.fileno())
+                _fsync_directory(self._path.parent)
                 return True
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -57,5 +60,14 @@ class FileSourceIdempotencyStore:
                 handle.truncate()
                 handle.writelines(remaining)
                 handle.flush()
+                os.fsync(handle.fileno())
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from hashlib import sha256
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from math import isfinite
 
@@ -10,8 +10,11 @@ from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
 
-from .constants import (
+from .fields import (
+    ACTIVITY_TYPE_FIELD,
+    ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
+    ACTIVITY_SLUG_FIELD,
     ACTIVITY_SIZE_FIELD,
     ACTIVITY_TIMESTAMP_FIELD,
     ACTIVITY_TOKEN_ID_FIELD,
@@ -19,41 +22,64 @@ from .constants import (
     ACTIVITY_OUTCOME_FIELD,
     CONDITION_ID_FIELD,
     PROXY_WALLET_FIELD,
+    TRADE_ACTIVITY_TYPE,
 )
 
-MILLISECONDS_TIMESTAMP_THRESHOLD = 10_000_000_000
+EPOCH_SECONDS_INTERPRETATION_CUTOFF = 10_000_000_000
 WALLET_TRADE_SOURCE_ID_VERSION = "wallet-trade-v1"
+_TRADE_FIELD_ALIASES = {
+    "wallet": PROXY_WALLET_FIELD,
+    "condition_id": CONDITION_ID_FIELD,
+    "token_id": ACTIVITY_TOKEN_ID_FIELD,
+    "transaction_hash": ACTIVITY_TRANSACTION_HASH_FIELD,
+    "side": ACTIVITY_SIDE_FIELD,
+    "size": ACTIVITY_SIZE_FIELD,
+    "timestamp": ACTIVITY_TIMESTAMP_FIELD,
+}
+_MISSING_TRADE_FIELD = object()
 
 
 def _get_trade_field(source: object, name: str) -> object:
     if isinstance(source, dict):
-        aliases = {
-            "wallet": PROXY_WALLET_FIELD,
-            "condition_id": CONDITION_ID_FIELD,
-            "token_id": ACTIVITY_TOKEN_ID_FIELD,
-            "transaction_hash": ACTIVITY_TRANSACTION_HASH_FIELD,
-            "side": ACTIVITY_SIDE_FIELD,
-            "size": ACTIVITY_SIZE_FIELD,
-            "timestamp": ACTIVITY_TIMESTAMP_FIELD,
-        }
-        return source.get(name, source.get(aliases.get(name, name)))
+        alias = _TRADE_FIELD_ALIASES.get(name)
+        primary = source.get(name, _MISSING_TRADE_FIELD)
+        if alias is None or alias == name:
+            return None if primary is _MISSING_TRADE_FIELD else primary
+        secondary = source.get(alias, _MISSING_TRADE_FIELD)
+        if primary is _MISSING_TRADE_FIELD:
+            return None if secondary is _MISSING_TRADE_FIELD else secondary
+        if secondary is _MISSING_TRADE_FIELD:
+            return primary
+        return primary if _aliases_agree(name, primary, secondary) else None
     return getattr(source, name, None)
+
+
+def _has_trade_field(source: object, name: str) -> bool:
+    if isinstance(source, dict):
+        alias = _TRADE_FIELD_ALIASES.get(name)
+        return name in source or (alias is not None and alias in source)
+    return hasattr(source, name)
 
 
 def _timestamp_ms(value: object) -> int | None:
     if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return int(value.timestamp() * 1000)
+        try:
+            if value.tzinfo is None or value.utcoffset() is None:
+                return None
+            return int(value.timestamp() * 1000)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if isinstance(value, bool):
+        return None
     try:
         seconds = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return None
     if not isfinite(seconds) or seconds < 0:
         return None
     return (
         int(seconds * 1000)
-        if seconds < MILLISECONDS_TIMESTAMP_THRESHOLD
+        if seconds < EPOCH_SECONDS_INTERPRETATION_CUTOFF
         else int(seconds)
     )
 
@@ -77,14 +103,19 @@ def normalize_wallet_trade(
     condition_id = _get_trade_field(source, "condition_id")
     token_id = _get_trade_field(source, "token_id")
     side = _get_trade_field(source, "side")
-    size = _get_trade_field(source, "size") or _get_trade_field(source, "shares")
-    price = _get_trade_field(source, "price")
-    normalized_size = _decimal(size)
+    size = _normalized_trade_size(
+        _get_trade_field(source, "size"),
+        _get_trade_field(source, "shares"),
+    )
+    price = _get_trade_field(source, ACTIVITY_PRICE_FIELD)
+    normalized_size = size
     normalized_price = _decimal(price)
     timestamp = _timestamp_ms(_get_trade_field(source, "timestamp"))
     raw_outcome = _get_trade_field(source, ACTIVITY_OUTCOME_FIELD)
-    outcome = _optional_text(raw_outcome)
-    transaction_hash = _optional_text(_get_trade_field(source, "transaction_hash"))
+    outcome = _normalized_text(raw_outcome)
+    raw_activity_type = _get_trade_field(source, ACTIVITY_TYPE_FIELD)
+    activity_type = _normalized_text(raw_activity_type)
+    transaction_hash = _normalized_text(_get_trade_field(source, "transaction_hash"))
     upstream_source_id = transaction_hash
     required_fields = (wallet, condition_id, token_id, upstream_source_id)
     if not all(isinstance(value, str) for value in required_fields):
@@ -95,6 +126,10 @@ def normalize_wallet_trade(
         or not isinstance(side, str)
         or timestamp is None
         or (raw_outcome is not None and outcome is None)
+        or (
+            _has_trade_field(source, ACTIVITY_TYPE_FIELD)
+            and (activity_type is None or activity_type.upper() != TRADE_ACTIVITY_TYPE)
+        )
     ):
         return None
     wallet, condition_id, token_id, upstream_source_id = normalized_fields
@@ -121,7 +156,9 @@ def normalize_wallet_trade(
             trade_timestamp_ms=timestamp,
             observed_at_ms=observed_at_ms,
             kind=kind,
-            market_slug=_optional_text(_get_trade_field(source, "slug")),
+            market_slug=_normalized_text(
+                _get_trade_field(source, ACTIVITY_SLUG_FIELD)
+            ),
             transaction_hash=transaction_hash,
             outcome=outcome,
         )
@@ -141,26 +178,27 @@ def normalize_stream_event(
             observed_at_ms=observed_at_ms,
             kind=WalletTradeKind.TRADE,
         )
-    wallet = _required_text(source.wallet)
-    condition_id = _required_text(source.condition_id)
-    token_id = _required_text(source.token_id)
-    source_id = _required_text(source.source_id)
+    wallet = _normalized_text(source.wallet)
+    condition_id = _normalized_text(source.condition_id)
+    token_id = _normalized_text(source.token_id)
+    source_id = _normalized_text(source.source_id)
     if None in (wallet, condition_id, token_id, source_id):
         return None
-    normalized_outcome = _optional_text(source.outcome)
+    normalized_outcome = _normalized_text(source.outcome)
     if source.outcome is not None and normalized_outcome is None:
         return None
     if not source.is_valid() or not isinstance(source.side, Side):
         return None
-    upstream_source_id = _optional_text(source.transaction_hash) or source_id
+    upstream_source_id = _normalized_text(source.transaction_hash) or source_id
     event = replace(
         source,
         wallet=normalize_wallet_address(wallet),
         condition_id=condition_id,
         token_id=token_id,
-        market_slug=_optional_text(source.market_slug),
-        transaction_hash=_optional_text(source.transaction_hash),
+        market_slug=_normalized_text(source.market_slug),
+        transaction_hash=_normalized_text(source.transaction_hash),
         outcome=normalized_outcome,
+        observed_at_ms=observed_at_ms,
         source_id=_canonical_source_id(
             wallet=wallet,
             condition_id=condition_id,
@@ -175,18 +213,36 @@ def normalize_stream_event(
     return event if event.is_valid() else None
 
 
-def _required_text(value: object) -> str | None:
+def _normalized_text(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     normalized = value.strip()
     return normalized or None
 
 
-def _optional_text(value: object) -> str | None:
-    if not isinstance(value, str):
+def _aliases_agree(name: str, primary: object, secondary: object) -> bool:
+    first = _normalized_text(primary)
+    second = _normalized_text(secondary)
+    if name == "wallet":
+        return (
+            first is not None
+            and second is not None
+            and first.casefold() == second.casefold()
+        )
+    return first is not None and first == second
+
+
+def _normalized_trade_size(size: object, shares: object) -> Decimal | None:
+    """Accept one size field, or two agreeing representations of it."""
+    normalized_size = _decimal(size)
+    normalized_shares = _decimal(shares)
+    if size is None:
+        return normalized_shares
+    if shares is None:
+        return normalized_size
+    if normalized_size is None or normalized_shares is None:
         return None
-    normalized = value.strip()
-    return normalized or None
+    return normalized_size if normalized_size == normalized_shares else None
 
 
 def sort_key(trade: WalletTradeEvent) -> tuple[int, str, str, str]:

@@ -11,7 +11,7 @@ from polybot.framework.config.models import BotConfig
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.polymarket.markets import Market
-from polybot.polymarket.positions import Position
+from polybot.polymarket.positions.contracts import Position
 
 
 class MarketClient(Protocol):

@@ -12,6 +12,13 @@ class Side(StrEnum):
     SELL = "SELL"
 
 
+def require_side(side: Side) -> Side:
+    """Return a validated order side for pure pricing and accounting helpers."""
+    if not isinstance(side, Side):
+        raise ValueError("side must be a Side")
+    return side
+
+
 class OrderStatus(StrEnum):
     ACCEPTED = "accepted"
     FILLED = "filled"

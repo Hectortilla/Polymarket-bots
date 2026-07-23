@@ -8,25 +8,28 @@ from pathlib import Path
 
 import pytest
 
-import polybot.recording.archive as archive_module
-from polybot.recording.archive import (
-    ArchiveCoverageError,
-    ArchiveFormatError,
-    RecordingArchive,
-    RecordingEventBounds,
-    RecordingReader,
-)
-from polybot.recording.contracts import (
+import polybot.recording.archive.reader as reader_module
+from polybot.recording.archive.errors import ArchiveCoverageError, ArchiveFormatError
+from polybot.recording.archive.models import RecordingEventBounds
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
+    RecordedBookLevel,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.records import (
     BookCheckpoint,
+    RecordedEvent,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
+)
+from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    RecordedBookLevel,
-    RecordedEvent,
-    TickSizeChangePayload,
 )
 
 
@@ -175,7 +178,7 @@ def test_replay_lease_reuses_its_validated_archive_identity(
     )
     archive.close(ended_at_ms=1_010)
 
-    original_validate = archive_module._validate_archive
+    original_validate = reader_module._validate_archive
     validation_count = 0
 
     def count_validation(connection: sqlite3.Connection) -> str:
@@ -183,7 +186,7 @@ def test_replay_lease_reuses_its_validated_archive_identity(
         validation_count += 1
         return original_validate(connection)
 
-    monkeypatch.setattr(archive_module, "_validate_archive", count_validation)
+    monkeypatch.setattr(reader_module, "_validate_archive", count_validation)
 
     with RecordingReader.for_replay(path) as reader:
         assert reader.target_identity == "slugs:market-one"

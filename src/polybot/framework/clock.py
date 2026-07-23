@@ -17,11 +17,16 @@ class Clock(Protocol):
     async def sleep(self, seconds: float) -> None: ...
 
 
+def system_now_ms() -> int:
+    """Return the current system wall-clock time in whole milliseconds."""
+    return time_ns() // 1_000_000
+
+
 class SystemClock:
     """Clock backed by system wall time and the asyncio event loop."""
 
     def now_ms(self) -> int:
-        return time_ns() // 1_000_000
+        return system_now_ms()
 
     async def sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds)

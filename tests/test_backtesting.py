@@ -38,29 +38,35 @@ from polybot.framework.events import (
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.streams import StreamRelation, StreamRule
-from polybot.performance.artifacts import PerformanceOutputExistsError
-from polybot.recording.archive import (
-    INTERRUPTED_SESSION_REASON,
-    RecordingArchive,
-    RecordingReader,
-)
-from polybot.recording.contracts import (
+from polybot.performance.artifacts.errors import PerformanceOutputExistsError
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.sessions import INTERRUPTED_SESSION_REASON
+from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
-    BookCheckpoint,
     BookDeltaPayload,
+    RecordedBookLevel,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
+)
+from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    PublicTradePayload,
-    RecordedBookLevel,
-    RecordedEvent,
-    ResolutionPayload,
-    SessionIntegrityStatus,
-    TickSizeChangePayload,
 )
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
+)
+from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
 START_MS = 1_700_000_000_000
@@ -422,7 +428,7 @@ def _basic_archive(
 def _config(**overrides: object) -> BotConfig:
     values: dict[str, object] = {
         "name": "backtest-test",
-        "market_slugs": (MARKET_SLUG,),
+        "stream_rules": (_market_rule(MARKET_SLUG),),
         "paper_latency_ms": 0,
         "paper_latency_jitter_ms": 0,
         "event_max_age_ms": 60_000,
@@ -432,6 +438,10 @@ def _config(**overrides: object) -> BotConfig:
     }
     values.update(overrides)
     return BotConfig(**values)  # type: ignore[arg-type]
+
+
+def _market_rule(*market_slugs: str) -> StreamRule:
+    return StreamRule(StreamRelation.INDEPENDENT, market_slugs)
 
 
 def _run(
@@ -1006,7 +1016,7 @@ def test_dynamic_rollover_suppresses_next_market_then_bootstraps_and_retains_pri
         bot,
         archive,
         tmp_path / "results",
-        config=_config(market_slugs=()),
+        config=_config(stream_rules=()),
     )
 
     assert [book.market_slug for book in bot.books] == [
@@ -1201,7 +1211,14 @@ def test_schema_v1_and_wallet_rules_are_rejected_before_strategy_start(
             bot,
             archive,
             tmp_path / "wallet-results",
-            config=_config(wallet_addresses=("0xabc",)),
+            config=_config(
+                stream_rules=(
+                    StreamRule(
+                        StreamRelation.INDEPENDENT,
+                        wallet_addresses=("0xabc",),
+                    ),
+                )
+            ),
         )
     assert wallet_error.value.reason is BacktestFailureReason.UNSUPPORTED_INPUT
     assert bot.start_count == 0
@@ -2071,7 +2088,9 @@ def test_clean_multi_market_subrange_uses_each_market_checkpoint(
         bot,
         _ArchiveWindow(path, START_MS, end_ms),
         tmp_path / "results",
-        config=_config(market_slugs=(MARKET_SLUG, NEXT_MARKET_SLUG)),
+        config=_config(
+            stream_rules=(_market_rule(MARKET_SLUG, NEXT_MARKET_SLUG),)
+        ),
         start_ms=replay_start_ms,
     )
 

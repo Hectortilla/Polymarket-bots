@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .archive import RecordingReader
-from .archive_models import RecordingSessionStatistics
-from .contracts import CoverageGapRecord
+from .archive.reader import RecordingReader
+from .archive.models import RecordingSessionStatistics
+from .contracts.records import CoverageGapRecord
 
 
 @dataclass(frozen=True, slots=True)

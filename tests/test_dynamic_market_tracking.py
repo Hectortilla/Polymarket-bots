@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from polymarket import PolymarketError
 from polymarket.models.clob.market_events import (
     MarketResolvedEvent as SdkMarketResolvedEvent,
     MarketResolvedPayload,
@@ -47,15 +48,16 @@ from polybot.cli.followed_wallets.persistence.schema import (
 )
 from polybot.cli.observability.events import StreamReceived
 from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
-from polybot.cli.resolution import (
+from polybot.cli.resolution.reconciliation import reconcile_resolutions
+from polybot.cli.resolution.settlement import (
     apply_resolution,
-    reconcile_resolutions,
     settle_resolved_markets,
 )
 from polybot.cli.tracking.paper import track_paper_positions
 from polybot.cli.tracking.wallets import synchronize_followed_wallets
-from polybot.cli.resolution_state import RESOLUTION_LEDGER_VERSION, ResolutionLedger
-from polybot.cli.resolution_state import (
+from polybot.cli.resolution_state.ledger import ResolutionLedger
+from polybot.cli.resolution_state.schema import (
+    RESOLUTION_LEDGER_VERSION,
     RESOLUTION_LEDGER_VERSION_FIELD,
     RESOLUTION_RECORDS_FIELD,
 )
@@ -71,15 +73,17 @@ from polybot.framework.base import BaseBot
 from polybot.framework.runner import BotRunner
 from polybot.framework.events.resolutions import (
     LOSING_PAYOUT_PER_TOKEN,
-    NO_OUTCOME,
     WINNING_PAYOUT_PER_TOKEN,
-    YES_OUTCOME,
     MarketResolutionEvent,
     MarketSettlementEvent,
+    SettledPosition,
 )
-from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
+from polybot.framework.events.wallet_trades import WalletTradeEvent, wallet_source_key
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-from polybot.polymarket.positions import Position, PositionClient
+from polybot.polymarket.positions.client import PositionClient
+from polybot.polymarket.positions.contracts import Position
+from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.polymarket.ws_market import MARKET_WEBSOCKET_SOURCE, MarketStream
@@ -113,6 +117,34 @@ class FakeStreamClient:
     async def subscribe(self, spec: object) -> FakeSubscription:
         self.specs.append(spec)
         return FakeSubscription(self.events)
+
+
+class _PaperBrokerSnapshotDouble:
+    """Test-only direct snapshot contract used by resolution settlement fakes."""
+
+    portfolio: PaperPortfolio
+
+    def snapshot(self):
+        return self.portfolio.snapshot()
+
+    def restore(self, snapshot) -> None:
+        self.portfolio.restore(snapshot)
+
+
+def _valid_followed_wallet_state_payload() -> dict[str, object]:
+    source_key = wallet_source_key(WALLET, "source")
+    return {
+        FOLLOW_EPOCH_FIELD: 1,
+        FOLLOW_ACTIVE_FIELD: True,
+        FOLLOWED_AT_MS_FIELD: 0,
+        FOLLOW_BOOTSTRAPPED_FIELD: False,
+        FOLLOW_BASELINES_FIELD: [],
+        FOLLOW_MOVEMENTS_FIELD: [],
+        FOLLOW_SOURCE_IDS_FIELD: [source_key],
+        FOLLOW_CHECKPOINT_FIELD: [0, source_key],
+        FOLLOW_SETTLEMENTS_FIELD: [],
+        FOLLOW_EPOCH_HISTORY_FIELD: [],
+    }
 
 
 def test_registry_deduplicates_wallet_interests_and_batches_token_changes() -> None:
@@ -231,6 +263,56 @@ def test_wallet_dispatch_rejects_trade_without_market_slug(
     )
 
     assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+
+
+def test_wallet_dispatch_rejects_conflicting_registry_metadata_before_execution(
+    dummy_context,
+) -> None:
+    registry = TrackedMarketRegistry()
+    existing_market = replace(_market(), slug="other-market")
+    registry.add(existing_market, MarketInterest.CONFIGURED)
+    conflicting_market = replace(
+        existing_market,
+        slug="market",
+        outcomes=(
+            MarketOutcome(YES_OUTCOME, "yes-market"),
+            MarketOutcome(NO_OUTCOME, "no-conflict"),
+        ),
+    )
+
+    class Gamma:
+        async def find_by_slug(self, slug: str) -> Market:
+            assert slug == "market"
+            return conflicting_market
+
+    class Clob:
+        def has_market_slug(self, slug: str) -> bool:
+            raise AssertionError("conflicting metadata must not reach CLOB routing")
+
+    class Runner:
+        async def dispatch_wallet_trade(self, event: WalletTradeEvent) -> DispatchOutcome:
+            raise AssertionError("conflicting metadata must not reach strategy execution")
+
+    class FollowedWallets:
+        def record_trade(self, event: WalletTradeEvent) -> bool:
+            raise AssertionError("conflicting metadata must not reach persistence")
+
+    outcome = asyncio.run(
+        dispatch_wallet_trade(
+            Runner(),  # type: ignore[arg-type]
+            WalletStreamEvent(
+                StreamKind.WALLET,
+                _trade("conflicting-market", Side.BUY, "1", "0.4", 1_000),
+            ),
+            gamma=Gamma(),  # type: ignore[arg-type]
+            clob=Clob(),  # type: ignore[arg-type]
+            registry=registry,
+            followed_wallets=FollowedWallets(),  # type: ignore[arg-type]
+        )
+    )
+
+    assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+    assert registry.entries[0].market == existing_market
 
 
 def test_wallet_dispatch_skips_terminal_market_before_metadata_or_routing(
@@ -844,7 +926,7 @@ def test_resolution_persists_before_hook_and_is_idempotent(tmp_path) -> None:
     ledger = ResolutionLedger(tmp_path / "resolutions.json")
     calls: list[str] = []
 
-    class Paper:
+    class Paper(_PaperBrokerSnapshotDouble):
         portfolio = PaperPortfolio(Decimal("100"))
 
         def settle_market(self, event):
@@ -893,7 +975,7 @@ def test_bootstrap_settles_resolved_market_before_any_subscription(tmp_path) -> 
     ledger = ResolutionLedger(tmp_path / "resolutions.json")
     calls: list[str] = []
 
-    class Paper:
+    class Paper(_PaperBrokerSnapshotDouble):
         portfolio = PaperPortfolio(Decimal("100"))
 
         def settle_market(self, event):
@@ -941,7 +1023,7 @@ def test_resolution_rolls_back_settlement_when_ledger_record_fails(tmp_path) -> 
         ),
     )
 
-    class Paper:
+    class Paper(_PaperBrokerSnapshotDouble):
         def __init__(self) -> None:
             self.portfolio = PaperPortfolio(Decimal("100"))
             self.portfolio.apply_fill(
@@ -1036,7 +1118,7 @@ def test_resolution_rolls_back_when_followed_settlement_fails(tmp_path) -> None:
             tracker.settle(event)
             raise RuntimeError("followed settlement unavailable")
 
-    class Paper:
+    class Paper(_PaperBrokerSnapshotDouble):
         def __init__(self) -> None:
             self.portfolio = PaperPortfolio(Decimal("100"))
             self.portfolio.apply_fill(
@@ -1099,6 +1181,104 @@ def test_followed_wallet_state_rejects_malformed_nested_payload() -> None:
                         FOLLOW_EPOCH_HISTORY_FIELD: [],
                     }
                 },
+            }
+        )
+
+
+def test_followed_wallet_state_requires_wallet_owned_source_keys() -> None:
+    other_wallet = "0x0000000000000000000000000000000000000002"
+    source_key = wallet_source_key(other_wallet, "source")
+    state = _valid_followed_wallet_state_payload()
+    state[FOLLOW_MOVEMENTS_FIELD] = [
+        {
+            FOLLOW_CONDITION_ID_FIELD: "condition",
+            FOLLOW_TOKEN_ID_FIELD: "token",
+            FOLLOW_SIDE_FIELD: Side.BUY.value,
+            FOLLOW_SIZE_FIELD: "1",
+            FOLLOW_PRICE_FIELD: "0.5",
+            FOLLOW_TRADE_TIMESTAMP_MS_FIELD: 1,
+            FOLLOW_SOURCE_KEY_FIELD: source_key,
+        }
+    ]
+    state[FOLLOW_SOURCE_IDS_FIELD] = [source_key]
+    state[FOLLOW_CHECKPOINT_FIELD] = [1, source_key]
+
+    with pytest.raises(ValueError, match="does not belong"):
+        load_states(
+            {
+                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
+                FOLLOW_WALLETS_FIELD: {WALLET: state},
+            }
+        )
+
+
+def test_followed_wallet_state_requires_wallet_owned_settlement_positions() -> None:
+    state = _valid_followed_wallet_state_payload()
+    state[FOLLOW_SETTLEMENTS_FIELD] = [
+        FollowSettlement(
+            condition_id="condition",
+            winning_token_id="token",
+            resolved_at_ms=1,
+            positions=(
+                SettledPosition(
+                    owner="0x0000000000000000000000000000000000000002",
+                    token_id="token",
+                    size=Decimal("1"),
+                    payout_per_token=Decimal("1"),
+                    cash_payout_usdc=Decimal("1"),
+                ),
+            ),
+            gross_realized_pnl_usdc=None,
+            baselines=(),
+            movements=(),
+        ).to_payload()
+    ]
+
+    with pytest.raises(ValueError, match="settlement position owner"):
+        load_states(
+            {
+                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
+                FOLLOW_WALLETS_FIELD: {WALLET: state},
+            }
+        )
+
+
+def test_followed_wallet_state_requires_decimal_strings_and_nullable_keys() -> None:
+    state = _valid_followed_wallet_state_payload()
+    state[FOLLOW_BASELINES_FIELD] = [
+        {
+            FOLLOW_CONDITION_ID_FIELD: "condition",
+            FOLLOW_TOKEN_ID_FIELD: "token",
+            FOLLOW_MARKET_SLUG_FIELD: "market",
+            FOLLOW_SIZE_FIELD: 0.1,
+            FOLLOW_BASIS_PRICE_FIELD: None,
+        }
+    ]
+    with pytest.raises(ValueError, match="size is invalid"):
+        load_states(
+            {
+                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
+                FOLLOW_WALLETS_FIELD: {WALLET: state},
+            }
+        )
+
+    missing_checkpoint = _valid_followed_wallet_state_payload()
+    del missing_checkpoint[FOLLOW_CHECKPOINT_FIELD]
+    with pytest.raises(ValueError, match="checkpoint is missing"):
+        load_states(
+            {
+                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
+                FOLLOW_WALLETS_FIELD: {WALLET: missing_checkpoint},
+            }
+        )
+
+
+def test_followed_wallet_state_rejects_boolean_schema_version() -> None:
+    with pytest.raises(ValueError, match="unsupported followed-wallet state format"):
+        load_states(
+            {
+                FOLLOW_STATE_VERSION_FIELD: True,
+                FOLLOW_WALLETS_FIELD: {},
             }
         )
 
@@ -1312,6 +1492,30 @@ def test_resolution_ledger_rejects_unsupported_version(tmp_path) -> None:
         ResolutionLedger(path)
 
 
+def test_resolution_ledger_rejects_boolean_schema_version(tmp_path) -> None:
+    path = tmp_path / "resolutions.json"
+    path.write_text(
+        json.dumps(
+            {
+                RESOLUTION_LEDGER_VERSION_FIELD: True,
+                RESOLUTION_RECORDS_FIELD: {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported resolution ledger version"):
+        ResolutionLedger(path)
+
+
+def test_resolution_ledger_rejects_nonempty_unversioned_state(tmp_path) -> None:
+    path = tmp_path / "resolutions.json"
+    path.write_text(json.dumps({"unexpected": True}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported resolution ledger version"):
+        ResolutionLedger(path)
+
+
 def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ignored(
     tmp_path,
 ) -> None:
@@ -1382,7 +1586,7 @@ def test_resolution_stream_events_are_not_coalesced_or_charted() -> None:
 
     state = DashboardState()
     state.apply(StreamReceived(items[0], 1.0))
-    state.sample(80, now_ms=2_000)
+    state.record_chart_sample(now_ms=2_000)
     assert tuple(state.chart_tokens) == ()
     assert state.price_history == {}
 
@@ -1533,6 +1737,32 @@ def test_data_client_passes_filtered_market_condition_ids_to_sdk() -> None:
             "page_size": 100,
         }
     ]
+
+
+@pytest.mark.parametrize("failure_stage", ("request", "pagination"))
+def test_position_client_normalizes_sdk_transport_failures(
+    failure_stage: str,
+) -> None:
+    class Paginator:
+        def __aiter__(self):
+            async def pages():
+                raise PolymarketError("positions unavailable")
+                yield None
+
+            return pages()
+
+    class Client:
+        def list_positions(self, **kwargs):
+            del kwargs
+            if failure_stage == "request":
+                raise PolymarketError("positions unavailable")
+            return Paginator()
+
+    with pytest.raises(MarketDataTransportError) as caught:
+        asyncio.run(PositionClient(Client()).positions(WALLET))
+
+    assert str(caught.value) == "position lookup failed"
+    assert isinstance(caught.value.__cause__, PolymarketError)
 
 
 def _market(slug: str = "market") -> Market:

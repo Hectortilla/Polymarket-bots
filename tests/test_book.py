@@ -32,6 +32,12 @@ def test_book_snapshot_validates_all_levels() -> None:
     assert _book(bids=(valid,), asks=(invalid,)).has_valid_levels() is False
 
 
+def test_book_snapshot_rejects_duplicate_prices_on_one_side() -> None:
+    level = BookLevel(price=Decimal("0.50"), size=Decimal("2"))
+
+    assert _book(bids=(level, level), asks=()).has_valid_levels() is False
+
+
 @pytest.mark.parametrize(
     ("bids", "asks"),
     (
@@ -62,6 +68,26 @@ def test_book_snapshot_orders_executable_levels_for_each_side() -> None:
 
     assert book.executable_levels(Side.BUY) == (low, high)
     assert book.executable_levels(Side.SELL) == (high, low)
+
+
+def test_book_helpers_reject_an_unknown_side() -> None:
+    book = _book(bids=(), asks=())
+
+    with pytest.raises(ValueError, match="side must be a Side"):
+        book.executable_levels("BUY")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="side must be a Side"):
+        slippage_limit_price(
+            side="BUY",  # type: ignore[arg-type]
+            reference_price=Decimal("0.50"),
+            max_slippage_pct=Decimal("0.02"),
+        )
+    with pytest.raises(ValueError, match="side must be a Side"):
+        consume_levels(
+            "BUY",  # type: ignore[arg-type]
+            (),
+            requested_size=Decimal("1"),
+            slippage_limit_price=Decimal("0.60"),
+        )
 
 
 def test_book_snapshot_rejects_future_freshness_and_detects_crossed_depth() -> None:

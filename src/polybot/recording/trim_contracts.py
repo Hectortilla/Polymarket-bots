@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .archive_models import RecordingSession
+from .archive.models import RecordingSession
 
 
 DEFAULT_TRIM_BACKUP_SUFFIX = ".pre-trim"

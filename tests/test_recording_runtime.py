@@ -14,50 +14,63 @@ from polybot.framework.config.models import BotConfig
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.recording_feed import CaptureContinuityError
-from polybot.polymarket.recording_metadata import RecordingMarket
-from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.recording import entrypoint, service
-from polybot.recording.archive import (
-    ArchiveExistsError,
-    RecordingArchive,
-    RecordingReader,
+from polybot.polymarket.errors import (
+    MarketDataError,
+    MarketDataIssue,
+    MarketDataTransportError,
 )
-from polybot.recording.contracts import (
+from polybot.polymarket.recording_events import CapturedMarketEvent
+from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
+from polybot.polymarket.recording_metadata.contracts import RecordingMarket
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.public_data.recording import create_recording_public_data
+from polybot.recording import entrypoint, service
+from polybot.recording.archive.errors import ArchiveExistsError
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
-    BookCheckpoint,
     BookDeltaPayload,
-    CaptureAnomalyPayload,
+    RecordedBookLevel,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
     CaptureAnomalyRecord,
+    RecordedEvent,
+)
+from polybot.recording.contracts.anomalies import (
+    CaptureAnomalyPayload,
     CaptureFailureKind,
     CaptureFragmentRole,
+    RevisionFingerprint,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
+)
+from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    PublicTradePayload,
-    RecordedBookLevel,
-    RecordedEvent,
-    RevisionFingerprint,
-    ResolutionPayload,
-    SessionIntegrityStatus,
-    TickSizeChangePayload,
 )
-from polybot.recording.coordinator import (
-    RecordingCoordinator,
-    _capture_anomaly_payload,
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
+)
+from polybot.recording.contracts.session import SessionIntegrityStatus
+from polybot.recording.coordinator import RecordingCoordinator
+from polybot.recording.coordinator.anomalies import (
+    create_capture_anomaly_payload,
 )
 from polybot.recording.service import (
     CANCELLED_RECORDING_REASON,
-    _finish_recording,
-    _read_resume_state,
-    _resolve_initial_markets,
     record_markets,
 )
+from polybot.recording.service.lifecycle import finish_recording
+from polybot.recording.service.markets import resolve_initial_markets
+from polybot.recording.service.resume import read_resume_state
 from polybot.recording.writer import (
     AsyncRecordingWriter,
     OpenedCoverageGap,
@@ -130,7 +143,7 @@ class FakeCapture:
         self._books: dict[str, BookSnapshot] = {}
 
     @property
-    def ready(self) -> bool:
+    def has_complete_book_baselines(self) -> bool:
         return set(self.market.token_ids) <= self._books.keys()
 
     def __aiter__(self) -> FakeCapture:
@@ -704,7 +717,9 @@ def test_gap_and_anomaly_mutations_do_not_acknowledge_before_commit_returns(
         else:
             mutation = asyncio.create_task(
                 writer.record_anomaly(
-                    _capture_anomaly_payload(_capture_continuity_error(market)),
+                    create_capture_anomaly_payload(
+                        _capture_continuity_error(market)
+                    ),
                     observed_at_ms=10,
                     identity=identity,
                     subscription_generation=1,
@@ -1101,6 +1116,30 @@ def test_coordinator_retries_next_market_deduplicates_and_retains_prior_market()
     assert resolution_index < close_index
 
 
+def test_coordinator_retains_pending_markets_when_adapter_transport_fails() -> None:
+    class UnavailableResolver(MutableResolver):
+        async def find_many(
+            self,
+            slugs: Iterable[str],
+        ) -> tuple[RecordingMarket | None, ...]:
+            del slugs
+            raise MarketDataTransportError("Gamma recording-market lookup failed")
+
+    async def run() -> frozenset[str]:
+        operations: list[str] = []
+        plan = _plan(("alpha",))
+        coordinator = _coordinator(
+            MutablePlanProvider(plan),
+            UnavailableResolver({}),
+            FakeFeed(operations),
+            MemoryWriter(operations),
+        )
+        await coordinator.start(plan, ())
+        return coordinator.pending_slugs
+
+    assert asyncio.run(run()) == frozenset({"alpha"})
+
+
 def test_coordinator_requires_both_baselines_before_gap_close_and_checkpoints() -> None:
     market = _recording_market("alpha")
 
@@ -1152,7 +1191,7 @@ def test_coordinator_requires_both_baselines_before_gap_close_and_checkpoints() 
 
     writer, capture = asyncio.run(run())
 
-    assert capture.ready is True
+    assert capture.has_complete_book_baselines is True
     assert {checkpoint.book.token_id for checkpoint in writer.checkpoints} == set(
         market.market.token_ids
     )
@@ -1236,7 +1275,7 @@ def test_sdk_drop_reopens_only_affected_condition_until_fresh_baselines() -> Non
 
         await first.emit(_baseline_event(market, 0, 10))
         await first.emit(_baseline_event(market, 1, 11))
-        await _wait_for(lambda: first.ready)
+        await _wait_for(lambda: first.has_complete_book_baselines)
 
         first.dropped_count = 1
         await _wait_for(lambda: len(feed.captures) == 2)
@@ -1585,7 +1624,7 @@ def test_resumed_open_gap_checkpoints_all_markets_at_final_rebaseline() -> None:
             resolver,
             feed,
             writer,
-            resumed_gap_condition_ids={
+            resumed_gap_conditions_by_id={
                 41: frozenset(
                     (alpha.market.condition_id, beta.market.condition_id)
                 )
@@ -1704,7 +1743,7 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
             resolver,
             feed,
             writer,
-            resumed_gap_condition_ids={
+            resumed_gap_conditions_by_id={
                 41: frozenset(
                     (alpha.market.condition_id, beta.market.condition_id)
                 )
@@ -1732,8 +1771,8 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
             _baseline_event(beta, 1, 13)
         )
         await _wait_for(
-            lambda: coordinator._resumed_gap_conditions[41]
-            == {alpha.market.condition_id}
+            lambda: coordinator._gap_recovery.remaining_condition_ids(41)
+            == frozenset((alpha.market.condition_id,))
         )
         writer.release_alpha.set()
         await _wait_for(lambda: len(writer.checkpoints) == 4)
@@ -1769,7 +1808,7 @@ def test_resolution_closes_resumed_gap_without_fabricating_checkpoint() -> None:
             feed,
             writer,
             checkpoint_seconds=60.0,
-            resumed_gap_condition_ids={
+            resumed_gap_conditions_by_id={
                 41: frozenset((market.market.condition_id,))
             },
         )
@@ -1855,10 +1894,10 @@ def test_resume_state_restores_a_prior_open_condition_gap(tmp_path) -> None:
     )
     archive.close()
 
-    resume_state = _read_resume_state(path, "static-alpha")
+    resume_state = read_resume_state(path, "static-alpha")
 
     assert resume_state.restored_slugs == ("alpha",)
-    assert resume_state.open_gap_condition_ids == (
+    assert resume_state.open_gap_conditions_by_id == (
         (gap_id, frozenset((market.market.condition_id,))),
     )
 
@@ -1983,7 +2022,7 @@ def test_initial_resolution_requires_all_current_markets_but_not_future_market()
     resolver = MutableResolver({"current": current, "next": None})
 
     resolved, missing_restored = asyncio.run(
-        _resolve_initial_markets(
+        resolve_initial_markets(
             resolver,  # type: ignore[arg-type]
             _plan(("current",), ("next",)),
             (),
@@ -1995,7 +2034,7 @@ def test_initial_resolution_requires_all_current_markets_but_not_future_market()
 
     with pytest.raises(RuntimeError, match="current markets could not be resolved"):
         asyncio.run(
-            _resolve_initial_markets(
+            resolve_initial_markets(
                 MutableResolver({"missing": None}),  # type: ignore[arg-type]
                 _plan(("missing",)),
                 (),
@@ -2049,10 +2088,21 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
         return feed
 
     monkeypatch.setattr(service, "ObservationClock", IncreasingClock)
-    monkeypatch.setattr(service, "RecordingMarketResolver", resolver_factory)
-    monkeypatch.setattr(service, "MarketRecordingFeed", feed_factory)
-    monkeypatch.setattr(service, "GammaClient", lambda client: object())
-    monkeypatch.setattr(service, "ClobClient", lambda client: object())
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.RecordingMarketResolver",
+        resolver_factory,
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.MarketRecordingFeed", feed_factory
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.GammaClient",
+        lambda client: object(),
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.ClobClient",
+        lambda client: object(),
+    )
     monkeypatch.setattr(service, "RecordingCoordinator", ImmediateCoordinator)
 
     output = tmp_path / "capture.sqlite3"
@@ -2060,18 +2110,30 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
         "output_path": output,
         "target_identity": "static-alpha",
         "market_slugs": ("alpha",),
-        "client": object(),
     }
-    asyncio.run(record_markets(BotConfig(name="recorder"), **kwargs))
+    asyncio.run(
+        record_markets(
+            BotConfig(name="recorder"),
+            **kwargs,
+            public_data=create_recording_public_data(object()),
+        )
+    )
 
     with pytest.raises(ArchiveExistsError):
-        asyncio.run(record_markets(BotConfig(name="recorder"), **kwargs))
+        asyncio.run(
+            record_markets(
+                BotConfig(name="recorder"),
+                **kwargs,
+                public_data=create_recording_public_data(object()),
+            )
+        )
 
     asyncio.run(
         record_markets(
             BotConfig(name="recorder"),
             **kwargs,
             resume=True,
+            public_data=create_recording_public_data(object()),
         )
     )
 
@@ -2084,6 +2146,47 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
     assert gaps[0].gap.ended_at_ms is not None
     assert all(resolver.closed for resolver in resolvers)
     assert all(feed.closed for feed in feeds)
+
+
+def test_service_closes_owned_public_data_when_provider_setup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver = MutableResolver({})
+    feed = FakeFeed([])
+
+    class PublicData:
+        gamma = object()
+        clob = object()
+
+        def __init__(self) -> None:
+            self.resolver = resolver
+            self.feed = feed
+            self.close_calls = 0
+
+        async def close(self) -> None:
+            self.close_calls += 1
+
+    public_data = PublicData()
+    monkeypatch.setattr(
+        service,
+        "create_recording_public_data",
+        lambda: public_data,
+    )
+
+    with pytest.raises(ValueError, match="at least one market slug"):
+        asyncio.run(
+            record_markets(
+                BotConfig(name="recorder"),
+                output_path=tmp_path / "capture.sqlite3",
+                target_identity="static-empty",
+                market_slugs=("",),
+            )
+        )
+
+    assert public_data.close_calls == 1
+    assert resolver.closed is True
+    assert feed.closed is True
 
 
 def test_cancelled_recording_is_finalized_at_its_durable_boundary(
@@ -2128,10 +2231,22 @@ def test_cancelled_recording_is_finalized_at_its_durable_boundary(
 
     resolver = MutableResolver({"alpha": market})
     feed = FakeFeed([])
-    monkeypatch.setattr(service, "RecordingMarketResolver", lambda client: resolver)
-    monkeypatch.setattr(service, "MarketRecordingFeed", lambda client: feed)
-    monkeypatch.setattr(service, "GammaClient", lambda client: object())
-    monkeypatch.setattr(service, "ClobClient", lambda client: object())
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.RecordingMarketResolver",
+        lambda client: resolver,
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.MarketRecordingFeed",
+        lambda client: feed,
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.GammaClient",
+        lambda client: object(),
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.recording.ClobClient",
+        lambda client: object(),
+    )
     monkeypatch.setattr(service, "RecordingCoordinator", CancellingCoordinator)
 
     output = tmp_path / "cancelled.sqlite3"
@@ -2142,7 +2257,7 @@ def test_cancelled_recording_is_finalized_at_its_durable_boundary(
                 output_path=output,
                 target_identity="static-alpha",
                 market_slugs=("alpha",),
-                client=object(),
+                public_data=create_recording_public_data(object()),
             )
         )
 
@@ -2178,7 +2293,7 @@ def test_finalization_still_marks_writer_failed_when_coordinator_cleanup_fails()
     async def run() -> FinalizingWriter:
         writer = FinalizingWriter()
         with pytest.raises(RuntimeError, match="capture cleanup failed"):
-            await _finish_recording(
+            await finish_recording(
                 FailingCoordinator(),  # type: ignore[arg-type]
                 writer,  # type: ignore[arg-type]
                 clean=True,
@@ -2303,7 +2418,7 @@ def _coordinator(
     plan_refresh_seconds: float = 1.0,
     checkpoint_seconds: float = 1.0,
     max_pending_capture_events: int = 64,
-    resumed_gap_condition_ids: dict[int, frozenset[str]] | None = None,
+    resumed_gap_conditions_by_id: dict[int, frozenset[str]] | None = None,
 ) -> RecordingCoordinator:
     return RecordingCoordinator(
         provider=provider,
@@ -2316,7 +2431,7 @@ def _coordinator(
         checkpoint_seconds=checkpoint_seconds,
         resolution_reconciliation_seconds=60.0,
         max_pending_capture_events=max_pending_capture_events,
-        resumed_gap_condition_ids=resumed_gap_condition_ids,
+        resumed_gap_conditions_by_id=resumed_gap_conditions_by_id,
     )
 
 

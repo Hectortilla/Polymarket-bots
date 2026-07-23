@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from polybot.polymarket.markets import Market
+from .prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
 
-
-YES_OUTCOME = "Yes"
-NO_OUTCOME = "No"
-WINNING_PAYOUT_PER_TOKEN = Decimal("1")
-LOSING_PAYOUT_PER_TOKEN = Decimal("0")
+WINNING_PAYOUT_PER_TOKEN = OUTCOME_PRICE_CEILING
+LOSING_PAYOUT_PER_TOKEN = OUTCOME_PRICE_FLOOR
 RESOLUTION_WINNING_TOKEN_ID_FIELD = "winning_token_id"
 RESOLUTION_WINNING_OUTCOME_FIELD = "winning_outcome"
 RESOLUTION_RESOLVED_AT_MS_FIELD = "resolved_at_ms"
@@ -34,30 +30,6 @@ class MarketResolutionEvent:
     winning_outcome: str
     resolved_at_ms: int
     source: str
-
-    @classmethod
-    def from_market(
-        cls,
-        market: Market,
-        *,
-        resolved_at_ms: int,
-        source: str,
-    ) -> MarketResolutionEvent | None:
-        if (
-            not market.resolved
-            or market.winning_token_id is None
-            or market.winning_outcome is None
-        ):
-            return None
-        return cls(
-            condition_id=market.condition_id,
-            market_slug=market.slug,
-            token_ids=market.token_ids,
-            winning_token_id=market.winning_token_id,
-            winning_outcome=market.winning_outcome,
-            resolved_at_ms=resolved_at_ms,
-            source=source,
-        )
 
     def __post_init__(self) -> None:
         if (
@@ -125,7 +97,7 @@ class SettledPosition:
         )
         if not all(value.is_finite() for value in decimal_values):
             raise ValueError("settled position values must be finite")
-        if not Decimal("0") <= self.payout_per_token <= Decimal("1"):
+        if not OUTCOME_PRICE_FLOOR <= self.payout_per_token <= OUTCOME_PRICE_CEILING:
             raise ValueError("settled position payout must be between zero and one")
         if (
             self.realized_pnl_usdc is not None

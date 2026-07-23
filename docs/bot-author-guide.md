@@ -525,7 +525,8 @@ runs. Keep an explicit set in the strategy only when it needs per-leader policy.
 ```python
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
-from polybot.framework.markets import MarketSubscription, market_bucket_slug
+from polybot.framework.markets import market_bucket_slug
+from polybot.framework.streams import StreamRelation, StreamRule
 
 
 class FiveMinuteBot(BaseBot):
@@ -536,15 +537,15 @@ class FiveMinuteBot(BaseBot):
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
-        return (MarketSubscription(slug=self._slug(now_ms, 0)),)
+    ) -> tuple[StreamRule, ...]:
+        return (StreamRule(StreamRelation.INDEPENDENT, (self._slug(now_ms, 0),)),)
 
     async def next_stream_rules(
         self,
         ctx: BotContext,
         now_ms: int,
-    ) -> tuple[MarketSubscription, ...]:
-        return (MarketSubscription(slug=self._slug(now_ms, 1)),)
+    ) -> tuple[StreamRule, ...]:
+        return (StreamRule(StreamRelation.INDEPENDENT, (self._slug(now_ms, 1),)),)
 
     def _slug(self, now_ms: int, bucket_offset: int) -> str:
         return market_bucket_slug(

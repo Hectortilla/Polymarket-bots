@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
-from polybot.framework.config.models import BotConfig
 from polybot.framework.cadence import STREAM_PLAN_REFRESH_INTERVAL_SECONDS
+from polybot.framework.runner import BotRunner
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.markets import Market
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSelector
 
 async def wait_for_stream_plan_change(
-    runner: Any, current_stream_plan: StreamPlan
+    runner: BotRunner, current_stream_plan: StreamPlan
 ) -> StreamPlan:
     """Wait until a dynamic bot changes its active subscriptions."""
     while True:
@@ -41,14 +40,6 @@ def compile_selectors(
     )
 
 
-async def refresh_runner_plan(runner: Any, config: BotConfig) -> StreamPlan:
-    refresh = getattr(runner, "refresh_stream_plan", None)
-    if refresh is not None:
-        return await refresh()
-    refresh_markets = getattr(runner, "refresh_markets", None)
-    if refresh_markets is not None:
-        await refresh_markets()
-    refresh_wallets = getattr(runner, "refresh_wallets", None)
-    if refresh_wallets is not None:
-        await refresh_wallets()
-    return StreamPlan(current=config.stream_rules)
+async def refresh_runner_plan(runner: BotRunner) -> StreamPlan:
+    """Refresh the sole stream-rule topology owned by the bot runner."""
+    return await runner.refresh_stream_plan()

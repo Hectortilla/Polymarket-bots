@@ -7,20 +7,16 @@ import sqlite3
 import tempfile
 from contextlib import suppress
 from pathlib import Path
-from urllib.parse import quote
 
-from .archive import (
-    CAPTURE_ANOMALY_JOURNAL_FEATURE,
-    RecordingArchive,
-    RecordingReader,
-)
-from .archive_models import RecordingSession
+from .archive.features import CAPTURE_ANOMALY_JOURNAL_FEATURE
+from .archive.reader import RecordingReader
+from .archive.writer import RecordingArchive
+from .archive.connections import configure_writer_connection, readonly_database_uri
+from .archive.models import RecordingSession
+from .archive.schema import CAPTURE_ANOMALIES_TABLE, RECORDING_FEATURES_TABLE
+from .contracts.kinds import PayloadKind
 from .trim_bootstrap import write_trim_bootstrap
 from .trim_contracts import RecordingTrimError, RecordingTrimPlan
-
-
-_COVERAGE_GAP_KIND = "coverage_gap"
-
 
 def build_trimmed_archive(
     source: RecordingReader,
@@ -108,11 +104,8 @@ def _copy_selected_rows(
         uri=True,
     )
     try:
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 0")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = FULL")
-        source_uri = f"file:{quote(str(source_path))}?mode=ro&immutable=1"
+        configure_writer_connection(connection)
+        source_uri = readonly_database_uri(source_path, immutable=True)
         connection.execute("ATTACH DATABASE ? AS source", (source_uri,))
         _create_selection_tables(connection, plan, sequence_offset)
         connection.execute("BEGIN IMMEDIATE")
@@ -182,7 +175,7 @@ def _create_selection_tables(
             plan.source_session.session_id,
             plan.start_at_ms,
             plan.end_at_ms,
-            _COVERAGE_GAP_KIND,
+            PayloadKind.COVERAGE_GAP.value,
         ),
     )
 
@@ -286,15 +279,15 @@ def _copy_capture_anomalies(
     plan: RecordingTrimPlan,
 ) -> None:
     connection.execute(
-        """
-        INSERT INTO capture_anomalies (
+        f"""
+        INSERT INTO {CAPTURE_ANOMALIES_TABLE} (
             session_id, subscription_generation, observed_at_ms,
             condition_id, market_slug, token_id, failure_kind, payload_json
         )
         SELECT 1, anomaly.subscription_generation, anomaly.observed_at_ms,
                anomaly.condition_id, anomaly.market_slug, anomaly.token_id,
                anomaly.failure_kind, anomaly.payload_json
-        FROM source.capture_anomalies AS anomaly
+        FROM source.{CAPTURE_ANOMALIES_TABLE} AS anomaly
         LEFT JOIN trim_slugs AS selected
           ON selected.market_slug = anomaly.market_slug
         WHERE anomaly.session_id = ?
@@ -320,15 +313,15 @@ def _preserve_capture_anomaly_provenance(
         for row in connection.execute(
             "SELECT name FROM source.sqlite_schema "
             "WHERE type = 'table' AND name IN (?, ?)",
-            ("recording_features", "capture_anomalies"),
+            (RECORDING_FEATURES_TABLE, CAPTURE_ANOMALIES_TABLE),
         ).fetchall()
     }
     available = False
-    if "recording_features" in tables:
+    if RECORDING_FEATURES_TABLE in tables:
         row = connection.execute(
-            """
+            f"""
             SELECT available_from_session_id
-            FROM source.recording_features
+            FROM source.{RECORDING_FEATURES_TABLE}
             WHERE feature_name = ?
             """,
             (CAPTURE_ANOMALY_JOURNAL_FEATURE,),
@@ -337,13 +330,13 @@ def _preserve_capture_anomaly_provenance(
             row is not None
             and int(row[0]) <= plan.source_session.session_id
         )
-    if available and "capture_anomalies" not in tables:
+    if available and CAPTURE_ANOMALIES_TABLE not in tables:
         raise RecordingTrimError(
             "source recording advertises a missing capture anomaly journal"
         )
     if not available:
         connection.execute(
-            "DELETE FROM recording_features WHERE feature_name = ?",
+            f"DELETE FROM {RECORDING_FEATURES_TABLE} WHERE feature_name = ?",
             (CAPTURE_ANOMALY_JOURNAL_FEATURE,),
         )
     return available

@@ -5,10 +5,11 @@ from decimal import Decimal
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.framework.dispatch import DispatchSkipReason
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.runner import BotRunner
+from polybot.framework.streams import StreamRelation, StreamRule
 
 
 @dataclass(slots=True)
@@ -110,15 +111,52 @@ def test_runner_rejects_promptly_observed_trade_after_queue_delay(
     assert outcome.skip_reason is DispatchSkipReason.WALLET_TRADE_STALE
 
 
+def test_runner_rechecks_wallet_freshness_before_claiming_source_id(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> tuple[DispatchOutcome, DispatchOutcome, list[str]]:
+        ctx = _with_config(
+            dummy_context,
+            _bot_config(
+                "wallet",
+                wallets=("0xleader",),
+                event_max_age_ms=1_000,
+            ),
+        )
+        now_values = iter((1_000, 1_000, 2_001, 2_001, 2_001, 2_001))
+        bot = RecordingBot(seen=[])
+        runner = BotRunner(bot, ctx, now_ms_fn=lambda: next(now_values))
+        stale_after_refresh = replace(
+            _wallet_trade("source-id"),
+            trade_timestamp_ms=0,
+            observed_at_ms=1_000,
+        )
+        first = await runner.dispatch_wallet_trade(stale_after_refresh)
+        second = await runner.dispatch_wallet_trade(
+            replace(
+                stale_after_refresh,
+                trade_timestamp_ms=2_001,
+                observed_at_ms=2_001,
+            )
+        )
+        return first, second, bot.seen
+
+    first, second, seen = asyncio.run(run())
+
+    assert first.skip_reason is DispatchSkipReason.WALLET_TRADE_STALE
+    assert second.accepted is True
+    assert seen == ["source-id"]
+
+
 def test_runner_routes_trades_from_multiple_configured_wallets(
     dummy_context: BotContext,
 ) -> None:
     async def run() -> tuple[bool, bool, bool, list[str]]:
         ctx = _with_config(
             dummy_context,
-            BotConfig(
-                name="multi-wallet",
-                wallet_addresses=("0xLeaderOne", "0xLeaderTwo"),
+            _bot_config(
+                "multi-wallet",
+                wallets=("0xLeaderOne", "0xLeaderTwo"),
             ),
         )
         bot = RecordingBot(seen=[])
@@ -143,21 +181,21 @@ def test_runner_routes_trades_from_multiple_configured_wallets(
     assert seen == ["tx-1", "tx-2"]
 
 
-def test_default_wallet_plan_normalizes_and_deduplicates_addresses(
+def test_default_stream_rules_normalize_and_deduplicate_wallet_addresses(
     dummy_context: BotContext,
 ) -> None:
     async def run() -> tuple[str, ...]:
         ctx = _with_config(
             dummy_context,
-            BotConfig(
-                name="multi-wallet",
-                wallet_addresses=("0xLeader", "0xleader", "0xSecond"),
+            _bot_config(
+                "multi-wallet",
+                wallets=("0xLeader", "0xleader", "0xSecond"),
             ),
         )
         bot = RecordingBot(seen=[])
 
-        subscriptions = await bot.current_wallets(ctx, 0)
-        return tuple(subscription.address for subscription in subscriptions)
+        rules = await bot.current_stream_rules(ctx, 0)
+        return rules[0].wallet_addresses
 
     assert asyncio.run(run()) == ("0xleader", "0xsecond")
 
@@ -166,9 +204,9 @@ def test_dedupe_scopes_source_ids_to_each_wallet(dummy_context: BotContext) -> N
     async def run() -> tuple[bool, bool, list[str]]:
         ctx = _with_config(
             dummy_context,
-            BotConfig(
-                name="multi-wallet",
-                wallet_addresses=("0xfirst", "0xsecond"),
+            _bot_config(
+                "multi-wallet",
+                wallets=("0xfirst", "0xsecond"),
             ),
         )
         bot = RecordingBot(seen=[])
@@ -221,6 +259,19 @@ def _wallet_trade(
         trade_timestamp_ms=1_000,
         observed_at_ms=1_250,
         transaction_hash="0xtx",
+    )
+
+
+def _bot_config(
+    name: str,
+    *,
+    wallets: tuple[str, ...],
+    **overrides: object,
+) -> BotConfig:
+    return BotConfig(
+        name=name,
+        stream_rules=(StreamRule(StreamRelation.INDEPENDENT, wallet_addresses=wallets),),
+        **overrides,  # type: ignore[arg-type]
     )
 
 

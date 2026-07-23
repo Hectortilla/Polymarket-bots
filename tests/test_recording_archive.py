@@ -11,52 +11,62 @@ import pytest
 from polybot.framework.events import Side
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.recording.archive import (
-    SCHEMA_VERSION,
+from polybot.recording.archive.errors import (
     ArchiveCoverageError,
     ArchiveExistsError,
     ArchiveFormatError,
     ArchiveIntegrityError,
     ArchiveLockedError,
     CaptureAnomalyJournalUnavailableError,
-    RecordingArchive,
-    RecordingReader,
 )
-from polybot.recording.contracts import (
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.schema import SCHEMA_VERSION
+from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
-    BookCheckpoint,
     BookDeltaPayload,
+    RecordedBookLevel,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
+from polybot.recording.contracts.anomalies import (
     CaptureAnomalyFragment,
     CaptureAnomalyPayload,
     CaptureBookDiagnostics,
     CaptureFailureKind,
     CaptureFragmentRole,
+    RevisionFingerprint,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
+)
+from polybot.recording.contracts.market import (
     FeeScheduleMetadata,
     MarketEventMetadata,
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    PublicTradePayload,
-    RecordedBookLevel,
-    RecordedEvent,
-    RevisionFingerprint,
-    ResolutionPayload,
-    SessionIntegrityStatus,
-    TickSizeChangePayload,
 )
-from polybot.recording.archive_models import RecordingSession
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
+)
+from polybot.recording.contracts.session import SessionIntegrityStatus
+from polybot.recording.archive.models import RecordingSession
 from polybot.recording.coverage import CoverageScope
-from polybot.recording.serialization import (
-    PayloadKind,
+from polybot.recording.contracts.kinds import PayloadKind
+from polybot.recording.serialization.entrypoints import (
     capture_anomaly_from_json,
     capture_anomaly_json,
     payload_from_json,
     payload_json,
-    payload_kind,
 )
+from polybot.recording.serialization.registry import payload_kind
 from polybot.recording.writer import AsyncRecordingWriter
 
 
@@ -440,8 +450,8 @@ def test_archive_close_without_an_end_keeps_wall_clock_behavior(
     archive, started_at_ms = _opened_archive(tmp_path)
     wall_clock_end_ms = started_at_ms + 50
     monkeypatch.setattr(
-        "polybot.recording.archive.time.time_ns",
-        lambda: wall_clock_end_ms * 1_000_000,
+        "polybot.recording.archive.writer.system_now_ms",
+        lambda: wall_clock_end_ms,
     )
     path = archive.path
 
@@ -1396,6 +1406,19 @@ def test_reader_rejects_unsupported_schema_and_malformed_payload(tmp_path) -> No
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
     connection.close()
     with pytest.raises(ArchiveFormatError, match="unsupported"):
+        RecordingReader(path)
+
+
+def test_reader_rejects_a_missing_core_schema_table(tmp_path) -> None:
+    archive, _ = _opened_archive(tmp_path)
+    path = archive.path
+    archive.close()
+    connection = sqlite3.connect(path)
+    connection.execute("DROP TABLE events")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(ArchiveFormatError, match="core table is malformed: events"):
         RecordingReader(path)
 
 

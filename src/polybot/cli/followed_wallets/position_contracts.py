@@ -7,7 +7,10 @@ from decimal import Decimal
 from typing import Any
 
 from polybot.framework.events import Side
-from polybot.execution.position_transition import transition_signed_position
+from polybot.framework.events.prices import (
+    OUTCOME_PRICE_CEILING,
+    OUTCOME_PRICE_FLOOR,
+)
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     RESOLUTION_RESOLVED_AT_MS_FIELD,
@@ -21,6 +24,7 @@ from polybot.framework.events.resolutions import (
     SettledPosition,
     realized_resolution_pnl,
 )
+from polybot.framework.position_transition import transition_signed_position
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 
 from .persistence.schema import (
@@ -57,9 +61,21 @@ class FollowBaseline:
             raise ValueError("followed-wallet baseline size must be positive and finite")
         if self.basis_price is not None and (
             not self.basis_price.is_finite()
-            or not Decimal("0") <= self.basis_price <= Decimal("1")
+            or not OUTCOME_PRICE_FLOOR <= self.basis_price <= OUTCOME_PRICE_CEILING
         ):
             raise ValueError("followed-wallet baseline price must be between zero and one")
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> FollowBaseline:
+        basis_price = payload[FOLLOW_BASIS_PRICE_FIELD]
+        return cls(
+            condition_id=payload[FOLLOW_CONDITION_ID_FIELD],
+            token_id=payload[FOLLOW_TOKEN_ID_FIELD],
+            market_slug=payload[FOLLOW_MARKET_SLUG_FIELD],
+            size=_payload_decimal(payload[FOLLOW_SIZE_FIELD]),
+            basis_price=None if basis_price is None else _payload_decimal(basis_price),
+            outcome=payload.get(FOLLOW_OUTCOME_FIELD),
+        )
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -92,8 +108,8 @@ class FollowMovement:
             )
         if (
             not self.price.is_finite()
-            or self.price <= 0
-            or self.price > Decimal("1")
+            or self.price <= OUTCOME_PRICE_FLOOR
+            or self.price > OUTCOME_PRICE_CEILING
         ):
             raise ValueError(
                 "followed-wallet movement price must be between zero and one"
@@ -110,6 +126,19 @@ class FollowMovement:
             trade_timestamp_ms=trade.trade_timestamp_ms,
             source_key=trade.source_key,
             market_slug=trade.market_slug,
+        )
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> FollowMovement:
+        return cls(
+            condition_id=payload[FOLLOW_CONDITION_ID_FIELD],
+            token_id=payload[FOLLOW_TOKEN_ID_FIELD],
+            side=Side(payload[FOLLOW_SIDE_FIELD]),
+            size=_payload_decimal(payload[FOLLOW_SIZE_FIELD]),
+            price=_payload_decimal(payload[FOLLOW_PRICE_FIELD]),
+            trade_timestamp_ms=payload[FOLLOW_TRADE_TIMESTAMP_MS_FIELD],
+            source_key=payload[FOLLOW_SOURCE_KEY_FIELD],
+            market_slug=payload.get(FOLLOW_MARKET_SLUG_FIELD),
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -172,7 +201,7 @@ def _add_realized_pnl(
 
 @dataclass(frozen=True, slots=True)
 class SettlementCalculation:
-    settled: tuple[SettledPosition, ...]
+    settled_positions: tuple[SettledPosition, ...]
     baselines: tuple[FollowBaseline, ...]
     movements: tuple[FollowMovement, ...]
     gross_realized_pnl_usdc: Decimal | None
@@ -188,7 +217,7 @@ class SettlementCalculation:
             condition_id=condition_id,
             winning_token_id=winning_token_id,
             resolved_at_ms=resolved_at_ms,
-            positions=self.settled,
+            positions=self.settled_positions,
             gross_realized_pnl_usdc=self.gross_realized_pnl_usdc,
             baselines=self.baselines,
             movements=self.movements,
@@ -215,17 +244,17 @@ class FollowSettlement:
                 SettledPosition(
                     owner=position[SETTLED_POSITION_OWNER_FIELD],
                     token_id=position[SETTLED_POSITION_TOKEN_ID_FIELD],
-                    size=Decimal(position[SETTLED_POSITION_SIZE_FIELD]),
-                    payout_per_token=Decimal(
+                    size=_payload_decimal(position[SETTLED_POSITION_SIZE_FIELD]),
+                    payout_per_token=_payload_decimal(
                         position[SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD]
                     ),
-                    cash_payout_usdc=Decimal(
+                    cash_payout_usdc=_payload_decimal(
                         position[SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD]
                     ),
                     realized_pnl_usdc=(
                         None
                         if position[SETTLED_POSITION_REALIZED_PNL_USDC_FIELD] is None
-                        else Decimal(
+                        else _payload_decimal(
                             position[SETTLED_POSITION_REALIZED_PNL_USDC_FIELD]
                         )
                     ),
@@ -235,34 +264,14 @@ class FollowSettlement:
             gross_realized_pnl_usdc=(
                 None
                 if payload[FOLLOW_GROSS_REALIZED_PNL_FIELD] is None
-                else Decimal(payload[FOLLOW_GROSS_REALIZED_PNL_FIELD])
+                else _payload_decimal(payload[FOLLOW_GROSS_REALIZED_PNL_FIELD])
             ),
             baselines=tuple(
-                FollowBaseline(
-                    condition_id=baseline[FOLLOW_CONDITION_ID_FIELD],
-                    token_id=baseline[FOLLOW_TOKEN_ID_FIELD],
-                    market_slug=baseline[FOLLOW_MARKET_SLUG_FIELD],
-                    size=Decimal(baseline[FOLLOW_SIZE_FIELD]),
-                    basis_price=(
-                        None
-                        if baseline[FOLLOW_BASIS_PRICE_FIELD] is None
-                        else Decimal(baseline[FOLLOW_BASIS_PRICE_FIELD])
-                    ),
-                    outcome=baseline.get(FOLLOW_OUTCOME_FIELD),
-                )
+                FollowBaseline.from_payload(baseline)
                 for baseline in payload[FOLLOW_BASELINES_FIELD]
             ),
             movements=tuple(
-                FollowMovement(
-                    condition_id=movement[FOLLOW_CONDITION_ID_FIELD],
-                    token_id=movement[FOLLOW_TOKEN_ID_FIELD],
-                    side=Side(movement[FOLLOW_SIDE_FIELD]),
-                    size=Decimal(movement[FOLLOW_SIZE_FIELD]),
-                    price=Decimal(movement[FOLLOW_PRICE_FIELD]),
-                    trade_timestamp_ms=movement[FOLLOW_TRADE_TIMESTAMP_MS_FIELD],
-                    source_key=movement[FOLLOW_SOURCE_KEY_FIELD],
-                    market_slug=movement.get(FOLLOW_MARKET_SLUG_FIELD),
-                )
+                FollowMovement.from_payload(movement)
                 for movement in payload[FOLLOW_MOVEMENTS_FIELD]
             ),
         )
@@ -287,3 +296,9 @@ class FollowSettlement:
                 movement.to_payload() for movement in self.movements
             ],
         }
+
+
+def _payload_decimal(value: object) -> Decimal:
+    """Use the same text conversion as persisted-payload validation."""
+
+    return Decimal(str(value))

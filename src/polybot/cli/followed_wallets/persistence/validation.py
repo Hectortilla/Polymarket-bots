@@ -7,6 +7,8 @@ from collections.abc import Iterable
 from typing import Any
 
 from polybot.framework.events import Side
+from polybot.framework.events.prices import OUTCOME_PRICE_CEILING
+from polybot.framework.events.wallet_trades import source_key_belongs_to_wallet
 from polybot.framework.events.resolutions import (
     RESOLUTION_RESOLVED_AT_MS_FIELD,
     RESOLUTION_WINNING_TOKEN_ID_FIELD,
@@ -17,6 +19,7 @@ from polybot.framework.events.resolutions import (
     SETTLED_POSITION_SIZE_FIELD,
     SETTLED_POSITION_TOKEN_ID_FIELD,
 )
+from polybot.framework.wallets import normalize_wallet_address
 
 from .schema import (
     FOLLOW_ACTIVE_FIELD,
@@ -59,7 +62,7 @@ def validate_state_payload(
     baselines = _require_list(payload, FOLLOW_BASELINES_FIELD)
     movements = _require_list(payload, FOLLOW_MOVEMENTS_FIELD)
     source_ids = _require_string_list(payload, FOLLOW_SOURCE_IDS_FIELD)
-    checkpoint = payload.get(FOLLOW_CHECKPOINT_FIELD)
+    checkpoint = _require_key(payload, FOLLOW_CHECKPOINT_FIELD)
     if checkpoint is not None:
         if (
             not isinstance(checkpoint, list)
@@ -71,6 +74,7 @@ def validate_state_payload(
             or not checkpoint[1]
         ):
             raise ValueError("followed-wallet checkpoint is invalid")
+        _require_owned_source_key(wallet, checkpoint[1], "checkpoint")
     settlements = _require_record_list(payload, FOLLOW_SETTLEMENTS_FIELD)
     if FOLLOW_EPOCH_HISTORY_FIELD not in payload and not allow_missing_epoch_history:
         raise ValueError("followed-wallet state is missing epoch history")
@@ -82,9 +86,9 @@ def validate_state_payload(
     for baseline_payload in baselines:
         _validate_baseline(baseline_payload)
     for movement_payload in movements:
-        _validate_movement(movement_payload)
+        _validate_movement(wallet, movement_payload)
     for settlement_payload in settlements:
-        _validate_settlement(settlement_payload)
+        _validate_settlement(wallet, settlement_payload)
     for historical_payload in epoch_history:
         validate_state_payload(
             wallet, historical_payload, allow_missing_epoch_history=True
@@ -98,6 +102,8 @@ def validate_state_payload(
         "movement source keys",
     )
     _reject_duplicates(source_ids, "source IDs")
+    for source_key in source_ids:
+        _require_owned_source_key(wallet, source_key, "source ID")
     _reject_duplicates(
         (settlement[FOLLOW_CONDITION_ID_FIELD] for settlement in settlements),
         "settlement condition IDs",
@@ -121,20 +127,20 @@ def _validate_baseline(payload: dict[str, Any]) -> None:
     _require_text(payload, FOLLOW_TOKEN_ID_FIELD)
     _require_text(payload, FOLLOW_MARKET_SLUG_FIELD)
     _require_decimal(payload, FOLLOW_SIZE_FIELD, positive=True)
-    basis_price = payload.get(FOLLOW_BASIS_PRICE_FIELD)
+    basis_price = _require_key(payload, FOLLOW_BASIS_PRICE_FIELD)
     if basis_price is not None:
         _decimal_value(
             basis_price,
             FOLLOW_BASIS_PRICE_FIELD,
             non_negative=True,
-            maximum=Decimal("1"),
+            maximum=OUTCOME_PRICE_CEILING,
         )
     outcome = payload.get(FOLLOW_OUTCOME_FIELD)
     if outcome is not None and (not isinstance(outcome, str) or not outcome.strip()):
         raise ValueError("followed-wallet baseline outcome is invalid")
 
 
-def _validate_movement(payload: dict[str, Any]) -> None:
+def _validate_movement(wallet: str, payload: dict[str, Any]) -> None:
     _require_text(payload, FOLLOW_CONDITION_ID_FIELD)
     _require_text(payload, FOLLOW_TOKEN_ID_FIELD)
     if payload.get(FOLLOW_SIDE_FIELD) not in {Side.BUY.value, Side.SELL.value}:
@@ -144,10 +150,11 @@ def _validate_movement(payload: dict[str, Any]) -> None:
         payload.get(FOLLOW_PRICE_FIELD),
         FOLLOW_PRICE_FIELD,
         positive=True,
-        maximum=Decimal("1"),
+        maximum=OUTCOME_PRICE_CEILING,
     )
     _require_int(payload, FOLLOW_TRADE_TIMESTAMP_MS_FIELD, minimum=0)
-    _require_text(payload, FOLLOW_SOURCE_KEY_FIELD)
+    source_key = _require_text(payload, FOLLOW_SOURCE_KEY_FIELD)
+    _require_owned_source_key(wallet, source_key, "movement source key")
     market_slug = payload.get(FOLLOW_MARKET_SLUG_FIELD)
     if market_slug is not None and (
         not isinstance(market_slug, str) or not market_slug
@@ -155,7 +162,7 @@ def _validate_movement(payload: dict[str, Any]) -> None:
         raise ValueError("followed-wallet movement market slug is invalid")
 
 
-def _validate_settlement(payload: dict[str, Any]) -> None:
+def _validate_settlement(wallet: str, payload: dict[str, Any]) -> None:
     _require_text(payload, FOLLOW_CONDITION_ID_FIELD)
     _require_text(payload, RESOLUTION_WINNING_TOKEN_ID_FIELD)
     _require_int(payload, RESOLUTION_RESOLVED_AT_MS_FIELD, minimum=0)
@@ -165,23 +172,25 @@ def _validate_settlement(payload: dict[str, Any]) -> None:
     ):
         raise ValueError("followed-wallet settlement positions must be a list")
     for position in positions:
-        _require_text(position, SETTLED_POSITION_OWNER_FIELD)
+        owner = _require_text(position, SETTLED_POSITION_OWNER_FIELD)
+        if normalize_wallet_address(owner) != normalize_wallet_address(wallet):
+            raise ValueError("followed-wallet settlement position owner is invalid")
         _require_text(position, SETTLED_POSITION_TOKEN_ID_FIELD)
         _require_decimal(position, SETTLED_POSITION_SIZE_FIELD)
         _decimal_value(
             position.get(SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD),
             SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD,
             non_negative=True,
-            maximum=Decimal("1"),
+            maximum=OUTCOME_PRICE_CEILING,
         )
         _decimal_value(
             position.get(SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD),
             SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD,
         )
-        realized = position.get(SETTLED_POSITION_REALIZED_PNL_USDC_FIELD)
+        realized = _require_key(position, SETTLED_POSITION_REALIZED_PNL_USDC_FIELD)
         if realized is not None:
             _decimal_value(realized, SETTLED_POSITION_REALIZED_PNL_USDC_FIELD)
-    gross = payload.get(FOLLOW_GROSS_REALIZED_PNL_FIELD)
+    gross = _require_key(payload, FOLLOW_GROSS_REALIZED_PNL_FIELD)
     if gross is not None:
         _decimal_value(gross, FOLLOW_GROSS_REALIZED_PNL_FIELD)
     baselines = _require_record_list(payload, FOLLOW_BASELINES_FIELD)
@@ -189,7 +198,7 @@ def _validate_settlement(payload: dict[str, Any]) -> None:
     for baseline in baselines:
         _validate_baseline(baseline)
     for movement in movements:
-        _validate_movement(movement)
+        _validate_movement(wallet, movement)
     _reject_duplicates(
         (position[SETTLED_POSITION_TOKEN_ID_FIELD] for position in positions),
         "settlement position token IDs",
@@ -217,6 +226,12 @@ def _require_list(payload: dict[str, Any], key: str) -> list[Any]:
     return value
 
 
+def _require_key(payload: dict[str, Any], key: str) -> object:
+    if key not in payload:
+        raise ValueError(f"followed-wallet {key} is missing")
+    return payload[key]
+
+
 def _require_record_list(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
     values = _require_list(payload, key)
     if not all(isinstance(value, dict) for value in values):
@@ -236,6 +251,11 @@ def _require_text(payload: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"followed-wallet {key} is invalid")
     return value
+
+
+def _require_owned_source_key(wallet: str, source_key: str, label: str) -> None:
+    if not source_key_belongs_to_wallet(wallet, source_key):
+        raise ValueError(f"followed-wallet {label} does not belong to {wallet}")
 
 
 def _require_int(payload: dict[str, Any], key: str, *, minimum: int) -> int:
@@ -266,8 +286,10 @@ def _decimal_value(
     non_negative: bool = False,
     maximum: Decimal | None = None,
 ) -> Decimal:
+    if not isinstance(value, str):
+        raise ValueError(f"followed-wallet {key} is invalid")
     try:
-        decimal = Decimal(str(value))
+        decimal = Decimal(value)
     except (InvalidOperation, TypeError, ValueError) as error:
         raise ValueError(f"followed-wallet {key} is invalid") from error
     if (

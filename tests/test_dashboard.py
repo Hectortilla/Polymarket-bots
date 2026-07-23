@@ -3,15 +3,19 @@ from collections import deque
 from datetime import datetime
 from decimal import Decimal
 from io import StringIO
-from math import isnan, nan
+from math import inf, isnan, nan
 from threading import Event, Thread
 
 import asciichartpy
 import pytest
 from rich.console import Console
 
-from polybot.cli.dashboard.copy import RUN_FAILED_PREFIX
 from polybot.async_io import run_blocking
+from polybot.cli.charting import (
+    padded_value_bounds,
+    render_chart,
+    resample_indices,
+)
 from polybot.cli.dashboard.render import (
     PRICE_CHART_MAX,
     PRICE_CHART_MIN,
@@ -25,12 +29,12 @@ from polybot.cli.dashboard.render import (
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
 from polybot.cli.dashboard.status import filled_progress_width, optional_money
-from polybot.cli.dashboard.state import (
-    DashboardView,
+from polybot.cli.dashboard.chart_history import (
     MAX_CHART_HISTORY_POINTS,
     MAX_CHART_TOKENS,
-    DashboardState,
 )
+from polybot.cli.dashboard.state import DashboardState
+from polybot.cli.dashboard.view_state import DashboardView
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.cli.observability.broker import ObservableBroker
@@ -69,8 +73,8 @@ from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     MarketSettlementEvent,
-    YES_OUTCOME,
 )
+from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.polymarket.market_hints import MarketTradeHint
 
@@ -360,16 +364,16 @@ def test_dashboard_uses_last_executable_mark_while_waiting_for_resolution() -> N
     )
     valuation = state.portfolio_valuation(now_ms=1_200)
 
-    assert valuation.equity == Decimal("91.00")
-    assert valuation.pnl == Decimal("-9.00")
+    assert valuation.equity_usdc == Decimal("91.00")
+    assert valuation.pnl_usdc == Decimal("-9.00")
     assert valuation.is_stale is True
     assert state.executable_equity(now_ms=1_200) is None
     assert (
-        optional_money(valuation.equity, stale=valuation.is_stale)
+        optional_money(valuation.equity_usdc, stale=valuation.is_stale)
         == "$91.00 (stale)"
     )
     assert (
-        optional_money(valuation.pnl, stale=valuation.is_stale)
+        optional_money(valuation.pnl_usdc, stale=valuation.is_stale)
         == "$-9.00 (stale)"
     )
 
@@ -396,7 +400,7 @@ def test_dashboard_reuses_stale_mark_after_position_size_changes() -> None:
 
     valuation = state.portfolio_valuation(now_ms=1_101)
 
-    assert valuation.equity == Decimal("80.80")
+    assert valuation.equity_usdc == Decimal("80.80")
     assert valuation.is_stale is True
 
 
@@ -431,14 +435,14 @@ def test_dashboard_refreshes_stale_mark_for_new_position_size_after_fill() -> No
                 ),
             ),
             latency_ms=1,
-            occurred_at=1.0,
+            occurred_at_monotonic=1.0,
         )
     )
     state.books.clear()
 
     valuation = state.portfolio_valuation(now_ms=1_051)
 
-    assert valuation.equity == Decimal("89.80")
+    assert valuation.equity_usdc == Decimal("89.80")
     assert valuation.is_stale is True
 
 
@@ -475,14 +479,14 @@ def test_dashboard_refreshes_fill_mark_from_pending_book() -> None:
                 ),
             ),
             latency_ms=1,
-            occurred_at=1.0,
+            occurred_at_monotonic=1.0,
         )
     )
     state.pending_books.clear()
 
     valuation = state.portfolio_valuation(now_ms=1_051)
 
-    assert valuation.equity == Decimal("89.80")
+    assert valuation.equity_usdc == Decimal("89.80")
     assert valuation.is_stale is True
 
 
@@ -502,7 +506,7 @@ def test_dashboard_keeps_chart_selection_stable_when_markets_exceed_capacity() -
                     float(pass_index * (MAX_CHART_TOKENS + 1) + index),
                 )
             )
-        state.sample(80)
+        state.record_chart_sample()
     trade = WalletTradeEvent(
         wallet="0xleader",
         condition_id="condition",
@@ -540,7 +544,7 @@ def test_dashboard_renders_all_twenty_chart_series() -> None:
                 float(index),
             )
         )
-    state.sample(160)
+    state.record_chart_sample()
 
     render_dashboard(state, 160, 40)
 
@@ -588,10 +592,10 @@ def test_dashboard_formats_book_lag_with_stable_width() -> None:
     assert _fixed_ms(None) == "     N/A"
 
 
-def test_dashboard_tracks_cumulative_and_recent_book_drop_ratios() -> None:
+def test_dashboard_tracks_cumulative_and_recent_book_coalescing_ratios() -> None:
     state = DashboardState()
-    assert state.cumulative_book_drop_ratio() == 0.0
-    assert state.recent_book_drop_ratio() == 0.0
+    assert state.cumulative_book_coalescing_ratio() == 0.0
+    assert state.recent_book_coalescing_ratio() == 0.0
 
     state.apply(
         StreamHealth(
@@ -599,7 +603,7 @@ def test_dashboard_tracks_cumulative_and_recent_book_drop_ratios() -> None:
             3,
             10,
             book_received_count=10,
-            book_dropped_count=2,
+            book_coalesced_count=2,
         )
     )
     state.apply(
@@ -608,17 +612,17 @@ def test_dashboard_tracks_cumulative_and_recent_book_drop_ratios() -> None:
             3,
             12,
             book_received_count=15,
-            book_dropped_count=4,
+            book_coalesced_count=4,
         )
     )
 
     assert state.book_received_count == 15
-    assert state.book_dropped_count == 4
-    assert state.cumulative_book_drop_ratio() == pytest.approx(4 / 15)
-    assert state.recent_book_drop_ratio() == pytest.approx(4 / 15)
+    assert state.book_coalesced_count == 4
+    assert state.cumulative_book_coalescing_ratio() == pytest.approx(4 / 15)
+    assert state.recent_book_coalescing_ratio() == pytest.approx(4 / 15)
 
 
-def test_dashboard_recent_book_drop_ratio_uses_last_100_book_deltas() -> None:
+def test_dashboard_recent_book_coalescing_ratio_uses_last_100_book_deltas() -> None:
     state = DashboardState()
     received = 0
     dropped = 0
@@ -631,22 +635,22 @@ def test_dashboard_recent_book_drop_ratio_uses_last_100_book_deltas() -> None:
                 1,
                 None,
                 book_received_count=received,
-                book_dropped_count=dropped,
+                book_coalesced_count=dropped,
             )
         )
 
-    assert state.cumulative_book_drop_ratio() == pytest.approx(2 / 101)
-    assert state.recent_book_drop_ratio() == pytest.approx(1 / 100)
+    assert state.cumulative_book_coalescing_ratio() == pytest.approx(2 / 101)
+    assert state.recent_book_coalescing_ratio() == pytest.approx(1 / 100)
 
 
 def test_dashboard_ignores_non_book_health_samples_for_recent_drop_window() -> None:
     state = DashboardState()
-    state.apply(StreamHealth(0, 1, None, book_received_count=2, book_dropped_count=1))
+    state.apply(StreamHealth(0, 1, None, book_received_count=2, book_coalesced_count=1))
     for _ in range(150):
-        state.apply(StreamHealth(0, 1, None, book_received_count=2, book_dropped_count=1))
+        state.apply(StreamHealth(0, 1, None, book_received_count=2, book_coalesced_count=1))
 
-    assert list(state.book_drop_samples) == [(2, 1)]
-    assert state.recent_book_drop_ratio() == 0.5
+    assert list(state.book_coalescing_samples) == [(2, 1)]
+    assert state.recent_book_coalescing_ratio() == 0.5
 
 
 def test_dashboard_keeps_chart_series_order_stable_on_book_updates() -> None:
@@ -772,7 +776,7 @@ def test_dashboard_renders_bot_activity_with_severity_and_safe_message() -> None
         BotActivityEvent(
             "trigger\nconfirmed",
             severity=ActivitySeverity.WARNING,
-            occurred_at=1.0,
+            occurred_at_monotonic=1.0,
         )
     )
 
@@ -1020,7 +1024,7 @@ def test_dashboard_samples_buy_fills_as_trade_markers() -> None:
             2.0,
         )
     )
-    state.sample(80, now_ms=1_000)
+    state.record_chart_sample(now_ms=1_000)
 
     assert tuple(state.chart_tokens) == ("token",)
     assert list(state.trade_marker_history["token"]) == [(Side.BUY,)]
@@ -1050,7 +1054,7 @@ def test_dashboard_samples_sell_fills_as_trade_markers() -> None:
             2.0,
         )
     )
-    state.sample(80, now_ms=1_000)
+    state.record_chart_sample(now_ms=1_000)
 
     assert list(state.trade_marker_history["token"]) == [(Side.SELL,)]
 
@@ -1116,7 +1120,7 @@ def test_dashboard_time_zoom_retains_history_and_changes_window() -> None:
     state = DashboardState()
     for value in range(MAX_CHART_HISTORY_POINTS + 1):
         state.wallet_value_history.append(float(value))
-    state.sample(100)
+    state.record_chart_sample()
 
     assert len(state.wallet_value_history) == MAX_CHART_HISTORY_POINTS
     assert state.chart_window_points(100) == 88
@@ -1244,7 +1248,7 @@ def test_dashboard_renders_wallet_view_with_trade_time_lanes() -> None:
     state = DashboardState(view=DashboardView.WALLET)
     trade = _wallet_trade("0x" + "5" * 40, "trade", Side.BUY, 1_000)
     state.apply(StreamReceived(WalletStreamEvent(StreamKind.WALLET, trade), 1.0))
-    state.sample(120, now_ms=1_000)
+    state.record_chart_sample(now_ms=1_000)
     output = StringIO()
 
     Console(file=output, width=120, height=35).print(render_dashboard(state, 120, 35))
@@ -1257,7 +1261,7 @@ def test_dashboard_samples_executable_wallet_value() -> None:
     state = DashboardState(initial_cash_usdc=Decimal("100"))
     state.portfolio = PortfolioSnapshot(Decimal("125"), Decimal("0"), ())
 
-    state.sample(80)
+    state.record_chart_sample()
 
     assert list(state.wallet_value_history) == [125.0]
 
@@ -1279,8 +1283,8 @@ def test_dashboard_retains_stale_chart_values_with_stale_markers() -> None:
         (PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.5")),),
     )
 
-    state.sample(80, now_ms=1_000)
-    state.sample(80, now_ms=1_101)
+    state.record_chart_sample(now_ms=1_000)
+    state.record_chart_sample(now_ms=1_101)
 
     assert list(state.price_history["token"]) == [0.5, 0.5]
     assert list(state.price_stale_history["token"]) == [False, True]
@@ -1295,7 +1299,7 @@ def test_dashboard_removes_settled_market_state_and_counts_it_once() -> None:
     active = _book("active", Decimal("0.45"), Decimal("0.55"))
     for book in (settled_yes, settled_no, active):
         state.apply(StreamReceived(BookStreamEvent(StreamKind.BOOK, book), 1.0))
-    state.sample(80, now_ms=1_000)
+    state.record_chart_sample(now_ms=1_000)
     state.pending_books[settled_yes.token_id] = settled_yes
     state.pending_trade_markers[settled_no.token_id] = [Side.BUY]
     resolution = MarketResolutionEvent(
@@ -1413,14 +1417,46 @@ def test_dashboard_aggregates_consecutive_identical_ticker_events() -> None:
     state.apply(RuntimeFailed("repeated failure", 4.0))
 
     assert [(row.message, row.count) for row in state.ticker] == [
-        (f"{RUN_FAILED_PREFIX} repeated failure", 1),
-        (f"{RUN_FAILED_PREFIX} another failure", 1),
-        (f"{RUN_FAILED_PREFIX} repeated failure", 2),
+        ("RUN FAILED repeated failure", 1),
+        ("RUN FAILED another failure", 1),
+        ("RUN FAILED repeated failure", 2),
     ]
     output = StringIO()
     Console(file=output, width=80, height=24).print(render_dashboard(state, 80, 24))
 
-    assert f"{RUN_FAILED_PREFIX} repeated failure x2" in output.getvalue()
+    assert "RUN FAILED repeated failure x2" in output.getvalue()
+
+
+@pytest.mark.parametrize("values", ((inf,), (-inf,), (inf, -inf)))
+def test_chart_bounds_ignore_infinite_values(values: tuple[float, ...]) -> None:
+    assert padded_value_bounds(values) == (None, None)
+
+
+def test_charting_sanitizes_infinite_samples_before_rendering(monkeypatch) -> None:
+    captured: list[list[float]] = []
+
+    def capture_plot(series, config):
+        captured.append(series)
+        return "chart"
+
+    monkeypatch.setattr(asciichartpy, "plot", capture_plot)
+
+    chart = render_chart([[0.2, inf, 0.8]], ("green",), 4, "empty")
+
+    assert chart.plain == "chart"
+    assert captured[0][0] == 0.2
+    assert isnan(captured[0][1])
+    assert captured[0][2] == 0.8
+    assert padded_value_bounds((0.2, inf, 0.8)) == pytest.approx((0.11, 0.89))
+
+
+def test_resample_indices_validates_before_using_the_pure_formula() -> None:
+    assert resample_indices(0, 3) == []
+    assert resample_indices(3, 1) == [2]
+    with pytest.raises(ValueError, match="nonnegative"):
+        resample_indices(-1, 3)
+    with pytest.raises(ValueError, match="positive"):
+        resample_indices(3, 0)
 
 
 def _book(

@@ -65,6 +65,16 @@ class TrackedMarketRegistry:
     def get(self, condition_id: str) -> TrackedMarket | None:
         return self._entries.get(condition_id)
 
+    def ensure_compatible(self, market: Market) -> None:
+        """Reject a different token pair for an already tracked condition."""
+
+        entry = self._entries.get(market.condition_id)
+        if entry is not None and set(entry.market.token_ids) != set(market.token_ids):
+            raise MarketDataError(
+                MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                f"condition ID maps to conflicting token pairs: {market.condition_id}",
+            )
+
     def add(
         self,
         market: Market,
@@ -82,11 +92,7 @@ class TrackedMarketRegistry:
             changed = True
             subscription_changed = True
         else:
-            if set(entry.market.token_ids) != set(market.token_ids):
-                raise MarketDataError(
-                    MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
-                    f"condition ID maps to conflicting token pairs: {market.condition_id}",
-                )
+            self.ensure_compatible(market)
             changed = entry.market != market
             entry.market = market
         if interest not in entry.interests:

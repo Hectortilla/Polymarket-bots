@@ -2,8 +2,8 @@
 
 The strategy trades at most once in each bucket. It waits for an extreme,
 accelerating leader, then buys the cheaply priced opposite outcome and realizes
-the rebound with a take-profit exit. In paper mode it uses a larger, still
-drawdown-bounded position size to make the small-probability scalps meaningful.
+the rebound with a take-profit exit. Its paper-sized request is always bounded
+by the runtime's configured maximum order size.
 """
 
 from __future__ import annotations
@@ -11,28 +11,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from polybot.examples.btc_five_minute_strategy import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
 from polybot.framework.base import BaseBot
-from polybot.framework.config.models import BotMode
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.framework.markets import market_bucket_slug
+from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
 
 
-BTC_FIVE_MINUTE_SLUG_PREFIX = "btc-updown-5m"
-BUCKET_SECONDS = 300
 ENTRY_DELAY_MS = 210_000
 ENTRY_CUTOFF_MS = 45_000
 MOMENTUM_LOOKBACK_MS = 15_000
+ENTRY_QUOTE_MAX_AGE_MS = MOMENTUM_LOOKBACK_MS
+ENTRY_QUOTE_MAX_SKEW_MS = 2_000
 MINIMUM_LEADER_BID = Decimal("0.85")
 MAXIMUM_ENTRY_ASK = Decimal("0.16")
 MINIMUM_PRICE_IMPROVEMENT = Decimal("0.04")
 TAKE_PROFIT = Decimal("0.30")
 PAPER_MAX_ORDER_SIZE = Decimal("51")
-ORDER_SIZE = PAPER_MAX_ORDER_SIZE
 MAXIMUM_TRADES_PER_RUN = 2
 BREAKOUT_ENTRY_REASON = "btc_5m_late_breakout"
 TAKE_PROFIT_EXIT_REASON = "btc_5m_contrarian_take_profit"
@@ -73,11 +75,6 @@ class WinnerTradingBot(BaseBot):
         self._entered_condition_id: str | None = None
         self._position: OpenPosition | None = None
         self._entry_count = 0
-
-    async def on_start(self, ctx: BotContext) -> None:
-        """Use the paper-only position limit authorized for this backtest."""
-        if ctx.config.mode is BotMode.PAPER:
-            object.__setattr__(ctx.config, "max_order_size", PAPER_MAX_ORDER_SIZE)
 
     async def current_stream_rules(
         self, ctx: BotContext, now_ms: int
@@ -151,15 +148,17 @@ class WinnerTradingBot(BaseBot):
             or self._entry_count >= MAXIMUM_TRADES_PER_RUN
         ):
             return
-        elapsed_ms = now_ms % (BUCKET_SECONDS * 1_000)
-        remaining_ms = BUCKET_SECONDS * 1_000 - elapsed_ms
-        if elapsed_ms < ENTRY_DELAY_MS or remaining_ms <= ENTRY_CUTOFF_MS:
+        timing = FixedBucketTiming.at(now_ms, BTC_FIVE_MINUTE_BUCKET_SECONDS)
+        if not timing.allows_entry(
+            delay_ms=ENTRY_DELAY_MS,
+            cutoff_ms=ENTRY_CUTOFF_MS,
+        ):
             return
-        candidate = self._entry_candidate(market)
+        candidate = self._entry_candidate(market, now_ms)
         if candidate is None:
             return
         token_id, quote = candidate
-        size = min(ORDER_SIZE, ctx.config.max_order_size)
+        size = self._effective_order_size(ctx.config.max_order_size)
         if market.minimum_order_size is not None and size < market.minimum_order_size:
             return
         fill = await ctx.broker.submit(
@@ -210,8 +209,14 @@ class WinnerTradingBot(BaseBot):
             else OpenPosition(position.token_id, remaining, position.average_price)
         )
 
-    def _entry_candidate(self, market: Market) -> tuple[str, Quote] | None:
+    def _entry_candidate(
+        self,
+        market: Market,
+        now_ms: int,
+    ) -> tuple[str, Quote] | None:
         if len(self._books) != len(market.token_ids):
+            return None
+        if not self._quotes_are_current(market, now_ms):
             return None
         leader_token_id = max(
             market.token_ids, key=lambda value: self._books[value].bid
@@ -232,6 +237,22 @@ class WinnerTradingBot(BaseBot):
             return None
         return token_id, quote
 
+    @staticmethod
+    def _effective_order_size(configured_max_order_size: Decimal) -> Decimal:
+        """Apply the bot's paper sizing preference within the configured risk cap."""
+        return min(PAPER_MAX_ORDER_SIZE, configured_max_order_size)
+
+    def _quotes_are_current(self, market: Market, now_ms: int) -> bool:
+        quotes = tuple(self._books[token_id] for token_id in market.token_ids)
+        observed_at_ms = tuple(quote.observed_at_ms for quote in quotes)
+        return (
+            all(
+                0 <= now_ms - timestamp <= ENTRY_QUOTE_MAX_AGE_MS
+                for timestamp in observed_at_ms
+            )
+            and max(observed_at_ms) - min(observed_at_ms) <= ENTRY_QUOTE_MAX_SKEW_MS
+        )
+
     def _stream_rule(self, now_ms: int, *, bucket_offset: int) -> StreamRule:
         return StreamRule(
             StreamRelation.INDEPENDENT,
@@ -242,7 +263,7 @@ class WinnerTradingBot(BaseBot):
         return market_bucket_slug(
             self.slug_prefix,
             now_ms,
-            BUCKET_SECONDS,
+            BTC_FIVE_MINUTE_BUCKET_SECONDS,
             bucket_offset=bucket_offset,
         )
 

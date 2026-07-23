@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from urllib.parse import quote
 
 from polybot.backtesting.contracts import BacktestOptions
 from polybot.backtesting.selection import (
@@ -12,20 +11,26 @@ from polybot.backtesting.selection import (
     validate_backtest_selection_coverage,
 )
 from polybot.backtesting.state import ArchiveMarketState
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookLevel, BookSnapshot
 
-from .archive import RecordingReader
-from .archive_models import RecordingSession
-from .contracts import (
+from .archive.reader import RecordingReader
+from .archive.connections import readonly_database_uri
+from .archive.models import RecordingSession
+from .contracts.book import (
     BookBaselinePayload,
+    RecordedBookLevel,
+)
+from .contracts.records import (
     BookCheckpoint,
-    MarketIdentity,
-    MarketMetadataPayload,
     RecordedEvent,
 )
-from .serialization import (
-    PayloadKind,
-    event_token_ids,
+from .contracts.payloads import event_token_ids
+from .contracts.market import (
+    MarketIdentity,
+    MarketMetadataPayload,
+)
+from .contracts.kinds import BOOK_STATE_PAYLOAD_KINDS, PayloadKind
+from .serialization.entrypoints import (
     payload_from_json,
     payload_json,
 )
@@ -86,7 +91,7 @@ def _validate_trimmed_rows(
     session: RecordingSession,
 ) -> int:
     connection = sqlite3.connect(
-        f"file:{quote(str(path))}?mode=ro&immutable=1",
+        readonly_database_uri(path, immutable=True),
         uri=True,
     )
     connection.row_factory = sqlite3.Row
@@ -130,71 +135,33 @@ def _validate_trimmed_rows(
                 )
             previous_sequence = sequence
             previous_observed_at_ms = event.observed_at_ms
-            if token_row is not None and int(token_row["sequence"]) < sequence:
-                raise RecordingTrimError(
-                    "trimmed recording token index references an unselected event"
-                )
-            actual_tokens: list[str] = []
-            while token_row is not None and int(token_row["sequence"]) == sequence:
-                actual_tokens.append(str(token_row["token_id"]))
-                token_row = token_cursor.fetchone()
-            if tuple(actual_tokens) != tuple(sorted(event_token_ids(event.payload))):
-                raise RecordingTrimError(
-                    f"trimmed recording token index is inconsistent at event {sequence}"
-                )
-
-            if revision_row is not None and int(revision_row["sequence"]) < sequence:
-                raise RecordingTrimError(
-                    "trimmed recording metadata index references an unselected event"
-                )
-            if isinstance(event.payload, MarketMetadataPayload):
-                if (
-                    revision_row is None
-                    or int(revision_row["sequence"]) != sequence
-                    or revision_row["condition_id"] != event.payload.condition_id
-                    or int(revision_row["observed_at_ms"]) != event.observed_at_ms
-                    or revision_row["payload_json"] != payload_json(event.payload)
-                ):
-                    raise RecordingTrimError(
-                        "trimmed recording metadata index is inconsistent at "
-                        f"event {sequence}"
-                    )
-                markets[event.payload.condition_id] = event.payload
-                revision_row = revision_cursor.fetchone()
-            elif (
-                revision_row is not None
-                and int(revision_row["sequence"]) == sequence
-            ):
-                raise RecordingTrimError(
-                    f"trimmed recording metadata index points to event {sequence}"
-                )
+            token_row = _validate_event_token_index(
+                token_cursor,
+                token_row,
+                event,
+            )
+            revision_row = _validate_metadata_index(
+                revision_cursor,
+                revision_row,
+                event,
+                markets,
+            )
 
             if isinstance(event.payload, BookBaselinePayload):
                 generation_by_token[event.payload.token_id] = (
                     event.subscription_generation
                 )
             state.apply(event)
-            if (
-                checkpoint_row is not None
-                and int(checkpoint_row["sequence"]) < sequence
-            ):
-                raise RecordingTrimError(
-                    "trimmed recording checkpoint references an unselected event"
-                )
-            while (
-                checkpoint_row is not None
-                and int(checkpoint_row["sequence"]) == sequence
-            ):
-                _validate_checkpoint_row(
-                    checkpoint_row,
-                    connection=connection,
-                    referenced_event=event,
-                    session=session,
-                    markets=markets,
-                    generation_by_token=generation_by_token,
-                    projected_books=state.books,
-                )
-                checkpoint_row = checkpoint_cursor.fetchone()
+            checkpoint_row = _validate_checkpoint_index(
+                checkpoint_cursor,
+                checkpoint_row,
+                connection=connection,
+                referenced_event=event,
+                session=session,
+                markets=markets,
+                generation_by_token=generation_by_token,
+                projected_books=state.books,
+            )
 
         if (
             token_row is not None
@@ -212,6 +179,92 @@ def _validate_trimmed_rows(
         return event_count
     finally:
         connection.close()
+
+
+def _validate_event_token_index(
+    cursor: sqlite3.Cursor,
+    row: sqlite3.Row | None,
+    event: RecordedEvent,
+) -> sqlite3.Row | None:
+    """Validate and consume token-index rows for one recorded event."""
+    sequence = event.sequence
+    if row is not None and int(row["sequence"]) < sequence:
+        raise RecordingTrimError(
+            "trimmed recording token index references an unselected event"
+        )
+    actual_tokens: list[str] = []
+    while row is not None and int(row["sequence"]) == sequence:
+        actual_tokens.append(str(row["token_id"]))
+        row = cursor.fetchone()
+    if tuple(actual_tokens) != tuple(sorted(event_token_ids(event.payload))):
+        raise RecordingTrimError(
+            f"trimmed recording token index is inconsistent at event {sequence}"
+        )
+    return row
+
+
+def _validate_metadata_index(
+    cursor: sqlite3.Cursor,
+    row: sqlite3.Row | None,
+    event: RecordedEvent,
+    markets: dict[str, MarketMetadataPayload],
+) -> sqlite3.Row | None:
+    """Validate and consume the optional metadata revision for one event."""
+    sequence = event.sequence
+    if row is not None and int(row["sequence"]) < sequence:
+        raise RecordingTrimError(
+            "trimmed recording metadata index references an unselected event"
+        )
+    if isinstance(event.payload, MarketMetadataPayload):
+        if (
+            row is None
+            or int(row["sequence"]) != sequence
+            or row["condition_id"] != event.payload.condition_id
+            or int(row["observed_at_ms"]) != event.observed_at_ms
+            or row["payload_json"] != payload_json(event.payload)
+        ):
+            raise RecordingTrimError(
+                "trimmed recording metadata index is inconsistent at "
+                f"event {sequence}"
+            )
+        markets[event.payload.condition_id] = event.payload
+        return cursor.fetchone()
+    if row is not None and int(row["sequence"]) == sequence:
+        raise RecordingTrimError(
+            f"trimmed recording metadata index points to event {sequence}"
+        )
+    return row
+
+
+def _validate_checkpoint_index(
+    cursor: sqlite3.Cursor,
+    row: sqlite3.Row | None,
+    *,
+    connection: sqlite3.Connection,
+    referenced_event: RecordedEvent,
+    session: RecordingSession,
+    markets: dict[str, MarketMetadataPayload],
+    generation_by_token: dict[str, int],
+    projected_books: dict[str, BookSnapshot],
+) -> sqlite3.Row | None:
+    """Validate and consume checkpoints attached to one recorded event."""
+    sequence = referenced_event.sequence
+    if row is not None and int(row["sequence"]) < sequence:
+        raise RecordingTrimError(
+            "trimmed recording checkpoint references an unselected event"
+        )
+    while row is not None and int(row["sequence"]) == sequence:
+        _validate_checkpoint_row(
+            row,
+            connection=connection,
+            referenced_event=referenced_event,
+            session=session,
+            markets=markets,
+            generation_by_token=generation_by_token,
+            projected_books=projected_books,
+        )
+        row = cursor.fetchone()
+    return row
 
 
 def _validate_checkpoint_row(
@@ -246,45 +299,68 @@ def _validate_checkpoint_row(
             raise ValueError("checkpoint has no preceding metadata")
         if snapshot is None:
             raise ValueError("checkpoint has no canonical book state")
-        if (
-            checkpoint.session_id != session.session_id
-            or checkpoint.identity.market_slug != market.market_slug
-            or checkpoint.book.token_id
-            not in {outcome.token_id for outcome in market.outcomes}
-            or checkpoint.observed_at_ms < referenced_event.observed_at_ms
-            or checkpoint.observed_at_ms < session.started_at_ms
-            or (
-                session.ended_at_ms is not None
-                and checkpoint.observed_at_ms > session.ended_at_ms
-            )
-            or generation_by_token.get(checkpoint.book.token_id)
-            != checkpoint.subscription_generation
-            or {
-                (level.price, level.size) for level in checkpoint.book.bids
-            }
-            != {(level.price, level.size) for level in snapshot.bids}
-            or {
-                (level.price, level.size) for level in checkpoint.book.asks
-            }
-            != {(level.price, level.size) for level in snapshot.asks}
-            or _has_intervening_state_event(connection, checkpoint)
-        ):
+        if not _checkpoint_matches_projected_state(
+            checkpoint,
+            referenced_event=referenced_event,
+            session=session,
+            market=market,
+            generation_by_token=generation_by_token,
+            snapshot=snapshot,
+        ) or _has_intervening_state_event(connection, checkpoint):
             raise ValueError("checkpoint state is inconsistent")
     except (TypeError, ValueError) as error:
         raise RecordingTrimError("trimmed recording checkpoint is malformed") from error
+
+
+def _checkpoint_matches_projected_state(
+    checkpoint: BookCheckpoint,
+    *,
+    referenced_event: RecordedEvent,
+    session: RecordingSession,
+    market: MarketMetadataPayload,
+    generation_by_token: dict[str, int],
+    snapshot: BookSnapshot,
+) -> bool:
+    """Check immutable checkpoint fields against its projected canonical book."""
+    return (
+        checkpoint.session_id == session.session_id
+        and checkpoint.identity.market_slug == market.market_slug
+        and checkpoint.book.token_id
+        in {outcome.token_id for outcome in market.outcomes}
+        and checkpoint.observed_at_ms >= referenced_event.observed_at_ms
+        and checkpoint.observed_at_ms >= session.started_at_ms
+        and (
+            session.ended_at_ms is None
+            or checkpoint.observed_at_ms <= session.ended_at_ms
+        )
+        and generation_by_token.get(checkpoint.book.token_id)
+        == checkpoint.subscription_generation
+        and _book_levels_match(checkpoint.book.bids, snapshot.bids)
+        and _book_levels_match(checkpoint.book.asks, snapshot.asks)
+    )
+
+
+def _book_levels_match(
+    recorded_levels: tuple[RecordedBookLevel, ...],
+    projected_levels: tuple[BookLevel, ...],
+) -> bool:
+    return {
+        (level.price, level.size) for level in recorded_levels
+    } == {(level.price, level.size) for level in projected_levels}
 
 
 def _has_intervening_state_event(
     connection: sqlite3.Connection,
     checkpoint: BookCheckpoint,
 ) -> bool:
+    placeholders = ", ".join("?" for _ in BOOK_STATE_PAYLOAD_KINDS)
     row = connection.execute(
-        """
+        f"""
         SELECT 1
         FROM events AS event
         WHERE event.session_id = ? AND event.condition_id = ?
           AND event.sequence > ? AND event.observed_at_ms < ?
-          AND event.payload_kind IN (?, ?, ?, ?, ?, ?)
+          AND event.payload_kind IN ({placeholders})
         LIMIT 1
         """,
         (
@@ -292,12 +368,7 @@ def _has_intervening_state_event(
             checkpoint.identity.condition_id,
             checkpoint.sequence,
             checkpoint.observed_at_ms,
-            PayloadKind.MARKET_METADATA.value,
-            PayloadKind.BOOK_BASELINE.value,
-            PayloadKind.BOOK_DELTA.value,
-            PayloadKind.TICK_SIZE_CHANGE.value,
-            PayloadKind.RESOLUTION.value,
-            PayloadKind.COVERAGE_GAP.value,
+            *(kind.value for kind in BOOK_STATE_PAYLOAD_KINDS),
         ),
     ).fetchone()
     return row is not None

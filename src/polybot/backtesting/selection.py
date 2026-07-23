@@ -5,19 +5,17 @@ from __future__ import annotations
 from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
-    BacktestGapPolicy,
     BacktestOptions,
     BacktestSelection,
 )
 from polybot.backtesting.coverage import gaps_affecting_markets
-from polybot.recording.archive import RecordingReader
-from polybot.recording.archive_errors import ArchiveCoverageError
-from polybot.recording.archive_models import RecordingSession
-from polybot.recording.contracts import (
-    BookBaselinePayload,
-    BookCheckpoint,
-    SessionIntegrityStatus,
-)
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.errors import ArchiveCoverageError
+from polybot.recording.archive.models import RecordingSession
+from polybot.recording.contracts.book import BookBaselinePayload
+from polybot.recording.contracts.records import BookCheckpoint
+from polybot.recording.contracts.market import MarketMetadataPayload
+from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
 def resolve_backtest_selection(
@@ -27,7 +25,7 @@ def resolve_backtest_selection(
 ) -> BacktestSelection:
     """Resolve and gap-check one requested session, range, and market set."""
 
-    allow_gaps = options.gap_policy is BacktestGapPolicy.BLACKOUT
+    allow_gaps = options.gap_policy.allows_gaps
 
     effective_end_at_ms = replayable_session_end(reader, session)
     if effective_end_at_ms is None:
@@ -138,7 +136,7 @@ def validate_backtest_selection(
 ) -> None:
     """Semantically validate selected events and their replay bootstrap."""
 
-    allow_gaps = selection.gap_policy is BacktestGapPolicy.BLACKOUT
+    allow_gaps = selection.gap_policy.allows_gaps
 
     baseline_tokens: dict[tuple[str, int], set[str]] = {}
     for event in reader.iter_events(
@@ -169,32 +167,17 @@ def validate_backtest_selection(
     )
     for market in markets:
         required_tokens = {outcome.token_id for outcome in market.outcomes}
-        if any(
+        has_complete_baseline = any(
             condition_id == market.condition_id
             and required_tokens.issubset(tokens)
             for (condition_id, _), tokens in baseline_tokens.items()
-        ):
-            continue
-        checkpoint_pair = replay_start_checkpoint_pair(
-            reader,
-            condition_id=market.condition_id,
-            start_at_ms=selection.start_at_ms,
-            session_id=selection.session_id,
-            allow_pre_gap_checkpoint=(
-                selection.gap_policy is BacktestGapPolicy.BLACKOUT
-                and selection_starts_in_market_gap(
-                    reader,
-                    selection,
-                    market,
-                )
-            ),
         )
-        if checkpoint_pair is None:
-            raise BacktestError(
-                BacktestFailureReason.MISSING_MARKET_DATA,
-                "selected market has no complete two-token baseline or checkpoint: "
-                f"{market.market_slug}",
-            )
+        _require_market_bootstrap(
+            reader,
+            selection,
+            market,
+            has_complete_baseline=has_complete_baseline,
+        )
 
 
 def validate_backtest_selection_coverage(
@@ -203,7 +186,7 @@ def validate_backtest_selection_coverage(
 ) -> None:
     """Validate indexed bootstrap coverage without scanning all replay events."""
 
-    allow_gaps = selection.gap_policy is BacktestGapPolicy.BLACKOUT
+    allow_gaps = selection.gap_policy.allows_gaps
 
     markets = reader.markets_at(
         selection.end_at_ms,
@@ -212,33 +195,44 @@ def validate_backtest_selection_coverage(
         allow_gaps=allow_gaps,
     )
     for market in markets:
-        if reader.has_complete_baseline_pair(
-            market,
-            start_at_ms=selection.start_at_ms,
-            end_at_ms=selection.end_at_ms,
-            session_id=selection.session_id,
-        ):
-            continue
-        checkpoint_pair = replay_start_checkpoint_pair(
+        _require_market_bootstrap(
             reader,
-            condition_id=market.condition_id,
-            start_at_ms=selection.start_at_ms,
-            session_id=selection.session_id,
-            allow_pre_gap_checkpoint=(
-                selection.gap_policy is BacktestGapPolicy.BLACKOUT
-                and selection_starts_in_market_gap(
-                    reader,
-                    selection,
-                    market,
-                )
+            selection,
+            market,
+            has_complete_baseline=reader.has_complete_baseline_pair(
+                market,
+                start_at_ms=selection.start_at_ms,
+                end_at_ms=selection.end_at_ms,
+                session_id=selection.session_id,
             ),
         )
-        if checkpoint_pair is None:
-            raise BacktestError(
-                BacktestFailureReason.MISSING_MARKET_DATA,
-                "selected market has no complete two-token baseline or checkpoint: "
-                f"{market.market_slug}",
-            )
+
+
+def _require_market_bootstrap(
+    reader: RecordingReader,
+    selection: BacktestSelection,
+    market: MarketMetadataPayload,
+    *,
+    has_complete_baseline: bool,
+) -> None:
+    if has_complete_baseline:
+        return
+    checkpoint_pair = replay_start_checkpoint_pair(
+        reader,
+        condition_id=market.condition_id,
+        start_at_ms=selection.start_at_ms,
+        session_id=selection.session_id,
+        allow_pre_gap_checkpoint=(
+            selection.gap_policy.allows_gaps
+            and selection_starts_in_market_gap(reader, selection, market)
+        ),
+    )
+    if checkpoint_pair is None:
+        raise BacktestError(
+            BacktestFailureReason.MISSING_MARKET_DATA,
+            "selected market has no complete two-token baseline or checkpoint: "
+            f"{market.market_slug}",
+        )
 
 
 def replay_start_checkpoint_pair(

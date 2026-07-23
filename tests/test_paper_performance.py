@@ -5,6 +5,7 @@ import csv
 import json
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,18 +26,16 @@ from polybot.framework.events import (
     Side,
 )
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.performance.artifacts import PerformanceArtifacts
-from polybot.performance.contracts import (
+from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
+from polybot.performance.contracts.run import (
     PerformanceRunKind,
     RunProvenance,
     RunSelection,
 )
-from polybot.performance.paper import (
-    PaperPerformanceBroker,
-    PaperPerformanceObserver,
-    PaperPerformanceRecorder,
-    PaperPerformanceWarning,
-)
+from polybot.runtime.performance.broker import PaperPerformanceBroker
+from polybot.runtime.performance.observer import PaperPerformanceObserver
+from polybot.runtime.performance.recording import PaperPerformanceRecorder
+from polybot.runtime.performance.warnings import PaperPerformanceWarning
 
 
 class ManualClock:
@@ -194,6 +193,61 @@ def test_paper_performance_failure_warns_and_does_not_block_broker(
     assert asyncio.run(run()).status is OrderStatus.REJECTED
 
 
+def test_interval_sampling_binds_each_queued_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IntervalArtifacts:
+        report_interval_ms = 1_000
+        selection = SimpleNamespace(start_ms=0)
+
+        def __init__(self) -> None:
+            self.samples: list[tuple[int, Decimal]] = []
+
+        def advance_to(self, timestamp_ms: int, portfolio: PaperPortfolio) -> None:
+            self.samples.append((timestamp_ms, portfolio.cash_usdc))
+
+    async def run() -> list[tuple[int, Decimal]]:
+        artifacts = IntervalArtifacts()
+        portfolio = PaperPortfolio(Decimal("100"))
+        recorder: PaperPerformanceRecorder
+
+        class BurstClock:
+            def __init__(self) -> None:
+                self.timestamp_ms = 0
+                self.sleep_count = 0
+
+            def now_ms(self) -> int:
+                return self.timestamp_ms
+
+            async def sleep(self, seconds: float) -> None:
+                assert seconds == 1
+                self.sleep_count += 1
+                self.timestamp_ms += 1_000
+                portfolio.cash_usdc += Decimal("1")
+                if self.sleep_count == 2:
+                    recorder._enabled = False
+
+        clock = BurstClock()
+        recorder = PaperPerformanceRecorder(
+            artifacts,  # type: ignore[arg-type]
+            portfolio=portfolio,
+            clock=clock,
+        )
+        operations: list[object] = []
+        monkeypatch.setattr(recorder, "_enqueue", operations.append)
+
+        await recorder._sample_intervals()
+        for operation in operations:
+            assert callable(operation)
+            operation()
+        return artifacts.samples
+
+    assert asyncio.run(run()) == [
+        (1_000, Decimal("101")),
+        (2_000, Decimal("102")),
+    ]
+
+
 def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
     tmp_path: Path,
     monkeypatch,
@@ -237,12 +291,16 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
         books=client,
         wallet_activity=client,
     )
+
+    class RuntimePublicData:
+        async def close(self) -> None:
+            return None
+
     runtime = type(
         "Runtime",
         (),
         {
-            "public_client": object(),
-            "owned_client": False,
+            "public_data": RuntimePublicData(),
             "gamma": client,
             "clob": client,
             "market_stream": object(),
@@ -257,14 +315,14 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
         },
     )()
 
-    async def fake_create_runtime(config, observer, *, client):
+    async def fake_create_runtime(config, observer, *, public_data):
         return runtime
 
     monkeypatch.setattr(
         "polybot.runtime.create_runtime", fake_create_runtime
     )
     monkeypatch.setattr(
-        "polybot.runtime.PerformanceArtifacts",
+        "polybot.runtime.performance.setup.PerformanceArtifacts",
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("read only")),
     )
     bot = Bot()

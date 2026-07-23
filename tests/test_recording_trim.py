@@ -21,30 +21,40 @@ from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
-from polybot.recording.archive import RecordingArchive, RecordingReader
-from polybot.recording.archive_errors import (
+from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.recording.archive.errors import (
     ArchiveFormatError,
     ArchiveIntegrityError,
     ArchiveLockedError,
 )
-from polybot.recording.contracts import (
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
-    BookCheckpoint,
     BookDeltaPayload,
+    RecordedBookLevel,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
+)
+from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    PublicTradePayload,
-    RecordedBookLevel,
-    RecordedEvent,
-    ResolutionPayload,
-    SessionIntegrityStatus,
-    TickSizeChangePayload,
 )
-from polybot.recording.serialization import payload_json
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
+)
+from polybot.recording.contracts.session import SessionIntegrityStatus
+from polybot.recording.serialization.entrypoints import payload_json
 from polybot.recording.trim_contracts import (
     DEFAULT_TRIM_BACKUP_SUFFIX,
     RecordingTrimError,
@@ -826,7 +836,12 @@ def test_trimmed_archive_runs_a_default_backtest_without_selection_flags(
             BaseBot(),
             BotConfig(
                 name="trim-backtest",
-                market_slugs=(MARKET_SLUG,),
+                stream_rules=(
+                    StreamRule(
+                        StreamRelation.INDEPENDENT,
+                        market_slugs=(MARKET_SLUG,),
+                    ),
+                ),
                 event_max_age_ms=10_000,
             ),
             bot_spec="tests.test_recording_trim:BaseBot",

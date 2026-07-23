@@ -44,8 +44,8 @@ def test_wallet_follower_accepts_multiple_leaders(dummy_context: BotContext) -> 
 def test_wallet_follower_exposes_leaders_for_runner_routing(dummy_context: BotContext) -> None:
     async def run() -> tuple[str, ...]:
         bot = ExampleWalletFollower("0xLeader", Decimal("0.5"))
-        subscriptions = await bot.current_wallets(dummy_context, 0)
-        return tuple(subscription.address for subscription in subscriptions)
+        rules = await bot.current_stream_rules(dummy_context, 0)
+        return rules[0].wallet_addresses
 
     assert asyncio.run(run()) == ("0xleader",)
 

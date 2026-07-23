@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from decimal import Decimal
 
 from polybot.framework.context import BotContext
@@ -17,6 +18,68 @@ from polybot.examples.wallet_copy import (
     COPY_TRADE_NOTIONAL_USDC,
     fixed_dollar_copy_order,
 )
+
+
+type CopyPositionKey = tuple[str, str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class CopyTradeDecision:
+    """The deterministic copy order and position it may update."""
+
+    source_key: str
+    position_key: CopyPositionKey
+    open_size: Decimal
+    order: OrderRequest
+
+
+def copy_trade_decision(
+    trade: WalletTradeEvent,
+    *,
+    applied_source_ids: frozenset[str],
+    open_positions: Mapping[CopyPositionKey, Decimal],
+) -> CopyTradeDecision | None:
+    """Build a bounded copy order without mutating bot or broker state."""
+    if trade.source_key in applied_source_ids:
+        return None
+    position_key = (
+        normalize_wallet_address(trade.wallet),
+        trade.condition_id,
+        trade.token_id,
+    )
+    open_size = open_positions.get(position_key, Decimal("0"))
+    if trade.side is Side.SELL:
+        if open_size <= 0:
+            return None
+        requested_size = min(COPY_TRADE_NOTIONAL_USDC / trade.price, open_size)
+    else:
+        requested_size = COPY_TRADE_NOTIONAL_USDC / trade.price
+    return CopyTradeDecision(
+        source_key=trade.source_key,
+        position_key=position_key,
+        open_size=open_size,
+        order=fixed_dollar_copy_order(trade, size=requested_size),
+    )
+
+
+def positions_after_copy_fill(
+    open_positions: Mapping[CopyPositionKey, Decimal],
+    decision: CopyTradeDecision,
+    *,
+    side: Side,
+    filled_size: Decimal,
+) -> dict[CopyPositionKey, Decimal]:
+    """Return the next copy positions after an accepted non-zero fill."""
+    updated = dict(open_positions)
+    if side is Side.BUY:
+        updated[decision.position_key] = decision.open_size + filled_size
+        return updated
+    remaining = max(Decimal("0"), decision.open_size - filled_size)
+    if remaining:
+        updated[decision.position_key] = remaining
+    else:
+        updated.pop(decision.position_key, None)
+    return updated
 
 
 class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
@@ -37,11 +100,11 @@ class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
         )
         if not self.wallet_addresses:
             raise ValueError("wallet_addresses must contain at least one wallet")
-        self._open_positions: dict[tuple[str, str, str], Decimal] = {}
+        self._open_positions: dict[CopyPositionKey, Decimal] = {}
         self._applied_source_ids: set[str] = set()
 
     @property
-    def open_positions(self) -> dict[tuple[str, str, str], Decimal]:
+    def open_positions(self) -> dict[CopyPositionKey, Decimal]:
         """Return tracked position sizes keyed by wallet, condition, and token."""
         return self._open_positions.copy()
 
@@ -78,35 +141,23 @@ class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
         return fixed_dollar_copy_order(trade, size=size)
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
-        if trade.source_key in self._applied_source_ids:
-            return
-        position_key = (
-            normalize_wallet_address(trade.wallet),
-            trade.condition_id,
-            trade.token_id,
+        decision = copy_trade_decision(
+            trade,
+            applied_source_ids=frozenset(self._applied_source_ids),
+            open_positions=self._open_positions,
         )
-        open_size = self._open_positions.get(position_key, Decimal("0"))
-
-        if trade.side is Side.SELL:
-            if open_size <= 0:
-                return
-            requested_size = min(COPY_TRADE_NOTIONAL_USDC / trade.price, open_size)
-        else:
-            requested_size = COPY_TRADE_NOTIONAL_USDC / trade.price
-
-        fill = await ctx.broker.submit(self.order_for_trade(trade, size=requested_size))
+        if decision is None:
+            return
+        fill = await ctx.broker.submit(decision.order)
         if fill.filled_size <= 0:
             return
-        self._applied_source_ids.add(trade.source_key)
-        if trade.side is Side.BUY:
-            self._open_positions[position_key] = open_size + fill.filled_size
-            return
-
-        remaining = max(Decimal("0"), open_size - fill.filled_size)
-        if remaining:
-            self._open_positions[position_key] = remaining
-        else:
-            self._open_positions.pop(position_key, None)
+        self._applied_source_ids.add(decision.source_key)
+        self._open_positions = positions_after_copy_fill(
+            self._open_positions,
+            decision,
+            side=trade.side,
+            filled_size=fill.filled_size,
+        )
 
 
 def create(config: BotConfig) -> ExampleDynamicRandomHoldWalletFilterBot:

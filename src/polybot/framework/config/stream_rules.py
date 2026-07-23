@@ -9,6 +9,18 @@ from polybot.persistence.json_codec import loads_json
 from .constants import BOT_STREAM_RULES_ENV
 
 
+STREAM_RULE_RELATION_FIELD = "relation"
+STREAM_RULE_MARKET_SLUGS_FIELD = "market_slugs"
+STREAM_RULE_WALLET_ADDRESSES_FIELD = "wallet_addresses"
+STREAM_RULE_FIELDS = frozenset(
+    {
+        STREAM_RULE_RELATION_FIELD,
+        STREAM_RULE_MARKET_SLUGS_FIELD,
+        STREAM_RULE_WALLET_ADDRESSES_FIELD,
+    }
+)
+
+
 def env_stream_rules() -> tuple[StreamRule, ...]:
     raw = os.getenv(BOT_STREAM_RULES_ENV)
     if raw is None or not raw.strip():
@@ -25,15 +37,11 @@ def parse_stream_rules(values: object) -> tuple[StreamRule, ...]:
         raise ValueError(f"{BOT_STREAM_RULES_ENV} must be a JSON array")
     rules: list[StreamRule] = []
     for value in values:
-        if not isinstance(value, dict) or set(value) - {
-            "relation",
-            "market_slugs",
-            "wallet_addresses",
-        }:
+        if not isinstance(value, dict) or set(value) - STREAM_RULE_FIELDS:
             raise ValueError("stream rules contain unsupported fields")
-        relation = value.get("relation")
-        markets = value.get("market_slugs", [])
-        wallets = value.get("wallet_addresses", [])
+        relation = value.get(STREAM_RULE_RELATION_FIELD)
+        markets = value.get(STREAM_RULE_MARKET_SLUGS_FIELD, [])
+        wallets = value.get(STREAM_RULE_WALLET_ADDRESSES_FIELD, [])
         if (
             not isinstance(relation, str)
             or not isinstance(markets, list)

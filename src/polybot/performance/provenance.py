@@ -6,14 +6,14 @@ from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from decimal import Decimal
 from enum import StrEnum
-from polybot.framework.config.models import BotConfig, sensitive_config_field_names
+from polybot.framework.config.models import BotConfig
 
 
 def sanitized_configuration(configuration: object) -> dict[str, object]:
     """Return a JSON-ready configuration object with credentials omitted."""
     if isinstance(configuration, BotConfig):
         return configuration.identity_values()
-    sensitive_fields = sensitive_config_field_names()
+    sensitive_fields = BotConfig.sensitive_field_names()
     if is_dataclass(configuration) and not isinstance(configuration, type):
         values = {
             field.name: getattr(configuration, field.name)
@@ -36,7 +36,7 @@ def json_value(value: object) -> object:
 
 
 def _json_value(value: object) -> object:
-    sensitive_fields = sensitive_config_field_names()
+    sensitive_fields = BotConfig.sensitive_field_names()
     if isinstance(value, StrEnum):
         return value.value
     if value is None or isinstance(value, (str, int, bool)):

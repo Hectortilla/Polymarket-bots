@@ -9,6 +9,6 @@ from polybot.framework.events.resolutions import SettledPosition
 
 @dataclass(frozen=True, slots=True)
 class PaperSettlementCalculation:
-    settled: tuple[SettledPosition, ...]
+    settled_positions: tuple[SettledPosition, ...]
     cash_delta: Decimal
     settled_token_ids: frozenset[str]

@@ -7,17 +7,17 @@ from dataclasses import dataclass
 
 from polybot.async_io import run_blocking
 
-from .archive import RecordingArchive
-from .contracts import (
-    BookBaselinePayload,
+from .archive.writer import RecordingArchive
+from .contracts.book import BookBaselinePayload
+from .contracts.records import (
     BookCheckpoint,
-    CaptureAnomalyPayload,
     CaptureAnomalyRecord,
-    CoverageGapPayload,
-    MarketIdentity,
     RecordedEvent,
-    RecordedPayload,
 )
+from .contracts.anomalies import CaptureAnomalyPayload
+from .contracts.gaps import CoverageGapPayload
+from .contracts.market import MarketIdentity
+from .contracts.payloads import RecordedPayload
 
 
 DEFAULT_RECORDING_WRITE_QUEUE_SIZE = 4_096
@@ -70,6 +70,7 @@ class PendingRecordingEvent:
     async def wait(self) -> RecordedEvent:
         """Return the event only after its SQLite transaction commits."""
 
+        # Cancelling one capture must not cancel the shared durability acknowledgement.
         await asyncio.shield(self._completion)
         return self.event
 
@@ -564,18 +565,14 @@ class AsyncRecordingWriter:
                 command = self._queue.get_nowait()
             except asyncio.QueueEmpty:
                 return
-            completion = getattr(command, "completion", None)
-            if completion is not None:
-                _set_exception(completion, error)
+            _set_exception(command.completion, error)
 
 
 def _set_command_exception(
     command: _WriterCommand,
     error: BaseException,
 ) -> None:
-    completion = getattr(command, "completion", None)
-    if completion is not None:
-        _set_exception(completion, error)
+    _set_exception(command.completion, error)
 
 
 def _set_result(completion: asyncio.Future, value: object) -> None:

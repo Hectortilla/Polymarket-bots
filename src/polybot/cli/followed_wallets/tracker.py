@@ -6,29 +6,25 @@ from collections.abc import Callable
 from copy import deepcopy
 from decimal import Decimal
 from pathlib import Path
-from time import time
 from typing import Any
 
 from polybot.async_io import run_blocking
+from polybot.framework.clock import system_now_ms
 from polybot.persistence.atomic_json import AtomicJsonFile
 from polybot.framework.events.resolutions import MarketResolutionEvent, SettledPosition
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.wallets import normalize_wallet_address
-from polybot.polymarket.positions import Position
+from polybot.polymarket.positions.contracts import Position
 
 from .contracts import WalletFollowState
 from .position_contracts import FollowBaseline, FollowMovement, FollowPosition
 from .persistence.serialization import load_states, root_payload
-from .positions import (
-    settle_states,
-    tracked_market_positions as collect_tracked_market_positions,
-)
 
 
 class FollowedWalletTracker:
     def __init__(self, path: Path, *, now_ms: Callable[[], int] | None = None) -> None:
         self._file = AtomicJsonFile(path)
-        self._now_ms = now_ms or (lambda: int(time() * 1000))
+        self._now_ms = now_ms or system_now_ms
         self._wallets = load_states(self._file.read())
 
     @classmethod
@@ -42,7 +38,7 @@ class FollowedWalletTracker:
 
         tracker = cls.__new__(cls)
         tracker._file = AtomicJsonFile(path)
-        tracker._now_ms = now_ms or (lambda: int(time() * 1000))
+        tracker._now_ms = now_ms or system_now_ms
         payload = await run_blocking(tracker._file.read)
         tracker._wallets = load_states(payload)
         return tracker
@@ -84,7 +80,7 @@ class FollowedWalletTracker:
                 state.baselines.clear()
                 state.movements.clear()
                 state.source_ids.clear()
-                state.checkpoint = None
+                state.latest_processed_trade_cursor = None
                 state.settlements.clear()
                 new_wallets.append(wallet)
                 changed = True
@@ -147,9 +143,12 @@ class FollowedWalletTracker:
         movement = FollowMovement.from_trade(trade)
         state.movements[movement.source_key] = movement
         state.source_ids.add(movement.source_key)
-        checkpoint = (movement.trade_timestamp_ms, movement.source_key)
-        if state.checkpoint is None or checkpoint > state.checkpoint:
-            state.checkpoint = checkpoint
+        cursor = (movement.trade_timestamp_ms, movement.source_key)
+        if (
+            state.latest_processed_trade_cursor is None
+            or cursor > state.latest_processed_trade_cursor
+        ):
+            state.latest_processed_trade_cursor = cursor
         self.persist()
         return True
 
@@ -169,13 +168,29 @@ class FollowedWalletTracker:
         )
 
     def tracked_market_positions(self) -> tuple[tuple[str, FollowPosition], ...]:
-        return collect_tracked_market_positions(self._wallets)
+        positions: list[tuple[str, FollowPosition]] = []
+        for state in self._wallets.values():
+            positions.extend((state.wallet, position) for position in state.positions())
+            for historical in state.epoch_history:
+                positions.extend(
+                    (state.wallet, position) for position in historical.positions()
+                )
+        return tuple(positions)
 
     def settle(self, event: MarketResolutionEvent) -> tuple[SettledPosition, ...]:
-        settled, changed = settle_states(self._wallets, event)
+        settled: list[SettledPosition] = []
+        changed = False
+        for state in self._wallets.values():
+            current_settled, current_changed = state.settle(event)
+            settled.extend(current_settled)
+            changed = changed or current_changed
+            for historical in state.epoch_history:
+                historical_settled, historical_changed = historical.settle(event)
+                settled.extend(historical_settled)
+                changed = changed or historical_changed
         if changed:
             self.persist()
-        return settled
+        return tuple(settled)
 
     def persist(self) -> None:
         self._file.write(root_payload(self._wallets))

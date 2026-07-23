@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from polymarket import AsyncPublicClient
-
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.activity import ObserverActivitySink
 from polybot.cli.observability.events import PortfolioSnapshot
@@ -15,13 +13,17 @@ from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.polymarket.clob import ClobClient
-from polybot.polymarket.positions import PositionClient
+from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.ws_market import MarketStream
+from polybot.polymarket.public_data.runtime import (
+    RuntimePublicData,
+    create_runtime_public_data,
+)
 
 from ..followed_wallets.tracker import FollowedWalletTracker
-from ..resolution_state import ResolutionLedger
+from ..resolution_state.ledger import ResolutionLedger
 from ..tracked_markets import TrackedMarketRegistry
 from .state import (
     FOLLOWED_WALLET_STORE_SUFFIX,
@@ -33,8 +35,7 @@ from .state import (
 
 @dataclass(slots=True)
 class RuntimeComponents:
-    public_client: AsyncPublicClient
-    owned_client: bool
+    public_data: RuntimePublicData
     gamma: GammaClient
     clob: ClobClient
     market_stream: MarketStream
@@ -52,52 +53,57 @@ async def create_runtime(
     config: BotConfig,
     observer: RuntimeObserver,
     *,
-    client: AsyncPublicClient | None,
+    public_data: RuntimePublicData | None,
 ) -> RuntimeComponents:
-    public_client = client or AsyncPublicClient()
-    gamma = GammaClient(public_client)
-    clob = ClobClient(public_client)
-    market_stream = MarketStream(public_client)
-    wallet_activity_client = PolymarketWalletActivityClient(public_client)
-    position_client = PositionClient(public_client)
-    source_store = FileSourceIdempotencyStore(
-        state_path(config.name, SOURCE_ID_STORE_SUFFIX)
-    )
-    followed_wallets = await FollowedWalletTracker.create(
-        state_path(config.name, FOLLOWED_WALLET_STORE_SUFFIX)
-    )
-    resolution_ledger = await ResolutionLedger.create(
-        state_path(config.name, RESOLUTION_LEDGER_SUFFIX)
-    )
-    registry = TrackedMarketRegistry(
-        terminal_condition_ids=resolution_ledger.resolved_condition_ids
-    )
-    paper_broker = PaperBroker(config, clob, gamma, source_store=source_store)
-    broker = ObservableBroker(
-        paper_broker,
-        observer,
-        lambda: PortfolioSnapshot.from_paper(paper_broker.portfolio),
-    )
-    return RuntimeComponents(
-        public_client=public_client,
-        owned_client=client is None,
-        gamma=gamma,
-        clob=clob,
-        market_stream=market_stream,
-        wallet_activity_client=wallet_activity_client,
-        position_client=position_client,
-        followed_wallets=followed_wallets,
-        resolution_ledger=resolution_ledger,
-        registry=registry,
-        paper_broker=paper_broker,
-        broker=broker,
-        ctx=BotContext(
-            config=config,
+    owns_public_data = public_data is None
+    sources = create_runtime_public_data() if owns_public_data else public_data
+    try:
+        gamma = sources.gamma
+        clob = sources.clob
+        market_stream = sources.market_stream
+        wallet_activity_client = sources.wallet_activity_client
+        position_client = sources.position_client
+        source_store = FileSourceIdempotencyStore(
+            state_path(config.name, SOURCE_ID_STORE_SUFFIX)
+        )
+        followed_wallets = await FollowedWalletTracker.create(
+            state_path(config.name, FOLLOWED_WALLET_STORE_SUFFIX)
+        )
+        resolution_ledger = await ResolutionLedger.create(
+            state_path(config.name, RESOLUTION_LEDGER_SUFFIX)
+        )
+        registry = TrackedMarketRegistry(
+            terminal_condition_ids=resolution_ledger.resolved_condition_ids
+        )
+        paper_broker = PaperBroker(config, clob, gamma, source_store=source_store)
+        broker = ObservableBroker(
+            paper_broker,
+            observer,
+            lambda: PortfolioSnapshot.from_paper(paper_broker.portfolio),
+        )
+        return RuntimeComponents(
+            public_data=sources,
+            gamma=gamma,
+            clob=clob,
+            market_stream=market_stream,
+            wallet_activity_client=wallet_activity_client,
+            position_client=position_client,
+            followed_wallets=followed_wallets,
+            resolution_ledger=resolution_ledger,
+            registry=registry,
+            paper_broker=paper_broker,
             broker=broker,
-            markets=gamma,
-            books=clob,
-            wallet_activity=wallet_activity_client,
-            positions=position_client,
-            activity=ObserverActivitySink(observer),
-        ),
-    )
+            ctx=BotContext(
+                config=config,
+                broker=broker,
+                markets=gamma,
+                books=clob,
+                wallet_activity=wallet_activity_client,
+                positions=position_client,
+                activity=ObserverActivitySink(observer),
+            ),
+        )
+    except BaseException:
+        if owns_public_data:
+            await sources.close()
+        raise

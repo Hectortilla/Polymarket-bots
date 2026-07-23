@@ -6,26 +6,25 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from time import monotonic
 
 from polybot.framework.config.constants import (
+    DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS,
     DEFAULT_DATA_TRADES_BUDGET_PER_10S,
     DEFAULT_EVENT_MAX_AGE_MS,
 )
+from polybot.framework.clock import system_now_ms
 from polybot.framework.dedupe import SourceEventDeduper
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.wallets import normalize_wallet_address
 
-from .client import PolymarketWalletActivityClient, current_time_ms
+from .client import PolymarketWalletActivityClient
 from .contracts import (
     WalletTradeSelector,
     WalletTradeSource,
     WalletActivityError,
     WalletActivityIssue,
 )
-from .constants import (
-    DATA_TRADES_WINDOW_SECONDS,
-    WALLET_STREAM_POLL_INTERVAL_SECONDS,
-    WALLET_STREAM_QUEUE_CAPACITY,
-)
 from .normalization import normalize_stream_event
+
+WALLET_STREAM_QUEUE_CAPACITY = 1_000
+WALLET_STREAM_POLL_INTERVAL_SECONDS = 0.05
 
 
 class SlidingWindowLimiter:
@@ -43,13 +42,16 @@ class SlidingWindowLimiter:
                 now = self._now()
                 while (
                     self._timestamps
-                    and now - self._timestamps[0] >= DATA_TRADES_WINDOW_SECONDS
+                    and now - self._timestamps[0]
+                    >= DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS
                 ):
                     self._timestamps.popleft()
                 if len(self._timestamps) < self._budget:
                     self._timestamps.append(now)
                     return
-                wait_for = DATA_TRADES_WINDOW_SECONDS - (now - self._timestamps[0])
+                wait_for = DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS - (
+                    now - self._timestamps[0]
+                )
             await asyncio.sleep(max(wait_for, 0.001))
 
 
@@ -58,19 +60,16 @@ class WalletActivityStream:
 
     def __init__(
         self,
-        client: PolymarketWalletActivityClient | WalletTradeSource | None = None,
+        client: PolymarketWalletActivityClient | None = None,
         selectors: Iterable[WalletTradeSelector] = (),
-        source: WalletTradeSource | None = None,
         *,
+        source: WalletTradeSource | None = None,
         budget_per_10s: int = DEFAULT_DATA_TRADES_BUDGET_PER_10S,
         max_trade_age_ms: int = DEFAULT_EVENT_MAX_AGE_MS,
-        now_ms: Callable[[], int] = current_time_ms,
+        now_ms: Callable[[], int] = system_now_ms,
     ) -> None:
         if max_trade_age_ms < 0:
             raise ValueError("max_trade_age_ms must be nonnegative")
-        if client is not None and not isinstance(client, PolymarketWalletActivityClient):
-            source = client
-            client = None
         self._client = client
         self._selectors = tuple(dict.fromkeys(selectors))
         self._source = source
@@ -119,7 +118,7 @@ class WalletActivityStream:
                     )
                 except TimeoutError:
                     continue
-                if deduper.remember(event.source_key):
+                if deduper.claim_if_new(event.source_key):
                     yield event
             _raise_task_failure(tasks)
         finally:
@@ -137,26 +136,31 @@ class WalletActivityStream:
             try:
                 await self._limiter.acquire()
                 now_ms = self._now_ms()
-                end = now_ms // 1_000
+                end_epoch_seconds = now_ms // 1_000
                 oldest_usable_ms = now_ms - self._max_trade_age_ms
-                start = max(
+                start_epoch_seconds = max(
                     0,
                     max(last_timestamp_ms, oldest_usable_ms) // 1_000 - 1,
                 )
                 assert self._client is not None
                 trades = await self._client.latest_selector(
-                    selector, start=start, end=end
+                    selector,
+                    start_epoch_seconds=start_epoch_seconds,
+                    end_epoch_seconds=end_epoch_seconds,
                 )
                 for trade in trades:
                     if trade.trade_timestamp_ms < oldest_usable_ms:
                         continue
                     await queue.put(trade)
-                    last_timestamp_ms = max(last_timestamp_ms, trade.trade_timestamp_ms)
+                    last_timestamp_ms = max(
+                        last_timestamp_ms,
+                        trade.trade_timestamp_ms,
+                    )
                 await self._wait_for_selector(selector)
             except asyncio.CancelledError:
                 raise
             except Exception:
-                await asyncio.sleep(DATA_TRADES_WINDOW_SECONDS)
+                await asyncio.sleep(DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS)
 
     async def _wait_for_selector(self, selector: WalletTradeSelector) -> None:
         if (
@@ -175,7 +179,7 @@ class WalletActivityStream:
 
     async def _push(self, queue: asyncio.Queue[WalletTradeEvent]) -> None:
         wallets = frozenset(
-            normalize_wallet_address(selector.wallet)
+            selector.wallet
             for selector in self._selectors
             if selector.wallet
         )

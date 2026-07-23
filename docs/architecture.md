@@ -77,7 +77,14 @@ adapter behavior covered by contract tests, especially while
 ```text
 polyfollow-polybot/
   src/polybot/       # Installed and imported as `polybot`.
-    runtime.py    # Public paper-runner lifecycle entrypoint.
+    runtime/      # Public paper-runner lifecycle entrypoint and support modules.
+      __init__.py
+      performance/ # Optional paper-performance artifact wiring.
+        setup.py
+        recording.py
+        observer.py
+        broker.py
+      streams.py
   docs/
   framework/
     base.py       # BaseBot event hooks.
@@ -90,8 +97,8 @@ polyfollow-polybot/
     dispatch.py   # Typed dispatch outcomes and stable skip reasons.
     events/       # Orders/fills plus book, wallet-trade, and resolution contracts.
     factories.py  # Public bot-factory typing contract.
-    markets.py    # Static and dynamic market subscription contracts.
-    wallets.py    # Watched-wallet subscription contracts.
+    markets.py    # Fixed-width market-slug and timing helpers.
+    wallets.py    # Wallet-address validation helpers.
     runner/       # Dispatch orchestration plus owned validation policy.
   cli/
     runner/       # Runtime construction, stream planning, and event dispatch.
@@ -106,24 +113,50 @@ polyfollow-polybot/
     tracking/     # Wallet-discovery and paper-position registry workflows.
     streams/      # CLI stream contracts, construction, merging, and telemetry.
     followed_wallets/ # Follow contracts, position replay, and persistence.
-    resolution.py # Gamma reconciliation and settlement ordering.
-    resolution_state.py # Idempotent resolution ledger.
+    performance_chart/ # Saved-artifact chart loading, rendering, and command.
+      contracts.py
+      artifacts.py
+      rendering.py
+      command.py
+    resolution/ # Gamma reconciliation and atomic settlement workflows.
+      reconciliation.py
+      settlement.py
+    resolution_state/ # Resolution-ledger persistence, schema, and validation.
+      ledger.py
+      schema.py
+      validation.py
   persistence/      # Strict JSON decoding and atomic JSON file writes.
   polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
     markets.py    # Normalized market and outcome contracts.
     market_hints.py # Normalized market-trade wake hints.
+    public_data/ # Runtime/recording adapter assemblies and SDK lifecycle.
+      client.py
+      runtime.py
+      recording.py
     normalization/ # Market, book, and scalar SDK-payload normalization.
-    positions.py  # SDK-backed normalized current-position adapter.
+    positions/    # SDK-backed normalized current-position adapter.
+    recording_feed/ # SDK-backed recording feed and continuity boundary.
+    recording_metadata/ # Gamma-derived recording metadata boundary.
     resolution.py # Shared Gamma resolution source identity.
     clob.py       # Official-client-backed CLOB adapter.
     wallet_activity/  # Wallet trades/activity stream and fallback.
-      constants.py
+      fields.py
     ws_market.py  # SDK-backed public market stream and depth state.
     ws_user.py    # SDK-backed authenticated user stream adapter.
   recording/        # Recorder, typed archive boundary, schema, and gap scope.
+    archive/        # Durable writer, reader lifecycle, semantic queries, schema.
+    coordinator/    # Dynamic capture planning, persistence, and recovery state.
+    contracts/      # Recording contracts plus session and payload-kind semantics.
+    serialization/  # Payload codecs and strict JSON parsing.
+    service/        # Public recorder assembly, resume, markets, and lifecycle.
   backtesting/      # Archive validation, state projection, virtual replay.
-  performance/      # Shared valuation, CSV streams, and atomic run summary.
+    state/          # Market catalog, projected books, and coverage blackouts.
+    scheduler/       # Replay cursor and scheduler event application.
+    service/        # Public replay assembly, bootstrap, coverage, and results.
+  performance/      # Shared valuation and result-artifact contracts.
+    artifacts/       # CSV output, sampling, lifecycle, and summary assembly.
+    contracts/       # Run state, persisted artifact schema, and strict decoding.
   execution/
     broker.py     # Broker protocol used by polybot.
     paper/        # Orchestration, validation, fill math, market data, portfolio.
@@ -241,7 +274,7 @@ bot current/next rules or repeated market slugs
   -> local SQLite recording archive
 ```
 
-`polybot.polymarket.recording_feed.MarketRecordingFeed` owns the SDK stream
+`polybot.polymarket.recording_feed.feed.MarketRecordingFeed` owns the SDK stream
 boundary. Each per-condition `MarketCapture` is an async context manager and
 iterator that emits package-owned book baseline/delta, public trade, tick-size,
 and resolution values without exposing the SDK handle. A full book rebaselines
@@ -600,9 +633,9 @@ separate tracked-markets panel is introduced.
 
 Stream health distinguishes local book coalescing from upstream SDK loss. It
 reports run-lifetime raw book arrivals and pending snapshots superseded before
-dispatch, plus cumulative and recent drop ratios for telemetry state. Queue depth is
-reset when a dynamic subscription generation closes, while lifetime counts and
-peak depth continue across stream-plan rebuilds.
+dispatch, plus cumulative and recent coalescing ratios for telemetry state.
+Queue depth is reset when a dynamic subscription generation closes, while
+lifetime counts and peak depth continue across stream-plan rebuilds.
 
 Dashboard state sampling takes a locked snapshot before rendering in a worker
 thread. A rendering failure closes the live display and prints its traceback to
@@ -703,17 +736,17 @@ Example shape:
 ```python
 class FiveMinuteBucketBot(BaseBot):
     async def current_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
-        return (MarketSubscription(slug=self.slug_for(now_ms, bucket_offset=0)),)
+        return (StreamRule(StreamRelation.INDEPENDENT, (self.slug_for(now_ms, bucket_offset=0),)),)
 
     async def next_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
-        return (MarketSubscription(slug=self.slug_for(now_ms, bucket_offset=1)),)
+        return (StreamRule(StreamRelation.INDEPENDENT, (self.slug_for(now_ms, bucket_offset=1),)),)
 ```
 
 The framework does not hardcode BTC or five-minute market rules. It provides
 the hook structure so a bot can compute the current slug on startup, compute the
 next slug ahead of time, and transition instantly when the active market closes.
 
-Future stream managers should use `MarketPlan.next` to pre-resolve metadata and
+Future stream managers should use `StreamPlan.next` to pre-resolve metadata and
 pre-subscribe where the external APIs support it.
 
 ## Multi-Wallet Routing

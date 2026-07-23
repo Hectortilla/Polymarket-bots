@@ -122,7 +122,9 @@ def test_static_plan_requires_a_market() -> None:
 def test_target_identity_is_canonical_and_excludes_credentials() -> None:
     config = BotConfig(
         name="recorder",
-        market_slugs=("btc",),
+        stream_rules=(
+            StreamRule(StreamRelation.INDEPENDENT, market_slugs=("btc",)),
+        ),
         private_key="secret-key",
         api_secret="secret-api-value",
     )

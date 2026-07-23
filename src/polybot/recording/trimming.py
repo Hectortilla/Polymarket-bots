@@ -7,7 +7,7 @@ import stat
 from collections.abc import Callable
 from pathlib import Path
 
-from .archive import RecordingReader
+from .archive.reader import RecordingReader
 from .trim_contracts import (
     DEFAULT_TRIM_BACKUP_SUFFIX,
     RecordingTrimError,

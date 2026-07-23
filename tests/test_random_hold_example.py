@@ -6,7 +6,7 @@ from decimal import Decimal
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.events.resolutions import NO_OUTCOME, YES_OUTCOME
+from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.examples.example_random_hold import (
     RANDOM_HOLD_BUY_REASON,

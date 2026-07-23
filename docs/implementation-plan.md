@@ -97,7 +97,7 @@ Rules:
 - Use REST for bootstrap, metadata, backfill, and reconciliation.
 - Resolve bot market slugs through Gamma/CLOB metadata before subscribing or
   trading.
-- Use `MarketPlan.next` to pre-resolve and pre-subscribe upcoming dynamic
+- Use `StreamPlan.next` to pre-resolve and pre-subscribe upcoming dynamic
   markets when the upstream source allows it.
 - Normalize external payloads at adapter boundaries.
 - Emit only typed internal contracts to polybot.
@@ -329,7 +329,7 @@ Recording behavior:
 - Maintain the union of current and available next markets. Retry missing future
   slugs without blocking current capture and pre-subscribe both next-market
   tokens before rollover.
-- Use `polybot.polymarket.recording_feed.MarketRecordingFeed`, backed by the
+- Use `polybot.polymarket.recording_feed.feed.MarketRecordingFeed`, backed by the
   pinned unified SDK's public `MarketSpec` stream. Preserve its package-owned
   baseline, delta, public-trade, tick-size, and resolution values in recorder
   arrival order; use `BookDepthProjector` for full normalized depth.
@@ -761,10 +761,11 @@ Status: done.
   per wallet, relative-notional glyphs, dimmed skipped events, shared time
   controls, and `j`/`k` wallet paging.
 - Extend stream health with run-lifetime raw/coalesced book counts, cumulative
-  dropped/received ratio, and a recent ratio over the last 100 book-bearing
-  health-counter deltas; retain these in telemetry state without displaying
-  the drop metrics in the dashboard status row. Preserve lifetime counters and peak queue depth across
-  dynamic stream-plan rebuilds while resetting current depth per generation.
+  coalesced/received ratio, and a recent coalescing ratio over the last 100
+  book-bearing health-counter deltas; retain these in telemetry state without
+  displaying the coalescing metrics in the dashboard status row. Preserve
+  lifetime counters and peak queue depth across dynamic stream-plan rebuilds
+  while resetting current depth per generation.
 - Enable by default and support `--no-dashboard` for headless operation (with
   `--dashboard` retained as the explicit positive form).
 

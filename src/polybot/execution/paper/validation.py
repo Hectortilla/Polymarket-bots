@@ -3,9 +3,10 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
-from polybot.framework.events.books import BOOK_PRICE_CEILING, BookSnapshot, PRICE_FLOOR
+from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
 
-ORDER_VALUE_FLOOR = PRICE_FLOOR
+ORDER_SIZE_FLOOR = Decimal("0")
 
 
 def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
@@ -16,13 +17,13 @@ def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
     try:
         if (
             not order.price.is_finite()
-            or not ORDER_VALUE_FLOOR < order.price <= BOOK_PRICE_CEILING
+            or not OUTCOME_PRICE_FLOOR < order.price <= OUTCOME_PRICE_CEILING
         ):
             return (
                 FillRejectReason.BAD_PRICE,
                 "order price must be finite and between 0 and 1",
             )
-        if not order.size.is_finite() or order.size <= ORDER_VALUE_FLOOR:
+        if not order.size.is_finite() or order.size <= ORDER_SIZE_FLOOR:
             return FillRejectReason.BAD_SIZE, "order size must be finite and positive"
     except (AttributeError, InvalidOperation, TypeError, ValueError):
         return FillRejectReason.BAD_PRICE, "order price and size must be decimals"
@@ -52,7 +53,7 @@ def valid_fee_rate(value: object) -> Decimal | None:
     if not isinstance(value, Decimal):
         return None
     try:
-        if value.is_finite() and ORDER_VALUE_FLOOR <= value <= BOOK_PRICE_CEILING:
+        if value.is_finite() and OUTCOME_PRICE_FLOOR <= value <= OUTCOME_PRICE_CEILING:
             return value
     except (InvalidOperation, TypeError, ValueError):
         pass

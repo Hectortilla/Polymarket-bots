@@ -5,6 +5,8 @@ import pytest
 
 from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
     ExampleDynamicRandomHoldWalletFilterBot,
+    copy_trade_decision,
+    positions_after_copy_fill,
 )
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
@@ -72,6 +74,40 @@ def test_wallet_filter_bot_tracks_positions_per_wallet_and_caps_sells(
     assert positions == {
         (WALLETS[0], "condition-id", "token-id"): Decimal("12.5")
     }
+
+
+def test_copy_trade_transition_is_pure_and_bounded() -> None:
+    buy = _wallet_trade(wallet=WALLETS[0])
+    decision = copy_trade_decision(
+        buy,
+        applied_source_ids=frozenset(),
+        open_positions={},
+    )
+
+    assert decision is not None
+    assert decision.order.size == Decimal("25")
+    after_buy = positions_after_copy_fill(
+        {},
+        decision,
+        side=Side.BUY,
+        filled_size=Decimal("10"),
+    )
+
+    sell = _wallet_trade(wallet=WALLETS[0], side=Side.SELL, price=Decimal("0.80"))
+    sell_decision = copy_trade_decision(
+        sell,
+        applied_source_ids=frozenset({buy.source_key}),
+        open_positions=after_buy,
+    )
+
+    assert sell_decision is not None
+    assert sell_decision.order.size == Decimal("10")
+    assert positions_after_copy_fill(
+        after_buy,
+        sell_decision,
+        side=Side.SELL,
+        filled_size=Decimal("10"),
+    ) == {}
 
 
 def _wallet_trade(

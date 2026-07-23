@@ -6,7 +6,7 @@ from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
-from polybot.framework.events.resolutions import YES_OUTCOME
+from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.outcomes import resolve_outcome_token
 
 PRICE_TRIGGER = Decimal("0.45")

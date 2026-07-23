@@ -192,7 +192,7 @@ class TerminalDashboard:
             self._state.revalidate_wallet_page(
                 wallet_lane_capacity(width, height)
             )
-            self._state.sample(width)
+            self._state.record_chart_sample()
             state = deepcopy(self._state)
         live.update(
             render_dashboard(state, width, height),

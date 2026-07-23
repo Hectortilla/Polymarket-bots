@@ -18,9 +18,40 @@ from polybot.framework.events.resolutions import (
 from .values import (
     _nested_value,
     _non_negative_decimal,
+    _optional_boolean,
     _optional_positive_decimal,
     _required_text,
 )
+
+
+class SdkMarketField(StrEnum):
+    CONDITION_ID = "condition_id"
+    SLUG = "slug"
+    QUESTION = "question"
+    OUTCOMES = "outcomes"
+    TOKEN_ID = "token_id"
+    LABEL = "label"
+    PRICE = "price"
+    TRADING = "trading"
+    MINIMUM_TICK_SIZE = "minimum_tick_size"
+    MINIMUM_ORDER_SIZE = "minimum_order_size"
+    STATE = "state"
+    NEG_RISK = "neg_risk"
+    FEES_ENABLED = "fees_enabled"
+    FEE_SCHEDULE = "fee_schedule"
+    RATE = "rate"
+    RESOLUTION = "resolution"
+    UMA_RESOLUTION_STATUS = "uma_resolution_status"
+    CLOSED = "closed"
+    ACTIVE = "active"
+    ACCEPTING_ORDERS = "accepting_orders"
+    ENABLE_ORDER_BOOK = "enable_order_book"
+
+
+class SdkOutcomeSelector(StrEnum):
+    YES = "yes"
+    NO = "no"
+
 
 class MarketResolutionStatus(StrEnum):
     RESOLVED = "resolved"
@@ -32,37 +63,57 @@ RESOLVED_MARKET_STATUSES = frozenset(MarketResolutionStatus)
 
 def normalize_market(source: SdkMarket) -> Market:
     condition_id = _required_text(
-        _nested_value(source, "condition_id"),
+        _nested_value(source, SdkMarketField.CONDITION_ID),
         MarketDataIssue.MISSING_CONDITION_ID,
         "market condition ID",
     )
     slug = _required_text(
-        _nested_value(source, "slug"),
+        _nested_value(source, SdkMarketField.SLUG),
         MarketDataIssue.MISSING_MARKET_SLUG,
         "market slug",
     )
     question = _required_text(
-        _nested_value(source, "question"),
+        _nested_value(source, SdkMarketField.QUESTION),
         MarketDataIssue.MISSING_QUESTION,
         "market question",
     )
     first_token_id = _required_text(
-        _nested_value(source, "outcomes", "yes", "token_id"),
+        _nested_value(
+            source,
+            SdkMarketField.OUTCOMES,
+            SdkOutcomeSelector.YES,
+            SdkMarketField.TOKEN_ID,
+        ),
         MarketDataIssue.MISSING_TOKEN_ID,
         "first outcome token ID",
     )
     second_token_id = _required_text(
-        _nested_value(source, "outcomes", "no", "token_id"),
+        _nested_value(
+            source,
+            SdkMarketField.OUTCOMES,
+            SdkOutcomeSelector.NO,
+            SdkMarketField.TOKEN_ID,
+        ),
         MarketDataIssue.MISSING_TOKEN_ID,
         "second outcome token ID",
     )
     first_label = _required_text(
-        _nested_value(source, "outcomes", "yes", "label"),
+        _nested_value(
+            source,
+            SdkMarketField.OUTCOMES,
+            SdkOutcomeSelector.YES,
+            SdkMarketField.LABEL,
+        ),
         MarketDataIssue.INVALID_MARKET_PARAMETERS,
         "first outcome label",
     )
     second_label = _required_text(
-        _nested_value(source, "outcomes", "no", "label"),
+        _nested_value(
+            source,
+            SdkMarketField.OUTCOMES,
+            SdkOutcomeSelector.NO,
+            SdkMarketField.LABEL,
+        ),
         MarketDataIssue.INVALID_MARKET_PARAMETERS,
         "second outcome label",
     )
@@ -72,21 +123,61 @@ def normalize_market(source: SdkMarket) -> Market:
             "market outcomes must have distinct token IDs",
         )
     minimum_tick_size = _optional_positive_decimal(
-        _nested_value(source, "trading", "minimum_tick_size"),
+        _nested_value(
+            source,
+            SdkMarketField.TRADING,
+            SdkMarketField.MINIMUM_TICK_SIZE,
+        ),
         "minimum tick size",
     )
     minimum_order_size = _optional_positive_decimal(
-        _nested_value(source, "trading", "minimum_order_size"),
+        _nested_value(
+            source,
+            SdkMarketField.TRADING,
+            SdkMarketField.MINIMUM_ORDER_SIZE,
+        ),
         "minimum order size",
     )
-    neg_risk = _nested_value(source, "state", "neg_risk")
+    active = _optional_boolean(
+        _nested_value(source, SdkMarketField.STATE, SdkMarketField.ACTIVE),
+        "market active state",
+    )
+    closed = _optional_boolean(
+        _nested_value(source, SdkMarketField.STATE, SdkMarketField.CLOSED),
+        "market closed state",
+    )
+    order_book_enabled = _optional_boolean(
+        _nested_value(
+            source,
+            SdkMarketField.STATE,
+            SdkMarketField.ENABLE_ORDER_BOOK,
+        ),
+        "market order-book state",
+    )
+    accepting_orders = _optional_boolean(
+        _nested_value(
+            source,
+            SdkMarketField.STATE,
+            SdkMarketField.ACCEPTING_ORDERS,
+        ),
+        "market order-acceptance state",
+    )
+    neg_risk = _nested_value(
+        source,
+        SdkMarketField.STATE,
+        SdkMarketField.NEG_RISK,
+    )
     if not isinstance(neg_risk, bool):
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
             "market negative-risk flag is missing",
         )
 
-    fees_enabled = _nested_value(source, "trading", "fees_enabled")
+    fees_enabled = _nested_value(
+        source,
+        SdkMarketField.TRADING,
+        SdkMarketField.FEES_ENABLED,
+    )
     if not isinstance(fees_enabled, bool):
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
@@ -95,46 +186,29 @@ def normalize_market(source: SdkMarket) -> Market:
 
     fee_rate = Decimal("0")
     if fees_enabled:
-        fee_schedule = _nested_value(source, "trading", "fee_schedule")
+        fee_schedule = _nested_value(
+            source,
+            SdkMarketField.TRADING,
+            SdkMarketField.FEE_SCHEDULE,
+        )
         if fee_schedule is None:
             raise MarketDataError(
                 MarketDataIssue.INVALID_MARKET_PARAMETERS,
                 "fee-enabled market has no fee schedule",
             )
         fee_rate = _non_negative_decimal(
-            _nested_value(fee_schedule, "rate"),
+            _nested_value(fee_schedule, SdkMarketField.RATE),
             "fee rate",
         )
 
-    first_price = _nested_value(source, "outcomes", "yes", "price")
-    second_price = _nested_value(source, "outcomes", "no", "price")
-    resolution_status = _nested_value(source, "resolution", "uma_resolution_status")
-    status_value = getattr(resolution_status, "value", resolution_status)
-    normalized_status = (
-        status_value.strip().casefold() if isinstance(status_value, str) else status_value
+    resolved, winning_token_id, winning_outcome = _resolved_outcome_from_source(
+        source,
+        closed=closed,
+        first_token_id=first_token_id,
+        first_label=first_label,
+        second_token_id=second_token_id,
+        second_label=second_label,
     )
-    resolved = (
-        normalized_status in RESOLVED_MARKET_STATUSES
-        or _nested_value(source, "state", "closed") is True
-    )
-    winning_token_id = None
-    winning_outcome = None
-    if (
-        resolved
-        and first_price == WINNING_PAYOUT_PER_TOKEN
-        and second_price == LOSING_PAYOUT_PER_TOKEN
-    ):
-        winning_token_id = first_token_id
-        winning_outcome = first_label
-    elif (
-        resolved
-        and second_price == WINNING_PAYOUT_PER_TOKEN
-        and first_price == LOSING_PAYOUT_PER_TOKEN
-    ):
-        winning_token_id = second_token_id
-        winning_outcome = second_label
-    else:
-        resolved = False
 
     return Market(
         condition_id=condition_id,
@@ -151,4 +225,57 @@ def normalize_market(source: SdkMarket) -> Market:
         resolved=resolved,
         winning_token_id=winning_token_id,
         winning_outcome=winning_outcome,
+        active=active,
+        closed=closed,
+        order_book_enabled=order_book_enabled,
+        accepting_orders=accepting_orders,
     )
+
+
+def _resolved_outcome_from_source(
+    source: SdkMarket,
+    *,
+    closed: bool | None,
+    first_token_id: str,
+    first_label: str,
+    second_token_id: str,
+    second_label: str,
+) -> tuple[bool, str | None, str | None]:
+    """Interpret Gamma settlement fields only when they identify one winner."""
+    first_price = _nested_value(
+        source,
+        SdkMarketField.OUTCOMES,
+        SdkOutcomeSelector.YES,
+        SdkMarketField.PRICE,
+    )
+    second_price = _nested_value(
+        source,
+        SdkMarketField.OUTCOMES,
+        SdkOutcomeSelector.NO,
+        SdkMarketField.PRICE,
+    )
+    resolution_status = _nested_value(
+        source,
+        SdkMarketField.RESOLUTION,
+        SdkMarketField.UMA_RESOLUTION_STATUS,
+    )
+    status_value = getattr(resolution_status, "value", resolution_status)
+    normalized_status = (
+        status_value.strip().casefold() if isinstance(status_value, str) else status_value
+    )
+    resolution_reported = (
+        normalized_status in RESOLVED_MARKET_STATUSES or closed is True
+    )
+    if not resolution_reported:
+        return False, None, None
+    if (
+        first_price == WINNING_PAYOUT_PER_TOKEN
+        and second_price == LOSING_PAYOUT_PER_TOKEN
+    ):
+        return True, first_token_id, first_label
+    if (
+        second_price == WINNING_PAYOUT_PER_TOKEN
+        and first_price == LOSING_PAYOUT_PER_TOKEN
+    ):
+        return True, second_token_id, second_label
+    return False, None, None

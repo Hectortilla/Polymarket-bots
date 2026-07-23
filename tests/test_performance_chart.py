@@ -9,20 +9,30 @@ import pytest
 from rich.console import Console
 from rich.text import Text
 
-from polybot.cli.performance_chart import (
+from polybot.cli.performance_chart.artifacts import load_performance_chart_data
+from polybot.cli.performance_chart.command import main, print_performance_chart
+from polybot.cli.performance_chart.contracts import (
     PerformanceChartData,
     PerformanceChartError,
-    load_performance_chart_data,
-    main,
-    print_performance_chart,
-    render_performance_chart,
 )
-from polybot.performance.contracts import (
+from polybot.cli.performance_chart.rendering import render_performance_chart
+from polybot.performance.contracts.files import (
     EQUITY_FIELDS,
     EQUITY_FILE_NAME,
     SUMMARY_FILE_NAME,
+)
+from polybot.performance.contracts.run import (
+    PerformanceRunKind,
     PerformanceRunStatus,
+)
+from polybot.performance.contracts.summary import (
     PerformanceSummaryV1,
+)
+from polybot.performance.contracts.summary.metrics import PerformanceMetricsSummary
+from polybot.performance.contracts.summary.valuation import PerformanceValuationSummary
+from polybot.performance.valuation import (
+    ValuationStatus,
+    history_valuation_status,
 )
 
 
@@ -65,6 +75,214 @@ def test_load_performance_chart_validates_and_projects_pnl_history(
     assert tuple(data.stale_samples) == (False, True, True)
 
 
+@pytest.mark.parametrize("value", ("NaN", "Infinity", "-Infinity", "invalid"))
+def test_performance_summary_rejects_nonfinite_metric_values(value: str) -> None:
+    payload = _summary_payload()
+    metrics = dict(payload["metrics"])
+    metrics["net_pnl_usdc"] = value
+    payload["metrics"] = metrics
+
+    with pytest.raises(ValueError, match="net_pnl_usdc must be a finite decimal"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+def test_performance_summary_normalizes_finite_state_fields() -> None:
+    summary = PerformanceSummaryV1.from_dict(_summary_payload())
+
+    assert summary.provenance.kind is PerformanceRunKind.BACKTEST
+    assert isinstance(summary.metrics, PerformanceMetricsSummary)
+    assert isinstance(summary.valuation, PerformanceValuationSummary)
+    assert summary.valuation.final_status is ValuationStatus.FRESH
+
+
+@pytest.mark.parametrize(
+    ("stale_sample_count", "unavailable_sample_count", "expected"),
+    (
+        (0, 0, ValuationStatus.FRESH),
+        (1, 0, ValuationStatus.STALE),
+        (0, 1, ValuationStatus.UNAVAILABLE),
+        (1, 1, ValuationStatus.UNAVAILABLE),
+    ),
+)
+def test_history_valuation_status_derives_aggregate_from_counts(
+    stale_sample_count: int,
+    unavailable_sample_count: int,
+    expected: ValuationStatus,
+) -> None:
+    assert (
+        history_valuation_status(
+            stale_sample_count=stale_sample_count,
+            unavailable_sample_count=unavailable_sample_count,
+        )
+        is expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("accepted_dispatch_count", 1, "dispatch outcomes exceed dispatch count"),
+        ("fill_count", 6, "fills exceed order count"),
+        ("rejected_order_count", 6, "rejected orders exceed order count"),
+        (
+            "coverage_gap_rejected_order_count",
+            2,
+            "coverage-gap rejections exceed rejected orders",
+        ),
+    ),
+)
+def test_performance_metrics_reject_inconsistent_aggregates(
+    field: str,
+    value: int,
+    message: str,
+) -> None:
+    metrics = dict(_summary_payload()["metrics"])
+    metrics[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        PerformanceMetricsSummary.from_dict(metrics)
+
+
+def test_performance_summary_rejects_inconsistent_derived_state() -> None:
+    payload = _summary_payload()
+    payload["partial"] = True
+
+    with pytest.raises(ValueError, match="partial status is inconsistent"):
+        PerformanceSummaryV1.from_dict(payload)
+
+    payload = _summary_payload()
+    valuation = dict(payload["valuation"])
+    valuation["estimated"] = True
+    payload["valuation"] = valuation
+
+    with pytest.raises(ValueError, match="valuation estimate is inconsistent"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "complete", "estimated", "message"),
+    (
+        (
+            "available_sample_count",
+            0,
+            True,
+            False,
+            "sample counts are inconsistent",
+        ),
+        (
+            "stale_sample_count",
+            2,
+            True,
+            True,
+            "stale samples exceed available samples",
+        ),
+        (
+            "history_status",
+            "stale",
+            False,
+            False,
+            "history status is inconsistent",
+        ),
+        (
+            "drawdown_status",
+            "stale",
+            True,
+            False,
+            "drawdown status is inconsistent",
+        ),
+    ),
+)
+def test_performance_summary_rejects_impossible_valuation_aggregates(
+    field: str,
+    value: object,
+    complete: bool,
+    estimated: bool,
+    message: str,
+) -> None:
+    payload = _summary_payload()
+    valuation = dict(payload["valuation"])
+    valuation[field] = value
+    valuation["complete"] = complete
+    valuation["estimated"] = estimated
+    payload["valuation"] = valuation
+
+    with pytest.raises(ValueError, match=message):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    ("status", "partial", "error"),
+    (
+        (PerformanceRunStatus.FAILED, True, None),
+        (PerformanceRunStatus.COMPLETED, False, "unexpected failure"),
+        (PerformanceRunStatus.CANCELLED, True, "unexpected failure"),
+    ),
+)
+def test_performance_summary_rejects_invalid_terminal_error_contract(
+    status: PerformanceRunStatus,
+    partial: bool,
+    error: str | None,
+) -> None:
+    payload = _summary_payload(status=status, partial=partial)
+    payload["error"] = error
+
+    with pytest.raises(ValueError, match="performance runs"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("archive_sha256", "archive_schema_version", "archive_target_identity"),
+)
+def test_performance_summary_requires_backtest_archive_identity(field: str) -> None:
+    payload = _summary_payload()
+    provenance = dict(payload["provenance"])
+    provenance[field] = None
+    payload["provenance"] = provenance
+
+    with pytest.raises(ValueError, match="provenance is invalid"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", ("1E309", "9" * 309))
+def test_performance_summary_rejects_unrenderable_decimal_metrics(value: str) -> None:
+    payload = _summary_payload()
+    metrics = dict(payload["metrics"])
+    metrics["net_pnl_usdc"] = value
+    payload["metrics"] = metrics
+
+    with pytest.raises(ValueError, match="outside renderable bounds"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+def test_performance_summary_rejects_boolean_schema_version() -> None:
+    payload = _summary_payload()
+    payload["schema_version"] = True
+
+    with pytest.raises(ValueError, match="unsupported performance summary schema version"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    ("section", "value"),
+    (
+        ("selection", {"start_ms": "bad"}),
+        ("timing", {"started_at_ms": "bad"}),
+        ("open_positions", [{}]),
+        ("artifacts", {"equity": ["bad"]}),
+    ),
+)
+def test_performance_summary_rejects_malformed_nested_contracts(
+    section: str,
+    value: object,
+) -> None:
+    payload = _summary_payload()
+    payload[section] = value
+
+    with pytest.raises(ValueError, match="performance summary"):
+        PerformanceSummaryV1.from_dict(payload)
+
+
 @pytest.mark.parametrize(
     ("rows", "message"),
     [
@@ -78,6 +296,10 @@ def test_load_performance_chart_validates_and_projects_pnl_history(
         ((_equity_row(1_000, "NaN", "fresh"),), "PnL is not finite"),
         ((_equity_row(1_000, "", "fresh"),), "PnL is missing"),
         ((_equity_row(1_000, "0", "unknown"),), "valuation status is invalid"),
+        (
+            (_equity_row(1 << 63, "0", "fresh"),),
+            "timestamp is outside chart range",
+        ),
     ],
 )
 def test_load_performance_chart_rejects_malformed_rows(
@@ -125,7 +347,7 @@ def test_render_performance_chart_resamples_the_complete_run(
         return Text("chart")
 
     monkeypatch.setattr(
-        "polybot.cli.performance_chart.render_chart",
+        "polybot.cli.performance_chart.rendering.render_chart",
         fake_render,
     )
 
@@ -233,10 +455,37 @@ def _summary_payload(
         "schema_version": 1,
         "status": status.value,
         "partial": partial,
-        "error": "stopped" if partial else None,
-        "provenance": {"kind": "backtest"},
-        "selection": {},
-        "timing": {},
+        "error": "stopped" if status is PerformanceRunStatus.FAILED else None,
+        "provenance": {
+            "kind": "backtest",
+            "bot_spec": "tests:create",
+            "configuration": {},
+            "seed": 0,
+            "archive_sha256": "archive",
+            "archive_schema_version": 2,
+            "archive_target_identity": "target",
+        },
+        "selection": {
+            "session_id": 1,
+            "start_ms": 1_000,
+            "end_ms": 2_000,
+            "market_slugs": ["market"],
+            "replay_cutoff_sequence": None,
+            "session_integrity_status": None,
+            "uses_partial_session": False,
+            "gap_policy": None,
+            "coverage_gap_ids": [],
+            "coverage_gap_count": 0,
+            "coverage_gap_duration_ms": 0,
+            "coverage_gap_open_count": 0,
+            "coverage_gap_affected_position_token_ids": [],
+            "coverage_gap_affected_position_count": 0,
+        },
+        "timing": {
+            "started_at_ms": 1_000,
+            "ended_at_ms": 2_000,
+            "virtual_duration_ms": 1_000,
+        },
         "metrics": {
             "initial_cash_usdc": "100",
             "initial_equity_usdc": "100",

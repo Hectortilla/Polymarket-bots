@@ -21,7 +21,7 @@ from polybot.cli.observability.events import (
 from polybot.cli.observability.observer import RuntimeObserver, emit_observer
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.markets import Market
-from polybot.polymarket.positions import Position
+from polybot.polymarket.positions.contracts import Position
 
 from ..markets import MarketResolver
 from ..tracking.wallets import FollowedWalletStore

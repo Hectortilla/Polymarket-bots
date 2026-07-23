@@ -28,10 +28,11 @@ from polybot.cli.entrypoint import (
     _print_backtest_summary,
     main,
 )
-from polybot.cli.performance_chart import PerformanceChartError
+from polybot.cli.performance_chart.contracts import PerformanceChartError
 from polybot.cli.factories import load_bot
 from polybot.cli.markets import resolve_plan_markets
 from polybot.runtime import run_bot
+from polybot.cli.runner.factory import create_runtime
 from polybot.cli.runner.dispatch import dispatch_stream_event
 from polybot.cli.runner.streams import wait_for_stream_plan_change
 from polybot.cli.streams.contracts import ResolutionStreamEvent, StreamKind, WalletStreamEvent
@@ -52,14 +53,15 @@ from polybot.framework.config.models import BotConfig, BotMode
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.events.resolutions import MarketResolutionEvent, YES_OUTCOME
+from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.markets import MarketPlan, MarketSubscription
 from polybot.framework.runner import BotRunner
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.polymarket.market_hints import MarketTradeHint
-from polybot.recording.contracts import SessionIntegrityStatus
+from polybot.polymarket.public_data.runtime import create_runtime_public_data
+from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.cli.streams.contracts import BookStreamEvent
 
@@ -279,9 +281,36 @@ def test_backtest_summary_labels_partial_recording_source(
                 "status": "completed",
                 "partial": False,
                 "error": None,
-                "provenance": {},
-                "selection": {},
-                "timing": {},
+                "provenance": {
+                    "kind": "backtest",
+                    "bot_spec": "tests:create",
+                    "configuration": {},
+                    "seed": 0,
+                    "archive_sha256": "archive",
+                    "archive_schema_version": 2,
+                    "archive_target_identity": "target",
+                },
+                "selection": {
+                    "session_id": 1,
+                    "start_ms": 100,
+                    "end_ms": 200,
+                    "market_slugs": ["one"],
+                    "replay_cutoff_sequence": 50,
+                    "session_integrity_status": "incomplete",
+                    "uses_partial_session": True,
+                    "gap_policy": None,
+                    "coverage_gap_ids": [],
+                    "coverage_gap_count": 0,
+                    "coverage_gap_duration_ms": 0,
+                    "coverage_gap_open_count": 0,
+                    "coverage_gap_affected_position_token_ids": [],
+                    "coverage_gap_affected_position_count": 0,
+                },
+                "timing": {
+                    "started_at_ms": 100,
+                    "ended_at_ms": 200,
+                    "virtual_duration_ms": 100,
+                },
                 "metrics": {
                     "initial_cash_usdc": "0",
                     "initial_equity_usdc": "0",
@@ -293,6 +322,7 @@ def test_backtest_summary_labels_partial_recording_source(
                     "order_count": 0,
                     "fill_count": 0,
                     "rejected_order_count": 0,
+                    "coverage_gap_rejected_order_count": 0,
                     "resolution_count": 0,
                     "dispatch_count": 0,
                     "accepted_dispatch_count": 0,
@@ -316,7 +346,7 @@ def test_backtest_summary_labels_partial_recording_source(
                     "unavailable_sample_count": 0,
                 },
                 "open_positions": [],
-                "artifacts": {},
+                "artifacts": {"equity": "equity.csv", "orders": "orders.csv"},
             }
         ),
         encoding="utf-8",
@@ -617,7 +647,7 @@ def test_stream_telemetry_tracks_current_and_peak_queue_depth() -> None:
 
     assert telemetry.queue_depth == 0
     assert telemetry.peak_queue_depth == 2
-    assert telemetry.book_drop_ratio == 0.0
+    assert telemetry.book_coalescing_ratio == 0.0
 
 
 def test_merge_streams_coalesces_books_independently_by_token() -> None:
@@ -639,8 +669,8 @@ def test_merge_streams_coalesces_books_independently_by_token() -> None:
 
     assert asyncio.run(run()) == [_book("one", 3), _book("two", 4)]
     assert telemetry.book_received_count == 4
-    assert telemetry.book_dropped_count == 2
-    assert telemetry.book_drop_ratio == 0.5
+    assert telemetry.book_coalesced_count == 2
+    assert telemetry.book_coalescing_ratio == 0.5
     assert telemetry.peak_queue_depth == 2
     assert telemetry.queue_depth == 0
 
@@ -709,7 +739,7 @@ def test_merge_streams_keeps_lifetime_counters_across_generations() -> None:
 
     asyncio.run(run())
     assert telemetry.book_received_count == 4
-    assert telemetry.book_dropped_count == 2
+    assert telemetry.book_coalesced_count == 2
     assert telemetry.peak_queue_depth == 1
     assert telemetry.queue_depth == 0
 
@@ -770,7 +800,7 @@ def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> 
     assert accepted == [True, True]
     assert received_at_ms == [0, 7_000]
     assert telemetry.book_received_count == 4
-    assert telemetry.book_dropped_count == 2
+    assert telemetry.book_coalesced_count == 2
 
 
 def test_merge_streams_routes_market_trade_hints_separately() -> None:
@@ -877,9 +907,9 @@ def test_resolve_plan_markets_requires_current_and_tolerates_next() -> None:
 
     async def run():
         return await resolve_plan_markets(
-            MarketPlan(
-                current=(MarketSubscription("current"),),
-                next=(MarketSubscription("future"),),
+            StreamPlan(
+                current=(StreamRule(StreamRelation.INDEPENDENT, ("current",)),),
+                next=(StreamRule(StreamRelation.INDEPENDENT, ("future",)),),
             ),
             FakeGamma(),  # type: ignore[arg-type]
         )
@@ -896,7 +926,11 @@ def test_resolve_plan_markets_rejects_missing_current() -> None:
 
     async def run():
         await resolve_plan_markets(
-            MarketPlan(current=(MarketSubscription("missing"),)),
+            StreamPlan(
+                current=(
+                    StreamRule(StreamRelation.INDEPENDENT, ("missing",)),
+                )
+            ),
             FakeGamma(),  # type: ignore[arg-type]
         )
 
@@ -957,26 +991,25 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         def set_markets(self, markets) -> None:
             self.markets = tuple(markets)
 
-        async def books(self, token_ids):
+        async def events(self, token_ids):
             yield _book("token", 0)
 
     class FakeBotRunner:
         def __init__(self, bot, ctx) -> None:
             self.bot = bot
-            self.market_plan = MarketPlan(current=())
-            self.wallet_plan = SimpleNamespace(active_addresses=frozenset())
+            self.stream_plan = StreamPlan(current=())
             self.dispatched = 0
 
         def set_runtime_market_slugs(self, market_slugs) -> None:
             self.market_slugs = market_slugs
 
-        async def refresh_markets(self):
-            self.market_plan = MarketPlan(
-                current=(MarketSubscription("current"),)
+        async def refresh_stream_plan(self):
+            self.stream_plan = StreamPlan(
+                current=(
+                    StreamRule(StreamRelation.INDEPENDENT, ("current",)),
+                )
             )
-
-        async def refresh_wallets(self):
-            return self.wallet_plan
+            return self.stream_plan
 
         async def dispatch_book(self, event) -> DispatchOutcome:
             self.dispatched += 1
@@ -994,10 +1027,6 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
             self.stopped += 1
             await ctx.activity.emit("bot stopped")
 
-    class FakeBroker:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-
     class RecordingObserver(RuntimeObserver):
         def __init__(self) -> None:
             self.events = []
@@ -1011,21 +1040,31 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         async def stop(self) -> None:
             return None
 
-    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
+        FakeAdapter,
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", _TestPaperBroker)
     monkeypatch.setattr("polybot.runtime.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[int, int, bool, RecordingObserver]:
         client = FakeClient()
-        monkeypatch.setattr("polybot.cli.runner.factory.AsyncPublicClient", lambda: client)
+        monkeypatch.setattr(
+            "polybot.polymarket.public_data.client.AsyncPublicClient", lambda: client
+        )
         bot = LifecycleBot()
         observer = RecordingObserver()
         await run_bot(
             bot,
-            BotConfig(name="runner", market_slugs=("current",)),
+            BotConfig(
+                name="runner",
+                stream_rules=(
+                    StreamRule(StreamRelation.INDEPENDENT, ("current",)),
+                ),
+            ),
             observer=observer,
         )
         return bot.started, bot.stopped, client.closed, observer
@@ -1058,6 +1097,54 @@ def test_run_bot_rejects_live_before_opening_client() -> None:
 
     with pytest.raises(RuntimeError, match="live mode"):
         asyncio.run(run())
+
+
+def test_runtime_factory_closes_only_owned_public_data_after_setup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakePublicData:
+        def __init__(self) -> None:
+            self.gamma = object()
+            self.clob = object()
+            self.market_stream = object()
+            self.wallet_activity_client = object()
+            self.position_client = object()
+            self.close_calls = 0
+
+        async def close(self) -> None:
+            self.close_calls += 1
+
+    class FailingTracker:
+        @staticmethod
+        async def create(path: Path) -> object:
+            del path
+            raise RuntimeError("followed-wallet setup failed")
+
+    owned_public_data = FakePublicData()
+    injected_public_data = FakePublicData()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "polybot.cli.runner.factory.create_runtime_public_data",
+        lambda: owned_public_data,
+    )
+    monkeypatch.setattr(
+        "polybot.cli.runner.factory.FollowedWalletTracker", FailingTracker
+    )
+
+    async def create(public_data: object | None) -> None:
+        with pytest.raises(RuntimeError, match="followed-wallet setup failed"):
+            await create_runtime(
+                BotConfig(name="setup-failure"),
+                object(),  # type: ignore[arg-type]
+                public_data=public_data,  # type: ignore[arg-type]
+            )
+
+    asyncio.run(create(None))
+    asyncio.run(create(injected_public_data))
+
+    assert owned_public_data.close_calls == 1
+    assert injected_public_data.close_calls == 0
 
 
 def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) -> None:
@@ -1128,19 +1215,24 @@ def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(mo
             self.dispatched += 1
             return DispatchOutcome.accepted_event()
 
-    class FakeBroker:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-
-    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
+        FakeAdapter,
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", _TestPaperBroker)
     monkeypatch.setattr("polybot.runtime.BotRunner", DynamicRunner)
     monkeypatch.setattr("polybot.cli.runner.streams.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
 
-    asyncio.run(run_bot(BaseBot(), BotConfig(name="dynamic"), client=object()))
+    asyncio.run(
+        run_bot(
+            BaseBot(),
+            BotConfig(name="dynamic"),
+            public_data=create_runtime_public_data(object()),
+        )
+    )
 
     assert FakeAdapter.market_sets == [
         ("bucket-0",),
@@ -1217,14 +1309,6 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
         def __init__(self, client) -> None:
             pass
 
-    class FakePaperBroker:
-        def __init__(self, *args, **kwargs) -> None:
-            self.portfolio = PaperPortfolio(Decimal("100"))
-            self.position_market_refs = {}
-
-        def settle_market(self, event):
-            return self.portfolio.settle_market(event)
-
     class FakeRunner:
         books: list[str] = []
         resolutions: list[str] = []
@@ -1245,13 +1329,16 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
         async def dispatch_market_resolution(self, event) -> None:
             self.resolutions.append(event.condition_id)
 
-    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeClob)
-    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeMarketStream)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeClob)
     monkeypatch.setattr(
-        "polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeWalletClient
+        "polybot.polymarket.public_data.runtime.MarketStream", FakeMarketStream
     )
-    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
+        FakeWalletClient,
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", _TestPaperBroker)
     monkeypatch.setattr("polybot.runtime.BotRunner", FakeRunner)
 
     class RecordingObserver:
@@ -1272,7 +1359,7 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
         run_bot(
             BaseBot(),
             BotConfig(name="resolution-rebuild"),
-            client=object(),
+            public_data=create_runtime_public_data(object()),
             observer=observer,
         )
     )
@@ -1340,14 +1427,6 @@ def test_gamma_resolved_market_is_settled_before_stream_creation(
         def __init__(self, client) -> None:
             pass
 
-    class FakePaperBroker:
-        def __init__(self, *args, **kwargs) -> None:
-            self.portfolio = PaperPortfolio(Decimal("100"))
-            self.position_market_refs = {}
-
-        def settle_market(self, event):
-            return self.portfolio.settle_market(event)
-
     class FakeRunner:
         settled: list[str] = []
 
@@ -1363,16 +1442,25 @@ def test_gamma_resolved_market_is_settled_before_stream_creation(
         async def dispatch_market_resolution(self, event) -> None:
             self.settled.append(event.condition_id)
 
-    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeClob)
-    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeMarketStream)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeClob)
     monkeypatch.setattr(
-        "polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeWalletClient
+        "polybot.polymarket.public_data.runtime.MarketStream", FakeMarketStream
     )
-    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakePaperBroker)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
+        FakeWalletClient,
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", _TestPaperBroker)
     monkeypatch.setattr("polybot.runtime.BotRunner", FakeRunner)
 
-    asyncio.run(run_bot(BaseBot(), BotConfig(name="gamma-resolved"), client=object()))
+    asyncio.run(
+        run_bot(
+            BaseBot(),
+            BotConfig(name="gamma-resolved"),
+            public_data=create_runtime_public_data(object()),
+        )
+    )
 
     assert not FakeMarketStream.opened
     assert FakeRunner.settled == [market.condition_id]
@@ -1400,29 +1488,25 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
         def set_markets(self, markets) -> None:
             return None
 
-        async def books(self, token_ids):
+        async def events(self, token_ids):
             yield object()
 
     class FakeBotRunner:
         def __init__(self, bot, ctx) -> None:
-            self.market_plan = MarketPlan(current=(MarketSubscription("current"),))
-            self.wallet_plan = SimpleNamespace(active_addresses=frozenset())
+            self.stream_plan = StreamPlan(
+                current=(
+                    StreamRule(StreamRelation.INDEPENDENT, ("current",)),
+                )
+            )
 
         def set_runtime_market_slugs(self, market_slugs) -> None:
             self.market_slugs = market_slugs
 
-        async def refresh_markets(self) -> None:
-            return None
-
-        async def refresh_wallets(self) -> None:
-            return None
+        async def refresh_stream_plan(self) -> StreamPlan:
+            return self.stream_plan
 
         async def dispatch_book(self, event) -> DispatchOutcome:
             return DispatchOutcome.accepted_event()
-
-    class FakeBroker:
-        def __init__(self, *args, **kwargs) -> None:
-            return None
 
     class FailingStopBot(BaseBot):
         async def on_stop(self, ctx) -> None:
@@ -1442,21 +1526,31 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
         async def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("polybot.cli.runner.factory.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.cli.runner.factory.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.MarketStream", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.PolymarketWalletActivityClient", FakeAdapter)
-    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", FakeBroker)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter)
+    monkeypatch.setattr("polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
+        FakeAdapter,
+    )
+    monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", _TestPaperBroker)
     monkeypatch.setattr("polybot.runtime.BotRunner", FakeBotRunner)
 
     async def run() -> tuple[FakeClient, RecordingObserver]:
         client = FakeClient()
-        monkeypatch.setattr("polybot.cli.runner.factory.AsyncPublicClient", lambda: client)
+        monkeypatch.setattr(
+            "polybot.polymarket.public_data.client.AsyncPublicClient", lambda: client
+        )
         observer = RecordingObserver()
         with pytest.raises(RuntimeError, match="stop failed"):
             await run_bot(
                 FailingStopBot(),
-                BotConfig(name="shutdown", market_slugs=("current",)),
+                BotConfig(
+                    name="shutdown",
+                    stream_rules=(
+                        StreamRule(StreamRelation.INDEPENDENT, ("current",)),
+                    ),
+                ),
                 observer=observer,
             )
         return client, observer
@@ -1496,6 +1590,23 @@ def _book(token_id: str, received_at_ms: int) -> BookSnapshot:
         market_slug="market",
         condition_id="condition",
     )
+
+
+class _TestPaperBroker:
+    """Test double implementing the complete paper-broker state contract."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.portfolio = PaperPortfolio(Decimal("100"))
+        self.position_market_refs: dict[str, tuple[str, str]] = {}
+
+    def snapshot(self) -> object:
+        return self.portfolio.snapshot()
+
+    def restore(self, snapshot: object) -> None:
+        self.portfolio.restore(snapshot)  # type: ignore[arg-type]
+
+    def settle_market(self, event: MarketResolutionEvent):
+        return self.portfolio.settle_market(event)
 
 
 def _resolution_event() -> MarketResolutionEvent:

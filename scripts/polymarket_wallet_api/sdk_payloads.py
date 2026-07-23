@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from polybot.polymarket.wallet_activity.constants import (
+from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,

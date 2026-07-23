@@ -38,7 +38,7 @@ class BootstrapProgress:
     phase: BootstrapPhase
     completed: int
     total: int
-    occurred_at: float = field(default_factory=monotonic)
+    occurred_at_monotonic: float = field(default_factory=monotonic)
 
     def __post_init__(self) -> None:
         if self.completed < 0 or self.total < 0:
@@ -52,7 +52,7 @@ class RuntimeStarted:
     name: str
     mode: BotMode
     initial_cash_usdc: Decimal
-    occurred_at: float
+    occurred_at_monotonic: float
 
     @classmethod
     def from_config(cls, config: BotConfig) -> RuntimeStarted:
@@ -60,20 +60,20 @@ class RuntimeStarted:
             name=config.name,
             mode=config.mode,
             initial_cash_usdc=config.paper_portfolio_usdc,
-            occurred_at=monotonic(),
+            occurred_at_monotonic=monotonic(),
         )
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeStateChanged:
     state: RuntimeState
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
 class StreamReceived:
     item: StreamEvent
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,14 +81,14 @@ class PortfolioBookBootstrap:
     """A CLOB mark fetched only to value an already-held paper position."""
 
     book: BookSnapshot
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
 class DispatchCompleted:
     item: StreamEvent
     outcome: DispatchOutcome | None
-    occurred_at: float
+    occurred_at_monotonic: float
 
     @property
     def kind(self) -> StreamKind:
@@ -101,15 +101,15 @@ class StreamHealth:
     peak_queue_depth: int
     book_dispatch_lag_ms: int | None
     book_stale: bool = False
-    occurred_at: float = field(default_factory=monotonic)
+    occurred_at_monotonic: float = field(default_factory=monotonic)
     book_received_count: int = 0
-    book_dropped_count: int = 0
+    book_coalesced_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
 class OrderSubmitted:
     order: OrderRequest
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,27 +147,27 @@ class FillCompleted:
     fill: FillEvent
     portfolio: PortfolioSnapshot | None
     latency_ms: int
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
 class BrokerFailed:
     order: OrderRequest
     error: str
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
 class MarketSettled:
     settlement: MarketSettlementEvent
     portfolio: PortfolioSnapshot
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeFailed:
     error: str
-    occurred_at: float
+    occurred_at_monotonic: float
 
 
 RuntimeEvent = (

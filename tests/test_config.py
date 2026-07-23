@@ -27,6 +27,8 @@ from polybot.framework.config.constants import (
 )
 from polybot.framework.config.models import BotConfig, BotMode, DEFAULT_BOT_MODE
 
+FUNDER_ADDRESS = "0x00000000000000000000000000000000000000f0"
+
 
 def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
@@ -45,7 +47,10 @@ def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv(BOT_API_KEY_ENV, "key")
     monkeypatch.setenv(BOT_API_SECRET_ENV, "secret")
     monkeypatch.setenv(BOT_API_PASSPHRASE_ENV, "passphrase")
-    monkeypatch.setenv(BOT_FUNDER_ADDRESS_ENV, "0xfunder")
+    monkeypatch.setenv(
+        BOT_FUNDER_ADDRESS_ENV,
+        "0x" + FUNDER_ADDRESS.removeprefix("0x").upper(),
+    )
 
     config = BotConfig.from_env("env-bot").with_overrides(max_order_size=Decimal("2"))
 
@@ -66,7 +71,17 @@ def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch)
     assert config.api_key == "key"
     assert config.api_secret == "secret"
     assert config.api_passphrase == "passphrase"
-    assert config.funder_address == "0xfunder"
+    assert config.funder_address == FUNDER_ADDRESS
+
+
+def test_config_rejects_invalid_funder_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(BOT_FUNDER_ADDRESS_ENV, "not-a-wallet")
+
+    with pytest.raises(ValueError, match="wallet address"):
+        BotConfig.from_env("bad-funder")
+
+    with pytest.raises(ValueError, match="wallet address"):
+        BotConfig(name="bad-funder", funder_address="not-a-wallet")
 
 
 def test_config_rejects_invalid_mode(monkeypatch: pytest.MonkeyPatch) -> None:

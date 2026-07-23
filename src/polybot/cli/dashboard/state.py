@@ -1,17 +1,13 @@
-"""In-memory projection of runtime events for terminal rendering."""
+"""Coordinator for the terminal dashboard's focused state projections."""
 
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
 from decimal import Decimal
-from enum import StrEnum
-from math import ceil
-from time import monotonic, time
+from typing import Any
 
 from polybot.cli.observability.events import (
     BrokerFailed,
-    BootstrapPhase,
     BootstrapProgress,
     DispatchCompleted,
     FillCompleted,
@@ -24,515 +20,421 @@ from polybot.cli.observability.events import (
     RuntimeStarted,
     RuntimeState,
     RuntimeStateChanged,
-    StreamReceived,
     StreamHealth,
+    StreamReceived,
 )
-from polybot.framework.activity import ActivitySeverity, BotActivityEvent
-from polybot.cli.dashboard.palette import SERIES_PALETTE, side_text_style
 from polybot.cli.streams.contracts import StreamKind
+from polybot.framework.activity import BotActivityEvent
+from polybot.framework.clock import system_now_ms
+from polybot.framework.config.models import BotMode
 from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.config.models import BotMode
-from polybot.framework.wallets import normalize_wallet_address
-from polybot.performance.valuation import (
-    PortfolioValuation,
-    value_portfolio,
+from polybot.performance.valuation import PortfolioValuation
+
+from .chart_history import DashboardCharts
+from .event_ticker import DashboardTicker, TickerRow
+from .market_state import DashboardMarkets
+from .runtime_state import DashboardRuntime
+from .stream_health import DashboardStreamHealth
+from .token_labels import format_token_label
+from .view_state import DashboardView, DashboardViewState
+from .wallet_state import (
+    DashboardWalletTimeline,
+    WalletTimelineEvent,
+    wallet_market_label,
 )
 
-from .copy import RUN_FAILED_PREFIX
-from .chart_state import (
-    MAX_CHART_HISTORY_POINTS,
-    MAX_CHART_WINDOW_POINTS,
-    MAX_TIME_ZOOM_LEVEL,
-    MIN_CHART_WINDOW_POINTS,
-    MIN_TIME_ZOOM_LEVEL,
-    chart_display_points,
-    chart_window_points,
-    record_sample,
-    visible_time_range,
-)
-from .health import average, ratio
-from .token_labels import format_market_label, format_token_label
-from .wallet_state import WalletTimelineEvent, wallet_market_label
 
-MAX_TICKER_ROWS = 40
-MAX_CHART_TOKENS = len(SERIES_PALETTE)
-MAX_WALLET_TIMELINE_EVENTS = 5_000
-EVENT_RATE_WINDOW_SECONDS = 10
-MARKET_TICKER_INTERVAL_SECONDS = 1
-LATENCY_SAMPLE_LIMIT = 100
-HEALTH_SAMPLE_LIMIT = 100
+class _ProjectionAttribute:
+    """A named façade attribute forwarded to one focused dashboard projection."""
 
+    __slots__ = ("projection", "name")
 
-@dataclass(frozen=True, slots=True)
-class TickerRow:
-    style: str
-    message: str
-    count: int = 1
+    def __init__(self, projection: str) -> None:
+        self.projection = projection
+        self.name = ""
+
+    def __set_name__(self, owner: type[DashboardState], name: str) -> None:
+        self.name = name
+
+    def __get__(
+        self,
+        instance: DashboardState | None,
+        owner: type[DashboardState],
+    ) -> Any:
+        if instance is None:
+            return self
+        return getattr(getattr(instance, self.projection), self.name)
+
+    def __set__(self, instance: DashboardState, value: Any) -> None:
+        setattr(getattr(instance, self.projection), self.name, value)
 
 
-class DashboardView(StrEnum):
-    MARKET = "market"
-    WALLET = "wallet"
+def _projection_attribute(projection: str) -> Any:
+    return _ProjectionAttribute(projection)
 
 
-@dataclass(slots=True)
 class DashboardState:
-    name: str = "-"
-    mode: BotMode | None = None
-    lifecycle: RuntimeState = RuntimeState.STARTING
-    started_at: float | None = None
-    initial_cash_usdc: Decimal | None = None
-    require_accepted_books: bool = False
-    book_max_age_ms: int | None = None
-    books: dict[str, BookSnapshot] = field(default_factory=dict)
-    last_executable_marks: dict[str, Decimal] = field(default_factory=dict)
-    market_labels: dict[str, str] = field(default_factory=dict)
-    pending_books: dict[str, BookSnapshot] = field(default_factory=dict)
-    portfolio: PortfolioSnapshot | None = None
-    ticker: deque[TickerRow] = field(default_factory=lambda: deque(maxlen=MAX_TICKER_ROWS))
-    market_ticker: deque[TickerRow] = field(
-        default_factory=lambda: deque(maxlen=MAX_TICKER_ROWS)
+    """Apply runtime events to the projections consumed by dashboard rendering.
+
+    The façade preserves the aggregate state surface used by renderers and the
+    controller, while each projection owns one durable concern. Event routing
+    intentionally stays here so callers have one coordination entry point.
+    """
+
+    __slots__ = (
+        "runtime",
+        "markets",
+        "ticker_state",
+        "stream_health",
+        "charts",
+        "wallets",
+        "view_state",
     )
-    show_market_events: bool = False
-    stream_counts: dict[StreamKind, int] = field(default_factory=dict)
-    wallets_loaded: int = 0
-    wallets_total: int | None = None
-    markets_loaded: int = 0
-    markets_total: int | None = None
-    accepted_dispatches: int = 0
-    skipped_dispatches: int = 0
-    order_count: int = 0
-    fill_count: int = 0
-    rejected_count: int = 0
-    wallet_detection_lags_ms: deque[int] = field(
-        default_factory=lambda: deque(maxlen=LATENCY_SAMPLE_LIMIT)
+
+    # Runtime identity and lifecycle.
+    name: str = _projection_attribute("runtime")
+    mode: BotMode | None = _projection_attribute("runtime")
+    lifecycle: RuntimeState = _projection_attribute("runtime")
+    started_at_monotonic: float | None = _projection_attribute("runtime")
+    initial_cash_usdc: Decimal | None = _projection_attribute("runtime")
+
+    # Market books, labels, settlement, and portfolio marks.
+    require_accepted_books: bool = _projection_attribute("markets")
+    book_max_age_ms: int | None = _projection_attribute("markets")
+    books: dict[str, BookSnapshot] = _projection_attribute("markets")
+    last_executable_marks: dict[str, Decimal] = _projection_attribute("markets")
+    market_labels: dict[str, str] = _projection_attribute("markets")
+    pending_books: dict[str, BookSnapshot] = _projection_attribute("markets")
+    portfolio: PortfolioSnapshot | None = _projection_attribute("markets")
+    market_ticker_at_monotonic: dict[str, float] = _projection_attribute("markets")
+    resolved_condition_ids: set[str] = _projection_attribute("markets")
+    resolved_market_count: int = _projection_attribute("markets")
+
+    # Activity ticker.
+    ticker: deque[TickerRow] = _projection_attribute("ticker_state")
+    market_ticker: deque[TickerRow] = _projection_attribute("ticker_state")
+    show_market_events: bool = _projection_attribute("ticker_state")
+
+    # Stream throughput, dispatch, and latency metrics.
+    stream_counts: dict[StreamKind, int] = _projection_attribute("stream_health")
+    wallets_loaded: int = _projection_attribute("stream_health")
+    wallets_total: int | None = _projection_attribute("stream_health")
+    markets_loaded: int = _projection_attribute("stream_health")
+    markets_total: int | None = _projection_attribute("stream_health")
+    accepted_dispatches: int = _projection_attribute("stream_health")
+    skipped_dispatches: int = _projection_attribute("stream_health")
+    order_count: int = _projection_attribute("stream_health")
+    fill_count: int = _projection_attribute("stream_health")
+    rejected_count: int = _projection_attribute("stream_health")
+    wallet_detection_lags_ms: deque[int] = _projection_attribute("stream_health")
+    broker_latencies_ms: deque[int] = _projection_attribute("stream_health")
+    book_lags_ms: deque[int] = _projection_attribute("stream_health")
+    book_stale_samples: deque[bool] = _projection_attribute("stream_health")
+    book_coalescing_samples: deque[tuple[int, int]] = _projection_attribute(
+        "stream_health"
     )
-    broker_latencies_ms: deque[int] = field(
-        default_factory=lambda: deque(maxlen=LATENCY_SAMPLE_LIMIT)
+    book_received_count: int = _projection_attribute("stream_health")
+    book_coalesced_count: int = _projection_attribute("stream_health")
+    queue_depth: int = _projection_attribute("stream_health")
+    peak_queue_depth: int = _projection_attribute("stream_health")
+    stream_received_monotonic_times: dict[StreamKind, deque[float]] = (
+        _projection_attribute("stream_health")
     )
-    book_lags_ms: deque[int] = field(default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT))
-    book_stale_samples: deque[bool] = field(default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT))
-    book_drop_samples: deque[tuple[int, int]] = field(
-        default_factory=lambda: deque(maxlen=HEALTH_SAMPLE_LIMIT)
+    stream_dispatched_monotonic_times: dict[StreamKind, deque[float]] = (
+        _projection_attribute("stream_health")
     )
-    book_received_count: int = 0
-    book_dropped_count: int = 0
-    queue_depth: int = 0
-    peak_queue_depth: int = 0
-    stream_received_times: dict[StreamKind, deque[float]] = field(default_factory=dict)
-    stream_dispatched_times: dict[StreamKind, deque[float]] = field(default_factory=dict)
-    event_times: deque[float] = field(default_factory=deque)
-    chart_tokens: deque[str] = field(default_factory=deque)
-    price_history: dict[str, deque[float]] = field(default_factory=dict)
-    price_stale_history: dict[str, deque[bool]] = field(default_factory=dict)
-    trade_marker_history: dict[str, deque[tuple[Side, ...]]] = field(default_factory=dict)
-    pending_trade_markers: dict[str, list[Side]] = field(default_factory=dict)
-    wallet_value_history: deque[float] = field(default_factory=deque)
-    wallet_value_stale_history: deque[bool] = field(default_factory=deque)
-    chart_sample_times: deque[float] = field(default_factory=deque)
-    time_zoom_level: int = 0
-    market_ticker_at: dict[str, float] = field(default_factory=dict)
-    view: DashboardView = DashboardView.MARKET
-    wallet_lanes: deque[str] = field(default_factory=deque)
-    wallet_timeline: deque[WalletTimelineEvent] = field(default_factory=deque)
-    wallet_timeline_by_source: dict[str, WalletTimelineEvent] = field(default_factory=dict)
-    wallet_page: int = 0
-    resolved_condition_ids: set[str] = field(default_factory=set)
-    resolved_market_count: int = 0
+    event_monotonic_times: deque[float] = _projection_attribute("stream_health")
+
+    # Chart histories and navigation.
+    chart_tokens: deque[str] = _projection_attribute("charts")
+    price_history: dict[str, deque[float]] = _projection_attribute("charts")
+    price_stale_history: dict[str, deque[bool]] = _projection_attribute("charts")
+    trade_marker_history: dict[str, deque[tuple[Side, ...]]] = _projection_attribute(
+        "charts"
+    )
+    pending_trade_markers: dict[str, list[Side]] = _projection_attribute("charts")
+    wallet_value_history: deque[float] = _projection_attribute("charts")
+    wallet_value_stale_history: deque[bool] = _projection_attribute("charts")
+    chart_sample_times: deque[float] = _projection_attribute("charts")
+    time_zoom_level: int = _projection_attribute("charts")
+
+    # Followed-wallet timeline.
+    wallet_lanes: deque[str] = _projection_attribute("wallets")
+    wallet_timeline: deque[WalletTimelineEvent] = _projection_attribute("wallets")
+    wallet_timeline_by_source: dict[str, WalletTimelineEvent] = _projection_attribute(
+        "wallets"
+    )
+    wallet_page: int = _projection_attribute("wallets")
+
+    # Selected dashboard view.
+    view: DashboardView = _projection_attribute("view_state")
+
+    def __init__(
+        self,
+        *,
+        initial_cash_usdc: Decimal | None = None,
+        require_accepted_books: bool = False,
+        book_max_age_ms: int | None = None,
+        chart_tokens: deque[str] | None = None,
+        view: DashboardView = DashboardView.MARKET,
+    ) -> None:
+        self.runtime = DashboardRuntime(initial_cash_usdc=initial_cash_usdc)
+        self.markets = DashboardMarkets(
+            require_accepted_books=require_accepted_books,
+            book_max_age_ms=book_max_age_ms,
+        )
+        self.ticker_state = DashboardTicker()
+        self.stream_health = DashboardStreamHealth()
+        self.charts = DashboardCharts(
+            chart_tokens=deque(() if chart_tokens is None else chart_tokens)
+        )
+        self.wallets = DashboardWalletTimeline()
+        self.view_state = DashboardViewState(view=view)
 
     def apply(self, event: RuntimeEvent) -> None:
-        self._remember_event(event)
+        """Route a runtime event to its owning state projection."""
+        self.stream_health.remember_event(event.occurred_at_monotonic)
         match event:
             case RuntimeStarted():
-                self.name = event.name
-                self.mode = event.mode
-                self.initial_cash_usdc = event.initial_cash_usdc
-                self.started_at = event.occurred_at
-                self.lifecycle = RuntimeState.STARTING
-                self._ticker("bold white", f"Starting {event.name} in {event.mode.value} mode")
+                self.runtime.start(
+                    name=event.name,
+                    mode=event.mode,
+                    initial_cash_usdc=event.initial_cash_usdc,
+                    occurred_at_monotonic=event.occurred_at_monotonic,
+                )
+                self.ticker_state.add(
+                    "bold white",
+                    f"Starting {event.name} in {event.mode.value} mode",
+                )
             case RuntimeStateChanged():
-                self.lifecycle = event.state
-                self._ticker("bold yellow", f"Runner {event.state.value}")
+                self.runtime.transition_to(event.state)
+                self.ticker_state.add("bold yellow", f"Runner {event.state.value}")
             case BootstrapProgress():
-                self._bootstrap_progress(event)
+                self.stream_health.record_bootstrap(
+                    event.phase,
+                    event.completed,
+                    event.total,
+                )
             case StreamReceived():
-                self._stream_received(event)
+                self._record_stream_received(event)
             case PortfolioBookBootstrap():
-                self._record_book(event.book, event.occurred_at)
+                self._record_book(event.book, event.occurred_at_monotonic)
             case DispatchCompleted():
-                self._dispatch_completed(event)
+                self._record_dispatch_completed(event)
             case StreamHealth():
-                self.queue_depth = event.queue_depth
-                self.peak_queue_depth = max(self.peak_queue_depth, event.peak_queue_depth)
-                self._record_book_drop_counters(event)
-                if event.book_dispatch_lag_ms is not None:
-                    self.book_lags_ms.append(event.book_dispatch_lag_ms)
-                    self.book_stale_samples.append(event.book_stale)
+                self.stream_health.record_health(
+                    queue_depth=event.queue_depth,
+                    peak_queue_depth=event.peak_queue_depth,
+                    book_dispatch_lag_ms=event.book_dispatch_lag_ms,
+                    book_stale=event.book_stale,
+                    book_received_count=event.book_received_count,
+                    book_coalesced_count=event.book_coalesced_count,
+                )
             case OrderSubmitted():
-                self.order_count += 1
-                self._ticker(
-                    _side_style(event.order.side),
-                    f"ORDER {event.order.side.value} {event.order.size} {self.market_label(event.order.token_id)}",
+                self.stream_health.record_order()
+                self.ticker_state.add(
+                    self.ticker_state.side_style(event.order.side),
+                    f"ORDER {event.order.side.value} {event.order.size} "
+                    f"{self.market_label(event.order.token_id)}",
                 )
             case FillCompleted():
-                self._fill_completed(event)
+                self._record_fill(event)
             case BrokerFailed():
-                self._ticker("bold red", f"BROKER ERROR {event.error}")
+                self.ticker_state.add("bold red", f"BROKER ERROR {event.error}")
             case MarketSettled():
-                self.portfolio = event.portfolio
-                self._market_settled(event)
+                self.markets.portfolio = event.portfolio
+                settled_token_ids = self.markets.settle(
+                    condition_id=event.settlement.resolution.condition_id,
+                    token_ids=event.settlement.resolution.token_ids,
+                )
+                self.charts.remove_tokens(settled_token_ids)
             case RuntimeFailed():
-                self.lifecycle = RuntimeState.FAILED
-                self._ticker("bold red", f"{RUN_FAILED_PREFIX} {event.error}")
+                self.runtime.fail()
+                self.ticker_state.add("bold red", f"RUN FAILED {event.error}")
             case BotActivityEvent():
-                self._ticker(_activity_style(event.severity), f"BOT {event.message}")
+                self.ticker_state.add(
+                    self.ticker_state.activity_style(event.severity),
+                    f"BOT {event.message}",
+                )
 
-    def sample(self, width: int, now_ms: int | None = None) -> None:
-        record_sample(self, now_ms)
+    def record_chart_sample(self, now_ms: int | None = None) -> None:
+        sampled_at_ms = system_now_ms() if now_ms is None else now_ms
+        self.charts.record_sample(
+            sampled_at_ms,
+            current_book=self.markets.current_book,
+            executable_equity=self.executable_equity(sampled_at_ms),
+        )
 
     def chart_window_points(self, width: int) -> int:
-        return chart_window_points(self.time_zoom_level, width)
+        return self.charts.chart_window_points(width)
 
     @staticmethod
     def chart_display_points(width: int) -> int:
-        return chart_display_points(width)
+        return DashboardCharts.chart_display_points(width)
 
     def visible_time_range(self, width: int) -> tuple[float, float] | None:
-        return visible_time_range(self.chart_sample_times, self.time_zoom_level, width)
+        return self.charts.visible_time_range(width)
 
     def zoom_time(self, direction: int) -> bool:
-        updated_level = min(
-            MAX_TIME_ZOOM_LEVEL,
-            max(MIN_TIME_ZOOM_LEVEL, self.time_zoom_level + direction),
-        )
-        if updated_level == self.time_zoom_level:
-            return False
-        self.time_zoom_level = updated_level
-        return True
+        return self.charts.zoom(direction)
 
     def reset_time_zoom(self) -> bool:
-        if self.time_zoom_level == 0:
-            return False
-        self.time_zoom_level = 0
-        return True
+        return self.charts.reset_zoom()
 
     def toggle_view(self) -> None:
-        self.view = (
-            DashboardView.WALLET
-            if self.view is DashboardView.MARKET
-            else DashboardView.MARKET
-        )
-        if self.view is DashboardView.WALLET:
-            self.wallet_page = 0
+        if self.view_state.toggle() is DashboardView.WALLET:
+            self.wallets.reset_page()
 
     def toggle_market_events(self) -> None:
-        self.show_market_events = not self.show_market_events
+        self.ticker_state.toggle_market_events()
 
     def page_wallets(self, direction: int, lanes_per_page: int) -> bool:
-        if self.view is not DashboardView.WALLET or lanes_per_page <= 0:
+        if self.view is not DashboardView.WALLET:
             return False
-        maximum = max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
-        updated = min(maximum, max(0, self.wallet_page + direction))
-        if updated == self.wallet_page:
-            return False
-        self.wallet_page = updated
-        return True
+        return self.wallets.page(direction, lanes_per_page)
 
     def revalidate_wallet_page(self, lanes_per_page: int) -> bool:
-        if lanes_per_page <= 0:
-            return False
-        maximum = max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
-        if self.wallet_page <= maximum:
-            return False
-        self.wallet_page = maximum
-        return True
+        return self.wallets.revalidate_page(lanes_per_page)
 
     def set_wallet_lanes(self, wallets: tuple[str, ...]) -> None:
-        for wallet in wallets:
-            self._activate_wallet_lane(wallet)
+        self.wallets.set_lanes(wallets)
 
     def executable_equity(self, now_ms: int | None = None) -> Decimal | None:
-        return self._portfolio_valuation(now_ms, allow_stale_marks=False).equity
+        return self._portfolio_valuation(now_ms, allow_stale_marks=False).equity_usdc
 
     def executable_pnl(self, now_ms: int | None = None) -> Decimal | None:
-        return self._portfolio_valuation(now_ms, allow_stale_marks=False).pnl
+        return self._portfolio_valuation(now_ms, allow_stale_marks=False).pnl_usdc
 
     def portfolio_valuation(self, now_ms: int | None = None) -> PortfolioValuation:
-        """Value unavailable positions at their last executable mark for display only."""
+        """Value unavailable positions at their last executable mark for display."""
         return self._portfolio_valuation(now_ms, allow_stale_marks=True)
 
-    def event_rate(self, now: float | None = None) -> float:
-        now = monotonic() if now is None else now
-        self._trim_event_times(now)
-        return len(self.event_times) / EVENT_RATE_WINDOW_SECONDS
+    def event_rate(self, now_monotonic: float | None = None) -> float:
+        return self.stream_health.event_rate(now_monotonic)
 
-    def uptime_seconds(self, now: float | None = None) -> int:
-        if self.started_at is None:
-            return 0
-        return max(0, int((monotonic() if now is None else now) - self.started_at))
+    def uptime_seconds(self, now_monotonic: float | None = None) -> int:
+        return self.runtime.uptime_seconds(now_monotonic)
 
     def average_wallet_lag_ms(self) -> int | None:
-        return average(self.wallet_detection_lags_ms)
+        return self.stream_health.average_wallet_lag_ms()
 
     def average_broker_latency_ms(self) -> int | None:
-        return average(self.broker_latencies_ms)
-
-    def _remember_event(self, event: RuntimeEvent) -> None:
-        occurred_at = getattr(event, "occurred_at", monotonic())
-        self.event_times.append(occurred_at)
-        self._trim_event_times(occurred_at)
-
-    def _stream_received(self, event: StreamReceived) -> None:
-        kind = event.item.kind
-        self.stream_counts[kind] = self.stream_counts.get(kind, 0) + 1
-        self._record_rate(self.stream_received_times, kind, event.occurred_at)
-        if kind is StreamKind.BOOK:
-            if self.require_accepted_books:
-                self.pending_books[event.item.event.token_id] = event.item.event
-            else:
-                self._record_book_stream(event)
-        elif kind is StreamKind.WALLET:
-            self._record_wallet_stream(event)
-        elif kind is StreamKind.MARKET_HINT:
-            self._record_market_hint(event)
-
-    def _bootstrap_progress(self, event: BootstrapProgress) -> None:
-        if event.phase is BootstrapPhase.WALLETS:
-            self.wallets_loaded = event.completed
-            self.wallets_total = event.total
-        else:
-            self.markets_loaded = event.completed
-            self.markets_total = event.total
-
-    def _market_settled(self, event: MarketSettled) -> None:
-        resolution = event.settlement.resolution
-        if resolution.condition_id not in self.resolved_condition_ids:
-            self.resolved_condition_ids.add(resolution.condition_id)
-            self.resolved_market_count += 1
-        for token_id in resolution.token_ids:
-            self.books.pop(token_id, None)
-            self.last_executable_marks.pop(token_id, None)
-            self.pending_books.pop(token_id, None)
-            self.market_labels.pop(token_id, None)
-            self.price_history.pop(token_id, None)
-            self.price_stale_history.pop(token_id, None)
-            self.trade_marker_history.pop(token_id, None)
-            self.pending_trade_markers.pop(token_id, None)
-            self.market_ticker_at.pop(token_id, None)
-            try:
-                self.chart_tokens.remove(token_id)
-            except ValueError:
-                pass
-
-    def _record_book_stream(self, event: StreamReceived) -> None:
-        self._record_book(event.item.event, event.occurred_at)
-
-    def _record_book(self, book: BookSnapshot, occurred_at: float) -> None:
-        if book.condition_id in self.resolved_condition_ids:
-            return
-        self.books[book.token_id] = book
-        if book.market_slug or book.outcome:
-            self.market_labels[book.token_id] = format_market_label(
-                book.token_id,
-                book.market_slug,
-                book.outcome,
-            )
-        self._activate_chart_token(book.token_id)
-        midpoint = None if book is None else book.midpoint()
-        last_at = self.market_ticker_at.get(book.token_id)
-        if midpoint is not None and (
-            last_at is None
-            or occurred_at - last_at >= MARKET_TICKER_INTERVAL_SECONDS
-        ):
-            self.market_ticker_at[book.token_id] = occurred_at
-            self._ticker(
-                "cyan",
-                f"MARKET {format_token_label(book.token_id)} mid {midpoint:.4f}",
-                market_event=True,
-            )
-
-    def _record_wallet_stream(self, event: StreamReceived) -> None:
-        trade = event.item.event
-        if isinstance(trade, WalletTradeEvent):
-            self._activate_wallet_lane(trade.wallet)
-            timeline_event = WalletTimelineEvent(
-                source_key=trade.source_key,
-                wallet=normalize_wallet_address(trade.wallet),
-                trade_timestamp_ms=trade.trade_timestamp_ms,
-                side=trade.side,
-                notional=trade.price * trade.size,
-                market_label=wallet_market_label(trade),
-            )
-            self.wallet_timeline.append(timeline_event)
-            self.wallet_timeline_by_source[trade.source_key] = timeline_event
-            while len(self.wallet_timeline) > MAX_WALLET_TIMELINE_EVENTS:
-                expired = self.wallet_timeline.popleft()
-                if self.wallet_timeline_by_source.get(expired.source_key) is expired:
-                    self.wallet_timeline_by_source.pop(expired.source_key, None)
-            self.wallet_detection_lags_ms.append(
-                trade.observed_at_ms - trade.trade_timestamp_ms
-            )
-            self._ticker(
-                _side_style(trade.side),
-                f"FOLLOW {trade.side.value} {trade.size} {wallet_market_label(trade)} @ {trade.price}",
-            )
-
-    def _record_market_hint(self, event: StreamReceived) -> None:
-        hint = event.item.event
-        self._ticker(
-            "bright_cyan",
-            f"MARKET HINT {format_token_label(hint.token_id)}",
-            market_event=True,
-        )
-
-    def _dispatch_completed(self, event: DispatchCompleted) -> None:
-        if self.require_accepted_books and event.kind is StreamKind.BOOK:
-            book = event.item.event
-            self.pending_books.pop(book.token_id, None)
-            if event.outcome is not None and event.outcome.accepted:
-                self._record_book_stream(StreamReceived(event.item, event.occurred_at))
-        if event.outcome is None or event.kind is StreamKind.MARKET_HINT:
-            return
-        if event.kind is StreamKind.WALLET and isinstance(event.item.event, WalletTradeEvent):
-            timeline_event = self.wallet_timeline_by_source.get(event.item.event.source_key)
-            if timeline_event is not None:
-                timeline_event.accepted = event.outcome.accepted
-        if event.outcome.accepted:
-            self.accepted_dispatches += 1
-            self._record_rate(self.stream_dispatched_times, event.kind, event.occurred_at)
-            return
-        self.skipped_dispatches += 1
-        self._record_rate(self.stream_dispatched_times, event.kind, event.occurred_at)
-        self._ticker("yellow", f"SKIP {event.kind.value}: {event.outcome.skip_reason.value}")
+        return self.stream_health.average_broker_latency_ms()
 
     def stream_rate(self, kind: StreamKind, *, received: bool) -> float:
-        samples = (self.stream_received_times if received else self.stream_dispatched_times).get(kind)
-        if not samples:
-            return 0.0
-        now = monotonic()
-        self._trim_times(samples, now)
-        return len(samples) / EVENT_RATE_WINDOW_SECONDS
-
-    def book_lag_percentile(self, percentile: float) -> int | None:
-        if not self.book_lags_ms:
-            return None
-        values = sorted(self.book_lags_ms)
-        index = min(len(values) - 1, max(0, ceil(len(values) * percentile) - 1))
-        return values[index]
+        return self.stream_health.stream_rate(kind, received=received)
 
     def latest_book_lag_ms(self) -> int | None:
-        return self.book_lags_ms[-1] if self.book_lags_ms else None
+        return self.stream_health.latest_book_lag_ms()
+
+    def book_lag_percentile(self, percentile: float) -> int | None:
+        return self.stream_health.book_lag_percentile(percentile)
 
     def maximum_book_lag_ms(self) -> int | None:
-        return max(self.book_lags_ms) if self.book_lags_ms else None
+        return self.stream_health.maximum_book_lag_ms()
 
     def stale_ratio(self) -> float:
-        return ratio(sum(self.book_stale_samples), len(self.book_stale_samples))
+        return self.stream_health.stale_ratio()
 
-    def cumulative_book_drop_ratio(self) -> float:
-        return ratio(self.book_dropped_count, self.book_received_count)
+    def cumulative_book_coalescing_ratio(self) -> float:
+        return self.stream_health.cumulative_book_coalescing_ratio()
 
-    def recent_book_drop_ratio(self) -> float:
-        received = sum(sample[0] for sample in self.book_drop_samples)
-        return ratio(sum(sample[1] for sample in self.book_drop_samples), received)
+    def recent_book_coalescing_ratio(self) -> float:
+        return self.stream_health.recent_book_coalescing_ratio()
 
-    def _record_book_drop_counters(self, event: StreamHealth) -> None:
-        if (
-            event.book_received_count < self.book_received_count
-            or event.book_dropped_count < self.book_dropped_count
-        ):
+    def activity_ticker(self) -> list[TickerRow]:
+        return self.ticker_state.rows()
+
+    def market_label(self, token_id: str) -> str:
+        return self.markets.market_label(token_id)
+
+    def _record_stream_received(self, event: StreamReceived) -> None:
+        kind = event.item.kind
+        self.stream_health.record_stream_received(kind, event.occurred_at_monotonic)
+        if kind is StreamKind.BOOK:
+            book = event.item.event
+            if self.markets.require_accepted_books:
+                self.markets.stage_book(book)
+            else:
+                self._record_book(book, event.occurred_at_monotonic)
             return
-        received_delta = event.book_received_count - self.book_received_count
-        dropped_delta = event.book_dropped_count - self.book_dropped_count
-        self.book_received_count = event.book_received_count
-        self.book_dropped_count = event.book_dropped_count
-        if received_delta:
-            self.book_drop_samples.append((received_delta, dropped_delta))
+        if kind is StreamKind.WALLET:
+            trade = event.item.event
+            if isinstance(trade, WalletTradeEvent):
+                self.wallets.record_trade(trade)
+                self.stream_health.record_wallet_detection_lag(
+                    trade.observed_at_ms - trade.trade_timestamp_ms
+                )
+                self.ticker_state.add(
+                    self.ticker_state.side_style(trade.side),
+                    f"FOLLOW {trade.side.value} {trade.size} "
+                    f"{wallet_market_label(trade)} @ {trade.price}",
+                )
+            return
+        if kind is StreamKind.MARKET_HINT:
+            hint = event.item.event
+            self.ticker_state.add_market_event(
+                "bright_cyan",
+                f"MARKET HINT {format_token_label(hint.token_id)}",
+            )
 
-    def _record_rate(self, target: dict[StreamKind, deque[float]], kind: StreamKind, occurred_at: float) -> None:
-        samples = target.setdefault(kind, deque())
-        samples.append(occurred_at)
-        self._trim_times(samples, occurred_at)
+    def _record_book(self, book: BookSnapshot, occurred_at_monotonic: float) -> None:
+        self.markets.record_book(
+            book,
+            occurred_at_monotonic,
+            activate_chart_token=self.charts.activate_token,
+            add_market_ticker=self.ticker_state.add_market_event,
+        )
 
-    @staticmethod
-    def _trim_times(samples: deque[float], now: float) -> None:
-        cutoff = now - EVENT_RATE_WINDOW_SECONDS
-        while samples and samples[0] < cutoff:
-            samples.popleft()
+    def _record_dispatch_completed(self, event: DispatchCompleted) -> None:
+        if self.markets.require_accepted_books and event.kind is StreamKind.BOOK:
+            book = event.item.event
+            self.markets.pending_books.pop(book.token_id, None)
+            if event.outcome is not None and event.outcome.accepted:
+                self._record_book(book, event.occurred_at_monotonic)
+        if event.outcome is None or event.kind is StreamKind.MARKET_HINT:
+            return
+        if event.kind is StreamKind.WALLET and isinstance(
+            event.item.event, WalletTradeEvent
+        ):
+            self.wallets.mark_dispatch(
+                event.item.event.source_key,
+                accepted=event.outcome.accepted,
+            )
+        self.stream_health.record_dispatch(
+            event.kind,
+            accepted=event.outcome.accepted,
+            occurred_at_monotonic=event.occurred_at_monotonic,
+        )
+        if not event.outcome.accepted:
+            self.ticker_state.add(
+                "yellow",
+                f"SKIP {event.kind.value}: {event.outcome.skip_reason.value}",
+            )
 
-    def _fill_completed(self, event: FillCompleted) -> None:
-        self.broker_latencies_ms.append(event.latency_ms)
-        self.portfolio = event.portfolio
+    def _record_fill(self, event: FillCompleted) -> None:
         fill = event.fill
-        if fill.status is OrderStatus.REJECTED:
-            self.rejected_count += 1
-            self._ticker(
+        is_rejected = fill.status is OrderStatus.REJECTED
+        self.stream_health.record_fill(event.latency_ms, rejected=is_rejected)
+        self.markets.portfolio = event.portfolio
+        if is_rejected:
+            self.ticker_state.add(
                 "bold red",
-                f"REJECT {fill.reject_reason.value if fill.reject_reason else 'unknown'}",
+                "REJECT "
+                f"{fill.reject_reason.value if fill.reject_reason else 'unknown'}",
             )
             return
-        self._refresh_fill_mark(event)
-        self.fill_count += 1
+        self.markets.refresh_fill_mark(fill)
         if fill.filled_size > 0:
-            if self._activate_chart_token(fill.token_id):
-                self.pending_trade_markers.setdefault(fill.token_id, []).append(fill.side)
+            self.charts.record_trade(fill.token_id, fill.side)
         price = "-" if fill.average_price is None else str(fill.average_price)
-        self._ticker(
-            _side_style(fill.side),
-            f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} {self.market_label(fill.token_id)} @ {price}",
+        self.ticker_state.add(
+            self.ticker_state.side_style(fill.side),
+            f"FILL {fill.side.value} {fill.filled_size}/{fill.requested_size} "
+            f"{self.market_label(fill.token_id)} @ {price}",
         )
-
-    def _refresh_fill_mark(self, event: FillCompleted) -> None:
-        if self.portfolio is None:
-            return
-        position = next(
-            (
-                candidate
-                for candidate in self.portfolio.positions
-                if candidate.token_id == event.fill.token_id
-            ),
-            None,
-        )
-        if position is None:
-            self.last_executable_marks.pop(event.fill.token_id, None)
-            return
-        book = self._current_book(event.fill.token_id, event.fill.received_at_ms)
-        if book is None:
-            # Fill telemetry is emitted before this book's dispatch-completed event.
-            pending = self.pending_books.get(event.fill.token_id)
-            if pending is not None and (
-                self.book_max_age_ms is None
-                or pending.is_fresh(event.fill.received_at_ms, self.book_max_age_ms)
-            ):
-                book = pending
-        price = None if book is None else book.executable_mark(position.size)
-        if price is not None:
-            self.last_executable_marks[position.token_id] = price
-
-    def _activate_chart_token(self, token_id: str) -> bool:
-        if token_id in self.chart_tokens:
-            return True
-        if len(self.chart_tokens) >= MAX_CHART_TOKENS:
-            return False
-        self.chart_tokens.append(token_id)
-        self.price_history.setdefault(token_id, deque())
-        self.price_stale_history.setdefault(token_id, deque())
-        self.trade_marker_history.setdefault(token_id, deque())
-        return True
-
-    def _activate_wallet_lane(self, wallet: str) -> None:
-        normalized = normalize_wallet_address(wallet)
-        if normalized not in self.wallet_lanes:
-            self.wallet_lanes.append(normalized)
-
-    def _current_book(self, token_id: str, now_ms: int | None) -> BookSnapshot | None:
-        book = self.books.get(token_id)
-        if book is None or self.book_max_age_ms is None:
-            return book
-        current_time_ms = int(time() * 1000) if now_ms is None else now_ms
-        return book if book.is_fresh(current_time_ms, self.book_max_age_ms) else None
 
     def _portfolio_valuation(
         self,
@@ -540,58 +442,8 @@ class DashboardState:
         *,
         allow_stale_marks: bool,
     ) -> PortfolioValuation:
-        if self.portfolio is None:
-            return PortfolioValuation.unavailable()
-        result = value_portfolio(
-            self.portfolio,
-            self.books,
-            now_ms=(int(time() * 1000) if now_ms is None else now_ms),
-            max_book_age_ms=self.book_max_age_ms,
-            initial_cash_usdc=self.initial_cash_usdc,
-            last_executable_marks=self.last_executable_marks,
+        return self.markets.portfolio_valuation(
+            now_ms,
+            initial_cash_usdc=self.runtime.initial_cash_usdc,
             allow_stale_marks=allow_stale_marks,
         )
-        self.last_executable_marks = result.marks()
-        return result.valuation
-
-    def activity_ticker(self) -> list[TickerRow]:
-        if not self.show_market_events:
-            return list(self.ticker)
-        return list(self.market_ticker) + list(self.ticker)
-
-    def _ticker(self, style: str, message: str, *, market_event: bool = False) -> None:
-        safe_message = _safe_message(message)
-        ticker = self.market_ticker if market_event else self.ticker
-        if ticker and ticker[0].message == safe_message:
-            previous = ticker[0]
-            ticker[0] = TickerRow(previous.style, safe_message, previous.count + 1)
-            return
-        ticker.appendleft(TickerRow(style, safe_message))
-
-    def market_label(self, token_id: str) -> str:
-        return self.market_labels.get(token_id, format_token_label(token_id))
-
-    def _trim_event_times(self, now: float) -> None:
-        cutoff = now - EVENT_RATE_WINDOW_SECONDS
-        while self.event_times and self.event_times[0] < cutoff:
-            self.event_times.popleft()
-
-
-def _side_style(side: Side) -> str:
-    return side_text_style(side, bold=True)
-
-
-def _activity_style(severity: ActivitySeverity) -> str:
-    return {
-        ActivitySeverity.INFO: "white",
-        ActivitySeverity.SUCCESS: "bold green",
-        ActivitySeverity.WARNING: "bold yellow",
-        ActivitySeverity.ERROR: "bold red",
-    }[severity]
-
-
-def _safe_message(value: str) -> str:
-    return "".join(
-        character if character.isprintable() else " "
-        for character in value
-    )

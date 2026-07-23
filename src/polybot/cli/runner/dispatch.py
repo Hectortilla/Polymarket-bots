@@ -15,7 +15,7 @@ from ..followed_wallets.tracker import FollowedWalletTracker
 from ..observability.observer import RuntimeObserver
 from ..streams.contracts import StreamEvent, StreamKind
 from ..tracked_markets import TrackedMarketRegistry
-from ..resolution_state import ResolutionLedger
+from ..resolution_state.ledger import ResolutionLedger
 from .book_dispatch import dispatch_book
 from .resolution_dispatch import dispatch_resolution
 from .wallet_dispatch import dispatch_wallet_trade

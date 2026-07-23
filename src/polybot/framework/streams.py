@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -74,15 +75,15 @@ class StreamPlan:
 
     @property
     def current_market_slugs(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(slug for rule in self.current for slug in rule.market_slugs))
+        return stream_rule_market_slugs(self.current)
 
     @property
     def next_market_slugs(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(slug for rule in self.next for slug in rule.market_slugs))
+        return stream_rule_market_slugs(self.next)
 
     @property
     def current_wallet_addresses(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(wallet for rule in self.current for wallet in rule.wallet_addresses))
+        return stream_rule_wallet_addresses(self.current)
 
     def wallet_discovery_scopes(self) -> dict[str, frozenset[str] | None]:
         scopes: dict[str, set[str] | None] = {}
@@ -111,3 +112,17 @@ class StreamPlan:
         if not self.current:
             return True
         return any(rule.accepts_trade(wallet, market_slug) for rule in self.current)
+
+
+def stream_rule_market_slugs(rules: Iterable[StreamRule]) -> tuple[str, ...]:
+    """Return each market slug once, preserving rule order."""
+    return tuple(
+        dict.fromkeys(slug for rule in rules for slug in rule.market_slugs)
+    )
+
+
+def stream_rule_wallet_addresses(rules: Iterable[StreamRule]) -> tuple[str, ...]:
+    """Return each wallet address once, preserving rule order."""
+    return tuple(
+        dict.fromkeys(wallet for rule in rules for wallet in rule.wallet_addresses)
+    )

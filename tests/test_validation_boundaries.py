@@ -256,6 +256,10 @@ def _broker(
         neg_risk=False,
         fee_rate=Decimal("0"),
         outcomes=(MarketOutcome("Up", "token"), MarketOutcome("Down", "no")),
+        active=True,
+        closed=False,
+        order_book_enabled=True,
+        accepting_orders=True,
     )
     return PaperBroker(
         BotConfig(

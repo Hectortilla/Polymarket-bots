@@ -6,9 +6,9 @@ import pytest
 
 from polybot.backtesting.contracts import BacktestError, BacktestFailureReason
 from polybot.recording import trim as trim_cli
-from polybot.recording.archive_errors import ArchiveFormatError
-from polybot.recording.archive_models import RecordingSession
-from polybot.recording.contracts import SessionIntegrityStatus
+from polybot.recording.archive.errors import ArchiveFormatError
+from polybot.recording.archive.models import RecordingSession
+from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.recording.trim_contracts import (
     RecordingTrimError,
     RecordingTrimPlan,

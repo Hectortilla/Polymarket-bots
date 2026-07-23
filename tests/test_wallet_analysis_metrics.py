@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from polybot.framework.events import Side
-from polybot.framework.events.resolutions import YES_OUTCOME
+from polybot.framework.outcomes import YES_OUTCOME
 from scripts.wallet_analysis.cash_metrics import fee_paid, signed_cash
 from scripts.wallet_analysis.market_metrics import (
     hedge_score,

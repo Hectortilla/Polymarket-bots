@@ -10,7 +10,7 @@ from rich.table import Table
 
 from polybot.backtesting.contracts import BacktestError
 
-from .archive_errors import RecordingArchiveError
+from .archive.errors import RecordingArchiveError
 from .trim_contracts import (
     RecordingTrimError,
     RecordingTrimPlan,

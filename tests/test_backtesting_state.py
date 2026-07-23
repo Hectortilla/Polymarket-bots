@@ -8,19 +8,25 @@ import pytest
 
 from polybot.backtesting.contracts import BacktestError
 from polybot.backtesting.state import ArchiveMarketState
-from polybot.recording.contracts import (
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
-    BookCheckpoint,
     BookDeltaPayload,
+    RecordedBookLevel,
+)
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    CoverageGapRecord,
+    RecordedEvent,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
-    CoverageGapRecord,
+)
+from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    RecordedBookLevel,
-    RecordedEvent,
 )
 from polybot.framework.events import Side
 

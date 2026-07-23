@@ -15,6 +15,7 @@ class MarketDataIssue(StrEnum):
     INVALID_BOOK_SIDE = "invalid_book_side"
     MISSING_BOOK_BASELINE = "missing_book_baseline"
     BOOK_IDENTITY_MISMATCH = "book_identity_mismatch"
+    BOOK_STREAM_GAP = "book_stream_gap"
     CROSSED_BOOK = "crossed_book"
     AMBIGUOUS_MARKET_METADATA = "ambiguous_market_metadata"
     INVALID_POSITION = "invalid_position"
@@ -25,3 +26,7 @@ class MarketDataError(ValueError):
     def __init__(self, issue: MarketDataIssue, detail: str) -> None:
         super().__init__(detail)
         self.issue = issue
+
+
+class MarketDataTransportError(RuntimeError):
+    """An official-client failure normalized at the public market-data boundary."""

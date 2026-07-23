@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
-from time import time
 
 from polybot.framework.base import BaseBot
+from polybot.framework.clock import system_now_ms
 from polybot.framework.context import BotContext
 from polybot.framework.dedupe import SourceEventDeduper
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
@@ -27,7 +27,7 @@ class BotRunner:
         self.bot = bot
         self.ctx = ctx
         self.deduper = deduper or SourceEventDeduper()
-        self._now_ms_fn = now_ms_fn or _system_now_ms
+        self._now_ms_fn = now_ms_fn or system_now_ms
         self.stream_plan = StreamPlan(current=())
         self._runtime_market_slugs: frozenset[str] = frozenset()
 
@@ -52,6 +52,13 @@ class BotRunner:
         if reason is not None:
             return DispatchOutcome.skipped(reason)
         await self.refresh_stream_plan()
+        reason = book_skip_reason(
+            book,
+            now_ms=self._now_ms(),
+            max_age_ms=self.ctx.config.event_max_age_ms,
+        )
+        if reason is not None:
+            return DispatchOutcome.skipped(reason)
         if not self.stream_plan.accepts_book(book.market_slug) and (
             book.market_slug is None
             or book.market_slug not in self._runtime_market_slugs
@@ -83,9 +90,16 @@ class BotRunner:
         if reason is not None:
             return DispatchOutcome.skipped(reason)
         await self.refresh_stream_plan()
+        reason = wallet_trade_skip_reason(
+            trade,
+            now_ms=self._now_ms(),
+            max_age_ms=self.ctx.config.event_max_age_ms,
+        )
+        if reason is not None:
+            return DispatchOutcome.skipped(reason)
         if not self.stream_plan.accepts_trade(trade.wallet, trade.market_slug):
             return DispatchOutcome.skipped(self._wallet_trade_plan_skip_reason(trade))
-        if not self.deduper.remember(trade.source_key):
+        if not self.deduper.claim_if_new(trade.source_key):
             return DispatchOutcome.skipped(DispatchSkipReason.DUPLICATE_SOURCE_EVENT)
         await self.bot.on_wallet_trade(self.ctx, trade)
         return DispatchOutcome.accepted_event()
@@ -116,7 +130,3 @@ class BotRunner:
 
     def _now_ms(self) -> int:
         return self._now_ms_fn()
-
-
-def _system_now_ms() -> int:
-    return int(time() * 1000)

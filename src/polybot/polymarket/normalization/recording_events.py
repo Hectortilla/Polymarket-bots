@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from polymarket.models.clob.market_events import (
     MarketBookEvent,
     MarketEvent,
@@ -20,15 +18,27 @@ from polybot.polymarket.normalization.book import normalize_price_change_level
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.markets import Market
-from polybot.recording.contracts import (
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
     BookDeltaPayload,
-    MarketIdentity,
-    PublicTradePayload,
     RecordedBookLevel,
-    ResolutionPayload,
     TickSizeChangePayload,
+)
+from polybot.recording.contracts.market import MarketIdentity
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
+)
+
+from .values import (
+    _optional_non_negative_decimal,
+    _optional_positive_decimal,
+    _optional_probability,
+    _optional_text,
+    _positive_decimal,
+    _probability,
+    _required_text,
 )
 
 
@@ -59,7 +69,6 @@ def normalize_recording_event(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
             "market-channel recording payload is malformed",
         ) from error
-
 
 def _book_event(event: MarketBookEvent, market: Market) -> CapturedMarketEvent:
     payload = event.payload
@@ -250,82 +259,3 @@ def _side(value: object) -> Side:
             MarketDataIssue.INVALID_BOOK_SIDE,
             "market-channel side is invalid",
         ) from error
-
-
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} is missing",
-        )
-    return value.strip()
-
-
-def _optional_text(value: object, name: str) -> str | None:
-    if value is None:
-        return None
-    return _required_text(value, name)
-
-
-def _probability(value: object, name: str) -> Decimal:
-    normalized = _decimal(value, name)
-    if not Decimal("0") < normalized <= Decimal("1"):
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} must be greater than zero and at most one",
-        )
-    return normalized
-
-
-def _optional_probability(value: object, name: str) -> Decimal | None:
-    if value is None:
-        return None
-    normalized = _decimal(value, name)
-    if not Decimal("0") <= normalized <= Decimal("1"):
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} must be between zero and one",
-        )
-    return normalized
-
-
-def _positive_decimal(value: object, name: str) -> Decimal:
-    normalized = _decimal(value, name)
-    if normalized <= 0:
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} must be positive",
-        )
-    return normalized
-
-
-def _optional_positive_decimal(value: object, name: str) -> Decimal | None:
-    return None if value is None else _positive_decimal(value, name)
-
-
-def _optional_non_negative_decimal(value: object, name: str) -> Decimal | None:
-    if value is None:
-        return None
-    normalized = _decimal(value, name)
-    if normalized < 0:
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} must not be negative",
-        )
-    return normalized
-
-
-def _decimal(value: object, name: str) -> Decimal:
-    try:
-        normalized = value if isinstance(value, Decimal) else Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError) as error:
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} is malformed",
-        ) from error
-    if not normalized.is_finite():
-        raise MarketDataError(
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
-            f"{name} must be finite",
-        )
-    return normalized

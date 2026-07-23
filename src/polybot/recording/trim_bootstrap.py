@@ -6,22 +6,28 @@ from dataclasses import dataclass, replace
 
 from polybot.backtesting.state import ArchiveMarketState
 
-from .archive import RecordingArchive, RecordingReader
-from .contracts import (
+from .archive.reader import RecordingReader
+from .archive.writer import RecordingArchive
+from .contracts.book import (
     BookBaselinePayload,
-    BookCheckpoint,
     BookDeltaPayload,
-    CoverageGapPayload,
-    MarketIdentity,
-    MarketMetadataPayload,
-    RecordedBookLevel,
-    RecordedEvent,
-    ResolutionPayload,
     TickSizeChangePayload,
 )
+from .contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
+from .contracts.gaps import CoverageGapPayload
+from .contracts.market import (
+    MarketIdentity,
+    MarketMetadataPayload,
+)
+from .contracts.payloads import ResolutionPayload
 from .trim_contracts import RecordingTrimError, RecordingTrimPlan
+from .serialization.registry import payload_kind
 from .trim_recovery import (
     RecoveryTokenBoundary,
+    clean_scan_start_after_gaps,
     recovery_sequence_cutoffs,
     recovery_token_boundaries,
 )
@@ -161,17 +167,13 @@ def _state_before(
     )
     if materialized_metadata is None:
         materialized_metadata = market
-    scan_start_ms = plan.source_session.started_at_ms
-    for record in source.coverage_gaps(
-        start_at_ms=scan_start_ms,
-        end_at_ms=prime_at_ms,
-        session_id=plan.source_session.session_id,
+    scan_start_ms = clean_scan_start_after_gaps(
+        source,
+        session=plan.source_session,
         condition_id=market.condition_id,
-    ):
-        if record.gap.ended_at_ms is None:
-            return _BootstrapState(materialized_metadata, ())
-        scan_start_ms = max(scan_start_ms, record.gap.ended_at_ms)
-    if scan_start_ms > prime_at_ms:
+        through_ms=prime_at_ms,
+    )
+    if scan_start_ms is None:
         return _BootstrapState(materialized_metadata, ())
 
     state = ArchiveMarketState()
@@ -287,17 +289,7 @@ def _state_at_recovery_checkpoint(
 
 
 def _is_checkpoint_state_event(event: RecordedEvent) -> bool:
-    return isinstance(
-        event.payload,
-        (
-            MarketMetadataPayload,
-            BookBaselinePayload,
-            BookDeltaPayload,
-            TickSizeChangePayload,
-            ResolutionPayload,
-            CoverageGapPayload,
-        ),
-    )
+    return payload_kind(event.payload).affects_book_state
 
 
 def _bootstrap_books(
@@ -320,17 +312,7 @@ def _bootstrap_books(
                     token_id=outcome.token_id,
                 ),
                 generation=generation,
-                book=BookBaselinePayload(
-                    token_id=outcome.token_id,
-                    bids=tuple(
-                        RecordedBookLevel(level.price, level.size)
-                        for level in snapshot.bids
-                    ),
-                    asks=tuple(
-                        RecordedBookLevel(level.price, level.size)
-                        for level in snapshot.asks
-                    ),
-                ),
+                book=BookBaselinePayload.from_snapshot(snapshot),
             )
         )
     return tuple(result)

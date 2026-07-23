@@ -20,12 +20,14 @@ from polybot.framework.events import (
     Side,
 )
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.performance.artifacts import (
-    PerformanceArtifacts,
+from polybot.performance.artifacts.errors import (
     PerformanceArtifactStateError,
     PerformanceOutputExistsError,
 )
-from polybot.performance.contracts import (
+from polybot.performance.artifacts.lifecycle import (
+    PerformanceArtifacts,
+)
+from polybot.performance.contracts.run import (
     PerformanceRunKind,
     PerformanceRunStatus,
     RunProvenance,

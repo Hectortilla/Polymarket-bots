@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 import pytest
@@ -14,7 +14,11 @@ from polybot.execution.paper import (
 )
 from polybot.execution.paper.continuity import BookContinuity
 from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
-from polybot.execution.paper.latency import sample_latency_ms
+from polybot.execution.paper.latency import latency_ms
+from polybot.execution.paper.market_data import (
+    MARKET_CONSTRAINTS_UNAVAILABLE_MESSAGE,
+    MARKET_NOT_TRADABLE_MESSAGE,
+)
 from polybot.framework.clock import ClockDataExhaustedError
 from polybot.framework.config.constants import (
     DEFAULT_MAX_SLIPPAGE_PCT,
@@ -58,6 +62,17 @@ class StaticMarkets:
 
     async def find_by_slug(self, slug: str) -> Market | None:
         return self.market
+
+
+@dataclass(slots=True)
+class SwitchingMarkets:
+    initial_market: Market
+    final_market: Market
+    calls: int = 0
+
+    async def find_by_slug(self, slug: str) -> Market | None:
+        self.calls += 1
+        return self.initial_market if self.calls == 1 else self.final_market
 
 
 @dataclass(slots=True)
@@ -112,6 +127,10 @@ def _market(
             MarketOutcome("Up", yes_token_id),
             MarketOutcome("Down", no_token_id),
         ),
+        active=True,
+        closed=False,
+        order_book_enabled=True,
+        accepting_orders=True,
     )
 
 
@@ -681,6 +700,39 @@ def test_paper_broker_rejects_non_finite_book_level() -> None:
     assert reject_reason is FillRejectReason.BAD_BOOK_LEVEL
 
 
+def test_paper_broker_rejects_duplicate_book_prices() -> None:
+    async def run() -> tuple[OrderStatus, FillRejectReason | None]:
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"), Decimal("0.40")),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.status, fill.reject_reason
+
+    status, reject_reason = asyncio.run(run())
+
+    assert status is OrderStatus.REJECTED
+    assert reject_reason is FillRejectReason.BAD_BOOK_LEVEL
+
+
 def test_paper_broker_rejects_missing_market_metadata() -> None:
     async def run() -> tuple[OrderStatus, FillRejectReason | None, str | None]:
         broker = PaperBroker(
@@ -757,13 +809,10 @@ def test_paper_broker_rejects_fill_time_market_metadata_mismatch_without_mutatio
     assert positions == {}
 
 
-def test_sample_latency_includes_positive_jitter() -> None:
-    class RecordingRandom:
-        def randrange(self, stop: int) -> int:
-            assert stop == 6
-            return 4
-
-    assert sample_latency_ms(100, 5, RecordingRandom()) == 104
+def test_latency_uses_an_explicit_jitter_offset() -> None:
+    assert latency_ms(100, 5, 4) == 104
+    with pytest.raises(ValueError, match="outside the configured range"):
+        latency_ms(100, 5, 6)
 
 
 def test_paper_broker_rejects_invalid_market_fee_rate() -> None:
@@ -798,6 +847,191 @@ def test_paper_broker_rejects_invalid_market_fee_rate() -> None:
 
     assert status is OrderStatus.REJECTED
     assert reject_reason is FillRejectReason.MARKET_FEE_INVALID
+
+
+def test_paper_broker_revalidates_market_before_final_book_lookup() -> None:
+    async def run() -> tuple[FillRejectReason | None, int]:
+        initial_market = _market()
+        final_market = replace(
+            initial_market,
+            resolved=True,
+            winning_token_id="123",
+            winning_outcome="Up",
+        )
+        markets = SwitchingMarkets(initial_market, final_market)
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            markets,
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.reject_reason, markets.calls
+
+    reject_reason, calls = asyncio.run(run())
+
+    assert reject_reason is FillRejectReason.MARKET_RESOLVED
+    assert calls == 2
+
+
+def test_paper_broker_rechecks_book_after_delayed_final_market_lookup() -> None:
+    async def run() -> FillRejectReason | None:
+        clock = {"now_ms": 1_000}
+
+        class DelayedSecondLookupMarkets:
+            calls = 0
+
+            async def find_by_slug(self, slug: str) -> Market:
+                self.calls += 1
+                if self.calls == 2:
+                    clock["now_ms"] = 1_200
+                return _market()
+
+        broker = PaperBroker(
+            BotConfig(
+                name="paper",
+                paper_latency_ms=0,
+                paper_latency_jitter_ms=0,
+                event_max_age_ms=100,
+            ),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            DelayedSecondLookupMarkets(),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: clock["now_ms"],
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.reject_reason
+
+    assert asyncio.run(run()) is FillRejectReason.BOOK_STALE
+
+
+@pytest.mark.parametrize(
+    ("market", "reason", "message"),
+    (
+        (
+            replace(_market(), closed=True),
+            FillRejectReason.MARKET_UNAVAILABLE,
+            MARKET_NOT_TRADABLE_MESSAGE,
+        ),
+        (
+            replace(_market(), accepting_orders=None),
+            FillRejectReason.MARKET_UNAVAILABLE,
+            MARKET_NOT_TRADABLE_MESSAGE,
+        ),
+        (
+            replace(_market(), minimum_tick_size=None),
+            FillRejectReason.MARKET_UNAVAILABLE,
+            MARKET_CONSTRAINTS_UNAVAILABLE_MESSAGE,
+        ),
+    ),
+)
+def test_paper_broker_rejects_unavailable_market_state_and_limits(
+    market: Market,
+    reason: FillRejectReason,
+    message: str,
+) -> None:
+    async def run() -> tuple[FillRejectReason | None, str | None]:
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(market),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.reject_reason, fill.reject_message
+
+    reject_reason, reject_message = asyncio.run(run())
+
+    assert reject_reason is reason
+    assert reject_message == message
+
+
+@pytest.mark.parametrize(
+    ("price", "size", "reason"),
+    (
+        (Decimal("0.421"), Decimal("1"), FillRejectReason.BAD_PRICE),
+        (Decimal("0.42"), Decimal("0.5"), FillRejectReason.BAD_SIZE),
+    ),
+)
+def test_paper_broker_enforces_market_order_limits(
+    price: Decimal,
+    size: Decimal,
+    reason: FillRejectReason,
+) -> None:
+    async def run() -> FillRejectReason | None:
+        broker = PaperBroker(
+            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+        )
+        fill = await broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=price,
+                size=size,
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+        return fill.reject_reason
+
+    assert asyncio.run(run()) is reason
 
 
 def test_paper_broker_dedupes_source_id() -> None:

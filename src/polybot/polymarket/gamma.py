@@ -6,53 +6,47 @@ from http import HTTPStatus
 from typing import Final, TypeVar
 from urllib.parse import urlencode
 
-from polymarket import AsyncPublicClient, RequestRejectedError
+from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
 from polymarket.models.gamma.market import Market as SdkMarket
 
-from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+from polybot.polymarket.client_lifecycle import close_owned_public_client
+from polybot.polymarket.errors import (
+    MarketDataError,
+    MarketDataIssue,
+    MarketDataTransportError,
+)
 from polybot.polymarket.normalization.market import normalize_market
-from polybot.polymarket.markets import Market
+from polybot.polymarket.markets import Market, validate_requested_market_slug
 
 
 GAMMA_MARKETS_PAGE_SIZE: Final = 100
 GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST: Final = GAMMA_MARKETS_PAGE_SIZE
 GAMMA_MARKETS_QUERY_BUDGET: Final = 60_000
+GAMMA_MARKETS_SLUG_QUERY_PARAMETER: Final = "slug"
+GAMMA_MARKETS_PAGE_SIZE_QUERY_PARAMETER: Final = "limit"
 MarketT = TypeVar("MarketT")
 
 
-class GammaClient:
-    def __init__(self, client: AsyncPublicClient | None = None) -> None:
-        self._client = client or AsyncPublicClient()
-        self._owns_client = client is None
+class _GammaMarketSourceClient:
+    """Own raw official-SDK Gamma queries shared by normalized adapters."""
 
-    async def find_by_slug(self, slug: str) -> Market | None:
-        source = await self._find_source_by_slug(slug)
-        if source is None:
-            return None
-        market = normalize_market(source)
-        if market.slug != slug:
-            raise MarketDataError(
-                MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
-                "Gamma response did not match the requested market slug",
-            )
-        return market
+    def __init__(self, client: AsyncPublicClient) -> None:
+        self._client = client
 
-    async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
-        sources = await self._find_many_sources(slugs)
-        return tuple(
-            None if source is None else normalize_market(source) for source in sources
-        )
-
-    async def _find_source_by_slug(self, slug: str) -> SdkMarket | None:
+    async def find_by_slug(self, slug: str) -> SdkMarket | None:
         self._validate_slug(slug)
         try:
             return await self._client.get_market(slug=slug)
         except RequestRejectedError as error:
             if error.status == HTTPStatus.NOT_FOUND:
                 return None
-            raise
+            raise MarketDataTransportError(
+                "Gamma market lookup failed"
+            ) from error
+        except PolymarketError as error:
+            raise MarketDataTransportError("Gamma market lookup failed") from error
 
-    async def _find_many_sources(
+    async def find_many(
         self,
         slugs: Iterable[str],
     ) -> tuple[SdkMarket | None, ...]:
@@ -76,24 +70,6 @@ class GammaClient:
             )
         return tuple(markets_by_slug.get(slug) for slug in requested_slugs)
 
-    async def wait_for_slug(
-        self,
-        slug: str,
-        *,
-        retry_delay_s: float,
-        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-    ) -> Market:
-        return await wait_for_market(
-            self.find_by_slug,
-            slug,
-            retry_delay_s=retry_delay_s,
-            sleep=sleep,
-        )
-
-    async def close(self) -> None:
-        if self._owns_client:
-            await self._client.close()
-
     @staticmethod
     def _validate_slug(slug: str) -> None:
         if not slug.strip():
@@ -111,25 +87,71 @@ class GammaClient:
     ) -> None:
         for slug_batch in _iter_slug_batches(slugs):
             requested_batch = frozenset(slug_batch)
-            paginator = self._client.list_markets(
-                slug=slug_batch,
-                closed=closed,
-                page_size=GAMMA_MARKETS_PAGE_SIZE,
-            )
-            async for source in paginator.iter_items():
-                market = normalize_market(source)
-                if market.slug not in requested_batch:
-                    raise MarketDataError(
-                        MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
-                        "Gamma response contained an unrequested market slug",
-                    )
-                previous = markets_by_slug.get(market.slug)
-                if previous is not None and normalize_market(previous) != market:
-                    raise MarketDataError(
-                        MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
-                        f"Gamma returned conflicting rows for slug: {market.slug}",
-                    )
-                markets_by_slug[market.slug] = source
+            try:
+                paginator = self._client.list_markets(
+                    slug=slug_batch,
+                    closed=closed,
+                    page_size=GAMMA_MARKETS_PAGE_SIZE,
+                )
+                async for source in paginator.iter_items():
+                    market = normalize_market(source)
+                    if market.slug not in requested_batch:
+                        raise MarketDataError(
+                            MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                            "Gamma response contained an unrequested market slug",
+                        )
+                    previous = markets_by_slug.get(market.slug)
+                    if previous is not None and normalize_market(previous) != market:
+                        raise MarketDataError(
+                            MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                            f"Gamma returned conflicting rows for slug: {market.slug}",
+                        )
+                    markets_by_slug[market.slug] = source
+            except PolymarketError as error:
+                raise MarketDataTransportError(
+                    "Gamma market lookup failed"
+                ) from error
+
+
+class GammaClient:
+    """Normalize Gamma metadata for market and execution-domain consumers."""
+
+    def __init__(self, client: AsyncPublicClient | None = None) -> None:
+        self._client = client or AsyncPublicClient()
+        self._owns_client = client is None
+        self._sources = _GammaMarketSourceClient(self._client)
+
+    async def find_by_slug(self, slug: str) -> Market | None:
+        source = await self._sources.find_by_slug(slug)
+        if source is None:
+            return None
+        market = normalize_market(source)
+        validate_requested_market_slug(market, slug)
+        return market
+
+    async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
+        sources = await self._sources.find_many(slugs)
+        return tuple(
+            None if source is None else normalize_market(source) for source in sources
+        )
+
+    async def wait_for_slug(
+        self,
+        slug: str,
+        *,
+        retry_delay_s: float,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> Market:
+        return await wait_for_market(
+            self.find_by_slug,
+            slug,
+            retry_delay_s=retry_delay_s,
+            sleep=sleep,
+        )
+
+    async def close(self) -> None:
+        if self._owns_client:
+            await close_owned_public_client(self._client)
 
 
 def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:
@@ -137,7 +159,9 @@ def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:
     current: list[str] = []
     current_query_length = _encoded_query_length(())
     for slug in slugs:
-        slug_query_length = len(urlencode((("slug", slug),)))
+        slug_query_length = len(
+            urlencode(((GAMMA_MARKETS_SLUG_QUERY_PARAMETER, slug),))
+        )
         candidate_query_length = current_query_length + 1 + slug_query_length
         if current and (
             len(current) >= GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST
@@ -154,8 +178,10 @@ def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:
 
 
 def _encoded_query_length(slugs: Iterable[str]) -> int:
-    params = [("slug", slug) for slug in slugs]
-    params.append(("limit", str(GAMMA_MARKETS_PAGE_SIZE)))
+    params = [(GAMMA_MARKETS_SLUG_QUERY_PARAMETER, slug) for slug in slugs]
+    params.append(
+        (GAMMA_MARKETS_PAGE_SIZE_QUERY_PARAMETER, str(GAMMA_MARKETS_PAGE_SIZE))
+    )
     return len(urlencode(params))
 
 

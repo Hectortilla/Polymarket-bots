@@ -5,6 +5,7 @@ from polybot.framework.config.constants import BOT_MODE_ENV
 from polybot.framework.config.models import BotConfig, BotMode
 
 LIVE_MODE_REQUIREMENT = f"{BOT_MODE_ENV}={BotMode.LIVE.value}"
+FUNDER_ADDRESS = "0x00000000000000000000000000000000000000f0"
 
 
 def test_live_broker_requires_live_mode_and_enabled_flag() -> None:
@@ -17,7 +18,7 @@ def test_live_broker_requires_live_mode_and_enabled_flag() -> None:
                 api_key="key",
                 api_secret="secret",
                 api_passphrase="passphrase",
-                funder_address="0xfunder",
+                funder_address=FUNDER_ADDRESS,
             )
         )
 
@@ -35,7 +36,7 @@ def test_live_broker_accepts_explicit_live_gate() -> None:
             api_key="key",
             api_secret="secret",
             api_passphrase="passphrase",
-            funder_address="0xfunder",
+            funder_address=FUNDER_ADDRESS,
         )
     )
 

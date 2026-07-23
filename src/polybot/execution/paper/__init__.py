@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from itertools import count
 
 from polybot.async_io import run_blocking
@@ -34,20 +35,28 @@ from .contracts import (
 from .continuity import BookContinuity, BookContinuitySource
 from .idempotency import DUPLICATE_SOURCE_MESSAGE, SourceIdempotencyStore
 from .market_data import (
+    FillMarketData,
     MARKET_FEE_INVALID_MESSAGE,
     MARKET_UNAVAILABLE_MESSAGE,
-    MARKET_METADATA_MISMATCH_MESSAGE,
     MARKET_RESOLVED_MESSAGE,
     latest_book,
-    market_matches_order_and_book,
-    resolve_fee_rate,
+    resolve_fill_market_data,
+    validate_fill_market_data,
 )
-from .latency import sample_latency_ms
+from .latency import latency_ms
 from .portfolio import PaperPortfolio, PaperPortfolioSnapshot
 from .validation import classify_book, validate_order
 
 SleepFn = Callable[[float], Awaitable[None]]
 NowMsFn = Callable[[], int]
+
+
+@dataclass(frozen=True, slots=True)
+class _BookFillInput:
+    """One book snapshot validated at the current fill-time boundary."""
+
+    book: BookSnapshot
+    fill_time_ms: int
 
 
 class PaperBroker(Broker):
@@ -133,6 +142,7 @@ class PaperBroker(Broker):
                 self._fills_by_source_id[order.source_id] = claimed_fill
 
         if not owns_claim:
+            # A caller may cancel without abandoning the shared source-id claim.
             return await asyncio.shield(claimed_fill)
 
         source_claimed = False
@@ -170,13 +180,14 @@ class PaperBroker(Broker):
         order_id = f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}"
         start_ms = self._now_ms()
         initial_continuity = self._book_continuity(order.token_id)
-        latency_ms = sample_latency_ms(
+        jitter_offset_ms = self._sample_jitter_offset_ms()
+        selected_latency_ms = latency_ms(
             self._config.paper_latency_ms,
             self._config.paper_latency_jitter_ms,
-            self._rng,
+            jitter_offset_ms,
         )
         try:
-            await self._sleep(latency_ms / 1000)
+            await self._sleep(selected_latency_ms / 1000)
         except ClockDataExhaustedError:
             current_continuity = self._book_continuity(order.token_id)
             if _crossed_book_blackout(initial_continuity, current_continuity):
@@ -199,107 +210,66 @@ class PaperBroker(Broker):
                 reject_reason=FillRejectReason.MARKET_RESOLVED,
                 reject_message=MARKET_RESOLVED_MESSAGE,
             )
-        book = await latest_book(self._books, order.token_id)
-        fill_time_ms = max(start_ms + latency_ms, self._now_ms())
-        if book is None:
-            fill = self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=fill_time_ms,
-                reject_reason=FillRejectReason.BOOK_UNAVAILABLE,
-                reject_message=BOOK_UNAVAILABLE_MESSAGE,
-            )
-            return fill
-
-        book_reject = classify_book(
+        initial_book = await self._validated_book_input(
+            order_id,
             order,
-            book,
-            fill_time_ms,
-            self._config.event_max_age_ms,
+            start_ms=start_ms,
+            selected_latency_ms=selected_latency_ms,
         )
-        if book_reject is not None:
-            fill = self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=fill_time_ms,
-                reject_reason=book_reject,
-                reject_message=self._book_reject_message(book_reject),
-            )
-            return fill
-
-        market_data, fee_reject = await resolve_fee_rate(self._markets, order, book)
-        if fee_reject is not None:
-            reject_reason, reject_message = fee_reject
-            fill = self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=fill_time_ms,
-                reject_reason=reject_reason,
-                reject_message=reject_message,
-            )
-            return fill
-        assert market_data is not None
-        if self._is_settled(market_data.market.condition_id):
-            return self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=self._now_ms(),
-                reject_reason=FillRejectReason.MARKET_RESOLVED,
-                reject_message=MARKET_RESOLVED_MESSAGE,
-            )
-        book = await latest_book(self._books, order.token_id)
-        fill_time_ms = max(start_ms + latency_ms, self._now_ms())
-        if book is None:
-            return self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=fill_time_ms,
-                reject_reason=FillRejectReason.BOOK_UNAVAILABLE,
-                reject_message=BOOK_UNAVAILABLE_MESSAGE,
-            )
-        if not market_matches_order_and_book(market_data.market, order, book):
-            return self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=fill_time_ms,
-                reject_reason=FillRejectReason.MARKET_METADATA_MISMATCH,
-                reject_message=MARKET_METADATA_MISMATCH_MESSAGE,
-            )
-        book_reject = classify_book(
+        if isinstance(initial_book, FillEvent):
+            return initial_book
+        initial_market = await self._validated_market_data(
+            order_id,
             order,
-            book,
-            fill_time_ms,
-            self._config.event_max_age_ms,
+            initial_book,
         )
-        if book_reject is not None:
+        if isinstance(initial_market, FillEvent):
+            return initial_market
+
+        # Re-read market metadata before the final book lookup. The final awaited
+        # input is therefore the book snapshot that is immediately validated and
+        # simulated, rather than a potentially slow metadata request.
+        final_market = await self._validated_market_data(
+            order_id,
+            order,
+            initial_book,
+        )
+        if isinstance(final_market, FillEvent):
+            return final_market
+        final_book = await self._validated_book_input(
+            order_id,
+            order,
+            start_ms=start_ms,
+            selected_latency_ms=selected_latency_ms,
+        )
+        if isinstance(final_book, FillEvent):
+            return final_book
+        final_market_reject = validate_fill_market_data(
+            final_market,
+            order,
+            final_book.book,
+        )
+        if final_market_reject is not None:
             return self._rejected_fill(
                 order_id,
                 order,
-                received_at_ms=fill_time_ms,
-                reject_reason=book_reject,
-                reject_message=self._book_reject_message(book_reject),
-            )
-        if self._is_settled(market_data.market.condition_id):
-            return self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=fill_time_ms,
-                reject_reason=FillRejectReason.MARKET_RESOLVED,
-                reject_message=MARKET_RESOLVED_MESSAGE,
+                received_at_ms=final_book.fill_time_ms,
+                reject_reason=final_market_reject[0],
+                reject_message=final_market_reject[1],
             )
         fill = simulate_fill(
             order=order,
-            book=book,
-            fee_rate=market_data.fee_rate,
+            book=final_book.book,
+            fee_rate=final_market.fee_rate,
             max_slippage_pct=self._config.max_slippage_pct,
             order_id=order_id,
-            fill_time_ms=fill_time_ms,
+            fill_time_ms=final_book.fill_time_ms,
         )
         if fill is None:
             return self._rejected_fill(
                 order_id,
                 order,
-                received_at_ms=fill_time_ms,
+                received_at_ms=final_book.fill_time_ms,
                 reject_reason=FillRejectReason.NO_DEPTH_WITHIN_SLIPPAGE,
                 reject_message=NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
             )
@@ -319,8 +289,8 @@ class PaperBroker(Broker):
         if updated_position.size == 0:
             self._position_market_refs.pop(order.token_id, None)
         else:
-            market_slug = order.market_slug or book.market_slug
-            condition_id = order.condition_id or book.condition_id
+            market_slug = order.market_slug or final_book.book.market_slug
+            condition_id = order.condition_id or final_book.book.condition_id
             if market_slug and condition_id:
                 self._position_market_refs[order.token_id] = (
                     market_slug,
@@ -328,8 +298,78 @@ class PaperBroker(Broker):
                 )
         return fill
 
+    async def _validated_book_input(
+        self,
+        order_id: str,
+        order: OrderRequest,
+        *,
+        start_ms: int,
+        selected_latency_ms: int,
+    ) -> _BookFillInput | FillEvent:
+        """Read and validate one book at the execution-time boundary."""
+        book = await latest_book(self._books, order.token_id)
+        fill_time_ms = max(start_ms + selected_latency_ms, self._now_ms())
+        if book is None:
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=fill_time_ms,
+                reject_reason=FillRejectReason.BOOK_UNAVAILABLE,
+                reject_message=BOOK_UNAVAILABLE_MESSAGE,
+            )
+        book_reject = classify_book(
+            order,
+            book,
+            fill_time_ms,
+            self._config.event_max_age_ms,
+        )
+        if book_reject is not None:
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=fill_time_ms,
+                reject_reason=book_reject,
+                reject_message=self._book_reject_message(book_reject),
+            )
+        return _BookFillInput(book=book, fill_time_ms=fill_time_ms)
+
+    async def _validated_market_data(
+        self,
+        order_id: str,
+        order: OrderRequest,
+        book_input: _BookFillInput,
+    ) -> FillMarketData | FillEvent:
+        """Resolve and validate market metadata against an already-safe book."""
+        market_data, market_reject = await resolve_fill_market_data(
+            self._markets,
+            order,
+            book_input.book,
+        )
+        if market_reject is not None:
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=book_input.fill_time_ms,
+                reject_reason=market_reject[0],
+                reject_message=market_reject[1],
+            )
+        assert market_data is not None
+        if self._is_settled(market_data.market.condition_id):
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=self._now_ms(),
+                reject_reason=FillRejectReason.MARKET_RESOLVED,
+                reject_message=MARKET_RESOLVED_MESSAGE,
+            )
+        return market_data
+
     def _is_settled(self, condition_id: str | None) -> bool:
         return condition_id is not None and condition_id in self._settled_conditions
+
+    def _sample_jitter_offset_ms(self) -> int:
+        jitter_ms = self._config.paper_latency_jitter_ms
+        return 0 if jitter_ms == 0 else self._rng.randrange(jitter_ms + 1)
 
     def _book_continuity(self, token_id: str) -> BookContinuity | None:
         if self._continuity_source is None:

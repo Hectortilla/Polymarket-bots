@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from polybot.framework.events import Side
-from polybot.framework.events.books import BOOK_PRICE_CEILING, BookLevel
+from polybot.framework.events import Side, require_side
+from polybot.framework.events.books import BookLevel
+from polybot.framework.events.prices import OUTCOME_PRICE_CEILING
 
 EMPTY_BOOK_SIZE = Decimal("0")
 
@@ -22,9 +23,10 @@ def slippage_limit_price(
     reference_price: Decimal,
     max_slippage_pct: Decimal,
 ) -> Decimal:
+    require_side(side)
     if side is Side.BUY:
-        return reference_price * (BOOK_PRICE_CEILING + max_slippage_pct)
-    return reference_price * (BOOK_PRICE_CEILING - max_slippage_pct)
+        return reference_price * (OUTCOME_PRICE_CEILING + max_slippage_pct)
+    return reference_price * (OUTCOME_PRICE_CEILING - max_slippage_pct)
 
 
 def consume_levels(
@@ -34,6 +36,7 @@ def consume_levels(
     requested_size: Decimal,
     slippage_limit_price: Decimal,
 ) -> tuple[ConsumedLevel, ...]:
+    require_side(side)
     remaining = requested_size
     consumed: list[ConsumedLevel] = []
 

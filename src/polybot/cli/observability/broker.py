@@ -50,7 +50,7 @@ class ObservableBroker(Broker):
                 fill=fill,
                 portfolio=portfolio,
                 latency_ms=round((completed_at - started_at) * 1000),
-                occurred_at=completed_at,
+                occurred_at_monotonic=completed_at,
             ),
         )
         return fill

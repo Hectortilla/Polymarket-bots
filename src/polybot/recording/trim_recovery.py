@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .archive import RecordingReader
-from .archive_models import RecordingSession
-from .contracts import MarketMetadataPayload
+from .archive.reader import RecordingReader
+from .archive.models import RecordingSession
+from .contracts.market import MarketMetadataPayload
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,3 +73,26 @@ def recovery_sequence_cutoffs(
     return {
         boundary.token_id: boundary.after_sequence for boundary in boundaries
     }
+
+
+def clean_scan_start_after_gaps(
+    source: RecordingReader,
+    *,
+    session: RecordingSession,
+    condition_id: str,
+    through_ms: int,
+) -> int | None:
+    """Return the safe replay start after relevant gaps, or ``None`` if absent."""
+    scan_start_ms = session.started_at_ms
+    if through_ms < scan_start_ms:
+        return None
+    for record in source.coverage_gaps(
+        start_at_ms=scan_start_ms,
+        end_at_ms=through_ms,
+        session_id=session.session_id,
+        condition_id=condition_id,
+    ):
+        if record.gap.ended_at_ms is None:
+            return None
+        scan_start_ms = max(scan_start_ms, record.gap.ended_at_ms)
+    return scan_start_ms if scan_start_ms <= through_ms else None

@@ -17,12 +17,14 @@ from polybot.backtesting.selection import (
     resolve_backtest_selection,
 )
 
-from .archive import RecordingReader
-from .archive_errors import ArchiveFormatError, RecordingArchiveError
-from .archive_models import RecordingSession
-from .contracts import CoverageGapRecord, MarketMetadataPayload
+from .archive.reader import RecordingReader
+from .archive.errors import ArchiveFormatError, RecordingArchiveError
+from .archive.models import RecordingSession
+from .contracts.records import CoverageGapRecord
+from .contracts.market import MarketMetadataPayload
 from .trim_contracts import RecordingTrimError, RecordingTrimPlan
 from .trim_recovery import (
+    clean_scan_start_after_gaps,
     recovery_sequence_cutoffs,
     recovery_token_boundaries,
 )
@@ -432,19 +434,13 @@ def _has_reconstructable_prestart_baselines(
     after_sequence_by_token: dict[str, int] | None = None,
 ) -> bool:
     prime_at_ms = start_at_ms - 1
-    scan_start_ms = session.started_at_ms
-    if prime_at_ms < scan_start_ms:
-        return False
-    for record in reader.coverage_gaps(
-        start_at_ms=scan_start_ms,
-        end_at_ms=prime_at_ms,
-        session_id=session.session_id,
+    scan_start_ms = clean_scan_start_after_gaps(
+        reader,
+        session=session,
         condition_id=market.condition_id,
-    ):
-        if record.gap.ended_at_ms is None:
-            return False
-        scan_start_ms = max(scan_start_ms, record.gap.ended_at_ms)
-    return scan_start_ms <= prime_at_ms and reader.has_complete_baseline_pair(
+        through_ms=prime_at_ms,
+    )
+    return scan_start_ms is not None and reader.has_complete_baseline_pair(
         market,
         start_at_ms=scan_start_ms,
         end_at_ms=prime_at_ms,

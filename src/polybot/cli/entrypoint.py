@@ -16,17 +16,20 @@ from polybot.backtesting.contracts import (
 )
 from polybot.backtesting.service import run_backtest
 from polybot.framework.config.models import BotConfig, BotMode
-from polybot.performance.artifacts import PerformanceArtifactError
-from polybot.performance.contracts import (
+from polybot.performance.artifacts.errors import PerformanceArtifactError
+from polybot.performance.contracts.files import (
     DEFAULT_REPORT_INTERVAL_MS,
     SUMMARY_FILE_NAME,
+)
+from polybot.performance.contracts.summary import (
     PerformanceSummaryV1,
 )
 
 from .config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
-from .performance_chart import PerformanceChartError, print_performance_chart
+from .performance_chart.command import print_performance_chart
+from .performance_chart.contracts import PerformanceChartError
 from polybot.runtime import run_bot
 
 INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (

@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from .archive_errors import RecordingArchiveError
-from .archive_models import RecordingEventCounts
-from .contracts import CoverageGapRecord, SessionIntegrityStatus
+from .archive.errors import RecordingArchiveError
+from .archive.models import RecordingEventCounts
+from .contracts.records import CoverageGapRecord
+from .contracts.session import SessionIntegrityStatus
 from .inspection import RecordingInspection, inspect_recording
+from .identity import describe_target_identity
 from .terminal import (
     ACCENT_STYLE,
     DANGER_STYLE,
@@ -48,11 +49,24 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 def _print_inspection(inspection: RecordingInspection) -> None:
     console = recording_console()
+    console.print(_archive_panel(inspection))
+    console.print(_summary_panel(inspection))
+    console.print(_sessions_panel(inspection))
+    console.print(_event_mix_panel(inspection))
+    console.print(_markets_panel(inspection))
+    coverage_gaps_panel = _coverage_gaps_panel(inspection)
+    if coverage_gaps_panel is not None:
+        console.print(coverage_gaps_panel)
+    console.print(_backtest_notes_panel(inspection))
+
+
+def _archive_panel(inspection: RecordingInspection) -> Panel:
+    """Build the archive identity and physical-size panel."""
     archive = Table.grid(padding=(0, 1))
     archive.add_column(style="bold")
     archive.add_column(overflow="fold")
     archive.add_row("Recording", str(inspection.archive_path))
-    archive.add_row("Target", _format_target_identity(inspection.target_identity))
+    archive.add_row("Target", describe_target_identity(inspection.target_identity))
     archive.add_row("Schema", f"v{inspection.schema_version}")
     archive.add_row("Archive size", format_bytes(inspection.archive_size_bytes))
     if inspection.sidecar_size_bytes:
@@ -63,14 +77,15 @@ def _print_inspection(inspection: RecordingInspection) -> None:
             f"{format_timestamp(inspection.event_start_at_ms)} → "
             f"{format_timestamp(inspection.event_end_at_ms)}",
         )
-    console.print(
-        Panel(
-            archive,
-            border_style=ACCENT_STYLE,
-            title="[bold bright_cyan]Recording inspector[/]",
-        )
+    return Panel(
+        archive,
+        border_style=ACCENT_STYLE,
+        title="[bold bright_cyan]Recording inspector[/]",
     )
 
+
+def _summary_panel(inspection: RecordingInspection) -> Panel:
+    """Build the aggregate replay-readiness summary."""
     anomaly_summary = str(inspection.known_anomaly_count)
     if inspection.anomaly_unavailable_session_count:
         anomaly_summary += (
@@ -105,8 +120,11 @@ def _print_inspection(inspection: RecordingInspection) -> None:
         "Capture anomalies",
         anomaly_summary,
     )
-    console.print(Panel(summary, border_style=ACCENT_STYLE, title="[bold]Summary[/]"))
+    return Panel(summary, border_style=ACCENT_STYLE, title="[bold]Summary[/]")
 
+
+def _sessions_panel(inspection: RecordingInspection) -> Panel:
+    """Build the per-session integrity table."""
     sessions = Table(header_style=f"bold {ACCENT_STYLE}")
     sessions.add_column("ID", justify="right")
     sessions.add_column("Status")
@@ -131,8 +149,11 @@ def _print_inspection(inspection: RecordingInspection) -> None:
             _gap_cell(session.open_gap_count, len(session.coverage_gaps)),
             anomaly_text,
         )
-    console.print(Panel(sessions, border_style=ACCENT_STYLE, title="[bold]Sessions[/]"))
+    return Panel(sessions, border_style=ACCENT_STYLE, title="[bold]Sessions[/]")
 
+
+def _event_mix_panel(inspection: RecordingInspection) -> Panel:
+    """Build the aggregate event-kind table."""
     event_counts = _total_event_counts(inspection)
     event_types = Table(header_style=f"bold {ACCENT_STYLE}")
     event_types.add_column("Meta", justify="right")
@@ -151,8 +172,15 @@ def _print_inspection(inspection: RecordingInspection) -> None:
         f"{event_counts.resolution:,}",
         f"{event_counts.coverage_gap:,}",
     )
-    console.print(Panel(event_types, border_style=ACCENT_STYLE, title="[bold]Event mix[/]"))
+    return Panel(
+        event_types,
+        border_style=ACCENT_STYLE,
+        title="[bold]Event mix[/]",
+    )
 
+
+def _markets_panel(inspection: RecordingInspection) -> Panel:
+    """Build the captured-market table across all sessions."""
     markets = tuple(
         (session.statistics.session.session_id, market)
         for session in inspection.sessions
@@ -174,39 +202,44 @@ def _print_inspection(inspection: RecordingInspection) -> None:
             f"{market.event_count:,}",
             market.condition_id,
         )
-    console.print(Panel(market_table, border_style=ACCENT_STYLE, title="[bold]Markets[/]"))
+    return Panel(market_table, border_style=ACCENT_STYLE, title="[bold]Markets[/]")
 
-    if inspection.gap_count:
-        gaps = Table(header_style=f"bold {WARNING_STYLE}")
-        gaps.add_column("Session", justify="right")
-        gaps.add_column("Gap", justify="right")
-        gaps.add_column("Reason")
-        gaps.add_column("Interval")
-        gaps.add_column("Scope")
-        for session in inspection.sessions:
-            for record in session.coverage_gaps:
-                gap = record.gap
-                gap_end = (
-                    "open"
-                    if gap.ended_at_ms is None
-                    else format_timestamp(gap.ended_at_ms)
-                )
-                gaps.add_row(
-                    str(record.session_id),
-                    str(record.gap_id),
-                    gap.reason.value,
-                    f"{format_timestamp(gap.started_at_ms)} → {gap_end}",
-                    _format_gap_scope(record),
-                )
-        console.print(Panel(gaps, border_style=WARNING_STYLE, title="[bold]Coverage gaps[/]"))
 
+def _coverage_gaps_panel(inspection: RecordingInspection) -> Panel | None:
+    """Build the optional coverage-gap detail table."""
+    if not inspection.gap_count:
+        return None
+    gaps = Table(header_style=f"bold {WARNING_STYLE}")
+    gaps.add_column("Session", justify="right")
+    gaps.add_column("Gap", justify="right")
+    gaps.add_column("Reason")
+    gaps.add_column("Interval")
+    gaps.add_column("Scope")
+    for session in inspection.sessions:
+        for record in session.coverage_gaps:
+            gap = record.gap
+            gap_end = (
+                "open"
+                if gap.ended_at_ms is None
+                else format_timestamp(gap.ended_at_ms)
+            )
+            gaps.add_row(
+                str(record.session_id),
+                str(record.gap_id),
+                gap.reason.value,
+                f"{format_timestamp(gap.started_at_ms)} → {gap_end}",
+                _format_gap_scope(record),
+            )
+    return Panel(gaps, border_style=WARNING_STYLE, title="[bold]Coverage gaps[/]")
+
+
+def _backtest_notes_panel(inspection: RecordingInspection) -> Panel:
+    """Build the action-oriented replay-readiness notes."""
     notes = "\n".join(f"• {note}" for note in _backtest_notes(inspection))
-    console.print(
-        Panel(
-            notes,
-            border_style=WARNING_STYLE if inspection.gap_count else SUCCESS_STYLE,
-            title="[bold]Backtest notes[/]",
-        )
+    return Panel(
+        notes,
+        border_style=WARNING_STYLE if inspection.gap_count else SUCCESS_STYLE,
+        title="[bold]Backtest notes[/]",
     )
 
 
@@ -268,22 +301,6 @@ def _backtest_notes(inspection: RecordingInspection) -> tuple[str, ...]:
         "range, and selected-market coverage before running a bot."
     )
     return tuple(notes)
-
-
-def _format_target_identity(target_identity: str) -> str:
-    try:
-        value = json.loads(target_identity)
-    except json.JSONDecodeError:
-        return target_identity
-    if not isinstance(value, dict):
-        return target_identity
-    if value.get("kind") == "bot" and isinstance(value.get("spec"), str):
-        return f"bot {value['spec']}"
-    market_slugs = value.get("market_slugs")
-    if value.get("kind") == "static" and isinstance(market_slugs, list):
-        if all(isinstance(slug, str) for slug in market_slugs):
-            return "static " + ", ".join(market_slugs)
-    return target_identity
 
 
 def _format_gap_scope(record: CoverageGapRecord) -> str:

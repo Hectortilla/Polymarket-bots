@@ -28,10 +28,25 @@ class Market:
     resolved: bool = False
     winning_token_id: str | None = None
     winning_outcome: str | None = None
+    active: bool | None = None
+    closed: bool | None = None
+    order_book_enabled: bool | None = None
+    accepting_orders: bool | None = None
 
     @property
     def token_ids(self) -> tuple[str, str]:
         return self.outcomes[0].token_id, self.outcomes[1].token_id
+
+    @property
+    def is_open_for_trading(self) -> bool:
+        """Whether all source availability flags explicitly permit trading."""
+        return (
+            not self.resolved
+            and self.active is True
+            and self.closed is False
+            and self.order_book_enabled is True
+            and self.accepting_orders is True
+        )
 
     def token_id_for_outcome(self, label: str) -> str | None:
         normalized = label.casefold().strip()
@@ -47,6 +62,15 @@ class Market:
             if outcome.token_id == token_id:
                 return outcome.label
         return None
+
+
+def validate_requested_market_slug(market: Market, requested_slug: str) -> None:
+    """Reject a normalized Gamma response for the wrong requested market."""
+    if market.slug != requested_slug:
+        raise MarketDataError(
+            MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+            "Gamma response did not match the requested market slug",
+        )
 
 
 def index_markets_by_token(markets: Iterable[Market]) -> dict[str, Market]:

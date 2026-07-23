@@ -1,5 +1,6 @@
 import asyncio
 import multiprocessing
+import os
 from pathlib import Path
 
 from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
@@ -23,6 +24,19 @@ def test_file_source_idempotency_store_survives_reopen(tmp_path) -> None:
         return claimed, duplicate, available_again
 
     assert asyncio.run(run()) == (True, False, True)
+
+
+def test_file_source_idempotency_store_syncs_claims_before_unlocking(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    synchronized_descriptors: list[int] = []
+    monkeypatch.setattr(os, "fsync", synchronized_descriptors.append)
+
+    assert FileSourceIdempotencyStore(tmp_path / "source-ids").claim("source")
+
+    # The claim file and its new directory entry are both durable before unlock.
+    assert len(synchronized_descriptors) == 2
 
 
 def test_file_source_idempotency_store_allows_one_concurrent_process_claim(

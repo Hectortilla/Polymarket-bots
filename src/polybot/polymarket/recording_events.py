@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from polybot.recording.contracts import (
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookDeltaPayload,
-    MarketIdentity,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.market import MarketIdentity
+from polybot.recording.contracts.payloads import (
     PublicTradePayload,
     ResolutionPayload,
-    TickSizeChangePayload,
 )
 
 

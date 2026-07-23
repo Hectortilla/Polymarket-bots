@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from polybot.backtesting.coverage import ReplayCoverage
-from polybot.recording.contracts import (
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
-    CoverageGapRecord,
-    MarketIdentity,
 )
+from polybot.recording.contracts.records import CoverageGapRecord
+from polybot.recording.contracts.market import MarketIdentity
 
 
 def test_replay_coverage_filters_and_unions_clipped_windows() -> None:

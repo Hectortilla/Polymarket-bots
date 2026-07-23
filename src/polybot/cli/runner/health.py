@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from time import time
-
 from polybot.cli.observability.events import StreamHealth
+from polybot.framework.clock import system_now_ms
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 
 from ..streams.contracts import BookStreamEvent, StreamEvent
@@ -19,7 +18,7 @@ def stream_health(
     lag_ms = None
     stale = False
     if isinstance(event, BookStreamEvent):
-        lag_ms = max(0, int(time() * 1000) - event.event.received_at_ms)
+        lag_ms = max(0, system_now_ms() - event.event.received_at_ms)
         stale = (
             not outcome.accepted
             and outcome.skip_reason is DispatchSkipReason.BOOK_STALE
@@ -30,5 +29,5 @@ def stream_health(
         book_dispatch_lag_ms=lag_ms,
         book_stale=stale,
         book_received_count=telemetry.book_received_count,
-        book_dropped_count=telemetry.book_dropped_count,
+        book_coalesced_count=telemetry.book_coalesced_count,
     )

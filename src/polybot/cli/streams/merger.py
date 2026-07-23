@@ -169,7 +169,7 @@ class StreamMerger:
             self._telemetry.book_received()
         if not self._pending_books.update(token_id, event):
             if self._telemetry is not None:
-                self._telemetry.book_dropped()
+                self._telemetry.book_coalesced()
             return
         self._queue.put_nowait(_BookMarker(token_id))
         if self._telemetry is not None:

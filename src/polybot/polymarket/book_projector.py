@@ -15,7 +15,10 @@ from polybot.polymarket.markets import (
     Market,
     index_markets_by_token,
 )
-from polybot.recording.contracts import BookBaselinePayload, BookDeltaPayload
+from polybot.recording.contracts.book import (
+    BookBaselinePayload,
+    BookDeltaPayload,
+)
 
 
 type _DepthSides = tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]
@@ -37,6 +40,25 @@ class BookDepthProjector:
         """Forget projected depth while retaining immutable market identity."""
         self._depth.clear()
 
+    def invalidate_condition(self, condition_id: str) -> None:
+        """Forget depth made unreliable by a rejected update for one market."""
+        invalid_token_ids = tuple(
+            token_id
+            for token_id in self._depth
+            if self._market_by_token[token_id].condition_id == condition_id
+        )
+        for token_id in invalid_token_ids:
+            del self._depth[token_id]
+
+    def has_complete_baseline(self, condition_id: str) -> bool:
+        """Whether every outcome token for one condition has projected depth."""
+        token_ids = tuple(
+            token_id
+            for token_id, market in self._market_by_token.items()
+            if market.condition_id == condition_id
+        )
+        return bool(token_ids) and set(token_ids).issubset(self._depth)
+
     def apply_baseline(
         self,
         payload: BookBaselinePayload,
@@ -49,9 +71,7 @@ class BookDepthProjector:
             condition_id=condition_id,
             received_at_ms=received_at_ms,
         )
-        bids = {level.price: level.size for level in payload.bids}
-        asks = {level.price: level.size for level in payload.asks}
-        self._depth[payload.token_id] = (bids, asks)
+        self._depth[payload.token_id] = _depth_from_baseline(payload)
         return snapshot
 
     def preview_baseline(
@@ -63,11 +83,12 @@ class BookDepthProjector:
     ) -> BookSnapshot:
         """Validate and project a baseline without changing owned depth."""
         market = self._market_for(payload.token_id, condition_id)
+        bids, asks = _depth_from_baseline(payload)
         return self._snapshot(
             market,
             payload.token_id,
-            {level.price: level.size for level in payload.bids},
-            {level.price: level.size for level in payload.asks},
+            bids,
+            asks,
             received_at_ms=received_at_ms,
         )
 
@@ -156,3 +177,10 @@ class BookDepthProjector:
             expected_token_id=token_id,
             expected_condition_id=market.condition_id,
         )
+
+
+def _depth_from_baseline(payload: BookBaselinePayload) -> _DepthSides:
+    return (
+        {level.price: level.size for level in payload.bids},
+        {level.price: level.size for level in payload.asks},
+    )

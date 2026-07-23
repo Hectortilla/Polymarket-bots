@@ -225,6 +225,52 @@ class ProbabilityObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class ProbabilitySampleTransition:
+    """The next trend state produced by one fresh, paired book observation."""
+
+    sampled_at_ms: int
+    trend: ProbabilityTrend
+    metrics: TrendMetrics | None
+
+    @classmethod
+    def from_book_pair(
+        cls,
+        *,
+        settings: MomentumSettings,
+        trend: ProbabilityTrend,
+        prior_sample_at_ms: int | None,
+        now_ms: int,
+        up_book: BookSnapshot,
+        down_book: BookSnapshot,
+    ) -> ProbabilitySampleTransition | None:
+        sampled_at_ms = min(up_book.received_at_ms, down_book.received_at_ms)
+        if (
+            prior_sample_at_ms is not None
+            and sampled_at_ms - prior_sample_at_ms < settings.sample_interval_ms
+        ):
+            return None
+        if (
+            abs(up_book.received_at_ms - down_book.received_at_ms)
+            > settings.paired_book_max_skew_ms
+        ):
+            return None
+        if not all(
+            book.is_fresh(now_ms, settings.paired_book_max_age_ms)
+            for book in (up_book, down_book)
+        ):
+            return None
+        up_quote = BookQuote.from_book(up_book)
+        down_quote = BookQuote.from_book(down_book)
+        if up_quote is None or down_quote is None:
+            return None
+        total_microprice = up_quote.microprice + down_quote.microprice
+        if total_microprice <= 0:
+            return None
+        observation = trend.after_observation(up_quote.microprice / total_microprice)
+        return cls(sampled_at_ms, observation.trend, observation.metrics)
+
+
+@dataclass(frozen=True, slots=True)
 class ProbabilityTrend:
     """EMA trend plus rate-of-change, scaled by recent absolute movement."""
 
@@ -261,29 +307,6 @@ class ProbabilityTrend:
         if previous is None:
             return value
         return alpha * value + (Decimal("1") - alpha) * previous
-
-
-@dataclass(frozen=True, slots=True)
-class BucketTiming:
-    elapsed_ms: int
-    remaining_ms: int
-    bucket_end_ms: int
-
-    @classmethod
-    def at(cls, settings: MomentumSettings, now_ms: int) -> BucketTiming:
-        bucket_ms = settings.bucket_seconds * 1_000
-        elapsed_ms = now_ms % bucket_ms
-        return cls(
-            elapsed_ms=elapsed_ms,
-            remaining_ms=bucket_ms - elapsed_ms,
-            bucket_end_ms=now_ms - elapsed_ms + bucket_ms,
-        )
-
-    def allows_entry(self, settings: MomentumSettings) -> bool:
-        return (
-            self.elapsed_ms >= settings.entry_delay_ms
-            and self.remaining_ms > settings.entry_cutoff_ms
-        )
 
 
 @dataclass(frozen=True, slots=True)

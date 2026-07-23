@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Iterable
 from http import HTTPStatus
 
-from polymarket import AsyncPublicClient, RequestRejectedError
+from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
 
+from polybot.framework.clock import system_now_ms
 from polybot.framework.events.books import BookSnapshot
-from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+from polybot.polymarket.client_lifecycle import close_owned_public_client
+from polybot.polymarket.errors import (
+    MarketDataError,
+    MarketDataIssue,
+    MarketDataTransportError,
+)
 from polybot.polymarket.normalization.book import normalize_book
 from polybot.polymarket.markets import (
     Market,
@@ -25,7 +30,7 @@ class ClobClient:
     ) -> None:
         self._client = client or AsyncPublicClient()
         self._owns_client = client is None
-        self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
+        self._now_ms = now_ms or system_now_ms
         self._market_by_token: dict[str, Market] = {}
         self.set_markets(markets)
 
@@ -34,15 +39,9 @@ class ClobClient:
 
     def add_market(self, market: Market) -> None:
         """Add metadata for a wallet-discovered market without dropping others."""
-        additions = index_markets_by_token((market,))
-        for token_id, existing in self._market_by_token.items():
-            candidate = additions.get(token_id)
-            if candidate is not None and candidate != existing:
-                raise MarketDataError(
-                    MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
-                    f"token ID maps to multiple markets: {token_id}",
-                )
-        self._market_by_token.update(additions)
+        self._market_by_token = index_markets_by_token(
+            (*self._market_by_token.values(), market)
+        )
 
     def has_market_slug(self, slug: str) -> bool:
         return any(candidate.slug == slug for candidate in self._market_by_token.values())
@@ -58,7 +57,9 @@ class ClobClient:
         except RequestRejectedError as error:
             if error.status == HTTPStatus.NOT_FOUND:
                 return None
-            raise
+            raise MarketDataTransportError("CLOB order-book lookup failed") from error
+        except PolymarketError as error:
+            raise MarketDataTransportError("CLOB order-book lookup failed") from error
         market = self._market_by_token.get(token_id)
         return normalize_book(
             token_id=source.token_id,
@@ -74,4 +75,4 @@ class ClobClient:
 
     async def close(self) -> None:
         if self._owns_client:
-            await self._client.close()
+            await close_owned_public_client(self._client)

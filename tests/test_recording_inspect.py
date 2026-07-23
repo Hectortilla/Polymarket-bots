@@ -7,17 +7,24 @@ from pathlib import Path
 import pytest
 
 from polybot.recording import inspect as inspect_cli
-from polybot.recording.archive import RecordingArchive, RecordingReader
-from polybot.recording.contracts import (
+from polybot.recording.archive.reader import RecordingReader
+from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
+    RecordedBookLevel,
+)
+from polybot.recording.contracts.records import (
     BookCheckpoint,
+    RecordedEvent,
+)
+from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
+)
+from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
-    RecordedBookLevel,
-    RecordedEvent,
 )
 from polybot.recording.inspection import inspect_recording
 from polybot.recording.identity import static_target_identity

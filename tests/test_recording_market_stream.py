@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from polymarket.errors import PolymarketError
 from polymarket.models.clob.market_events import (
     MarketBookEvent,
     MarketBookPayload,
@@ -34,27 +35,37 @@ from polymarket.models.gamma.market import (
 
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookSnapshot
-from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.recording_feed import (
-    CaptureContinuityError,
-    MarketCapture,
-    MarketRecordingFeed,
+from polybot.polymarket.errors import (
+    MarketDataError,
+    MarketDataIssue,
+    MarketDataTransportError,
 )
-from polybot.polymarket.recording_metadata import (
-    RecordingMarket,
-    RecordingMarketResolver,
+from polybot.polymarket.recording_events import CapturedMarketEvent
+from polybot.polymarket.recording_feed.capture import (
+    MarketCapture,
+)
+from polybot.polymarket.recording_feed.continuity import (
+    CaptureContinuityError,
+)
+from polybot.polymarket.recording_feed.feed import MarketRecordingFeed
+from polybot.polymarket.recording_metadata.contracts import RecordingMarket
+from polybot.polymarket.recording_metadata.normalization import (
     normalize_recording_market,
 )
+from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
 from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.recording.contracts import (
+from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookDeltaPayload,
-    CaptureFailureKind,
-    PublicTradePayload,
-    RevisionFingerprint,
-    ResolutionPayload,
     TickSizeChangePayload,
+)
+from polybot.recording.contracts.anomalies import (
+    CaptureFailureKind,
+    RevisionFingerprint,
+)
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
 )
 
 
@@ -180,18 +191,24 @@ def test_capture_preserves_typed_market_events_and_projects_full_depth() -> None
         feed = MarketRecordingFeed(client)  # type: ignore[arg-type]
         capture = await feed.open_capture(_market(), generation=4)
         first = await anext(capture)
-        ready_after_first = capture.ready
+        has_complete_baselines_after_first = capture.has_complete_book_baselines
         remaining = [event async for event in capture]
         books = capture.projected_books(9_000)
         diagnostics = capture.diagnostics()
         await capture.close()
-        return first, ready_after_first, remaining, books, diagnostics
+        return first, has_complete_baselines_after_first, remaining, books, diagnostics
 
-    first, ready_after_first, remaining, books, diagnostics = asyncio.run(run())
+    (
+        first,
+        has_complete_baselines_after_first,
+        remaining,
+        books,
+        diagnostics,
+    ) = asyncio.run(run())
 
     assert client.specs[0].token_ids == ("up-token", "down-token")
     assert client.specs[0].custom_feature_enabled is True
-    assert ready_after_first is False
+    assert has_complete_baselines_after_first is False
     assert isinstance(first.payload, BookBaselinePayload)
     assert first.source_timestamp_ms == 1_000
     assert tuple(level.price for level in first.payload.bids) == (
@@ -245,7 +262,7 @@ def test_capture_preserves_typed_market_events_and_projects_full_depth() -> None
         6_000,
     ]
     assert diagnostics.generation == 4
-    assert diagnostics.ready is True
+    assert diagnostics.has_complete_book_baselines is True
     assert diagnostics.dropped_count == 2
     assert diagnostics.baseline_token_ids == {"up-token", "down-token"}
     assert handle.closed is True
@@ -919,6 +936,95 @@ def test_recording_market_resolver_keeps_order_and_missing_entries() -> None:
     assert results[0] == results[2]
     assert results[1] is None
     assert results[0].metadata.market_slug == "alpha"
+
+
+def test_recording_market_resolver_rejects_mismatched_slug_response() -> None:
+    class Client:
+        async def get_market(self, *, slug: str) -> SdkMarket:
+            assert slug == "requested"
+            return _sdk_market("different")
+
+    async def run() -> MarketDataIssue:
+        resolver = RecordingMarketResolver(Client())  # type: ignore[arg-type]
+        with pytest.raises(MarketDataError) as caught:
+            await resolver.find_by_slug("requested")
+        return caught.value.issue
+
+    assert asyncio.run(run()) is MarketDataIssue.AMBIGUOUS_MARKET_METADATA
+
+
+def test_recording_market_resolver_normalizes_sdk_lookup_failures() -> None:
+    class Client:
+        async def get_market(self, *, slug: str) -> SdkMarket:
+            del slug
+            raise PolymarketError("Gamma unavailable")
+
+    async def run() -> MarketDataTransportError:
+        resolver = RecordingMarketResolver(Client())  # type: ignore[arg-type]
+        with pytest.raises(MarketDataTransportError) as caught:
+            await resolver.find_by_slug("requested")
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert str(error) == "Gamma recording-market lookup failed"
+    assert isinstance(error.__cause__, PolymarketError)
+
+
+def test_recording_feed_normalizes_sdk_subscription_failures() -> None:
+    class Client:
+        async def subscribe(self, spec: object) -> FakeHandle:
+            del spec
+            raise PolymarketError("stream unavailable")
+
+    async def run() -> MarketDataTransportError:
+        feed = MarketRecordingFeed(Client())  # type: ignore[arg-type]
+        with pytest.raises(MarketDataTransportError) as caught:
+            await feed.open_capture(_market(), generation=1)
+        return caught.value
+
+    error = asyncio.run(run())
+
+    assert str(error) == "recording market subscription failed"
+    assert isinstance(error.__cause__, PolymarketError)
+
+
+@pytest.mark.parametrize("failure_stage", ("read", "close"))
+def test_market_capture_normalizes_sdk_handle_failures(
+    failure_stage: str,
+) -> None:
+    class FailingHandle:
+        def __aiter__(self) -> AsyncIterator[object]:
+            return self._events()
+
+        async def _events(self) -> AsyncIterator[object]:
+            if failure_stage == "read":
+                raise PolymarketError("capture unavailable")
+            return
+            yield None
+
+        async def close(self) -> None:
+            if failure_stage == "close":
+                raise PolymarketError("capture shutdown unavailable")
+
+    async def run() -> MarketDataTransportError:
+        capture = MarketCapture(FailingHandle(), market=_market(), generation=1)
+        with pytest.raises(MarketDataTransportError) as caught:
+            if failure_stage == "read":
+                await anext(capture)
+            else:
+                await capture.close()
+        return caught.value
+
+    error = asyncio.run(run())
+
+    expected_message = (
+        "recording market capture failed"
+        if failure_stage == "read"
+        else "recording market capture shutdown failed"
+    )
+    assert str(error) == expected_message
+    assert isinstance(error.__cause__, PolymarketError)
 
 
 def _market() -> Market:

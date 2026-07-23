@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from math import isnan
+from math import isfinite, nan
 
 import asciichartpy
 from rich.text import Text
@@ -15,6 +15,8 @@ VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
 MIN_VALUE_CHART_MARGIN = 0.01
 CHART_Y_AXIS_WIDTH = 10
 DIMMED_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
+MIN_TERMINAL_CHART_POINTS = 12
+MAX_TERMINAL_CHART_POINTS = 120
 
 
 def render_chart(
@@ -26,19 +28,23 @@ def render_chart(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> Text:
-    if not _has_plottable_samples(series):
+    sanitized_series = _sanitized_series(series)
+    if not _has_plottable_samples(sanitized_series):
         return Text(empty_message, style="dim")
     config: dict[str, object] = {"height": chart_height, "colors": list(colors)}
-    if minimum is not None:
+    if minimum is not None and isfinite(minimum):
         config["min"] = minimum
-    if maximum is not None:
+    if maximum is not None and isfinite(maximum):
         config["max"] = maximum
-    chart = asciichartpy.plot(series if len(series) > 1 else series[0], config)
+    chart = asciichartpy.plot(
+        sanitized_series if len(sanitized_series) > 1 else sanitized_series[0],
+        config,
+    )
     return Text.from_ansi(chart)
 
 
 def padded_value_bounds(values: Sequence[float]) -> tuple[float | None, float | None]:
-    displayed_values = [value for value in values if not isnan(value)]
+    displayed_values = [value for value in values if isfinite(value)]
     if not displayed_values:
         return None, None
     minimum = min(displayed_values)
@@ -61,6 +67,10 @@ def resample_indices(source_points: int, display_points: int) -> list[int]:
         raise ValueError("source chart point count must be nonnegative")
     if display_points <= 0:
         raise ValueError("display chart point count must be positive")
+    return _resample_indices(source_points, display_points)
+
+
+def _resample_indices(source_points: int, display_points: int) -> list[int]:
     if source_points == 0:
         return []
     if display_points == 1:
@@ -78,11 +88,11 @@ def split_stale_samples(
     stale = [*stale_samples]
     stale.extend(False for _ in range(len(values) - len(stale)))
     current = [
-        value if not is_stale else float("nan")
+        _finite_chart_value(value) if not is_stale else nan
         for value, is_stale in zip(values, stale)
     ]
     dimmed = [
-        value if is_stale else float("nan")
+        _finite_chart_value(value) if is_stale else nan
         for value, is_stale in zip(values, stale)
     ]
     return [current, dimmed]
@@ -108,4 +118,15 @@ def _has_plottable_samples(series: Sequence[Sequence[float]]) -> bool:
 
 
 def _contains_finite_sample(values: Sequence[float]) -> bool:
-    return bool(values) and any(not isnan(value) for value in values)
+    return bool(values) and any(isfinite(value) for value in values)
+
+
+def _sanitized_series(series: Sequence[Sequence[float]]) -> list[list[float]]:
+    return [
+        [_finite_chart_value(value) for value in values]
+        for values in series
+    ]
+
+
+def _finite_chart_value(value: float) -> float:
+    return value if isfinite(value) else nan
