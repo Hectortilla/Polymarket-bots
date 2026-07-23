@@ -26,6 +26,7 @@ from polybot.performance.contracts import (
 from .config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
+from .performance_chart import PerformanceChartError, print_performance_chart
 from polybot.runtime import run_bot
 
 INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (
@@ -36,6 +37,7 @@ NON_INTERACTIVE_TERMINAL = "dumb"
 BACKTEST_DASHBOARD_MESSAGE = "backtests are headless; omit --dashboard"
 PARTIAL_RECORDING_WARNING = "Backtest source is a partial recording session"
 BLACKOUT_GAP_WARNING = "Backtest used blackout coverage-gap handling"
+BACKTEST_CHART_WARNING = "Backtest completed, but the PnL chart could not be rendered"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,6 +91,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             _print_backtest_summary(result)
+            try:
+                print_performance_chart(result.results_dir)
+            except PerformanceChartError as error:
+                print(f"{BACKTEST_CHART_WARNING}: {error}", file=sys.stderr)
         else:
             asyncio.run(
                 run_bot(

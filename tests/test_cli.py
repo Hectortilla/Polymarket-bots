@@ -19,6 +19,7 @@ from polybot.cli.config import load_dotenv, parse_overrides
 from polybot.cli.dashboard.state import DashboardState
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
+    BACKTEST_CHART_WARNING,
     BLACKOUT_GAP_WARNING,
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
     PARTIAL_RECORDING_WARNING,
@@ -27,6 +28,7 @@ from polybot.cli.entrypoint import (
     _print_backtest_summary,
     main,
 )
+from polybot.cli.performance_chart import PerformanceChartError
 from polybot.cli.factories import load_bot
 from polybot.cli.markets import resolve_plan_markets
 from polybot.runtime import run_bot
@@ -172,6 +174,10 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
         "polybot.cli.entrypoint._print_backtest_summary",
         lambda result: captured.setdefault("result", result),
     )
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.print_performance_chart",
+        lambda path: captured.setdefault("chart_path", path),
+    )
 
     assert main(
         [
@@ -211,6 +217,53 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
     assert options.report_interval_ms == 250
     assert options.gap_policy is BacktestGapPolicy.BLACKOUT
     assert captured["dashboard"] is False
+    assert captured["chart_path"] == results_dir
+
+
+def test_main_keeps_completed_backtest_success_when_chart_rendering_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    results_dir = tmp_path / "results"
+    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
+    )
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint._dashboard_enabled", lambda value: False
+    )
+
+    async def fake_run_backtest(bot, config, *, bot_spec, options):
+        return BacktestResult(
+            selection=BacktestSelection(1, 100, 200, ("one",), 50),
+            results_dir=results_dir,
+            event_count=0,
+            accepted_dispatch_count=0,
+            skipped_dispatch_count=0,
+            resolution_count=0,
+        )
+
+    def fail_chart(path: Path) -> None:
+        raise PerformanceChartError("broken chart")
+
+    monkeypatch.setattr("polybot.cli.entrypoint.run_backtest", fake_run_backtest)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint._print_backtest_summary", lambda result: None
+    )
+    monkeypatch.setattr("polybot.cli.entrypoint.print_performance_chart", fail_chart)
+
+    assert main(
+        [
+            "--bot",
+            "polybot.my_bot:create",
+            "--backtest",
+            str(tmp_path / "archive.sqlite"),
+        ]
+    ) == 0
+
+    assert BACKTEST_CHART_WARNING in capsys.readouterr().err
 
 
 def test_backtest_summary_labels_partial_recording_source(

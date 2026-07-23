@@ -297,8 +297,26 @@ last executable marks are deliberately cleared, so an affected open position is
 reported unavailable until a real paired-book recovery. Failed or interrupted
 replays retain partial CSV output and an explicit partial status when
 finalization can complete.
-On completion, the CLI also prints a compact performance summary and the result
-directory path.
+On completion, the CLI prints a compact performance summary, the result
+directory path, and a static full-run net-PnL chart. The chart reads every
+`equity.csv` sample before resampling the complete run to the current terminal
+width; unlike the live dashboard, it is not limited by the in-memory chart
+window. Its summary shows fills, orders, rejections, resolutions, net PnL,
+return, drawdown, fees, initial/final equity, filled notional, and valuation
+quality. Fresh PnL is green, while stale or temporarily unavailable spans are
+dim green. Chart rendering is presentation-only: a rendering failure warns but
+does not change a successfully completed backtest's exit status or artifacts.
+
+Display the same chart later by passing a saved result directory:
+
+```sh
+uv run python -m polybot.cli.performance_chart backtest-results/<run>
+```
+
+The command validates `summary.json` and the exact `equity.csv` schema, works
+for finalized completed or partial runs, performs no network access, and does
+not require a bot factory or recording archive. It prints a static chart into
+terminal scrollback rather than opening the interactive dashboard.
 
 The same performance artifacts are opt-in for an ordinary paper run:
 

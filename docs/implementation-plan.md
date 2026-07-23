@@ -643,11 +643,25 @@ Performance artifacts:
   path. Ordinary paper runs produce the same artifacts only with
   `--results-dir`; their artifact failures remain fail-open with a visible
   warning and the normal dashboard remains independently usable.
+- After successful finalization, print a static full-run net-PnL chart from
+  `equity.csv`. Reuse the live dashboard's green/dim-green single-series
+  renderer and variance padding, but resample the complete artifact range to
+  terminal width instead of applying the bounded live history window. Include
+  a compact summary of trading counts, PnL/return/drawdown/fees, equity,
+  notional, and valuation quality. Keep this post-completion presentation
+  fail-open.
+- Provide `python -m polybot.cli.performance_chart RESULTS_DIR` to validate a
+  finalized `summary.json` plus exact-schema `equity.csv` and render the same
+  chart for completed, failed, or cancelled runs. The command is static,
+  read-only, bot/archive-independent, and network-free.
 
 Acceptance is covered by synthetic archive replay, broker timing and
 coalescing, dynamic rollover, validation/fail-closed, deterministic seed,
 artifact serialization/collision/partial-status, normal paper opt-in, and full
-suite tests.
+suite tests. Static-chart acceptance additionally covers exact CSV validation,
+nondecreasing and duplicate timestamps, finite PnL values, fresh/stale/missing
+samples, full-range resampling beyond the live history limit, partial-run
+labels, and nonfatal automatic rendering failures.
 
 ## Slice 9B.1: Approximate Coverage-Gap Blackout Replay
 

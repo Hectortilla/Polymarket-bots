@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
 from math import isnan
 
 import asciichartpy
@@ -12,6 +11,14 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
 
+from polybot.cli.charting import (
+    DIMMED_VALUE_COLOR,
+    chart_time_range,
+    padded_value_bounds as _padded_bounds,
+    render_chart as _chart,
+    resample_indices as _resample_indices,
+    split_stale_samples as _split_stale_samples,
+)
 from polybot.framework.events import Side
 from polybot.framework.events.books import PRICE_CEILING, PRICE_FLOOR
 
@@ -41,13 +48,9 @@ from .wallet_timeline import (
 
 PRICE_CHART_MIN = float(PRICE_FLOOR)
 PRICE_CHART_MAX = float(PRICE_CEILING)
-WALLET_VALUE_CHART_MARGIN_RATIO = 0.15
-WALLET_VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
-MIN_WALLET_VALUE_CHART_MARGIN = 0.01
-CHART_Y_AXIS_WIDTH = 10
 SERIES_COLORS = tuple(chart_color for chart_color, _ in SERIES_PALETTE)
 DIMMED_SERIES_COLORS = tuple(f"\033[2m{color}" for color in SERIES_COLORS)
-DIMMED_WALLET_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
+DIMMED_WALLET_VALUE_COLOR = DIMMED_VALUE_COLOR
 SERIES_LEGEND_STYLES = tuple(legend_style for _, legend_style in SERIES_PALETTE)
 
 
@@ -147,34 +150,6 @@ def _market_legend(state: DashboardState) -> Text:
     return legend
 
 
-def _chart(
-    series: list[list[float]],
-    colors: tuple[str, ...],
-    chart_height: int,
-    empty_message: str,
-    *,
-    minimum: float | None = None,
-    maximum: float | None = None,
-) -> Text:
-    if not _has_plottable_samples(series):
-        return Text(empty_message, style="dim")
-    config: dict[str, object] = {"height": chart_height, "colors": list(colors)}
-    if minimum is not None:
-        config["min"] = minimum
-    if maximum is not None:
-        config["max"] = maximum
-    chart = asciichartpy.plot(series if len(series) > 1 else series[0], config)
-    return Text.from_ansi(chart)
-
-
-def _has_plottable_samples(series: list[list[float]]) -> bool:
-    return any(_contains_finite_sample(values) for values in series)
-
-
-def _contains_finite_sample(values: list[float]) -> bool:
-    return bool(values) and any(not isnan(value) for value in values)
-
-
 def _price_chart_series(
     state: DashboardState, width: int
 ) -> tuple[list[list[float]], tuple[str, ...]]:
@@ -266,52 +241,6 @@ def _visible_chart_samples(
     )
 
 
-def _resample_indices(source_points: int, display_points: int) -> list[int]:
-    if source_points == 0:
-        return []
-    if display_points == 1:
-        return [source_points - 1]
-    return [
-        round(index * (source_points - 1) / (display_points - 1))
-        for index in range(display_points)
-    ]
-
-
-def _split_stale_samples(
-    values: list[float],
-    stale_samples: deque[bool],
-) -> list[list[float]]:
-    stale = [*stale_samples]
-    stale.extend(False for _ in range(len(values) - len(stale)))
-    current = [
-        value if not is_stale else float("nan")
-        for value, is_stale in zip(values, stale)
-    ]
-    dimmed = [
-        value if is_stale else float("nan") for value, is_stale in zip(values, stale)
-    ]
-    return [current, dimmed]
-
-
-def _padded_bounds(values: list[float]) -> tuple[float | None, float | None]:
-    displayed_values = [value for value in values if not isnan(value)]
-    if not displayed_values:
-        return None, None
-    minimum = min(displayed_values)
-    maximum = max(displayed_values)
-    value_range = maximum - minimum
-    margin = max(
-        value_range * WALLET_VALUE_CHART_MARGIN_RATIO,
-        MIN_WALLET_VALUE_CHART_MARGIN,
-    )
-    if value_range == 0:
-        margin = max(
-            margin,
-            max(abs(minimum), abs(maximum)) * WALLET_VALUE_FLAT_CHART_MARGIN_RATIO,
-        )
-    return minimum - margin, maximum + margin
-
-
 def _price_chart_height(width: int, height: int) -> int:
     return max(5, min(18, primary_chart_available_height(width, height) - 3))
 
@@ -323,13 +252,7 @@ def _time_window_label(zoom_level: int) -> str:
 
 
 def _chart_time_range(state: DashboardState, width: int) -> Text:
-    visible_range = state.visible_time_range(width)
-    if visible_range is None:
-        return Text("time range unavailable", style="dim", justify="center")
-    started_at, ended_at = visible_range
-    label = Text(style="dim cyan")
-    label.append(" " * CHART_Y_AXIS_WIDTH)
-    label.append(datetime.fromtimestamp(started_at).strftime("%H:%M:%S"))
-    label.append(" " * max(1, state.chart_display_points(width) - 16))
-    label.append(datetime.fromtimestamp(ended_at).strftime("%H:%M:%S"))
-    return label
+    return chart_time_range(
+        state.visible_time_range(width),
+        state.chart_display_points(width),
+    )

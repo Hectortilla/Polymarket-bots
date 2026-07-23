@@ -531,6 +531,20 @@ interrupted runs remain explicitly partial. Output failures are fatal to a
 backtest. A completed blackout command also prints an approximate-results
 warning with its gap count, duration, and open count.
 
+After the compact completion summary, the backtest CLI renders a static net-PnL
+chart from the finalized `equity.csv`. Shared CLI chart primitives give it the
+live paper wallet-value chart's green/dim-green series, variance padding, and
+fixed-width resampling, while the saved artifact supplies the complete run
+rather than the dashboard's bounded in-memory window. A compact summary grid
+projects the validated result metrics for fills, orders, rejections,
+resolutions, PnL, return, drawdown, fees, equity, notional, and valuation
+quality. This post-run rendering
+is fail-open because it is presentation after durable completion. The local
+`python -m polybot.cli.performance_chart RESULTS_DIR` command applies the same
+renderer to any finalized result after validating `summary.json` and the exact
+equity CSV contract; it constructs no bot, archive reader, SDK client, or
+network source.
+
 Ordinary paper runs create the same artifacts only when `--results-dir` is
 provided. The dashboard can remain active at the same time. Paper recording is
 fail-open for trading and emits a visible warning if artifact output later

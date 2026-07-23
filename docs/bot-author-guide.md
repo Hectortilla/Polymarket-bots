@@ -391,8 +391,13 @@ and archive identity, the exact selection and seed, event/dispatch/trading
 counts, PnL/return/fee/drawdown metrics, open positions, and valuation quality.
 CSV decimals are exact strings suitable for plotting or lossless decimal
 parsing. Start, fill, settlement, interval, and end samples can share a
-timestamp but never move backward. The command prints a compact final summary
-and the result directory when replay completes. For every run, selection
+timestamp but never move backward. The command prints a compact final summary,
+the result directory, and a static full-run net-PnL chart when replay completes.
+The chart uses the complete `equity.csv` time range and resamples it only to fit
+the terminal width; fresh values are green and stale or unavailable spans are
+dim green. A compact header includes fills, orders, rejections, resolutions,
+net PnL, return, drawdown, fees, initial/final equity, filled notional, and
+valuation quality. For every run, selection
 provenance records `gap_policy`; blackout runs also record sorted coverage-gap
 IDs, count, clipped half-open union duration, open count, and affected position
 token IDs. Metrics include the number of orders rejected for coverage gaps, and
@@ -403,6 +408,16 @@ Replay settles recorded resolutions at contractual `1`/`0` before
 fresh executable value, a labeled last-executable stale estimate, or a null
 unavailable value is reported instead. Interrupted or failed runs retain an
 explicit partial status when summary finalization succeeds.
+
+Render a finalized backtest result again without loading a bot or archive:
+
+```sh
+uv run python -m polybot.cli.performance_chart results/backtest-run
+```
+
+The argument is the result directory containing `summary.json` and
+`equity.csv`. The local command validates both artifacts, labels partial runs,
+does not require an interactive terminal, and performs no network access.
 
 To collect the same performance files during an ordinary paper run, pass only
 `--results-dir`:

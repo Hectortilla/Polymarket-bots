@@ -101,6 +101,23 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "subProcess": true
+    },
+    {
+      "name": "Chart saved backtest PnL (pick directory)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "polybot.cli.performance_chart",
+      "args": [
+        "${input:pickBacktestResultsDirectory}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true
     }
   ],
   "compounds": [],
@@ -119,6 +136,18 @@
       "command": "extension.commandvariable.file.pickFile",
       "args": {
         "description": "Pick a recording SQLite archive to trim"
+      }
+    },
+    {
+      "id": "pickBacktestResultsDirectory",
+      "type": "command",
+      "command": "extension.commandvariable.file.openDialog",
+      "args": {
+        "canSelect": "folders",
+        "canSelectMany": false,
+        "defaultUri": "${workspaceFolder}${pathSeparator}backtest-results",
+        "openLabel": "Chart PnL",
+        "title": "Select a saved backtest results directory"
       }
     }
   ]
