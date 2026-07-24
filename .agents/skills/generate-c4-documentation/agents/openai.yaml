@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate C4 Documentation"
+  short_description: "Map codebases with evidence-backed C4 docs"
+  default_prompt: "Use $generate-c4-documentation to document the architecture of this codebase with evidence-backed C4 diagrams."
