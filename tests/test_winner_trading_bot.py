@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from polybot.examples.winner_trading_bot import (
+from polybot.examples.meh_trading_bot import (
     BREAKOUT_ENTRY_REASON,
     ENTRY_QUOTE_MAX_AGE_MS,
     ENTRY_QUOTE_MAX_SKEW_MS,
