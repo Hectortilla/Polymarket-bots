@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from polybot.execution.broker import Broker
-from polybot.framework.config.models import BotConfig, BotMode
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillEvent, OrderRequest
 
 

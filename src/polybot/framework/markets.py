@@ -36,6 +36,14 @@ class FixedBucketTiming:
             raise ValueError("now_ms must be nonnegative")
         if bucket_seconds <= 0:
             raise ValueError("bucket_seconds must be positive")
+        return cls._at_valid_time(now_ms, bucket_seconds)
+
+    @classmethod
+    def _at_valid_time(
+        cls,
+        now_ms: int,
+        bucket_seconds: int,
+    ) -> FixedBucketTiming:
         bucket_ms = bucket_seconds * 1_000
         elapsed_ms = now_ms % bucket_ms
         return cls(
@@ -48,4 +56,7 @@ class FixedBucketTiming:
         """Whether a strategy's entry window remains open in this bucket."""
         if delay_ms < 0 or cutoff_ms < 0:
             raise ValueError("entry-window bounds must be nonnegative")
+        return self._allows_valid_entry(delay_ms, cutoff_ms)
+
+    def _allows_valid_entry(self, delay_ms: int, cutoff_ms: int) -> bool:
         return self.elapsed_ms >= delay_ms and self.remaining_ms > cutoff_ms

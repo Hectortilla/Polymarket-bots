@@ -8,16 +8,18 @@ from time import monotonic
 from polybot.cli.markets import resolve_plan_markets
 from polybot.cli.observability.bootstrap import (
     BootstrapProgressAdapter,
+)
+from polybot.cli.observability.portfolio_bootstrap import (
     emit_paper_position_book_bootstraps,
 )
 from polybot.cli.observability.events import DispatchCompleted, StreamReceived
-from polybot.cli.observability.observer import RuntimeObserver, emit_observer
-from polybot.cli.resolution.reconciliation import reconcile_resolutions
-from polybot.cli.resolution.settlement import settle_resolved_markets
-from polybot.cli.runner.dispatch import (
-    ResolutionDispatchDependencies,
-    dispatch_stream_event,
+from polybot.cli.observability.observer import (
+    RuntimeObserver,
+    emit_observer_fail_open,
 )
+from polybot.cli.resolution.reconciliation import reconcile_resolutions
+from polybot.cli.resolution.settlement import ResolutionSettlementService
+from polybot.cli.runner.dispatch import dispatch_stream_event
 from polybot.cli.runner.factory import RuntimeComponents
 from polybot.cli.runner.health import stream_health
 from polybot.cli.runner.streams import (
@@ -30,7 +32,7 @@ from polybot.cli.streams.merger import merge_streams
 from polybot.cli.streams.telemetry import StreamTelemetry
 from polybot.cli.tracked_markets import MarketInterest
 from polybot.cli.tracking.paper import track_paper_positions
-from polybot.cli.tracking.wallets import synchronize_followed_wallets
+from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
 from polybot.framework.config.models import BotConfig
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
@@ -48,6 +50,14 @@ async def run_runtime_streams(
     """Refresh dynamic subscriptions and dispatch events until the run ends."""
     telemetry = StreamTelemetry()
     bootstrap_progress = BootstrapProgressAdapter(observer)
+    resolution_service = ResolutionSettlementService(
+        runner,
+        registry=runtime.registry,
+        followed_wallets=runtime.followed_wallets,
+        paper_broker=runtime.paper_broker,
+        resolution_ledger=runtime.resolution_ledger,
+        observer=observer,
+    )
     while True:
         plan = await refresh_runner_plan(runner)
         bootstrap_progress.begin_cycle()
@@ -62,28 +72,19 @@ async def run_runtime_streams(
         )
         if not wallet_scopes:
             bootstrap_progress.report_wallet_progress(0, 0)
-        await synchronize_followed_wallets(
-            wallet_scopes,
+        await FollowedWalletSynchronizer(
             bootstrap_followed_wallets,
             runtime.position_client,
             bootstrap_gamma,
             runtime.clob,
             runtime.registry,
-            resolved_markets=resolved.current,
-        )
+        ).synchronize(wallet_scopes, resolved_markets=resolved.current)
         await track_paper_positions(
             runtime.paper_broker,
             runtime.registry,
             runtime.gamma,
         )
-        await settle_resolved_markets(
-            runner,
-            registry=runtime.registry,
-            followed_wallets=runtime.followed_wallets,
-            paper_broker=runtime.paper_broker,
-            resolution_ledger=runtime.resolution_ledger,
-            observer=observer,
-        )
+        await resolution_service.settle_existing()
         runtime.clob.set_markets(runtime.registry.markets)
         runtime.market_stream.set_markets(runtime.registry.markets)
         runner.set_runtime_market_slugs(
@@ -146,7 +147,10 @@ async def run_runtime_streams(
                     stream_event = next_event.result()
                 except StopAsyncIteration:
                     return
-                emit_observer(observer, StreamReceived(stream_event, monotonic()))
+                emit_observer_fail_open(
+                    observer,
+                    StreamReceived(stream_event, monotonic()),
+                )
                 outcome = await dispatch_stream_event(
                     runner,
                     stream_event,
@@ -155,24 +159,18 @@ async def run_runtime_streams(
                     clob=runtime.clob,
                     registry=runtime.registry,
                     followed_wallets=runtime.followed_wallets,
-                    resolution=ResolutionDispatchDependencies(
-                        registry=runtime.registry,
-                        followed_wallets=runtime.followed_wallets,
-                        paper_broker=runtime.paper_broker,
-                        resolution_ledger=runtime.resolution_ledger,
-                        observer=observer,
-                    ),
+                    resolution_service=resolution_service,
                 )
                 await track_paper_positions(
                     runtime.paper_broker,
                     runtime.registry,
                     runtime.gamma,
                 )
-                emit_observer(
+                emit_observer_fail_open(
                     observer,
                     DispatchCompleted(stream_event, outcome, monotonic()),
                 )
-                emit_observer(
+                emit_observer_fail_open(
                     observer,
                     stream_health(stream_event, outcome, telemetry),
                 )

@@ -8,11 +8,6 @@ from polybot.async_io import run_blocking
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     MarketSettlementEvent,
-    RESOLUTION_RESOLVED_AT_MS_FIELD,
-    RESOLUTION_SETTLED_AT_MS_FIELD,
-    RESOLUTION_SOURCE_FIELD,
-    RESOLUTION_WINNING_OUTCOME_FIELD,
-    RESOLUTION_WINNING_TOKEN_ID_FIELD,
 )
 from polybot.persistence.atomic_json import AtomicJsonFile
 
@@ -21,10 +16,8 @@ from .schema import (
     RESOLUTION_LEDGER_VERSION_FIELD,
     RESOLUTION_RECORDS_FIELD,
 )
-from .validation import (
-    ResolutionRecord,
-    parse_resolution_records,
-)
+from .contracts import ResolutionRecord
+from .validation import parse_resolution_records
 
 
 class ResolutionLedger:
@@ -55,17 +48,20 @@ class ResolutionLedger:
         event = settlement.resolution
         if self._existing_record(event) is not None:
             return
-        self._records[event.condition_id] = {
-            RESOLUTION_WINNING_TOKEN_ID_FIELD: event.winning_token_id,
-            RESOLUTION_WINNING_OUTCOME_FIELD: event.winning_outcome,
-            RESOLUTION_RESOLVED_AT_MS_FIELD: event.resolved_at_ms,
-            RESOLUTION_SETTLED_AT_MS_FIELD: settlement.settled_at_ms,
-            RESOLUTION_SOURCE_FIELD: event.source,
-        }
+        self._records[event.condition_id] = ResolutionRecord(
+            winning_token_id=event.winning_token_id,
+            winning_outcome=event.winning_outcome,
+            resolved_at_ms=event.resolved_at_ms,
+            settled_at_ms=settlement.settled_at_ms,
+            source=event.source,
+        )
         self._file.write(
             {
                 RESOLUTION_LEDGER_VERSION_FIELD: RESOLUTION_LEDGER_VERSION,
-                RESOLUTION_RECORDS_FIELD: self._records,
+                RESOLUTION_RECORDS_FIELD: {
+                    condition_id: record.to_dict()
+                    for condition_id, record in self._records.items()
+                },
             }
         )
 
@@ -76,8 +72,7 @@ class ResolutionLedger:
         existing = self._records.get(event.condition_id)
         if (
             existing is not None
-            and existing.get(RESOLUTION_WINNING_TOKEN_ID_FIELD)
-            != event.winning_token_id
+            and existing.winning_token_id != event.winning_token_id
         ):
             raise ValueError("conflicting resolution already persisted")
         return existing

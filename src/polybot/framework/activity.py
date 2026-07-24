@@ -19,7 +19,7 @@ class ActivitySeverity(StrEnum):
 class BotActivityEvent:
     message: str
     severity: ActivitySeverity = ActivitySeverity.INFO
-    occurred_at_monotonic: float = field(default_factory=monotonic)
+    occurred_at_monotonic_seconds: float = field(default_factory=monotonic)
 
     def __post_init__(self) -> None:
         if not isinstance(self.message, str) or not self.message.strip():

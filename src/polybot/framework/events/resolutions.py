@@ -4,23 +4,28 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from .prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
+from .prices import (
+    OUTCOME_PRICE_CEILING,
+    OUTCOME_PRICE_FLOOR,
+    is_outcome_payout,
+)
+from .resolution_fields import (
+    RESOLUTION_RESOLVED_AT_MS_FIELD,
+    RESOLUTION_SETTLED_AT_MS_FIELD,
+    RESOLUTION_SOURCE_FIELD,
+    RESOLUTION_WINNING_OUTCOME_FIELD,
+    RESOLUTION_WINNING_TOKEN_ID_FIELD,
+    SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD,
+    SETTLED_POSITION_OWNER_FIELD,
+    SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD,
+    SETTLED_POSITION_REALIZED_PNL_USDC_FIELD,
+    SETTLED_POSITION_SIZE_FIELD,
+    SETTLED_POSITION_TOKEN_ID_FIELD,
+)
+from .resolution_tokens import normalize_resolution_tokens
 
 WINNING_PAYOUT_PER_TOKEN = OUTCOME_PRICE_CEILING
 LOSING_PAYOUT_PER_TOKEN = OUTCOME_PRICE_FLOOR
-RESOLUTION_WINNING_TOKEN_ID_FIELD = "winning_token_id"
-RESOLUTION_WINNING_OUTCOME_FIELD = "winning_outcome"
-RESOLUTION_RESOLVED_AT_MS_FIELD = "resolved_at_ms"
-RESOLUTION_SETTLED_AT_MS_FIELD = "settled_at_ms"
-RESOLUTION_SOURCE_FIELD = "source"
-SETTLED_POSITION_OWNER_FIELD = "owner"
-SETTLED_POSITION_TOKEN_ID_FIELD = "token_id"
-SETTLED_POSITION_SIZE_FIELD = "size"
-SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD = "payout_per_token"
-SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD = "cash_payout_usdc"
-SETTLED_POSITION_REALIZED_PNL_USDC_FIELD = "realized_pnl_usdc"
-
-
 @dataclass(frozen=True, slots=True)
 class MarketResolutionEvent:
     condition_id: str
@@ -40,12 +45,12 @@ class MarketResolutionEvent:
         object.__setattr__(self, "winning_outcome", self.winning_outcome.strip())
         if not self.condition_id or not self.market_slug:
             raise ValueError("market resolutions require market identity")
-        if len(set(self.token_ids)) != 2 or any(
-            not token_id for token_id in self.token_ids
-        ):
-            raise ValueError("market resolutions require two distinct token IDs")
-        if self.winning_token_id not in self.token_ids:
-            raise ValueError("winning token must belong to the resolved market")
+        token_ids, winning_token_id = normalize_resolution_tokens(
+            self.token_ids,
+            self.winning_token_id,
+        )
+        object.__setattr__(self, "token_ids", token_ids)
+        object.__setattr__(self, "winning_token_id", winning_token_id)
         if self.resolved_at_ms < 0 or not self.source:
             raise ValueError("market resolution payload is incomplete")
 
@@ -97,7 +102,7 @@ class SettledPosition:
         )
         if not all(value.is_finite() for value in decimal_values):
             raise ValueError("settled position values must be finite")
-        if not OUTCOME_PRICE_FLOOR <= self.payout_per_token <= OUTCOME_PRICE_CEILING:
+        if not is_outcome_payout(self.payout_per_token):
             raise ValueError("settled position payout must be between zero and one")
         if (
             self.realized_pnl_usdc is not None

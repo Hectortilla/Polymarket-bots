@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Generic, TypeVar
 
 
@@ -25,6 +26,22 @@ class PendingByKey(Generic[KeyT, ValueT]):
     def discard(self, key: KeyT) -> bool:
         """Discard a pending value and report whether it was present."""
         return self._values.pop(key, None) is not None
+
+    def discard_matching(self, predicate: Callable[[ValueT], bool]) -> int:
+        """Discard every pending value selected by ``predicate``."""
+        return len(self.discard_matching_keys(predicate))
+
+    def discard_matching_keys(
+        self,
+        predicate: Callable[[ValueT], bool],
+    ) -> tuple[KeyT, ...]:
+        """Discard selected values and return their keys."""
+        keys = tuple(
+            key for key, value in self._values.items() if predicate(value)
+        )
+        for key in keys:
+            del self._values[key]
+        return keys
 
     def __contains__(self, key: object) -> bool:
         return key in self._values

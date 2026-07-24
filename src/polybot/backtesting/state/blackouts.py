@@ -45,7 +45,7 @@ class CoverageBlackouts:
     ) -> tuple[str, ...]:
         if not isinstance(record, CoverageGapRecord):
             raise ValueError("backtest blackout requires a coverage-gap record")
-        if record.gap.ended_at_ms == record.gap.started_at_ms:
+        if record.gap.is_instantaneous:
             return ()
         if record.event_sequence in self._begun_gap_records:
             return ()

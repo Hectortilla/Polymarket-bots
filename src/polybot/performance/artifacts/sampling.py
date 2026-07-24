@@ -9,12 +9,12 @@ from decimal import Decimal
 from polybot.framework.events.books import BookSnapshot
 from polybot.performance.contracts.files import EquityField
 from polybot.performance.contracts.run import SampleReason
-from polybot.performance.metrics import EquityCurveMetrics
-from polybot.performance.valuation import (
+from polybot.performance.contracts.valuation import (
     PortfolioLike,
     PortfolioValuation,
-    value_portfolio,
 )
+from polybot.performance.metrics import EquityCurveMetrics
+from polybot.performance.valuation import value_portfolio
 
 from .serialization import decimal_text, optional_decimal_text
 

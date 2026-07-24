@@ -2,12 +2,46 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from enum import StrEnum
 
 from polybot.framework.events import Side, require_side
 from polybot.framework.events.book_validation import BookValidationIssue
-from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
+from polybot.framework.events.prices import is_outcome_price
 
 BOOK_LEVEL_SIZE_FLOOR = Decimal("0")
+
+
+class BookGapReason(StrEnum):
+    """Stable reasons that invalidate one or more projected order books."""
+
+    INVALID_MARKET_PARAMETERS = "invalid_market_parameters"
+    INVALID_BOOK_LEVEL = "invalid_book_level"
+    INVALID_BOOK_SIDE = "invalid_book_side"
+    MISSING_BOOK_BASELINE = "missing_book_baseline"
+    BOOK_IDENTITY_MISMATCH = "book_identity_mismatch"
+    BOOK_STREAM_GAP = "book_stream_gap"
+    CROSSED_BOOK = "crossed_book"
+
+
+@dataclass(frozen=True, slots=True)
+class BookGapEvent:
+    """A continuity loss after which prior book state is unsafe."""
+
+    condition_id: str | None
+    observed_at_ms: int
+    reason: BookGapReason
+
+    def __post_init__(self) -> None:
+        if self.condition_id is not None and not self.condition_id:
+            raise ValueError("book-gap condition ID must be non-empty")
+        if self.observed_at_ms < 0:
+            raise ValueError("book-gap timestamp must not be negative")
+        if not isinstance(self.reason, BookGapReason):
+            raise ValueError("book-gap reason must be a BookGapReason")
+
+    def affects(self, condition_id: str | None) -> bool:
+        """Return whether this gap invalidates the requested condition."""
+        return self.condition_id is None or self.condition_id == condition_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,13 +54,7 @@ class BookLevel:
         return self.price * self.size
 
     def is_valid_price(self) -> bool:
-        try:
-            return (
-                self.price.is_finite()
-                and OUTCOME_PRICE_FLOOR < self.price <= OUTCOME_PRICE_CEILING
-            )
-        except (AttributeError, InvalidOperation, TypeError, ValueError):
-            return False
+        return is_outcome_price(self.price)
 
     def is_valid_size(self, *, allow_zero: bool = False) -> bool:
         try:

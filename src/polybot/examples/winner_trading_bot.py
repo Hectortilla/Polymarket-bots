@@ -17,8 +17,9 @@ from polybot.examples.btc_five_minute_strategy import (
 )
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
@@ -86,7 +87,11 @@ class WinnerTradingBot(BaseBot):
     ) -> tuple[StreamRule, ...]:
         return (self._stream_rule(now_ms, bucket_offset=1),)
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
         if (
             self._entry_count >= MAXIMUM_TRADES_PER_RUN
             and self._position is None
@@ -99,6 +104,8 @@ class WinnerTradingBot(BaseBot):
             return
         if not await self._load_market(ctx, current_slug):
             return
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
         market = self._market
         if market is None or book.token_id not in market.token_ids:
             return
@@ -121,6 +128,13 @@ class WinnerTradingBot(BaseBot):
         if self._market is not None and event.condition_id == self._market.condition_id:
             self._entered_condition_id = None
             self._position = None
+
+    async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
+        market = self._market
+        if market is None or not gap.affects(market.condition_id):
+            return
+        self._books.clear()
+        self._prior_bids.clear()
 
     def backtest_is_quiescent(self, ctx: BotContext) -> bool:
         """Stop replaying once the intentionally capped strategy is flat."""
@@ -172,13 +186,13 @@ class WinnerTradingBot(BaseBot):
                 reason=BREAKOUT_ENTRY_REASON,
             )
         )
-        if fill.filled_size > 0:
+        if fill.has_execution:
             self._entered_condition_id = market.condition_id
             self._entry_count += 1
             self._position = OpenPosition(
                 token_id=token_id,
                 size=fill.filled_size,
-                average_price=fill.average_price or quote.ask,
+                average_price=fill.execution_price,
             )
 
     async def _maybe_take_profit(

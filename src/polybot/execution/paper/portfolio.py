@@ -49,8 +49,6 @@ class PaperPosition:
             fill_size=filled_size,
             fill_price=fill_price,
         )
-        if transition.size != EMPTY_POSITION_SIZE and transition.average_basis is None:
-            raise ValueError("paper positions require a known average entry price")
         return PaperPosition(
             token_id=self.token_id,
             size=transition.size,

@@ -7,10 +7,11 @@ from collections.abc import Awaitable, Callable, Iterable
 
 from polymarket import AsyncPublicClient, PolymarketError
 
-from polybot.polymarket.client_lifecycle import close_owned_public_client
+from polybot.polymarket.client_lifecycle import (
+    PublicClientLease,
+)
 from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.gamma import _GammaMarketSourceClient, wait_for_market
-from polybot.polymarket.markets import validate_requested_market_slug
 
 from .contracts import RecordingMarket
 from .normalization import normalize_recording_market
@@ -20,8 +21,8 @@ class RecordingMarketResolver:
     """Resolve replay metadata without returning official SDK models."""
 
     def __init__(self, client: AsyncPublicClient | None = None) -> None:
-        self._client = client or AsyncPublicClient()
-        self._owns_client = client is None
+        self._client_lease = PublicClientLease.acquire(client)
+        self._client = self._client_lease.client
         self._sources = _GammaMarketSourceClient(self._client)
 
     async def find_by_slug(self, slug: str) -> RecordingMarket | None:
@@ -34,7 +35,7 @@ class RecordingMarketResolver:
         if source is None:
             return None
         recording_market = normalize_recording_market(source)
-        validate_requested_market_slug(recording_market.market, slug)
+        recording_market.market.validate_requested_slug(slug)
         return recording_market
 
     async def find_many(
@@ -67,8 +68,7 @@ class RecordingMarketResolver:
         )
 
     async def close(self) -> None:
-        if self._owns_client:
-            await close_owned_public_client(self._client)
+        await self._client_lease.close()
 
 
 def _recording_lookup_cause(error: BaseException) -> BaseException:

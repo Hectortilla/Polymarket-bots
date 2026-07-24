@@ -10,6 +10,7 @@ from polybot.polymarket.markets import (
     Market,
     MarketOutcome,
 )
+from polybot.polymarket.resolution_status import FINAL_RESOLUTION_STATUSES
 from polybot.framework.events.resolutions import (
     LOSING_PAYOUT_PER_TOKEN,
     WINNING_PAYOUT_PER_TOKEN,
@@ -20,7 +21,7 @@ from .values import (
     _non_negative_decimal,
     _optional_boolean,
     _optional_positive_decimal,
-    _required_text,
+    require_text,
 )
 
 
@@ -53,69 +54,61 @@ class SdkOutcomeSelector(StrEnum):
     NO = "no"
 
 
-class MarketResolutionStatus(StrEnum):
-    RESOLVED = "resolved"
-    SETTLED = "settled"
-
-
-RESOLVED_MARKET_STATUSES = frozenset(MarketResolutionStatus)
-
-
 def normalize_market(source: SdkMarket) -> Market:
-    condition_id = _required_text(
+    condition_id = require_text(
         _nested_value(source, SdkMarketField.CONDITION_ID),
-        MarketDataIssue.MISSING_CONDITION_ID,
         "market condition ID",
+        issue=MarketDataIssue.MISSING_CONDITION_ID,
     )
-    slug = _required_text(
+    slug = require_text(
         _nested_value(source, SdkMarketField.SLUG),
-        MarketDataIssue.MISSING_MARKET_SLUG,
         "market slug",
+        issue=MarketDataIssue.MISSING_MARKET_SLUG,
     )
-    question = _required_text(
+    question = require_text(
         _nested_value(source, SdkMarketField.QUESTION),
-        MarketDataIssue.MISSING_QUESTION,
         "market question",
+        issue=MarketDataIssue.MISSING_QUESTION,
     )
-    first_token_id = _required_text(
+    first_token_id = require_text(
         _nested_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.YES,
             SdkMarketField.TOKEN_ID,
         ),
-        MarketDataIssue.MISSING_TOKEN_ID,
         "first outcome token ID",
+        issue=MarketDataIssue.MISSING_TOKEN_ID,
     )
-    second_token_id = _required_text(
+    second_token_id = require_text(
         _nested_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.NO,
             SdkMarketField.TOKEN_ID,
         ),
-        MarketDataIssue.MISSING_TOKEN_ID,
         "second outcome token ID",
+        issue=MarketDataIssue.MISSING_TOKEN_ID,
     )
-    first_label = _required_text(
+    first_label = require_text(
         _nested_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.YES,
             SdkMarketField.LABEL,
         ),
-        MarketDataIssue.INVALID_MARKET_PARAMETERS,
         "first outcome label",
+        issue=MarketDataIssue.INVALID_MARKET_PARAMETERS,
     )
-    second_label = _required_text(
+    second_label = require_text(
         _nested_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.NO,
             SdkMarketField.LABEL,
         ),
-        MarketDataIssue.INVALID_MARKET_PARAMETERS,
         "second outcome label",
+        issue=MarketDataIssue.INVALID_MARKET_PARAMETERS,
     )
     if first_token_id == second_token_id:
         raise MarketDataError(
@@ -264,7 +257,7 @@ def _resolved_outcome_from_source(
         status_value.strip().casefold() if isinstance(status_value, str) else status_value
     )
     resolution_reported = (
-        normalized_status in RESOLVED_MARKET_STATUSES or closed is True
+        normalized_status in FINAL_RESOLUTION_STATUSES or closed is True
     )
     if not resolution_reported:
         return False, None, None

@@ -10,7 +10,12 @@ from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.events import Side
-from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.books import (
+    BookGapEvent,
+    BookGapReason,
+    BookLevel,
+    BookSnapshot,
+)
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import market_bucket_slug
 from polybot.framework.runner import BotRunner
@@ -222,6 +227,37 @@ def test_runner_rechecks_book_freshness_after_refresh(
     assert books == []
 
 
+def test_run_books_dispatches_continuity_gaps_to_strategy_state(
+    dummy_context: BotContext,
+) -> None:
+    calls: list[str] = []
+
+    class GapBot(BaseBot):
+        async def on_start(self, ctx: BotContext) -> None:
+            calls.append("start")
+
+        async def on_book_gap(
+            self,
+            ctx: BotContext,
+            gap: BookGapEvent,
+        ) -> None:
+            calls.append(f"gap:{gap.condition_id}")
+
+        async def on_stop(self, ctx: BotContext) -> None:
+            calls.append("stop")
+
+    async def events():
+        yield BookGapEvent(
+            condition_id="condition",
+            observed_at_ms=1_000,
+            reason=BookGapReason.BOOK_STREAM_GAP,
+        )
+
+    asyncio.run(BotRunner(GapBot(), dummy_context).run_books(events()))
+
+    assert calls == ["start", "gap:condition", "stop"]
+
+
 def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(dummy_context, _bot_config("multi", markets=("btc", "eth")))
@@ -307,7 +343,14 @@ def test_runner_rejects_stale_wallet_trade(dummy_context: BotContext) -> None:
         bot = RecordingMarketBot(books=[], wallet_trades=[])
         runner = BotRunner(bot, ctx, now_ms_fn=lambda: 2_000)
 
-        accepted = await runner.dispatch_wallet_trade(_wallet_trade("btc", "tx-stale", observed_at_ms=2_000, trade_timestamp_ms=1_000))
+        accepted = await runner.dispatch_wallet_trade(
+            _wallet_trade(
+                "btc",
+                "tx-stale",
+                observed_at_ms=2_000,
+                trade_timestamp_ms=1_000,
+            )
+        )
         return accepted, len(bot.wallet_trades)
 
     accepted, trade_count = asyncio.run(run())

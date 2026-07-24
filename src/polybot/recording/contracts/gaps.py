@@ -52,3 +52,13 @@ class CoverageGapPayload:
         ):
             normalized = normalize_text_tuple(getattr(self, name), name)
             object.__setattr__(self, name, normalized)
+
+    @property
+    def duration_ms(self) -> int | None:
+        if self.ended_at_ms is None:
+            return None
+        return self.ended_at_ms - self.started_at_ms
+
+    @property
+    def is_instantaneous(self) -> bool:
+        return self.duration_ms == 0

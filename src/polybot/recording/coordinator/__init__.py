@@ -14,6 +14,7 @@ from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
 from polybot.polymarket.recording_feed.feed import MarketRecordingFeed
+from polybot.polymarket.stream_diagnostics import require_monotonic_dropped_count
 from polybot.polymarket.recording_metadata.contracts import RecordingMarket
 from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
 from polybot.recording.clock import ObservationClock
@@ -385,8 +386,11 @@ class RecordingCoordinator:
             capture = tracked.capture
             if capture is None or tracked.terminal_claimed:
                 continue
-            dropped_count = capture.dropped_count
-            if dropped_count <= tracked.dropped_count:
+            dropped_count = require_monotonic_dropped_count(
+                tracked.dropped_count,
+                capture.dropped_count,
+            )
+            if dropped_count == tracked.dropped_count:
                 continue
             tracked.dropped_count = dropped_count
             await self._restart_capture(

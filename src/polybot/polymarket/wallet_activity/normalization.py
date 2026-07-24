@@ -9,6 +9,7 @@ from math import isfinite
 from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
+from polybot.polymarket.normalization.values import normalize_text_or_none
 
 from .fields import (
     ACTIVITY_TYPE_FIELD,
@@ -22,19 +23,27 @@ from .fields import (
     ACTIVITY_OUTCOME_FIELD,
     CONDITION_ID_FIELD,
     PROXY_WALLET_FIELD,
+    SDK_CONDITION_ID_ATTRIBUTE,
+    SDK_SHARES_ATTRIBUTE,
+    SDK_SIDE_ATTRIBUTE,
+    SDK_SIZE_ATTRIBUTE,
+    SDK_TIMESTAMP_ATTRIBUTE,
+    SDK_TOKEN_ID_ATTRIBUTE,
+    SDK_TRANSACTION_HASH_ATTRIBUTE,
+    SDK_WALLET_ATTRIBUTE,
     TRADE_ACTIVITY_TYPE,
 )
 
 EPOCH_SECONDS_INTERPRETATION_CUTOFF = 10_000_000_000
 WALLET_TRADE_SOURCE_ID_VERSION = "wallet-trade-v1"
 _TRADE_FIELD_ALIASES = {
-    "wallet": PROXY_WALLET_FIELD,
-    "condition_id": CONDITION_ID_FIELD,
-    "token_id": ACTIVITY_TOKEN_ID_FIELD,
-    "transaction_hash": ACTIVITY_TRANSACTION_HASH_FIELD,
-    "side": ACTIVITY_SIDE_FIELD,
-    "size": ACTIVITY_SIZE_FIELD,
-    "timestamp": ACTIVITY_TIMESTAMP_FIELD,
+    SDK_WALLET_ATTRIBUTE: PROXY_WALLET_FIELD,
+    SDK_CONDITION_ID_ATTRIBUTE: CONDITION_ID_FIELD,
+    SDK_TOKEN_ID_ATTRIBUTE: ACTIVITY_TOKEN_ID_FIELD,
+    SDK_TRANSACTION_HASH_ATTRIBUTE: ACTIVITY_TRANSACTION_HASH_FIELD,
+    SDK_SIDE_ATTRIBUTE: ACTIVITY_SIDE_FIELD,
+    SDK_SIZE_ATTRIBUTE: ACTIVITY_SIZE_FIELD,
+    SDK_TIMESTAMP_ATTRIBUTE: ACTIVITY_TIMESTAMP_FIELD,
 }
 _MISSING_TRADE_FIELD = object()
 
@@ -99,23 +108,27 @@ def normalize_wallet_trade(
     kind: WalletTradeKind = WalletTradeKind.BACKFILL,
 ) -> WalletTradeEvent | None:
     """Convert an external wallet trade row into the package event contract."""
-    wallet = _get_trade_field(source, "wallet")
-    condition_id = _get_trade_field(source, "condition_id")
-    token_id = _get_trade_field(source, "token_id")
-    side = _get_trade_field(source, "side")
+    wallet = _get_trade_field(source, SDK_WALLET_ATTRIBUTE)
+    condition_id = _get_trade_field(source, SDK_CONDITION_ID_ATTRIBUTE)
+    token_id = _get_trade_field(source, SDK_TOKEN_ID_ATTRIBUTE)
+    side = _get_trade_field(source, SDK_SIDE_ATTRIBUTE)
     size = _normalized_trade_size(
-        _get_trade_field(source, "size"),
-        _get_trade_field(source, "shares"),
+        _get_trade_field(source, SDK_SIZE_ATTRIBUTE),
+        _get_trade_field(source, SDK_SHARES_ATTRIBUTE),
     )
     price = _get_trade_field(source, ACTIVITY_PRICE_FIELD)
     normalized_size = size
     normalized_price = _decimal(price)
-    timestamp = _timestamp_ms(_get_trade_field(source, "timestamp"))
+    timestamp = _timestamp_ms(
+        _get_trade_field(source, SDK_TIMESTAMP_ATTRIBUTE)
+    )
     raw_outcome = _get_trade_field(source, ACTIVITY_OUTCOME_FIELD)
     outcome = _normalized_text(raw_outcome)
     raw_activity_type = _get_trade_field(source, ACTIVITY_TYPE_FIELD)
     activity_type = _normalized_text(raw_activity_type)
-    transaction_hash = _normalized_text(_get_trade_field(source, "transaction_hash"))
+    transaction_hash = _normalized_text(
+        _get_trade_field(source, SDK_TRANSACTION_HASH_ATTRIBUTE)
+    )
     upstream_source_id = transaction_hash
     required_fields = (wallet, condition_id, token_id, upstream_source_id)
     if not all(isinstance(value, str) for value in required_fields):
@@ -214,16 +227,13 @@ def normalize_stream_event(
 
 
 def _normalized_text(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
+    return normalize_text_or_none(value)
 
 
 def _aliases_agree(name: str, primary: object, secondary: object) -> bool:
     first = _normalized_text(primary)
     second = _normalized_text(secondary)
-    if name == "wallet":
+    if name == SDK_WALLET_ATTRIBUTE:
         return (
             first is not None
             and second is not None

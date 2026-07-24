@@ -5,15 +5,14 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from polybot.framework.events.prices import (
-    OUTCOME_PRICE_CEILING,
-    OUTCOME_PRICE_FLOOR,
+    is_outcome_payout,
 )
 from polybot.framework.wallets import normalize_wallet_address
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+from polybot.polymarket.normalization.values import normalize_text_or_none
 
 from .contracts import Position
 from .fields import (
-    POSITION_PAGE_ITEMS_ATTRIBUTE,
     POSITION_RESPONSE_AVERAGE_PRICE_ATTRIBUTE,
     POSITION_RESPONSE_CONDITION_ID_ATTRIBUTE,
     POSITION_RESPONSE_CURRENT_PRICE_ATTRIBUTE,
@@ -31,23 +30,23 @@ def normalize_position(
     requested_wallet: str,
     requested_conditions: frozenset[str] | None,
 ) -> Position:
-    response_wallet = _optional_nonempty_text(
+    response_wallet = normalize_text_or_none(
         getattr(source, POSITION_RESPONSE_WALLET_ATTRIBUTE, None)
     )
-    token_id = _optional_nonempty_text(
+    token_id = normalize_text_or_none(
         getattr(source, POSITION_RESPONSE_TOKEN_ID_ATTRIBUTE, None)
     )
-    condition_id = _optional_nonempty_text(
+    condition_id = normalize_text_or_none(
         getattr(source, POSITION_RESPONSE_CONDITION_ID_ATTRIBUTE, None)
     )
-    market_slug = _optional_nonempty_text(
+    market_slug = normalize_text_or_none(
         getattr(source, POSITION_RESPONSE_MARKET_SLUG_ATTRIBUTE, None)
     )
     size = getattr(source, POSITION_RESPONSE_SIZE_ATTRIBUTE, None)
     average_price = getattr(source, POSITION_RESPONSE_AVERAGE_PRICE_ATTRIBUTE, None)
     current_price = getattr(source, POSITION_RESPONSE_CURRENT_PRICE_ATTRIBUTE, None)
     raw_outcome = getattr(source, POSITION_RESPONSE_OUTCOME_ATTRIBUTE, None)
-    outcome = _optional_text(raw_outcome)
+    outcome = normalize_text_or_none(raw_outcome)
     try:
         normalized_size = Decimal(str(size))
         normalized_average = _optional_position_price(average_price)
@@ -82,36 +81,10 @@ def normalize_position(
     )
 
 
-def page_items(page: object) -> tuple[object, ...]:
-    items = getattr(page, POSITION_PAGE_ITEMS_ATTRIBUTE, None)
-    if not isinstance(items, (list, tuple)):
-        raise MarketDataError(
-            MarketDataIssue.INVALID_POSITION,
-            "position page items are malformed",
-        )
-    return tuple(items)
-
-
-def _optional_nonempty_text(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
-
-
-def _optional_text(value: object) -> str | None:
-    if value is None:
-        return None
-    return _optional_nonempty_text(value)
-
-
 def _optional_position_price(value: object) -> Decimal | None:
     if value is None:
         return None
     price = Decimal(str(value))
-    if (
-        not price.is_finite()
-        or not OUTCOME_PRICE_FLOOR <= price <= OUTCOME_PRICE_CEILING
-    ):
+    if not is_outcome_payout(price):
         raise ValueError("position price must be finite and between zero and one")
     return price

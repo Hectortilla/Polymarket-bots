@@ -149,7 +149,7 @@ class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
         if decision is None:
             return
         fill = await ctx.broker.submit(decision.order)
-        if fill.filled_size <= 0:
+        if not fill.has_execution:
             return
         self._applied_source_ids.add(decision.source_key)
         self._open_positions = positions_after_copy_fill(

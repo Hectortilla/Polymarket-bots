@@ -3,140 +3,46 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping
+from dataclasses import dataclass
 
-from ..contracts.book import BookBaselinePayload
-from ..contracts.kinds import PayloadKind
-from ..contracts.market import MarketIdentity, MarketMetadataPayload
 from ..contracts.records import BookCheckpoint
+from .checkpoint_rows import (
+    checkpoint_from_row,
+    checkpoint_from_validated_row,
+    market_before_checkpoint,
+)
 from .coverage import reject_known_gaps
-from .errors import ArchiveFormatError, ArchiveIntegrityError
+from .errors import ArchiveIntegrityError
 from .markets import market_at
 from .primitives import (
-    _nonnegative_int,
     _nonnegative_timestamp,
     _positive_int,
     _required_text,
     _strict_int,
 )
-from .rows import _typed_payload
 
 
-def has_complete_baseline_pair(
-    connection: sqlite3.Connection,
-    market: MarketMetadataPayload,
-    *,
-    replay_cutoff_sequence: int,
-    start_at_ms: int,
-    end_at_ms: int,
-    session_id: int | None = None,
-    after_sequence_by_token: Mapping[str, int] | None = None,
-) -> bool:
-    """Return whether one generation baselines both market tokens in-range."""
+@dataclass(frozen=True, slots=True)
+class _CheckpointBoundary:
+    observed_at_ms: int
+    sequence: int
+    session_id: int
+    subscription_generation: int
 
-    return (
-        first_complete_baseline_pair_at_or_after(
-            connection,
-            market,
-            replay_cutoff_sequence=replay_cutoff_sequence,
-            start_at_ms=start_at_ms,
-            end_at_ms=end_at_ms,
-            session_id=session_id,
-            after_sequence_by_token=after_sequence_by_token,
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> _CheckpointBoundary:
+        return cls(
+            observed_at_ms=_strict_int(
+                row["observed_at_ms"],
+                "checkpoint timestamp",
+            ),
+            sequence=_strict_int(row["sequence"], "checkpoint sequence"),
+            session_id=_strict_int(row["session_id"], "checkpoint session"),
+            subscription_generation=_strict_int(
+                row["subscription_generation"],
+                "checkpoint generation",
+            ),
         )
-        is not None
-    )
-
-
-def first_complete_baseline_pair_at_or_after(
-    connection: sqlite3.Connection,
-    market: MarketMetadataPayload,
-    *,
-    replay_cutoff_sequence: int,
-    start_at_ms: int,
-    end_at_ms: int,
-    session_id: int | None = None,
-    after_sequence_by_token: Mapping[str, int] | None = None,
-) -> int | None:
-    """Return the first in-range timestamp with both baseline tokens present."""
-
-    if not isinstance(market, MarketMetadataPayload):
-        raise ValueError("baseline-pair market metadata is invalid")
-    _nonnegative_timestamp(start_at_ms, "baseline-pair start")
-    _nonnegative_timestamp(end_at_ms, "baseline-pair end")
-    if end_at_ms < start_at_ms:
-        raise ValueError("baseline-pair selection cannot end before it starts")
-    normalized_session = (
-        None if session_id is None else _positive_int(session_id, "session ID")
-    )
-    token_ids = tuple(outcome.token_id for outcome in market.outcomes)
-    unknown_tokens = set(after_sequence_by_token or ()).difference(token_ids)
-    if unknown_tokens:
-        raise ValueError("baseline sequence cutoffs contain an unknown token")
-    sequence_cutoffs = tuple(
-        _nonnegative_int(
-            0
-            if after_sequence_by_token is None
-            else after_sequence_by_token.get(token_id, 0),
-            "baseline sequence cutoff",
-        )
-        for token_id in token_ids
-    )
-    session_clause = "" if normalized_session is None else "AND event.session_id = ?"
-    parameters: list[object] = [
-        PayloadKind.BOOK_BASELINE.value,
-        market.condition_id,
-        start_at_ms,
-        end_at_ms,
-        replay_cutoff_sequence,
-        *token_ids,
-        token_ids[0],
-        sequence_cutoffs[0],
-        token_ids[1],
-        sequence_cutoffs[1],
-    ]
-    if normalized_session is not None:
-        parameters.append(normalized_session)
-    row = connection.execute(
-        f"""
-        WITH first_token_baseline AS (
-            SELECT event.subscription_generation,
-                   selected_token.token_id,
-                   MIN(event.observed_at_ms) AS first_observed_at_ms
-            FROM events AS event
-            JOIN event_tokens AS selected_token
-              ON selected_token.sequence = event.sequence
-            WHERE event.payload_kind = ? AND event.condition_id = ?
-              AND event.observed_at_ms >= ?
-              AND event.observed_at_ms <= ?
-              AND event.sequence <= ?
-              AND selected_token.token_id IN (?, ?)
-              AND (
-                  (selected_token.token_id = ? AND event.sequence > ?)
-                  OR
-                  (selected_token.token_id = ? AND event.sequence > ?)
-              )
-              {session_clause}
-            GROUP BY event.subscription_generation,
-                     selected_token.token_id
-        )
-        SELECT MAX(first_observed_at_ms) AS complete_at_ms
-        FROM first_token_baseline
-        GROUP BY subscription_generation
-        HAVING COUNT(DISTINCT token_id) = 2
-        ORDER BY complete_at_ms
-        LIMIT 1
-        """,
-        tuple(parameters),
-    ).fetchone()
-    return (
-        None
-        if row is None
-        else _nonnegative_int(
-            row["complete_at_ms"],
-            "complete baseline-pair timestamp",
-        )
-    )
 
 
 def checkpoint_before(
@@ -288,7 +194,8 @@ def checkpoint_pair_at_or_after(
         parameters.append(normalized_session)
     row = connection.execute(
         f"""
-        SELECT observed_at_ms
+        SELECT observed_at_ms, sequence, session_id,
+               subscription_generation
         FROM book_checkpoints
         WHERE condition_id = ? AND token_id IN (?, ?)
           AND observed_at_ms >= ? AND observed_at_ms <= ?
@@ -303,14 +210,24 @@ def checkpoint_pair_at_or_after(
     ).fetchone()
     if row is None:
         return None
-    boundary_ms = _strict_int(row["observed_at_ms"], "checkpoint timestamp")
-    return _checkpoint_pair_at(
+    boundary = _CheckpointBoundary.from_row(row)
+    if not allow_gaps:
+        reject_known_gaps(
+            connection,
+            replay_cutoff_sequence=replay_cutoff_sequence,
+            start_at_ms=boundary.observed_at_ms,
+            end_at_ms=boundary.observed_at_ms,
+            session_id=normalized_session,
+            condition_ids=(normalized_condition,),
+            market_slugs=(market.market_slug,),
+            token_id=None,
+        )
+    return _checkpoint_pair_from_boundary(
         connection,
         normalized_condition,
-        boundary_ms,
+        token_ids,
+        boundary,
         replay_cutoff_sequence=replay_cutoff_sequence,
-        session_id=normalized_session,
-        allow_gaps=allow_gaps,
     )
 
 
@@ -359,20 +276,35 @@ def _checkpoint_pair_before(
     ).fetchone()
     if boundary is None:
         return None
+    typed_boundary = _CheckpointBoundary.from_row(boundary)
     if not allow_gaps:
         reject_known_gaps(
             connection,
             replay_cutoff_sequence=replay_cutoff_sequence,
-            start_at_ms=_strict_int(
-                boundary["observed_at_ms"],
-                "checkpoint timestamp",
-            ),
+            start_at_ms=typed_boundary.observed_at_ms,
             end_at_ms=observed_at_ms,
             session_id=session_id,
             condition_ids=(condition_id,),
             market_slugs=(market.market_slug,),
             token_id=None,
         )
+    return _checkpoint_pair_from_boundary(
+        connection,
+        condition_id,
+        token_ids,
+        typed_boundary,
+        replay_cutoff_sequence=replay_cutoff_sequence,
+    )
+
+
+def _checkpoint_pair_from_boundary(
+    connection: sqlite3.Connection,
+    condition_id: str,
+    token_ids: tuple[str, str],
+    boundary: _CheckpointBoundary,
+    *,
+    replay_cutoff_sequence: int,
+) -> tuple[BookCheckpoint, BookCheckpoint]:
     rows = connection.execute(
         """
         SELECT * FROM book_checkpoints
@@ -383,10 +315,10 @@ def _checkpoint_pair_before(
         (
             condition_id,
             *token_ids,
-            boundary["observed_at_ms"],
-            boundary["sequence"],
-            boundary["session_id"],
-            boundary["subscription_generation"],
+            boundary.observed_at_ms,
+            boundary.sequence,
+            boundary.session_id,
+            boundary.subscription_generation,
         ),
     ).fetchall()
     rows_by_token = {row["token_id"]: row for row in rows}
@@ -394,18 +326,23 @@ def _checkpoint_pair_before(
         raise ArchiveIntegrityError(
             "common book checkpoint does not contain both market tokens"
         )
+    market = market_before_checkpoint(
+        connection,
+        condition_id,
+        boundary.sequence,
+    )
     return (
-        checkpoint_from_row(
-            connection,
+        checkpoint_from_validated_row(
             rows_by_token[token_ids[0]],
             token_ids[0],
             replay_cutoff_sequence=replay_cutoff_sequence,
+            market=market,
         ),
-        checkpoint_from_row(
-            connection,
+        checkpoint_from_validated_row(
             rows_by_token[token_ids[1]],
             token_ids[1],
             replay_cutoff_sequence=replay_cutoff_sequence,
+            market=market,
         ),
     )
 
@@ -441,68 +378,3 @@ def _checkpoint_pair_at(
             token_id=None,
         )
     return checkpoints
-
-
-def checkpoint_from_row(
-    connection: sqlite3.Connection,
-    row: sqlite3.Row,
-    token_id: str,
-    *,
-    replay_cutoff_sequence: int,
-) -> BookCheckpoint:
-    """Decode and validate a checkpoint row against its prior metadata."""
-
-    sequence = _strict_int(row["sequence"], "checkpoint sequence")
-    if sequence > replay_cutoff_sequence:
-        raise ArchiveIntegrityError("book checkpoint exceeds the replay cutoff")
-    book = _typed_payload(
-        PayloadKind.BOOK_BASELINE,
-        row["payload_json"],
-        BookBaselinePayload,
-    )
-    metadata_row = connection.execute(
-        """
-        SELECT payload_json FROM metadata_revisions
-        WHERE condition_id = ? AND sequence <= ?
-        ORDER BY sequence DESC
-        LIMIT 1
-        """,
-        (row["condition_id"], sequence),
-    ).fetchone()
-    if metadata_row is None:
-        raise ArchiveIntegrityError("book checkpoint has no preceding market metadata")
-    market = _typed_payload(
-        PayloadKind.MARKET_METADATA,
-        metadata_row["payload_json"],
-        MarketMetadataPayload,
-    )
-    if (
-        row["condition_id"] != market.condition_id
-        or row["market_slug"] != market.market_slug
-        or token_id not in {outcome.token_id for outcome in market.outcomes}
-        or book.token_id != token_id
-    ):
-        raise ArchiveIntegrityError(
-            "book checkpoint identity does not match market metadata"
-        )
-    try:
-        return BookCheckpoint(
-            sequence=sequence,
-            session_id=_strict_int(row["session_id"], "checkpoint session"),
-            subscription_generation=_strict_int(
-                row["subscription_generation"],
-                "checkpoint generation",
-            ),
-            observed_at_ms=_strict_int(
-                row["observed_at_ms"],
-                "checkpoint timestamp",
-            ),
-            identity=MarketIdentity(
-                condition_id=row["condition_id"],
-                market_slug=row["market_slug"],
-                token_id=token_id,
-            ),
-            book=book,
-        )
-    except ValueError as error:
-        raise ArchiveFormatError("book checkpoint is malformed") from error

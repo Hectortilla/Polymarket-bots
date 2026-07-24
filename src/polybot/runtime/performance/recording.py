@@ -15,7 +15,7 @@ from polybot.cli.observability.events import (
     RuntimeFailed,
     StreamReceived,
 )
-from polybot.cli.streams.contracts import StreamKind
+from polybot.cli.streams.kinds import StreamKind
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.clock import Clock
 from polybot.framework.events import FillEvent, OrderRequest
@@ -90,6 +90,15 @@ class PaperPerformanceRecorder:
                         event.item.event.token_id
                     )
                     self._artifacts.record_book(event.item.event)
+                elif event.item.kind is StreamKind.BOOK_GAP:
+                    gap = event.item.event
+                    self._artifacts.remove_books(
+                        tuple(
+                            token_id
+                            for token_id, book in self._artifacts.books.items()
+                            if gap.affects(book.condition_id)
+                        )
+                    )
 
             self._enqueue(record_stream)
             return

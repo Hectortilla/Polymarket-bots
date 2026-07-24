@@ -34,10 +34,14 @@ def chart_display_points(width: int) -> int:
     )
 
 
-def visible_time_range(
-    sample_times: deque[float], time_zoom_level: int, width: int
+def visible_epoch_seconds_range(
+    sample_epoch_seconds: deque[float],
+    time_zoom_level: int,
+    width: int,
 ) -> tuple[float, float] | None:
-    timestamps = list(sample_times)[-chart_window_points(time_zoom_level, width) :]
+    timestamps = list(sample_epoch_seconds)[
+        -chart_window_points(time_zoom_level, width) :
+    ]
     if not timestamps:
         return None
     return timestamps[0], timestamps[-1]

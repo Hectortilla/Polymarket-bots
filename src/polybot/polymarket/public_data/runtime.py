@@ -7,16 +7,14 @@ from dataclasses import dataclass
 from polymarket import AsyncPublicClient
 
 from polybot.polymarket.clob import ClobClient
+from polybot.polymarket.client_lifecycle import PublicClientLease
 from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.ws_market import MarketStream
 
-from .client import _PublicClientOwner, _acquire_public_client
-
-
 @dataclass(slots=True)
-class RuntimePublicData(_PublicClientOwner):
+class RuntimePublicData:
     """Normalized public-data adapters used by one paper runtime."""
 
     gamma: GammaClient
@@ -24,18 +22,23 @@ class RuntimePublicData(_PublicClientOwner):
     market_stream: MarketStream
     wallet_activity_client: PolymarketWalletActivityClient
     position_client: PositionClient
+    _client_lease: PublicClientLease
 
+    @classmethod
+    def create(
+        cls,
+        client: AsyncPublicClient | None = None,
+    ) -> RuntimePublicData:
+        lease = PublicClientLease.acquire(client)
+        public_client = lease.client
+        return cls(
+            gamma=GammaClient(public_client),
+            clob=ClobClient(public_client),
+            market_stream=MarketStream(public_client),
+            wallet_activity_client=PolymarketWalletActivityClient(public_client),
+            position_client=PositionClient(public_client),
+            _client_lease=lease,
+        )
 
-def create_runtime_public_data(
-    client: AsyncPublicClient | None = None,
-) -> RuntimePublicData:
-    """Create the shared public adapters required by a paper runtime."""
-    public_client, owns_client = _acquire_public_client(client)
-    return RuntimePublicData(
-        gamma=GammaClient(public_client),
-        clob=ClobClient(public_client),
-        market_stream=MarketStream(public_client),
-        wallet_activity_client=PolymarketWalletActivityClient(public_client),
-        position_client=PositionClient(public_client),
-        _owned_client=public_client if owns_client else None,
-    )
+    async def close(self) -> None:
+        await self._client_lease.close()

@@ -18,8 +18,9 @@ from polybot.examples.btc_five_minute_strategy import (
 from polybot.framework.activity import ActivitySeverity
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
@@ -66,7 +67,11 @@ class BtcFiveMinuteMomentumBot(BaseBot):
     ) -> tuple[StreamRule, ...]:
         return (self._stream_rule(now_ms, bucket_offset=1),)
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
         if book.market_slug is None:
             return
         current_slug = self._slug_for(book.received_at_ms, bucket_offset=0)
@@ -76,6 +81,8 @@ class BtcFiveMinuteMomentumBot(BaseBot):
             return
         if not await self._load_market(ctx, current_slug):
             return
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
         if book.token_id not in (self._up_token_id, self._down_token_id):
             return
 
@@ -98,6 +105,15 @@ class BtcFiveMinuteMomentumBot(BaseBot):
             and event.condition_id == self._position.condition_id
         ):
             self._position = None
+
+    async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
+        market = self._market
+        if market is None or not gap.affects(market.condition_id):
+            return
+        self._books.clear()
+        self._trend = ProbabilityTrend(self.settings)
+        self._metrics = None
+        self._last_sample_at_ms = None
 
     async def _load_market(self, ctx: BotContext, slug: str) -> bool:
         if self._market is not None and self._market.slug == slug:
@@ -190,9 +206,9 @@ class BtcFiveMinuteMomentumBot(BaseBot):
                 reason=MOMENTUM_ENTRY_REASON,
             )
         )
-        if fill.filled_size <= 0:
+        if not fill.has_execution:
             return
-        average_price = fill.average_price or quote.best_ask
+        average_price = fill.execution_price
         self._position = OpenPosition(
             token_id=token_id,
             outcome=outcome,
@@ -244,7 +260,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         await ctx.activity.emit(
             (
                 f"BTC 5m exited {position.outcome} at "
-                f"{fill.average_price or quote.best_bid} ({reason})"
+                f"{fill.execution_price} ({reason})"
             ),
             severity=ActivitySeverity.INFO,
         )

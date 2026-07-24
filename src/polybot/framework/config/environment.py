@@ -20,7 +20,7 @@ from .constants import (
     BOT_PAPER_LATENCY_MS_ENV,
     BOT_PAPER_PORTFOLIO_USDC_ENV,
     BOT_PRIVATE_KEY_ENV,
-    DEFAULT_DATA_TRADES_BUDGET_PER_10S,
+    DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
     DEFAULT_MAX_SLIPPAGE_PCT,
@@ -54,12 +54,12 @@ def config_values_from_env() -> dict[str, Any]:
     """Read and parse environment values before model validation."""
 
     return {
-        "mode": os.getenv(BOT_MODE_ENV, DEFAULT_BOT_MODE),
+        "mode": os.getenv(BOT_MODE_ENV, DEFAULT_BOT_MODE.value),
         "stream_rules": env_stream_rules(),
         "data_trades_budget_per_10s": int(
             os.getenv(
                 BOT_DATA_TRADES_BUDGET_PER_10S_ENV,
-                str(DEFAULT_DATA_TRADES_BUDGET_PER_10S),
+                str(DEFAULT_DATA_TRADES_BUDGET),
             )
         ),
         "max_order_size": Decimal(

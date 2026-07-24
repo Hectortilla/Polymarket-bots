@@ -190,7 +190,10 @@ class PaperBroker(Broker):
             await self._sleep(selected_latency_ms / 1000)
         except ClockDataExhaustedError:
             current_continuity = self._book_continuity(order.token_id)
-            if _crossed_book_blackout(initial_continuity, current_continuity):
+            if (
+                initial_continuity is not None
+                and initial_continuity.was_disrupted_by(current_continuity)
+            ):
                 return self._coverage_gap_rejection(order_id, order)
             return self._rejected_fill(
                 order_id,
@@ -200,7 +203,10 @@ class PaperBroker(Broker):
                 reject_message=BACKTEST_DATA_EXHAUSTED_MESSAGE,
             )
         current_continuity = self._book_continuity(order.token_id)
-        if _crossed_book_blackout(initial_continuity, current_continuity):
+        if (
+            initial_continuity is not None
+            and initial_continuity.was_disrupted_by(current_continuity)
+        ):
             return self._coverage_gap_rejection(order_id, order)
         if self._is_settled(order.condition_id):
             return self._rejected_fill(
@@ -274,16 +280,11 @@ class PaperBroker(Broker):
                 reject_message=NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
             )
 
-        if fill.average_price is None:
-            raise AssertionError(
-                "simulated non-rejected fills require an average price"
-            )
-
         updated_position = self._portfolio.apply_fill(
             token_id=order.token_id,
             side=order.side,
             filled_size=fill.filled_size,
-            average_price=fill.average_price,
+            average_price=fill.execution_price,
             fee_usdc=fill.fee_usdc,
         )
         if updated_position.size == 0:
@@ -438,17 +439,3 @@ class PaperBroker(Broker):
 def _complete_claim(future: asyncio.Future[FillEvent], fill: FillEvent) -> None:
     if not future.done():
         future.set_result(fill)
-
-
-def _crossed_book_blackout(
-    initial: BookContinuity | None,
-    current: BookContinuity | None,
-) -> bool:
-    if initial is None:
-        return False
-    return (
-        initial.blackout
-        or current is None
-        or current.blackout
-        or current.revision != initial.revision
-    )

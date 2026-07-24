@@ -21,13 +21,15 @@ from .anomalies import (
     capture_anomaly_journal_available as _capture_anomaly_journal_available,
     iter_capture_anomalies as _iter_capture_anomalies,
 )
+from .baselines import (
+    first_complete_baseline_pair_at_or_after as _first_baseline_pair,
+    has_complete_baseline_pair as _has_baseline_pair,
+)
 from .checkpoints import (
     checkpoint_before as _checkpoint_before,
     checkpoint_pair_at as _checkpoint_pair_at,
     checkpoint_pair_at_or_after as _checkpoint_pair_at_or_after,
     checkpoint_pair_before as _checkpoint_pair_before,
-    first_complete_baseline_pair_at_or_after as _first_baseline_pair,
-    has_complete_baseline_pair as _has_baseline_pair,
 )
 from .connections import configure_writer_connection
 from .coverage import coverage_gaps as _coverage_gaps
@@ -37,7 +39,7 @@ from .events import event_bounds as _event_bounds
 from .events import event_count as _event_count
 from .events import stream_events as _stream_events
 from .features import _capture_anomaly_journal_provenance
-from .integrity import _validate_archive
+from .format import _validate_archive
 from .lifecycle import (
     _acquire_writer_lock,
     _archive_path,

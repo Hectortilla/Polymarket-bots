@@ -67,7 +67,7 @@ class TerminalDashboard:
             self._input_task = asyncio.create_task(self._read_keys())
         except Exception as error:
             cleanup_error = await self._close_live()
-            self._report_failure(error, cleanup_error)
+            await self._report_failure(error, cleanup_error)
             raise
 
     def emit(self, event: RuntimeEvent) -> None:
@@ -111,7 +111,10 @@ class TerminalDashboard:
         cleanup_error = await self._close_live()
         failure = render_error or cleanup_error
         if failure is not None:
-            self._report_failure(failure, cleanup_error if render_error else None)
+            await self._report_failure(
+                failure,
+                cleanup_error if render_error else None,
+            )
             raise failure
 
     async def _render_loop(self) -> None:
@@ -125,7 +128,7 @@ class TerminalDashboard:
                 await run_blocking(self._render)
         except Exception as error:
             cleanup_error = await self._close_live()
-            self._report_failure(error, cleanup_error)
+            await self._report_failure(error, cleanup_error)
 
     async def _read_keys(self) -> None:
         if termios is None or tty is None or not sys.stdin.isatty():
@@ -210,7 +213,7 @@ class TerminalDashboard:
             return error
         return None
 
-    def _report_failure(
+    async def _report_failure(
         self,
         error: Exception,
         cleanup_error: Exception | None = None,
@@ -223,4 +226,4 @@ class TerminalDashboard:
         if cleanup_error is not None and cleanup_error is not error:
             message.append("Dashboard cleanup also failed:\n", style="bold red")
             message.append("".join(format_exception(cleanup_error)), style="red")
-        self._console.print(message)
+        await run_blocking(self._console.print, message)

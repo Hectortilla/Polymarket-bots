@@ -11,8 +11,9 @@ from polybot.framework.streams import StreamRule
 from polybot.framework.wallets import validate_wallet_address
 
 from .constants import (
-    DEFAULT_DATA_TRADES_BUDGET_PER_10S,
-    DEFAULT_BOT_MODE as DEFAULT_BOT_MODE_NAME,
+    DEFAULT_DATA_TRADES_BUDGET,
+    MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+    DEFAULT_BOT_MODE,
     DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
     DEFAULT_MAX_SLIPPAGE_PCT,
@@ -20,20 +21,9 @@ from .constants import (
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
+from .mode import BotMode
 from .environment import config_values_from_env, parse_bool
 from .stream_rules import parse_stream_rules_json
-
-DECIMAL_CONFIG_FIELDS = frozenset(
-    {"max_order_size", "max_slippage_pct", "paper_portfolio_usdc"}
-)
-INTEGER_CONFIG_FIELDS = frozenset(
-    {
-        "paper_latency_ms",
-        "paper_latency_jitter_ms",
-        "event_max_age_ms",
-        "data_trades_budget_per_10s",
-    }
-)
 
 CONFIG_OVERRIDE_KIND = "override_kind"
 CONFIG_SENSITIVE = "sensitive"
@@ -67,14 +57,6 @@ def _config_field(
     return field(default=default, metadata=metadata)
 
 
-class BotMode(StrEnum):
-    PAPER = "paper"
-    LIVE = "live"
-
-
-DEFAULT_BOT_MODE = BotMode(DEFAULT_BOT_MODE_NAME)
-
-
 class BotConfigOverrides(TypedDict, total=False):
     name: str
     mode: BotMode
@@ -106,7 +88,7 @@ class BotConfig:
         override_kind=ConfigOverrideKind.STREAM_RULES,
     )
     data_trades_budget_per_10s: int = _config_field(
-        DEFAULT_DATA_TRADES_BUDGET_PER_10S,
+        DEFAULT_DATA_TRADES_BUDGET,
         override_kind=ConfigOverrideKind.INTEGER,
     )
     max_order_size: Decimal = _config_field(
@@ -174,9 +156,13 @@ class BotConfig:
                 "funder_address",
                 validate_wallet_address(self.funder_address),
             )
-        for field_name in DECIMAL_CONFIG_FIELDS:
-            if not getattr(self, field_name).is_finite():
-                raise ValueError(f"{field_name} must be finite")
+        for config_field in fields(self):
+            if (
+                config_field.metadata[CONFIG_OVERRIDE_KIND]
+                is ConfigOverrideKind.DECIMAL
+                and not getattr(self, config_field.name).is_finite()
+            ):
+                raise ValueError(f"{config_field.name} must be finite")
         if self.max_order_size <= 0:
             raise ValueError("max_order_size must be positive")
         if self.max_slippage_pct < 0:
@@ -192,11 +178,11 @@ class BotConfig:
         if (
             not 1
             <= self.data_trades_budget_per_10s
-            <= DEFAULT_DATA_TRADES_BUDGET_PER_10S
+            <= MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW
         ):
             raise ValueError(
                 "data_trades_budget_per_10s must be between 1 and "
-                f"{DEFAULT_DATA_TRADES_BUDGET_PER_10S}"
+                f"{MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW}"
             )
 
     def with_overrides(self, **overrides: Unpack[BotConfigOverrides]) -> BotConfig:
@@ -257,11 +243,7 @@ class BotConfig:
         if isinstance(value, Decimal):
             return str(value)
         if isinstance(value, StreamRule):
-            return {
-                "relation": value.relation.value,
-                "market_slugs": list(value.market_slugs),
-                "wallet_addresses": list(value.wallet_addresses),
-            }
+            return value.to_dict()
         if isinstance(value, tuple):
             return [BotConfig._configuration_json_value(item) for item in value]
         return value

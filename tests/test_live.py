@@ -2,7 +2,8 @@ import pytest
 
 from polybot.execution.live import LiveBroker
 from polybot.framework.config.constants import BOT_MODE_ENV
-from polybot.framework.config.models import BotConfig, BotMode
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
 
 LIVE_MODE_REQUIREMENT = f"{BOT_MODE_ENV}={BotMode.LIVE.value}"
 FUNDER_ADDRESS = "0x00000000000000000000000000000000000000f0"

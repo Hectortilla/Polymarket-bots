@@ -9,7 +9,7 @@ from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
-from polybot.performance.contracts.files import DEFAULT_REPORT_INTERVAL_MS
+from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.performance.contracts.run import (
     PerformanceRunKind,
     RunProvenance,

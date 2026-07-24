@@ -8,12 +8,23 @@ from typing import Literal
 
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 
 RandomHoldAction = Literal["buy", "sell"]
 RANDOM_HOLD_BUY_REASON = "random_hold_buy"
 RANDOM_HOLD_SELL_REASON = "random_hold_sell"
+
+
+def select_random_hold_token(
+    eligible_token_ids: tuple[str, str],
+    sampled_index: int,
+) -> str:
+    """Apply one explicitly sampled strategy choice to the eligible outcomes."""
+    if sampled_index not in range(len(eligible_token_ids)):
+        raise ValueError("sampled outcome index is out of range")
+    return eligible_token_ids[sampled_index]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,17 +79,27 @@ class ExampleRandomHoldBot(BaseBot):
         self._bought_at: float | None = None
         self._sell_in_flight = False
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
         if book.market_slug is None or (
             self.market_slug is not None and book.market_slug != self.market_slug
         ):
             return
         await self._load_market(ctx, book.market_slug)
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
         if self._selected_token_id is None:
             if self._token_ids is None:
                 return
             rng = self._rng if self._rng is not None else ctx.rng
-            self._selected_token_id = rng.choice(self._token_ids)
+            sampled_index = rng.randrange(len(self._token_ids))
+            self._selected_token_id = select_random_hold_token(
+                self._token_ids,
+                sampled_index,
+            )
         action = RandomHoldState(
             self._selected_token_id,
             self._position_size,
@@ -90,6 +111,13 @@ class ExampleRandomHoldBot(BaseBot):
             return
         if action == "sell":
             await self._sell(ctx, book)
+
+    async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
+        if not gap.affects(self._condition_id):
+            return
+        if self._position_size == 0:
+            self._selected_token_id = None
+            self._bought_at = None
 
     async def _load_market(self, ctx: BotContext, market_slug: str) -> None:
         if market_slug == self._market_slug:
@@ -118,7 +146,7 @@ class ExampleRandomHoldBot(BaseBot):
                 reason=RANDOM_HOLD_BUY_REASON,
             )
         )
-        if fill.filled_size > 0:
+        if fill.has_execution:
             self._position_size = fill.filled_size
             self._bought_at = self._now(ctx)
 

@@ -16,10 +16,10 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.persistence.atomic_json import AtomicJsonFile
 
 from polybot.performance.contracts.files import (
-    DEFAULT_REPORT_INTERVAL_MS,
     OrderField,
     SUMMARY_FILE_NAME,
 )
+from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.performance.contracts.run import (
     PerformanceCounters,
     PerformanceRunStatus,
@@ -27,7 +27,7 @@ from polybot.performance.contracts.run import (
     RunSelection,
     SampleReason,
 )
-from polybot.performance.valuation import (
+from polybot.performance.contracts.valuation import (
     PortfolioLike,
     PortfolioValuation,
 )
@@ -44,7 +44,6 @@ from .serialization import (
 from .summary import PerformanceSummaryInput, serialize_performance_summary
 
 
-ZERO_FILLED_SIZE = Decimal("0")
 
 
 class PerformanceArtifacts:
@@ -216,8 +215,6 @@ class PerformanceArtifacts:
         self._validate_timestamp(fill.received_at_ms)
         if fill.received_at_ms < submitted_at_ms:
             raise ValueError("order completion must not precede submission")
-        if fill.filled_size > ZERO_FILLED_SIZE and fill.average_price is None:
-            raise ValueError("a positive fill requires an average price")
         self._output.write_order(
             {
                 OrderField.SUBMITTED_AT_MS: submitted_at_ms,
@@ -247,15 +244,13 @@ class PerformanceArtifacts:
         if fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP:
             self._coverage_gap_rejected_order_count += 1
         is_new_fill = (
-            fill.filled_size > ZERO_FILLED_SIZE
+            fill.has_execution
             and fill.order_id not in self._recorded_fill_order_ids
         )
         if is_new_fill:
-            if fill.average_price is None:
-                raise AssertionError("validated positive fill requires average price")
             self._recorded_fill_order_ids.add(fill.order_id)
             self._fill_count += 1
-            self._filled_notional_usdc += fill.filled_size * fill.average_price
+            self._filled_notional_usdc += fill.filled_size * fill.execution_price
         return is_new_fill
 
     def record_fill(

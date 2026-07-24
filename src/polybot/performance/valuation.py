@@ -3,97 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
 from decimal import Decimal
-from enum import StrEnum
-from typing import Protocol
 
 from polybot.framework.events.books import BookSnapshot
-
-
-ZERO_MARKET_VALUE = Decimal("0")
-
-
-class ValuationStatus(StrEnum):
-    FRESH = "fresh"
-    STALE = "stale"
-    UNAVAILABLE = "unavailable"
-
-    @property
-    def is_complete(self) -> bool:
-        """Whether the valuation contains no stale or unavailable samples."""
-        return self is ValuationStatus.FRESH
-
-
-class PositionLike(Protocol):
-    token_id: str
-    size: Decimal
-    average_entry_price: Decimal | None
-
-
-class PortfolioLike(Protocol):
-    cash_usdc: Decimal
-    cumulative_fees_usdc: Decimal
-    positions: Mapping[str, PositionLike] | tuple[PositionLike, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class PositionValuation:
-    token_id: str
-    size: Decimal
-    average_entry_price: Decimal | None
-    executable_mark: Decimal | None
-    last_executable_mark: Decimal | None
-    market_value_usdc: Decimal | None
-    status: ValuationStatus
-
-    @property
-    def effective_mark(self) -> Decimal | None:
-        if self.executable_mark is not None:
-            return self.executable_mark
-        return self.last_executable_mark
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioValuation:
-    cash_usdc: Decimal
-    marked_position_value_usdc: Decimal | None
-    equity_usdc: Decimal | None
-    pnl_usdc: Decimal | None
-    exposure_usdc: Decimal | None
-    positions: tuple[PositionValuation, ...]
-    status: ValuationStatus
-
-    @property
-    def is_stale(self) -> bool:
-        return self.status is ValuationStatus.STALE
-
-    @property
-    def position_count(self) -> int:
-        return len(self.positions)
-
-    @classmethod
-    def unavailable(
-        cls, cash_usdc: Decimal = ZERO_MARKET_VALUE
-    ) -> PortfolioValuation:
-        return cls(
-            cash_usdc=cash_usdc,
-            marked_position_value_usdc=None,
-            equity_usdc=None,
-            pnl_usdc=None,
-            exposure_usdc=None,
-            positions=(),
-            status=ValuationStatus.UNAVAILABLE,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioValuationResult:
-    valuation: PortfolioValuation
-    next_executable_marks: tuple[tuple[str, Decimal], ...]
-
-    def marks(self) -> dict[str, Decimal]:
-        return dict(self.next_executable_marks)
+from polybot.performance.contracts.valuation import (
+    ZERO_MARKET_VALUE,
+    PortfolioLike,
+    PortfolioValuation,
+    PortfolioValuationResult,
+    PositionLike,
+    PositionValuation,
+)
+from polybot.performance.contracts.valuation_status import (
+    ValuationStatus,
+    aggregate_valuation_status,
+)
 
 
 def value_portfolio(
@@ -232,31 +156,6 @@ def _portfolio_status(
     positions: tuple[PositionValuation, ...],
 ) -> ValuationStatus:
     return aggregate_valuation_status(position.status for position in positions)
-
-
-def aggregate_valuation_status(
-    statuses: Iterable[ValuationStatus],
-) -> ValuationStatus:
-    observed = set(statuses)
-    if ValuationStatus.UNAVAILABLE in observed:
-        return ValuationStatus.UNAVAILABLE
-    if ValuationStatus.STALE in observed:
-        return ValuationStatus.STALE
-    return ValuationStatus.FRESH
-
-
-def history_valuation_status(
-    *,
-    stale_sample_count: int,
-    unavailable_sample_count: int,
-) -> ValuationStatus:
-    """Derive an equity-history status from its persisted sample counters."""
-    statuses = []
-    if unavailable_sample_count:
-        statuses.append(ValuationStatus.UNAVAILABLE)
-    if stale_sample_count:
-        statuses.append(ValuationStatus.STALE)
-    return aggregate_valuation_status(statuses)
 
 
 def _validate_valuation_options(

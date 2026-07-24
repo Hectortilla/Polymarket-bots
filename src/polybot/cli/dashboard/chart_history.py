@@ -18,7 +18,7 @@ from .chart_state import (
     chart_window_points,
     last_chart_value,
     trim,
-    visible_time_range,
+    visible_epoch_seconds_range,
 )
 from .palette import SERIES_PALETTE
 
@@ -38,7 +38,7 @@ class DashboardCharts:
     pending_trade_markers: dict[str, list[Side]] = field(default_factory=dict)
     wallet_value_history: deque[float] = field(default_factory=deque)
     wallet_value_stale_history: deque[bool] = field(default_factory=deque)
-    chart_sample_times: deque[float] = field(default_factory=deque)
+    chart_sample_epoch_seconds: deque[float] = field(default_factory=deque)
     time_zoom_level: int = 0
 
     def __post_init__(self) -> None:
@@ -75,8 +75,8 @@ class DashboardCharts:
         current_book: Callable[[str, int], BookSnapshot | None],
         executable_equity: Decimal | None,
     ) -> None:
-        self.chart_sample_times.append(sampled_at_ms / 1_000)
-        trim(self.chart_sample_times, MAX_CHART_HISTORY_POINTS)
+        self.chart_sample_epoch_seconds.append(sampled_at_ms / 1_000)
+        trim(self.chart_sample_epoch_seconds, MAX_CHART_HISTORY_POINTS)
         for token_id in self.chart_tokens:
             history, stale_history, marker_history = self._token_histories(token_id)
             book = current_book(token_id, sampled_at_ms)
@@ -105,8 +105,12 @@ class DashboardCharts:
     def chart_display_points(width: int) -> int:
         return chart_display_points(width)
 
-    def visible_time_range(self, width: int) -> tuple[float, float] | None:
-        return visible_time_range(self.chart_sample_times, self.time_zoom_level, width)
+    def visible_epoch_seconds_range(self, width: int) -> tuple[float, float] | None:
+        return visible_epoch_seconds_range(
+            self.chart_sample_epoch_seconds,
+            self.time_zoom_level,
+            width,
+        )
 
     def zoom(self, direction: int) -> bool:
         updated_level = min(

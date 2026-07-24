@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import FillEvent
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.streams import StreamRule
@@ -28,7 +29,15 @@ class BaseBot:
     ) -> tuple[StreamRule, ...]:
         return ()
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
+        return None
+
+    async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
+        """Discard strategy state derived from the affected book generation."""
         pass
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:

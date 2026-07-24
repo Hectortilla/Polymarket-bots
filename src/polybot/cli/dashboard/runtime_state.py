@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from time import monotonic
 
-from polybot.cli.observability.events import RuntimeState
-from polybot.framework.config.models import BotMode
+from polybot.cli.observability.states import RuntimeState
+from polybot.framework.config.mode import BotMode
 
 
 @dataclass(slots=True)
@@ -17,7 +17,7 @@ class DashboardRuntime:
     name: str = "-"
     mode: BotMode | None = None
     lifecycle: RuntimeState = RuntimeState.STARTING
-    started_at_monotonic: float | None = None
+    started_at_monotonic_seconds: float | None = None
     initial_cash_usdc: Decimal | None = None
 
     def start(
@@ -26,12 +26,12 @@ class DashboardRuntime:
         name: str,
         mode: BotMode,
         initial_cash_usdc: Decimal,
-        occurred_at_monotonic: float,
+        occurred_at_monotonic_seconds: float,
     ) -> None:
         self.name = name
         self.mode = mode
         self.initial_cash_usdc = initial_cash_usdc
-        self.started_at_monotonic = occurred_at_monotonic
+        self.started_at_monotonic_seconds = occurred_at_monotonic_seconds
         self.lifecycle = RuntimeState.STARTING
 
     def transition_to(self, lifecycle: RuntimeState) -> None:
@@ -40,8 +40,8 @@ class DashboardRuntime:
     def fail(self) -> None:
         self.lifecycle = RuntimeState.FAILED
 
-    def uptime_seconds(self, now_monotonic: float | None = None) -> int:
-        if self.started_at_monotonic is None:
+    def uptime_seconds(self, now_monotonic_seconds: float | None = None) -> int:
+        if self.started_at_monotonic_seconds is None:
             return 0
-        current = monotonic() if now_monotonic is None else now_monotonic
-        return max(0, int(current - self.started_at_monotonic))
+        current = monotonic() if now_monotonic_seconds is None else now_monotonic_seconds
+        return max(0, int(current - self.started_at_monotonic_seconds))

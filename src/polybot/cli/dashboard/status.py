@@ -9,8 +9,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.console import Group
 
-from polybot.cli.observability.events import BootstrapPhase
-from polybot.cli.streams.contracts import StreamKind
+from polybot.cli.observability.states import BootstrapPhase
+from polybot.cli.streams.kinds import StreamKind
 
 from .state import DashboardState
 

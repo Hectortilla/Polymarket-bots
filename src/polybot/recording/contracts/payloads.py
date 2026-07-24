@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TypeAlias
 
 from polybot.framework.events import Side
+from polybot.framework.events.resolution_tokens import normalize_resolution_tokens
 
 from .book import (
     BookBaselinePayload,
@@ -66,21 +67,12 @@ class ResolutionPayload:
             ("winning_token_id", "winning_outcome", "source"),
         )
         normalize_optional_text_fields(self, ("resolution_id",))
-        if (
-            not isinstance(self.token_ids, tuple)
-            or len(self.token_ids) != 2
-            or not all(
-                isinstance(token_id, str) and token_id.strip()
-                for token_id in self.token_ids
-            )
-        ):
-            raise ValueError("market resolution requires two token IDs")
-        normalized_token_ids = tuple(token_id.strip() for token_id in self.token_ids)
-        object.__setattr__(self, "token_ids", normalized_token_ids)
-        if len(set(normalized_token_ids)) != 2:
-            raise ValueError("market resolution token IDs must be distinct")
-        if self.winning_token_id not in normalized_token_ids:
-            raise ValueError("winning token does not belong to the resolved market")
+        token_ids, winning_token_id = normalize_resolution_tokens(
+            self.token_ids,
+            self.winning_token_id,
+        )
+        object.__setattr__(self, "token_ids", token_ids)
+        object.__setattr__(self, "winning_token_id", winning_token_id)
 
 
 RecordedPayload: TypeAlias = (

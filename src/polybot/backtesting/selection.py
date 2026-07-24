@@ -8,7 +8,7 @@ from polybot.backtesting.contracts import (
     BacktestOptions,
     BacktestSelection,
 )
-from polybot.backtesting.coverage import gaps_affecting_markets
+from polybot.backtesting.coverage_selection import gaps_affecting_markets
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.errors import ArchiveCoverageError
 from polybot.recording.archive.models import RecordingSession

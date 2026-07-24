@@ -8,8 +8,8 @@ from typing import Any
 
 from polybot.framework.events import Side
 from polybot.framework.events.prices import (
-    OUTCOME_PRICE_CEILING,
-    OUTCOME_PRICE_FLOOR,
+    is_outcome_payout,
+    is_outcome_price,
 )
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
@@ -59,10 +59,7 @@ class FollowBaseline:
             raise ValueError("followed-wallet baselines require market identity")
         if not self.size.is_finite() or self.size <= 0:
             raise ValueError("followed-wallet baseline size must be positive and finite")
-        if self.basis_price is not None and (
-            not self.basis_price.is_finite()
-            or not OUTCOME_PRICE_FLOOR <= self.basis_price <= OUTCOME_PRICE_CEILING
-        ):
+        if self.basis_price is not None and not is_outcome_payout(self.basis_price):
             raise ValueError("followed-wallet baseline price must be between zero and one")
 
     @classmethod
@@ -106,11 +103,7 @@ class FollowMovement:
             raise ValueError(
                 "followed-wallet movement size must be positive and finite"
             )
-        if (
-            not self.price.is_finite()
-            or self.price <= OUTCOME_PRICE_FLOOR
-            or self.price > OUTCOME_PRICE_CEILING
-        ):
+        if not is_outcome_price(self.price):
             raise ValueError(
                 "followed-wallet movement price must be between zero and one"
             )

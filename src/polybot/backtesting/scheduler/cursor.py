@@ -11,6 +11,9 @@ from threading import Event
 from polybot.recording.contracts.records import RecordedEvent
 
 
+REPLAY_QUEUE_POLL_INTERVAL_SECONDS = 0.1
+
+
 REPLAY_EVENT_QUEUE_CAPACITY = 256
 
 
@@ -94,7 +97,7 @@ class ReplayCursor:
         future = asyncio.run_coroutine_threadsafe(self._queue.put(item), loop)
         while not self._stop.is_set():
             try:
-                future.result(timeout=0.1)
+                future.result(timeout=REPLAY_QUEUE_POLL_INTERVAL_SECONDS)
                 return True
             except FutureTimeoutError:
                 continue

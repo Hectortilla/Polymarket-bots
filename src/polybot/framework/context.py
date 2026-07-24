@@ -45,3 +45,13 @@ class BotContext:
     activity: ActivitySink = field(default_factory=NullActivitySink)
     clock: Clock = field(default_factory=SystemClock)
     rng: random.Random = field(default_factory=random.Random)
+
+    def is_book_current(self, book: BookSnapshot) -> bool:
+        """Recheck a book after awaited work before using it for a decision."""
+        return (
+            book.validation_issue(
+                self.clock.now_ms(),
+                self.config.event_max_age_ms,
+            )
+            is None
+        )

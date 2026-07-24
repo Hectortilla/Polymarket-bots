@@ -147,6 +147,11 @@ config = BotConfig.from_env("fast-test").with_overrides(
 
 Unit tests should feed synthetic `BookSnapshot` events into `BotRunner` and use a
 fake broker. Do not call Polymarket in bot unit tests.
+Bots that keep price history, selected outcomes, or in-flight state should also
+test `BookGapEvent` delivery and clear state for the affected condition. After
+an awaited metadata lookup, call `ctx.is_book_current(book)` before making a
+decision so callback latency cannot turn a previously fresh snapshot into a
+trade.
 
 Adapter tests for the framework itself should exercise recorded or synthetic
 official-SDK models and events, then assert their conversion into internal

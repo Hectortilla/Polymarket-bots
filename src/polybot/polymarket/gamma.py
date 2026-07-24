@@ -9,14 +9,16 @@ from urllib.parse import urlencode
 from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
 from polymarket.models.gamma.market import Market as SdkMarket
 
-from polybot.polymarket.client_lifecycle import close_owned_public_client
+from polybot.polymarket.client_lifecycle import (
+    PublicClientLease,
+)
 from polybot.polymarket.errors import (
     MarketDataError,
     MarketDataIssue,
     MarketDataTransportError,
 )
 from polybot.polymarket.normalization.market import normalize_market
-from polybot.polymarket.markets import Market, validate_requested_market_slug
+from polybot.polymarket.markets import Market
 
 
 GAMMA_MARKETS_PAGE_SIZE: Final = 100
@@ -117,8 +119,8 @@ class GammaClient:
     """Normalize Gamma metadata for market and execution-domain consumers."""
 
     def __init__(self, client: AsyncPublicClient | None = None) -> None:
-        self._client = client or AsyncPublicClient()
-        self._owns_client = client is None
+        self._client_lease = PublicClientLease.acquire(client)
+        self._client = self._client_lease.client
         self._sources = _GammaMarketSourceClient(self._client)
 
     async def find_by_slug(self, slug: str) -> Market | None:
@@ -126,7 +128,7 @@ class GammaClient:
         if source is None:
             return None
         market = normalize_market(source)
-        validate_requested_market_slug(market, slug)
+        market.validate_requested_slug(slug)
         return market
 
     async def find_many(self, slugs: Iterable[str]) -> tuple[Market | None, ...]:
@@ -150,8 +152,7 @@ class GammaClient:
         )
 
     async def close(self) -> None:
-        if self._owns_client:
-            await close_owned_public_client(self._client)
+        await self._client_lease.close()
 
 
 def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:

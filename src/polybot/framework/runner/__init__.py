@@ -8,7 +8,7 @@ from polybot.framework.context import BotContext
 from polybot.framework.dedupe import SourceEventDeduper
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import FillEvent
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.runner.validation import book_skip_reason, wallet_trade_skip_reason
@@ -35,11 +35,17 @@ class BotRunner:
         """Trust markets admitted by the runtime-owned tracked-market registry."""
         self._runtime_market_slugs = market_slugs
 
-    async def run_books(self, books: AsyncIterator[BookSnapshot]) -> None:
+    async def run_books(
+        self,
+        books: AsyncIterator[BookSnapshot | BookGapEvent],
+    ) -> None:
         await self.bot.on_start(self.ctx)
         try:
-            async for book in books:
-                await self.dispatch_book(book)
+            async for event in books:
+                if isinstance(event, BookGapEvent):
+                    await self.dispatch_book_gap(event)
+                else:
+                    await self.dispatch_book(event)
         finally:
             await self.bot.on_stop(self.ctx)
 
@@ -64,8 +70,13 @@ class BotRunner:
             or book.market_slug not in self._runtime_market_slugs
         ):
             return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
-        await self.bot.on_book(self.ctx, book)
+        callback_skip_reason = await self.bot.on_book(self.ctx, book)
+        if callback_skip_reason is not None:
+            return DispatchOutcome.skipped(callback_skip_reason)
         return DispatchOutcome.accepted_event()
+
+    async def dispatch_book_gap(self, gap: BookGapEvent) -> None:
+        await self.bot.on_book_gap(self.ctx, gap)
 
     async def dispatch_fill(self, fill: FillEvent) -> None:
         await self.bot.on_fill(self.ctx, fill)

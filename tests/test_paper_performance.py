@@ -9,15 +9,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from polybot.cli.observability.events import DispatchCompleted, StreamReceived
+from polybot.cli.observability.events import (
+    DispatchCompleted,
+    MarketSettled,
+    PortfolioSnapshot,
+    StreamReceived,
+)
 from polybot.cli.observability.observer import NullRuntimeObserver
 from polybot.runtime import run_bot
-from polybot.cli.streams.contracts import BookStreamEvent, StreamKind
+from polybot.cli.streams.contracts import BookStreamEvent
+from polybot.cli.streams.kinds import StreamKind
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.config.models import BotConfig
-from polybot.framework.dispatch import DispatchOutcome
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import (
     FillEvent,
     FillRejectReason,
@@ -246,6 +252,118 @@ def test_interval_sampling_binds_each_queued_snapshot(
         (1_000, Decimal("101")),
         (2_000, Decimal("102")),
     ]
+
+
+def test_rejected_book_dispatch_restores_prior_performance_book(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prior = _book()
+    replacement = BookSnapshot(
+        token_id=prior.token_id,
+        bids=prior.bids,
+        asks=prior.asks,
+        received_at_ms=prior.received_at_ms + 1,
+        market_slug=prior.market_slug,
+        condition_id=prior.condition_id,
+    )
+
+    class Artifacts:
+        selection = SimpleNamespace(start_ms=0)
+        books = {prior.token_id: prior}
+
+        def advance_to(self, timestamp_ms, portfolio) -> None:
+            return None
+
+        def record_events(self) -> None:
+            return None
+
+        def record_book(self, book: BookSnapshot) -> None:
+            self.books[book.token_id] = book
+
+        def record_dispatch(self, accepted: bool | None) -> None:
+            return None
+
+        def remove_books(self, token_ids: tuple[str, ...]) -> None:
+            for token_id in token_ids:
+                self.books.pop(token_id, None)
+
+    recorder = PaperPerformanceRecorder(
+        Artifacts(),  # type: ignore[arg-type]
+        portfolio=PaperPortfolio(Decimal("100")),
+        clock=ManualClock(1),
+    )
+    operations: list[object] = []
+    monkeypatch.setattr(recorder, "_enqueue", operations.append)
+    item = BookStreamEvent(StreamKind.BOOK, replacement)
+    recorder.emit(StreamReceived(item, 0.0))
+    recorder.emit(
+        DispatchCompleted(
+            item,
+            DispatchOutcome.skipped(DispatchSkipReason.BOOK_STALE),
+            0.0,
+        )
+    )
+    for operation in operations:
+        assert callable(operation)
+        operation()
+
+    assert recorder._artifacts.books == {prior.token_id: prior}
+    assert recorder._prior_books_by_event == {}
+
+
+def test_settlement_evicts_performance_books(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Artifacts:
+        selection = SimpleNamespace(start_ms=0)
+
+        def __init__(self) -> None:
+            self.removed: tuple[str, ...] | None = None
+
+        def record_settlement(self, **kwargs) -> None:
+            return None
+
+        def remove_books(self, token_ids: tuple[str, ...]) -> None:
+            self.removed = token_ids
+
+    artifacts = Artifacts()
+    recorder = PaperPerformanceRecorder(
+        artifacts,  # type: ignore[arg-type]
+        portfolio=PaperPortfolio(Decimal("100")),
+        clock=ManualClock(1),
+    )
+    operations: list[object] = []
+    monkeypatch.setattr(recorder, "_enqueue", operations.append)
+    recorder.emit(
+        MarketSettled(
+            SimpleNamespace(
+                resolution=SimpleNamespace(token_ids=("up", "down"))
+            ),  # type: ignore[arg-type]
+            PortfolioSnapshot(Decimal("100"), Decimal("0"), ()),
+            0.0,
+        )
+    )
+    for operation in operations:
+        assert callable(operation)
+        operation()
+
+    assert artifacts.removed == ("up", "down")
+
+
+def test_paper_performance_queue_saturation_disables_recording() -> None:
+    artifacts = SimpleNamespace(selection=SimpleNamespace(start_ms=0))
+    recorder = PaperPerformanceRecorder(
+        artifacts,  # type: ignore[arg-type]
+        portfolio=PaperPortfolio(Decimal("100")),
+        clock=ManualClock(1),
+    )
+    recorder._operations = asyncio.Queue(maxsize=1)
+    recorder._enqueue(lambda: None)
+
+    with pytest.warns(PaperPerformanceWarning, match="recording disabled"):
+        recorder._enqueue(lambda: None)
+
+    assert recorder.enabled is False
 
 
 def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(

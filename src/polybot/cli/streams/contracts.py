@@ -7,23 +7,22 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.polymarket.market_hints import MarketTradeHint
-
-
-class StreamKind(StrEnum):
-    BOOK = "book"
-    WALLET = "wallet"
-    MARKET_HINT = "market_hint"
-    RESOLUTION = "resolution"
-
+from .kinds import StreamKind
 
 @dataclass(frozen=True, slots=True)
 class BookStreamEvent:
     kind: Literal[StreamKind.BOOK]
     event: BookSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class BookGapStreamEvent:
+    kind: Literal[StreamKind.BOOK_GAP]
+    event: BookGapEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,12 +44,32 @@ class ResolutionStreamEvent:
 
 
 StreamEvent = (
-    BookStreamEvent | WalletStreamEvent | MarketHintStreamEvent | ResolutionStreamEvent
+    BookStreamEvent
+    | BookGapStreamEvent
+    | WalletStreamEvent
+    | MarketHintStreamEvent
+    | ResolutionStreamEvent
 )
-StreamPayload = (
-    BookSnapshot | WalletTradeEvent | MarketTradeHint | MarketResolutionEvent
-)
-StreamSource = AsyncIterator[StreamPayload]
+StreamSource = AsyncIterator[StreamEvent]
+
+
+class StreamCompletionRole(StrEnum):
+    PRIMARY = "primary"
+    AUXILIARY = "auxiliary"
+
+
+@dataclass(frozen=True, slots=True)
+class StreamSourceSpec:
+    source: StreamSource
+    completion_role: StreamCompletionRole
+
+    @classmethod
+    def primary(cls, source: StreamSource) -> StreamSourceSpec:
+        return cls(source, StreamCompletionRole.PRIMARY)
+
+    @classmethod
+    def auxiliary(cls, source: StreamSource) -> StreamSourceSpec:
+        return cls(source, StreamCompletionRole.AUXILIARY)
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,4 +79,4 @@ class StreamFailure:
 
 @dataclass(frozen=True, slots=True)
 class StreamCompleted:
-    kind: StreamKind
+    completion_role: StreamCompletionRole

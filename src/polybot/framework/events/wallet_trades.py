@@ -7,8 +7,8 @@ from typing import Final
 
 from polybot.framework.events import Side
 from polybot.framework.events.prices import (
-    OUTCOME_PRICE_CEILING,
     OUTCOME_PRICE_FLOOR,
+    is_outcome_price,
 )
 from polybot.framework.wallets import normalize_wallet_address
 
@@ -46,9 +46,8 @@ class WalletTradeEvent:
                 and bool(self.token_id)
                 and isinstance(self.side, Side)
                 and self.size.is_finite()
-                and self.price.is_finite()
                 and self.size > OUTCOME_PRICE_FLOOR
-                and OUTCOME_PRICE_FLOOR < self.price <= OUTCOME_PRICE_CEILING
+                and is_outcome_price(self.price)
                 and bool(self.source_id)
                 and WALLET_SOURCE_KEY_SEPARATOR not in self.source_id
                 and isinstance(self.trade_timestamp_ms, int)

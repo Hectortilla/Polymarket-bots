@@ -63,14 +63,13 @@ class Market:
                 return outcome.label
         return None
 
-
-def validate_requested_market_slug(market: Market, requested_slug: str) -> None:
-    """Reject a normalized Gamma response for the wrong requested market."""
-    if market.slug != requested_slug:
-        raise MarketDataError(
-            MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
-            "Gamma response did not match the requested market slug",
-        )
+    def validate_requested_slug(self, requested_slug: str) -> None:
+        """Reject a normalized Gamma response for the wrong requested market."""
+        if self.slug != requested_slug:
+            raise MarketDataError(
+                MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                "Gamma response did not match the requested market slug",
+            )
 
 
 def index_markets_by_token(markets: Iterable[Market]) -> dict[str, Market]:

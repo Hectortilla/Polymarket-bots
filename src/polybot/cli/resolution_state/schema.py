@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from polybot.framework.events.resolutions import (
+from polybot.framework.events.resolution_fields import (
     RESOLUTION_RESOLVED_AT_MS_FIELD,
     RESOLUTION_SETTLED_AT_MS_FIELD,
     RESOLUTION_SOURCE_FIELD,

@@ -35,10 +35,10 @@ from .values import (
     _optional_non_negative_decimal,
     _optional_positive_decimal,
     _optional_probability,
-    _optional_text,
+    validate_optional_text,
     _positive_decimal,
     _probability,
-    _required_text,
+    require_text,
 )
 
 
@@ -81,7 +81,7 @@ def _book_event(event: MarketBookEvent, market: Market) -> CapturedMarketEvent:
             token_id=token_id,
             bids=_levels(payload.bids),
             asks=_levels(payload.asks),
-            source_hash=_optional_text(payload.hash, "book hash"),
+            source_hash=validate_optional_text(payload.hash, "book hash"),
         ),
     )
 
@@ -102,7 +102,7 @@ def _price_change_event(
                 side=_side(source.side),
                 price=level.price,
                 size=level.size,
-                source_hash=_optional_text(source.hash, "price-change hash"),
+                source_hash=validate_optional_text(source.hash, "price-change hash"),
                 best_bid=_optional_probability(source.best_bid, "best bid"),
                 best_ask=_optional_probability(source.best_ask, "best ask"),
             )
@@ -133,7 +133,7 @@ def _trade_event(
                 payload.fee_rate_bps,
                 "trade fee rate",
             ),
-            transaction_hash=_optional_text(
+            transaction_hash=validate_optional_text(
                 payload.transaction_hash,
                 "trade transaction hash",
             ),
@@ -174,13 +174,13 @@ def _resolution_event(
             MarketDataIssue.INVALID_RESOLUTION,
             "resolved token IDs do not match market metadata",
         )
-    winning_token_id = _required_text(payload.winning_token_id, "winning token ID")
+    winning_token_id = require_text(payload.winning_token_id, "winning token ID")
     if winning_token_id not in token_ids:
         raise MarketDataError(
             MarketDataIssue.INVALID_RESOLUTION,
             "winning token ID is not part of the resolved market",
         )
-    winning_outcome = _required_text(payload.winning_outcome, "winning outcome")
+    winning_outcome = require_text(payload.winning_outcome, "winning outcome")
     expected_outcome = market.outcome_label_for_token(winning_token_id)
     if (
         expected_outcome is None
@@ -190,7 +190,7 @@ def _resolution_event(
             MarketDataIssue.INVALID_RESOLUTION,
             "winning outcome does not match market metadata",
         )
-    resolution_id = _optional_text(payload.id, "resolution ID")
+    resolution_id = validate_optional_text(payload.id, "resolution ID")
     resolved_token_ids = (token_ids[0], token_ids[1])
     return CapturedMarketEvent(
         source_timestamp_ms=datetime_to_epoch_ms(payload.timestamp),
@@ -215,7 +215,7 @@ def _levels(source: tuple[OrderBookLevel, ...]) -> tuple[RecordedBookLevel, ...]
 
 
 def _condition_id(value: object, market: Market) -> str:
-    condition_id = _required_text(value, "condition ID")
+    condition_id = require_text(value, "condition ID")
     if condition_id != market.condition_id:
         raise MarketDataError(
             MarketDataIssue.BOOK_IDENTITY_MISMATCH,
@@ -225,7 +225,7 @@ def _condition_id(value: object, market: Market) -> str:
 
 
 def _token_id(value: object, market: Market) -> str:
-    token_id = _required_text(value, "token ID")
+    token_id = require_text(value, "token ID")
     if token_id not in market.token_ids:
         raise MarketDataError(
             MarketDataIssue.BOOK_IDENTITY_MISMATCH,
@@ -240,7 +240,7 @@ def _token_ids(value: object) -> tuple[str, ...]:
             MarketDataIssue.INVALID_RESOLUTION,
             "resolved token IDs are missing",
         )
-    return tuple(_required_text(token_id, "resolved token ID") for token_id in value)
+    return tuple(require_text(token_id, "resolved token ID") for token_id in value)
 
 
 def _identity(market: Market, token_id: str | None = None) -> MarketIdentity:

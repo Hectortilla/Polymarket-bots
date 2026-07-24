@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
@@ -44,7 +45,7 @@ class BacktestOptions:
     market_slugs: tuple[str, ...] = ()
     seed: int = 0
     results_dir: Path | None = None
-    report_interval_ms: int = 1_000
+    report_interval_ms: int = DEFAULT_REPORT_INTERVAL_MS
     gap_policy: BacktestGapPolicy = BacktestGapPolicy.STRICT
 
     def __post_init__(self) -> None:

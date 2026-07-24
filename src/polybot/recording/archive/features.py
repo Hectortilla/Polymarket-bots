@@ -11,6 +11,7 @@ from .provenance import RECORDER_DISTRIBUTION, distribution_version
 from .schema import CAPTURE_ANOMALIES_TABLE, RECORDING_FEATURES_TABLE
 
 CAPTURE_ANOMALY_JOURNAL_FEATURE = "capture_anomaly_journal"
+_SQLITE_SCHEMAS = frozenset(("main", "source"))
 
 
 def _enable_capture_anomaly_journal(
@@ -88,9 +89,50 @@ def _capture_anomaly_journal_provenance(
         ) from error
 
 
-def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+def capture_anomaly_journal_available(
+    connection: sqlite3.Connection,
+    *,
+    session_id: int,
+    schema: str = "main",
+) -> bool:
+    """Return feature availability and reject a missing advertised table."""
+
+    if schema not in _SQLITE_SCHEMAS:
+        raise ValueError("unsupported SQLite schema alias")
+    if not _schema_table_exists(connection, schema, RECORDING_FEATURES_TABLE):
+        return False
     row = connection.execute(
-        "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?",
+        f"""
+        SELECT available_from_session_id
+        FROM {schema}.{RECORDING_FEATURES_TABLE}
+        WHERE feature_name = ?
+        """,
+        (CAPTURE_ANOMALY_JOURNAL_FEATURE,),
+    ).fetchone()
+    available = row is not None and int(row[0]) <= session_id
+    if available and not _schema_table_exists(
+        connection,
+        schema,
+        CAPTURE_ANOMALIES_TABLE,
+    ):
+        raise ArchiveFormatError(
+            "capture anomaly journal feature table is missing"
+        )
+    return available
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    return _schema_table_exists(connection, "main", table_name)
+
+
+def _schema_table_exists(
+    connection: sqlite3.Connection,
+    schema: str,
+    table_name: str,
+) -> bool:
+    row = connection.execute(
+        f"SELECT 1 FROM {schema}.sqlite_schema "
+        "WHERE type = 'table' AND name = ?",
         (table_name,),
     ).fetchone()
     return row is not None

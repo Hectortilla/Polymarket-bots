@@ -54,12 +54,14 @@ from polybot.cli.observability.events import (
     StreamReceived,
     StreamHealth,
 )
-from polybot.cli.observability.bootstrap import emit_paper_position_book_bootstraps
+from polybot.cli.observability.portfolio_bootstrap import (
+    emit_paper_position_book_bootstraps,
+)
 from polybot.cli.observability.observer import (
     RuntimeObserver,
-    emit_observer,
-    start_observer,
-    stop_observer,
+    emit_observer_fail_open,
+    start_observer_fail_open,
+    stop_observer_fail_open,
 )
 from polybot.cli.streams.contracts import (
     BookStreamEvent,
@@ -107,9 +109,12 @@ class FailingObserver(RuntimeObserver):
 def test_observer_failures_are_suppressed() -> None:
     async def run() -> None:
         observer = FailingObserver()
-        await start_observer(observer, BotConfig(name="failing-observer"))
-        emit_observer(observer, RuntimeStarted.from_config(BotConfig(name="failing-observer")))
-        await stop_observer(observer)
+        await start_observer_fail_open(observer, BotConfig(name="failing-observer"))
+        emit_observer_fail_open(
+            observer,
+            RuntimeStarted.from_config(BotConfig(name="failing-observer")),
+        )
+        await stop_observer_fail_open(observer)
 
     asyncio.run(run())
 
@@ -435,7 +440,7 @@ def test_dashboard_refreshes_stale_mark_for_new_position_size_after_fill() -> No
                 ),
             ),
             latency_ms=1,
-            occurred_at_monotonic=1.0,
+            occurred_at_monotonic_seconds=1.0,
         )
     )
     state.books.clear()
@@ -479,7 +484,7 @@ def test_dashboard_refreshes_fill_mark_from_pending_book() -> None:
                 ),
             ),
             latency_ms=1,
-            occurred_at_monotonic=1.0,
+            occurred_at_monotonic_seconds=1.0,
         )
     )
     state.pending_books.clear()
@@ -776,7 +781,7 @@ def test_dashboard_renders_bot_activity_with_severity_and_safe_message() -> None
         BotActivityEvent(
             "trigger\nconfirmed",
             severity=ActivitySeverity.WARNING,
-            occurred_at_monotonic=1.0,
+            occurred_at_monotonic_seconds=1.0,
         )
     )
 
@@ -994,7 +999,15 @@ def test_dashboard_tracks_dispatch_skips_and_rejected_fills() -> None:
             1.0,
         )
     )
-    state.apply(FillCompleted(OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("1")), rejected_fill, None, 3, 2.0))
+    state.apply(
+        FillCompleted(
+            OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("1")),
+            rejected_fill,
+            None,
+            3,
+            2.0,
+        )
+    )
 
     assert state.skipped_dispatches == 1
     assert state.rejected_count == 1
@@ -1136,7 +1149,7 @@ def test_dashboard_time_zoom_keeps_the_rendered_chart_width(monkeypatch) -> None
     state.price_stale_history = {"token": deque(False for _ in range(200))}
     state.wallet_value_history = deque(float(value) for value in range(200))
     state.wallet_value_stale_history = deque(False for _ in range(200))
-    state.chart_sample_times = deque(float(value) for value in range(200))
+    state.chart_sample_epoch_seconds = deque(float(value) for value in range(200))
     rendered_widths: list[int] = []
 
     def plot(series, config):
@@ -1154,9 +1167,11 @@ def test_dashboard_time_zoom_keeps_the_rendered_chart_width(monkeypatch) -> None
     assert rendered_widths == [68, 68, 68, 68, 68, 68]
 
 
-def test_dashboard_shows_visible_time_range_endpoints() -> None:
+def test_dashboard_shows_visible_epoch_seconds_range_endpoints() -> None:
     state = DashboardState()
-    state.chart_sample_times = deque((1_700_000_000.0, 1_700_000_010.0))
+    state.chart_sample_epoch_seconds = deque(
+        (1_700_000_000.0, 1_700_000_010.0)
+    )
 
     label = _chart_time_range(state, 100).plain
 
@@ -1236,7 +1251,10 @@ def test_wallet_timeline_buckets_by_trade_time_and_styles_skipped_events() -> No
         10,
     )
     skipped_glyph, skipped_style = _wallet_bucket_glyph(buckets[skipped.wallet][0], Decimal("1"))
-    accepted_glyph, accepted_style = _wallet_bucket_glyph(buckets[accepted.wallet][5], Decimal("1"))
+    accepted_glyph, accepted_style = _wallet_bucket_glyph(
+        buckets[accepted.wallet][5],
+        Decimal("1"),
+    )
 
     assert skipped_glyph == "◆"
     assert skipped_style == "dim green"
@@ -1383,7 +1401,7 @@ def test_dashboard_renders_trade_markers_on_token_lines_with_side_colors() -> No
         "one": deque(((), (Side.BUY,), ())),
         "two": deque(((Side.SELL,), (), (Side.BUY, Side.SELL))),
     }
-    state.chart_sample_times = deque((1.0, 2.0, 3.0))
+    state.chart_sample_epoch_seconds = deque((1.0, 2.0, 3.0))
 
     series, colors = _price_chart_series(state, 80)
 

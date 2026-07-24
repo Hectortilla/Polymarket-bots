@@ -21,6 +21,10 @@ from polybot.polymarket.normalization.recording_events import (
     normalize_recording_event,
 )
 from polybot.polymarket.recording_events import CapturedMarketEvent
+from polybot.polymarket.stream_diagnostics import (
+    require_monotonic_dropped_count,
+    sdk_dropped_count,
+)
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookDeltaPayload,
@@ -34,7 +38,6 @@ from .continuity import (
     CaptureContinuityError,
     SplitRevisionContext,
     delta_revision_fingerprint,
-    is_revision_continuation,
 )
 
 
@@ -78,8 +81,7 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
 
     @property
     def dropped_count(self) -> int:
-        value = getattr(self._handle, "dropped", 0)
-        return value if isinstance(value, int) and value >= 0 else 0
+        return sdk_dropped_count(self._handle)
 
     @property
     def has_complete_book_baselines(self) -> bool:
@@ -169,14 +171,14 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
     ) -> CapturedMarketEvent:
         """Join source fragments that are invalid only before their revision ends."""
         loop = asyncio.get_running_loop()
-        started_at = loop.time()
+        started_at_monotonic_seconds = loop.time()
         context = SplitRevisionContext(
             crossed_error=crossed_error,
             first_fragment=first,
             expected_fingerprint=delta_revision_fingerprint(first),
             projected_books=self.projected_books(first.source_timestamp_ms or 0),
             dropped_count_before=dropped_count_before,
-            started_at=started_at,
+            started_at_monotonic_seconds=started_at_monotonic_seconds,
         )
         self._raise_if_dropped(context)
         required_fingerprint = context.expected_fingerprint
@@ -223,10 +225,9 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
                     dropped_count_after=self.dropped_count,
                 )
             actual_fingerprint = delta_revision_fingerprint(continuation)
-            is_match = is_revision_continuation(
-                required_fingerprint,
-                known_source_hashes,
+            is_match = required_fingerprint.accepts_continuation(
                 actual_fingerprint,
+                known_source_hashes=known_source_hashes,
             )
             mismatching_fragment = None if is_match else continuation
             if is_match:
@@ -295,8 +296,11 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
         mismatching_fragment: CapturedMarketEvent | None = None,
         actual_fingerprint: RevisionFingerprint | None = None,
     ) -> None:
-        dropped_count_after = self.dropped_count
-        if dropped_count_after <= context.dropped_count_before:
+        dropped_count_after = require_monotonic_dropped_count(
+            context.dropped_count_before,
+            self.dropped_count,
+        )
+        if dropped_count_after == context.dropped_count_before:
             return
         raise context.failure(
             CaptureFailureKind.SDK_HANDLE_DROP,

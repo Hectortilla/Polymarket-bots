@@ -38,32 +38,35 @@ class RuntimeObserverGroup:
 
     async def start(self, config: BotConfig) -> None:
         for observer in self._observers:
-            await start_observer(observer, config)
+            await start_observer_fail_open(observer, config)
 
     def emit(self, event: RuntimeEvent) -> None:
         for observer in self._observers:
-            emit_observer(observer, event)
+            emit_observer_fail_open(observer, event)
 
     async def stop(self) -> None:
         for observer in reversed(self._observers):
-            await stop_observer(observer)
+            await stop_observer_fail_open(observer)
 
 
-async def start_observer(observer: RuntimeObserver, config: BotConfig) -> None:
+async def start_observer_fail_open(observer: RuntimeObserver, config: BotConfig) -> None:
     try:
         await observer.start(config)
     except Exception:
         return None
 
 
-def emit_observer(observer: RuntimeObserver, event: RuntimeEvent) -> None:
+def emit_observer_fail_open(
+    observer: RuntimeObserver,
+    event: RuntimeEvent,
+) -> None:
     try:
         observer.emit(event)
     except Exception:
         return None
 
 
-async def stop_observer(observer: RuntimeObserver) -> None:
+async def stop_observer_fail_open(observer: RuntimeObserver) -> None:
     try:
         await observer.stop()
     except Exception:

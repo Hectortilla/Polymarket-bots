@@ -9,11 +9,11 @@ from dataclasses import replace
 from ..contracts.book import TickSizeChangePayload
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketMetadataPayload
-from ..contracts.payloads import ResolutionPayload
 from .errors import ArchiveFormatError
 from .integrity import _validate_payload_market_identity
 from .primitives import _required_text
 from .rows import _event_from_row, _typed_payload
+from .resolutions import apply_recorded_resolution, resolution_event_at
 
 
 def market_slugs_with_metadata_revisions(
@@ -126,10 +126,10 @@ def markets_at(
         ):
             raise ArchiveFormatError("metadata index identity is inconsistent")
         markets.append(
-            market_with_resolution(
+            apply_recorded_resolution(
                 connection,
                 payload,
-                observed_at_ms,
+                observed_at_ms=observed_at_ms,
                 sequence_cutoff=replay_cutoff_sequence,
             )
         )
@@ -164,10 +164,10 @@ def market_at(
     )
     if payload.condition_id != condition_id:
         raise ArchiveFormatError("metadata index identity is inconsistent")
-    return market_with_resolution(
+    return apply_recorded_resolution(
         connection,
         payload,
-        observed_at_ms,
+        observed_at_ms=observed_at_ms,
         sequence_cutoff=sequence_cutoff,
     )
 
@@ -269,68 +269,11 @@ def unresolved_markets(
         )
         if payload.resolved:
             continue
-        resolution_parameters: list[object] = [
+        if resolution_event_at(
+            connection,
             payload.condition_id,
-            PayloadKind.RESOLUTION.value,
-            replay_cutoff_sequence,
-        ]
-        resolution_time = ""
-        if at_ms is not None:
-            resolution_time = " AND observed_at_ms <= ?"
-            resolution_parameters.append(at_ms)
-        resolved_row = connection.execute(
-            f"""
-            SELECT 1 FROM events
-            WHERE condition_id = ? AND payload_kind = ? AND sequence <= ?
-            {resolution_time}
-            LIMIT 1
-            """,
-            tuple(resolution_parameters),
-        ).fetchone()
-        if resolved_row is None:
+            sequence_cutoff=replay_cutoff_sequence,
+            observed_at_ms=at_ms,
+        ) is None:
             unresolved.append(payload)
     return tuple(unresolved)
-
-
-def market_with_resolution(
-    connection: sqlite3.Connection,
-    payload: MarketMetadataPayload,
-    observed_at_ms: int,
-    *,
-    sequence_cutoff: int,
-) -> MarketMetadataPayload:
-    """Apply the latest recorded resolution to one metadata revision."""
-
-    resolution_row = connection.execute(
-        """
-        SELECT * FROM events
-        WHERE condition_id = ? AND payload_kind = ?
-          AND observed_at_ms <= ? AND sequence <= ?
-        ORDER BY observed_at_ms DESC, sequence DESC
-        LIMIT 1
-        """,
-        (
-            payload.condition_id,
-            PayloadKind.RESOLUTION.value,
-            observed_at_ms,
-            sequence_cutoff,
-        ),
-    ).fetchone()
-    if resolution_row is None:
-        return payload
-    resolution_event = _event_from_row(resolution_row)
-    if not isinstance(resolution_event.payload, ResolutionPayload):
-        raise ArchiveFormatError("resolution index contains a wrong payload")
-    _validate_payload_market_identity(resolution_event, payload)
-    return replace(
-        payload,
-        resolution_status=(
-            payload.resolution_status if payload.resolved else "resolved"
-        ),
-        resolution_source=(
-            payload.resolution_source or resolution_event.payload.source
-        ),
-        resolved=True,
-        winning_token_id=resolution_event.payload.winning_token_id,
-        winning_outcome=resolution_event.payload.winning_outcome,
-    )

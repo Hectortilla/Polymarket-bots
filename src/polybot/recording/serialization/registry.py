@@ -20,22 +20,23 @@ from ..contracts.payloads import (
     RecordedPayload,
     ResolutionPayload,
 )
-from .codec import (
+from .book_codec import (
     decode_book_baseline,
     decode_book_delta,
-    decode_coverage_gap,
-    decode_market_metadata,
-    decode_public_trade,
-    decode_resolution,
     decode_tick_size_change,
     encode_book_baseline,
     encode_book_delta,
-    encode_coverage_gap,
-    encode_market_metadata,
-    encode_public_trade,
-    encode_resolution,
     encode_tick_size_change,
 )
+from .event_codec import (
+    decode_coverage_gap,
+    decode_public_trade,
+    decode_resolution,
+    encode_coverage_gap,
+    encode_public_trade,
+    encode_resolution,
+)
+from .market_codec import decode_market_metadata, encode_market_metadata
 
 
 @dataclass(frozen=True, slots=True)

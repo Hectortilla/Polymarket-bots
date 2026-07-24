@@ -25,7 +25,9 @@ from polybot.framework.config.constants import (
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
-from polybot.framework.config.models import BotConfig, BotMode, DEFAULT_BOT_MODE
+from polybot.framework.config.constants import DEFAULT_BOT_MODE
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
 
 FUNDER_ADDRESS = "0x00000000000000000000000000000000000000f0"
 
@@ -34,7 +36,9 @@ def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
     monkeypatch.setenv(
         BOT_STREAM_RULES_ENV,
-        '[{"relation":"filtered","market_slugs":["btc-up","eth-up"],"wallet_addresses":["0x0000000000000000000000000000000000000001","0x0000000000000000000000000000000000000002"]}]',
+        '[{"relation":"filtered","market_slugs":["btc-up","eth-up"],'
+        '"wallet_addresses":["0x0000000000000000000000000000000000000001",'
+        '"0x0000000000000000000000000000000000000002"]}]',
     )
     monkeypatch.setenv(BOT_MAX_ORDER_SIZE_ENV, "4")
     monkeypatch.setenv(BOT_MAX_SLIPPAGE_PCT_ENV, "0.01")

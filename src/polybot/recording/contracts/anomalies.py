@@ -69,6 +69,29 @@ class RevisionFingerprint:
             raise ValueError("revision source hashes contain duplicate token IDs")
         object.__setattr__(self, "source_hashes", tuple(normalized_hashes))
 
+    def accepts_continuation(
+        self,
+        actual: RevisionFingerprint | None,
+        *,
+        known_source_hashes: dict[str, str],
+    ) -> bool:
+        if (
+            actual is None
+            or actual.condition_id != self.condition_id
+            or actual.source_timestamp_ms != self.source_timestamp_ms
+        ):
+            return False
+        actual_hashes = dict(actual.source_hashes)
+        required_hashes_match = all(
+            actual_hashes.get(token_id) == source_hash
+            for token_id, source_hash in self.source_hashes
+        )
+        known_hashes_match = all(
+            known_source_hashes.get(token_id, source_hash) == source_hash
+            for token_id, source_hash in actual.source_hashes
+        )
+        return required_hashes_match and known_hashes_match
+
 
 @dataclass(frozen=True, slots=True)
 class CaptureAnomalyFragment:

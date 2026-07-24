@@ -7,7 +7,9 @@ from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
 
 from polybot.framework.clock import system_now_ms
 from polybot.framework.events.books import BookSnapshot
-from polybot.polymarket.client_lifecycle import close_owned_public_client
+from polybot.polymarket.client_lifecycle import (
+    PublicClientLease,
+)
 from polybot.polymarket.errors import (
     MarketDataError,
     MarketDataIssue,
@@ -28,8 +30,8 @@ class ClobClient:
         markets: Iterable[Market] = (),
         now_ms: Callable[[], int] | None = None,
     ) -> None:
-        self._client = client or AsyncPublicClient()
-        self._owns_client = client is None
+        self._client_lease = PublicClientLease.acquire(client)
+        self._client = self._client_lease.client
         self._now_ms = now_ms or system_now_ms
         self._market_by_token: dict[str, Market] = {}
         self.set_markets(markets)
@@ -74,5 +76,4 @@ class ClobClient:
         )
 
     async def close(self) -> None:
-        if self._owns_client:
-            await close_owned_public_client(self._client)
+        await self._client_lease.close()

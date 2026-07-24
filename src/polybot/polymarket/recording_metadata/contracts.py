@@ -15,11 +15,5 @@ class RecordingMarket:
 
     def assert_compatible_revision(self, refreshed: RecordingMarket) -> None:
         """Reject metadata refreshes that change immutable market identity."""
-        if (
-            self.market.condition_id != refreshed.market.condition_id
-            or self.market.slug != refreshed.market.slug
-            or self.market.token_ids != refreshed.market.token_ids
-            or tuple(outcome.label for outcome in self.market.outcomes)
-            != tuple(outcome.label for outcome in refreshed.market.outcomes)
-        ):
+        if self.metadata.revision_identity != refreshed.metadata.revision_identity:
             raise ValueError("market metadata revision changed immutable identity")

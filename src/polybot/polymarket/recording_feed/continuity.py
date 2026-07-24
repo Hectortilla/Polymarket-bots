@@ -60,7 +60,7 @@ class SplitRevisionContext:
     expected_fingerprint: RevisionFingerprint | None
     projected_books: tuple[BookSnapshot, ...]
     dropped_count_before: int
-    started_at: float
+    started_at_monotonic_seconds: float
     matching_fragments: list[CapturedMarketEvent] = field(default_factory=list)
 
     def failure(
@@ -73,7 +73,7 @@ class SplitRevisionContext:
     ) -> CaptureContinuityError:
         elapsed_seconds = max(
             0.0,
-            asyncio.get_running_loop().time() - self.started_at,
+            asyncio.get_running_loop().time() - self.started_at_monotonic_seconds,
         )
         return CaptureContinuityError(
             self.crossed_error,
@@ -115,26 +115,3 @@ def delta_revision_fingerprint(
         source_timestamp_ms=source_timestamp_ms,
         source_hashes=tuple(source_hashes.items()),
     )
-
-
-def is_revision_continuation(
-    required: RevisionFingerprint,
-    known_source_hashes: dict[str, str],
-    actual: RevisionFingerprint | None,
-) -> bool:
-    if (
-        actual is None
-        or actual.condition_id != required.condition_id
-        or actual.source_timestamp_ms != required.source_timestamp_ms
-    ):
-        return False
-    actual_hashes = dict(actual.source_hashes)
-    required_hashes_match = all(
-        actual_hashes.get(token_id) == source_hash
-        for token_id, source_hash in required.source_hashes
-    )
-    known_hashes_match = all(
-        known_source_hashes.get(token_id, source_hash) == source_hash
-        for token_id, source_hash in actual.source_hashes
-    )
-    return required_hashes_match and known_hashes_match

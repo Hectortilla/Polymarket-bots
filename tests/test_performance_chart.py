@@ -30,7 +30,7 @@ from polybot.performance.contracts.summary import (
 )
 from polybot.performance.contracts.summary.metrics import PerformanceMetricsSummary
 from polybot.performance.contracts.summary.valuation import PerformanceValuationSummary
-from polybot.performance.valuation import (
+from polybot.performance.contracts.valuation_status import (
     ValuationStatus,
     history_valuation_status,
 )

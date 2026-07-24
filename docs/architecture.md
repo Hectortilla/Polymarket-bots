@@ -170,11 +170,11 @@ polyfollow-polybot/
 
 ```text
 MarketStream
-  -> BookSnapshot
+  -> BookSnapshot or BookGapEvent
   -> per-token newest-pending coalescing
-  -> market slug route check
+  -> gap invalidation or market slug route check
   -> BotRunner
-  -> BaseBot.on_book(ctx, book)
+  -> BaseBot.on_book_gap(ctx, gap) or BaseBot.on_book(ctx, book)
   -> ctx.broker.submit(OrderRequest)
   -> ObservableBroker (CLI-only)
   -> PaperBroker
@@ -247,6 +247,11 @@ crossed books, and duplicate source events.
 The CLI merger applies stream-specific backpressure before dispatch. It retains
 at most one pending `BookSnapshot` per token and replaces that snapshot with the
 newest arrival, so a slow strategy does not drain an obsolete FIFO of books.
+An affecting `BookGapEvent` first discards pending snapshots from that
+condition, then reaches `BaseBot.on_book_gap` so strategy state derived from the
+invalid generation can be cleared. The market adapter resumes snapshots only
+after every subscribed token for the condition receives a fresh full-book
+baseline.
 Idempotent market-trade wake hints are similarly coalesced by condition ID.
 Wallet trades are never coalesced: every normalized wallet event remains in
 lossless FIFO order. Market-data memory is therefore bounded by the subscribed

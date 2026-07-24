@@ -11,8 +11,8 @@ from polybot.polymarket.normalization.values import (
     _non_negative_decimal,
     _optional_boolean,
     _optional_probability,
-    _optional_text,
-    _required_text,
+    require_text,
+    validate_optional_text,
 )
 from polybot.recording.contracts.market import (
     FeeScheduleMetadata,
@@ -33,9 +33,9 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
 
     events = tuple(
         MarketEventMetadata(
-            event_id=_required_text(event.id, "event ID"),
-            slug=_optional_text(event.slug, "event slug"),
-            title=_optional_text(event.title, "event title"),
+            event_id=require_text(event.id, "event ID"),
+            slug=validate_optional_text(event.slug, "event slug"),
+            title=validate_optional_text(event.title, "event title"),
         )
         for event in source.events or ()
     )
@@ -55,13 +55,13 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
     resolution_status = None
     if resolution is not None and resolution.uma_resolution_status is not None:
         raw_status = resolution.uma_resolution_status
-        resolution_status = _required_text(
+        resolution_status = require_text(
             getattr(raw_status, "value", raw_status),
             "resolution status",
         )
 
     metadata = MarketMetadataPayload(
-        market_id=_required_text(source.id, "market ID"),
+        market_id=require_text(source.id, "market ID"),
         condition_id=market.condition_id,
         market_slug=market.slug,
         question=market.question,
@@ -89,18 +89,21 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
         ),
         neg_risk=market.neg_risk,
         fees_enabled=_optional_boolean(trading.fees_enabled, "fee-enabled state"),
-        fee_type=_optional_text(trading.fee_type, "fee type"),
+        fee_type=validate_optional_text(trading.fee_type, "fee type"),
         fee_schedule=fee_schedule,
         fee_rate=market.fee_rate,
         question_id=(
             None
             if resolution is None
-            else _optional_text(resolution.question_id, "resolution question ID")
+            else validate_optional_text(
+                resolution.question_id,
+                "resolution question ID",
+            )
         ),
         neg_risk_request_id=(
             None
             if resolution is None
-            else _optional_text(
+            else validate_optional_text(
                 resolution.neg_risk_request_id,
                 "negative-risk request ID",
             )
@@ -109,12 +112,12 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
         resolution_source=(
             None
             if resolution is None
-            else _optional_text(resolution.source, "resolution source")
+            else validate_optional_text(resolution.source, "resolution source")
         ),
         resolved_by=(
             None
             if resolution is None
-            else _optional_text(resolution.resolved_by, "resolver address")
+            else validate_optional_text(resolution.resolved_by, "resolver address")
         ),
         resolved=market.resolved,
         winning_token_id=market.winning_token_id,

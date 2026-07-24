@@ -47,14 +47,12 @@ from polybot.cli.followed_wallets.persistence.schema import (
     FOLLOWED_AT_MS_FIELD,
 )
 from polybot.cli.observability.events import StreamReceived
+from polybot.cli.observability.observer import RuntimeObserver
 from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
 from polybot.cli.resolution.reconciliation import reconcile_resolutions
-from polybot.cli.resolution.settlement import (
-    apply_resolution,
-    settle_resolved_markets,
-)
+from polybot.cli.resolution.settlement import ResolutionSettlementService
 from polybot.cli.tracking.paper import track_paper_positions
-from polybot.cli.tracking.wallets import synchronize_followed_wallets
+from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
 from polybot.cli.resolution_state.ledger import ResolutionLedger
 from polybot.cli.resolution_state.schema import (
     RESOLUTION_LEDGER_VERSION,
@@ -63,10 +61,16 @@ from polybot.cli.resolution_state.schema import (
 )
 from polybot.framework.cadence import RESOLUTION_RECONCILIATION_SECONDS
 from polybot.framework.dispatch import DispatchSkipReason
-from polybot.cli.streams.contracts import StreamKind, WalletStreamEvent
+from polybot.cli.streams.contracts import (
+    ResolutionStreamEvent,
+    StreamSourceSpec,
+    WalletStreamEvent,
+)
+from polybot.cli.streams.kinds import StreamKind
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.tracked_markets import MarketInterest, TrackedMarketRegistry
 from polybot.execution.paper.portfolio import PaperPortfolio
+from polybot.execution.paper import PaperBroker
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.base import BaseBot
@@ -94,6 +98,7 @@ WALLET = "0x0000000000000000000000000000000000000001"
 class FakeSubscription:
     def __init__(self, events: tuple[object, ...]) -> None:
         self.events = events
+        self.dropped = 0
 
     async def __aenter__(self) -> FakeSubscription:
         return self
@@ -231,7 +236,9 @@ def test_wallet_dispatch_records_trade_and_registers_market_after_acceptance(
     )
 
     assert outcome.accepted
-    assert tracker.state(WALLET).source_ids == {_trade("dispatch", Side.BUY, "1", "0.4", 1_000).source_key}  # type: ignore[union-attr]
+    assert tracker.state(WALLET).source_ids == {  # type: ignore[union-attr]
+        _trade("dispatch", Side.BUY, "1", "0.4", 1_000).source_key
+    }
     assert registry.entries[0].market == market
     assert clob.added == [market]
 
@@ -394,14 +401,13 @@ def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> 
 
     clob = Clob()
     asyncio.run(
-        synchronize_followed_wallets(
-            {WALLET: None},
+        FollowedWalletSynchronizer(
             tracker,
             PositionsClient(),  # type: ignore[arg-type]
             Gamma(),  # type: ignore[arg-type]
             clob,  # type: ignore[arg-type]
             registry,
-        )
+        ).synchronize({WALLET: None})
     )
 
     state = tracker.state(WALLET)
@@ -469,13 +475,14 @@ def test_filtered_wallet_bootstrap_reads_only_rule_markets(tmp_path) -> None:
     positions_client = PositionsClient()
     clob = Clob()
     asyncio.run(
-        synchronize_followed_wallets(
-            {WALLET: frozenset({"allowed"})},
+        FollowedWalletSynchronizer(
             tracker,
             positions_client,  # type: ignore[arg-type]
             Gamma(),  # type: ignore[arg-type]
             clob,  # type: ignore[arg-type]
             registry,
+        ).synchronize(
+            {WALLET: frozenset({"allowed"})},
             resolved_markets=(_market("allowed"),),
         )
     )
@@ -939,7 +946,7 @@ def test_resolution_persists_before_hook_and_is_idempotent(tmp_path) -> None:
             calls.append("hook")
 
     async def run() -> None:
-        await apply_resolution(
+        await _apply_resolution(
             Runner(),  # type: ignore[arg-type]
             _resolution(),
             registry=registry,
@@ -948,7 +955,7 @@ def test_resolution_persists_before_hook_and_is_idempotent(tmp_path) -> None:
             resolution_ledger=ledger,
             observer=None,
         )
-        await apply_resolution(
+        await _apply_resolution(
             Runner(),  # type: ignore[arg-type]
             _resolution(),
             registry=registry,
@@ -987,7 +994,7 @@ def test_bootstrap_settles_resolved_market_before_any_subscription(tmp_path) -> 
             calls.append("hook")
 
     asyncio.run(
-        settle_resolved_markets(
+        _settle_resolved_markets(
             Runner(),  # type: ignore[arg-type]
             registry=registry,
             followed_wallets=FollowedWalletTracker(tmp_path / "follow.json"),
@@ -1057,7 +1064,7 @@ def test_resolution_rolls_back_settlement_when_ledger_record_fails(tmp_path) -> 
     ledger = Ledger()
     with pytest.raises(OSError, match="ledger unavailable"):
         asyncio.run(
-            apply_resolution(
+            _apply_resolution(
                 Runner(),  # type: ignore[arg-type]
                 _resolution(),
                 registry=registry,
@@ -1073,7 +1080,7 @@ def test_resolution_rolls_back_settlement_when_ledger_record_fails(tmp_path) -> 
     assert registry.entries
 
     settlement = asyncio.run(
-        apply_resolution(
+        _apply_resolution(
             Runner(),  # type: ignore[arg-type]
             _resolution(),
             registry=registry,
@@ -1146,7 +1153,7 @@ def test_resolution_rolls_back_when_followed_settlement_fails(tmp_path) -> None:
     paper = Paper()
     with pytest.raises(RuntimeError, match="followed settlement unavailable"):
         asyncio.run(
-            apply_resolution(
+            _apply_resolution(
                 Runner(),  # type: ignore[arg-type]
                 _resolution(),
                 registry=registry,
@@ -1539,7 +1546,7 @@ def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ign
 
     with pytest.raises(ValueError, match="resolution identity"):
         asyncio.run(
-            apply_resolution(
+            _apply_resolution(
                 Runner(),  # type: ignore[arg-type]
                 mismatched,
                 registry=registry,
@@ -1553,7 +1560,7 @@ def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ign
     unknown = replace(_resolution(), condition_id="unknown-condition")
     assert (
         asyncio.run(
-            apply_resolution(
+            _apply_resolution(
                 Runner(),  # type: ignore[arg-type]
                 unknown,
                 registry=registry,
@@ -1572,11 +1579,16 @@ def test_resolution_stream_events_are_not_coalesced_or_charted() -> None:
     event = _resolution()
 
     async def source() -> AsyncIterator[MarketResolutionEvent]:
-        yield event
-        yield event
+        yield ResolutionStreamEvent(StreamKind.RESOLUTION, event)
+        yield ResolutionStreamEvent(StreamKind.RESOLUTION, event)
 
     async def run():
-        return [item async for item in merge_streams(((StreamKind.BOOK, source()),))]
+        return [
+            item
+            async for item in merge_streams(
+                (StreamSourceSpec.primary(source()),)
+            )
+        ]
 
     items = asyncio.run(run())
     assert [item.kind for item in items] == [
@@ -1812,3 +1824,42 @@ def _resolution() -> MarketResolutionEvent:
         resolved_at_ms=2_000,
         source="test",
     )
+
+
+async def _apply_resolution(
+    runner: BotRunner,
+    event: MarketResolutionEvent,
+    *,
+    registry: TrackedMarketRegistry,
+    followed_wallets: FollowedWalletTracker,
+    paper_broker: PaperBroker,
+    resolution_ledger: ResolutionLedger,
+    observer: RuntimeObserver | None,
+) -> MarketSettlementEvent | None:
+    return await ResolutionSettlementService(
+        runner,
+        registry=registry,
+        followed_wallets=followed_wallets,
+        paper_broker=paper_broker,
+        resolution_ledger=resolution_ledger,
+        observer=observer,
+    ).apply(event)
+
+
+async def _settle_resolved_markets(
+    runner: BotRunner,
+    *,
+    registry: TrackedMarketRegistry,
+    followed_wallets: FollowedWalletTracker,
+    paper_broker: PaperBroker,
+    resolution_ledger: ResolutionLedger,
+    observer: RuntimeObserver | None,
+) -> None:
+    await ResolutionSettlementService(
+        runner,
+        registry=registry,
+        followed_wallets=followed_wallets,
+        paper_broker=paper_broker,
+        resolution_ledger=resolution_ledger,
+        observer=observer,
+    ).settle_existing()

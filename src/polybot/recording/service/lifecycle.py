@@ -94,12 +94,7 @@ async def finish_recording(
 
 async def close_recording_sources(public_data: RecordingPublicData) -> None:
     """Best-effort close of sources owned by recording orchestration."""
-    for close in (
-        public_data.feed.close,
-        public_data.resolver.close,
-        public_data.close,
-    ):
-        try:
-            await close()
-        except BaseException:
-            pass
+    try:
+        await public_data.close()
+    except BaseException:
+        pass

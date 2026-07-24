@@ -18,6 +18,7 @@ from polybot.recording.archive.errors import (
     ArchiveIntegrityError,
     ArchiveLockedError,
     CaptureAnomalyJournalUnavailableError,
+    RecordingArchiveError,
 )
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.schema import SCHEMA_VERSION
@@ -68,6 +69,79 @@ from polybot.recording.serialization.entrypoints import (
 )
 from polybot.recording.serialization.registry import payload_kind
 from polybot.recording.writer import AsyncRecordingWriter
+
+
+class _CommitFailingConnection:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+        self.fail_commit = True
+        self.rollback_calls = 0
+        self.close_calls = 0
+
+    def __getattr__(self, name: str):
+        return getattr(self.connection, name)
+
+    def commit(self) -> None:
+        if self.fail_commit:
+            raise sqlite3.OperationalError("injected commit failure")
+        self.connection.commit()
+
+    def rollback(self) -> None:
+        self.rollback_calls += 1
+        self.connection.rollback()
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self.connection.close()
+
+
+def test_archive_append_commit_failure_rolls_back_without_advancing_state(
+    tmp_path,
+) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    connection = _CommitFailingConnection(archive._connection)
+    archive._connection = connection  # type: ignore[assignment]
+
+    with pytest.raises(RecordingArchiveError, match="append recording events"):
+        archive.append_event(
+            _event(
+                archive,
+                _metadata(),
+                observed_at_ms=started_at_ms,
+                identity=_identity(),
+            )
+        )
+
+    assert connection.rollback_calls == 1
+    assert archive.next_sequence == 1
+    assert archive._metadata_by_condition == {}
+    assert connection.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
+
+    connection.fail_commit = False
+    archive.close(clean=False, failure_reason="test cleanup")
+
+
+def test_archive_finalization_failure_rolls_back_closes_and_releases_lock(
+    tmp_path,
+) -> None:
+    archive, started_at_ms = _opened_archive(tmp_path)
+    archive_path = archive.path
+    connection = _CommitFailingConnection(archive._connection)
+    archive._connection = connection  # type: ignore[assignment]
+
+    with pytest.raises(RecordingArchiveError, match="finalize recording archive"):
+        archive.close()
+
+    assert connection.rollback_calls == 1
+    assert connection.close_calls == 1
+    assert archive._closed
+
+    resumed = RecordingArchive.resume(
+        archive_path,
+        target_identity="slugs:btc-updown-5m-1",
+        started_at_ms=started_at_ms + 1,
+    )
+    resumed.close(clean=False, failure_reason="test cleanup")
 
 
 @pytest.mark.parametrize(

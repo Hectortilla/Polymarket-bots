@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
-import tempfile
 from contextlib import suppress
 from pathlib import Path
 
-from .archive.features import CAPTURE_ANOMALY_JOURNAL_FEATURE
+from .archive.errors import ArchiveFormatError
+from .archive.features import (
+    CAPTURE_ANOMALY_JOURNAL_FEATURE,
+    capture_anomaly_journal_available,
+)
 from .archive.reader import RecordingReader
 from .archive.writer import RecordingArchive
-from .archive.connections import configure_writer_connection, readonly_database_uri
+from .archive.connections import (
+    SQLITE_CONNECTION_TIMEOUT_SECONDS,
+    configure_writer_connection,
+    readonly_database_uri,
+)
 from .archive.models import RecordingSession
 from .archive.schema import CAPTURE_ANOMALIES_TABLE, RECORDING_FEATURES_TABLE
 from .contracts.kinds import PayloadKind
@@ -45,51 +51,6 @@ def build_trimmed_archive(
     return synthetic_event_count
 
 
-def temporary_archive_path(archive_path: Path) -> Path:
-    descriptor, raw_path = tempfile.mkstemp(
-        prefix=f".{archive_path.name}.trim-",
-        suffix=".sqlite3",
-        dir=archive_path.parent,
-    )
-    os.close(descriptor)
-    path = Path(raw_path)
-    path.unlink()
-    return path
-
-
-def remove_sqlite_sidecars(path: Path) -> None:
-    for suffix in ("-wal", "-shm"):
-        with suppress(FileNotFoundError):
-            path.with_name(f"{path.name}{suffix}").unlink()
-
-
-def remove_archive_artifacts(path: Path) -> None:
-    for candidate in (
-        path,
-        path.with_name(f"{path.name}-wal"),
-        path.with_name(f"{path.name}-shm"),
-        path.with_name(f"{path.name}.lock"),
-    ):
-        with suppress(FileNotFoundError):
-            candidate.unlink()
-
-
-def fsync_file(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
-def fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _copy_selected_rows(
     *,
     source_path: Path,
@@ -99,7 +60,7 @@ def _copy_selected_rows(
 ) -> None:
     connection = sqlite3.connect(
         destination_path,
-        timeout=0,
+        timeout=SQLITE_CONNECTION_TIMEOUT_SECONDS,
         isolation_level=None,
         uri=True,
     )
@@ -308,32 +269,16 @@ def _preserve_capture_anomaly_provenance(
     connection: sqlite3.Connection,
     plan: RecordingTrimPlan,
 ) -> bool:
-    tables = {
-        row[0]
-        for row in connection.execute(
-            "SELECT name FROM source.sqlite_schema "
-            "WHERE type = 'table' AND name IN (?, ?)",
-            (RECORDING_FEATURES_TABLE, CAPTURE_ANOMALIES_TABLE),
-        ).fetchall()
-    }
-    available = False
-    if RECORDING_FEATURES_TABLE in tables:
-        row = connection.execute(
-            f"""
-            SELECT available_from_session_id
-            FROM source.{RECORDING_FEATURES_TABLE}
-            WHERE feature_name = ?
-            """,
-            (CAPTURE_ANOMALY_JOURNAL_FEATURE,),
-        ).fetchone()
-        available = (
-            row is not None
-            and int(row[0]) <= plan.source_session.session_id
+    try:
+        available = capture_anomaly_journal_available(
+            connection,
+            session_id=plan.source_session.session_id,
+            schema="source",
         )
-    if available and CAPTURE_ANOMALIES_TABLE not in tables:
+    except ArchiveFormatError as error:
         raise RecordingTrimError(
             "source recording advertises a missing capture anomaly journal"
-        )
+        ) from error
     if not available:
         connection.execute(
             f"DELETE FROM {RECORDING_FEATURES_TABLE} WHERE feature_name = ?",

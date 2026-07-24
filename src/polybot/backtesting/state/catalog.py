@@ -7,7 +7,10 @@ from decimal import Decimal
 
 from polybot.backtesting.contracts import BacktestError, BacktestFailureReason
 from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.recording.contracts.market import MarketMetadataPayload
+from polybot.recording.contracts.market import (
+    MarketMetadataPayload,
+    MarketRevisionIdentity,
+)
 from polybot.recording.contracts.payloads import ResolutionPayload
 
 
@@ -18,6 +21,7 @@ class MarketCatalog:
         self._markets_by_condition: dict[str, Market] = {}
         self._condition_by_slug: dict[str, str] = {}
         self._condition_by_token: dict[str, str] = {}
+        self._revision_identity_by_condition: dict[str, MarketRevisionIdentity] = {}
         self._resolved_conditions: set[str] = set()
 
     @property
@@ -29,11 +33,12 @@ class MarketCatalog:
         return frozenset(self._condition_by_slug)
 
     def add_metadata(self, payload: MarketMetadataPayload) -> Market:
-        market = _market_from_metadata(payload)
+        market = self._market_from_metadata(payload)
         previous = self._markets_by_condition.get(market.condition_id)
-        if previous is not None and (
-            previous.slug != market.slug or previous.token_ids != market.token_ids
-        ):
+        previous_identity = self._revision_identity_by_condition.get(
+            market.condition_id
+        )
+        if previous is not None and previous_identity != payload.revision_identity:
             raise BacktestError(
                 BacktestFailureReason.MISSING_MARKET_DATA,
                 "recorded metadata changed immutable identity for "
@@ -53,6 +58,9 @@ class MarketCatalog:
                     f"token ID maps to multiple recorded markets: {token_id}",
                 )
         self._markets_by_condition[market.condition_id] = market
+        self._revision_identity_by_condition[market.condition_id] = (
+            payload.revision_identity
+        )
         self._condition_by_slug[market.slug] = market.condition_id
         for token_id in market.token_ids:
             self._condition_by_token[token_id] = market.condition_id
@@ -116,25 +124,25 @@ class MarketCatalog:
         self._resolved_conditions.add(condition_id)
         return updated
 
-
-def _market_from_metadata(payload: MarketMetadataPayload) -> Market:
-    return Market(
-        condition_id=payload.condition_id,
-        slug=payload.market_slug,
-        question=payload.question,
-        minimum_tick_size=payload.minimum_tick_size,
-        minimum_order_size=payload.minimum_order_size,
-        neg_risk=bool(payload.neg_risk),
-        fee_rate=payload.fee_rate,
-        outcomes=tuple(
-            MarketOutcome(outcome.label, outcome.token_id)
-            for outcome in payload.outcomes
-        ),
-        resolved=payload.resolved,
-        winning_token_id=payload.winning_token_id,
-        winning_outcome=payload.winning_outcome,
-        active=payload.active,
-        closed=payload.closed,
-        order_book_enabled=payload.order_book_enabled,
-        accepting_orders=payload.accepting_orders,
-    )
+    @staticmethod
+    def _market_from_metadata(payload: MarketMetadataPayload) -> Market:
+        return Market(
+            condition_id=payload.condition_id,
+            slug=payload.market_slug,
+            question=payload.question,
+            minimum_tick_size=payload.minimum_tick_size,
+            minimum_order_size=payload.minimum_order_size,
+            neg_risk=bool(payload.neg_risk),
+            fee_rate=payload.fee_rate,
+            outcomes=tuple(
+                MarketOutcome(outcome.label, outcome.token_id)
+                for outcome in payload.outcomes
+            ),
+            resolved=payload.resolved,
+            winning_token_id=payload.winning_token_id,
+            winning_outcome=payload.winning_outcome,
+            active=payload.active,
+            closed=payload.closed,
+            order_book_enabled=payload.order_book_enabled,
+            accepting_orders=payload.accepting_orders,
+        )

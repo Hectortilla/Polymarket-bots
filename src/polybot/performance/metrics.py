@@ -5,11 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from .valuation import (
-    PortfolioValuation,
-    ValuationStatus,
-    history_valuation_status,
-)
+from .contracts.valuation_status import ValuationStatus, history_valuation_status
+from .valuation import PortfolioValuation
 
 
 ZERO_DRAWDOWN = Decimal("0")
@@ -33,14 +30,15 @@ class EquityCurveMetrics:
         timestamp_ms: int,
         valuation: PortfolioValuation,
     ) -> EquityCurveMetrics:
-        if (
-            isinstance(timestamp_ms, bool)
-            or not isinstance(timestamp_ms, int)
-            or timestamp_ms < 0
-        ):
-            raise ValueError("equity sample timestamp must be nonnegative")
         if self.last_timestamp_ms is not None and timestamp_ms < self.last_timestamp_ms:
             raise ValueError("equity sample timestamps must be nondecreasing")
+        return self._after_ordered_sample(timestamp_ms, valuation)
+
+    def _after_ordered_sample(
+        self,
+        timestamp_ms: int,
+        valuation: PortfolioValuation,
+    ) -> EquityCurveMetrics:
         stale_count = self.stale_sample_count + (
             valuation.status is ValuationStatus.STALE
         )

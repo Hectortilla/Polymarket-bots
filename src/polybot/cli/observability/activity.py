@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from polybot.cli.observability.observer import RuntimeObserver, emit_observer
+from polybot.cli.observability.observer import (
+    RuntimeObserver,
+    emit_observer_fail_open,
+)
 from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 
 
@@ -20,4 +23,4 @@ class ObserverActivitySink:
             event = BotActivityEvent(message=message, severity=severity)
         except (TypeError, ValueError):
             return None
-        emit_observer(self._observer, event)
+        emit_observer_fail_open(self._observer, event)

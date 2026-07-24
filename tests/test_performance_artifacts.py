@@ -34,7 +34,8 @@ from polybot.performance.contracts.run import (
     RunSelection,
     SampleReason,
 )
-from polybot.performance.valuation import ValuationStatus, value_portfolio
+from polybot.performance.contracts.valuation_status import ValuationStatus
+from polybot.performance.valuation import value_portfolio
 
 
 def test_shared_valuation_marks_longs_at_bid_and_shorts_at_ask() -> None:

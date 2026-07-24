@@ -18,17 +18,18 @@ from polybot.cli.observability.observer import (
     NullRuntimeObserver,
     RuntimeObserver,
     RuntimeObserverGroup,
-    emit_observer,
-    start_observer,
-    stop_observer,
+    emit_observer_fail_open,
+    start_observer_fail_open,
+    stop_observer_fail_open,
 )
 from polybot.framework.base import BaseBot
-from polybot.framework.config.models import BotConfig, BotMode
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.public_data.runtime import RuntimePublicData
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
 from polybot.performance.artifacts.errors import PerformanceOutputExistsError
-from polybot.performance.contracts.files import DEFAULT_REPORT_INTERVAL_MS
+from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.cli.runner.factory import create_runtime
 
 from .performance.broker import PaperPerformanceBroker
@@ -97,16 +98,16 @@ async def run_bot(
                 ),
             )
     runner = BotRunner(bot, ctx)
-    await start_observer(runtime_observer, config)
-    emit_observer(runtime_observer, RuntimeStarted.from_config(config))
-    emit_observer(
+    await start_observer_fail_open(runtime_observer, config)
+    emit_observer_fail_open(runtime_observer, RuntimeStarted.from_config(config))
+    emit_observer_fail_open(
         runtime_observer,
         RuntimeStateChanged(RuntimeState.STARTING, monotonic()),
     )
     failed = False
     try:
         await bot.on_start(ctx)
-        emit_observer(
+        emit_observer_fail_open(
             runtime_observer,
             RuntimeStateChanged(RuntimeState.RUNNING, monotonic()),
         )
@@ -124,14 +125,14 @@ async def run_bot(
     except BaseException as error:
         if not isinstance(error, asyncio.CancelledError):
             failed = True
-            emit_observer(
+            emit_observer_fail_open(
                 runtime_observer,
                 RuntimeFailed(f"{type(error).__name__}: {error}", monotonic()),
             )
         raise
     finally:
         if not failed:
-            emit_observer(
+            emit_observer_fail_open(
                 runtime_observer,
                 RuntimeStateChanged(RuntimeState.STOPPING, monotonic()),
             )
@@ -143,15 +144,15 @@ async def run_bot(
         except BaseException as error:
             failed = True
             if not isinstance(error, asyncio.CancelledError):
-                emit_observer(
+                emit_observer_fail_open(
                     runtime_observer,
                     RuntimeFailed(f"{type(error).__name__}: {error}", monotonic()),
                 )
             raise
         finally:
             if not failed:
-                emit_observer(
+                emit_observer_fail_open(
                     runtime_observer,
                     RuntimeStateChanged(RuntimeState.STOPPED, monotonic()),
                 )
-            await stop_observer(runtime_observer)
+            await stop_observer_fail_open(runtime_observer)

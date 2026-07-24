@@ -5,9 +5,9 @@ from decimal import Decimal
 
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
-from polybot.framework.outcomes import resolve_outcome_token
 from polybot.framework.streams import StreamRelation, StreamRule
 
 
@@ -76,7 +76,11 @@ class ExampleMultiMarketBot(BaseBot):
         slugs.update(rule.target_slug for rule in self.rules)
         return (StreamRule(StreamRelation.INDEPENDENT, tuple(sorted(slugs))),)
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
         if book.market_slug is None:
             return
         for rule in self.rules:
@@ -85,7 +89,12 @@ class ExampleMultiMarketBot(BaseBot):
                 self._target_token_ids[rule.target_slug] = (
                     None
                     if market is None
-                    else resolve_outcome_token(market, rule.target_outcome_label)
+                    else market.token_id_for_outcome(rule.target_outcome_label)
                 )
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
         for order in self.orders_for_book(book, ctx.config.max_order_size):
+            if not ctx.is_book_current(book):
+                return DispatchSkipReason.BOOK_STALE
             await ctx.broker.submit(order)
+        return None

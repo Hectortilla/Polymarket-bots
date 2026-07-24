@@ -19,6 +19,9 @@ def archive_sha256(path: Path) -> str:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+DEFAULT_BACKTEST_RESULTS_DIR = Path("backtest-results")
+
+
 def default_results_dir(archive_path: Path, bot_name: str) -> Path:
     """Build a collision-resistant, readable default artifact directory."""
     safe_name = "".join(
@@ -27,6 +30,6 @@ def default_results_dir(archive_path: Path, bot_name: str) -> Path:
     ).strip("-") or "bot"
     timestamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     suffix = time.time_ns() % 1_000_000_000
-    return Path("backtest-results") / (
+    return DEFAULT_BACKTEST_RESULTS_DIR / (
         f"{archive_path.stem}-{safe_name}-{timestamp}-{suffix:09d}"
     )

@@ -26,16 +26,73 @@ from polybot.framework.config.constants import (
 )
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import (
+    FillEvent,
     FillRejectReason,
     OrderRequest,
     OrderStatus,
     Side,
 )
+from polybot.execution.paper.validation import validate_order
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.polymarket.markets import Market, MarketOutcome
 
 DEFAULT_MARKET_SLUG = "btc-up"
 DEFAULT_CONDITION_ID = "0xcondition"
+
+
+@pytest.mark.parametrize("source_id", ("", "line\nbreak", "line\rbreak"))
+def test_order_validation_rejects_non_line_safe_source_ids(source_id: str) -> None:
+    rejection = validate_order(
+        OrderRequest(
+            token_id="token",
+            side=Side.BUY,
+            price=Decimal("0.5"),
+            size=Decimal("1"),
+            source_id=source_id,
+        )
+    )
+
+    assert rejection is not None
+    assert rejection[0] is FillRejectReason.INVALID_SOURCE_ID
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"status": OrderStatus.FILLED, "filled_size": Decimal("0"), "average_price": None},
+        {
+            "status": OrderStatus.PARTIAL,
+            "filled_size": Decimal("1"),
+            "average_price": Decimal("0.5"),
+            "requested_size": Decimal("1"),
+        },
+        {
+            "status": OrderStatus.REJECTED,
+            "filled_size": Decimal("1"),
+            "average_price": Decimal("0.5"),
+            "reject_reason": FillRejectReason.BAD_SIZE,
+            "reject_message": "bad",
+        },
+    ),
+)
+def test_fill_event_owns_status_and_execution_invariants(
+    changes: dict[str, object],
+) -> None:
+    values = {
+        "order_id": "order",
+        "token_id": "token",
+        "side": Side.BUY,
+        "status": OrderStatus.FILLED,
+        "requested_size": Decimal("1"),
+        "filled_size": Decimal("1"),
+        "average_price": Decimal("0.5"),
+        "fee_usdc": Decimal("0"),
+        "received_at_ms": 1,
+    }
+    values.update(changes)
+
+    with pytest.raises(ValueError):
+        FillEvent(**values)  # type: ignore[arg-type]
 
 
 @dataclass(slots=True)
@@ -1282,9 +1339,15 @@ def _book(
     )
 
 
-def _levels(prices: tuple[Decimal, ...], sizes: tuple[Decimal, ...] | None) -> tuple[BookLevel, ...]:
+def _levels(
+    prices: tuple[Decimal, ...],
+    sizes: tuple[Decimal, ...] | None,
+) -> tuple[BookLevel, ...]:
     sizes = sizes or tuple(Decimal("1") for _ in prices)
-    return tuple(BookLevel(price=price, size=size) for price, size in zip(prices, sizes, strict=True))
+    return tuple(
+        BookLevel(price=price, size=size)
+        for price, size in zip(prices, sizes, strict=True)
+    )
 
 
 async def _noop_sleep(_: float) -> None:

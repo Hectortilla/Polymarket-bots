@@ -14,16 +14,19 @@ from polybot.polymarket.errors import (
     MarketDataIssue,
     MarketDataTransportError,
 )
+from polybot.polymarket.pagination import sdk_page_items
 
 from .contracts import Position
 from .fields import (
-    POSITIONS_PAGE_SIZE,
     POSITIONS_REQUEST_MARKET_FIELD,
     POSITIONS_REQUEST_PAGE_SIZE_FIELD,
     POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD,
     POSITIONS_REQUEST_USER_FIELD,
 )
-from .normalization import normalize_position, page_items
+from .normalization import normalize_position
+
+
+POSITIONS_PAGE_SIZE = 100
 
 
 class PositionDataClient(Protocol):
@@ -65,7 +68,13 @@ class PositionClient:
             paginator = await run_blocking(self._client.list_positions, **request)
             positions_by_token: dict[str, Position] = {}
             async for page in paginator:
-                for source in page_items(page):
+                for source in sdk_page_items(
+                    page,
+                    malformed_error=MarketDataError(
+                        MarketDataIssue.INVALID_POSITION,
+                        "position page items are malformed",
+                    ),
+                ):
                     position = normalize_position(
                         source,
                         requested_wallet=requested_wallet,

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed.capture import MarketCapture
+from polybot.polymarket.stream_diagnostics import require_monotonic_dropped_count
 from polybot.recording.clock import ObservationClock
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
@@ -17,7 +18,8 @@ from polybot.recording.contracts.book import (
 from polybot.recording.contracts.gaps import CoverageGapReason
 from polybot.recording.contracts.records import RecordedEvent
 from polybot.recording.contracts.payloads import ResolutionPayload
-from polybot.recording.writer import AsyncRecordingWriter, PendingRecordingEvent
+from polybot.recording.writer import AsyncRecordingWriter
+from polybot.recording.writer_contracts import PendingRecordingEvent
 
 from .state import CaptureStopped, ControlMessage, ResolutionStored, TrackedMarket
 
@@ -103,7 +105,10 @@ class CapturePump:
                             error=error,
                         )
                     else:
-                        dropped_count = capture.dropped_count
+                        dropped_count = require_monotonic_dropped_count(
+                            tracked.dropped_count,
+                            capture.dropped_count,
+                        )
                         if dropped_count > tracked.dropped_count:
                             tracked.dropped_count = dropped_count
                             stopped = CaptureStopped(
@@ -162,7 +167,10 @@ class CapturePump:
                     return
 
                 if stopped is None and not resolution_queued:
-                    dropped_count = capture.dropped_count
+                    dropped_count = require_monotonic_dropped_count(
+                        tracked.dropped_count,
+                        capture.dropped_count,
+                    )
                     if dropped_count > tracked.dropped_count:
                         tracked.dropped_count = dropped_count
                         stopped = CaptureStopped(

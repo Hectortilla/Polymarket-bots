@@ -30,9 +30,10 @@ def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
     page = min(state.wallet_page, maximum_page)
     lanes = list(state.wallet_lanes)[page * capacity : (page + 1) * capacity]
     columns = wallet_timeline_columns(state, width)
-    visible_range = state.visible_time_range(width)
+    visible_range = state.visible_epoch_seconds_range(width)
     header = Text(
-        "green buy · red sell · yellow mixed · ·/●/◆ relative notional · dim skipped · v market · j/k wallets",
+        "green buy · red sell · yellow mixed · ·/●/◆ relative notional · "
+        "dim skipped · v market · j/k wallets",
         style="bright_cyan",
     )
     if not lanes:
@@ -81,33 +82,49 @@ def wallet_timeline_columns(state: DashboardState, width: int) -> int:
 def wallet_timeline_buckets(
     events: deque[WalletTimelineEvent],
     lanes: list[str],
-    start: float,
-    end: float,
+    start_epoch_seconds: float,
+    end_epoch_seconds: float,
     columns: int,
 ) -> dict[str, dict[int, list[WalletTimelineEvent]]]:
     events_by_wallet_and_bucket: dict[
         str, dict[int, list[WalletTimelineEvent]]
     ] = defaultdict(lambda: defaultdict(list))
     lane_set = set(lanes)
-    if end <= start:
+    if end_epoch_seconds <= start_epoch_seconds:
         return events_by_wallet_and_bucket
-    span = end - start
+    span_seconds = end_epoch_seconds - start_epoch_seconds
     for event in events:
-        timestamp = event.trade_timestamp_ms / 1_000
-        if event.wallet not in lane_set or timestamp < start or timestamp > end:
+        timestamp_epoch_seconds = event.trade_timestamp_ms / 1_000
+        if (
+            event.wallet not in lane_set
+            or timestamp_epoch_seconds < start_epoch_seconds
+            or timestamp_epoch_seconds > end_epoch_seconds
+        ):
             continue
-        bucket = _timeline_bucket_for_timestamp(timestamp, start, span, columns)
+        bucket = _timeline_bucket_for_timestamp(
+            timestamp_epoch_seconds,
+            start_epoch_seconds,
+            span_seconds,
+            columns,
+        )
         events_by_wallet_and_bucket[event.wallet][bucket].append(event)
     return events_by_wallet_and_bucket
 
 
 def _timeline_bucket_for_timestamp(
-    timestamp: float,
-    start: float,
-    span: float,
+    timestamp_epoch_seconds: float,
+    start_epoch_seconds: float,
+    span_seconds: float,
     columns: int,
 ) -> int:
-    return min(columns - 1, int((timestamp - start) / span * columns))
+    return min(
+        columns - 1,
+        int(
+            (timestamp_epoch_seconds - start_epoch_seconds)
+            / span_seconds
+            * columns
+        ),
+    )
 
 
 def wallet_bucket_glyph(

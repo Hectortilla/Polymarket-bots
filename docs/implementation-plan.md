@@ -88,7 +88,8 @@ Implement public adapters:
 - Internal `GammaClient.find_by_slug`, backed by the unified async SDK.
 - Internal `ClobClient.latest`, backed by the unified async SDK or the official
   CLOB client when required.
-- Internal `MarketStream.books`, backed by the unified async SDK subscription.
+- Internal `MarketStream.books`, backed by the unified async SDK subscription,
+  yielding `BookSnapshot` values and typed `BookGapEvent` continuity losses.
 
 Rules:
 - Use async I/O.
@@ -110,6 +111,9 @@ Tests:
 - Parse normal market payload.
 - Reject missing token IDs.
 - Parse book levels into sorted `BookSnapshot`.
+- Invalidate every affected condition book on a stream gap or rejected frame,
+  emit a stable typed `BookGapEvent`, and require fresh baselines for every
+  subscribed token before resuming snapshots.
 - Reject book snapshots whose token or condition identity disagrees with
   resolved metadata.
 - Reject malformed market payloads and unknown price-change sides at ingress.
@@ -129,7 +133,9 @@ Implementation notes:
   bootstrap and reconciliation snapshots.
 - `MarketStream` uses `AsyncPublicClient.subscribe(MarketSpec(...))`. It owns
   live depth, applies all changes in one price-change message atomically, and
-  emits only complete sorted `BookSnapshot` contracts.
+  emits complete sorted `BookSnapshot` contracts plus typed `BookGapEvent`
+  continuity losses. Affected condition depth remains quarantined until every
+  subscribed outcome token receives a fresh full-book baseline.
 - The selected official library remains pinned in `pyproject.toml`.
   No direct-network exception was required.
 

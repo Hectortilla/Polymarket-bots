@@ -59,6 +59,11 @@ class BookDepthProjector:
         )
         return bool(token_ids) and set(token_ids).issubset(self._depth)
 
+    def has_baselines(self, token_ids: Iterable[str]) -> bool:
+        """Whether every requested token has a projected baseline."""
+        required = frozenset(token_ids)
+        return bool(required) and required.issubset(self._depth)
+
     def apply_baseline(
         self,
         payload: BookBaselinePayload,
@@ -71,7 +76,7 @@ class BookDepthProjector:
             condition_id=condition_id,
             received_at_ms=received_at_ms,
         )
-        self._depth[payload.token_id] = _depth_from_baseline(payload)
+        self._depth[payload.token_id] = self._depth_from_baseline(payload)
         return snapshot
 
     def preview_baseline(
@@ -83,7 +88,7 @@ class BookDepthProjector:
     ) -> BookSnapshot:
         """Validate and project a baseline without changing owned depth."""
         market = self._market_for(payload.token_id, condition_id)
-        bids, asks = _depth_from_baseline(payload)
+        bids, asks = self._depth_from_baseline(payload)
         return self._snapshot(
             market,
             payload.token_id,
@@ -144,6 +149,24 @@ class BookDepthProjector:
             for token_id, sides in self._depth.items()
         )
 
+    def condition_snapshots(
+        self,
+        condition_id: str,
+        *,
+        received_at_ms: int,
+    ) -> tuple[BookSnapshot, ...]:
+        """Project every available token book for one condition."""
+        return tuple(
+            self._snapshot(
+                market,
+                token_id,
+                *self._depth[token_id],
+                received_at_ms=received_at_ms,
+            )
+            for token_id, market in self._market_by_token.items()
+            if market.condition_id == condition_id and token_id in self._depth
+        )
+
     def _market_for(self, token_id: str, condition_id: str) -> Market:
         market = self._market_by_token.get(token_id)
         if market is None or market.condition_id != condition_id:
@@ -152,6 +175,13 @@ class BookDepthProjector:
                 "market-channel identity does not match resolved metadata",
             )
         return market
+
+    @staticmethod
+    def _depth_from_baseline(payload: BookBaselinePayload) -> _DepthSides:
+        return (
+            {level.price: level.size for level in payload.bids},
+            {level.price: level.size for level in payload.asks},
+        )
 
     @staticmethod
     def _snapshot(
@@ -177,10 +207,3 @@ class BookDepthProjector:
             expected_token_id=token_id,
             expected_condition_id=market.condition_id,
         )
-
-
-def _depth_from_baseline(payload: BookBaselinePayload) -> _DepthSides:
-    return (
-        {level.price: level.size for level in payload.bids},
-        {level.price: level.size for level in payload.asks},
-    )

@@ -39,6 +39,17 @@ class _BootstrapBook:
     generation: int
     book: BookBaselinePayload
 
+    def matches_checkpoint(
+        self,
+        checkpoint_by_token: dict[str, BookCheckpoint],
+    ) -> bool:
+        checkpoint = checkpoint_by_token.get(self.book.token_id)
+        return (
+            checkpoint is not None
+            and checkpoint.subscription_generation == self.generation
+            and checkpoint.book == self.book
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _BootstrapState:
@@ -274,11 +285,8 @@ def _state_at_recovery_checkpoint(
     checkpoint_by_token = {
         checkpoint.book.token_id: checkpoint for checkpoint in checkpoints
     }
-    if len(books) != len(market.outcomes) or any(
-        checkpoint_by_token.get(book.book.token_id) is None
-        or checkpoint_by_token[book.book.token_id].subscription_generation
-        != book.generation
-        or checkpoint_by_token[book.book.token_id].book != book.book
+    if len(books) != len(market.outcomes) or not all(
+        book.matches_checkpoint(checkpoint_by_token)
         for book in books
     ):
         raise RecordingTrimError(

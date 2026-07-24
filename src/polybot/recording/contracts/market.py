@@ -9,6 +9,7 @@ from polybot.framework.events.prices import (
     OUTCOME_PRICE_CEILING,
     OUTCOME_PRICE_FLOOR,
 )
+from polybot.polymarket.resolution_status import ResolutionStatus
 
 from .validation import (
     normalize_optional_text_fields,
@@ -49,6 +50,14 @@ class MarketOutcomeMetadata:
                 minimum=OUTCOME_PRICE_FLOOR,
                 maximum=OUTCOME_PRICE_CEILING,
             )
+
+
+@dataclass(frozen=True, slots=True)
+class MarketRevisionIdentity:
+    market_id: str
+    condition_id: str
+    market_slug: str
+    outcomes: tuple[tuple[str, str], tuple[str, str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,12 +111,23 @@ class MarketMetadataPayload:
     fee_rate: Decimal
     question_id: str | None
     neg_risk_request_id: str | None
-    resolution_status: str | None
+    resolution_status: ResolutionStatus | None
     resolution_source: str | None
     resolved_by: str | None
     resolved: bool
     winning_token_id: str | None
     winning_outcome: str | None
+
+    @property
+    def revision_identity(self) -> MarketRevisionIdentity:
+        return MarketRevisionIdentity(
+            market_id=self.market_id,
+            condition_id=self.condition_id,
+            market_slug=self.market_slug,
+            outcomes=tuple(
+                (outcome.label, outcome.token_id) for outcome in self.outcomes
+            ),
+        )
 
     def __post_init__(self) -> None:
         normalize_required_text_fields(
@@ -127,6 +147,15 @@ class MarketMetadataPayload:
                 "winning_outcome",
             ),
         )
+        if self.resolution_status is not None:
+            try:
+                object.__setattr__(
+                    self,
+                    "resolution_status",
+                    ResolutionStatus(self.resolution_status),
+                )
+            except ValueError as error:
+                raise ValueError("market resolution status is invalid") from error
         if not isinstance(self.events, tuple) or not all(
             isinstance(event, MarketEventMetadata) for event in self.events
         ):

@@ -1,11 +1,17 @@
 from dataclasses import dataclass
+from decimal import Decimal
 
 import pytest
 
 from polybot.execution.broker import Broker
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
+from polybot.framework.events import (
+    FillEvent,
+    FillRejectReason,
+    OrderRequest,
+    OrderStatus,
+)
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.polymarket.markets import Market
@@ -18,15 +24,25 @@ class DummyBroker(Broker):
 
     async def submit(self, order: OrderRequest) -> FillEvent:
         self.submitted.append(order)
+        if order.size <= 0:
+            return FillEvent.rejected(
+                order_id="dummy",
+                token_id=order.token_id,
+                side=order.side,
+                requested_size=order.size,
+                received_at_ms=0,
+                reject_reason=FillRejectReason.BAD_SIZE,
+                reject_message="order size must be positive",
+            )
         return FillEvent(
             order_id="dummy",
             token_id=order.token_id,
             side=order.side,
-            status=OrderStatus.ACCEPTED,
+            status=OrderStatus.FILLED,
             requested_size=order.size,
             filled_size=order.size,
             average_price=order.price,
-            fee_usdc=0,
+            fee_usdc=Decimal("0"),
             received_at_ms=0,
         )
 

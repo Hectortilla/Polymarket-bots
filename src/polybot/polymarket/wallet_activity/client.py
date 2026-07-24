@@ -9,6 +9,7 @@ from polymarket import PolymarketError
 from polybot.framework.clock import system_now_ms
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
+from polybot.polymarket.pagination import sdk_page_items
 
 from .contracts import (
     WalletActivityIssue,
@@ -236,10 +237,10 @@ def _require_positive_limit(limit: int) -> None:
 
 
 def _page_items(page: object) -> tuple[object, ...]:
-    items = getattr(page, "items", None)
-    if not isinstance(items, (list, tuple)):
-        raise WalletActivityError(
+    return sdk_page_items(
+        page,
+        malformed_error=WalletActivityError(
             WalletActivityIssue.WALLET_READ_FAILED,
             "wallet activity page items are malformed",
-        )
-    return tuple(items)
+        ),
+    )

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .archive.reader import RecordingReader
-from .archive.models import RecordingSessionStatistics
+from .archive.paths import SQLITE_SIDECAR_SUFFIXES
+from .archive.models import RecordingEventCounts, RecordingSessionStatistics
 from .contracts.records import CoverageGapRecord
 
 
@@ -45,9 +46,12 @@ class RecordingInspection:
 
     @property
     def replay_event_count(self) -> int:
-        return sum(
-            session.statistics.event_counts.replay_event_count
-            for session in self.sessions
+        return self.event_counts.replay_event_count
+
+    @property
+    def event_counts(self) -> RecordingEventCounts:
+        return RecordingEventCounts.combine(
+            session.statistics.event_counts for session in self.sessions
         )
 
     @property
@@ -119,7 +123,7 @@ def inspect_recording(path: str | Path) -> RecordingInspection:
         archive_size_bytes=archive_path.stat().st_size,
         sidecar_size_bytes=sum(
             sidecar.stat().st_size
-            for suffix in ("-wal", "-shm")
+            for suffix in SQLITE_SIDECAR_SUFFIXES
             if (sidecar := archive_path.with_name(f"{archive_path.name}{suffix}")).is_file()
         ),
         schema_version=schema_version,

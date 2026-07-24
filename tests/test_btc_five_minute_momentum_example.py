@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from polybot.examples.btc_five_minute_strategy import (
@@ -9,6 +9,7 @@ from polybot.examples.btc_five_minute_strategy import (
     STOP_EXIT_REASON,
     TARGET_EXIT_REASON,
     MomentumSettings,
+    OpenPosition,
     ProbabilitySampleTransition,
     ProbabilityTrend,
 )
@@ -17,7 +18,12 @@ from polybot.examples.example_btc_five_minute_momentum import (
 )
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
-from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.books import (
+    BookGapEvent,
+    BookGapReason,
+    BookLevel,
+    BookSnapshot,
+)
 from polybot.polymarket.markets import Market, MarketOutcome
 
 UP_TOKEN_ID = "up-token"
@@ -156,17 +162,47 @@ def test_bot_rejects_an_equally_timestamped_stale_book_pair(
     assert dummy_context.broker.submitted == []
 
 
-def test_bot_sells_at_the_stop_and_does_not_short(
+def test_bot_gap_clears_signal_history_but_preserves_an_open_position(
     dummy_context: BotContext,
 ) -> None:
-    async def run() -> None:
-        bot = await _feed_probabilities(
+    async def run() -> tuple[BtcFiveMinuteMomentumBot, OpenPosition | None]:
+        session = await _feed_probabilities(
             dummy_context,
             probabilities=("0.44", "0.46", "0.49", "0.54"),
             favored_outcome="Up",
         )
-        await bot.on_book(
+        position = session.bot._position
+        await session.bot.on_book_gap(
+            session.context,
+            BookGapEvent(
+                condition_id=CONDITION_ID,
+                observed_at_ms=104_000,
+                reason=BookGapReason.BOOK_STREAM_GAP,
+            ),
+        )
+        return session.bot, position
+
+    bot, position = asyncio.run(run())
+
+    assert position is not None
+    assert bot._position is position
+    assert bot._books == {}
+    assert bot._metrics is None
+    assert bot._last_sample_at_ms is None
+
+
+def test_bot_sells_at_the_stop_and_does_not_short(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> None:
+        session = await _feed_probabilities(
             dummy_context,
+            probabilities=("0.44", "0.46", "0.49", "0.54"),
+            favored_outcome="Up",
+        )
+        session.clock.current_ms = 104_000
+        await session.bot.on_book(
+            session.context,
             _book(
                 UP_TOKEN_ID,
                 midpoint=Decimal("0.48"),
@@ -187,13 +223,14 @@ def test_bot_sells_at_the_stop_and_does_not_short(
 
 def test_bot_sells_at_the_profit_target(dummy_context: BotContext) -> None:
     async def run() -> None:
-        bot = await _feed_probabilities(
+        session = await _feed_probabilities(
             dummy_context,
             probabilities=("0.44", "0.46", "0.49", "0.54"),
             favored_outcome="Up",
         )
-        await bot.on_book(
-            dummy_context,
+        session.clock.current_ms = 104_000
+        await session.bot.on_book(
+            session.context,
             _book(
                 UP_TOKEN_ID,
                 midpoint=Decimal("0.64"),
@@ -213,13 +250,14 @@ def test_bot_sells_at_the_profit_target(dummy_context: BotContext) -> None:
 
 def test_bot_forces_an_exit_before_bucket_expiry(dummy_context: BotContext) -> None:
     async def run() -> None:
-        bot = await _feed_probabilities(
+        session = await _feed_probabilities(
             dummy_context,
             probabilities=("0.44", "0.46", "0.49", "0.54"),
             favored_outcome="Up",
         )
-        await bot.on_book(
-            dummy_context,
+        session.clock.current_ms = 299_500
+        await session.bot.on_book(
+            session.context,
             _book(
                 UP_TOKEN_ID,
                 midpoint=Decimal("0.54"),
@@ -256,7 +294,7 @@ async def _feed_probabilities(
     start_ms: int = 100_000,
     half_spread: Decimal = Decimal("0.01"),
     clock_lag_ms: int = 0,
-) -> BtcFiveMinuteMomentumBot:
+) -> "_MomentumTestSession":
     clock = _TestClock(start_ms)
     market_context = replace(context, markets=_Markets(), clock=clock)
     bot = BtcFiveMinuteMomentumBot(_test_settings())
@@ -284,7 +322,7 @@ async def _feed_probabilities(
                 half_spread=half_spread,
             ),
         )
-    return bot
+    return _MomentumTestSession(bot=bot, context=market_context, clock=clock)
 
 
 def _test_settings() -> MomentumSettings:
@@ -358,3 +396,10 @@ class _TestClock:
 
     async def sleep(self, seconds: float) -> None:
         self.current_ms += int(seconds * 1_000)
+
+
+@dataclass(frozen=True, slots=True)
+class _MomentumTestSession:
+    bot: BtcFiveMinuteMomentumBot
+    context: BotContext
+    clock: _TestClock

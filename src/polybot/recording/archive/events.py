@@ -61,7 +61,7 @@ def stream_events(
                 if (
                     isinstance(event.payload, CoverageGapPayload)
                     and (
-                        event.payload.ended_at_ms == event.payload.started_at_ms
+                        event.payload.is_instantaneous
                         or not _gap_affects(
                             event.identity,
                             event.payload,

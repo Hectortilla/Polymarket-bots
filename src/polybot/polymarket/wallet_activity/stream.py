@@ -6,8 +6,7 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from time import monotonic
 
 from polybot.framework.config.constants import (
-    DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS,
-    DEFAULT_DATA_TRADES_BUDGET_PER_10S,
+    DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
 )
 from polybot.framework.clock import system_now_ms
@@ -23,6 +22,7 @@ from .contracts import (
 )
 from .normalization import normalize_stream_event
 
+DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS = 10
 WALLET_STREAM_QUEUE_CAPACITY = 1_000
 WALLET_STREAM_POLL_INTERVAL_SECONDS = 0.05
 
@@ -64,7 +64,7 @@ class WalletActivityStream:
         selectors: Iterable[WalletTradeSelector] = (),
         *,
         source: WalletTradeSource | None = None,
-        budget_per_10s: int = DEFAULT_DATA_TRADES_BUDGET_PER_10S,
+        budget_per_10s: int = DEFAULT_DATA_TRADES_BUDGET,
         max_trade_age_ms: int = DEFAULT_EVENT_MAX_AGE_MS,
         now_ms: Callable[[], int] = system_now_ms,
     ) -> None:

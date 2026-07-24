@@ -7,7 +7,7 @@ from polymarket.models.clob.order_book import OrderBookLevel
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
-from .values import _required_text
+from .values import require_text
 
 
 def normalize_book(
@@ -22,15 +22,15 @@ def normalize_book(
     expected_token_id: str | None = None,
     expected_condition_id: str | None = None,
 ) -> BookSnapshot:
-    normalized_token_id = _required_text(
+    normalized_token_id = require_text(
         token_id,
-        MarketDataIssue.MISSING_TOKEN_ID,
         "book token ID",
+        issue=MarketDataIssue.MISSING_TOKEN_ID,
     )
-    normalized_condition_id = _required_text(
+    normalized_condition_id = require_text(
         condition_id,
-        MarketDataIssue.MISSING_CONDITION_ID,
         "book condition ID",
+        issue=MarketDataIssue.MISSING_CONDITION_ID,
     )
     if expected_token_id is not None and normalized_token_id != expected_token_id:
         raise MarketDataError(
@@ -51,10 +51,10 @@ def normalize_book(
     normalized_outcome = (
         None
         if outcome is None
-        else _required_text(
+        else require_text(
             outcome,
-            MarketDataIssue.INVALID_MARKET_PARAMETERS,
             "book outcome",
+            issue=MarketDataIssue.INVALID_MARKET_PARAMETERS,
         )
     )
     snapshot = BookSnapshot(

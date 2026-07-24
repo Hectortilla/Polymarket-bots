@@ -5,7 +5,8 @@ from __future__ import annotations
 from polybot.async_io import run_blocking
 from polybot.backtesting.clock import ReplayClock
 from polybot.backtesting.contracts import BacktestSelection
-from polybot.backtesting.coverage import ReplayCoverage, gaps_affecting_markets
+from polybot.backtesting.coverage import ReplayCoverage
+from polybot.backtesting.coverage_selection import gaps_affecting_markets
 from polybot.backtesting.state import ArchiveMarketState
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.contracts.records import CoverageGapRecord

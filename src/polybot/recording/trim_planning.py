@@ -475,10 +475,7 @@ def _clean_intervals(
     intervals: list[_CleanInterval] = []
     for record in sorted(gaps, key=lambda value: value.gap.started_at_ms):
         gap = record.gap
-        if (
-            gap.ended_at_ms is not None
-            and gap.ended_at_ms == gap.started_at_ms
-        ):
+        if gap.is_instantaneous:
             continue
         if gap.started_at_ms > session_end_ms:
             break

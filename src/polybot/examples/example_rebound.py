@@ -4,10 +4,10 @@ from decimal import Decimal
 
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.outcomes import YES_OUTCOME
-from polybot.framework.outcomes import resolve_outcome_token
 
 REBOUND_ORDER_REASON = "price_rebound"
 
@@ -68,6 +68,7 @@ class ExampleReboundBot(BaseBot):
         self.market_slug = market_slug
         self.order_size = order_size
         self._market_slug: str | None = None
+        self._condition_id: str | None = None
         self._token_id: str | None = None
         self._rebound_state = ReboundState()
 
@@ -84,7 +85,11 @@ class ExampleReboundBot(BaseBot):
         )
         return order
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
         if book.market_slug is None or (
             self.market_slug is not None and book.market_slug != self.market_slug
         ):
@@ -92,12 +97,19 @@ class ExampleReboundBot(BaseBot):
         if book.market_slug != self._market_slug:
             market = await ctx.markets.find_by_slug(book.market_slug)
             self._market_slug = book.market_slug
+            self._condition_id = None if market is None else market.condition_id
             self._token_id = (
                 None
                 if market is None
-                else resolve_outcome_token(market, self.outcome_label)
+                else market.token_id_for_outcome(self.outcome_label)
             )
             self._rebound_state = ReboundState()
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
         order = self.order_for_book(book, ctx.config.max_order_size)
         if order is not None:
             await ctx.broker.submit(order)
+
+    async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
+        if gap.affects(self._condition_id):
+            self._rebound_state = ReboundState()

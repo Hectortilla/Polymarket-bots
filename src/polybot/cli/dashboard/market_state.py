@@ -9,8 +9,9 @@ from decimal import Decimal
 from polybot.cli.observability.events import PortfolioSnapshot
 from polybot.framework.clock import system_now_ms
 from polybot.framework.events import FillEvent
-from polybot.framework.events.books import BookSnapshot
-from polybot.performance.valuation import PortfolioValuation, value_portfolio
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.performance.contracts.valuation import PortfolioValuation
+from polybot.performance.valuation import value_portfolio
 
 from .token_labels import format_market_label, format_token_label
 
@@ -28,17 +29,28 @@ class DashboardMarkets:
     market_labels: dict[str, str] = field(default_factory=dict)
     pending_books: dict[str, BookSnapshot] = field(default_factory=dict)
     portfolio: PortfolioSnapshot | None = None
-    market_ticker_at_monotonic: dict[str, float] = field(default_factory=dict)
+    market_ticker_at_monotonic_seconds: dict[str, float] = field(default_factory=dict)
     resolved_condition_ids: set[str] = field(default_factory=set)
     resolved_market_count: int = 0
 
     def stage_book(self, book: BookSnapshot) -> None:
         self.pending_books[book.token_id] = book
 
+    def invalidate_gap(self, gap: BookGapEvent) -> None:
+        token_ids = {
+            token_id
+            for token_id, book in (*self.books.items(), *self.pending_books.items())
+            if gap.affects(book.condition_id)
+        }
+        for token_id in token_ids:
+            self.books.pop(token_id, None)
+            self.pending_books.pop(token_id, None)
+            self.last_executable_marks.pop(token_id, None)
+
     def record_book(
         self,
         book: BookSnapshot,
-        occurred_at_monotonic: float,
+        occurred_at_monotonic_seconds: float,
         *,
         activate_chart_token: Callable[[str], bool],
         add_market_ticker: Callable[[str, str], None],
@@ -54,13 +66,13 @@ class DashboardMarkets:
             )
         activate_chart_token(book.token_id)
         midpoint = book.midpoint()
-        previous_ticker_at = self.market_ticker_at_monotonic.get(book.token_id)
+        previous_ticker_at = self.market_ticker_at_monotonic_seconds.get(book.token_id)
         if midpoint is not None and (
             previous_ticker_at is None
-            or occurred_at_monotonic - previous_ticker_at
+            or occurred_at_monotonic_seconds - previous_ticker_at
             >= MARKET_TICKER_INTERVAL_SECONDS
         ):
-            self.market_ticker_at_monotonic[book.token_id] = occurred_at_monotonic
+            self.market_ticker_at_monotonic_seconds[book.token_id] = occurred_at_monotonic_seconds
             add_market_ticker(
                 "cyan",
                 f"MARKET {format_token_label(book.token_id)} mid {midpoint:.4f}",
@@ -78,7 +90,7 @@ class DashboardMarkets:
             self.last_executable_marks.pop(token_id, None)
             self.pending_books.pop(token_id, None)
             self.market_labels.pop(token_id, None)
-            self.market_ticker_at_monotonic.pop(token_id, None)
+            self.market_ticker_at_monotonic_seconds.pop(token_id, None)
         return settled_token_ids
 
     def current_book(

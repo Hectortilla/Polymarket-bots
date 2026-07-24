@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from math import ceil
 from time import monotonic
 
-from polybot.cli.observability.events import BootstrapPhase
-from polybot.cli.streams.contracts import StreamKind
+from polybot.cli.observability.states import BootstrapPhase
+from polybot.cli.streams.kinds import StreamKind
 
 from .health import average, ratio
 
@@ -50,26 +50,26 @@ class DashboardStreamHealth:
     book_coalesced_count: int = 0
     queue_depth: int = 0
     peak_queue_depth: int = 0
-    stream_received_monotonic_times: dict[StreamKind, deque[float]] = field(
+    stream_received_monotonic_seconds: dict[StreamKind, deque[float]] = field(
         default_factory=dict
     )
-    stream_dispatched_monotonic_times: dict[StreamKind, deque[float]] = field(
+    stream_dispatched_monotonic_seconds: dict[StreamKind, deque[float]] = field(
         default_factory=dict
     )
-    event_monotonic_times: deque[float] = field(default_factory=deque)
+    event_monotonic_seconds: deque[float] = field(default_factory=deque)
 
-    def remember_event(self, occurred_at_monotonic: float) -> None:
-        self.event_monotonic_times.append(occurred_at_monotonic)
-        self._trim_event_times(occurred_at_monotonic)
+    def remember_event(self, occurred_at_monotonic_seconds: float) -> None:
+        self.event_monotonic_seconds.append(occurred_at_monotonic_seconds)
+        self._trim_event_times(occurred_at_monotonic_seconds)
 
     def record_stream_received(
-        self, kind: StreamKind, occurred_at_monotonic: float
+        self, kind: StreamKind, occurred_at_monotonic_seconds: float
     ) -> None:
         self.stream_counts[kind] = self.stream_counts.get(kind, 0) + 1
         self._record_rate(
-            self.stream_received_monotonic_times,
+            self.stream_received_monotonic_seconds,
             kind,
-            occurred_at_monotonic,
+            occurred_at_monotonic_seconds,
         )
 
     def record_bootstrap(
@@ -87,16 +87,16 @@ class DashboardStreamHealth:
         kind: StreamKind,
         *,
         accepted: bool,
-        occurred_at_monotonic: float,
+        occurred_at_monotonic_seconds: float,
     ) -> None:
         if accepted:
             self.accepted_dispatches += 1
         else:
             self.skipped_dispatches += 1
         self._record_rate(
-            self.stream_dispatched_monotonic_times,
+            self.stream_dispatched_monotonic_seconds,
             kind,
-            occurred_at_monotonic,
+            occurred_at_monotonic_seconds,
         )
 
     def record_order(self) -> None:
@@ -132,16 +132,16 @@ class DashboardStreamHealth:
             self.book_lags_ms.append(book_dispatch_lag_ms)
             self.book_stale_samples.append(book_stale)
 
-    def event_rate(self, now_monotonic: float | None = None) -> float:
-        current = monotonic() if now_monotonic is None else now_monotonic
+    def event_rate(self, now_monotonic_seconds: float | None = None) -> float:
+        current = monotonic() if now_monotonic_seconds is None else now_monotonic_seconds
         self._trim_event_times(current)
-        return len(self.event_monotonic_times) / EVENT_RATE_WINDOW_SECONDS
+        return len(self.event_monotonic_seconds) / EVENT_RATE_WINDOW_SECONDS
 
     def stream_rate(self, kind: StreamKind, *, received: bool) -> float:
         samples = (
-            self.stream_received_monotonic_times
+            self.stream_received_monotonic_seconds
             if received
-            else self.stream_dispatched_monotonic_times
+            else self.stream_dispatched_monotonic_seconds
         ).get(kind)
         if not samples:
             return 0.0
@@ -198,17 +198,17 @@ class DashboardStreamHealth:
         self,
         target: dict[StreamKind, deque[float]],
         kind: StreamKind,
-        occurred_at_monotonic: float,
+        occurred_at_monotonic_seconds: float,
     ) -> None:
         samples = target.setdefault(kind, deque())
-        samples.append(occurred_at_monotonic)
-        self._trim_times(samples, occurred_at_monotonic)
+        samples.append(occurred_at_monotonic_seconds)
+        self._trim_times(samples, occurred_at_monotonic_seconds)
 
-    def _trim_event_times(self, now_monotonic: float) -> None:
-        self._trim_times(self.event_monotonic_times, now_monotonic)
+    def _trim_event_times(self, now_monotonic_seconds: float) -> None:
+        self._trim_times(self.event_monotonic_seconds, now_monotonic_seconds)
 
     @staticmethod
-    def _trim_times(samples: deque[float], now_monotonic: float) -> None:
-        cutoff = now_monotonic - EVENT_RATE_WINDOW_SECONDS
+    def _trim_times(samples: deque[float], now_monotonic_seconds: float) -> None:
+        cutoff = now_monotonic_seconds - EVENT_RATE_WINDOW_SECONDS
         while samples and samples[0] < cutoff:
             samples.popleft()

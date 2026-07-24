@@ -15,8 +15,8 @@ from polybot.recording.contracts.gaps import (
 )
 from polybot.recording.contracts.market import MarketIdentity
 from polybot.recording.contracts.payloads import ResolutionPayload
-from polybot.recording.writer import (
-    AsyncRecordingWriter,
+from polybot.recording.writer import AsyncRecordingWriter
+from polybot.recording.writer_contracts import (
     RecordingCheckpointWrite,
     RecordingEventWrite,
 )
@@ -46,7 +46,7 @@ class RecordingPersistence:
                 tracked.recording.metadata,
                 observed_at_ms=observed_at_ms,
                 source_timestamp_ms=None,
-                identity=_market_identity(tracked.recording),
+                identity=self._market_identity(tracked.recording),
                 subscription_generation=0,
             )
             tracked.last_observed_at_ms = max(
@@ -67,7 +67,7 @@ class RecordingPersistence:
                 recording.metadata,
                 observed_at_ms=observed_at_ms,
                 source_timestamp_ms=None,
-                identity=_market_identity(recording),
+                identity=self._market_identity(recording),
                 subscription_generation=tracked.generation,
             )
             tracked.recording = recording
@@ -102,7 +102,7 @@ class RecordingPersistence:
                         payload=recording.metadata,
                         observed_at_ms=observed_at_ms,
                         source_timestamp_ms=None,
-                        identity=_market_identity(recording),
+                        identity=self._market_identity(recording),
                         subscription_generation=tracked.generation,
                     )
                 )
@@ -203,37 +203,37 @@ class RecordingPersistence:
             writes = tuple(
                 write
                 for tracked in tracked_markets
-                for write in _checkpoint_writes(tracked, observed_at_ms)
+                for write in self._checkpoint_writes(tracked, observed_at_ms)
             )
             if writes:
                 await self._writer.checkpoint_batch(writes)
 
-
-def _market_identity(recording: RecordingMarket) -> MarketIdentity:
-    return MarketIdentity(
-        condition_id=recording.metadata.condition_id,
-        market_slug=recording.metadata.market_slug,
-    )
-
-
-def _checkpoint_writes(
-    tracked: TrackedMarket,
-    observed_at_ms: int,
-) -> tuple[RecordingCheckpointWrite, ...]:
-    capture = tracked.capture
-    projector = tracked.projector
-    if capture is None or projector is None:
-        raise AssertionError("checkpoint market has no active capture")
-    return tuple(
-        RecordingCheckpointWrite(
-            book=BookBaselinePayload.from_snapshot(book),
-            observed_at_ms=observed_at_ms,
-            identity=MarketIdentity(
-                condition_id=book.condition_id,
-                market_slug=book.market_slug,
-                token_id=book.token_id,
-            ),
-            subscription_generation=capture.generation,
+    @staticmethod
+    def _market_identity(recording: RecordingMarket) -> MarketIdentity:
+        return MarketIdentity(
+            condition_id=recording.metadata.condition_id,
+            market_slug=recording.metadata.market_slug,
         )
-        for book in projector.snapshots(received_at_ms=observed_at_ms)
-    )
+
+    @staticmethod
+    def _checkpoint_writes(
+        tracked: TrackedMarket,
+        observed_at_ms: int,
+    ) -> tuple[RecordingCheckpointWrite, ...]:
+        capture = tracked.capture
+        projector = tracked.projector
+        if capture is None or projector is None:
+            raise AssertionError("checkpoint market has no active capture")
+        return tuple(
+            RecordingCheckpointWrite(
+                book=BookBaselinePayload.from_snapshot(book),
+                observed_at_ms=observed_at_ms,
+                identity=MarketIdentity(
+                    condition_id=book.condition_id,
+                    market_slug=book.market_slug,
+                    token_id=book.token_id,
+                ),
+                subscription_generation=capture.generation,
+            )
+            for book in projector.snapshots(received_at_ms=observed_at_ms)
+        )

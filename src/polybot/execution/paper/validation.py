@@ -4,7 +4,10 @@ from decimal import Decimal, InvalidOperation
 
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
-from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
+from polybot.framework.events.prices import (
+    is_decimal_in_unit_interval,
+    is_outcome_price,
+)
 
 ORDER_SIZE_FLOOR = Decimal("0")
 
@@ -14,11 +17,18 @@ def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
         return FillRejectReason.MISSING_TOKEN_ID, "order is missing token_id"
     if not isinstance(order.side, Side):
         return FillRejectReason.BAD_SIDE, "order side is invalid"
+    if order.source_id is not None and (
+        not isinstance(order.source_id, str)
+        or not order.source_id
+        or "\n" in order.source_id
+        or "\r" in order.source_id
+    ):
+        return (
+            FillRejectReason.INVALID_SOURCE_ID,
+            "order source_id must be non-empty single-line text",
+        )
     try:
-        if (
-            not order.price.is_finite()
-            or not OUTCOME_PRICE_FLOOR < order.price <= OUTCOME_PRICE_CEILING
-        ):
+        if not is_outcome_price(order.price):
             return (
                 FillRejectReason.BAD_PRICE,
                 "order price must be finite and between 0 and 1",
@@ -50,11 +60,4 @@ def classify_book(
 
 
 def valid_fee_rate(value: object) -> Decimal | None:
-    if not isinstance(value, Decimal):
-        return None
-    try:
-        if value.is_finite() and OUTCOME_PRICE_FLOOR <= value <= OUTCOME_PRICE_CEILING:
-            return value
-    except (InvalidOperation, TypeError, ValueError):
-        pass
-    return None
+    return value if is_decimal_in_unit_interval(value, include_zero=True) else None

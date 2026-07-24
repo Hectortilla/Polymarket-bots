@@ -3,29 +3,6 @@
 from __future__ import annotations
 
 from polybot.recording.contracts.records import CoverageGapRecord
-from polybot.recording.contracts.market import MarketMetadataPayload
-from polybot.recording.coverage import CoverageScope
-
-
-def gaps_affecting_markets(
-    records: tuple[CoverageGapRecord, ...],
-    markets: tuple[MarketMetadataPayload, ...],
-) -> tuple[CoverageGapRecord, ...]:
-    """Resolve conservative recorded scopes against concrete selected markets."""
-
-    selected_condition_ids = {market.condition_id for market in markets}
-    return tuple(
-        record
-        for record in records
-        if (
-            (affected_condition_ids := CoverageScope.from_gap(
-                record.gap,
-                record.identity,
-            ).resolved_condition_ids(markets))
-            is None
-            or not selected_condition_ids.isdisjoint(affected_condition_ids)
-        )
-    )
 
 
 class ReplayCoverage:
@@ -190,7 +167,7 @@ class ReplayCoverage:
     def _overlaps_selection(self, record: CoverageGapRecord) -> bool:
         gap = record.gap
         return (
-            gap.ended_at_ms != gap.started_at_ms
+            not gap.is_instantaneous
             and gap.started_at_ms <= self._end_at_ms
             and (gap.ended_at_ms is None or gap.ended_at_ms > self._start_at_ms)
         )

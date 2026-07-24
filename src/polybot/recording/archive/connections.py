@@ -8,6 +8,9 @@ from urllib.parse import quote
 
 from .errors import RecordingArchiveError
 
+SQLITE_CONNECTION_TIMEOUT_SECONDS = 0
+SQLITE_BUSY_TIMEOUT_MS = 0
+
 
 def readonly_database_uri(path: Path, *, immutable: bool = False) -> str:
     """Return the SQLite URI used for every read-only archive connection."""
@@ -19,7 +22,7 @@ def readonly_database_uri(path: Path, *, immutable: bool = False) -> str:
 def configure_writer_connection(connection: sqlite3.Connection) -> None:
     """Enable the durability settings required by every recording writer."""
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA busy_timeout = 0")
+    connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
     journal_mode = connection.execute("PRAGMA journal_mode = WAL").fetchone()[0]
     if str(journal_mode).casefold() != "wal":
         raise RecordingArchiveError("recording archive could not enable WAL mode")

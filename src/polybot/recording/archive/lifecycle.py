@@ -9,8 +9,9 @@ from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO
 
-from .connections import readonly_database_uri
+from .connections import SQLITE_CONNECTION_TIMEOUT_SECONDS, readonly_database_uri
 from .errors import ArchiveFormatError, ArchiveLockedError, RecordingArchiveError
+from .paths import RECORDING_LOCK_SUFFIX
 
 
 def _archive_path(path: str | Path) -> Path:
@@ -26,7 +27,7 @@ def _archive_path(path: str | Path) -> Path:
 def _open_connection(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(
         path,
-        timeout=0,
+        timeout=SQLITE_CONNECTION_TIMEOUT_SECONDS,
         isolation_level=None,
         check_same_thread=False,
     )
@@ -44,7 +45,7 @@ def _open_readonly_connection(
         connection = sqlite3.connect(
             uri,
             uri=True,
-            timeout=0,
+            timeout=SQLITE_CONNECTION_TIMEOUT_SECONDS,
             isolation_level=None,
             check_same_thread=False,
         )
@@ -83,7 +84,7 @@ def _acquire_writer_lock(lock_file: BinaryIO, path: Path) -> None:
 
 
 def _open_writer_lock_file(path: Path) -> BinaryIO:
-    lock_path = path.with_name(f"{path.name}.lock")
+    lock_path = path.with_name(f"{path.name}{RECORDING_LOCK_SUFFIX}")
     descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     return os.fdopen(descriptor, "r+b", buffering=0)
 
@@ -93,4 +94,3 @@ def _release_writer_lock(lock_file: BinaryIO) -> None:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
     with suppress(OSError, ValueError):
         lock_file.close()
-

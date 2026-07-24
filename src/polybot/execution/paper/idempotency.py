@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Protocol
 
+from polybot.persistence.fsync import fsync_path
+
 
 DUPLICATE_SOURCE_MESSAGE = "source event was already processed"
 
@@ -44,7 +46,7 @@ class FileSourceIdempotencyStore:
                 handle.write(source_id + "\n")
                 handle.flush()
                 os.fsync(handle.fileno())
-                _fsync_directory(self._path.parent)
+                fsync_path(self._path.parent)
                 return True
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -63,11 +65,3 @@ class FileSourceIdempotencyStore:
                 os.fsync(handle.fileno())
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
-def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)

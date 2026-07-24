@@ -15,17 +15,19 @@ from polybot.backtesting.contracts import (
     BacktestResult,
     BacktestSelection,
 )
+from polybot.cli.backtest_command import (
+    BACKTEST_CHART_WARNING,
+    BLACKOUT_GAP_WARNING,
+    PARTIAL_RECORDING_WARNING,
+    print_backtest_summary,
+)
 from polybot.cli.config import load_dotenv, parse_overrides
 from polybot.cli.dashboard.state import DashboardState
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
-    BACKTEST_CHART_WARNING,
-    BLACKOUT_GAP_WARNING,
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
-    PARTIAL_RECORDING_WARNING,
     TERM_ENV_KEY,
     _dashboard_enabled,
-    _print_backtest_summary,
     main,
 )
 from polybot.cli.performance_chart.contracts import PerformanceChartError
@@ -35,7 +37,15 @@ from polybot.runtime import run_bot
 from polybot.cli.runner.factory import create_runtime
 from polybot.cli.runner.dispatch import dispatch_stream_event
 from polybot.cli.runner.streams import wait_for_stream_plan_change
-from polybot.cli.streams.contracts import ResolutionStreamEvent, StreamKind, WalletStreamEvent
+from polybot.cli.streams.contracts import (
+    BookGapStreamEvent,
+    BookStreamEvent,
+    MarketHintStreamEvent,
+    ResolutionStreamEvent,
+    StreamSourceSpec,
+    WalletStreamEvent,
+)
+from polybot.cli.streams.kinds import StreamKind
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.streams.telemetry import StreamTelemetry
 from polybot.cli.observability.events import (
@@ -49,10 +59,16 @@ from polybot.cli.observability.events import (
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
 from polybot.framework.activity import ActivitySeverity, BotActivityEvent
-from polybot.framework.config.models import BotConfig, BotMode
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
-from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.books import (
+    BookGapEvent,
+    BookGapReason,
+    BookLevel,
+    BookSnapshot,
+)
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
@@ -60,10 +76,21 @@ from polybot.framework.runner import BotRunner
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.polymarket.market_hints import MarketTradeHint
-from polybot.polymarket.public_data.runtime import create_runtime_public_data
+from polybot.polymarket.public_data.runtime import RuntimePublicData
 from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
-from polybot.cli.streams.contracts import BookStreamEvent
+
+
+def _stream_event(value: object):
+    if isinstance(value, BookSnapshot):
+        return BookStreamEvent(StreamKind.BOOK, value)
+    if isinstance(value, WalletTradeEvent):
+        return WalletStreamEvent(StreamKind.WALLET, value)
+    if isinstance(value, MarketTradeHint):
+        return MarketHintStreamEvent(StreamKind.MARKET_HINT, value)
+    if isinstance(value, MarketResolutionEvent):
+        return ResolutionStreamEvent(StreamKind.RESOLUTION, value)
+    raise TypeError(f"unsupported test stream event: {type(value).__name__}")
 
 
 def test_load_dotenv_does_not_override_environment(tmp_path, monkeypatch) -> None:
@@ -171,13 +198,16 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
     monkeypatch.setattr(
         "polybot.cli.entrypoint._dashboard_enabled", dashboard_enabled
     )
-    monkeypatch.setattr("polybot.cli.entrypoint.run_backtest", fake_run_backtest)
     monkeypatch.setattr(
-        "polybot.cli.entrypoint._print_backtest_summary",
+        "polybot.cli.backtest_command.run_backtest",
+        fake_run_backtest,
+    )
+    monkeypatch.setattr(
+        "polybot.cli.backtest_command.print_backtest_summary",
         lambda result: captured.setdefault("result", result),
     )
     monkeypatch.setattr(
-        "polybot.cli.entrypoint.print_performance_chart",
+        "polybot.cli.backtest_command.print_performance_chart",
         lambda path: captured.setdefault("chart_path", path),
     )
 
@@ -250,11 +280,18 @@ def test_main_keeps_completed_backtest_success_when_chart_rendering_fails(
     def fail_chart(path: Path) -> None:
         raise PerformanceChartError("broken chart")
 
-    monkeypatch.setattr("polybot.cli.entrypoint.run_backtest", fake_run_backtest)
     monkeypatch.setattr(
-        "polybot.cli.entrypoint._print_backtest_summary", lambda result: None
+        "polybot.cli.backtest_command.run_backtest",
+        fake_run_backtest,
     )
-    monkeypatch.setattr("polybot.cli.entrypoint.print_performance_chart", fail_chart)
+    monkeypatch.setattr(
+        "polybot.cli.backtest_command.print_backtest_summary",
+        lambda result: None,
+    )
+    monkeypatch.setattr(
+        "polybot.cli.backtest_command.print_performance_chart",
+        fail_chart,
+    )
 
     assert main(
         [
@@ -368,7 +405,7 @@ def test_backtest_summary_labels_partial_recording_source(
         resolution_count=0,
     )
 
-    _print_backtest_summary(result)
+    print_backtest_summary(result)
 
     output = capsys.readouterr().out
     assert PARTIAL_RECORDING_WARNING in output
@@ -382,7 +419,7 @@ def test_backtest_summary_labels_blackout_gap_handling(
     capsys,
 ) -> None:
     monkeypatch.setattr(
-        "polybot.cli.entrypoint.PerformanceSummaryV1.read",
+        "polybot.cli.backtest_command.PerformanceSummaryV1.read",
         lambda path: SimpleNamespace(
             metrics=SimpleNamespace(
                 event_count=3,
@@ -414,7 +451,7 @@ def test_backtest_summary_labels_blackout_gap_handling(
         resolution_count=0,
     )
 
-    _print_backtest_summary(result)
+    print_backtest_summary(result)
 
     output = capsys.readouterr().out
     assert BLACKOUT_GAP_WARNING in output
@@ -505,7 +542,7 @@ def test_main_rejects_backtest_dashboard_and_live_mode(monkeypatch) -> None:
 def test_merge_streams_preserves_typed_stream_kind() -> None:
     async def source(values) -> AsyncIterator[object]:
         for value in values:
-            yield value
+            yield _stream_event(value)
 
     first = _book("token", 1)
     newest = _book("token", 2)
@@ -516,8 +553,8 @@ def test_merge_streams_preserves_typed_stream_kind() -> None:
             (item.kind, item.event)
             async for item in merge_streams(
                 (
-                    (StreamKind.BOOK, source((first, newest))),
-                    (StreamKind.WALLET, source((wallet,))),
+                    StreamSourceSpec.primary(source((first, newest))),
+                    StreamSourceSpec.primary(source((wallet,))),
                 )
             )
         ]
@@ -653,17 +690,17 @@ def test_stream_telemetry_tracks_current_and_peak_queue_depth() -> None:
 def test_merge_streams_coalesces_books_independently_by_token() -> None:
     telemetry = StreamTelemetry()
 
-    async def source() -> AsyncIterator[BookSnapshot]:
-        yield _book("one", 1)
-        yield _book("two", 2)
-        yield _book("one", 3)
-        yield _book("two", 4)
+    async def source() -> AsyncIterator[BookStreamEvent]:
+        yield BookStreamEvent(StreamKind.BOOK, _book("one", 1))
+        yield BookStreamEvent(StreamKind.BOOK, _book("two", 2))
+        yield BookStreamEvent(StreamKind.BOOK, _book("one", 3))
+        yield BookStreamEvent(StreamKind.BOOK, _book("two", 4))
 
     async def run() -> list[BookSnapshot]:
         return [
             item.event
             async for item in merge_streams(
-                ((StreamKind.BOOK, source()),), telemetry=telemetry
+                (StreamSourceSpec.primary(source()),), telemetry=telemetry
             )
         ]
 
@@ -673,6 +710,41 @@ def test_merge_streams_coalesces_books_independently_by_token() -> None:
     assert telemetry.book_coalescing_ratio == 0.5
     assert telemetry.peak_queue_depth == 2
     assert telemetry.queue_depth == 0
+
+
+def test_merge_streams_discards_pending_books_across_continuity_gap() -> None:
+    unsafe = _book("token", 1)
+    recovered = _book("token", 2)
+
+    async def source():
+        yield BookStreamEvent(StreamKind.BOOK, unsafe)
+        yield BookGapStreamEvent(
+            StreamKind.BOOK_GAP,
+            BookGapEvent(
+                condition_id=unsafe.condition_id,
+                observed_at_ms=2,
+                reason=BookGapReason.BOOK_STREAM_GAP,
+            ),
+        )
+        yield BookStreamEvent(StreamKind.BOOK, recovered)
+
+    async def run():
+        return [
+            item
+            async for item in merge_streams((StreamSourceSpec.primary(source()),))
+        ]
+
+    assert asyncio.run(run()) == [
+        BookGapStreamEvent(
+            StreamKind.BOOK_GAP,
+            BookGapEvent(
+                condition_id=unsafe.condition_id,
+                observed_at_ms=2,
+                reason=BookGapReason.BOOK_STREAM_GAP,
+            ),
+        ),
+        BookStreamEvent(StreamKind.BOOK, recovered),
+    ]
 
 
 def test_merge_streams_preserves_wallet_trades_and_coalesces_hints() -> None:
@@ -686,15 +758,14 @@ def test_merge_streams_preserves_wallet_trades_and_coalesces_hints() -> None:
 
     async def source(values) -> AsyncIterator[object]:
         for value in values:
-            yield value
+            yield _stream_event(value)
 
     async def run():
         return [
             item
             async for item in merge_streams(
                 (
-                    (
-                        StreamKind.BOOK,
+                    StreamSourceSpec.primary(
                         source(
                             (
                                 old_book,
@@ -703,9 +774,11 @@ def test_merge_streams_preserves_wallet_trades_and_coalesces_hints() -> None:
                                 new_hint,
                                 other_hint,
                             )
-                        ),
+                        )
                     ),
-                    (StreamKind.WALLET, source((first_wallet, second_wallet))),
+                    StreamSourceSpec.primary(
+                        source((first_wallet, second_wallet))
+                    ),
                 )
             )
         ]
@@ -723,13 +796,13 @@ def test_merge_streams_preserves_wallet_trades_and_coalesces_hints() -> None:
 def test_merge_streams_keeps_lifetime_counters_across_generations() -> None:
     telemetry = StreamTelemetry()
 
-    async def source(token_id: str) -> AsyncIterator[BookSnapshot]:
-        yield _book(token_id, 1)
-        yield _book(token_id, 2)
+    async def source(token_id: str) -> AsyncIterator[BookStreamEvent]:
+        yield BookStreamEvent(StreamKind.BOOK, _book(token_id, 1))
+        yield BookStreamEvent(StreamKind.BOOK, _book(token_id, 2))
 
     async def consume(token_id: str) -> None:
         async for _ in merge_streams(
-            ((StreamKind.BOOK, source(token_id)),), telemetry=telemetry
+            (StreamSourceSpec.primary(source(token_id)),), telemetry=telemetry
         ):
             pass
 
@@ -761,12 +834,12 @@ def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> 
                 entered_handler.set()
                 await release_handler.wait()
 
-    async def source() -> AsyncIterator[BookSnapshot]:
-        yield _book("token", 0)
+    async def source() -> AsyncIterator[BookStreamEvent]:
+        yield BookStreamEvent(StreamKind.BOOK, _book("token", 0))
         await entered_handler.wait()
-        yield _book("token", 1_000)
-        yield _book("token", 2_000)
-        yield _book("token", 7_000)
+        yield BookStreamEvent(StreamKind.BOOK, _book("token", 1_000))
+        yield BookStreamEvent(StreamKind.BOOK, _book("token", 2_000))
+        yield BookStreamEvent(StreamKind.BOOK, _book("token", 7_000))
         producer_finished.set()
 
     async def run() -> tuple[list[bool], list[int]]:
@@ -790,7 +863,7 @@ def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> 
         release_task = asyncio.create_task(release())
         outcomes = []
         async for item in merge_streams(
-            ((StreamKind.BOOK, source()),), telemetry=telemetry
+            (StreamSourceSpec.primary(source()),), telemetry=telemetry
         ):
             outcomes.append(await runner.dispatch_book(item.event))
         await release_task
@@ -805,12 +878,15 @@ def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> 
 
 def test_merge_streams_routes_market_trade_hints_separately() -> None:
     async def source() -> AsyncIterator[object]:
-        yield MarketTradeHint("condition", "token", "market", 123)
+        yield MarketHintStreamEvent(
+            StreamKind.MARKET_HINT,
+            MarketTradeHint("condition", "token", "market", 123),
+        )
 
     async def run() -> list[tuple[StreamKind, object]]:
         return [
             (item.kind, item.event)
-            async for item in merge_streams(((StreamKind.BOOK, source()),))
+            async for item in merge_streams((StreamSourceSpec.primary(source()),))
         ]
 
     assert asyncio.run(run()) == [
@@ -825,12 +901,14 @@ def test_merge_streams_consumes_resolution_only_source_until_completion() -> Non
     event = _resolution_event()
 
     async def source() -> AsyncIterator[object]:
-        yield event
+        yield ResolutionStreamEvent(StreamKind.RESOLUTION, event)
 
     async def run():
         return [
             item
-            async for item in merge_streams(((StreamKind.RESOLUTION, source()),))
+            async for item in merge_streams(
+                (StreamSourceSpec.auxiliary(source()),)
+            )
         ]
 
     items = asyncio.run(run())
@@ -856,8 +934,8 @@ def test_merge_streams_propagates_failure_and_cancels_sibling() -> None:
         with pytest.raises(RuntimeError, match="source failed"):
             async for _ in merge_streams(
                 (
-                    (StreamKind.BOOK, failing()),
-                    (StreamKind.WALLET, waiting()),
+                    StreamSourceSpec.primary(failing()),
+                    StreamSourceSpec.primary(waiting()),
                 )
             ):
                 pass
@@ -889,8 +967,8 @@ def test_merge_streams_closes_every_source_when_one_close_fails() -> None:
         second = Source()
         merger = merge_streams(
             (
-                (StreamKind.BOOK, first),
-                (StreamKind.WALLET, second),
+                StreamSourceSpec.primary(first),
+                StreamSourceSpec.primary(second),
             )
         )
         merger.__aiter__()
@@ -1053,7 +1131,8 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
     async def run() -> tuple[int, int, bool, RecordingObserver]:
         client = FakeClient()
         monkeypatch.setattr(
-            "polybot.polymarket.public_data.client.AsyncPublicClient", lambda: client
+                "polybot.polymarket.client_lifecycle.AsyncPublicClient",
+                lambda: client,
         )
         bot = LifecycleBot()
         observer = RecordingObserver()
@@ -1125,8 +1204,9 @@ def test_runtime_factory_closes_only_owned_public_data_after_setup_failure(
     injected_public_data = FakePublicData()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "polybot.cli.runner.factory.create_runtime_public_data",
-        lambda: owned_public_data,
+        RuntimePublicData,
+        "create",
+        staticmethod(lambda: owned_public_data),
     )
     monkeypatch.setattr(
         "polybot.cli.runner.factory.FollowedWalletTracker", FailingTracker
@@ -1230,7 +1310,7 @@ def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(mo
         run_bot(
             BaseBot(),
             BotConfig(name="dynamic"),
-            public_data=create_runtime_public_data(object()),
+            public_data=RuntimePublicData.create(object()),
         )
     )
 
@@ -1359,7 +1439,7 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
         run_bot(
             BaseBot(),
             BotConfig(name="resolution-rebuild"),
-            public_data=create_runtime_public_data(object()),
+            public_data=RuntimePublicData.create(object()),
             observer=observer,
         )
     )
@@ -1458,7 +1538,7 @@ def test_gamma_resolved_market_is_settled_before_stream_creation(
         run_bot(
             BaseBot(),
             BotConfig(name="gamma-resolved"),
-            public_data=create_runtime_public_data(object()),
+            public_data=RuntimePublicData.create(object()),
         )
     )
 
@@ -1539,7 +1619,8 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
     async def run() -> tuple[FakeClient, RecordingObserver]:
         client = FakeClient()
         monkeypatch.setattr(
-            "polybot.polymarket.public_data.client.AsyncPublicClient", lambda: client
+            "polybot.polymarket.client_lifecycle.AsyncPublicClient",
+            lambda: client,
         )
         observer = RecordingObserver()
         with pytest.raises(RuntimeError, match="stop failed"):

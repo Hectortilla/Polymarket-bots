@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from polybot.performance.valuation import ValuationStatus
+from polybot.performance.contracts.valuation_status import ValuationStatus
 
 from ..files import PerformancePositionField
 from ..parsing import (

@@ -21,6 +21,14 @@ class BookContinuity:
         if not isinstance(self.blackout, bool):
             raise ValueError("book continuity blackout state must be boolean")
 
+    def was_disrupted_by(self, current: BookContinuity | None) -> bool:
+        return (
+            self.blackout
+            or current is None
+            or current.blackout
+            or current.revision != self.revision
+        )
+
 
 class BookContinuitySource(Protocol):
     def book_continuity(self, token_id: str) -> BookContinuity | None: ...

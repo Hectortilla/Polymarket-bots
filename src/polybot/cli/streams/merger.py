@@ -6,21 +6,23 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.coalescing import PendingByKey
 from polybot.polymarket.market_hints import MarketTradeHint
 
 from .contracts import (
+    BookGapStreamEvent,
     BookStreamEvent,
     MarketHintStreamEvent,
     ResolutionStreamEvent,
     StreamCompleted,
+    StreamCompletionRole,
     StreamEvent,
     StreamFailure,
-    StreamKind,
     StreamSource,
+    StreamSourceSpec,
     WalletStreamEvent,
 )
+from .kinds import StreamKind
 from .telemetry import StreamTelemetry
 
 if TYPE_CHECKING:
@@ -39,6 +41,7 @@ class _MarketHintMarker:
 
 QueuedItem = (
     BookStreamEvent
+    | BookGapStreamEvent
     | WalletStreamEvent
     | ResolutionStreamEvent
     | _MarketHintMarker
@@ -53,20 +56,22 @@ class StreamMerger:
 
     def __init__(
         self,
-        streams: tuple[tuple[StreamKind, StreamSource], ...],
+        streams: tuple[StreamSourceSpec, ...],
         telemetry: StreamTelemetry | None,
     ) -> None:
         self._streams = streams
         self._telemetry = telemetry
         self._queue: asyncio.Queue[QueuedItem] = asyncio.Queue()
         self._pending_books: PendingByKey[str, BookSnapshot] = PendingByKey()
+        self._stale_book_marker_counts: dict[str, int] = {}
         self._pending_market_hints: PendingByKey[str, MarketTradeHint] = PendingByKey()
         self._tasks: list[asyncio.Task[None]] = []
         self._completed = 0
         self._started = False
         self._closed = False
         self._primary_stream_count = sum(
-            kind is not StreamKind.RESOLUTION for kind, _ in streams
+            stream.completion_role is StreamCompletionRole.PRIMARY
+            for stream in streams
         )
         self._resolution_only = self._primary_stream_count == 0
         self._resolution_completed = 0
@@ -74,8 +79,8 @@ class StreamMerger:
     def __aiter__(self) -> StreamMerger:
         if not self._started:
             self._tasks = [
-                asyncio.create_task(self._consume_stream(kind, stream))
-                for kind, stream in self._streams
+                asyncio.create_task(self._consume_stream(stream))
+                for stream in self._streams
             ]
             self._started = True
         return self
@@ -93,7 +98,7 @@ class StreamMerger:
             ):
                 self._telemetry.dequeued()
             if isinstance(item, StreamCompleted):
-                if item.kind is not StreamKind.RESOLUTION:
+                if item.completion_role is StreamCompletionRole.PRIMARY:
                     self._completed += 1
                 elif self._resolution_only:
                     self._resolution_completed += 1
@@ -102,6 +107,20 @@ class StreamMerger:
                 await self.aclose()
                 raise item.error
             if isinstance(item, _BookMarker):
+                stale_marker_count = self._stale_book_marker_counts.get(
+                    item.token_id,
+                    0,
+                )
+                if stale_marker_count:
+                    if stale_marker_count == 1:
+                        del self._stale_book_marker_counts[item.token_id]
+                    else:
+                        self._stale_book_marker_counts[item.token_id] = (
+                            stale_marker_count - 1
+                        )
+                    continue
+                if item.token_id not in self._pending_books:
+                    continue
                 return BookStreamEvent(
                     StreamKind.BOOK,
                     self._pending_books.pop(item.token_id),
@@ -124,8 +143,8 @@ class StreamMerger:
         await asyncio.gather(*self._tasks, return_exceptions=True)
         close_operations = tuple(
             close()
-            for _, stream in self._streams
-            if (close := getattr(stream, "aclose", None)) is not None
+            for stream_spec in self._streams
+            if (close := getattr(stream_spec.source, "aclose", None)) is not None
         )
         if close_operations:
             await asyncio.gather(*close_operations, return_exceptions=True)
@@ -134,21 +153,20 @@ class StreamMerger:
         if self._telemetry is not None:
             self._telemetry.reset_queue_depth()
 
-    async def _consume_stream(self, kind: StreamKind, stream: StreamSource) -> None:
+    async def _consume_stream(self, stream_spec: StreamSourceSpec) -> None:
         try:
-            async for event in stream:
-                if isinstance(event, MarketResolutionEvent):
-                    await self._queue.put(
-                        ResolutionStreamEvent(StreamKind.RESOLUTION, event)
-                    )
+            async for event in stream_spec.source:
+                if isinstance(event, BookStreamEvent):
+                    self._enqueue_book(event.event)
+                elif isinstance(event, BookGapStreamEvent):
+                    self._discard_unsafe_books(event)
+                    await self._queue.put(event)
                     if self._telemetry is not None:
                         self._telemetry.enqueued()
-                elif isinstance(event, MarketTradeHint):
-                    self._enqueue_market_hint(event)
-                elif kind is StreamKind.BOOK:
-                    self._enqueue_book(event)
-                elif kind is StreamKind.WALLET:
-                    await self._queue.put(WalletStreamEvent(kind, event))
+                elif isinstance(event, MarketHintStreamEvent):
+                    self._enqueue_market_hint(event.event)
+                else:
+                    await self._queue.put(event)
                     if self._telemetry is not None:
                         self._telemetry.enqueued()
         except asyncio.CancelledError:
@@ -156,7 +174,9 @@ class StreamMerger:
         except BaseException as error:
             await self._queue.put(StreamFailure(error))
         finally:
-            await self._queue.put(StreamCompleted(kind))
+            await self._queue.put(
+                StreamCompleted(stream_spec.completion_role)
+            )
 
     def _enqueue_book(self, event: BookSnapshot) -> None:
         token_id = getattr(event, "token_id", None)
@@ -182,9 +202,20 @@ class StreamMerger:
         if self._telemetry is not None:
             self._telemetry.enqueued()
 
+    def _discard_unsafe_books(self, event: BookGapStreamEvent) -> None:
+        discarded_token_ids = self._pending_books.discard_matching_keys(
+            lambda book: event.event.affects(book.condition_id)
+        )
+        # Queue markers cannot be removed when their pending books are discarded.
+        # Count them so an old marker cannot publish a newer post-gap replacement.
+        for token_id in discarded_token_ids:
+            self._stale_book_marker_counts[token_id] = (
+                self._stale_book_marker_counts.get(token_id, 0) + 1
+            )
+
 
 def merge_streams(
-    streams: tuple[tuple[StreamKind, StreamSource], ...],
+    streams: tuple[StreamSourceSpec, ...],
     *,
     telemetry: StreamTelemetry | None = None,
 ) -> StreamMerger:

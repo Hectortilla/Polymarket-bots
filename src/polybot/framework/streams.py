@@ -1,10 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from polybot.framework.wallets import normalize_wallet_address
+from polybot.framework.wallets import normalize_wallet_address, validate_wallet_address
+
+
+STREAM_RULE_RELATION_FIELD = "relation"
+STREAM_RULE_MARKET_SLUGS_FIELD = "market_slugs"
+STREAM_RULE_WALLET_ADDRESSES_FIELD = "wallet_addresses"
+STREAM_RULE_FIELDS = frozenset(
+    {
+        STREAM_RULE_RELATION_FIELD,
+        STREAM_RULE_MARKET_SLUGS_FIELD,
+        STREAM_RULE_WALLET_ADDRESSES_FIELD,
+    }
+)
 
 
 class StreamRelation(StrEnum):
@@ -39,7 +50,11 @@ class StreamRule:
     def __post_init__(self) -> None:
         markets = tuple(dict.fromkeys(slug.strip() for slug in self.market_slugs if slug.strip()))
         wallets = tuple(
-            dict.fromkeys(normalize_wallet_address(wallet.strip()) for wallet in self.wallet_addresses if wallet.strip())
+            dict.fromkeys(
+                normalize_wallet_address(wallet.strip())
+                for wallet in self.wallet_addresses
+                if wallet.strip()
+            )
         )
         if markets != self.market_slugs or wallets != self.wallet_addresses:
             object.__setattr__(self, "market_slugs", markets)
@@ -51,6 +66,42 @@ class StreamRule:
 
     def accepts_trade(self, wallet: str, market_slug: str | None) -> bool:
         return any(scope.accepts_trade(wallet, market_slug) for scope in self.scopes)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            STREAM_RULE_RELATION_FIELD: self.relation.value,
+            STREAM_RULE_MARKET_SLUGS_FIELD: list(self.market_slugs),
+            STREAM_RULE_WALLET_ADDRESSES_FIELD: list(self.wallet_addresses),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> StreamRule:
+        if not isinstance(value, dict) or set(value) - STREAM_RULE_FIELDS:
+            raise ValueError("stream rules contain unsupported fields")
+        relation = value.get(STREAM_RULE_RELATION_FIELD)
+        markets = value.get(STREAM_RULE_MARKET_SLUGS_FIELD, [])
+        wallets = value.get(STREAM_RULE_WALLET_ADDRESSES_FIELD, [])
+        if (
+            not isinstance(relation, str)
+            or not isinstance(markets, list)
+            or not isinstance(wallets, list)
+        ):
+            raise ValueError("stream rules have invalid field types")
+        if not all(isinstance(item, str) for item in [*markets, *wallets]):
+            raise ValueError("stream rule selectors must be strings")
+        try:
+            normalized_wallets = tuple(
+                validate_wallet_address(wallet) for wallet in wallets
+            )
+        except ValueError as error:
+            raise ValueError(
+                "stream rule wallet addresses must be 0x-prefixed addresses"
+            ) from error
+        return cls(
+            StreamRelation(relation),
+            tuple(markets),
+            normalized_wallets,
+        )
 
     @property
     def scopes(self) -> tuple[StreamScope, ...]:
@@ -75,15 +126,15 @@ class StreamPlan:
 
     @property
     def current_market_slugs(self) -> tuple[str, ...]:
-        return stream_rule_market_slugs(self.current)
+        return self._market_slugs(self.current)
 
     @property
     def next_market_slugs(self) -> tuple[str, ...]:
-        return stream_rule_market_slugs(self.next)
+        return self._market_slugs(self.next)
 
     @property
     def current_wallet_addresses(self) -> tuple[str, ...]:
-        return stream_rule_wallet_addresses(self.current)
+        return self._wallet_addresses(self.current)
 
     def wallet_discovery_scopes(self) -> dict[str, frozenset[str] | None]:
         scopes: dict[str, set[str] | None] = {}
@@ -113,16 +164,16 @@ class StreamPlan:
             return True
         return any(rule.accepts_trade(wallet, market_slug) for rule in self.current)
 
+    @staticmethod
+    def _market_slugs(rules: tuple[StreamRule, ...]) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(slug for rule in rules for slug in rule.market_slugs)
+        )
 
-def stream_rule_market_slugs(rules: Iterable[StreamRule]) -> tuple[str, ...]:
-    """Return each market slug once, preserving rule order."""
-    return tuple(
-        dict.fromkeys(slug for rule in rules for slug in rule.market_slugs)
-    )
-
-
-def stream_rule_wallet_addresses(rules: Iterable[StreamRule]) -> tuple[str, ...]:
-    """Return each wallet address once, preserving rule order."""
-    return tuple(
-        dict.fromkeys(wallet for rule in rules for wallet in rule.wallet_addresses)
-    )
+    @staticmethod
+    def _wallet_addresses(rules: tuple[StreamRule, ...]) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                wallet for rule in rules for wallet in rule.wallet_addresses
+            )
+        )

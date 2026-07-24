@@ -10,10 +10,10 @@ from rich.table import Table
 from rich.text import Text
 
 from .archive.errors import RecordingArchiveError
-from .archive.models import RecordingEventCounts
 from .contracts.records import CoverageGapRecord
 from .contracts.session import SessionIntegrityStatus
 from .inspection import RecordingInspection, inspect_recording
+from .inspection_notes import backtest_readiness_notes
 from .identity import describe_target_identity
 from .terminal import (
     ACCENT_STYLE,
@@ -154,7 +154,7 @@ def _sessions_panel(inspection: RecordingInspection) -> Panel:
 
 def _event_mix_panel(inspection: RecordingInspection) -> Panel:
     """Build the aggregate event-kind table."""
-    event_counts = _total_event_counts(inspection)
+    event_counts = inspection.event_counts
     event_types = Table(header_style=f"bold {ACCENT_STYLE}")
     event_types.add_column("Meta", justify="right")
     event_types.add_column("Bases", justify="right")
@@ -235,72 +235,14 @@ def _coverage_gaps_panel(inspection: RecordingInspection) -> Panel | None:
 
 def _backtest_notes_panel(inspection: RecordingInspection) -> Panel:
     """Build the action-oriented replay-readiness notes."""
-    notes = "\n".join(f"• {note}" for note in _backtest_notes(inspection))
+    notes = "\n".join(
+        f"• {note}" for note in backtest_readiness_notes(inspection)
+    )
     return Panel(
         notes,
         border_style=WARNING_STYLE if inspection.gap_count else SUCCESS_STYLE,
         title="[bold]Backtest notes[/]",
     )
-
-
-def _total_event_counts(inspection: RecordingInspection) -> RecordingEventCounts:
-    counts = tuple(
-        session.statistics.event_counts for session in inspection.sessions
-    )
-    return RecordingEventCounts(
-        market_metadata=sum(value.market_metadata for value in counts),
-        book_baseline=sum(value.book_baseline for value in counts),
-        book_delta=sum(value.book_delta for value in counts),
-        public_trade=sum(value.public_trade for value in counts),
-        tick_size_change=sum(value.tick_size_change for value in counts),
-        resolution=sum(value.resolution for value in counts),
-        coverage_gap=sum(value.coverage_gap for value in counts),
-    )
-
-
-def _backtest_notes(inspection: RecordingInspection) -> tuple[str, ...]:
-    notes: list[str] = []
-    if len(inspection.sessions) > 1:
-        notes.append("Backtesting requires an explicit --session selection.")
-    active_sessions = tuple(
-        session.statistics.session.session_id
-        for session in inspection.sessions
-        if session.statistics.session.integrity_status is SessionIntegrityStatus.ACTIVE
-    )
-    if active_sessions:
-        notes.append(
-            "Active session(s) "
-            + ", ".join(str(value) for value in active_sessions)
-            + " are snapshot-only here; stop the recorder before backtesting."
-        )
-    partial_sessions = tuple(
-        session.statistics.session.session_id
-        for session in inspection.sessions
-        if session.statistics.session.integrity_status
-        in (SessionIntegrityStatus.INCOMPLETE, SessionIntegrityStatus.FAILED)
-    )
-    if partial_sessions:
-        notes.append(
-            "Partial source session(s): "
-            + ", ".join(str(value) for value in partial_sessions)
-            + ". Replay defaults to each durable boundary."
-        )
-    if inspection.gap_count:
-        notes.append(
-            "Detected gaps require a clean selected range; use recording.trim to "
-            "retain the longest all-market clean interval."
-        )
-    else:
-        notes.append(
-            "No detected gaps. This does not prove exchange-complete capture."
-        )
-    if inspection.replay_event_count == 0:
-        notes.append("The archive has no replay events.")
-    notes.append(
-        "The backtester still validates metadata, two-token book bootstrap, "
-        "range, and selected-market coverage before running a bot."
-    )
-    return tuple(notes)
 
 
 def _format_gap_scope(record: CoverageGapRecord) -> str:

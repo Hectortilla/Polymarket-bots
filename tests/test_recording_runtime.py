@@ -23,8 +23,9 @@ from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
 from polybot.polymarket.recording_metadata.contracts import RecordingMarket
 from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.polymarket.public_data.recording import create_recording_public_data
-from polybot.recording import entrypoint, service
+from polybot.polymarket.public_data.recording import RecordingPublicData
+from polybot.recording import entrypoint
+from polybot.recording.service import recorder as service
 from polybot.recording.archive.errors import ArchiveExistsError
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.writer import RecordingArchive
@@ -64,15 +65,15 @@ from polybot.recording.coordinator import RecordingCoordinator
 from polybot.recording.coordinator.anomalies import (
     create_capture_anomaly_payload,
 )
-from polybot.recording.service import (
+from polybot.recording.service.recorder import (
     CANCELLED_RECORDING_REASON,
     record_markets,
 )
 from polybot.recording.service.lifecycle import finish_recording
 from polybot.recording.service.markets import resolve_initial_markets
 from polybot.recording.service.resume import read_resume_state
-from polybot.recording.writer import (
-    AsyncRecordingWriter,
+from polybot.recording.writer import AsyncRecordingWriter
+from polybot.recording.writer_contracts import (
     OpenedCoverageGap,
     PendingRecordingEvent,
     RecordingCheckpointWrite,
@@ -2115,7 +2116,7 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
         record_markets(
             BotConfig(name="recorder"),
             **kwargs,
-            public_data=create_recording_public_data(object()),
+            public_data=RecordingPublicData.create(object()),
         )
     )
 
@@ -2124,7 +2125,7 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
             record_markets(
                 BotConfig(name="recorder"),
                 **kwargs,
-                public_data=create_recording_public_data(object()),
+                public_data=RecordingPublicData.create(object()),
             )
         )
 
@@ -2133,7 +2134,7 @@ def test_service_refuses_overwrite_and_resume_appends_offline_gap(
             BotConfig(name="recorder"),
             **kwargs,
             resume=True,
-            public_data=create_recording_public_data(object()),
+            public_data=RecordingPublicData.create(object()),
         )
     )
 
@@ -2166,12 +2167,14 @@ def test_service_closes_owned_public_data_when_provider_setup_fails(
 
         async def close(self) -> None:
             self.close_calls += 1
+            await self.feed.close()
+            await self.resolver.close()
 
     public_data = PublicData()
     monkeypatch.setattr(
-        service,
-        "create_recording_public_data",
-        lambda: public_data,
+        RecordingPublicData,
+        "create",
+        staticmethod(lambda: public_data),
     )
 
     with pytest.raises(ValueError, match="at least one market slug"):
@@ -2257,7 +2260,7 @@ def test_cancelled_recording_is_finalized_at_its_durable_boundary(
                 output_path=output,
                 target_identity="static-alpha",
                 market_slugs=("alpha",),
-                public_data=create_recording_public_data(object()),
+                public_data=RecordingPublicData.create(object()),
             )
         )
 

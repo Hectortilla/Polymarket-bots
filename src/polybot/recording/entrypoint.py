@@ -13,12 +13,14 @@ from rich.table import Table
 
 from polybot.cli.config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from polybot.cli.factories import load_bot
-from polybot.framework.config.models import BotConfig, BotMode
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
+from polybot.recording.archive.paths import RECORDING_ARCHIVE_SUFFIX
 
 from .duration import parse_duration_seconds
 from .identity import bot_target_identity, static_target_identity
 from .planning import StaticStreamPlanProvider
-from .service import record_markets
+from .service.recorder import record_markets
 from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_console
 
 
@@ -43,7 +45,11 @@ def default_output_path(
     else:
         description = "markets"
     description = re.sub(r"[^A-Za-z0-9._-]+", "-", description).strip("-.")
-    return recordings_dir / timestamp / f"{description or 'recording'}.sqlite3"
+    return (
+        recordings_dir
+        / timestamp
+        / f"{description or 'recording'}{RECORDING_ARCHIVE_SUFFIX}"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

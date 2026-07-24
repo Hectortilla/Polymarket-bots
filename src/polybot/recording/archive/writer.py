@@ -42,11 +42,8 @@ from .errors import (
     RecordingArchiveError,
 )
 from .features import _enable_capture_anomaly_journal
-from .integrity import (
-    _invalidate_gap_baselines,
-    _validate_archive,
-    _validate_event_dependencies,
-)
+from .format import _validate_archive
+from .integrity import _invalidate_gap_baselines, _validate_event_dependencies
 from .lifecycle import (
     _acquire_writer_lock,
     _archive_path,
@@ -54,6 +51,7 @@ from .lifecycle import (
     _open_writer_lock_file,
     _release_writer_lock,
 )
+from .paths import SQLITE_SIDECAR_SUFFIXES
 from .primitives import (
     _nonnegative_int,
     _nonnegative_timestamp,
@@ -173,10 +171,9 @@ class RecordingArchive:
             _release_writer_lock(lock_file)
             with suppress(OSError):
                 archive_path.unlink()
-            with suppress(OSError):
-                archive_path.with_name(f"{archive_path.name}-wal").unlink()
-            with suppress(OSError):
-                archive_path.with_name(f"{archive_path.name}-shm").unlink()
+            for suffix in SQLITE_SIDECAR_SUFFIXES:
+                with suppress(OSError):
+                    archive_path.with_name(f"{archive_path.name}{suffix}").unlink()
             raise
 
     @classmethod

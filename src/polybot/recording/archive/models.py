@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 
 from ..contracts.kinds import PayloadKind
 from ..contracts.session import SessionIntegrityStatus, SessionState
@@ -83,6 +84,20 @@ class RecordingEventCounts:
 
     def as_tuple(self) -> tuple[int, ...]:
         return tuple(getattr(self, kind.event_count_field) for kind in PayloadKind)
+
+    @classmethod
+    def combine(
+        cls,
+        counts: Iterable[RecordingEventCounts],
+    ) -> RecordingEventCounts:
+        values = tuple(counts)
+        totals = {
+            kind.event_count_field: sum(
+                getattr(value, kind.event_count_field) for value in values
+            )
+            for kind in PayloadKind
+        }
+        return cls(**totals)
 
 
 @dataclass(frozen=True, slots=True)

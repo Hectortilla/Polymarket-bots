@@ -3,132 +3,40 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 
 from polybot.async_io import run_blocking
 
 from .archive.writer import RecordingArchive
+from .contracts.anomalies import CaptureAnomalyPayload
 from .contracts.book import BookBaselinePayload
+from .contracts.gaps import CoverageGapPayload
+from .contracts.market import MarketIdentity
+from .contracts.payloads import RecordedPayload
 from .contracts.records import (
     BookCheckpoint,
     CaptureAnomalyRecord,
     RecordedEvent,
 )
-from .contracts.anomalies import CaptureAnomalyPayload
-from .contracts.gaps import CoverageGapPayload
-from .contracts.market import MarketIdentity
-from .contracts.payloads import RecordedPayload
-
-
-DEFAULT_RECORDING_WRITE_QUEUE_SIZE = 4_096
-DEFAULT_RECORDING_WRITE_BATCH_SIZE = 256
-RECORDING_WRITE_QUEUE_FULL_MESSAGE = "recording write queue is full"
-
-
-class RecordingWriteError(RuntimeError):
-    pass
-
-
-class RecordingWriteQueueFullError(RecordingWriteError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class OpenedCoverageGap:
-    gap_id: int
-    event: RecordedEvent
-
-
-@dataclass(frozen=True, slots=True)
-class RecordingEventWrite:
-    payload: RecordedPayload
-    observed_at_ms: int
-    source_timestamp_ms: int | None
-    identity: MarketIdentity | None
-    subscription_generation: int
-
-
-@dataclass(frozen=True, slots=True)
-class RecordingCheckpointWrite:
-    book: BookBaselinePayload
-    observed_at_ms: int
-    identity: MarketIdentity
-    subscription_generation: int
-
-
-@dataclass(frozen=True, slots=True)
-class PendingRecordingEvent:
-    """One queued event whose sequence is assigned but commit is pending."""
-
-    event: RecordedEvent
-    _completion: asyncio.Future[None]
-
-    @property
-    def done(self) -> bool:
-        return self._completion.done()
-
-    async def wait(self) -> RecordedEvent:
-        """Return the event only after its SQLite transaction commits."""
-
-        # Cancelling one capture must not cancel the shared durability acknowledgement.
-        await asyncio.shield(self._completion)
-        return self.event
-
-
-@dataclass(slots=True)
-class _EventCommand:
-    events: tuple[RecordedEvent, ...]
-    completion: asyncio.Future[None]
-
-
-@dataclass(slots=True)
-class _CheckpointCommand:
-    checkpoints: tuple[BookCheckpoint, ...]
-    completion: asyncio.Future[None]
-
-
-@dataclass(slots=True)
-class _OpenGapCommand:
-    event: RecordedEvent
-    completion: asyncio.Future[int]
-
-
-@dataclass(slots=True)
-class _CloseGapCommand:
-    gap_id: int
-    ended_at_ms: int
-    completion: asyncio.Future[None]
-
-
-@dataclass(slots=True)
-class _CaptureAnomalyCommand:
-    anomaly: CaptureAnomalyPayload
-    observed_at_ms: int
-    identity: MarketIdentity
-    subscription_generation: int
-    completion: asyncio.Future[CaptureAnomalyRecord]
-
-
-@dataclass(slots=True)
-class _BarrierCommand:
-    completion: asyncio.Future[None]
-
-
-@dataclass(slots=True)
-class _StopCommand:
-    clean: bool
-    failure_reason: str | None
-    completion: asyncio.Future[None]
-
-
-_WriterCommand = (
-    _EventCommand
-    | _CheckpointCommand
-    | _OpenGapCommand
-    | _CloseGapCommand
-    | _CaptureAnomalyCommand
-    | _BarrierCommand
-    | _StopCommand
+from .writer_commands import (
+    BarrierCommand,
+    CaptureAnomalyCommand,
+    CheckpointCommand,
+    CloseGapCommand,
+    EventCommand,
+    OpenGapCommand,
+    StopCommand,
+    WriterCommand,
+)
+from .writer_contracts import (
+    DEFAULT_RECORDING_WRITE_BATCH_SIZE,
+    DEFAULT_RECORDING_WRITE_QUEUE_SIZE,
+    RECORDING_WRITE_QUEUE_FULL_MESSAGE,
+    OpenedCoverageGap,
+    PendingRecordingEvent,
+    RecordingCheckpointWrite,
+    RecordingEventWrite,
+    RecordingWriteError,
+    RecordingWriteQueueFullError,
 )
 
 
@@ -147,7 +55,7 @@ class AsyncRecordingWriter:
         if batch_size <= 0:
             raise ValueError("recording writer batch size must be positive")
         self._archive = archive
-        self._queue: asyncio.Queue[_WriterCommand] = asyncio.Queue(
+        self._queue: asyncio.Queue[WriterCommand] = asyncio.Queue(
             maxsize=queue_size
         )
         self._batch_size = batch_size
@@ -250,7 +158,7 @@ class AsyncRecordingWriter:
         completion: asyncio.Future[None] = (
             asyncio.get_running_loop().create_future()
         )
-        self._put_nowait(_EventCommand(events, completion))
+        self._put_nowait(EventCommand(events, completion))
         self._next_sequence += len(events)
         return events, completion
 
@@ -298,7 +206,7 @@ class AsyncRecordingWriter:
         completion: asyncio.Future[None] = (
             asyncio.get_running_loop().create_future()
         )
-        self._put_nowait(_CheckpointCommand(checkpoints, completion))
+        self._put_nowait(CheckpointCommand(checkpoints, completion))
         await asyncio.shield(completion)
         return checkpoints
 
@@ -323,7 +231,7 @@ class AsyncRecordingWriter:
             identity=identity,
             payload=payload,
         )
-        self._put_nowait(_OpenGapCommand(event, completion))
+        self._put_nowait(OpenGapCommand(event, completion))
         self._next_sequence += 1
         gap_id = await asyncio.shield(completion)
         return OpenedCoverageGap(gap_id=gap_id, event=event)
@@ -333,7 +241,7 @@ class AsyncRecordingWriter:
         completion: asyncio.Future[None] = (
             asyncio.get_running_loop().create_future()
         )
-        self._put_nowait(_CloseGapCommand(gap_id, ended_at_ms, completion))
+        self._put_nowait(CloseGapCommand(gap_id, ended_at_ms, completion))
         await asyncio.shield(completion)
 
     async def record_anomaly(
@@ -351,7 +259,7 @@ class AsyncRecordingWriter:
             asyncio.get_running_loop().create_future()
         )
         self._put_nowait(
-            _CaptureAnomalyCommand(
+            CaptureAnomalyCommand(
                 anomaly=anomaly,
                 observed_at_ms=observed_at_ms,
                 identity=identity,
@@ -364,7 +272,7 @@ class AsyncRecordingWriter:
     async def flush(self) -> None:
         self._raise_if_unavailable()
         completion = asyncio.get_running_loop().create_future()
-        await asyncio.shield(self._queue.put(_BarrierCommand(completion)))
+        await asyncio.shield(self._queue.put(BarrierCommand(completion)))
         if self._failure is not None:
             _set_exception(completion, self._failure)
         await asyncio.shield(completion)
@@ -392,14 +300,14 @@ class AsyncRecordingWriter:
             raise RecordingWriteError("recording writer failed") from self._failure
         completion = asyncio.get_running_loop().create_future()
         await asyncio.shield(
-            self._queue.put(_StopCommand(clean, failure_reason, completion))
+            self._queue.put(StopCommand(clean, failure_reason, completion))
         )
         if self._failure is not None:
             _set_exception(completion, self._failure)
         await asyncio.shield(completion)
         await asyncio.shield(self._task)
 
-    def _put_nowait(self, command: _WriterCommand) -> None:
+    def _put_nowait(self, command: WriterCommand) -> None:
         try:
             self._queue.put_nowait(command)
         except asyncio.QueueFull as error:
@@ -418,11 +326,11 @@ class AsyncRecordingWriter:
         try:
             while True:
                 command = await self._queue.get()
-                if isinstance(command, _EventCommand):
+                if isinstance(command, EventCommand):
                     if await self._write_event_batch(command):
                         return
                     continue
-                if isinstance(command, _CheckpointCommand):
+                if isinstance(command, CheckpointCommand):
                     await self._write_checkpoint(command)
                     continue
                 if await self._process_non_event(command):
@@ -441,7 +349,7 @@ class AsyncRecordingWriter:
             if isinstance(error, asyncio.CancelledError):
                 raise
 
-    async def _write_event_batch(self, first: _EventCommand) -> bool:
+    async def _write_event_batch(self, first: EventCommand) -> bool:
         commands = [first]
         event_count = len(first.events)
         while event_count < self._batch_size:
@@ -449,7 +357,7 @@ class AsyncRecordingWriter:
                 candidate = self._queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            if not isinstance(candidate, _EventCommand):
+            if not isinstance(candidate, EventCommand):
                 try:
                     await self._write_events(commands)
                 except BaseException as error:
@@ -461,7 +369,7 @@ class AsyncRecordingWriter:
         await self._write_events(commands)
         return False
 
-    async def _write_events(self, commands: list[_EventCommand]) -> None:
+    async def _write_events(self, commands: list[EventCommand]) -> None:
         try:
             await run_blocking(
                 self._archive.append_events,
@@ -478,7 +386,7 @@ class AsyncRecordingWriter:
         for command in commands:
             _set_result(command.completion, None)
 
-    async def _write_checkpoint(self, command: _CheckpointCommand) -> None:
+    async def _write_checkpoint(self, command: CheckpointCommand) -> None:
         try:
             await run_blocking(
                 self._archive.append_checkpoints,
@@ -489,28 +397,28 @@ class AsyncRecordingWriter:
             raise
         _set_result(command.completion, None)
 
-    async def _process_non_event(self, command: _WriterCommand) -> bool:
-        if isinstance(command, _CheckpointCommand):
+    async def _process_non_event(self, command: WriterCommand) -> bool:
+        if isinstance(command, CheckpointCommand):
             await self._write_checkpoint(command)
             return False
-        if isinstance(command, _OpenGapCommand):
+        if isinstance(command, OpenGapCommand):
             await self._open_gap(command)
             return False
-        if isinstance(command, _CloseGapCommand):
+        if isinstance(command, CloseGapCommand):
             await self._close_gap(command)
             return False
-        if isinstance(command, _CaptureAnomalyCommand):
+        if isinstance(command, CaptureAnomalyCommand):
             await self._record_anomaly(command)
             return False
-        if isinstance(command, _BarrierCommand):
+        if isinstance(command, BarrierCommand):
             _set_result(command.completion, None)
             return False
-        if isinstance(command, _StopCommand):
+        if isinstance(command, StopCommand):
             await self._close(command)
             return True
         raise AssertionError("unexpected recording writer command")
 
-    async def _open_gap(self, command: _OpenGapCommand) -> None:
+    async def _open_gap(self, command: OpenGapCommand) -> None:
         try:
             gap_id = await run_blocking(
                 self._archive.append_gap,
@@ -521,7 +429,7 @@ class AsyncRecordingWriter:
             raise
         _set_result(command.completion, gap_id)
 
-    async def _close_gap(self, command: _CloseGapCommand) -> None:
+    async def _close_gap(self, command: CloseGapCommand) -> None:
         try:
             await run_blocking(
                 self._archive.close_gap,
@@ -533,7 +441,7 @@ class AsyncRecordingWriter:
             raise
         _set_result(command.completion, None)
 
-    async def _record_anomaly(self, command: _CaptureAnomalyCommand) -> None:
+    async def _record_anomaly(self, command: CaptureAnomalyCommand) -> None:
         try:
             record = await run_blocking(
                 self._archive.append_capture_anomaly,
@@ -547,7 +455,7 @@ class AsyncRecordingWriter:
             raise
         _set_result(command.completion, record)
 
-    async def _close(self, command: _StopCommand) -> None:
+    async def _close(self, command: StopCommand) -> None:
         try:
             await run_blocking(
                 self._archive.close,
@@ -569,7 +477,7 @@ class AsyncRecordingWriter:
 
 
 def _set_command_exception(
-    command: _WriterCommand,
+    command: WriterCommand,
     error: BaseException,
 ) -> None:
     _set_exception(command.completion, error)

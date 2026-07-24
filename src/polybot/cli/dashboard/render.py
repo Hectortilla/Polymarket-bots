@@ -106,7 +106,8 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
             primary,
             Text("Executable wallet value", style="bold green"),
             Text(
-                f"green: current · dim green: stale · z/x time zoom ({_time_window_label(state.time_zoom_level)}) · r reset",
+                "green: current · dim green: stale · z/x time zoom "
+                f"({_time_window_label(state.time_zoom_level)}) · r reset",
                 style="bright_green",
             ),
             wallet_value,
@@ -183,7 +184,7 @@ def _visible_trade_marker_series(
     width: int,
 ) -> tuple[list[list[float]], list[str]]:
     window = state.chart_window_points(width)
-    timestamp_count = min(window, len(state.chart_sample_times))
+    timestamp_count = min(window, len(state.chart_sample_epoch_seconds))
     source_count = timestamp_count or min(window, len(markers))
     if source_count == 0:
         return [], []
@@ -225,7 +226,7 @@ def _visible_chart_samples(
 ) -> tuple[list[float], deque[bool]]:
     window = state.chart_window_points(width)
     display_points = state.chart_display_points(width)
-    timestamp_count = min(window, len(state.chart_sample_times))
+    timestamp_count = min(window, len(state.chart_sample_epoch_seconds))
     source_count = timestamp_count or min(window, len(values))
     if source_count == 0:
         return [], deque()
@@ -254,6 +255,6 @@ def _time_window_label(zoom_level: int) -> str:
 
 def _chart_time_range(state: DashboardState, width: int) -> Text:
     return chart_time_range(
-        state.visible_time_range(width),
+        state.visible_epoch_seconds_range(width),
         state.chart_display_points(width),
     )

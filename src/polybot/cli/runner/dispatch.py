@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from polybot.execution.paper import PaperBroker
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.clob import ClobClient
@@ -12,24 +9,13 @@ from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.wallet_activity.stream import WalletActivityStream
 
 from ..followed_wallets.tracker import FollowedWalletTracker
-from ..observability.observer import RuntimeObserver
-from ..streams.contracts import StreamEvent, StreamKind
+from ..resolution.settlement import ResolutionSettlementService
+from ..streams.contracts import BookGapStreamEvent, StreamEvent
+from ..streams.kinds import StreamKind
 from ..tracked_markets import TrackedMarketRegistry
-from ..resolution_state.ledger import ResolutionLedger
 from .book_dispatch import dispatch_book
 from .resolution_dispatch import dispatch_resolution
 from .wallet_dispatch import dispatch_wallet_trade
-
-
-@dataclass(frozen=True, slots=True)
-class ResolutionDispatchDependencies:
-    """Runtime-owned dependencies required to settle a resolution event."""
-
-    registry: TrackedMarketRegistry
-    followed_wallets: FollowedWalletTracker
-    paper_broker: PaperBroker
-    resolution_ledger: ResolutionLedger
-    observer: RuntimeObserver | None = None
 
 
 async def dispatch_stream_event(
@@ -41,8 +27,11 @@ async def dispatch_stream_event(
     clob: ClobClient,
     registry: TrackedMarketRegistry | None = None,
     followed_wallets: FollowedWalletTracker | None = None,
-    resolution: ResolutionDispatchDependencies | None = None,
+    resolution_service: ResolutionSettlementService | None = None,
 ) -> DispatchOutcome | None:
+    if isinstance(stream_event, BookGapStreamEvent):
+        await runner.dispatch_book_gap(stream_event.event)
+        return None
     if stream_event.kind is StreamKind.BOOK:
         return await dispatch_book(runner, stream_event, followed_wallets, registry)
     if stream_event.kind is StreamKind.WALLET:
@@ -57,17 +46,12 @@ async def dispatch_stream_event(
     if stream_event.kind is StreamKind.MARKET_HINT:
         wallet_stream.wake_market(stream_event.event.condition_id)
     elif stream_event.kind is StreamKind.RESOLUTION:
-        if resolution is None:
+        if resolution_service is None:
             raise RuntimeError(
                 "resolution dispatch dependencies are required for resolution events"
             )
         await dispatch_resolution(
-            runner,
             stream_event,
-            registry=resolution.registry,
-            followed_wallets=resolution.followed_wallets,
-            paper_broker=resolution.paper_broker,
-            resolution_ledger=resolution.resolution_ledger,
-            observer=resolution.observer,
+            resolution_service,
         )
     return None

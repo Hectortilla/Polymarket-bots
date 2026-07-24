@@ -70,7 +70,7 @@ from polybot.recording.contracts.payloads import (
 
 
 class FakeHandle:
-    def __init__(self, events: tuple[object, ...], *, dropped: int = 0) -> None:
+    def __init__(self, events: tuple[object, ...], *, dropped: object = 0) -> None:
         self._events = events
         self.dropped = dropped
         self.closed = False
@@ -84,6 +84,34 @@ class FakeHandle:
 
     async def close(self) -> None:
         self.closed = True
+
+
+def test_market_capture_rejects_malformed_sdk_drop_counter() -> None:
+    capture = MarketCapture(
+        FakeHandle((), dropped=True),
+        market=_market(),
+        generation=1,
+    )
+
+    with pytest.raises(MarketDataError) as caught:
+        capture.diagnostics()
+
+    assert caught.value.issue is MarketDataIssue.INVALID_STREAM_DIAGNOSTICS
+
+
+def test_market_capture_requires_the_sdk_drop_counter() -> None:
+    handle = FakeHandle(())
+    del handle.dropped
+    capture = MarketCapture(
+        handle,
+        market=_market(),
+        generation=1,
+    )
+
+    with pytest.raises(MarketDataError) as caught:
+        capture.diagnostics()
+
+    assert caught.value.issue is MarketDataIssue.INVALID_STREAM_DIAGNOSTICS
 
 
 class FakeStreamClient:
@@ -762,6 +790,59 @@ def test_capture_detects_sdk_drops_during_split_revision_assembly(
     assert len(error.fragments) == expected_fragment_count
 
 
+def test_capture_rejects_a_decreasing_sdk_drop_counter() -> None:
+    class RegressingHandle:
+        def __init__(self, events: tuple[object, ...]) -> None:
+            self._events = events
+            self._regressed = False
+
+        @property
+        def dropped(self) -> int:
+            return 0 if self._regressed else 1
+
+        def __aiter__(self) -> AsyncIterator[object]:
+            return self._iterate()
+
+        async def _iterate(self) -> AsyncIterator[object]:
+            for index, event in enumerate(self._events):
+                if index == 3:
+                    self._regressed = True
+                yield event
+
+        async def close(self) -> None:
+            return None
+
+    events = _split_revision_prefix() + (
+        _price_change_event(
+            price="0.55",
+            size="5",
+            side="BUY",
+            source_hash="revision-up",
+        ),
+        _price_change_event(
+            price="0.50",
+            size="0",
+            side="SELL",
+            source_hash="revision-up",
+        ),
+    )
+
+    async def run() -> None:
+        capture = MarketCapture(
+            RegressingHandle(events),
+            market=_market(),
+            generation=7,
+        )
+        await anext(capture)
+        await anext(capture)
+        await anext(capture)
+
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(run())
+
+    assert caught.value.issue is MarketDataIssue.INVALID_STREAM_DIAGNOSTICS
+
+
 def test_capture_checks_sdk_drops_immediately_before_revision_commit() -> None:
     class CommitDropHandle:
         def __init__(self, events: tuple[object, ...]) -> None:
@@ -994,6 +1075,8 @@ def test_market_capture_normalizes_sdk_handle_failures(
     failure_stage: str,
 ) -> None:
     class FailingHandle:
+        dropped = 0
+
         def __aiter__(self) -> AsyncIterator[object]:
             return self._events()
 

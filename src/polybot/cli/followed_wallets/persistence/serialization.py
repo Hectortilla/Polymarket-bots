@@ -16,10 +16,6 @@ from .schema import (
 FOLLOW_STATE_VERSION = 1
 
 
-def state_from_payload(wallet: str, payload: dict[str, Any]) -> WalletFollowState:
-    return WalletFollowState.from_payload(wallet, payload)
-
-
 def load_states(payload: dict[str, Any]) -> dict[str, WalletFollowState]:
     if not payload:
         return {}
@@ -44,7 +40,7 @@ def load_states(payload: dict[str, Any]) -> dict[str, WalletFollowState]:
         normalized_wallet = validate_wallet_address(wallet)
         if normalized_wallet in states:
             raise ValueError("followed-wallet state contains duplicate wallet keys")
-        states[normalized_wallet] = state_from_payload(
+        states[normalized_wallet] = WalletFollowState.from_payload(
             normalized_wallet, state_payload_value
         )
     return states

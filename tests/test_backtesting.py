@@ -24,7 +24,7 @@ from polybot.backtesting.selection import (
     validate_backtest_selection,
     validate_backtest_selection_coverage,
 )
-from polybot.backtesting.service import run_backtest
+from polybot.backtesting.service.runner import run_backtest
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext

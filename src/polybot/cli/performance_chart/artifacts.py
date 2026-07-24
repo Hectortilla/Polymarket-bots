@@ -16,7 +16,7 @@ from polybot.performance.contracts.files import (
     SUMMARY_FILE_NAME,
 )
 from polybot.performance.contracts.summary import PerformanceSummaryV1
-from polybot.performance.valuation import ValuationStatus
+from polybot.performance.contracts.valuation_status import ValuationStatus
 
 from .contracts import PerformanceChartData, PerformanceChartError
 

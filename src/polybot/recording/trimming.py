@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 import stat
 from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
+
+from polybot.persistence.fsync import fsync_path
 
 from .archive.reader import RecordingReader
 from .trim_contracts import (
@@ -14,16 +17,33 @@ from .trim_contracts import (
     RecordingTrimPlan,
     RecordingTrimResult,
 )
-from .trim_export import (
-    build_trimmed_archive,
-    fsync_directory,
-    fsync_file,
+from .trim_export import build_trimmed_archive
+from .trim_files import (
     remove_archive_artifacts,
     remove_sqlite_sidecars,
     temporary_archive_path,
 )
 from .trim_planning import plan_recording_trim
 from .trim_validation import validate_trimmed_archive
+
+
+class _TrimStage(StrEnum):
+    RESOLVE_SOURCE = "resolving the source archive path"
+    OPEN_SOURCE = "opening the source archive"
+    SELECT_INTERVAL = "selecting the retained interval"
+    REPORT_INTERVAL = "reporting the retained interval"
+    CHECK_BACKUP = "checking the backup path"
+    CREATE_TEMPORARY = "creating the temporary archive"
+    EXPORT = "exporting the retained interval"
+    VALIDATE = "validating the temporary archive"
+    PRESERVE_PERMISSIONS = "preserving source permissions"
+    SYNC_TEMPORARY = "synchronizing the temporary archive"
+    CREATE_BACKUP = "creating the backup"
+    SYNC_BACKUP = "synchronizing the backup"
+    REMOVE_SIDECARS = "removing stale SQLite sidecars"
+    INSTALL = "installing the replacement"
+    SYNC_REPLACEMENT = "synchronizing the replacement"
+    READ_SIZE = "reading the replacement size"
 
 
 def trim_recording(
@@ -44,24 +64,24 @@ def trim_recording(
     replacement_installed = False
     result: RecordingTrimResult | None = None
     failure: BaseException | None = None
-    stage = "resolving the source archive path"
+    stage = _TrimStage.RESOLVE_SOURCE
     try:
         archive_path = archive_path.expanduser().resolve()
-        stage = "opening the source archive"
+        stage = _TrimStage.OPEN_SOURCE
         reader = RecordingReader.for_replay(archive_path)
-        stage = "selecting the retained interval"
+        stage = _TrimStage.SELECT_INTERVAL
         plan = plan_recording_trim(
             reader,
             archive_path=archive_path,
             session_id=session_id,
         )
         if on_plan is not None:
-            stage = "reporting the retained interval"
+            stage = _TrimStage.REPORT_INTERVAL
             on_plan(plan)
         if dry_run:
             result = RecordingTrimResult(plan=plan, replaced=False)
         else:
-            stage = "checking the backup path"
+            stage = _TrimStage.CHECK_BACKUP
             if keep_backup:
                 backup_path = archive_path.with_name(
                     f"{archive_path.name}{DEFAULT_TRIM_BACKUP_SUFFIX}"
@@ -71,15 +91,15 @@ def trim_recording(
                         f"trim backup already exists: {backup_path}"
                     )
 
-            stage = "creating the temporary archive"
+            stage = _TrimStage.CREATE_TEMPORARY
             temporary_path = temporary_archive_path(archive_path)
-            stage = "exporting the retained interval"
+            stage = _TrimStage.EXPORT
             synthetic_event_count = build_trimmed_archive(
                 reader,
                 plan,
                 temporary_path,
             )
-            stage = "validating the temporary archive"
+            stage = _TrimStage.VALIDATE
             validate_trimmed_archive(
                 temporary_path,
                 plan,
@@ -87,29 +107,29 @@ def trim_recording(
                     plan.source_event_count + synthetic_event_count
                 ),
             )
-            stage = "preserving source permissions"
+            stage = _TrimStage.PRESERVE_PERMISSIONS
             os.chmod(
                 temporary_path,
                 stat.S_IMODE(archive_path.stat().st_mode),
             )
-            stage = "synchronizing the temporary archive"
-            fsync_file(temporary_path)
+            stage = _TrimStage.SYNC_TEMPORARY
+            fsync_path(temporary_path)
 
             if backup_path is not None:
-                stage = "creating the backup"
+                stage = _TrimStage.CREATE_BACKUP
                 os.link(archive_path, backup_path)
                 backup_created = True
-                stage = "synchronizing the backup"
-                fsync_directory(archive_path.parent)
+                stage = _TrimStage.SYNC_BACKUP
+                fsync_path(archive_path.parent)
 
-            stage = "removing stale SQLite sidecars"
+            stage = _TrimStage.REMOVE_SIDECARS
             remove_sqlite_sidecars(archive_path)
-            stage = "installing the replacement"
+            stage = _TrimStage.INSTALL
             os.replace(temporary_path, archive_path)
             replacement_installed = True
-            stage = "synchronizing the replacement"
-            fsync_directory(archive_path.parent)
-            stage = "reading the replacement size"
+            stage = _TrimStage.SYNC_REPLACEMENT
+            fsync_path(archive_path.parent)
+            stage = _TrimStage.READ_SIZE
             result = RecordingTrimResult(
                 plan=plan,
                 replaced=True,
@@ -139,7 +159,7 @@ def trim_recording(
             ) from failure
         if (
             isinstance(failure, RuntimeError)
-            and stage == "resolving the source archive path"
+            and stage is _TrimStage.RESOLVE_SOURCE
         ):
             raise RecordingTrimError(
                 _failure_message(

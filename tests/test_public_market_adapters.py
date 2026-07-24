@@ -30,6 +30,11 @@ from polymarket.models.gamma.market import (
     MarketTrading,
 )
 
+from polybot.framework.events.books import (
+    BookGapEvent,
+    BookGapReason,
+    BookSnapshot,
+)
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.errors import (
     MarketDataError,
@@ -48,8 +53,8 @@ from polybot.polymarket.markets import (
     index_markets_by_token,
 )
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
-from polybot.polymarket.public_data.recording import create_recording_public_data
-from polybot.polymarket.public_data.runtime import create_runtime_public_data
+from polybot.polymarket.public_data.recording import RecordingPublicData
+from polybot.polymarket.public_data.runtime import RuntimePublicData
 from polybot.polymarket.ws_market import MarketStream
 from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 
@@ -78,13 +83,14 @@ def test_public_data_bundles_share_and_own_their_sdk_client(monkeypatch) -> None
     recording_client = FakeClient()
     clients = iter((runtime_client, recording_client))
     monkeypatch.setattr(
-        "polybot.polymarket.public_data.client.AsyncPublicClient", lambda: next(clients)
+        "polybot.polymarket.client_lifecycle.AsyncPublicClient",
+        lambda: next(clients),
     )
 
-    runtime = create_runtime_public_data()
-    recording = create_recording_public_data()
+    runtime = RuntimePublicData.create()
+    recording = RecordingPublicData.create()
     borrowed_client = FakeClient()
-    borrowed_runtime = create_runtime_public_data(borrowed_client)  # type: ignore[arg-type]
+    borrowed_runtime = RuntimePublicData.create(borrowed_client)  # type: ignore[arg-type]
 
     assert runtime.gamma._client is runtime_client
     assert runtime.clob._client is runtime_client
@@ -121,9 +127,10 @@ def test_public_data_bundle_normalizes_and_retries_owned_client_shutdown(
 
     client = FailingClient()
     monkeypatch.setattr(
-        "polybot.polymarket.public_data.client.AsyncPublicClient", lambda: client
+        "polybot.polymarket.client_lifecycle.AsyncPublicClient",
+        lambda: client,
     )
-    public_data = create_runtime_public_data()
+    public_data = RuntimePublicData.create()
 
     async def close() -> None:
         with pytest.raises(MarketDataTransportError) as caught:
@@ -182,6 +189,96 @@ def test_market_stream_set_markets_replaces_token_metadata() -> None:
     }
 
 
+def test_market_stream_rejects_malformed_sdk_drop_counter() -> None:
+    class MalformedDiagnosticsStream(FakeStream):
+        dropped = "unknown"
+
+    class Client(FakePublicClient):
+        async def subscribe(self, spec: object) -> MalformedDiagnosticsStream:
+            return MalformedDiagnosticsStream(())
+
+    async def run() -> None:
+        stream = MarketStream(
+            Client(),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+        )
+        await anext(stream.events({"yes-alpha"}))
+
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(run())
+
+    assert caught.value.issue is MarketDataIssue.INVALID_STREAM_DIAGNOSTICS
+
+
+def test_market_stream_requires_the_sdk_drop_counter() -> None:
+    class MissingDiagnosticsStream:
+        async def __aenter__(self) -> MissingDiagnosticsStream:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        def __aiter__(self) -> AsyncIterator[object]:
+            return self._iterate()
+
+        async def _iterate(self) -> AsyncIterator[object]:
+            if False:
+                yield None
+
+    class Client(FakePublicClient):
+        async def subscribe(self, spec: object) -> MissingDiagnosticsStream:
+            return MissingDiagnosticsStream()
+
+    async def run() -> None:
+        stream = MarketStream(
+            Client(),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+        )
+        await anext(stream.events({"yes-alpha"}))
+
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(run())
+
+    assert caught.value.issue is MarketDataIssue.INVALID_STREAM_DIAGNOSTICS
+
+
+def test_market_stream_rejects_a_decreasing_sdk_drop_counter() -> None:
+    event = MarketBookEvent(
+        type="book",
+        payload=MarketBookPayload(
+            market="condition-alpha",
+            asset_id="yes-alpha",
+            bids=(_level("0.40", "2"),),
+            asks=(_level("0.60", "3"),),
+        ),
+    )
+
+    class RegressingDiagnosticsStream(FakeStream):
+        def __init__(self) -> None:
+            super().__init__((event,))
+            self.dropped = 1
+
+        async def _iterate(self) -> AsyncIterator[object]:
+            self.dropped = 0
+            yield event
+
+    class Client(FakePublicClient):
+        async def subscribe(self, spec: object) -> RegressingDiagnosticsStream:
+            return RegressingDiagnosticsStream()
+
+    async def run() -> None:
+        stream = MarketStream(
+            Client(),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+        )
+        await anext(stream.events({"yes-alpha"}))
+
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(run())
+
+    assert caught.value.issue is MarketDataIssue.INVALID_STREAM_DIAGNOSTICS
+
+
 def test_market_stream_keeps_generation_metadata_during_market_switch() -> None:
     started = asyncio.Event()
     release = asyncio.Event()
@@ -196,6 +293,8 @@ def test_market_stream_keeps_generation_metadata_during_market_switch() -> None:
     )
 
     class DelayedStream:
+        dropped = 0
+
         async def __aenter__(self) -> DelayedStream:
             return self
 
@@ -238,6 +337,8 @@ def test_market_stream_normalizes_sdk_transport_failures(
     failure_stage: str,
 ) -> None:
     class FailingStream:
+        dropped = 0
+
         async def __aenter__(self) -> FailingStream:
             return self
 
@@ -281,6 +382,8 @@ def test_market_stream_normalizes_sdk_transport_failures(
 class FakeStream:
     def __init__(self, events: tuple[object, ...]) -> None:
         self._events = events
+        if not hasattr(self, "dropped"):
+            self.dropped = 0
 
     async def __aenter__(self) -> FakeStream:
         return self
@@ -859,9 +962,12 @@ def test_market_stream_requires_a_baseline_after_a_crossed_update() -> None:
         )
         return [book async for book in stream.books({"yes-alpha"})], stream
 
-    books, stream = asyncio.run(run())
+    stream_events, stream = asyncio.run(run())
+    books = [event for event in stream_events if isinstance(event, BookSnapshot)]
+    gaps = [event for event in stream_events if isinstance(event, BookGapEvent)]
 
     assert len(books) == 3
+    assert len(gaps) == 1
     assert tuple(level.price for level in books[0].bids) == (Decimal("0.40"),)
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert tuple(level.price for level in books[2].bids) == (
@@ -869,7 +975,7 @@ def test_market_stream_requires_a_baseline_after_a_crossed_update() -> None:
         Decimal("0.35"),
     )
     assert stream.last_book_gap is not None
-    assert stream.last_book_gap.issue is MarketDataIssue.CROSSED_BOOK
+    assert stream.last_book_gap.reason is BookGapReason.CROSSED_BOOK
     assert stream.last_book_gap.condition_id == "condition-alpha"
 
 
@@ -944,7 +1050,8 @@ def test_market_stream_requires_a_baseline_after_an_invalid_price_change() -> No
         )
         return [book async for book in stream.books({"yes-alpha"})], stream
 
-    books, stream = asyncio.run(run())
+    stream_events, stream = asyncio.run(run())
+    books = _book_snapshots(stream_events)
 
     assert len(books) == 3
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
@@ -953,7 +1060,103 @@ def test_market_stream_requires_a_baseline_after_an_invalid_price_change() -> No
         Decimal("0.35"),
     )
     assert stream.last_book_gap is not None
-    assert stream.last_book_gap.issue is MarketDataIssue.INVALID_BOOK_SIDE
+    assert stream.last_book_gap.reason is BookGapReason.INVALID_BOOK_SIDE
+
+
+def test_market_stream_gap_invalidates_every_token_in_the_condition() -> None:
+    events = (
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-alpha",
+                asset_id="yes-alpha",
+                bids=(_level("0.40", "2"),),
+                asks=(_level("0.60", "3"),),
+            ),
+        ),
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-alpha",
+                asset_id="no-token",
+                bids=(_level("0.35", "2"),),
+                asks=(_level("0.65", "3"),),
+            ),
+        ),
+        MarketPriceChangeEvent(
+            type="price_change",
+            payload=MarketPriceChangePayload(
+                market="condition-alpha",
+                price_changes=(
+                    PriceChange.model_construct(
+                        asset_id="yes-alpha",
+                        price=Decimal("0.50"),
+                        size=Decimal("5"),
+                        side="UNKNOWN",
+                    ),
+                ),
+            ),
+        ),
+        MarketPriceChangeEvent(
+            type="price_change",
+            payload=MarketPriceChangePayload(
+                market="condition-alpha",
+                price_changes=(
+                    PriceChange(
+                        asset_id="no-token",
+                        price="0.40",
+                        size="5",
+                        side="BUY",
+                    ),
+                ),
+            ),
+        ),
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-alpha",
+                asset_id="no-token",
+                bids=(_level("0.30", "2"),),
+                asks=(_level("0.70", "3"),),
+            ),
+        ),
+        MarketBookEvent(
+            type="book",
+            payload=MarketBookPayload(
+                market="condition-alpha",
+                asset_id="yes-alpha",
+                bids=(_level("0.32", "2"),),
+                asks=(_level("0.68", "3"),),
+            ),
+        ),
+    )
+
+    async def run() -> list[object]:
+        stream = MarketStream(
+            FakePublicClient(events=events),  # type: ignore[arg-type]
+            markets=(_market("alpha"),),
+            now_ms=lambda: 2_000,
+        )
+        return [
+            event
+            async for event in stream.books({"yes-alpha", "no-token"})
+        ]
+
+    stream_events = asyncio.run(run())
+
+    assert [event.token_id for event in _book_snapshots(stream_events)] == [
+        "yes-alpha",
+        "no-token",
+        "yes-alpha",
+        "no-token",
+    ]
+    assert [
+        event.reason
+        for event in stream_events
+        if isinstance(event, BookGapEvent)
+    ] == [
+        BookGapReason.INVALID_BOOK_SIDE,
+    ]
 
 
 def test_market_stream_requires_a_baseline_after_a_rejected_full_book() -> None:
@@ -1023,7 +1226,7 @@ def test_market_stream_requires_a_baseline_after_a_rejected_full_book() -> None:
         )
         return [book async for book in stream.books({"yes-alpha"})]
 
-    books = asyncio.run(run())
+    books = _book_snapshots(asyncio.run(run()))
 
     assert len(books) == 3
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
@@ -1103,13 +1306,14 @@ def test_market_stream_requires_a_baseline_after_an_sdk_handle_drop() -> None:
         )
         return [book async for book in stream.books({"yes-alpha"})], stream
 
-    books, stream = asyncio.run(run())
+    stream_events, stream = asyncio.run(run())
+    books = _book_snapshots(stream_events)
 
     assert len(books) == 3
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert stream.book_gap_count == 1
     assert stream.last_book_gap is not None
-    assert stream.last_book_gap.issue is MarketDataIssue.BOOK_STREAM_GAP
+    assert stream.last_book_gap.reason is BookGapReason.BOOK_STREAM_GAP
     assert stream.last_book_gap.condition_id is None
 
 
@@ -1134,7 +1338,13 @@ def test_market_stream_rejects_mismatched_market_identity() -> None:
         )
         return [book async for book in stream.books({"yes-alpha"})]
 
-    assert asyncio.run(run()) == []
+    assert asyncio.run(run()) == [
+        BookGapEvent(
+            condition_id="condition-alpha",
+            observed_at_ms=2_000,
+            reason=BookGapReason.BOOK_IDENTITY_MISMATCH,
+        )
+    ]
 
 
 def test_market_stream_requires_a_baseline_after_an_unrouteable_book_frame() -> None:
@@ -1196,12 +1406,16 @@ def test_market_stream_requires_a_baseline_after_an_unrouteable_book_frame() -> 
         )
         return [book async for book in stream.books({"yes-alpha"})], stream
 
-    books, stream = asyncio.run(run())
+    stream_events, stream = asyncio.run(run())
+    books = _book_snapshots(stream_events)
 
     assert len(books) == 3
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert stream.last_book_gap is not None
-    assert stream.last_book_gap.issue is MarketDataIssue.INVALID_MARKET_PARAMETERS
+    assert (
+        stream.last_book_gap.reason
+        is BookGapReason.INVALID_MARKET_PARAMETERS
+    )
     assert stream.last_book_gap.condition_id is None
 
 
@@ -1277,6 +1491,10 @@ def _order_book(
         neg_risk=False,
         hash="hash",
     )
+
+
+def _book_snapshots(events: list[object]) -> list[BookSnapshot]:
+    return [event for event in events if isinstance(event, BookSnapshot)]
 
 
 def _level(price: str, size: str) -> OrderBookLevel:

@@ -14,11 +14,33 @@ from .models import RecordingFeatureProvenance, RecordingSession
 from .primitives import (
     _nonnegative_timestamp,
     _required_text,
-    _sessions_overlapping,
 )
 from .rows import _capture_anomaly_from_row
 from .schema import CAPTURE_ANOMALIES_TABLE
 from .sessions import select_session
+
+
+def select_overlapping_recording_sessions(
+    sessions: tuple[RecordingSession, ...],
+    *,
+    start_at_ms: int | None,
+    end_at_ms: int | None,
+    session_id: int | None,
+) -> tuple[RecordingSession, ...]:
+    if session_id is not None:
+        return tuple(
+            session for session in sessions if session.session_id == session_id
+        )
+    return tuple(
+        session
+        for session in sessions
+        if (end_at_ms is None or session.started_at_ms <= end_at_ms)
+        and (
+            start_at_ms is None
+            or session.ended_at_ms is None
+            or session.ended_at_ms >= start_at_ms
+        )
+    )
 
 
 def capture_anomaly_journal_available(
@@ -79,7 +101,7 @@ def iter_capture_anomalies(
             normalized_failure = CaptureFailureKind(failure_kind)
         except (TypeError, ValueError) as error:
             raise ValueError("capture anomaly failure kind is invalid") from error
-    selected_sessions = _sessions_overlapping(
+    selected_sessions = select_overlapping_recording_sessions(
         sessions,
         start_at_ms=start_at_ms,
         end_at_ms=end_at_ms,

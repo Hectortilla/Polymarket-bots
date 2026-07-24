@@ -1,0 +1,13 @@
+"""Dependency-free field names for resolution persistence contracts."""
+
+RESOLUTION_WINNING_TOKEN_ID_FIELD = "winning_token_id"
+RESOLUTION_WINNING_OUTCOME_FIELD = "winning_outcome"
+RESOLUTION_RESOLVED_AT_MS_FIELD = "resolved_at_ms"
+RESOLUTION_SETTLED_AT_MS_FIELD = "settled_at_ms"
+RESOLUTION_SOURCE_FIELD = "source"
+SETTLED_POSITION_OWNER_FIELD = "owner"
+SETTLED_POSITION_TOKEN_ID_FIELD = "token_id"
+SETTLED_POSITION_SIZE_FIELD = "size"
+SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD = "payout_per_token"
+SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD = "cash_payout_usdc"
+SETTLED_POSITION_REALIZED_PNL_USDC_FIELD = "realized_pnl_usdc"

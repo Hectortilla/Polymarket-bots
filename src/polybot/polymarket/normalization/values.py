@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
+from polybot.framework.events.prices import is_outcome_payout, is_outcome_price
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
 
@@ -13,29 +13,35 @@ def _nested_value(source: object, *attributes: str) -> object:
     return current
 
 
-def _required_text(
+def require_text(
     value: object,
-    issue_or_field: MarketDataIssue | str,
-    field: str | None = None,
+    field: str,
+    *,
+    issue: MarketDataIssue = MarketDataIssue.INVALID_MARKET_PARAMETERS,
 ) -> str:
-    issue = (
-        MarketDataIssue.INVALID_MARKET_PARAMETERS
-        if field is None
-        else issue_or_field
-    )
-    name = str(issue_or_field) if field is None else field
-    normalized = _optional_text(value)
+    normalized = normalize_text_or_none(value)
     if normalized is None:
-        raise MarketDataError(issue, f"{name} is missing")
+        raise MarketDataError(issue, f"{field} is missing")
     return normalized
 
 
-def _optional_text(value: object, field: str | None = None) -> str | None:
+def normalize_text_or_none(value: object) -> str | None:
+    """Best-effort normalization for optional vendor display text."""
     if value is None:
         return None
-    if field is None:
-        return value.strip() if isinstance(value, str) and value.strip() else None
-    return _required_text(value, field)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def validate_optional_text(
+    value: object,
+    field: str,
+    *,
+    issue: MarketDataIssue = MarketDataIssue.INVALID_MARKET_PARAMETERS,
+) -> str | None:
+    """Validate optional vendor text without accepting malformed present values."""
+    if value is None:
+        return None
+    return require_text(value, field, issue=issue)
 
 
 def _optional_boolean(value: object, field: str) -> bool | None:
@@ -79,7 +85,7 @@ def _optional_non_negative_decimal(value: object, field: str) -> Decimal | None:
 
 def _probability(value: object, field: str) -> Decimal:
     normalized = _decimal(value, field)
-    if not OUTCOME_PRICE_FLOOR < normalized <= OUTCOME_PRICE_CEILING:
+    if not is_outcome_price(normalized):
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
             f"{field} must be greater than zero and at most one",
@@ -91,7 +97,7 @@ def _optional_probability(value: object, field: str) -> Decimal | None:
     if value is None:
         return None
     normalized = _decimal(value, field)
-    if not OUTCOME_PRICE_FLOOR <= normalized <= OUTCOME_PRICE_CEILING:
+    if not is_outcome_payout(normalized):
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,
             f"{field} must be between zero and one",

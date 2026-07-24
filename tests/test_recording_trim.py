@@ -12,7 +12,7 @@ import pytest
 
 import polybot.recording.trimming as trimming_module
 from polybot.backtesting.contracts import BacktestOptions
-from polybot.backtesting.service import run_backtest
+from polybot.backtesting.service.runner import run_backtest
 from polybot.backtesting.selection import (
     resolve_backtest_selection,
     validate_backtest_selection,
@@ -1408,10 +1408,11 @@ def test_post_replace_sync_failure_reports_that_replacement_happened(
     path = _gapped_archive(tmp_path / "capture.sqlite3")
     before = _sha256(path)
 
-    def fail_sync(directory: Path) -> None:
-        raise OSError("injected directory sync failure")
+    def fail_sync(path_to_sync: Path) -> None:
+        if path_to_sync.is_dir():
+            raise OSError("injected directory sync failure")
 
-    monkeypatch.setattr(trimming_module, "fsync_directory", fail_sync)
+    monkeypatch.setattr(trimming_module, "fsync_path", fail_sync)
 
     with pytest.raises(
         RecordingTrimError,

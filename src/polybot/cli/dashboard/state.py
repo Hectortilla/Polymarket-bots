@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from decimal import Decimal
-from typing import Any
+from typing import Generic, TypeVar, cast, overload
 
 from polybot.cli.observability.events import (
     BrokerFailed,
@@ -18,19 +18,19 @@ from polybot.cli.observability.events import (
     RuntimeEvent,
     RuntimeFailed,
     RuntimeStarted,
-    RuntimeState,
     RuntimeStateChanged,
     StreamHealth,
     StreamReceived,
 )
-from polybot.cli.streams.contracts import StreamKind
+from polybot.cli.observability.states import RuntimeState
+from polybot.cli.streams.kinds import StreamKind
 from polybot.framework.activity import BotActivityEvent
 from polybot.framework.clock import system_now_ms
-from polybot.framework.config.models import BotMode
+from polybot.framework.config.mode import BotMode
 from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.performance.valuation import PortfolioValuation
+from polybot.performance.contracts.valuation import PortfolioValuation
 
 from .chart_history import DashboardCharts
 from .event_ticker import DashboardTicker, TickerRow
@@ -46,7 +46,10 @@ from .wallet_state import (
 )
 
 
-class _ProjectionAttribute:
+ProjectionValueT = TypeVar("ProjectionValueT")
+
+
+class _ProjectionAttribute(Generic[ProjectionValueT]):
     """A named façade attribute forwarded to one focused dashboard projection."""
 
     __slots__ = ("projection", "name")
@@ -58,22 +61,34 @@ class _ProjectionAttribute:
     def __set_name__(self, owner: type[DashboardState], name: str) -> None:
         self.name = name
 
+    @overload
+    def __get__(
+        self,
+        instance: None,
+        owner: type[DashboardState],
+    ) -> _ProjectionAttribute[ProjectionValueT]: ...
+
+    @overload
+    def __get__(
+        self,
+        instance: DashboardState,
+        owner: type[DashboardState],
+    ) -> ProjectionValueT: ...
+
     def __get__(
         self,
         instance: DashboardState | None,
         owner: type[DashboardState],
-    ) -> Any:
+    ) -> _ProjectionAttribute[ProjectionValueT] | ProjectionValueT:
         if instance is None:
             return self
-        return getattr(getattr(instance, self.projection), self.name)
+        return cast(
+            ProjectionValueT,
+            getattr(getattr(instance, self.projection), self.name),
+        )
 
-    def __set__(self, instance: DashboardState, value: Any) -> None:
+    def __set__(self, instance: DashboardState, value: ProjectionValueT) -> None:
         setattr(getattr(instance, self.projection), self.name, value)
-
-
-def _projection_attribute(projection: str) -> Any:
-    return _ProjectionAttribute(projection)
-
 
 class DashboardState:
     """Apply runtime events to the projections consumed by dashboard rendering.
@@ -94,82 +109,82 @@ class DashboardState:
     )
 
     # Runtime identity and lifecycle.
-    name: str = _projection_attribute("runtime")
-    mode: BotMode | None = _projection_attribute("runtime")
-    lifecycle: RuntimeState = _projection_attribute("runtime")
-    started_at_monotonic: float | None = _projection_attribute("runtime")
-    initial_cash_usdc: Decimal | None = _projection_attribute("runtime")
+    name: str = _ProjectionAttribute("runtime")
+    mode: BotMode | None = _ProjectionAttribute("runtime")
+    lifecycle: RuntimeState = _ProjectionAttribute("runtime")
+    started_at_monotonic_seconds: float | None = _ProjectionAttribute("runtime")
+    initial_cash_usdc: Decimal | None = _ProjectionAttribute("runtime")
 
     # Market books, labels, settlement, and portfolio marks.
-    require_accepted_books: bool = _projection_attribute("markets")
-    book_max_age_ms: int | None = _projection_attribute("markets")
-    books: dict[str, BookSnapshot] = _projection_attribute("markets")
-    last_executable_marks: dict[str, Decimal] = _projection_attribute("markets")
-    market_labels: dict[str, str] = _projection_attribute("markets")
-    pending_books: dict[str, BookSnapshot] = _projection_attribute("markets")
-    portfolio: PortfolioSnapshot | None = _projection_attribute("markets")
-    market_ticker_at_monotonic: dict[str, float] = _projection_attribute("markets")
-    resolved_condition_ids: set[str] = _projection_attribute("markets")
-    resolved_market_count: int = _projection_attribute("markets")
+    require_accepted_books: bool = _ProjectionAttribute("markets")
+    book_max_age_ms: int | None = _ProjectionAttribute("markets")
+    books: dict[str, BookSnapshot] = _ProjectionAttribute("markets")
+    last_executable_marks: dict[str, Decimal] = _ProjectionAttribute("markets")
+    market_labels: dict[str, str] = _ProjectionAttribute("markets")
+    pending_books: dict[str, BookSnapshot] = _ProjectionAttribute("markets")
+    portfolio: PortfolioSnapshot | None = _ProjectionAttribute("markets")
+    market_ticker_at_monotonic_seconds: dict[str, float] = _ProjectionAttribute("markets")
+    resolved_condition_ids: set[str] = _ProjectionAttribute("markets")
+    resolved_market_count: int = _ProjectionAttribute("markets")
 
     # Activity ticker.
-    ticker: deque[TickerRow] = _projection_attribute("ticker_state")
-    market_ticker: deque[TickerRow] = _projection_attribute("ticker_state")
-    show_market_events: bool = _projection_attribute("ticker_state")
+    ticker: deque[TickerRow] = _ProjectionAttribute("ticker_state")
+    market_ticker: deque[TickerRow] = _ProjectionAttribute("ticker_state")
+    show_market_events: bool = _ProjectionAttribute("ticker_state")
 
     # Stream throughput, dispatch, and latency metrics.
-    stream_counts: dict[StreamKind, int] = _projection_attribute("stream_health")
-    wallets_loaded: int = _projection_attribute("stream_health")
-    wallets_total: int | None = _projection_attribute("stream_health")
-    markets_loaded: int = _projection_attribute("stream_health")
-    markets_total: int | None = _projection_attribute("stream_health")
-    accepted_dispatches: int = _projection_attribute("stream_health")
-    skipped_dispatches: int = _projection_attribute("stream_health")
-    order_count: int = _projection_attribute("stream_health")
-    fill_count: int = _projection_attribute("stream_health")
-    rejected_count: int = _projection_attribute("stream_health")
-    wallet_detection_lags_ms: deque[int] = _projection_attribute("stream_health")
-    broker_latencies_ms: deque[int] = _projection_attribute("stream_health")
-    book_lags_ms: deque[int] = _projection_attribute("stream_health")
-    book_stale_samples: deque[bool] = _projection_attribute("stream_health")
-    book_coalescing_samples: deque[tuple[int, int]] = _projection_attribute(
+    stream_counts: dict[StreamKind, int] = _ProjectionAttribute("stream_health")
+    wallets_loaded: int = _ProjectionAttribute("stream_health")
+    wallets_total: int | None = _ProjectionAttribute("stream_health")
+    markets_loaded: int = _ProjectionAttribute("stream_health")
+    markets_total: int | None = _ProjectionAttribute("stream_health")
+    accepted_dispatches: int = _ProjectionAttribute("stream_health")
+    skipped_dispatches: int = _ProjectionAttribute("stream_health")
+    order_count: int = _ProjectionAttribute("stream_health")
+    fill_count: int = _ProjectionAttribute("stream_health")
+    rejected_count: int = _ProjectionAttribute("stream_health")
+    wallet_detection_lags_ms: deque[int] = _ProjectionAttribute("stream_health")
+    broker_latencies_ms: deque[int] = _ProjectionAttribute("stream_health")
+    book_lags_ms: deque[int] = _ProjectionAttribute("stream_health")
+    book_stale_samples: deque[bool] = _ProjectionAttribute("stream_health")
+    book_coalescing_samples: deque[tuple[int, int]] = _ProjectionAttribute(
         "stream_health"
     )
-    book_received_count: int = _projection_attribute("stream_health")
-    book_coalesced_count: int = _projection_attribute("stream_health")
-    queue_depth: int = _projection_attribute("stream_health")
-    peak_queue_depth: int = _projection_attribute("stream_health")
-    stream_received_monotonic_times: dict[StreamKind, deque[float]] = (
-        _projection_attribute("stream_health")
+    book_received_count: int = _ProjectionAttribute("stream_health")
+    book_coalesced_count: int = _ProjectionAttribute("stream_health")
+    queue_depth: int = _ProjectionAttribute("stream_health")
+    peak_queue_depth: int = _ProjectionAttribute("stream_health")
+    stream_received_monotonic_seconds: dict[StreamKind, deque[float]] = (
+        _ProjectionAttribute("stream_health")
     )
-    stream_dispatched_monotonic_times: dict[StreamKind, deque[float]] = (
-        _projection_attribute("stream_health")
+    stream_dispatched_monotonic_seconds: dict[StreamKind, deque[float]] = (
+        _ProjectionAttribute("stream_health")
     )
-    event_monotonic_times: deque[float] = _projection_attribute("stream_health")
+    event_monotonic_seconds: deque[float] = _ProjectionAttribute("stream_health")
 
     # Chart histories and navigation.
-    chart_tokens: deque[str] = _projection_attribute("charts")
-    price_history: dict[str, deque[float]] = _projection_attribute("charts")
-    price_stale_history: dict[str, deque[bool]] = _projection_attribute("charts")
-    trade_marker_history: dict[str, deque[tuple[Side, ...]]] = _projection_attribute(
+    chart_tokens: deque[str] = _ProjectionAttribute("charts")
+    price_history: dict[str, deque[float]] = _ProjectionAttribute("charts")
+    price_stale_history: dict[str, deque[bool]] = _ProjectionAttribute("charts")
+    trade_marker_history: dict[str, deque[tuple[Side, ...]]] = _ProjectionAttribute(
         "charts"
     )
-    pending_trade_markers: dict[str, list[Side]] = _projection_attribute("charts")
-    wallet_value_history: deque[float] = _projection_attribute("charts")
-    wallet_value_stale_history: deque[bool] = _projection_attribute("charts")
-    chart_sample_times: deque[float] = _projection_attribute("charts")
-    time_zoom_level: int = _projection_attribute("charts")
+    pending_trade_markers: dict[str, list[Side]] = _ProjectionAttribute("charts")
+    wallet_value_history: deque[float] = _ProjectionAttribute("charts")
+    wallet_value_stale_history: deque[bool] = _ProjectionAttribute("charts")
+    chart_sample_epoch_seconds: deque[float] = _ProjectionAttribute("charts")
+    time_zoom_level: int = _ProjectionAttribute("charts")
 
     # Followed-wallet timeline.
-    wallet_lanes: deque[str] = _projection_attribute("wallets")
-    wallet_timeline: deque[WalletTimelineEvent] = _projection_attribute("wallets")
-    wallet_timeline_by_source: dict[str, WalletTimelineEvent] = _projection_attribute(
+    wallet_lanes: deque[str] = _ProjectionAttribute("wallets")
+    wallet_timeline: deque[WalletTimelineEvent] = _ProjectionAttribute("wallets")
+    wallet_timeline_by_source: dict[str, WalletTimelineEvent] = _ProjectionAttribute(
         "wallets"
     )
-    wallet_page: int = _projection_attribute("wallets")
+    wallet_page: int = _ProjectionAttribute("wallets")
 
     # Selected dashboard view.
-    view: DashboardView = _projection_attribute("view_state")
+    view: DashboardView = _ProjectionAttribute("view_state")
 
     def __init__(
         self,
@@ -195,14 +210,14 @@ class DashboardState:
 
     def apply(self, event: RuntimeEvent) -> None:
         """Route a runtime event to its owning state projection."""
-        self.stream_health.remember_event(event.occurred_at_monotonic)
+        self.stream_health.remember_event(event.occurred_at_monotonic_seconds)
         match event:
             case RuntimeStarted():
                 self.runtime.start(
                     name=event.name,
                     mode=event.mode,
                     initial_cash_usdc=event.initial_cash_usdc,
-                    occurred_at_monotonic=event.occurred_at_monotonic,
+                    occurred_at_monotonic_seconds=event.occurred_at_monotonic_seconds,
                 )
                 self.ticker_state.add(
                     "bold white",
@@ -220,7 +235,7 @@ class DashboardState:
             case StreamReceived():
                 self._record_stream_received(event)
             case PortfolioBookBootstrap():
-                self._record_book(event.book, event.occurred_at_monotonic)
+                self._record_book(event.book, event.occurred_at_monotonic_seconds)
             case DispatchCompleted():
                 self._record_dispatch_completed(event)
             case StreamHealth():
@@ -274,8 +289,8 @@ class DashboardState:
     def chart_display_points(width: int) -> int:
         return DashboardCharts.chart_display_points(width)
 
-    def visible_time_range(self, width: int) -> tuple[float, float] | None:
-        return self.charts.visible_time_range(width)
+    def visible_epoch_seconds_range(self, width: int) -> tuple[float, float] | None:
+        return self.charts.visible_epoch_seconds_range(width)
 
     def zoom_time(self, direction: int) -> bool:
         return self.charts.zoom(direction)
@@ -311,11 +326,11 @@ class DashboardState:
         """Value unavailable positions at their last executable mark for display."""
         return self._portfolio_valuation(now_ms, allow_stale_marks=True)
 
-    def event_rate(self, now_monotonic: float | None = None) -> float:
-        return self.stream_health.event_rate(now_monotonic)
+    def event_rate(self, now_monotonic_seconds: float | None = None) -> float:
+        return self.stream_health.event_rate(now_monotonic_seconds)
 
-    def uptime_seconds(self, now_monotonic: float | None = None) -> int:
-        return self.runtime.uptime_seconds(now_monotonic)
+    def uptime_seconds(self, now_monotonic_seconds: float | None = None) -> int:
+        return self.runtime.uptime_seconds(now_monotonic_seconds)
 
     def average_wallet_lag_ms(self) -> int | None:
         return self.stream_health.average_wallet_lag_ms()
@@ -352,13 +367,16 @@ class DashboardState:
 
     def _record_stream_received(self, event: StreamReceived) -> None:
         kind = event.item.kind
-        self.stream_health.record_stream_received(kind, event.occurred_at_monotonic)
+        self.stream_health.record_stream_received(kind, event.occurred_at_monotonic_seconds)
         if kind is StreamKind.BOOK:
             book = event.item.event
             if self.markets.require_accepted_books:
                 self.markets.stage_book(book)
             else:
-                self._record_book(book, event.occurred_at_monotonic)
+                self._record_book(book, event.occurred_at_monotonic_seconds)
+            return
+        if kind is StreamKind.BOOK_GAP:
+            self.markets.invalidate_gap(event.item.event)
             return
         if kind is StreamKind.WALLET:
             trade = event.item.event
@@ -380,10 +398,10 @@ class DashboardState:
                 f"MARKET HINT {format_token_label(hint.token_id)}",
             )
 
-    def _record_book(self, book: BookSnapshot, occurred_at_monotonic: float) -> None:
+    def _record_book(self, book: BookSnapshot, occurred_at_monotonic_seconds: float) -> None:
         self.markets.record_book(
             book,
-            occurred_at_monotonic,
+            occurred_at_monotonic_seconds,
             activate_chart_token=self.charts.activate_token,
             add_market_ticker=self.ticker_state.add_market_event,
         )
@@ -393,7 +411,7 @@ class DashboardState:
             book = event.item.event
             self.markets.pending_books.pop(book.token_id, None)
             if event.outcome is not None and event.outcome.accepted:
-                self._record_book(book, event.occurred_at_monotonic)
+                self._record_book(book, event.occurred_at_monotonic_seconds)
         if event.outcome is None or event.kind is StreamKind.MARKET_HINT:
             return
         if event.kind is StreamKind.WALLET and isinstance(
@@ -406,7 +424,7 @@ class DashboardState:
         self.stream_health.record_dispatch(
             event.kind,
             accepted=event.outcome.accepted,
-            occurred_at_monotonic=event.occurred_at_monotonic,
+            occurred_at_monotonic_seconds=event.occurred_at_monotonic_seconds,
         )
         if not event.outcome.accepted:
             self.ticker_state.add(
@@ -427,7 +445,7 @@ class DashboardState:
             )
             return
         self.markets.refresh_fill_mark(fill)
-        if fill.filled_size > 0:
+        if fill.has_execution:
             self.charts.record_trade(fill.token_id, fill.side)
         price = "-" if fill.average_price is None else str(fill.average_price)
         self.ticker_state.add(

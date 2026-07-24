@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 
 from polymarket import AsyncPublicClient, PolymarketError
 from polymarket.models.clob.market_events import (
@@ -17,10 +16,12 @@ from polymarket.models.clob.market_events import (
 from polymarket.streams import MarketSpec
 
 from polybot.framework.clock import system_now_ms
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookGapReason, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.polymarket.book_projector import BookDepthProjector
-from polybot.polymarket.client_lifecycle import close_owned_public_client
+from polybot.polymarket.client_lifecycle import (
+    PublicClientLease,
+)
 from polybot.polymarket.errors import (
     MarketDataError,
     MarketDataIssue,
@@ -30,11 +31,16 @@ from polybot.polymarket.normalization.recording_events import (
     MARKET_WEBSOCKET_SOURCE,
     normalize_recording_event,
 )
+from polybot.polymarket.normalization.values import validate_optional_text
 from polybot.polymarket.markets import (
     Market,
     index_markets_by_token,
 )
 from polybot.polymarket.market_hints import MarketTradeHint
+from polybot.polymarket.stream_diagnostics import (
+    require_monotonic_dropped_count,
+    sdk_dropped_count,
+)
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookDeltaPayload,
@@ -44,14 +50,19 @@ from polybot.recording.contracts.payloads import (
     ResolutionPayload,
 )
 
-
-@dataclass(frozen=True, slots=True)
-class MarketStreamBookGap:
-    """A stream continuity loss that requires a replacement book baseline."""
-
-    issue: MarketDataIssue
-    condition_id: str | None
-    observed_at_ms: int
+_BOOK_GAP_REASONS: dict[MarketDataIssue, BookGapReason] = {
+    MarketDataIssue.INVALID_MARKET_PARAMETERS: (
+        BookGapReason.INVALID_MARKET_PARAMETERS
+    ),
+    MarketDataIssue.INVALID_BOOK_LEVEL: BookGapReason.INVALID_BOOK_LEVEL,
+    MarketDataIssue.INVALID_BOOK_SIDE: BookGapReason.INVALID_BOOK_SIDE,
+    MarketDataIssue.MISSING_BOOK_BASELINE: BookGapReason.MISSING_BOOK_BASELINE,
+    MarketDataIssue.BOOK_IDENTITY_MISMATCH: (
+        BookGapReason.BOOK_IDENTITY_MISMATCH
+    ),
+    MarketDataIssue.BOOK_STREAM_GAP: BookGapReason.BOOK_STREAM_GAP,
+    MarketDataIssue.CROSSED_BOOK: BookGapReason.CROSSED_BOOK,
+}
 
 
 class MarketStream:
@@ -62,17 +73,17 @@ class MarketStream:
         markets: Iterable[Market] = (),
         now_ms: Callable[[], int] | None = None,
     ) -> None:
-        self._client = client or AsyncPublicClient()
-        self._owns_client = client is None
+        self._client_lease = PublicClientLease.acquire(client)
+        self._client = self._client_lease.client
         self._now_ms = now_ms or system_now_ms
         self._market_by_token: dict[str, Market] = {}
         self._market_by_condition: dict[str, Market] = {}
-        self._last_book_gap: MarketStreamBookGap | None = None
+        self._last_book_gap: BookGapEvent | None = None
         self._book_gap_count = 0
         self.set_markets(markets)
 
     @property
-    def last_book_gap(self) -> MarketStreamBookGap | None:
+    def last_book_gap(self) -> BookGapEvent | None:
         """Return the most recent typed reason a book baseline was invalidated."""
         return self._last_book_gap
 
@@ -88,15 +99,20 @@ class MarketStream:
             market.condition_id: market for market in normalized
         }
 
-    async def books(self, token_ids: set[str]) -> AsyncIterator[BookSnapshot]:
+    async def books(
+        self,
+        token_ids: set[str],
+    ) -> AsyncIterator[BookSnapshot | BookGapEvent]:
         async for event in self.events(token_ids):
-            if isinstance(event, BookSnapshot):
+            if isinstance(event, (BookSnapshot, BookGapEvent)):
                 yield event
 
     async def events(
         self,
         token_ids: set[str],
-    ) -> AsyncIterator[BookSnapshot | MarketTradeHint | MarketResolutionEvent]:
+    ) -> AsyncIterator[
+        BookSnapshot | BookGapEvent | MarketTradeHint | MarketResolutionEvent
+    ]:
         normalized_token_ids = frozenset(token_id for token_id in token_ids if token_id)
         if len(normalized_token_ids) != len(token_ids) or not normalized_token_ids:
             raise MarketDataError(
@@ -111,6 +127,7 @@ class MarketStream:
         market_by_token = self._market_by_token.copy()
         market_by_condition = self._market_by_condition.copy()
         projector = BookDepthProjector(market_by_condition.values())
+        recovering_conditions: set[str] = set()
         try:
             stream = await self._client.subscribe(
                 MarketSpec(
@@ -122,18 +139,22 @@ class MarketStream:
             raise MarketDataTransportError(
                 "market stream subscription failed"
             ) from error
-        dropped_count = _dropped_count(stream)
+        dropped_count = sdk_dropped_count(stream)
         async with _normalized_subscription(stream) as subscribed_events:
             async for event in subscribed_events:
-                current_dropped_count = _dropped_count(stream)
+                current_dropped_count = require_monotonic_dropped_count(
+                    dropped_count,
+                    sdk_dropped_count(stream),
+                )
                 if current_dropped_count > dropped_count:
                     projector.clear()
-                    self._record_book_gap(
+                    recovering_conditions.update(market_by_condition)
+                    yield self._record_book_gap(
                         MarketDataIssue.BOOK_STREAM_GAP,
                         condition_id=None,
                         observed_at_ms=self._now_ms(),
                     )
-                dropped_count = max(dropped_count, current_dropped_count)
+                dropped_count = current_dropped_count
                 try:
                     market = _market_for_event(
                         event,
@@ -142,24 +163,33 @@ class MarketStream:
                         market_by_condition=market_by_condition,
                     )
                     if market is None:
-                        self._invalidate_unrouteable_book_frame(projector, event)
+                        gap = self._invalidate_unrouteable_book_frame(projector, event)
+                        if gap is not None:
+                            recovering_conditions.update(market_by_condition)
+                            yield gap
                         continue
                 except (AttributeError, MarketDataError, ValueError) as error:
-                    self._invalidate_unrouteable_book_frame(
+                    gap = self._invalidate_unrouteable_book_frame(
                         projector,
                         event,
                         issue=_market_data_issue(error),
                     )
+                    if gap is not None:
+                        recovering_conditions.update(market_by_condition)
+                        yield gap
                     continue
                 try:
                     captured = normalize_recording_event(event, market=market)
                 except (AttributeError, MarketDataError, ValueError) as error:
-                    self._invalidate_rejected_book_frame(
+                    gap = self._invalidate_rejected_book_frame(
                         projector,
                         event,
                         market,
                         issue=_market_data_issue(error),
                     )
+                    if gap is not None:
+                        recovering_conditions.add(market.condition_id)
+                        yield gap
                     continue
                 if captured is None:
                     continue
@@ -170,20 +200,36 @@ class MarketStream:
                 observed_at_ms = self._now_ms()
                 if isinstance(captured.payload, BookBaselinePayload):
                     try:
-                        yield projector.apply_baseline(
+                        snapshot = projector.apply_baseline(
                             captured.payload,
                             condition_id=condition_id,
                             received_at_ms=observed_at_ms,
                         )
                     except MarketDataError as error:
-                        self._invalidate_rejected_book_frame(
+                        gap = self._invalidate_rejected_book_frame(
                             projector,
                             event,
                             market,
                             issue=error.issue,
                             observed_at_ms=observed_at_ms,
                         )
+                        if gap is not None:
+                            recovering_conditions.add(market.condition_id)
+                            yield gap
                         continue
+                    if condition_id not in recovering_conditions:
+                        yield snapshot
+                    elif projector.has_baselines(
+                        token_id
+                        for token_id in market.token_ids
+                        if token_id in normalized_token_ids
+                    ):
+                        for recovered_snapshot in projector.condition_snapshots(
+                            condition_id,
+                            received_at_ms=observed_at_ms,
+                        ):
+                            yield recovered_snapshot
+                        recovering_conditions.remove(condition_id)
                 elif isinstance(captured.payload, BookDeltaPayload):
                     changes = tuple(
                         change
@@ -200,13 +246,18 @@ class MarketStream:
                             received_at_ms=observed_at_ms,
                         )
                     except MarketDataError as error:
-                        self._invalidate_rejected_book_frame(
+                        gap = self._invalidate_rejected_book_frame(
                             projector,
                             event,
                             market,
                             issue=error.issue,
                             observed_at_ms=observed_at_ms,
                         )
+                        if gap is not None:
+                            recovering_conditions.add(market.condition_id)
+                            yield gap
+                        continue
+                    if condition_id in recovering_conditions:
                         continue
                     for snapshot in snapshots:
                         yield snapshot
@@ -233,8 +284,7 @@ class MarketStream:
                     )
 
     async def close(self) -> None:
-        if self._owns_client:
-            await close_owned_public_client(self._client)
+        await self._client_lease.close()
 
     def _invalidate_rejected_book_frame(
         self,
@@ -244,11 +294,11 @@ class MarketStream:
         *,
         issue: MarketDataIssue,
         observed_at_ms: int | None = None,
-    ) -> None:
+    ) -> BookGapEvent | None:
         if not isinstance(event, (MarketBookEvent, MarketPriceChangeEvent)):
-            return
+            return None
         projector.invalidate_condition(market.condition_id)
-        self._record_book_gap(
+        return self._record_book_gap(
             issue,
             condition_id=market.condition_id,
             observed_at_ms=self._now_ms()
@@ -262,11 +312,11 @@ class MarketStream:
         event: MarketEvent,
         *,
         issue: MarketDataIssue = MarketDataIssue.INVALID_MARKET_PARAMETERS,
-    ) -> None:
+    ) -> BookGapEvent | None:
         if not isinstance(event, (MarketBookEvent, MarketPriceChangeEvent)):
-            return
+            return None
         projector.clear()
-        self._record_book_gap(
+        return self._record_book_gap(
             issue,
             condition_id=None,
             observed_at_ms=self._now_ms(),
@@ -278,17 +328,26 @@ class MarketStream:
         *,
         condition_id: str | None,
         observed_at_ms: int,
-    ) -> None:
+    ) -> BookGapEvent:
         self._book_gap_count += 1
-        self._last_book_gap = MarketStreamBookGap(
-            issue=issue,
+        try:
+            reason = _BOOK_GAP_REASONS[issue]
+        except KeyError as error:
+            raise MarketDataError(
+                MarketDataIssue.INVALID_STREAM_DIAGNOSTICS,
+                f"unsupported book-gap issue: {issue.value}",
+            ) from error
+        gap = BookGapEvent(
             condition_id=condition_id,
             observed_at_ms=observed_at_ms,
+            reason=reason,
         )
+        self._last_book_gap = gap
+        return gap
 
 
 def _identifier(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    return validate_optional_text(value, "market stream identifier")
 
 
 @asynccontextmanager
@@ -299,13 +358,6 @@ async def _normalized_subscription(stream: object) -> AsyncIterator[object]:
             yield stream
     except PolymarketError as error:
         raise MarketDataTransportError("market stream failed") from error
-
-
-def _dropped_count(stream: object) -> int:
-    value = getattr(stream, "dropped", 0)
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-        return value
-    return 0
 
 
 def _market_data_issue(error: BaseException) -> MarketDataIssue:

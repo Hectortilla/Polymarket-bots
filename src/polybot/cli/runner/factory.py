@@ -17,10 +17,7 @@ from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.ws_market import MarketStream
-from polybot.polymarket.public_data.runtime import (
-    RuntimePublicData,
-    create_runtime_public_data,
-)
+from polybot.polymarket.public_data.runtime import RuntimePublicData
 
 from ..followed_wallets.tracker import FollowedWalletTracker
 from ..resolution_state.ledger import ResolutionLedger
@@ -56,7 +53,7 @@ async def create_runtime(
     public_data: RuntimePublicData | None,
 ) -> RuntimeComponents:
     owns_public_data = public_data is None
-    sources = create_runtime_public_data() if owns_public_data else public_data
+    sources = RuntimePublicData.create() if owns_public_data else public_data
     try:
         gamma = sources.gamma
         clob = sources.clob

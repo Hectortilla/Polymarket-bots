@@ -2,8 +2,7 @@
 
 from typing import Final
 
-from polybot.framework.events.resolutions import (
-    RESOLUTION_SOURCE_FIELD,
+from polybot.framework.events.resolution_fields import (
     RESOLUTION_WINNING_OUTCOME_FIELD,
     RESOLUTION_WINNING_TOKEN_ID_FIELD,
 )
@@ -67,7 +66,8 @@ RATE_FIELD: Final = "rate"
 REASON_FIELD: Final = "reason"
 REBATE_RATE_FIELD: Final = "rebate_rate"
 RESOLUTION_ID_FIELD: Final = "resolution_id"
-RESOLUTION_SOURCE_FIELD: Final = "resolution_source"
+MARKET_RESOLUTION_SOURCE_FIELD: Final = "resolution_source"
+RESOLUTION_PAYLOAD_SOURCE_FIELD: Final = "resolution_source"
 RESOLUTION_STATUS_FIELD: Final = "resolution_status"
 RESOLVED_BY_FIELD: Final = "resolved_by"
 RESOLVED_FIELD: Final = "resolved"
@@ -112,7 +112,7 @@ MARKET_METADATA_FIELDS: Final[frozenset[str]] = frozenset(
         OUTCOMES_FIELD,
         QUESTION_FIELD,
         QUESTION_ID_FIELD,
-        RESOLUTION_SOURCE_FIELD,
+        MARKET_RESOLUTION_SOURCE_FIELD,
         RESOLUTION_STATUS_FIELD,
         RESOLVED_BY_FIELD,
         RESOLVED_FIELD,
@@ -163,7 +163,7 @@ TICK_SIZE_CHANGE_FIELDS: Final[frozenset[str]] = frozenset(
 RESOLUTION_FIELDS: Final[frozenset[str]] = frozenset(
     {
         RESOLUTION_ID_FIELD,
-        RESOLUTION_SOURCE_FIELD,
+        RESOLUTION_PAYLOAD_SOURCE_FIELD,
         TOKEN_IDS_FIELD,
         RESOLUTION_WINNING_OUTCOME_FIELD,
         RESOLUTION_WINNING_TOKEN_ID_FIELD,

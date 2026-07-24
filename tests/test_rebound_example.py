@@ -3,9 +3,15 @@ from dataclasses import replace
 from decimal import Decimal
 
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import Side
-from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME, resolve_outcome_token
+from polybot.framework.events.books import (
+    BookGapEvent,
+    BookGapReason,
+    BookLevel,
+    BookSnapshot,
+)
+from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 from polybot.examples.example_rebound import REBOUND_ORDER_REASON, ExampleReboundBot
 from polybot.polymarket.markets import Market, MarketOutcome
 
@@ -13,7 +19,7 @@ from polybot.polymarket.markets import Market, MarketOutcome
 def test_rebound_bot_buys_after_decline_then_rise(dummy_context: BotContext) -> None:
     async def run() -> None:
         market = _market("tutorial-market", "yes-token")
-        context = replace(dummy_context, markets=_Markets(market))
+        context = replace(dummy_context, markets=_Markets(market), clock=_Clock())
         bot = ExampleReboundBot(order_size=Decimal("2"))
         await bot.on_book(context, _book(Decimal("0.50")))
         await bot.on_book(context, _book(Decimal("0.45")))
@@ -32,7 +38,11 @@ def test_rebound_bot_does_not_buy_without_a_prior_decline(
     dummy_context: BotContext,
 ) -> None:
     async def run() -> None:
-        context = replace(dummy_context, markets=_Markets(_market("tutorial-market", "yes-token")))
+        context = replace(
+            dummy_context,
+            markets=_Markets(_market("tutorial-market", "yes-token")),
+            clock=_Clock(),
+        )
         bot = ExampleReboundBot()
         await bot.on_book(context, _book(Decimal("0.45")))
         await bot.on_book(context, _book(Decimal("0.47")))
@@ -42,17 +52,61 @@ def test_rebound_bot_does_not_buy_without_a_prior_decline(
     assert dummy_context.broker.submitted == []
 
 
+def test_rebound_rechecks_freshness_after_market_lookup(
+    dummy_context: BotContext,
+) -> None:
+    market = _market("tutorial-market", "yes-token")
+    context = replace(
+        dummy_context,
+        markets=_Markets(market),
+        clock=_Clock(dummy_context.config.event_max_age_ms + 2),
+    )
+    bot = ExampleReboundBot()
+
+    result = asyncio.run(bot.on_book(context, _book(Decimal("0.45"))))
+
+    assert result is DispatchSkipReason.BOOK_STALE
+    assert dummy_context.broker.submitted == []
+
+
+def test_rebound_gap_clears_the_pre_gap_decline_signal(
+    dummy_context: BotContext,
+) -> None:
+    async def run() -> None:
+        context = replace(
+            dummy_context,
+            markets=_Markets(_market("tutorial-market", "yes-token")),
+            clock=_Clock(),
+        )
+        bot = ExampleReboundBot()
+        await bot.on_book(context, _book(Decimal("0.50")))
+        await bot.on_book(context, _book(Decimal("0.45")))
+        await bot.on_book_gap(
+            context,
+            BookGapEvent(
+                condition_id="condition",
+                observed_at_ms=1,
+                reason=BookGapReason.BOOK_STREAM_GAP,
+            ),
+        )
+        await bot.on_book(context, _book(Decimal("0.47")))
+
+    asyncio.run(run())
+
+    assert dummy_context.broker.submitted == []
+
+
 def test_outcome_resolution_matches_only_advertised_labels() -> None:
     market = _market("tutorial-market", "yes-token")
-    assert resolve_outcome_token(market, "yes") == "yes-token"
-    assert resolve_outcome_token(market, NO_OUTCOME) == "no-token"
+    assert market.token_id_for_outcome("yes") == "yes-token"
+    assert market.token_id_for_outcome(NO_OUTCOME) == "no-token"
 
     multi_market = replace(
         market,
         outcomes=(MarketOutcome("Candidate A", "candidate-a-token"),),
     )
-    assert resolve_outcome_token(multi_market, "candidate a") == "candidate-a-token"
-    assert resolve_outcome_token(multi_market, "missing") is None
+    assert multi_market.token_id_for_outcome("candidate a") == "candidate-a-token"
+    assert multi_market.token_id_for_outcome("missing") is None
 
     up_down = replace(
         market,
@@ -61,8 +115,8 @@ def test_outcome_resolution_matches_only_advertised_labels() -> None:
             MarketOutcome("Down", "down-token"),
         ),
     )
-    assert resolve_outcome_token(up_down, "up") == "up-token"
-    assert resolve_outcome_token(up_down, YES_OUTCOME) is None
+    assert up_down.token_id_for_outcome("up") == "up-token"
+    assert up_down.token_id_for_outcome(YES_OUTCOME) is None
 
 
 def _book(price: Decimal) -> BookSnapshot:
@@ -73,6 +127,17 @@ def _book(price: Decimal) -> BookSnapshot:
         received_at_ms=1,
         market_slug="tutorial-market",
     )
+
+
+class _Clock:
+    def __init__(self, now_ms: int = 1) -> None:
+        self._now_ms = now_ms
+
+    def now_ms(self) -> int:
+        return self._now_ms
+
+    async def sleep(self, seconds: float) -> None:
+        return None
 
 
 def _market(slug: str, yes_token_id: str) -> Market:

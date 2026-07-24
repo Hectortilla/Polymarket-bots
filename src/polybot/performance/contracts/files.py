@@ -6,7 +6,6 @@ from enum import StrEnum
 
 
 RESULT_SCHEMA_VERSION = 1
-DEFAULT_REPORT_INTERVAL_MS = 1_000
 SUMMARY_FILE_NAME = "summary.json"
 EQUITY_FILE_NAME = "equity.csv"
 ORDERS_FILE_NAME = "orders.csv"

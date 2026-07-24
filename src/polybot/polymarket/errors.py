@@ -16,6 +16,7 @@ class MarketDataIssue(StrEnum):
     MISSING_BOOK_BASELINE = "missing_book_baseline"
     BOOK_IDENTITY_MISMATCH = "book_identity_mismatch"
     BOOK_STREAM_GAP = "book_stream_gap"
+    INVALID_STREAM_DIAGNOSTICS = "invalid_stream_diagnostics"
     CROSSED_BOOK = "crossed_book"
     AMBIGUOUS_MARKET_METADATA = "ambiguous_market_metadata"
     INVALID_POSITION = "invalid_position"
