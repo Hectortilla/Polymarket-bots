@@ -125,9 +125,13 @@
     {
       "id": "pickRecordingFileToInspect",
       "type": "command",
-      "command": "extension.commandvariable.file.pickFile",
+      "command": "extension.commandvariable.file.openDialog",
       "args": {
-        "description": "Pick a recording SQLite archive to inspect"
+        "canSelect": "files",
+        "canSelectMany": false,
+        "defaultUri": "${workspaceFolder}${pathSeparator}recordings",
+        "openLabel": "Inspect recording",
+        "title": "Select a recording SQLite archive to inspect"
       }
     },
     {
