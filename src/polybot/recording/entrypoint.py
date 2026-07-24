@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,13 @@ from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_cons
 
 RECORDING_CONFIG_NAME = "market-recorder"
 DEFAULT_RECORDINGS_DIR = Path("recordings")
+DEFAULT_RECORDINGS_DIR_ENV = "DEFAULT_RECORDINGS_DIR"
+
+
+def recordings_dir_from_env() -> Path:
+    """Return the recording directory configured for this process."""
+    configured_dir = os.environ.get(DEFAULT_RECORDINGS_DIR_ENV)
+    return Path(configured_dir) if configured_dir else DEFAULT_RECORDINGS_DIR
 
 
 def default_output_path(
@@ -81,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         else default_output_path(
             bot_spec=bot_spec,
             market_slugs=market_slugs,
+            recordings_dir=recordings_dir_from_env(),
         )
     )
     target_identity = (
@@ -146,7 +155,8 @@ def _argument_parser() -> argparse.ArgumentParser:
         "--output",
         help=(
             "SQLite archive path; defaults to "
-            "recordings/<timestamp>/<description>.sqlite3"
+            "DEFAULT_RECORDINGS_DIR/<timestamp>/<description>.sqlite3 "
+            "(or recordings/... when unset)"
         ),
     )
     parser.add_argument(

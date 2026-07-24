@@ -311,8 +311,9 @@ Command contract:
 - Require exactly one target mode: `--bot module:factory` or one or more repeated
   `--market-slug SLUG` values.
 - Accept optional `--output PATH` for the SQLite recording archive. When omitted,
-  create `recordings/<local-timestamp>/<description>.sqlite3`; the timestamped
-  directory separates runs and the filename describes the target. `--resume`
+  create `DEFAULT_RECORDINGS_DIR/<local-timestamp>/<description>.sqlite3`, using
+  `recordings` when that environment variable is unset; the timestamped directory
+  separates runs and the filename describes the target. `--resume`
   still requires an explicit existing output path.
 - Accept `--duration <number>[s|m|h|d]`; without it, run until graceful
   interruption.

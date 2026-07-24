@@ -116,8 +116,10 @@ uv run python -m polybot.recording \
 ```
 
 Without `--output`, recordings are written under
-`recordings/<local-timestamp>/markets.sqlite3` (or a descriptive bot/market
-filename). The timestamped directory separates runs. Use an explicit
+`DEFAULT_RECORDINGS_DIR/<local-timestamp>/markets.sqlite3` (or a descriptive
+bot/market filename). `DEFAULT_RECORDINGS_DIR` is loaded from the same
+environment or `--dotenv` file as the bot and defaults to `recordings` when
+unset. The timestamped directory separates runs. Use an explicit
 `--output` path with `--resume` to append to an existing archive.
 
 Omit `--duration` to run until graceful interruption. Use `--resume` to append

@@ -197,8 +197,10 @@ uv run python -m polybot.recording \
 ```
 
 `--bot` and `--market-slug` are mutually exclusive. When omitted, `--output`
-defaults to `recordings/<local-timestamp>/<description>.sqlite3`, with simple
-target-labelled filenames. `--duration` accepts a positive integer followed by
+defaults to `DEFAULT_RECORDINGS_DIR/<local-timestamp>/<description>.sqlite3`,
+with simple target-labelled filenames. `DEFAULT_RECORDINGS_DIR` is read from
+the process environment or the selected `--dotenv` file and defaults to
+`recordings` when unset. `--duration` accepts a positive integer followed by
 `s`, `m`, `h`, or `d`. Without a duration the process runs until graceful
 interruption. `--resume`
 requires an existing compatible SQLite recording archive with the same target

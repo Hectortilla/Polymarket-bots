@@ -2363,6 +2363,36 @@ def test_default_recording_output_path_uses_timestamped_directory() -> None:
     )
 
 
+def test_recording_cli_uses_recordings_directory_from_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_dir = tmp_path / "configured-recordings"
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(f"DEFAULT_RECORDINGS_DIR={configured_dir}\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    async def fake_record_markets(config: BotConfig, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.delenv(entrypoint.DEFAULT_RECORDINGS_DIR_ENV, raising=False)
+    monkeypatch.setattr(
+        entrypoint.BotConfig,
+        "from_env",
+        classmethod(lambda cls, name: BotConfig(name=name)),
+    )
+    monkeypatch.setattr(entrypoint, "record_markets", fake_record_markets)
+
+    result = entrypoint.main(
+        ["--market-slug", "alpha", "--dotenv", str(dotenv), "--duration", "1s"]
+    )
+
+    assert result == 0
+    output_path = captured["output_path"]
+    assert isinstance(output_path, Path)
+    assert output_path.parent.parent == configured_dir
+
+
 def test_recording_cli_forwards_normalized_static_request(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
