@@ -239,8 +239,10 @@ virtual clock drives event delivery, strategy sleeps, paper latency, and broker
 jitter, so multi-day data runs as quickly as local SQLite reads and bot
 computation permit.
 
-By default the sole session, all its markets, and its replayable range are
-selected. Use `--session ID` when an archive has multiple sessions,
+By default the sole session's replayable markets and replayable range are
+selected. Metadata-only rollover candidates are excluded, and the default
+range ends at the last selected market event. Use `--session ID` when an
+archive has multiple sessions,
 inclusive `--start-ms` and `--end-ms` for a subrange, and repeated
 `--market-slug` values for a subset. `--report-interval-ms` defaults to `1000`.
 Replay refuses an archive whose recorder lock is still held, unsupported

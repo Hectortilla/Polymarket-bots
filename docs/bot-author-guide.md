@@ -333,8 +333,10 @@ only the selected archive: no SDK/network client is constructed and
 private-user inputs, maker-queue assumptions, and dependencies on unrecorded
 external reference feeds are rejected.
 
-The default selection is all markets and the full sole session. If the
-archive contains multiple sessions, choose one with `--session ID`. Narrow the
+The default selection is all replayable markets and their recorded range in
+the sole session. Metadata-only rollover candidates are excluded, and the
+default range ends at the last selected market event. If the archive contains
+multiple sessions, choose one with `--session ID`. Narrow the
 inclusive interval with `--start-ms` and `--end-ms`, or repeat
 `--market-slug SLUG` to choose a subset. The recorder must no longer hold the
 archive lock. Complete sessions are eligible in full. Failed and abandoned

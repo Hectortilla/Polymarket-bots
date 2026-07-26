@@ -60,7 +60,19 @@ def resolve_backtest_selection(
     available_slugs = tuple(
         sorted({market.market_slug for market in available_markets})
     )
-    selected_slugs = options.market_slugs or available_slugs
+    uses_default_market_selection = not options.market_slugs
+    if options.market_slugs:
+        selected_slugs = options.market_slugs
+    elif options.start_at_ms is not None:
+        selected_slugs = available_slugs
+    else:
+        selected_slugs = _default_replayable_slugs(
+            reader,
+            available_markets,
+            start_at_ms=requested_start,
+            end_at_ms=requested_end,
+            session_id=session.session_id,
+        )
     missing = sorted(set(selected_slugs).difference(available_slugs))
     if missing:
         raise BacktestError(
@@ -73,6 +85,20 @@ def resolve_backtest_selection(
             BacktestFailureReason.EMPTY_SELECTION,
             "selected recording session contains no market data",
         )
+    if uses_default_market_selection and options.end_at_ms is None:
+        selected_bounds = reader.event_bounds(
+            start_at_ms=requested_start,
+            end_at_ms=requested_end,
+            session_id=session.session_id,
+            market_slugs=selected_slugs,
+            allow_gaps=allow_gaps,
+        )
+        if selected_bounds is None:
+            raise BacktestError(
+                BacktestFailureReason.EMPTY_SELECTION,
+                "selected recording range contains no replayable market events",
+            )
+        requested_end = selected_bounds.end_at_ms
     bounds = reader.event_bounds(
         start_at_ms=requested_start,
         end_at_ms=requested_end,
@@ -100,6 +126,56 @@ def resolve_backtest_selection(
         ),
         gap_policy=options.gap_policy,
     )
+
+
+def _default_replayable_slugs(
+    reader: RecordingReader,
+    markets: tuple[MarketMetadataPayload, ...],
+    *,
+    start_at_ms: int,
+    end_at_ms: int,
+    session_id: int,
+) -> tuple[str, ...]:
+    """Skip metadata-only rollover candidates in the default selection.
+
+    Dynamic recorders can persist metadata and a terminal lifecycle event for
+    a future bucket before its first full books arrive.  Those candidates are
+    valid recorder observations but are not replayable markets.  Explicit
+    ``--market-slug`` selection remains strict and still reports the missing
+    bootstrap as an error.
+    """
+
+    replayable: list[str] = []
+    for market in markets:
+        if reader.has_complete_baseline_pair(
+            market,
+            start_at_ms=start_at_ms,
+            end_at_ms=end_at_ms,
+            session_id=session_id,
+        ):
+            replayable.append(market.market_slug)
+            continue
+        if replay_start_checkpoint_pair(
+            reader,
+            condition_id=market.condition_id,
+            start_at_ms=start_at_ms,
+            session_id=session_id,
+            allow_pre_gap_checkpoint=False,
+        ) is not None:
+            replayable.append(market.market_slug)
+            continue
+        # Preserve fail-closed validation for markets that did record book
+        # input but cannot reconstruct a pair.  A metadata-only rollover
+        # candidate has only its metadata and terminal lifecycle records.
+        if reader.event_count(
+            start_at_ms=start_at_ms,
+            end_at_ms=end_at_ms,
+            session_id=session_id,
+            market_slug=market.market_slug,
+            allow_gaps=True,
+        ) > 2:
+            replayable.append(market.market_slug)
+    return tuple(sorted(replayable))
 
 
 def replayable_session_end(

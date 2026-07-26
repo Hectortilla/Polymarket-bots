@@ -230,7 +230,9 @@ class ReplayScheduler:
                     BacktestFailureReason.UNSUPPORTED_INPUT,
                     "wallet stream rules cannot be replayed from a market-only archive",
                 )
-            current_slugs = set(plan.current_market_slugs)
+            current_slugs = set(plan.current_market_slugs).difference(
+                self._terminal_slugs
+            )
             if current_slugs:
                 missing_metadata = sorted(
                     slug

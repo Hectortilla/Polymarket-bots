@@ -59,7 +59,20 @@ def encode_resolution(payload: ResolutionPayload) -> dict[str, Any]:
 
 
 def decode_resolution(data: dict[str, Any]) -> ResolutionPayload:
-    require_exact_keys(data, fields.RESOLUTION_FIELDS)
+    # Archives written before the resolution-source field was aligned with the
+    # market metadata codec used ``source``.  Keep reading those schema-v2
+    # payloads without weakening validation for any other shape; new writes
+    # remain canonical through ``encode_resolution``.
+    legacy_source_field = "source"
+    legacy_fields = (
+        fields.RESOLUTION_FIELDS - {fields.RESOLUTION_PAYLOAD_SOURCE_FIELD}
+    ) | {legacy_source_field}
+    actual_fields = frozenset(data)
+    if actual_fields == legacy_fields:
+        source_field = legacy_source_field
+    else:
+        require_exact_keys(data, fields.RESOLUTION_FIELDS)
+        source_field = fields.RESOLUTION_PAYLOAD_SOURCE_FIELD
     token_ids = require_text_tuple(data[fields.TOKEN_IDS_FIELD], "resolution token IDs")
     if len(token_ids) != 2:
         raise ValueError("recording payload resolution requires two token IDs")
@@ -71,9 +84,7 @@ def decode_resolution(data: dict[str, Any]) -> ResolutionPayload:
         winning_outcome=require_text(
             data[fields.RESOLUTION_WINNING_OUTCOME_FIELD], "winning outcome"
         ),
-        source=require_text(
-            data[fields.RESOLUTION_PAYLOAD_SOURCE_FIELD], "resolution source"
-        ),
+        source=require_text(data[source_field], "resolution source"),
         resolution_id=optional_text(
             data[fields.RESOLUTION_ID_FIELD], "resolution ID"
         ),

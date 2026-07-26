@@ -581,9 +581,11 @@ Command and selection contract:
   Accept optional `--session ID`, inclusive `--start-ms`/`--end-ms`, repeated
   `--market-slug`, `--seed` (default `0`), `--results-dir`, and
   `--report-interval-ms` (default `1000`).
-- Default the sole session, all recorded markets, and its replayable event
-  range. Require an explicit session when multiple sessions exist. Refuse an
-  existing result directory; create a unique default when none is supplied.
+- Default the sole session, all replayable markets, and their replayable event
+  range. Exclude metadata-only rollover candidates and end the default range
+  at the last selected market event. Require an explicit session when multiple
+  sessions exist. Refuse an existing result directory; create a unique default
+  when none is supplied.
 - Keep `BotConfig.mode=paper`, reject `BOT_MODE=live`, and run backtests
   headless by default. Never construct SDK clients, perform network I/O, or
   touch `.bot-state/` during replay.
