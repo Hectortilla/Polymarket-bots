@@ -425,7 +425,6 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
             "wallet_activity_client": client,
             "position_client": client,
             "followed_wallets": object(),
-            "resolution_ledger": object(),
             "registry": object(),
             "paper_broker": broker,
             "broker": broker,

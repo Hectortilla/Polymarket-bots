@@ -34,7 +34,7 @@ from polybot.cli.performance_chart.contracts import PerformanceChartError
 from polybot.cli.factories import load_bot
 from polybot.cli.markets import resolve_plan_markets
 from polybot.runtime import run_bot
-from polybot.cli.runner.factory import create_runtime
+from polybot.cli.runner.factory import RuntimeComponents, create_runtime
 from polybot.cli.runner.dispatch import dispatch_stream_event
 from polybot.cli.runner.streams import wait_for_stream_plan_change
 from polybot.cli.streams.contracts import (
@@ -1194,12 +1194,6 @@ def test_runtime_factory_closes_only_owned_public_data_after_setup_failure(
         async def close(self) -> None:
             self.close_calls += 1
 
-    class FailingTracker:
-        @staticmethod
-        async def create(path: Path) -> object:
-            del path
-            raise RuntimeError("followed-wallet setup failed")
-
     owned_public_data = FakePublicData()
     injected_public_data = FakePublicData()
     monkeypatch.chdir(tmp_path)
@@ -1208,12 +1202,17 @@ def test_runtime_factory_closes_only_owned_public_data_after_setup_failure(
         "create",
         staticmethod(lambda: owned_public_data),
     )
+
+    def failing_paper_broker(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("paper-broker setup failed")
+
     monkeypatch.setattr(
-        "polybot.cli.runner.factory.FollowedWalletTracker", FailingTracker
+        "polybot.cli.runner.factory.PaperBroker",
+        failing_paper_broker,
     )
 
     async def create(public_data: object | None) -> None:
-        with pytest.raises(RuntimeError, match="followed-wallet setup failed"):
+        with pytest.raises(RuntimeError, match="paper-broker setup failed"):
             await create_runtime(
                 BotConfig(name="setup-failure"),
                 object(),  # type: ignore[arg-type]
@@ -1225,6 +1224,65 @@ def test_runtime_factory_closes_only_owned_public_data_after_setup_failure(
 
     assert owned_public_data.close_calls == 1
     assert injected_public_data.close_calls == 0
+
+
+def test_runtime_factory_starts_each_paper_run_with_fresh_in_memory_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakePublicData:
+        gamma = object()
+        clob = object()
+        market_stream = object()
+        wallet_activity_client = object()
+        position_client = object()
+
+    legacy_state_dir = tmp_path / ".bot-state"
+    legacy_state_dir.mkdir()
+    legacy_state_file = legacy_state_dir / "previous-run.json"
+    legacy_state_file.write_text('{"legacy": true}', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    sources = FakePublicData()
+
+    async def create_two_runs() -> tuple[RuntimeComponents, RuntimeComponents]:
+        config = BotConfig(name="paper-run")
+        first = await create_runtime(
+            config,
+            object(),  # type: ignore[arg-type]
+            public_data=sources,  # type: ignore[arg-type]
+        )
+        first.followed_wallets.synchronize(
+            ("0x0000000000000000000000000000000000000001",)
+        )
+        first.paper_broker.portfolio.apply_fill(
+            token_id="first-run-token",
+            side=Side.BUY,
+            filled_size=Decimal("1"),
+            average_price=Decimal("0.4"),
+            fee_usdc=Decimal("0"),
+        )
+        second = await create_runtime(
+            config,
+            object(),  # type: ignore[arg-type]
+            public_data=sources,  # type: ignore[arg-type]
+        )
+        return first, second
+
+    first, second = asyncio.run(create_two_runs())
+
+    assert first.followed_wallets is not second.followed_wallets
+    assert first.registry is not second.registry
+    assert first.paper_broker is not second.paper_broker
+    assert first.followed_wallets.active_wallets == (
+        "0x0000000000000000000000000000000000000001",
+    )
+    assert first.paper_broker.portfolio.positions
+    assert first.registry.entries == ()
+    assert second.followed_wallets.active_wallets == ()
+    assert second.paper_broker.portfolio.positions == {}
+    assert second.registry.entries == ()
+    assert legacy_state_file.read_text(encoding="utf-8") == '{"legacy": true}'
+    assert tuple(legacy_state_dir.iterdir()) == (legacy_state_file,)
 
 
 def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) -> None:

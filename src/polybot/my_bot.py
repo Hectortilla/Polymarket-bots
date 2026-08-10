@@ -1,11 +1,10 @@
 """Default CLI factory for the BTC five-minute momentum example."""
 
-from polybot.examples.example_btc_five_minute_momentum import (
-    BtcFiveMinuteMomentumBot,
+from polybot.examples.winner_trading_bot import (
     create as create_btc_momentum,
 )
 from polybot.framework.config.models import BotConfig
 
 
-def create(_config: BotConfig) -> BtcFiveMinuteMomentumBot:
+def create(_config: BotConfig):
     return create_btc_momentum()

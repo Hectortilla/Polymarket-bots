@@ -35,9 +35,10 @@ bundled because the pinned SDK does not provide one.
 The paper runtime maintains one condition-keyed union of configured markets,
 accepted followed-wallet discoveries, and paper positions. Dynamically
 discovered markets remain subscribed until resolution. Resolution events settle
-paper and followed-wallet positions at contractual `1`/`0` payouts, persist the
-terminal condition before `BaseBot.on_market_resolved()` runs, remove it from
-the active subscription, and prevent future re-admission after restart.
+paper and followed-wallet positions at contractual `1`/`0` payouts, remove the
+terminal condition from the active subscription, and then invoke
+`BaseBot.on_market_resolved()`. Paper runs are process-local experiments: a
+restart begins a new run with a new bot instance and paper portfolio.
 
 Future Polymarket integrations must use an official Polymarket Python SDK or
 client wherever it supports the required capability. The unified
@@ -232,7 +233,8 @@ uv run python -m polybot.cli \
 ```
 
 Replay is headless by default and never constructs a Polymarket SDK client,
-performs a network read, or touches `.bot-state/`. `BOT_MODE=live` is rejected.
+performs a network read, or performs paper-runtime persistence. `BOT_MODE=live`
+is rejected.
 The only replay inputs are metadata revisions, books, lifecycle events, and
 coverage-gap evidence from the selected archive interval. A deterministic
 virtual clock drives event delivery, strategy sleeps, paper latency, and broker

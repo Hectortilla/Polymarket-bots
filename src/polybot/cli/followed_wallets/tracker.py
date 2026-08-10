@@ -1,16 +1,12 @@
-"""Wallet-follow lifecycle, persistence orchestration, and accounting access."""
+"""Per-run wallet-follow lifecycle and accounting access."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
 from decimal import Decimal
-from pathlib import Path
-from typing import Any
 
-from polybot.async_io import run_blocking
 from polybot.framework.clock import system_now_ms
-from polybot.persistence.atomic_json import AtomicJsonFile
 from polybot.framework.events.resolutions import MarketResolutionEvent, SettledPosition
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.wallets import normalize_wallet_address
@@ -18,30 +14,14 @@ from polybot.polymarket.positions.contracts import Position
 
 from .contracts import WalletFollowState
 from .position_contracts import FollowBaseline, FollowMovement, FollowPosition
-from .persistence.serialization import load_states, root_payload
 
 
 class FollowedWalletTracker:
-    def __init__(self, path: Path, *, now_ms: Callable[[], int] | None = None) -> None:
-        self._file = AtomicJsonFile(path)
+    """Track followed-wallet positions for one paper-runtime process."""
+
+    def __init__(self, *, now_ms: Callable[[], int] | None = None) -> None:
         self._now_ms = now_ms or system_now_ms
-        self._wallets = load_states(self._file.read())
-
-    @classmethod
-    async def create(
-        cls,
-        path: Path,
-        *,
-        now_ms: Callable[[], int] | None = None,
-    ) -> FollowedWalletTracker:
-        """Load persisted follow state without blocking the event loop."""
-
-        tracker = cls.__new__(cls)
-        tracker._file = AtomicJsonFile(path)
-        tracker._now_ms = now_ms or system_now_ms
-        payload = await run_blocking(tracker._file.read)
-        tracker._wallets = load_states(payload)
-        return tracker
+        self._wallets: dict[str, WalletFollowState] = {}
 
     @property
     def active_wallets(self) -> tuple[str, ...]:
@@ -54,11 +34,9 @@ class FollowedWalletTracker:
 
     def synchronize(self, wallets: tuple[str, ...]) -> tuple[str, ...]:
         selected = {normalize_wallet_address(wallet) for wallet in wallets}
-        changed = False
         for state in self._wallets.values():
             if state.active and state.wallet not in selected:
                 state.active = False
-                changed = True
         new_wallets: list[str] = []
         for wallet in sorted(selected):
             state = self._wallets.get(wallet)
@@ -70,7 +48,6 @@ class FollowedWalletTracker:
                     followed_at_ms=0,
                 )
                 new_wallets.append(wallet)
-                changed = True
             elif not state.active:
                 state.epoch_history.append(state.snapshot_epoch())
                 state.epoch += 1
@@ -80,14 +57,10 @@ class FollowedWalletTracker:
                 state.baselines.clear()
                 state.movements.clear()
                 state.source_ids.clear()
-                state.latest_processed_trade_cursor = None
                 state.settlements.clear()
                 new_wallets.append(wallet)
-                changed = True
             elif not state.bootstrapped:
                 new_wallets.append(wallet)
-        if changed:
-            self.persist()
         return tuple(new_wallets)
 
     def bootstrap(
@@ -111,7 +84,6 @@ class FollowedWalletTracker:
         state.baselines = staged_baselines
         state.followed_at_ms = self._now_ms()
         state.bootstrapped = True
-        self.persist()
 
     def mark_baseline(self, token_id: str, price: Decimal) -> bool:
         changed = False
@@ -127,8 +99,6 @@ class FollowedWalletTracker:
                     outcome=baseline.outcome,
                 )
                 changed = True
-        if changed:
-            self.persist()
         return changed
 
     def record_trade(self, trade: WalletTradeEvent) -> bool:
@@ -143,13 +113,6 @@ class FollowedWalletTracker:
         movement = FollowMovement.from_trade(trade)
         state.movements[movement.source_key] = movement
         state.source_ids.add(movement.source_key)
-        cursor = (movement.trade_timestamp_ms, movement.source_key)
-        if (
-            state.latest_processed_trade_cursor is None
-            or cursor > state.latest_processed_trade_cursor
-        ):
-            state.latest_processed_trade_cursor = cursor
-        self.persist()
         return True
 
     def positions(self, wallet: str) -> tuple[FollowPosition, ...]:
@@ -179,28 +142,23 @@ class FollowedWalletTracker:
 
     def settle(self, event: MarketResolutionEvent) -> tuple[SettledPosition, ...]:
         settled: list[SettledPosition] = []
-        changed = False
         for state in self._wallets.values():
-            current_settled, current_changed = state.settle(event)
+            current_settled, _ = state.settle(event)
             settled.extend(current_settled)
-            changed = changed or current_changed
             for historical in state.epoch_history:
-                historical_settled, historical_changed = historical.settle(event)
+                historical_settled, _ = historical.settle(event)
                 settled.extend(historical_settled)
-                changed = changed or historical_changed
-        if changed:
-            self.persist()
         return tuple(settled)
 
-    def persist(self) -> None:
-        self._file.write(root_payload(self._wallets))
+    def snapshot(self) -> dict[str, WalletFollowState]:
+        """Capture current-run state so a multi-owner settlement can roll back."""
 
-    def snapshot(self) -> dict[str, Any]:
-        return deepcopy(root_payload(self._wallets))
+        return deepcopy(self._wallets)
 
-    def restore(self, snapshot: dict[str, Any]) -> None:
-        self._wallets = load_states(deepcopy(snapshot))
-        self.persist()
+    def restore(self, snapshot: dict[str, WalletFollowState]) -> None:
+        """Restore a current-run settlement snapshot."""
+
+        self._wallets = deepcopy(snapshot)
 
     def _required_active(self, wallet: str) -> WalletFollowState:
         state = self.state(wallet)

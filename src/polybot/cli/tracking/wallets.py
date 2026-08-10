@@ -5,7 +5,6 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Protocol
 
-from polybot.async_io import run_blocking
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.positions.contracts import Position
@@ -58,10 +57,7 @@ class FollowedWalletSynchronizer:
         new_wallets = (
             ()
             if not wallet_scopes
-            else await run_blocking(
-                self._followed_wallets.synchronize,
-                tuple(wallet_scopes),
-            )
+            else self._followed_wallets.synchronize(tuple(wallet_scopes))
         )
         for wallet in new_wallets:
             await self._bootstrap(
@@ -69,7 +65,7 @@ class FollowedWalletSynchronizer:
                 allowlist=wallet_scopes[wallet],
                 resolved_markets=resolved_markets,
             )
-        await self._register_persisted_markets()
+        await self._register_tracked_markets()
 
     async def _bootstrap(
         self,
@@ -137,29 +133,24 @@ class FollowedWalletSynchronizer:
                 owner=wallet,
             )
         self._clob.set_markets(self._registry.markets)
-        await run_blocking(
-            self._followed_wallets.bootstrap,
-            wallet,
-            tuple(marked_positions),
-        )
+        self._followed_wallets.bootstrap(wallet, tuple(marked_positions))
 
-    async def _register_persisted_markets(self) -> None:
-        """Re-register markets referenced by persisted followed positions."""
+    async def _register_tracked_markets(self) -> None:
+        """Register markets referenced by current followed positions."""
         known_slugs = {market.slug for market in self._registry.markets}
-        persisted_slugs = tuple(
+        tracked_slugs = tuple(
             slug
             for slug in self._followed_wallets.open_market_slugs()
             if slug not in known_slugs
         )
-        if not persisted_slugs:
+        if not tracked_slugs:
             return
-        markets = await self._gamma.find_many(persisted_slugs)
+        markets = await self._gamma.find_many(tracked_slugs)
         by_slug = {market.slug: market for market in markets if market is not None}
-        missing = [slug for slug in persisted_slugs if slug not in by_slug]
+        missing = [slug for slug in tracked_slugs if slug not in by_slug]
         if missing:
             raise RuntimeError(
-                "persisted followed-wallet markets could not be resolved: "
-                + ", ".join(missing)
+                "followed-wallet markets could not be resolved: " + ", ".join(missing)
             )
         for wallet, position in self._followed_wallets.tracked_market_positions():
             market = by_slug.get(position.market_slug)

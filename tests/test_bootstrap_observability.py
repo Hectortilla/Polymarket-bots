@@ -60,7 +60,7 @@ def test_wallet_adapter_reports_each_completed_bootstrap(tmp_path) -> None:
     adapter = BootstrapProgressAdapter(observer)  # type: ignore[arg-type]
     adapter.begin_cycle()
     tracker = adapter.wrap_followed_wallets(
-        FollowedWalletTracker(tmp_path / "follow.json"),
+        FollowedWalletTracker(),
         total_wallets=2,
     )
 

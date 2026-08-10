@@ -1,6 +1,5 @@
 """Book-event dispatch and followed-wallet baseline updates."""
 
-from polybot.async_io import run_blocking
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.runner import BotRunner
 
@@ -23,8 +22,7 @@ async def dispatch_book(
         return DispatchOutcome.skipped(DispatchSkipReason.MARKET_RESOLVED)
     outcome = await runner.dispatch_book(event.event)
     if outcome.accepted and followed_wallets is not None and event.event.bids:
-        await run_blocking(
-            followed_wallets.mark_baseline,
+        followed_wallets.mark_baseline(
             event.event.token_id,
             max(level.price for level in event.event.bids),
         )

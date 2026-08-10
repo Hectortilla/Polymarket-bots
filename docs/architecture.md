@@ -30,12 +30,10 @@ an injected source is optional and can provide lower-latency wallet events.
 At the adapter boundary, SDK-specific positional outcome fields become an
 ordered pair of opaque `MarketOutcome(label, token_id)` values. Core framework
 and execution code use generic token IDs and never infer meaning from labels.
-CLI paper runs persist normalized source-event claims, followed-wallet epochs,
-baselines, movement journals, checkpoints, and settlements under `.bot-state/`.
-A restart cannot submit the same wallet-following source event twice or reapply
-the same resolution. Direct
-`PaperBroker` users may inject another idempotency store; tests retain the
-process-local default.
+CLI paper runs keep normalized source-event claims, followed-wallet epochs,
+baselines, movement journals, and settlements in memory. A restart is a new
+paper run; it does not restore the bot, paper portfolio, or followed-wallet
+accounting.
 
 ## Official Client Boundary
 
@@ -108,23 +106,18 @@ polyfollow-polybot/
       book_dispatch.py
       wallet_dispatch.py
       resolution_dispatch.py
-      state.py
     tracked_markets.py # Condition-keyed union market registry.
     tracking/     # Wallet-discovery and paper-position registry workflows.
     streams/      # CLI stream contracts, construction, merging, and telemetry.
-    followed_wallets/ # Follow contracts, position replay, and persistence.
+    followed_wallets/ # Current-run follow contracts, positions, and accounting.
     performance_chart/ # Saved-artifact chart loading, rendering, and command.
       contracts.py
       artifacts.py
       rendering.py
       command.py
-    resolution/ # Gamma reconciliation and atomic settlement workflows.
+    resolution/ # Gamma reconciliation and current-run settlement workflows.
       reconciliation.py
       settlement.py
-    resolution_state/ # Resolution-ledger persistence, schema, and validation.
-      ledger.py
-      schema.py
-      validation.py
   persistence/      # Strict JSON decoding and atomic JSON file writes.
   polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
@@ -213,18 +206,17 @@ until resolution.
 The registry's admitted slugs are also supplied to `BotRunner` as runtime book
 routes. This lets wallet-only discoveries reach `on_book` while keeping
 filtered-rule allowlists strict at registry ingress. Resolution makes a
-condition terminal for the runner lifetime and across restarts through the
-resolution ledger: terminal conditions cannot be admitted again by configured
-plans, wallet discoveries, or paper positions.
+condition terminal for the runner lifetime: terminal conditions cannot be
+admitted again by configured plans, wallet discoveries, or paper positions.
 
 Resolution follows a separate non-fill path:
 
 ```text
 MarketResolvedEvent or Gamma reconciliation
   -> MarketResolutionEvent
-  -> idempotency check
-  -> paper and followed-wallet settlement via `MarketResolutionEvent.payout_for`
-  -> atomic persistence and registry removal
+  -> in-process idempotency check
+  -> atomic current-run paper and followed-wallet settlement via `MarketResolutionEvent.payout_for`
+  -> registry removal
   -> observer MarketSettled event
   -> BaseBot.on_market_resolved(ctx, event)
 ```
@@ -332,7 +324,7 @@ two-token checkpoint pairs use one atomic archive call. The capture coordinator
 therefore never treats an acknowledged row as an in-memory-only buffer.
 
 SQLite is an artifact format at the standalone package boundary. It does not
-reuse `.bot-state/`, open the Polyfollow application database, run application
+reuse paper-runtime state, open the Polyfollow application database, run application
 migrations, or become a shared runtime service. The required `--output` path is
 owned by the caller and can be copied together with a bot experiment. A new run
 uses non-overwriting creation and refuses an existing path. `--resume` instead
@@ -456,7 +448,7 @@ Slice 9B is selected through the existing bot CLI with `--backtest ARCHIVE`.
 The backtest branch keeps `BotConfig.mode` at `paper`, runs headless by default,
 and constructs archive-backed market and latest-book clients plus rejecting
 wallet and position clients. It does not create SDK clients, open network
-streams, or use live-runtime persistence under `.bot-state/`.
+streams, or use paper-runtime persistence.
 
 Before any strategy lifecycle or event hook runs, the replay service accepts
 schema-v2 archives only, checks SQLite integrity, takes the inactive-archive
@@ -822,7 +814,7 @@ Paper runs write no performance files unless the CLI receives `--results-dir`.
 
 Backtesting is the paper execution contract driven by a selected recording
 archive and a deterministic virtual clock. It is requested with `--backtest`,
-rejects live mode, does not perform network or persistent live-runtime I/O, and
+rejects live mode, does not perform network or persistent paper-runtime I/O, and
 always writes a performance result directory. Its default `strict` gap policy
 requires a clean selected interval; explicit `blackout` mode preserves
 continuity around known gaps without synthesizing their missing market data.
@@ -848,11 +840,9 @@ Paper mode must not fill against stale, future-dated, malformed, or crossed
 decision-time prices. It should queue an
 order, wait configured latency plus jitter, then fill against the latest known
 book at fill time. If no fresh book is available, the order is rejected with a
-stable reason instead of guessing. Source IDs are claimed atomically across the
-full in-flight submission so concurrent duplicates cannot apply two portfolio
-transitions. Successful paper source claims remain available for the broker's
-process lifetime. CLI paper runs additionally persist claims across restarts in
-an atomic file-backed store; direct broker users may inject their own store.
+stable reason instead of guessing. Source IDs are claimed across the full
+in-flight submission so concurrent duplicates cannot apply two portfolio
+transitions. Claims remain available for the broker's process lifetime only.
 
 ## Followed-Wallet Accounting
 
@@ -865,8 +855,8 @@ lifetime PnL are not imported.
 Post-follow movements replay by `(trade_timestamp_ms, source_key)`. Buys update
 weighted basis, sells realize against basis, and resolution realizes remaining
 value at `1` or `0`. Fees are never inferred, so this accounting is explicitly
-gross. Removing and later re-adding a wallet creates a new persisted follow
-epoch.
+gross. Removing and later re-adding a wallet during one run creates a new follow
+epoch. A restart starts fresh followed-wallet accounting from current positions.
 
 ## Performance Rule
 

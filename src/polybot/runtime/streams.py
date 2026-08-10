@@ -55,7 +55,6 @@ async def run_runtime_streams(
         registry=runtime.registry,
         followed_wallets=runtime.followed_wallets,
         paper_broker=runtime.paper_broker,
-        resolution_ledger=runtime.resolution_ledger,
         observer=observer,
     )
     while True:

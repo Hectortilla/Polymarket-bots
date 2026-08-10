@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -15,37 +14,7 @@ from polymarket.models.clob.market_events import (
 )
 
 from polybot.cli.dashboard.state import DashboardState
-from polybot.cli.followed_wallets.contracts import WalletFollowState
-from polybot.cli.followed_wallets.position_contracts import FollowSettlement
 from polybot.cli.followed_wallets.tracker import FollowedWalletTracker
-from polybot.cli.followed_wallets.persistence.serialization import (
-    FOLLOW_STATE_VERSION,
-    load_states,
-)
-from polybot.cli.followed_wallets.persistence.schema import (
-    FOLLOW_ACTIVE_FIELD,
-    FOLLOW_BASELINES_FIELD,
-    FOLLOW_BASIS_PRICE_FIELD,
-    FOLLOW_BOOTSTRAPPED_FIELD,
-    FOLLOW_CHECKPOINT_FIELD,
-    FOLLOW_CONDITION_ID_FIELD,
-    FOLLOW_EPOCH_FIELD,
-    FOLLOW_EPOCH_HISTORY_FIELD,
-    FOLLOW_MARKET_SLUG_FIELD,
-    FOLLOW_MOVEMENTS_FIELD,
-    FOLLOW_POSITIONS_FIELD,
-    FOLLOW_PRICE_FIELD,
-    FOLLOW_SETTLEMENTS_FIELD,
-    FOLLOW_SIDE_FIELD,
-    FOLLOW_SIZE_FIELD,
-    FOLLOW_SOURCE_IDS_FIELD,
-    FOLLOW_SOURCE_KEY_FIELD,
-    FOLLOW_STATE_VERSION_FIELD,
-    FOLLOW_TOKEN_ID_FIELD,
-    FOLLOW_TRADE_TIMESTAMP_MS_FIELD,
-    FOLLOW_WALLETS_FIELD,
-    FOLLOWED_AT_MS_FIELD,
-)
 from polybot.cli.observability.events import StreamReceived
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
@@ -53,13 +22,8 @@ from polybot.cli.resolution.reconciliation import reconcile_resolutions
 from polybot.cli.resolution.settlement import ResolutionSettlementService
 from polybot.cli.tracking.paper import track_paper_positions
 from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
-from polybot.cli.resolution_state.ledger import ResolutionLedger
-from polybot.cli.resolution_state.schema import (
-    RESOLUTION_LEDGER_VERSION,
-    RESOLUTION_LEDGER_VERSION_FIELD,
-    RESOLUTION_RECORDS_FIELD,
-)
 from polybot.framework.cadence import RESOLUTION_RECONCILIATION_SECONDS
+from polybot.framework.config.models import BotConfig
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.cli.streams.contracts import (
     ResolutionStreamEvent,
@@ -124,33 +88,6 @@ class FakeStreamClient:
         return FakeSubscription(self.events)
 
 
-class _PaperBrokerSnapshotDouble:
-    """Test-only direct snapshot contract used by resolution settlement fakes."""
-
-    portfolio: PaperPortfolio
-
-    def snapshot(self):
-        return self.portfolio.snapshot()
-
-    def restore(self, snapshot) -> None:
-        self.portfolio.restore(snapshot)
-
-
-def _valid_followed_wallet_state_payload() -> dict[str, object]:
-    source_key = wallet_source_key(WALLET, "source")
-    return {
-        FOLLOW_EPOCH_FIELD: 1,
-        FOLLOW_ACTIVE_FIELD: True,
-        FOLLOWED_AT_MS_FIELD: 0,
-        FOLLOW_BOOTSTRAPPED_FIELD: False,
-        FOLLOW_BASELINES_FIELD: [],
-        FOLLOW_MOVEMENTS_FIELD: [],
-        FOLLOW_SOURCE_IDS_FIELD: [source_key],
-        FOLLOW_CHECKPOINT_FIELD: [0, source_key],
-        FOLLOW_SETTLEMENTS_FIELD: [],
-        FOLLOW_EPOCH_HISTORY_FIELD: [],
-    }
-
 
 def test_registry_deduplicates_wallet_interests_and_batches_token_changes() -> None:
     async def run() -> tuple[int, int]:
@@ -197,7 +134,7 @@ def test_wallet_dispatch_records_trade_and_registers_market_after_acceptance(
     tmp_path,
     dummy_context,
 ) -> None:
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
+    tracker = FollowedWalletTracker()
     tracker.synchronize((WALLET,))
     tracker.bootstrap(WALLET, ())
     registry = TrackedMarketRegistry()
@@ -302,7 +239,7 @@ def test_wallet_dispatch_rejects_conflicting_registry_metadata_before_execution(
 
     class FollowedWallets:
         def record_trade(self, event: WalletTradeEvent) -> bool:
-            raise AssertionError("conflicting metadata must not reach persistence")
+            raise AssertionError("conflicting metadata must not reach followed-wallet state")
 
     outcome = asyncio.run(
         dispatch_wallet_trade(
@@ -370,7 +307,7 @@ def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> 
             market_slug="booked",
         ),
     )
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
+    tracker = FollowedWalletTracker()
     registry = TrackedMarketRegistry()
 
     class PositionsClient:
@@ -441,7 +378,7 @@ def test_filtered_wallet_bootstrap_reads_only_rule_markets(tmp_path) -> None:
             market_slug="outside-rule",
         ),
     )
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
+    tracker = FollowedWalletTracker()
     registry = TrackedMarketRegistry()
 
     class PositionsClient:
@@ -560,13 +497,12 @@ def test_gamma_reconciliation_continues_after_provider_failure() -> None:
     asyncio.run(run())
 
 
-def test_async_persistence_constructors_load_without_blocking(tmp_path) -> None:
-    async def run() -> tuple[tuple[str, ...], bool]:
-        tracker = await FollowedWalletTracker.create(tmp_path / "follow.json")
-        ledger = await ResolutionLedger.create(tmp_path / "resolutions.json")
-        return tracker.active_wallets, ledger.contains(_resolution())
+def test_followed_wallet_tracker_is_empty_for_each_new_paper_run() -> None:
+    first = FollowedWalletTracker()
+    first.synchronize((WALLET,))
 
-    assert asyncio.run(run()) == ((), False)
+    assert first.active_wallets == (WALLET,)
+    assert FollowedWalletTracker().active_wallets == ()
 
 
 def test_broker_position_interest_can_add_market_outside_current_plan() -> None:
@@ -771,9 +707,8 @@ def test_market_stream_rejects_resolution_with_invalid_timestamp() -> None:
     assert asyncio.run(run()) == []
 
 
-def test_follow_bootstrap_replay_restart_and_new_epoch(tmp_path) -> None:
-    path = tmp_path / "follow.json"
-    tracker = FollowedWalletTracker(path, now_ms=lambda: 1_000)
+def test_follow_bootstrap_replay_and_new_epoch() -> None:
+    tracker = FollowedWalletTracker(now_ms=lambda: 1_000)
     assert tracker.synchronize((WALLET,)) == (WALLET,)
     tracker.bootstrap(
         WALLET,
@@ -799,27 +734,16 @@ def test_follow_bootstrap_replay_restart_and_new_epoch(tmp_path) -> None:
     assert not tracker.record_trade(earlier_buy)
     assert tracker.gross_pnl(WALLET, {"yes-market": Decimal("0.5")}) == Decimal("0.9")
 
-    restored = FollowedWalletTracker(path)
-    assert restored.gross_pnl(WALLET, {"yes-market": Decimal("0.5")}) == Decimal("0.9")
-    assert restored.synchronize(()) == ()
-    assert restored.synchronize((WALLET,)) == (WALLET,)
-    assert restored.state(WALLET).epoch == 2  # type: ignore[union-attr]
-    assert restored.state(WALLET).bootstrapped is False  # type: ignore[union-attr]
-    assert restored.open_market_slugs() == ("market",)
-    assert restored.settle(_resolution())[0].cash_payout_usdc == Decimal("3")
-
-    reloaded = FollowedWalletTracker(path)
-    reloaded_state = reloaded.state(WALLET)
-    assert reloaded_state is not None
-    assert isinstance(reloaded_state.epoch_history[0], WalletFollowState)
-    assert isinstance(
-        reloaded_state.epoch_history[0].settlements[0],
-        FollowSettlement,
-    )
+    assert tracker.synchronize(()) == ()
+    assert tracker.synchronize((WALLET,)) == (WALLET,)
+    assert tracker.state(WALLET).epoch == 2  # type: ignore[union-attr]
+    assert tracker.state(WALLET).bootstrapped is False  # type: ignore[union-attr]
+    assert tracker.open_market_slugs() == ("market",)
+    assert tracker.settle(_resolution())[0].cash_payout_usdc == Decimal("3")
 
 
 def test_follow_and_paper_resolution_settle_contractual_payout(tmp_path) -> None:
-    tracker = FollowedWalletTracker(tmp_path / "follow.json", now_ms=lambda: 1_000)
+    tracker = FollowedWalletTracker()
     tracker.synchronize((WALLET,))
     tracker.bootstrap(
         WALLET,
@@ -887,7 +811,7 @@ def test_paper_settlement_handles_winners_losers_and_short_positions() -> None:
 
 
 def test_follow_replay_handles_weighted_basis_and_reversal(tmp_path) -> None:
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
+    tracker = FollowedWalletTracker()
     tracker.synchronize((WALLET,))
     tracker.bootstrap(WALLET, ())
     assert tracker.record_trade(_trade("buy-1", Side.BUY, "2", "0.2", 10))
@@ -904,7 +828,7 @@ def test_follow_replay_handles_weighted_basis_and_reversal(tmp_path) -> None:
 
 
 def test_follow_unresolved_basis_remains_unrealized(tmp_path) -> None:
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
+    tracker = FollowedWalletTracker()
     tracker.synchronize((WALLET,))
     tracker.bootstrap(
         WALLET,
@@ -926,619 +850,12 @@ def test_follow_unresolved_basis_remains_unrealized(tmp_path) -> None:
     assert tracker.gross_pnl(WALLET, {}) is None
 
 
-def test_resolution_persists_before_hook_and_is_idempotent(tmp_path) -> None:
+
+def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ignored() -> None:
     registry = TrackedMarketRegistry()
     registry.add(_market(), MarketInterest.CONFIGURED)
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
-    ledger = ResolutionLedger(tmp_path / "resolutions.json")
-    calls: list[str] = []
-
-    class Paper(_PaperBrokerSnapshotDouble):
-        portfolio = PaperPortfolio(Decimal("100"))
-
-        def settle_market(self, event):
-            calls.append("paper")
-            return ()
-
-    class Runner:
-        async def dispatch_market_resolution(self, event):
-            assert ledger.contains(event)
-            calls.append("hook")
-
-    async def run() -> None:
-        await _apply_resolution(
-            Runner(),  # type: ignore[arg-type]
-            _resolution(),
-            registry=registry,
-            followed_wallets=tracker,
-            paper_broker=Paper(),  # type: ignore[arg-type]
-            resolution_ledger=ledger,
-            observer=None,
-        )
-        await _apply_resolution(
-            Runner(),  # type: ignore[arg-type]
-            _resolution(),
-            registry=registry,
-            followed_wallets=tracker,
-            paper_broker=Paper(),  # type: ignore[arg-type]
-            resolution_ledger=ledger,
-            observer=None,
-        )
-
-    asyncio.run(run())
-    assert calls == ["paper", "hook"]
-    assert registry.entries == ()
-
-
-def test_bootstrap_settles_resolved_market_before_any_subscription(tmp_path) -> None:
-    resolved_market = replace(
-        _market(),
-        resolved=True,
-        winning_token_id="yes-market",
-        winning_outcome=YES_OUTCOME,
-    )
-    registry = TrackedMarketRegistry()
-    registry.add(resolved_market, MarketInterest.CONFIGURED)
-    ledger = ResolutionLedger(tmp_path / "resolutions.json")
-    calls: list[str] = []
-
-    class Paper(_PaperBrokerSnapshotDouble):
-        portfolio = PaperPortfolio(Decimal("100"))
-
-        def settle_market(self, event):
-            calls.append("paper")
-            return ()
-
-    class Runner:
-        async def dispatch_market_resolution(self, event):
-            calls.append("hook")
-
-    asyncio.run(
-        _settle_resolved_markets(
-            Runner(),  # type: ignore[arg-type]
-            registry=registry,
-            followed_wallets=FollowedWalletTracker(tmp_path / "follow.json"),
-            paper_broker=Paper(),  # type: ignore[arg-type]
-            resolution_ledger=ledger,
-            observer=None,
-        )
-    )
-
-    assert calls == ["paper", "hook"]
-    assert registry.markets == ()
-    assert registry.is_terminal(resolved_market.condition_id)
-    assert ledger.resolved_condition_ids == {resolved_market.condition_id}
-
-
-def test_resolution_rolls_back_settlement_when_ledger_record_fails(tmp_path) -> None:
-    registry = TrackedMarketRegistry()
-    registry.add(_market(), MarketInterest.CONFIGURED)
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
-    tracker.synchronize((WALLET,))
-    tracker.bootstrap(
-        WALLET,
-        (
-            (
-                Position(
-                    token_id="yes-market",
-                    size=Decimal("1"),
-                    condition_id="condition-market",
-                    market_slug="market",
-                ),
-                Decimal("0.4"),
-            ),
-        ),
-    )
-
-    class Paper(_PaperBrokerSnapshotDouble):
-        def __init__(self) -> None:
-            self.portfolio = PaperPortfolio(Decimal("100"))
-            self.portfolio.apply_fill(
-                token_id="yes-market",
-                side=Side.BUY,
-                filled_size=Decimal("1"),
-                average_price=Decimal("0.4"),
-                fee_usdc=Decimal("0"),
-            )
-
-        def settle_market(self, event):
-            return self.portfolio.settle_market(event)
-
-    class Ledger:
-        def __init__(self) -> None:
-            self.fail = True
-
-        def contains(self, event):
-            return False
-
-        def record(self, settlement):
-            if self.fail:
-                self.fail = False
-                raise OSError("ledger unavailable")
-
-    class Runner:
-        async def dispatch_market_resolution(self, event):
-            return None
-
-    paper = Paper()
-    ledger = Ledger()
-    with pytest.raises(OSError, match="ledger unavailable"):
-        asyncio.run(
-            _apply_resolution(
-                Runner(),  # type: ignore[arg-type]
-                _resolution(),
-                registry=registry,
-                followed_wallets=tracker,
-                paper_broker=paper,  # type: ignore[arg-type]
-                resolution_ledger=ledger,  # type: ignore[arg-type]
-                observer=None,
-            )
-        )
-
-    assert paper.portfolio.positions["yes-market"].size == Decimal("1")
-    assert tracker.state(WALLET).settlements == []  # type: ignore[union-attr]
-    assert registry.entries
-
-    settlement = asyncio.run(
-        _apply_resolution(
-            Runner(),  # type: ignore[arg-type]
-            _resolution(),
-            registry=registry,
-            followed_wallets=tracker,
-            paper_broker=paper,  # type: ignore[arg-type]
-            resolution_ledger=ledger,  # type: ignore[arg-type]
-            observer=None,
-        )
-    )
-    assert settlement is not None
-
-
-def test_resolution_rolls_back_when_followed_settlement_fails(tmp_path) -> None:
-    registry = TrackedMarketRegistry()
-    registry.add(_market(), MarketInterest.CONFIGURED)
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
-    tracker.synchronize((WALLET,))
-    tracker.bootstrap(
-        WALLET,
-        (
-            (
-                Position(
-                    token_id="yes-market",
-                    size=Decimal("1"),
-                    condition_id="condition-market",
-                    market_slug="market",
-                ),
-                Decimal("0.4"),
-            ),
-        ),
-    )
-    followed_snapshot = tracker.snapshot()
-
-    class FailingFollowed:
-        def snapshot(self):
-            return tracker.snapshot()
-
-        def restore(self, snapshot):
-            tracker.restore(snapshot)
-
-        def settle(self, event):
-            tracker.settle(event)
-            raise RuntimeError("followed settlement unavailable")
-
-    class Paper(_PaperBrokerSnapshotDouble):
-        def __init__(self) -> None:
-            self.portfolio = PaperPortfolio(Decimal("100"))
-            self.portfolio.apply_fill(
-                token_id="yes-market",
-                side=Side.BUY,
-                filled_size=Decimal("1"),
-                average_price=Decimal("0.4"),
-                fee_usdc=Decimal("0"),
-            )
-
-        def settle_market(self, event):
-            return self.portfolio.settle_market(event)
-
-    class Ledger:
-        def contains(self, event):
-            return False
-
-        def record(self, settlement):
-            raise AssertionError("ledger must not record a failed settlement")
-
-    class Runner:
-        async def dispatch_market_resolution(self, event):
-            raise AssertionError("resolution hook must not run")
-
-    paper = Paper()
-    with pytest.raises(RuntimeError, match="followed settlement unavailable"):
-        asyncio.run(
-            _apply_resolution(
-                Runner(),  # type: ignore[arg-type]
-                _resolution(),
-                registry=registry,
-                followed_wallets=FailingFollowed(),  # type: ignore[arg-type]
-                paper_broker=paper,  # type: ignore[arg-type]
-                resolution_ledger=Ledger(),  # type: ignore[arg-type]
-                observer=None,
-            )
-        )
-
-    assert paper.portfolio.positions["yes-market"].size == Decimal("1")
-    assert tracker.snapshot() == followed_snapshot
-    assert registry.entries
-
-
-def test_followed_wallet_state_rejects_malformed_nested_payload() -> None:
-    with pytest.raises(ValueError, match="epoch"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {
-                    WALLET: {
-                        FOLLOW_EPOCH_FIELD: "one",
-                        FOLLOW_ACTIVE_FIELD: True,
-                        FOLLOWED_AT_MS_FIELD: 0,
-                        FOLLOW_BOOTSTRAPPED_FIELD: False,
-                        FOLLOW_BASELINES_FIELD: [],
-                        FOLLOW_MOVEMENTS_FIELD: [],
-                        FOLLOW_SOURCE_IDS_FIELD: [],
-                        FOLLOW_CHECKPOINT_FIELD: None,
-                        FOLLOW_SETTLEMENTS_FIELD: [],
-                        FOLLOW_EPOCH_HISTORY_FIELD: [],
-                    }
-                },
-            }
-        )
-
-
-def test_followed_wallet_state_requires_wallet_owned_source_keys() -> None:
-    other_wallet = "0x0000000000000000000000000000000000000002"
-    source_key = wallet_source_key(other_wallet, "source")
-    state = _valid_followed_wallet_state_payload()
-    state[FOLLOW_MOVEMENTS_FIELD] = [
-        {
-            FOLLOW_CONDITION_ID_FIELD: "condition",
-            FOLLOW_TOKEN_ID_FIELD: "token",
-            FOLLOW_SIDE_FIELD: Side.BUY.value,
-            FOLLOW_SIZE_FIELD: "1",
-            FOLLOW_PRICE_FIELD: "0.5",
-            FOLLOW_TRADE_TIMESTAMP_MS_FIELD: 1,
-            FOLLOW_SOURCE_KEY_FIELD: source_key,
-        }
-    ]
-    state[FOLLOW_SOURCE_IDS_FIELD] = [source_key]
-    state[FOLLOW_CHECKPOINT_FIELD] = [1, source_key]
-
-    with pytest.raises(ValueError, match="does not belong"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {WALLET: state},
-            }
-        )
-
-
-def test_followed_wallet_state_requires_wallet_owned_settlement_positions() -> None:
-    state = _valid_followed_wallet_state_payload()
-    state[FOLLOW_SETTLEMENTS_FIELD] = [
-        FollowSettlement(
-            condition_id="condition",
-            winning_token_id="token",
-            resolved_at_ms=1,
-            positions=(
-                SettledPosition(
-                    owner="0x0000000000000000000000000000000000000002",
-                    token_id="token",
-                    size=Decimal("1"),
-                    payout_per_token=Decimal("1"),
-                    cash_payout_usdc=Decimal("1"),
-                ),
-            ),
-            gross_realized_pnl_usdc=None,
-            baselines=(),
-            movements=(),
-        ).to_payload()
-    ]
-
-    with pytest.raises(ValueError, match="settlement position owner"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {WALLET: state},
-            }
-        )
-
-
-def test_followed_wallet_state_requires_decimal_strings_and_nullable_keys() -> None:
-    state = _valid_followed_wallet_state_payload()
-    state[FOLLOW_BASELINES_FIELD] = [
-        {
-            FOLLOW_CONDITION_ID_FIELD: "condition",
-            FOLLOW_TOKEN_ID_FIELD: "token",
-            FOLLOW_MARKET_SLUG_FIELD: "market",
-            FOLLOW_SIZE_FIELD: 0.1,
-            FOLLOW_BASIS_PRICE_FIELD: None,
-        }
-    ]
-    with pytest.raises(ValueError, match="size is invalid"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {WALLET: state},
-            }
-        )
-
-    missing_checkpoint = _valid_followed_wallet_state_payload()
-    del missing_checkpoint[FOLLOW_CHECKPOINT_FIELD]
-    with pytest.raises(ValueError, match="checkpoint is missing"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {WALLET: missing_checkpoint},
-            }
-        )
-
-
-def test_followed_wallet_state_rejects_boolean_schema_version() -> None:
-    with pytest.raises(ValueError, match="unsupported followed-wallet state format"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: True,
-                FOLLOW_WALLETS_FIELD: {},
-            }
-        )
-
-
-@pytest.mark.parametrize(
-    ("section", "value"),
-    (
-        (
-            FOLLOW_BASELINES_FIELD,
-            [
-                {
-                    FOLLOW_CONDITION_ID_FIELD: "condition",
-                    FOLLOW_TOKEN_ID_FIELD: "token",
-                    FOLLOW_MARKET_SLUG_FIELD: "market",
-                    FOLLOW_SIZE_FIELD: "bad",
-                    FOLLOW_BASIS_PRICE_FIELD: None,
-                }
-            ],
-        ),
-        (
-            FOLLOW_MOVEMENTS_FIELD,
-            [
-                {
-                    FOLLOW_CONDITION_ID_FIELD: "condition",
-                    FOLLOW_TOKEN_ID_FIELD: "token",
-                    FOLLOW_SIDE_FIELD: "HOLD",
-                    FOLLOW_SIZE_FIELD: "1",
-                    FOLLOW_PRICE_FIELD: "0.5",
-                    FOLLOW_TRADE_TIMESTAMP_MS_FIELD: 1,
-                    FOLLOW_SOURCE_KEY_FIELD: "source",
-                }
-            ],
-        ),
-        (
-            FOLLOW_MOVEMENTS_FIELD,
-            [
-                {
-                    FOLLOW_CONDITION_ID_FIELD: "condition",
-                    FOLLOW_TOKEN_ID_FIELD: "token",
-                    FOLLOW_SIDE_FIELD: Side.BUY.value,
-                    FOLLOW_SIZE_FIELD: "1",
-                    FOLLOW_PRICE_FIELD: "1.1",
-                    FOLLOW_TRADE_TIMESTAMP_MS_FIELD: 1,
-                    FOLLOW_SOURCE_KEY_FIELD: "source",
-                }
-            ],
-        ),
-        (
-            FOLLOW_SETTLEMENTS_FIELD,
-            [
-                {
-                    FOLLOW_CONDITION_ID_FIELD: "condition",
-                    "winning_token_id": "token",
-                    "resolved_at_ms": 1,
-                    FOLLOW_POSITIONS_FIELD: [],
-                    FOLLOW_BASELINES_FIELD: "bad",
-                    FOLLOW_MOVEMENTS_FIELD: [],
-                }
-            ],
-        ),
-        (FOLLOW_EPOCH_HISTORY_FIELD, [{FOLLOW_EPOCH_FIELD: "bad"}]),
-    ),
-)
-def test_followed_wallet_state_rejects_malformed_nested_sections(
-    section: str,
-    value: object,
-) -> None:
-    state = {
-        FOLLOW_EPOCH_FIELD: 1,
-        FOLLOW_ACTIVE_FIELD: True,
-        FOLLOWED_AT_MS_FIELD: 0,
-        FOLLOW_BOOTSTRAPPED_FIELD: False,
-        FOLLOW_BASELINES_FIELD: [],
-        FOLLOW_MOVEMENTS_FIELD: [],
-        FOLLOW_SOURCE_IDS_FIELD: [],
-        FOLLOW_CHECKPOINT_FIELD: None,
-        FOLLOW_SETTLEMENTS_FIELD: [],
-        FOLLOW_EPOCH_HISTORY_FIELD: [],
-    }
-    state[section] = value
-    with pytest.raises(ValueError):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {WALLET: state},
-            }
-        )
-
-
-def test_resolution_ledger_rejects_conflicting_winner_without_mutation(
-    tmp_path,
-) -> None:
-    ledger = ResolutionLedger(tmp_path / "resolutions.json")
-    event = _resolution()
-    ledger.record(
-        MarketSettlementEvent(
-            resolution=event,
-            paper_positions=(),
-            followed_wallet_positions=(),
-            settled_at_ms=2_001,
-        )
-    )
-    conflicting = replace(
-        event, winning_token_id="no-market", winning_outcome=NO_OUTCOME
-    )
-
-    with pytest.raises(ValueError, match="conflicting resolution"):
-        ledger.contains(conflicting)
-    assert ledger.contains(event) is True
-
-
-@pytest.mark.parametrize(
-    ("section", "value"),
-    (
-        (FOLLOW_SOURCE_IDS_FIELD, ["source", "source"]),
-        (
-            FOLLOW_BASELINES_FIELD,
-            [
-                {
-                    FOLLOW_CONDITION_ID_FIELD: "condition",
-                    FOLLOW_TOKEN_ID_FIELD: "token",
-                    FOLLOW_MARKET_SLUG_FIELD: "market",
-                    FOLLOW_SIZE_FIELD: "1",
-                    FOLLOW_BASIS_PRICE_FIELD: "0.5",
-                },
-                {
-                    FOLLOW_CONDITION_ID_FIELD: "condition",
-                    FOLLOW_TOKEN_ID_FIELD: "token",
-                    FOLLOW_MARKET_SLUG_FIELD: "market",
-                    FOLLOW_SIZE_FIELD: "2",
-                    FOLLOW_BASIS_PRICE_FIELD: "0.6",
-                },
-            ],
-        ),
-    ),
-)
-def test_followed_wallet_state_rejects_duplicate_contract_entries(
-    section: str,
-    value: object,
-) -> None:
-    state = {
-        FOLLOW_EPOCH_FIELD: 1,
-        FOLLOW_ACTIVE_FIELD: True,
-        FOLLOWED_AT_MS_FIELD: 0,
-        FOLLOW_BOOTSTRAPPED_FIELD: False,
-        FOLLOW_BASELINES_FIELD: [],
-        FOLLOW_MOVEMENTS_FIELD: [],
-        FOLLOW_SOURCE_IDS_FIELD: [],
-        FOLLOW_CHECKPOINT_FIELD: None,
-        FOLLOW_SETTLEMENTS_FIELD: [],
-        FOLLOW_EPOCH_HISTORY_FIELD: [],
-    }
-    state[section] = value
-
-    with pytest.raises(ValueError, match="duplicates"):
-        load_states(
-            {
-                FOLLOW_STATE_VERSION_FIELD: FOLLOW_STATE_VERSION,
-                FOLLOW_WALLETS_FIELD: {WALLET: state},
-            }
-        )
-
-
-def test_resolution_ledger_accepts_arbitrary_outcome_label(tmp_path) -> None:
-    ledger = ResolutionLedger(tmp_path / "resolutions.json")
-    event = replace(_resolution(), winning_outcome="Candidate A")
-
-    ledger.record(
-        MarketSettlementEvent(
-            resolution=event,
-            paper_positions=(),
-            followed_wallet_positions=(),
-            settled_at_ms=2_001,
-        )
-    )
-
-    assert ResolutionLedger(tmp_path / "resolutions.json").contains(event)
-
-
-def test_resolution_ledger_rejects_malformed_persisted_record(tmp_path) -> None:
-    path = tmp_path / "resolutions.json"
-    path.write_text(
-        json.dumps(
-            {
-                RESOLUTION_LEDGER_VERSION_FIELD: RESOLUTION_LEDGER_VERSION,
-                RESOLUTION_RECORDS_FIELD: {
-                    "condition-market": {
-                        "winning_token_id": "yes-market",
-                        "winning_outcome": YES_OUTCOME,
-                        "resolved_at_ms": "bad",
-                        "settled_at_ms": 2_001,
-                        "source": "test",
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="resolution ledger"):
-        ResolutionLedger(path)
-
-
-def test_resolution_ledger_rejects_unsupported_version(tmp_path) -> None:
-    path = tmp_path / "resolutions.json"
-    path.write_text(
-        json.dumps({RESOLUTION_LEDGER_VERSION_FIELD: RESOLUTION_LEDGER_VERSION + 1}),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="unsupported resolution ledger version"):
-        ResolutionLedger(path)
-
-
-def test_resolution_ledger_rejects_boolean_schema_version(tmp_path) -> None:
-    path = tmp_path / "resolutions.json"
-    path.write_text(
-        json.dumps(
-            {
-                RESOLUTION_LEDGER_VERSION_FIELD: True,
-                RESOLUTION_RECORDS_FIELD: {},
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="unsupported resolution ledger version"):
-        ResolutionLedger(path)
-
-
-def test_resolution_ledger_rejects_nonempty_unversioned_state(tmp_path) -> None:
-    path = tmp_path / "resolutions.json"
-    path.write_text(json.dumps({"unexpected": True}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="unsupported resolution ledger version"):
-        ResolutionLedger(path)
-
-
-def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ignored(
-    tmp_path,
-) -> None:
-    registry = TrackedMarketRegistry()
-    registry.add(_market(), MarketInterest.CONFIGURED)
-    tracker = FollowedWalletTracker(tmp_path / "follow.json")
-    ledger = ResolutionLedger(tmp_path / "resolutions.json")
+    tracker = FollowedWalletTracker()
     mismatched = replace(_resolution(), market_slug="other-market")
-    ledger.record(
-        MarketSettlementEvent(
-            resolution=_resolution(),
-            paper_positions=(),
-            followed_wallet_positions=(),
-            settled_at_ms=2_001,
-        )
-    )
 
     class Runner:
         async def dispatch_market_resolution(self, event):
@@ -1552,7 +869,6 @@ def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ign
                 registry=registry,
                 followed_wallets=tracker,
                 paper_broker=PaperPortfolio(Decimal("100")),  # type: ignore[arg-type]
-                resolution_ledger=ledger,
                 observer=None,
             )
         )
@@ -1566,13 +882,110 @@ def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ign
                 registry=registry,
                 followed_wallets=tracker,
                 paper_broker=PaperPortfolio(Decimal("100")),  # type: ignore[arg-type]
-                resolution_ledger=ledger,
                 observer=None,
             )
         )
         is None
     )
     assert registry.entries
+
+
+def test_resolution_is_idempotent_for_one_paper_run() -> None:
+    registry = TrackedMarketRegistry()
+    registry.add(_market(), MarketInterest.CONFIGURED)
+    calls: list[str] = []
+
+    class Paper:
+        portfolio = PaperPortfolio(Decimal("100"))
+
+        def snapshot(self):
+            return ()
+
+        def restore(self, snapshot) -> None:
+            return None
+
+        def settle_market(self, event):
+            calls.append("paper")
+            return ()
+
+    class Runner:
+        async def dispatch_market_resolution(self, event):
+            calls.append("hook")
+
+    async def run() -> None:
+        service = ResolutionSettlementService(
+            Runner(),  # type: ignore[arg-type]
+            registry=registry,
+            followed_wallets=FollowedWalletTracker(),
+            paper_broker=Paper(),  # type: ignore[arg-type]
+            observer=None,
+        )
+        await service.apply(_resolution())
+        await service.apply(_resolution())
+
+    asyncio.run(run())
+    assert calls == ["paper", "hook"]
+    assert registry.entries == ()
+
+
+def test_resolution_rolls_back_current_run_state_when_followed_settlement_fails() -> None:
+    registry = TrackedMarketRegistry()
+    registry.add(_market(), MarketInterest.CONFIGURED)
+    calls: list[str] = []
+
+    paper = PaperBroker(BotConfig(name="rollback"), object())  # type: ignore[arg-type]
+    paper.portfolio.apply_fill(
+        token_id="yes-market",
+        side=Side.BUY,
+        filled_size=Decimal("2"),
+        average_price=Decimal("0.4"),
+        fee_usdc=Decimal("0"),
+    )
+    paper._position_market_refs["yes-market"] = ("condition-market", "market")
+    initial_paper_state = paper.snapshot()
+
+    class FailingFollowedWalletTracker(FollowedWalletTracker):
+        def settle(self, event):
+            super().settle(event)
+            raise RuntimeError("followed settlement failed")
+
+    class Runner:
+        async def dispatch_market_resolution(self, event):
+            calls.append("hook")
+
+    followed_wallets = FailingFollowedWalletTracker()
+    followed_wallets.synchronize((WALLET,))
+    followed_wallets.bootstrap(
+        WALLET,
+        (
+            (
+                Position(
+                    token_id="yes-market",
+                    size=Decimal("2"),
+                    condition_id="condition-market",
+                    market_slug="market",
+                    outcome=YES_OUTCOME,
+                ),
+                Decimal("0.4"),
+            ),
+        ),
+    )
+    initial_followed_state = followed_wallets.snapshot()
+    service = ResolutionSettlementService(
+        Runner(),  # type: ignore[arg-type]
+        registry=registry,
+        followed_wallets=followed_wallets,  # type: ignore[arg-type]
+        paper_broker=paper,  # type: ignore[arg-type]
+        observer=None,
+    )
+
+    with pytest.raises(RuntimeError, match="followed settlement failed"):
+        asyncio.run(service.apply(_resolution()))
+
+    assert paper.snapshot() == initial_paper_state
+    assert followed_wallets.snapshot() == initial_followed_state
+    assert registry.entries
+    assert calls == []
 
 
 def test_resolution_stream_events_are_not_coalesced_or_charted() -> None:
@@ -1833,7 +1246,6 @@ async def _apply_resolution(
     registry: TrackedMarketRegistry,
     followed_wallets: FollowedWalletTracker,
     paper_broker: PaperBroker,
-    resolution_ledger: ResolutionLedger,
     observer: RuntimeObserver | None,
 ) -> MarketSettlementEvent | None:
     return await ResolutionSettlementService(
@@ -1841,7 +1253,6 @@ async def _apply_resolution(
         registry=registry,
         followed_wallets=followed_wallets,
         paper_broker=paper_broker,
-        resolution_ledger=resolution_ledger,
         observer=observer,
     ).apply(event)
 
@@ -1852,7 +1263,6 @@ async def _settle_resolved_markets(
     registry: TrackedMarketRegistry,
     followed_wallets: FollowedWalletTracker,
     paper_broker: PaperBroker,
-    resolution_ledger: ResolutionLedger,
     observer: RuntimeObserver | None,
 ) -> None:
     await ResolutionSettlementService(
@@ -1860,6 +1270,5 @@ async def _settle_resolved_markets(
         registry=registry,
         followed_wallets=followed_wallets,
         paper_broker=paper_broker,
-        resolution_ledger=resolution_ledger,
         observer=observer,
     ).settle_existing()

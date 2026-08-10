@@ -1,6 +1,5 @@
 """Wallet-trade dispatch and dynamic market registration."""
 
-from polybot.async_io import run_blocking
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.clob import ClobClient
@@ -49,7 +48,7 @@ async def dispatch_wallet_trade(
     if not outcome.accepted:
         return outcome
     if followed_wallets is not None:
-        await run_blocking(followed_wallets.record_trade, event)
+        followed_wallets.record_trade(event)
     if registry is not None and market is not None:
         registry.add(market, MarketInterest.FOLLOWED_WALLET, owner=event.wallet)
     return outcome

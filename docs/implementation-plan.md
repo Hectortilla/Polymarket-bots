@@ -235,9 +235,8 @@ Implementation notes:
   pinned SDK does not provide an arbitrary-wallet stream. Compatible injected
   sources remain optional low-latency additions; a stream fails closed only
   when neither a client nor a source is configured.
-- CLI paper runs use an atomic file-backed source-claim store under
-  `.bot-state/` to preserve wallet-event idempotency across restarts without
-  adding a database dependency.
+- CLI paper runs retain source-event idempotency only for one process. A restart
+  deliberately begins a new paper run rather than attempting a partial resume.
 
 No app imports.
 
@@ -346,7 +345,7 @@ Recording behavior:
   hash as a fabricated exchange sequence.
 - Use one caller-owned SQLite file containing sessions, metadata revisions,
   chronological recorded events, book checkpoints, and coverage gaps. Keep it
-  independent of `.bot-state/`, the Polyfollow database, and application
+  independent of the paper runtime, the Polyfollow database, and application
   migrations.
 - Keep SQLite behind `RecordingArchive` and expose reads through
   `RecordingReader`. Use package-owned `RecordedEvent`, `BookCheckpoint`,
@@ -588,7 +587,7 @@ Command and selection contract:
   when none is supplied.
 - Keep `BotConfig.mode=paper`, reject `BOT_MODE=live`, and run backtests
   headless by default. Never construct SDK clients, perform network I/O, or
-  touch `.bot-state/` during replay.
+  perform paper-runtime persistence during replay.
 
 Replay behavior:
 
@@ -802,9 +801,9 @@ Status: done.
 - Keep filtered rules as strict allowlists; allow wallet-only and independent
   rules to discover markets. Retain unresolved dynamic entries across stream
   plan changes.
-- Bootstrap newly followed wallets from current open positions only. Persist
-  follow epochs, executable baselines, deterministic movement journals, source
-  IDs, checkpoints, and settlements atomically under `.bot-state/`.
+- Bootstrap newly followed wallets from current open positions only. Keep follow
+  epochs, executable baselines, deterministic movement journals, source IDs, and
+  settlements in memory for the current paper run.
 - Bootstrap absolute wallet follows from all current positions, but use the
   Data API market condition-ID filter for filtered wallet follows so unrelated
   positions are never loaded into follow state.
@@ -822,7 +821,7 @@ Status: done.
   at the interval owned by `RESOLUTION_RECONCILIATION_SECONDS`.
 - Settle paper and followed-wallet positions at `1` for the winning token and
   `0` for the losing token. Transfer paper payout to cash, archive wallet
-  journals, persist idempotency, then invoke `BaseBot.on_market_resolved()`.
+  journals in memory, then invoke `BaseBot.on_market_resolved()`.
 - Emit non-coalesced resolution and observer settlement events. A successful
   settlement is terminal: remove the condition from the union subscription and
   clear both outcome tokens from the dashboard series, legend, labels, ticker,
@@ -839,11 +838,12 @@ Acceptance:
   independent rules can expand the registry.
 - Bootstrap PnL starts at zero when an executable mark exists and remains
   unavailable when it does not.
-- Buys, sells, out-of-order delivery, duplicates, restarts, removal/re-add, and
-  resolution produce deterministic gross accounting.
-- Resolution settlement is persisted before the bot hook and is idempotent.
+- Buys, sells, out-of-order delivery, duplicates, removal/re-add, and resolution
+  produce deterministic gross accounting within one run.
+- Resolution settlement is idempotent within one run and occurs before the bot
+  hook.
 - Resolved markets leave the next union handle while unresolved entries remain,
-  cannot be re-admitted after restart from configured, wallet, or paper
+  cannot be re-admitted during the run from configured, wallet, or paper
   position interests, and are settled before a bootstrap/rebuild can subscribe
   to a Gamma-known resolved market.
 - Gamma reconciliation recovers lifecycle events missed by the stream.

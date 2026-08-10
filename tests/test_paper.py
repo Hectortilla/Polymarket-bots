@@ -13,7 +13,6 @@ from polybot.execution.paper import (
     PaperBroker,
 )
 from polybot.execution.paper.continuity import BookContinuity
-from polybot.execution.paper.idempotency import FileSourceIdempotencyStore
 from polybot.execution.paper.latency import latency_ms
 from polybot.execution.paper.market_data import (
     MARKET_CONSTRAINTS_UNAVAILABLE_MESSAGE,
@@ -405,40 +404,6 @@ def test_paper_broker_rejects_ambiguous_clock_overrides() -> None:
             sleep_fn=_noop_sleep,
         )
 
-
-def test_paper_broker_rejects_persisted_duplicate_before_book_lookup(tmp_path) -> None:
-    async def run():
-        path = tmp_path / "source-ids"
-        store = FileSourceIdempotencyStore(path)
-        assert store.claim("leader\\0trade-1") is True
-        broker = PaperBroker(
-            BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
-            StaticBooks(
-                _book(
-                    token_id="123",
-                    ask_prices=(Decimal("0.30"),),
-                    received_at_ms=1_000,
-                    market_slug=DEFAULT_MARKET_SLUG,
-                )
-            ),
-            StaticMarkets(_market()),
-            source_store=FileSourceIdempotencyStore(path),
-        )
-        return await broker.submit(
-            OrderRequest(
-                token_id="123",
-                side=Side.BUY,
-                price=Decimal("0.30"),
-                size=Decimal("1"),
-                market_slug=DEFAULT_MARKET_SLUG,
-                source_id="leader\\0trade-1",
-            )
-        )
-
-    fill = asyncio.run(run())
-    assert fill.status is OrderStatus.REJECTED
-    assert fill.reject_reason is FillRejectReason.DUPLICATE_SOURCE_ID
-    assert fill.average_price is None
 
 
 def test_larger_order_has_equal_or_worse_average_price() -> None:

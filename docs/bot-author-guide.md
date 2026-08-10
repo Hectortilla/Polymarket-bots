@@ -100,7 +100,7 @@ rules or other framework configuration. The discoverable typing contract is
 `on_market_resolved`
 
 - Receive a package-owned `MarketResolutionEvent` after paper and followed-wallet
-  positions are settled and resolution state is persisted.
+  positions are settled for the current run.
 
 Resolution event contracts are defined in
 `polybot.framework.events.resolutions`; import that module directly when a bot
@@ -329,7 +329,7 @@ uv run python -m polybot.cli \
 A replay uses the same bot factory, hooks, `BotRunner`, paper broker, order
 requests, and fill events as a paper run. It is headless by default and reads
 only the selected archive: no SDK/network client is constructed and
-`.bot-state/` is not read or written. `BOT_MODE=live`, wallet stream rules,
+No paper-runtime state is read or written. `BOT_MODE=live`, wallet stream rules,
 private-user inputs, maker-queue assumptions, and dependencies on unrecorded
 external reference feeds are rejected.
 

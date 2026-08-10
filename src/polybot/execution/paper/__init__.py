@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from itertools import count
 
-from polybot.async_io import run_blocking
 from polybot.execution.broker import Broker
 from polybot.framework.clock import Clock, ClockDataExhaustedError, SystemClock
 from polybot.framework.config.models import BotConfig
@@ -20,6 +19,7 @@ from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent, SettledPosition
 
 from .fill_math import simulate_fill
+from .portfolio import PaperPortfolioSnapshot
 from .contracts import (
     BAD_BOOK_LEVEL_MESSAGE,
     BACKTEST_COVERAGE_GAP_MESSAGE,
@@ -33,7 +33,6 @@ from .contracts import (
     PAPER_ORDER_ID_PREFIX,
 )
 from .continuity import BookContinuity, BookContinuitySource
-from .idempotency import DUPLICATE_SOURCE_MESSAGE, SourceIdempotencyStore
 from .market_data import (
     FillMarketData,
     MARKET_FEE_INVALID_MESSAGE,
@@ -44,7 +43,7 @@ from .market_data import (
     validate_fill_market_data,
 )
 from .latency import latency_ms
-from .portfolio import PaperPortfolio, PaperPortfolioSnapshot
+from .portfolio import PaperPortfolio
 from .validation import classify_book, validate_order
 
 SleepFn = Callable[[float], Awaitable[None]]
@@ -70,7 +69,6 @@ class PaperBroker(Broker):
         clock: Clock | None = None,
         sleep_fn: SleepFn | None = None,
         now_ms_fn: NowMsFn | None = None,
-        source_store: SourceIdempotencyStore | None = None,
         continuity_source: BookContinuitySource | None = None,
     ) -> None:
         if clock is not None and (sleep_fn is not None or now_ms_fn is not None):
@@ -86,7 +84,6 @@ class PaperBroker(Broker):
         self._portfolio = PaperPortfolio(config.paper_portfolio_usdc)
         self._source_claim_lock = asyncio.Lock()
         self._fills_by_source_id: dict[str, asyncio.Future[FillEvent]] = {}
-        self._source_store = source_store
         self._continuity_source = continuity_source
         self._settled_conditions: set[str] = set()
         self._position_market_refs: dict[str, tuple[str, str]] = {}
@@ -101,7 +98,9 @@ class PaperBroker(Broker):
 
     def snapshot(
         self,
-    ) -> tuple[PaperPortfolioSnapshot, set[str], dict[str, tuple[str, str]],]:
+    ) -> tuple[PaperPortfolioSnapshot, set[str], dict[str, tuple[str, str]]]:
+        """Capture current-run settlement state for rollback."""
+
         return (
             self._portfolio.snapshot(),
             self._settled_conditions.copy(),
@@ -116,6 +115,8 @@ class PaperBroker(Broker):
             dict[str, tuple[str, str]],
         ],
     ) -> None:
+        """Restore a current-run settlement snapshot."""
+
         portfolio_snapshot, settled_conditions, position_market_refs = snapshot
         self._portfolio.restore(portfolio_snapshot)
         self._settled_conditions = settled_conditions.copy()
@@ -145,32 +146,13 @@ class PaperBroker(Broker):
             # A caller may cancel without abandoning the shared source-id claim.
             return await asyncio.shield(claimed_fill)
 
-        source_claimed = False
         try:
-            if self._source_store is not None:
-                source_claimed = await run_blocking(
-                    self._source_store.claim, order.source_id
-                )
-            if self._source_store is not None and not source_claimed:
-                fill = FillEvent.rejected(
-                    order_id=f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}",
-                    token_id=order.token_id,
-                    side=order.side,
-                    requested_size=order.size,
-                    received_at_ms=self._now_ms(),
-                    reject_reason=FillRejectReason.DUPLICATE_SOURCE_ID,
-                    reject_message=DUPLICATE_SOURCE_MESSAGE,
-                )
-                _complete_claim(claimed_fill, fill)
-                return fill
             fill = await self._submit_once(order)
             _complete_claim(claimed_fill, fill)
             return fill
         except BaseException as exc:
             if not claimed_fill.done():
                 claimed_fill.set_exception(exc)
-            if self._source_store is not None and source_claimed:
-                await run_blocking(self._source_store.release, order.source_id)
             async with self._source_claim_lock:
                 if self._fills_by_source_id.get(order.source_id) is claimed_fill:
                     self._fills_by_source_id.pop(order.source_id, None)
