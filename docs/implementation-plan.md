@@ -1,6 +1,9 @@
 # Implementation Plan
 
-Implement this package in small slices. Do not connect it to the main app.
+Implement this package in small slices. Do not connect it to the Polyfollow app.
+Slices 12A through 12E plan a standalone web control plane inside this
+repository; they do not authorize imports from Polyfollow application code,
+models, workers, frontend, or configuration.
 
 Latency is a product requirement. Each implementation slice must prefer the
 fastest correct source available and document any fallback that is slower than
@@ -847,3 +850,244 @@ Acceptance:
   position interests, and are settled before a bootstrap/rebuild can subscribe
   to a Gamma-known resolved market.
 - Gamma reconciliation recovers lifecycle events missed by the stream.
+
+## Slice 12A: Web Control-Plane Contracts, Catalog, and Persistence
+
+Status: planned.
+
+Scope is limited to the backend contracts and durable store specified in
+`web-control-plane-spec.md` and `web-control-plane-architecture.md`. Do not add
+an API server, Taskiq execution, Redis delivery, or frontend in this slice.
+
+- Add the separate inward-dependent `polybot_control_plane` package. Existing
+  `polybot` modules must not import it.
+- Add and pin FastAPI/Pydantic, SQLModel/SQLAlchemy async PostgreSQL, async
+  PostgreSQL driver, and Alembic dependencies selected for implementation.
+- Define the public typed run states, event kinds, failure codes, catalog
+  descriptors, launch requests, run responses, chart contracts, and problem
+  responses once in their owning modules.
+- Use non-table SQLModel field bases inherited by table and API models only
+  where field semantics are identical. Never inherit from table models.
+- Add the run and append-only durable-event tables, indexes, constraints, and
+  first Alembic migration. Store decimals as canonical strings and timestamps
+  as UTC-aware values at boundaries.
+- Keep bot definitions code-owned. Register the six distinct existing callable
+  factories, clearly labeling examples and the non-trading watcher; do not
+  register the duplicate default alias separately.
+- Give every catalog entry one concrete Pydantic launch-input model. Derive its
+  JSON Schema Draft 2020-12 document with `model_json_schema()` rather than
+  maintaining a second field definition. Add a small versioned UI-hint
+  vocabulary and express bot-managed versus user-configured market/wallet
+  selection explicitly.
+- Validate catalog uniqueness, factory validity, supported widget kinds,
+  definition versions, paper-only mode, and absence of credential inputs at
+  startup.
+- Implement repository and transition services for immutable run creation,
+  event append/read, atomic worker claim, heartbeat, idempotent stop, terminal
+  guards, and interrupted lease reconciliation.
+- Add no user, tenant, authentication, entitlement, payment, live credential,
+  ECS, graph-definition, retention, or deletion model.
+
+Acceptance:
+
+- Migrations create and downgrade the intended PostgreSQL schema in tests.
+- Public response models cannot expose execution references, leases, internal
+  diagnostics, or future credential-shaped values accidentally.
+- Catalog descriptors validate and adding a trusted definition with existing
+  field/widget types requires no contract change.
+- A submitted stale definition version fails with a stable conflict.
+- Atomic claims prevent two owners; repeated stop and terminal transitions are
+  deterministic.
+- A run's normalized launch inputs and resolved sanitized config remain
+  immutable after creation.
+
+## Slice 12B: Taskiq Execution and Durable Runtime Projection
+
+Status: planned; depends on Slice 12A.
+
+- Add and pin Taskiq, its official Redis broker integration, and the async Redis
+  client selected for implementation.
+- Define a narrow `RunLauncher` boundary accepting only a durable run UUID and
+  returning an opaque execution reference.
+- Implement the Redis/Taskiq launcher and `execute_run(run_id)` task. Do not
+  implement ECS; document the future `RunTask` substitution at the boundary.
+- Commit a run before launch. A delivery failure transitions it to `failed`
+  with `launch_failed`; no in-memory-only run may exist.
+- Re-read and atomically claim the run in the worker. Duplicate/redelivered
+  messages for claimed, stopped, or terminal runs are no-ops.
+- Resolve the exact trusted definition version, reconstruct validated paper
+  `BotConfig`, instantiate the bot, and invoke existing
+  `polybot.runtime.run_bot()`.
+- Add database heartbeat plus Redis-assisted/database-polled cooperative stop.
+  User stop drains normal cleanup and becomes `stopped`; missing ownership
+  beyond the lease becomes `interrupted` without relaunch.
+- Add a fail-open web runtime observer. Its synchronous `emit()` performs only
+  in-memory projection/enqueue work; owned async tasks perform PostgreSQL and
+  Redis I/O.
+- Persist normalized lifecycle, bootstrap, bot activity, orders, fills, broker
+  failures, settlements, portfolio, wallet-timeline, sampled-health, and
+  runtime-failure events. Do not persist every raw book or dispatch frame.
+- Drain accepted durable events on graceful stop. Keep observer/storage errors
+  fail-open for paper strategy execution and visible in service logs.
+- Default deployment capacity to four concurrent runs; leave extra broker
+  messages queued. Capacity remains deployment configuration, not a user field.
+
+Acceptance:
+
+- Two or more deterministic fake bots run concurrently with isolated state.
+- Delivery of one run message twice cannot create two bot instances.
+- A queued run stopped before claim never starts when its message is consumed.
+- Running stop is idempotent and reaches the existing `on_stop`/resource-close
+  path.
+- Worker loss becomes `interrupted`; restarting services never restores or
+  automatically launches paper state.
+- Runtime observer or Redis publication failure cannot alter bot dispatch,
+  orders, fills, or shutdown.
+
+## Slice 12C: FastAPI Runs API and SSE
+
+Status: planned; depends on Slices 12A and 12B.
+
+- Build the FastAPI application in `polybot_control_plane` with versioned
+  `/api/v1` routes and no import from Polyfollow application code.
+- Implement catalog list/detail; run create/list/detail/stop; durable event
+  history; SSE event stream; and liveness/readiness endpoints exactly as
+  specified in `web-control-plane-architecture.md`.
+- Keep API workers stateless regarding live bot ownership. Any Uvicorn worker
+  must be able to inspect, stop, or stream any run.
+- Validate and normalize definition inputs at ingress, construct a paper-only
+  config, persist before launch, and return `202 Accepted`.
+- Return one typed problem shape with stable application codes and safe field
+  errors. Do not expose tracebacks, database details, factory paths, or secrets.
+- Use the durable event bigint as the SSE cursor. Replay rows after
+  `Last-Event-ID`/`after`, subscribe for wake-ups, then recheck PostgreSQL to
+  close the replay/live race.
+- Emit durable events with SSE IDs and ephemeral frames without IDs. Add idle
+  comments, disconnect cleanup, bounded per-client buffering, and PostgreSQL
+  polling degradation when Redis notification is unavailable.
+- Export FastAPI OpenAPI deterministically without requiring a running server.
+  Ensure the HTTP event-history response exposes the same public envelope used
+  by the handwritten frontend SSE adapter.
+- Do not add authentication, CORS for a separate production origin, live mode,
+  or user/tenant filtering.
+
+Acceptance:
+
+- API contract tests cover validation, definition conflict, pagination,
+  idempotent stop, and safe errors.
+- Multiple API processes can serve one run without local ownership assumptions.
+- Reconnect replays every missed durable event once and preserves order.
+- A publish between initial replay and Redis subscription is found by the
+  database recheck.
+- Ephemeral frames do not advance the browser's durable cursor.
+- Slow/disconnected SSE clients cannot backpressure a worker or leak tasks.
+
+## Slice 12D: Static SvelteKit Launch and Run UI
+
+Status: planned; depends on Slice 12C.
+
+- Create the `web/` SvelteKit TypeScript application using `adapter-static` and
+  client-side rendering. Add no SvelteKit server route, server action, or SSR.
+- Pin `@hey-api/openapi-ts` and generate Fetch SDK functions plus TypeScript
+  types from the committed FastAPI OpenAPI artifact. Generated files are never
+  hand-edited.
+- Add deterministic scripts and CI checks that export OpenAPI, regenerate the
+  SDK, fail on drift, and type-check the frontend.
+- Use the generated client for every ordinary HTTP request. Implement one
+  handwritten `EventSource` adapter for SSE lifecycle, cursor, parsing, and
+  durable dedupe while using the generated public event type.
+- Pin Ajv with the selected JSON Schema 2020-12 support. Render catalog launch
+  fields generically and provide owned widgets for decimal strings, market
+  slugs, wallet addresses, and stream rules.
+- Show an explanatory read-only state for bot-managed market/wallet selection;
+  the bot remains launchable and irrelevant selectors are not submitted.
+- Implement home catalog, active/queued runs, recent terminal runs, launch
+  form, run detail, configuration, status, portfolio, activity, orders, fills,
+  failures, settlements, health, and idempotent Stop.
+- Use the same-origin `/api/` contract. Add no authentication UI, account
+  state, payment UI, live credentials, delete, rerun, schedule, pause, resume,
+  backtest, or recorder controls.
+
+Acceptance:
+
+- Adding a trusted backend definition with existing schema/widget kinds needs
+  no launch-page code change.
+- Client validation provides immediate field feedback and the UI renders
+  authoritative backend field errors.
+- Reload restores a run from durable HTTP data before SSE continuation.
+- Queued, running, stopped, failed, and interrupted runs are distinguishable.
+- No handwritten ordinary fetch contract or duplicated API model exists.
+
+## Slice 12E: Browser Dashboard Parity
+
+Status: planned; depends on Slices 12B through 12D.
+
+- Extract only the presentation-neutral projection policy needed by terminal
+  and web observers. Do not move Rich, FastAPI, SQLModel, Redis, ECharts, or HTTP
+  behavior into shared code.
+- Reuse `polybot.performance.valuation.value_portfolio` and existing accepted
+  book, stale/unavailable, stable token selection, trade-marker, settlement
+  removal, wallet-lane, dispatch-result, and resampling semantics.
+- Project live chart frames at 250 ms for Redis/SSE delivery and append one
+  durable derived chart sample per second. Never persist raw order books.
+- Pin Apache ECharts and wrap it with one thin `EChart.svelte` lifecycle
+  component owning client initialization, option updates, resize, theme,
+  accessibility label, and disposal.
+- Build domain-owned market price, executable equity, followed-wallet timeline,
+  and combined run-chart Svelte components. Pages must not call ECharts APIs.
+- Match terminal behavior: maximum twenty stable token series, `0..1` price
+  scale, fresh/stale/gap rendering, buy/sell markers, variance-padded equity,
+  resolution removal, wallet lanes, buy/sell/mixed and relative-notional
+  markers, dim skipped buckets, and a shared visible time range.
+- Support visible controls plus `z`/`x`/`r` time navigation, `v` market/wallet
+  toggle, and `j`/`k` wallet paging. Preserve visible time bounds and responsive
+  wide/stacked layout.
+- Merge the detailed in-memory live window with durable one-second history
+  without claiming the older samples have 250 ms resolution.
+
+Acceptance:
+
+- Equivalent synthetic runtime events produce the same semantic series,
+  valuation quality, marker placement, wallet buckets, and settlement removal
+  in terminal and web projections.
+- Browser refresh/reconnect restores durable samples and continues with live
+  frames without duplicate durable points.
+- Twenty-token admission is stable and overflow never rotates visible series.
+- Stale estimates are never styled as current and unavailable values are never
+  coerced to zero.
+- Keyboard and clickable controls pass component/end-to-end tests.
+- ECharts/rendering/SSE failure cannot affect the executing paper bot.
+
+## Slice 12F: Compose Deployment and End-to-End Handoff
+
+Status: planned; depends on Slices 12A through 12E.
+
+- Add the Docker Compose topology for static frontend/reverse proxy, multi-worker
+  FastAPI, Taskiq worker, PostgreSQL, Redis, and explicit one-shot Alembic
+  migration.
+- Expose one same-origin entrypoint. Keep PostgreSQL, Redis, and Taskiq private
+  to the Compose network and disable production CORS for unrelated origins.
+- Document environment configuration, dependency startup, migrations,
+  frontend/API development, generated-client refresh, tests, worker capacity,
+  heartbeat/lease tuning, private-network restriction, and clean shutdown.
+- Add health checks and deterministic service dependencies without running
+  migrations concurrently in every API worker.
+- Add end-to-end coverage for launch, concurrency queueing, live progress,
+  chart/wallet toggle, stop, reload, SSE reconnect, queued cancellation, and
+  worker-loss interruption.
+- Re-run the standalone extraction checks. Existing CLI, recorder, backtester,
+  and terminal dashboard must remain functional without starting PostgreSQL,
+  Redis, FastAPI, Taskiq, or the frontend.
+
+Acceptance:
+
+- A documented Compose command starts the complete private v0 stack after the
+  migration step.
+- FastAPI runs with more than one Uvicorn worker while all workers can operate
+  on the same run.
+- Four runs execute concurrently by default and a fifth remains queued until
+  capacity is available.
+- Public-network exposure is explicitly unsupported without an external access
+  boundary.
+- `uv run pytest`, backend integration tests, frontend checks, and end-to-end
+  commands are documented and pass in their declared environments.

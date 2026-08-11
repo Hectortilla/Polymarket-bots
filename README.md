@@ -18,6 +18,16 @@ Start with:
 - `docs/api-notes.md`
 - `docs/implementation-plan.md`
 
+Planned, not yet implemented, web-control-plane work is specified separately:
+
+- `docs/web-control-plane-spec.md`
+- `docs/web-control-plane-architecture.md`
+
+That plan adds a private, paper-only SvelteKit/FastAPI control plane around this
+standalone package. Until its implementation slices are complete, the current
+package still has no FastAPI application, PostgreSQL run store, Taskiq worker,
+Redis event path, or web frontend.
+
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
 paper runner CLI, Slice 9A historical market recorder and local trim

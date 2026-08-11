@@ -61,7 +61,7 @@ must not import SDK types. The selected library version must be pinned and its
 adapter behavior covered by contract tests, especially while
 `polymarket-client` remains beta.
 
-## Non-Goals
+## Current Non-Goals
 
 - No FastAPI routes.
 - No frontend integration.
@@ -69,6 +69,13 @@ adapter behavior covered by contract tests, especially while
   user-selected SQLite file is a standalone local artifact.
 - No mirror-follow app behavior.
 - No RFQ, combo, perps, bridge, or redemption support in v1.
+
+These statements describe the implemented bot-framework boundary. The planned
+paper-only Web Control Plane v0 deliberately changes the first three in later
+implementation slices without connecting this repository to the Polyfollow
+application. See `web-control-plane-spec.md` and
+`web-control-plane-architecture.md`. Until those slices are implemented, this
+section remains the current behavior.
 
 ## Package Layout
 
