@@ -23,6 +23,10 @@ Planned, not yet implemented, web-control-plane work is specified separately:
 - `docs/web-control-plane-spec.md`
 - `docs/web-control-plane-architecture.md`
 
+The architecture document also defines strict field, abstraction, module,
+validation, safety, and test budgets for each implementation slice. A task that
+names one Slice 12 sub-slice must not scaffold later slices.
+
 That plan adds a private, paper-only SvelteKit/FastAPI control plane around this
 standalone package. Until its implementation slices are complete, the current
 package still has no FastAPI application, PostgreSQL run store, Taskiq worker,

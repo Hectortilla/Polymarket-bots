@@ -1,495 +1,397 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned. This document defines the implementation contract for the
-product in `docs/web-control-plane-spec.md`; it does not describe currently
-implemented code.
-
-## Architectural Principles
-
-- Keep `polybot` framework, execution, Polymarket adapters, recording, and
-  backtesting independent of FastAPI, SQLModel, Taskiq, Redis, and SvelteKit.
-- Put the control plane in a separate inward-dependent package. The control
-  plane may import `polybot`; `polybot` must not import the control plane.
-- Keep official Polymarket clients and models inside existing
-  `polybot.polymarket` adapters. This slice adds no new Polymarket endpoint or
-  transport.
-- Keep API processes stateless with respect to live bot ownership.
-- Treat PostgreSQL as the source of truth for run commands, state, durable
-  events, and durable chart samples.
-- Treat Taskiq as an initial delivery/execution mechanism, not a public run
-  state machine.
-- Treat Redis Pub/Sub as notification and ephemeral fan-out, not durable
-  history.
-- Preserve the existing fail-open `RuntimeObserver` boundary.
-- Reuse shared valuation and dashboard semantics instead of implementing a web
-  PnL formula.
-
-## System Context
-
-```text
-trusted operator
-  -> same-origin static SvelteKit application
-  -> FastAPI control-plane API
-  -> PostgreSQL
-
-FastAPI
-  -> RunLauncher
-  -> Taskiq / Redis broker
-  -> Taskiq worker
-  -> execute_run(run_id)
-  -> existing polybot runtime and official Polymarket adapters
-
-execute_run observer
-  -> PostgreSQL durable state/events
-  -> Redis Pub/Sub wake-ups and 250 ms chart frames
-  -> FastAPI SSE
-  -> SvelteKit run detail
-```
-
-API workers and bot workers scale independently. No Uvicorn worker stores the
-only reference to a bot task, cancellation event, or progress queue.
-
-## Planned Repository Boundaries
-
-```text
-src/
-  polybot/                    # Existing standalone bot framework.
-  polybot_control_plane/      # Planned FastAPI/control-plane package.
-    api/                      # Routes, dependencies, and public errors.
-    catalog/                  # Trusted bot definitions and launch descriptors.
-    contracts/                # Pure Pydantic API/SSE/chart contracts.
-    database/                 # Engine, sessions, SQLModel rows, and migrations.
-    events/                   # Runtime-event projection and durable writer.
-    execution/                # RunLauncher, Taskiq task, run entrypoint.
-    runs/                     # Lifecycle transitions, claims, stops, heartbeat.
-    charts/                   # Presentation-neutral chart projection/sampling.
-web/                          # Planned SvelteKit TypeScript application.
-```
-
-Package `__init__.py` files are not barrel exports. Modules remain named by
-their responsibility. The static web build and API are deployment peers; the
-frontend is not imported by Python code.
-
-## Backend Stack
-
-- Python 3.12.
-- FastAPI and Pydantic.
-- SQLModel over SQLAlchemy 2, using PostgreSQL through `asyncpg`.
-- Alembic for schema migrations; application startup never calls
-  `metadata.create_all()` in production.
-- Taskiq with the official Redis broker integration.
-- Redis Pub/Sub through the async Redis client.
-- FastAPI `StreamingResponse` for `text/event-stream`.
-
-All new dependencies must be pinned according to repository policy when the
-implementation slice selects versions.
-
-## Model Ownership and Reuse
-
-Use SQLModel's data-model-first inheritance pattern:
-
-```text
-non-table SQLModel fields
-  -> table=True SQLModel row
-  -> create/read/update API SQLModel where semantics are identical
-```
-
-Never inherit an API model from a table model. Database-only identifiers,
-leases, diagnostics, execution references, and internal timestamps remain off
-public models unless explicitly required. Do not force semantically different
-database and API fields into one base merely to avoid spelling them twice.
-
-Use pure Pydantic `BaseModel` contracts for shapes that are not database rows,
-including catalog descriptors, JSON Schema/UI metadata, SSE envelopes, chart
-frames, and health responses.
-
-Finite states and event kinds use typed enums defined once in the smallest
-owning control-plane module. Database, API, worker, and tests import those
-definitions rather than copying string literals.
-
-## Persistent Model
-
-### Run
-
-The run table owns:
-
-- UUID primary key;
-- optional operator-visible name;
-- bot-definition ID and version;
-- immutable normalized launch-input JSON;
-- immutable sanitized `BotConfig` JSON;
-- typed public status;
-- created, claimed, started, stop-requested, stopped, and updated timestamps;
-- latest heartbeat timestamp;
-- execution-backend kind and opaque execution reference;
-- stable failure code and sanitized failure detail; and
-- latest public portfolio/health summary needed by list and detail pages.
-
-Credential fields are neither accepted nor stored. Decimal values serialize as
-canonical decimal strings. Timestamps are timezone-aware UTC values at the API
-and storage boundary.
-
-### Durable run event
-
-One append-only table owns all durable public progress and durable chart
-samples:
-
-- globally ordered bigint ID;
-- run UUID;
-- typed event kind;
-- source occurrence timestamp when available;
-- database persistence timestamp; and
-- versioned JSONB payload.
-
-The bigint ID is the durable SSE cursor. Index `(run_id, id)` and the queries
-needed for run history. A uniqueness rule prevents an internally retried
-projection from appending the same idempotency key twice where the source event
-provides one.
-
-The payload is decoded through the public Pydantic event union before leaving
-the repository boundary. API callers never receive a raw JSONB dictionary.
-
-### Bot definitions
-
-Bot definitions are code-owned constants in v0, not database rows. A definition
-contains its private factory reference, a concrete Pydantic launch-input model,
-and public versioned descriptor. The backend validates through that model and
-derives JSON Schema with `model_json_schema()`; it does not maintain an
-independent JSON Schema validator or second field declaration. Catalog startup
-validation rejects duplicate IDs/versions, unsupported schema/widget kinds,
-sensitive fields, live mode, or an invalid factory.
-
-## Catalog and Launch Validation
-
-`GET /api/v1/bot-definitions` returns public descriptors only. The launch input
-schema generated from the definition's Pydantic model uses JSON Schema Draft
-2020-12. UI annotations use a small versioned control-plane extension
-vocabulary; they do not change validation semantics.
-
-`POST /api/v1/runs` performs this boundary sequence:
-
-1. Resolve the trusted definition by public ID.
-2. Require the submitted definition version to match.
-3. Validate the input document against the definition contract.
-4. Normalize wallet addresses, stream rules, decimals, and standard config.
-5. Construct and validate a paper-only `BotConfig`.
-6. Persist the immutable run in `queued`.
-7. Commit before invoking the launcher.
-8. Ask the configured `RunLauncher` to start the run by UUID only.
-9. Store its opaque execution reference when available.
-10. If launch delivery fails, transition the run to `failed` with the stable
-    `launch_failed` code; do not leave an invisible in-memory launch.
-
-The launcher never receives a client-provided factory path or configuration
-object. The worker reloads the durable run and revalidates its catalog identity
-before constructing the bot.
-
-## RunLauncher Boundary
-
-The launcher has one narrow responsibility: request execution of a durable run
-UUID and return an opaque reference. Public endpoints and run state do not use
-Taskiq-specific statuses.
-
-### Initial Taskiq launcher
-
-- Enqueue `execute_run(run_id)` through the Redis-backed Taskiq broker.
-- Use Taskiq worker process and async-task limits for deployment capacity.
-- Do not use Taskiq result storage as run history.
-- Do not use Taskiq task termination as the Stop API.
-- Treat redelivery as normal and require an idempotent database claim.
-
-### Future ECS launcher
-
-A later `EcsRunLauncher` may call ECS `RunTask` for one standalone task and
-store the task ARN as its opaque reference. The container invokes the same
-`execute_run(run_id)` application entrypoint. It retrieves configuration from
-PostgreSQL; only the run UUID and deployment configuration cross the launch
-boundary.
-
-The future stop path first uses the same durable cooperative stop request and
-then may call ECS `StopTask` after a grace period. ECS task-state events are
-reconciliation evidence, not the public run state source. No ECS implementation
-is part of v0.
-
-## Worker Claim and Lifecycle
-
-`execute_run(run_id)`:
-
-1. Atomically lock and inspect the run.
-2. Exit without side effects if it is stopped, terminal, or actively claimed.
-3. Verify capacity/ownership rules and transition `queued -> starting`.
-4. Resolve the exact bot definition version and construct the normalized
-   paper-only config and bot.
-5. Start heartbeat and cooperative-stop watchers.
-6. Attach the web runtime observer and call existing `polybot.runtime.run_bot`.
-7. Translate runtime state changes into the public lifecycle.
-8. On requested cancellation, drain observer output and end in `stopped`.
-9. On an ordinary exception, persist `failed` without exposing secrets.
-10. On process loss, allow lease reconciliation to mark `interrupted`.
-
-The database claim, not broker delivery, prevents concurrent duplicates.
-Heartbeat interval, lease timeout, and configured worker concurrency are owned
-constants/environment settings with validation that keeps the timeout safely
-larger than the heartbeat interval.
-
-A stop request is a durable state transition. Redis may wake the worker
-immediately, while a database poll ensures a missed Pub/Sub message cannot make
-Stop ineffective. User stop and infrastructure interruption remain distinct:
-only a confirmed user stop produces `stopped`.
-
-## Runtime Event Projection
-
-The existing `RuntimeObserver.emit()` call is synchronous and fail-open. The web
-observer therefore performs only bounded in-memory projection/enqueue work in
-`emit()` and delegates database/Redis I/O to owned async tasks.
-
-Event handling has two lanes:
-
-- Lossless durable lane for lifecycle, bootstrap, activity, orders, fills,
-  broker failures, settlements, portfolio, wallet timeline, failure, and
-  sampled health events.
-- Latest-state/coalescing lane for raw books and other chart inputs. These
-  update in-worker projection state but are never queued as an unbounded raw
-  event stream.
-
-Shutdown drains accepted durable events before marking a graceful stop. A
-database or observer failure is reported and logged but remains fail-open for
-paper bot execution, matching the current runtime contract.
-
-The public projection must reuse:
-
-- existing package-owned event contracts at ingress;
-- `polybot.performance.valuation.value_portfolio` for equity;
-- existing accepted-book, stale-mark, stable-token-selection, settlement
-  removal, trade-marker, and wallet-timeline rules; and
-- the existing terminal chart constants where they represent product policy.
-
-Presentation-neutral policy should move to the smallest shared owner needed by
-both terminal and web projectors. FastAPI, SQLModel, Redis, ECharts, and HTTP
-types must not enter the shared projection.
-
-## Chart Data Flow
-
-```text
-RuntimeEvent
-  -> in-worker chart projector
-  -> current accepted books / portfolio / labels / wallet timeline
-  -> every 250 ms: public ephemeral ChartFrame -> Redis Pub/Sub
-  -> every 1 s: durable ChartSample -> PostgreSQL -> Redis wake-up
-```
-
-An ephemeral frame has no SSE `id`. A durable chart sample is an ordinary
-durable run event and advances the cursor. A failure to publish Redis cannot
-erase the committed durable event.
-
-The server does not render charts. It sends exact decimal strings, timestamps,
-stable token/wallet identity, stale/unavailable status, and marker data. The
-frontend decides pixels, resampling, and responsive layout while preserving the
-specified semantics.
-
-## SSE Delivery
-
-`GET /api/v1/runs/{run_id}/events/stream`:
-
-- accepts the standard `Last-Event-ID` cursor and an equivalent `after`
-  query parameter for explicit first connection;
-- replays durable rows after the cursor in ascending ID order;
-- subscribes to the run's Redis channel only as a wake-up/live-frame path;
-- rechecks PostgreSQL after subscribing so the replay-to-live handoff has no
-  race;
-- sends committed durable envelopes with `id: <database event id>`;
-- sends ephemeral chart frames without an `id` field;
-- sends periodic SSE comments to keep intermediaries from closing an idle
-  connection;
-- never lets a slow browser backpressure the bot runtime; and
-- closes after the terminal state has been delivered and no later committed
-  event remains, or when the client disconnects.
-
-If Redis notification is temporarily unavailable, the SSE adapter polls
-PostgreSQL at a degraded cadence. Redis recovery restores low-latency delivery
-without changing the durable cursor.
-
-## HTTP API
-
-All routes are under `/api/v1`. Ordinary endpoints are described completely in
-FastAPI OpenAPI and consumed through the generated Hey API client.
-
-### Catalog
-
-- `GET /bot-definitions`
-  - Return all public descriptors in stable display order.
-- `GET /bot-definitions/{definition_id}`
-  - Return one descriptor or typed not-found problem.
-
-### Runs
-
-- `POST /runs`
-  - Body: definition ID/version, optional run name, launch-input object.
-  - Return: `202 Accepted` with the durable run.
-- `GET /runs`
-  - Cursor pagination and optional public-status filter.
-  - Default ordering: newest creation first.
-- `GET /runs/{run_id}`
-  - Current state, immutable configuration, latest summaries, and links/cursors.
-- `POST /runs/{run_id}/stop`
-  - Idempotently request or complete stop and return current run state.
-- `GET /runs/{run_id}/events`
-  - Cursor-paginated durable public event envelopes in ascending event order.
-- `GET /runs/{run_id}/events/stream`
-  - SSE replay plus live continuation.
-
-### Operations
-
-- `GET /health/live`
-  - Process liveness only.
-- `GET /health/ready`
-  - Database and Redis readiness without starting or mutating a run.
-
-Use one typed problem response containing an HTTP status, stable application
-code, human-readable detail, and optional field errors. Validation errors must
-identify launch-input paths without returning internal exceptions.
-
-## Public Event Contract
-
-Every durable envelope includes:
-
-- numeric durable `id`;
-- run UUID;
-- typed `kind`;
-- contract `version`;
-- UTC occurrence and persistence timestamps; and
-- a discriminated typed payload.
-
-Initial event kinds cover:
+Status: planned. This document is the single technical contract for the product
+in `web-control-plane-spec.md`.
+
+## How to Implement This Plan
+
+When a task names one implementation slice, that slice is the whole scope.
+Later slices explain direction; they do not authorize scaffolding for their
+features.
+
+Every addition must pass these budgets:
+
+- **Field budget:** add a database or API field only when the current slice has
+  a named writer and reader for it. Do not add IDs, flags, timestamps,
+  provenance, versions, metadata, links, summaries, or future integration fields
+  “just in case.” A later Alembic migration is cheaper than a speculative
+  contract.
+- **Abstraction budget:** do not add generic repositories, base services,
+  managers, registries of registries, DTO mappers, provider frameworks, or
+  wrapper layers. A boundary may be abstract only when this plan requires a
+  second implementation (`RunLauncher`) or an existing package contract already
+  supplies it (`RuntimeObserver`).
+- **Module budget:** create a module for one present responsibility. Do not
+  pre-create the package tree, empty modules, or barrel exports. Split a module
+  only when the current slice gives the extracted part a distinct owner.
+- **Validation budget:** validate external values once at HTTP, environment,
+  database-JSON, Redis-message, or Polymarket adapter ingress. After a boundary
+  returns a typed value, internal code trusts it. Do not repeat Pydantic,
+  SQLModel, enum, range, `None`, or shape checks in orchestration functions.
+- **Safety budget:** keep existing trading fail-safe rules and the few
+  concurrency/reconnect guarantees named here. Do not add fallback transports,
+  retry frameworks, recovery modes, caches, audit systems, or defensive branches
+  that are not acceptance requirements.
+- **Test budget:** test repository-owned behavior and important failure/race
+  branches. Do not test FastAPI, Pydantic, SQLModel, Taskiq, Redis, ECharts, or
+  generated-client behavior that this code does not customize.
+
+Prefer a small function over a one-use class. Prefer direct SQLModel session
+code in the owning run/event module over a generic repository. Prefer adding a
+field or abstraction in the later slice that first consumes it.
+
+If an implementation cannot point from a new field, branch, module, or layer to
+a requirement and acceptance assertion in the active slice, leave it out. Ask
+before expanding product or architecture scope.
+
+## Authority Map
+
+- Product scope and lifecycle outcomes: `web-control-plane-spec.md`.
+- Technical contracts, routes, persistence, delivery, and cadence: this file.
+- Existing dashboard behavior: `docs/architecture.md`, **Terminal
+  Observability**.
+- Slice scope, minimum deliverables, explicit exclusions, and acceptance:
+  Slices 12A-12F in `docs/implementation-plan.md`.
+
+The implementation plan assigns architecture-owned work and acceptance to a
+slice. It may use canonical contract terms when doing so, but it does not define
+an independent shape or algorithm; this document controls if wording conflicts.
+
+## Boundaries and Stack
+
+- `polybot` remains independent of FastAPI, SQLModel, Taskiq, Redis, SvelteKit,
+  and the new control-plane package.
+- `polybot_control_plane` may import `polybot`; the reverse import is forbidden.
+- The static frontend and API are deployment peers. Python does not import the
+  frontend.
+- API processes hold no sole reference to a bot task, cancellation primitive,
+  or progress queue.
+- PostgreSQL owns durable runs, commands, and events.
+- Taskiq with its Redis broker delivers run IDs to workers.
+- Redis Pub/Sub wakes SSE connections and carries ephemeral chart frames.
+- SvelteKit uses TypeScript, `adapter-static`, and client-side rendering.
+- FastAPI/Pydantic own HTTP contracts; SQLModel/SQLAlchemy with `asyncpg` own
+  persistence; Alembic owns schema creation and change.
+
+Add each dependency only in the slice that first imports it. Pin the selected
+version according to repository policy.
+
+## Contract Ownership
+
+Public contracts use stable, discoverable modules. These names are required;
+supporting private modules are not prescribed:
+
+- `polybot_control_plane.catalog.contracts`: `SelectionMode`, `WidgetKind`,
+  `BotDefinitionDescriptor`, and `LaunchRequest`.
+- `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
+  `RunRead`.
+- `polybot_control_plane.events.contracts`: `EventKind`, `DurableEvent`, and
+  `LiveChartEvent` plus their discriminated payloads.
+- `polybot_control_plane.execution.launcher`: the `RunLauncher` protocol.
+
+Finite wire values are `StrEnum`s. The generated frontend types come from these
+Pydantic models through FastAPI OpenAPI. Tests import the enums; they do not copy
+contract strings.
+
+Use non-table SQLModel bases only where a group of fields has identical database
+and API meaning. Never inherit an API model from a table model, and do not make a
+base merely to avoid repeating one or two fields. Non-row wire shapes remain
+plain Pydantic models.
+
+## Catalog and Launch Contract
+
+`SelectionMode` has exactly `user_configured`, `bot_managed`, and `absent`.
+`WidgetKind` contains only the widgets v0 renders: decimal, market slugs, wallet
+addresses, and stream rules.
+
+`BotDefinitionDescriptor` has exactly:
+
+- `definition_id`
+- `version`
+- `display_name`
+- `description`
+- `label` (`standard`, `example`, or `non_trading`)
+- `market_selection`
+- `wallet_selection`
+- `input_schema`
+
+`LaunchRequest` has exactly `definition_id`, `definition_version`, and `inputs`.
+The run name is a field in the definition's launch schema rather than a second
+top-level copy. External request and definition launch models reject unknown
+fields instead of silently ignoring them.
+
+Each catalog entry owns one Pydantic launch-input model and a conversion to
+`PaperRunConfig`. `model_json_schema()` is the only JSON Schema definition.
+Typed `x-widget` annotations select the small domain-widget set; ordinary JSON
+Schema fields use ordinary controls. Do not add a parallel field registry or
+frontend field model.
+
+Catalog construction imports the entries in the product-spec table. Normal
+Python imports, enum construction, and Pydantic model construction provide the
+checks; do not add a second startup-validation framework. Definition IDs are
+unique by construction in one code-owned mapping.
+
+`PaperRunConfig` is the complete persisted paper snapshot and contains only the
+non-sensitive `BotConfig` inputs used by web runs:
+
+- `name`
+- `stream_rules`
+- `data_trades_budget_per_10s`
+- `max_order_size`
+- `max_slippage_pct`
+- `paper_latency_ms`
+- `paper_latency_jitter_ms`
+- `event_max_age_ms`
+- `paper_portfolio_usdc`
+
+Decimal values serialize as canonical decimal strings. Fields prohibited by the
+product specification's **Trust Boundary** are absent rather than accepted and
+then rejected. Conversion to the existing `BotConfig` supplies paper mode and
+credential-free values itself.
+
+The HTTP launch boundary performs the only request normalization:
+
+1. Parse `LaunchRequest`.
+2. Resolve its code-owned definition and require the submitted version.
+3. Parse `inputs` with that definition's launch model.
+4. Convert once to `PaperRunConfig`.
+5. Persist the queued run and commit.
+6. Call `RunLauncher.launch(run_id)`.
+
+If delivery fails, update the committed run to `failed` with a sanitized
+`failure_detail`. Do not invent a custom error taxonomy for v0.
+
+## Persistence Contract
+
+### Run row
+
+The final v0 run row has exactly:
+
+- `id` (UUID primary key)
+- `definition_id`
+- `definition_version`
+- `config` (`PaperRunConfig` JSON)
+- `status` (`RunStatus`)
+- `created_at`
+- `started_at` (nullable)
+- `ended_at` (nullable)
+- `heartbeat_at` (nullable)
+- `failure_detail` (nullable, sanitized)
+
+Do not add separate launch-input/config copies, updated/claimed/stop timestamps,
+latest-summary columns, execution-backend fields, owner IDs, or idempotency keys.
+Current summaries come from durable events. ECS can add its own reference when
+an ECS slice actually exists.
+
+Slice 12A creates only the first six fields. Slice 12B adds the four fields it
+first consumes (`started_at`, `ended_at`, `heartbeat_at`, `failure_detail`) and
+the event table in its own migration.
+
+The persistence boundary decodes `config` into `PaperRunConfig` once before it
+returns a run to API or worker code. Orchestration never handles raw JSON and
+never re-runs request validation.
+
+### Durable event row
+
+The append-only event row has exactly:
+
+- `id` (globally ordered bigint primary key and SSE cursor)
+- `run_id` (indexed UUID foreign key)
+- `kind` (`EventKind`)
+- `occurred_at` (UTC)
+- `payload` (JSONB)
+
+There is no second persistence timestamp, schema-version field, source-key
+column, generic metadata, or speculative dedupe key in v0. Payload JSON is
+decoded into the discriminated `DurableEvent` union at the persistence boundary.
+
+The canonical durable event kinds are:
 
 - `run.lifecycle`
 - `run.bootstrap`
 - `bot.activity`
-- `broker.order_submitted`
-- `broker.fill_completed`
-- `broker.failed`
-- `market.settled`
+- `broker.order`
+- `broker.fill`
+- `broker.failure`
+- `market.settlement`
 - `portfolio.snapshot`
 - `wallet.timeline`
 - `stream.health`
-- `run.failed`
+- `run.failure`
 - `chart.sample`
 
-The ephemeral SSE kind is `chart.live`. Event kind and state strings have one
-backend source of truth and generated frontend types. Tests import those
-definitions instead of copying literals.
+Raw book events and individual dispatch callbacks are not durable. The web
+observer maps runtime events to the list above and enqueues those records; raw
+books only replace the latest in-memory chart input. Keep that mapping in one
+owning function/table, not a generic policy class or repeated `isinstance`
+lists. Pure projection and database/Redis I/O must not become one monolithic
+module.
 
-## Frontend Architecture
+## Execution and Lifecycle
 
-- SvelteKit with TypeScript and `adapter-static`.
-- Client-side rendering; no SvelteKit server routes, actions, or SSR in v0.
-- Same-origin deployment: static application at `/`, FastAPI at `/api/`.
-- Ajv validates the definition-provided JSON Schema for immediate form feedback.
-- FastAPI remains authoritative for all validation.
-- Apache ECharts is wrapped by a thin `EChart.svelte` lifecycle component.
-- Domain components own market, equity, and wallet-timeline option construction.
-- Pages and stores never call `echarts.init`, `setOption`, `resize`, or
-  `dispose` directly.
+`RunLauncher` is the one deliberate v0 seam for a future ECS implementation:
 
-The generic ECharts wrapper owns client-only initialization, cleanup, a
-`ResizeObserver`, theme, accessibility label, and efficient option updates.
-`MarketPriceChart.svelte`, `EquityChart.svelte`,
-`WalletTimeline.svelte`, and `RunCharts.svelte` own domain behavior.
+```python
+class RunLauncher(Protocol):
+    async def launch(self, run_id: UUID) -> None: ...
+```
 
-## Generated Frontend Client
+The Taskiq adapter enqueues the UUID. It does not expose Taskiq status, results,
+or cancellation through public contracts. A future ECS adapter can launch the
+same worker entrypoint and add task-reference persistence then; no ECS code or
+fields exist in v0.
 
-FastAPI OpenAPI is the HTTP contract source. A deterministic backend command
-exports the OpenAPI document without requiring a running server. The frontend
-pins `@hey-api/openapi-ts` and generates Fetch SDK functions plus TypeScript
-types into a generated directory that is never edited by hand.
+The Taskiq task is a thin adapter calling
+`polybot_control_plane.execution.worker.execute_run(run_id: UUID)`. A class
+wrapper is unnecessary unless a later implementation creates a real second
+caller with additional owned state.
 
-CI:
+The run store's atomic claim is one conditional database update. It returns the
+typed claimed run or `None`; it does not expose a hierarchy of claim-result
+types. `None` means duplicate, stopped, or terminal delivery and the task exits.
+Taskiq worker concurrency, not a second database capacity algorithm, limits
+simultaneous runs.
 
-1. exports OpenAPI;
-2. regenerates the Hey API client;
-3. fails when the committed OpenAPI/client artifacts drift;
-4. type-checks the frontend against the generated result.
+After a successful claim, `execute_run`:
 
-The handwritten SSE adapter is the sole transport exception because the
-browser `EventSource` lifecycle is not an ordinary request/response SDK call.
-Its durable payload type is still generated through the HTTP event-history
-response contract. It owns reconnect, cursor tracking, event parsing, and
-dedupe; it contains no copied domain models.
+1. converts the already-decoded `PaperRunConfig` to the existing `BotConfig`;
+2. resolves the exact code-owned factory version and creates the bot;
+3. starts heartbeat and stop polling;
+4. attaches the web observer and calls `polybot.runtime.run_bot()`; and
+5. records the lifecycle outcome defined in the product specification.
 
-## Deployment
+These are trusted internal steps. Do not repeat request/config shape checks
+inside them.
 
-The v0 Docker Compose topology contains:
+Stop is a durable status change. The worker polls PostgreSQL; no Redis-assisted
+stop path is needed in v0. Lease reconciliation marks an expired non-terminal
+owned run `interrupted`. It never relaunches it.
 
-- static frontend/reverse-proxy service;
-- FastAPI service, allowed to run multiple Uvicorn workers;
-- Taskiq worker service;
-- PostgreSQL;
-- Redis; and
-- an explicit one-shot Alembic migration command/job.
+The web observer preserves the existing synchronous, fail-open
+`RuntimeObserver.emit()` contract. `emit()` does bounded in-memory projection
+and enqueue only. Owned async work writes PostgreSQL and publishes Redis. On
+graceful stop it drains accepted durable events before the terminal lifecycle
+event. Do not add retry queues or alternate persistence when those services
+fail.
 
-Only the same-origin web entrypoint is exposed to the operator. PostgreSQL,
-Redis, and the Taskiq broker remain on the private application network. Secrets
-come from deployment environment/files and never enter the frontend build.
+## Chart Data Flow
 
-The initial worker deployment permits four concurrent runs. Scaling API
-workers does not change bot capacity; scaling Taskiq workers or their async
-capacity does. Deployment must account for Polymarket rate limits across all
-worker processes.
+This section is the sole owner of chart cadence and durability:
 
-## Testing Strategy
+```text
+accepted runtime events
+  -> presentation-neutral projections
+  -> every 250 ms: LiveChartEvent -> Redis Pub/Sub -> SSE (ephemeral)
+  -> every 1 s: chart.sample DurableEvent -> PostgreSQL -> Redis wake-up
+```
 
-### Backend unit tests
+The event persistence section owns which inputs are durable. The browser may
+merge its detailed in-memory live window with older durable samples but must
+preserve their different resolution.
 
-- Catalog startup validation and schema/UI metadata.
-- Definition-version conflicts and launch normalization.
-- SQLModel shared-field, table, and public-response boundaries.
-- Run state transitions, idempotent stop, lease expiry, and terminal guards.
-- Atomic worker claim and duplicate Taskiq delivery.
-- Runtime-event normalization and secret sanitization.
-- Chart parity for stable token selection, stale/unavailable samples, equity,
-  markers, settlement removal, and wallet dispatch state.
-- SSE replay-to-live race closure, cursors, dedupe, heartbeat, slow clients,
-  Redis degradation, and ephemeral frames without IDs.
+Slice 12E extracts only the pure pieces actually needed by both terminal and
+web from the current terminal implementation. Shared code belongs in a
+dependency-light module under `polybot`, never under `polybot_control_plane` or
+a Rich/ECharts module. Keep the existing `polybot.performance` valuation owner.
+Move the stable token cap, cadence, bounds/resampling helpers, market projection,
+and wallet bucketing only as each gains its second consumer. Do not create a
+generic `ChartPolicy`, `ProjectionManager`, or all-purpose chart service.
 
-### Backend integration tests
+Finite availability and wallet-bucket values used on the wire are typed enums;
+reuse existing `Side` and valuation-quality types where their meaning is
+identical. Render colors and glyphs remain frontend-specific.
 
-- PostgreSQL migrations and indexes.
-- API create/list/detail/stop/history behavior.
-- Taskiq launch through an injected test broker.
-- Two concurrent fake bots with independent state/event streams.
-- Worker loss followed by heartbeat reconciliation to `interrupted`.
-- No network calls in tests except explicit adapter contract tests already
-  owned by existing slices.
+## SSE Delivery
 
-### Frontend tests
+The SSE route listed in **HTTP API**:
 
-- Metadata-driven field rendering and domain widgets.
-- Generated-client usage with no handwritten ordinary fetch calls.
-- Run-list and run-detail state transitions.
-- SSE reconnect, durable dedupe, and live/durable chart merging.
-- ECharts option builders for terminal-parity semantics.
-- Keyboard and clickable `z`, `x`, `r`, `v`, `j`, and `k` controls.
-- Responsive narrow/wide layout.
+1. accepts an `after_event_id` query value within the nonnegative PostgreSQL
+   bigint range for the first connection;
+2. prefers the standard validated `Last-Event-ID` header on browser reconnect;
+3. replays later durable rows in ascending ID order;
+4. subscribes to the run's Redis channel;
+5. rechecks PostgreSQL once to close the replay/subscribe race; and
+6. sends later durable events with their database ID and live chart events
+   without an SSE ID.
 
-### End-to-end tests
+Durable transport is at-least-once across reconnects. The frontend adapter
+deduplicates durable database IDs so each committed event is presented once.
+The terminal lifecycle event is written last; the stream closes after sending
+it. The stream also sends idle comments and releases Redis resources on
+disconnect. Redis is required for live continuation. Do not add a polling
+fallback for Redis outages.
 
-- Launch a deterministic fake bot, observe state and chart events, stop it, and
-  reload its terminal detail.
-- Queue above capacity and stop a queued run before worker claim.
-- Disconnect/reconnect SSE without losing or duplicating durable events.
-- Verify that arbitrary factories, live mode, and credential-shaped inputs are
-  rejected.
+Redis messages are decoded into `LiveChartEvent` at the subscriber boundary;
+malformed messages are logged and dropped there. Both `DurableEvent` and
+`LiveChartEvent` are explicit schemas on the SSE route so FastAPI OpenAPI and
+Hey API generate the frontend payload types even though transport code is
+handwritten.
 
-## Intentional Exceptions and Deferred Work
+## HTTP API
 
-- SSE uses a handwritten browser adapter; all request/response HTTP remains
-  generated by Hey API.
-- Live 250 ms chart frames are intentionally ephemeral. Only one-second samples
-  are durable.
-- PostgreSQL event retention is unbounded in v0. Compaction, archival, and
-  deletion are deferred until measured volume requires a policy.
-- Taskiq has no authority over public run status or cancellation. Application
-  state, claim, heartbeat, and stop logic are deliberate control-plane
-  responsibilities.
-- ECS, EventBridge reconciliation, authentication, tenancy, payments, node
-  programming, and live trading are future slices, not partial v0 scaffolding.
+The route prefix `/api/v1` is defined here once. v0 has only:
+
+- `GET /bot-definitions` — all public descriptors in display order.
+- `POST /runs` — validate, persist, launch, and return `202` with `RunRead`.
+- `GET /runs` — all runs, newest first.
+- `GET /runs/{run_id}` — one run and its current event-derived summary.
+- `POST /runs/{run_id}/stop` — idempotently request/complete stop.
+- `GET /runs/{run_id}/events?after_event_id=` — later durable events in order.
+- `GET /runs/{run_id}/events/stream` — replay/live SSE.
+- `GET /health` — database and Redis readiness for the private deployment.
+
+UUIDs, enums, cursors, headers, and bodies are typed at FastAPI ingress. Use
+FastAPI's normal validation response and small `HTTPException` details for 404
+and stale-definition 409. Do not build a custom problem-details framework,
+pagination system, status filtering, links, or response envelopes in v0.
+
+`RunRead` exposes the final run-row fields above plus nullable `latest_equity`
+and `equity_status`, derived from the latest durable portfolio/chart event and
+typed with the existing valuation-quality contract. Do not persist summary
+columns or add other summary fields in v0.
+
+## Frontend
+
+- Build a static, client-rendered SvelteKit TypeScript application at `/` with
+  the API same-origin at `/api/`.
+- Export OpenAPI deterministically and generate the Fetch client/types with
+  `@hey-api/openapi-ts`. Generated files are never edited.
+- Use the generated client for ordinary HTTP. The sole handwritten transport is
+  a small EventSource adapter using the generated `DurableEvent` and
+  `LiveChartEvent` types.
+- Use Ajv only for immediate form feedback against the catalog schema. Do not
+  create a parallel TypeScript form contract.
+- Wrap Apache ECharts in one thin `EChart.svelte` component that owns init,
+  option updates, resize, and dispose. Pages and domain components do not call
+  ECharts lifecycle APIs.
+- Keep market, equity, and wallet option building in their respective domain
+  components. The combined chart component owns layout/toggle composition only.
+
+## Deployment Configuration
+
+Docker Compose contains the static frontend/reverse proxy, multi-worker FastAPI,
+Taskiq worker, PostgreSQL, Redis, and a one-shot Alembic migration command. Only
+the same-origin entrypoint is exposed.
+
+One typed settings model parses the database URL, Redis URL, worker concurrency,
+heartbeat interval, and lease interval at process startup. Concurrency and
+numeric intervals must be positive, and the lease must exceed the heartbeat.
+The worker-concurrency default is four; this paragraph is its sole documentation
+owner.
+
+Multiple Uvicorn workers are supported because ownership and events are not
+process-local. Scaling API workers does not change bot capacity.
+
+## Proportional Test Contract
+
+Each slice's Acceptance section owns its required tests. Combine related
+assertions into scenario tests. Add a separate edge-case test only when it covers
+a distinct repository-owned branch that could regress; never add tests solely
+to exercise framework/library behavior.
+
+## Deferred Without Scaffolding
+
+Authentication, tenancy, payments, ECS, EventBridge, retention/deletion,
+scheduling, node programming, and live trading are later products. v0 creates
+no fields, tables, interfaces, routes, feature flags, or placeholder modules for
+them, except the explicitly required `RunLauncher` seam.
