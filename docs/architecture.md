@@ -11,12 +11,15 @@
 
 ## Current Status
 
-Slices 1 through 5 and Slices 9A through 11 are implemented: framework
+Slices 1 through 5, Slices 9A through 11, and Slice 12A are implemented:
+framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
 market recorder and local trim maintenance, deterministic archive replay and
 performance artifacts, opt-in coverage-gap blackout replay, the terminal
-dashboard, and dynamic market tracking and resolution settlement.
+dashboard, dynamic market tracking and resolution settlement, and the isolated
+control plane's minimal contracts, catalog, PostgreSQL run row, migration, and
+create/read/list store.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -61,21 +64,22 @@ must not import SDK types. The selected library version must be pinned and its
 adapter behavior covered by contract tests, especially while
 `polymarket-client` remains beta.
 
-## Current Non-Goals
+## Current Bot-Framework Non-Goals
 
 - No FastAPI routes.
 - No frontend integration.
-- No application database or database-service integration in v1. Slice 9A's
-  user-selected SQLite file is a standalone local artifact.
+- No application database or database-service integration inside `polybot`.
+  Slice 9A's user-selected SQLite file is a standalone local artifact, while
+  Slice 12A's PostgreSQL run store belongs only to the inward-dependent
+  `polybot_control_plane` package.
 - No mirror-follow app behavior.
 - No RFQ, combo, perps, bridge, or redemption support in v1.
 
-These statements describe the implemented bot-framework boundary. The planned
-paper-only Web Control Plane v0 deliberately changes the first three in later
-implementation slices without connecting this repository to the Polyfollow
-application. See `web-control-plane-spec.md` and
-`web-control-plane-architecture.md`. Until those slices are implemented, this
-section remains the current behavior.
+These statements describe the implemented `polybot` boundary. The paper-only
+Web Control Plane v0 changes those capabilities only in the separate
+`polybot_control_plane` package and does not connect this repository to the
+Polyfollow application. Slice 12A supplies persistence but no API or frontend;
+see `web-control-plane-spec.md` and `web-control-plane-architecture.md`.
 
 ## Package Layout
 
@@ -163,6 +167,10 @@ polyfollow-polybot/
     live.py       # Live broker.
     orders.py     # Shared order and fee helpers.
   examples/
+  src/polybot_control_plane/ # Inward-dependent private web control plane.
+    catalog/         # Public catalog contracts, launch models, definitions.
+    runs/            # Paper-run contracts, SQLModel row, and async store.
+  migrations/       # Alembic-owned PostgreSQL schema history.
   tests/
 ```
 

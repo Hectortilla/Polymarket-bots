@@ -51,6 +51,20 @@
       "subProcess": true
     },
     {
+      "name": "Recreate control-plane database",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.recreate_control_plane_database",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
       "name": "Record BTC 5m buckets",
       "type": "debugpy",
       "request": "launch",

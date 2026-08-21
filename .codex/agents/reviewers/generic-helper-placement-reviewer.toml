@@ -1,0 +1,20 @@
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
+sandbox_mode = "read-only"
+developer_instructions = """
+Review only for general-purpose functions trapped in specialized modules that do not own their semantics.
+
+Report when:
+- A top-level function implements a stable, dependency-light primitive or policy that is independent of the specialized module's domain, types, and state.
+- Its current location falsely assigns ownership, makes reuse hard to discover, would force an unrelated caller to import the specialized module, or invites sibling modules to duplicate the behavior.
+- A narrow parent, foundation, or domain-support module can accurately own and name the concept. A current second call site is not required when the helper represents a stable cross-cutting policy; for example, obtaining the current UTC time is not owned by a run persistence model.
+
+Do not report:
+- A function merely because reuse is imaginable; require concrete semantic independence and a credible owning location.
+- Private callbacks or factories whose signature or lifecycle is imposed by the specialized framework, model, or adapter they support.
+- Helpers that manipulate the enclosing module's domain types or implement behavior owned by that module.
+- Extractions that would create a catch-all `utils`, `common`, or `helpers` module.
+- Function-to-method, known domain-owner, dependency-cycle, or vague-domain-utility issues better handled by their dedicated reviewers.
+
+For each finding, include severity, file:line evidence, why the enclosing module does not own the helper, the evidence that the concept is stable and general-purpose, and the narrow semantic module that should own it. Do not edit files or report adjacent concerns. Otherwise return `No findings`.
+"""

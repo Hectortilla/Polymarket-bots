@@ -868,7 +868,7 @@ must have a current-slice consumer. If it does not, omit it.
 
 ## Slice 12A: Minimal Contracts, Catalog, and Run Row
 
-Status: planned.
+Status: implemented.
 
 Minimum deliverable:
 

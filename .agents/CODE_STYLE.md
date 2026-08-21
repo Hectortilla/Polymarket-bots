@@ -79,10 +79,19 @@ easy to read, easy to change, and boring to debug.
 - Put code near the thing that owns it. Do not create global utility modules
   until at least two real call sites need the same behavior or a value is a
   stable contract.
+- Do not bury a general-purpose primitive in a specialized module that does not
+  own its semantics. A dependency-light helper with a stable, domain-neutral
+  policy, such as obtaining the current UTC time, belongs in the narrowest
+  parent or domain-support module that accurately names that policy. This does
+  not justify speculative catch-all `utils` or `helpers` modules.
 - Before introducing a standalone function, check whether its parameters,
   manipulated values, or call sites reveal an owning class or domain object. If
   one argument is conceptually the receiver, or several inputs are attributes of
   the same existing class, make the behavior a method of that class instead.
+- Prefer a cohesive, domain-named object when a family of related operations
+  repeatedly receives the same stateful dependency, such as a database session
+  or client. Store that collaborator once on the instance so method signatures
+  emphasize domain inputs and call sites retain their operational context.
 - Use class or static methods when behavior is state-free but still belongs
   under a domain type for semantic clarity, discoverability, and reuse. Keep
   standalone functions for genuinely ownerless pure formulas, dependency-light

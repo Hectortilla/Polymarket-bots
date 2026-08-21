@@ -1,0 +1,55 @@
+"""Public catalog and launch request contracts."""
+
+from enum import StrEnum
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
+
+
+WIDGET_SCHEMA_KEY = "x-widget"
+
+type DefinitionId = Annotated[
+    str,
+    StringConstraints(strict=True, strip_whitespace=True, min_length=1),
+]
+type DefinitionVersion = Annotated[StrictInt, Field(gt=0)]
+
+
+class SelectionMode(StrEnum):
+    USER_CONFIGURED = "user_configured"
+    BOT_MANAGED = "bot_managed"
+    ABSENT = "absent"
+
+
+class WidgetKind(StrEnum):
+    DECIMAL = "decimal"
+    MARKET_SLUGS = "market_slugs"
+    WALLET_ADDRESSES = "wallet_addresses"
+    STREAM_RULES = "stream_rules"
+
+
+class BotDefinitionLabel(StrEnum):
+    STANDARD = "standard"
+    EXAMPLE = "example"
+    NON_TRADING = "non_trading"
+
+
+class BotDefinitionDescriptor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    definition_id: DefinitionId
+    version: DefinitionVersion
+    display_name: str
+    description: str
+    label: BotDefinitionLabel
+    market_selection: SelectionMode
+    wallet_selection: SelectionMode
+    input_schema: dict[str, object]
+
+
+class LaunchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    definition_id: DefinitionId
+    definition_version: DefinitionVersion
+    inputs: dict[str, object]

@@ -38,6 +38,7 @@ maximum-concurrency waves possible and do not omit reviewers.
 - `shared_rule_representation_reviewer`
 - `semantic_abstraction_reviewer`
 - `domain_shared_code_reviewer`
+- `generic_helper_placement_reviewer`
 - `cross_boundary_contract_reviewer`
 - `ingress_validation_reviewer`
 - `import_placement_reviewer`
@@ -59,6 +60,7 @@ maximum-concurrency waves possible and do not omit reviewers.
 - `package_root_ownership_reviewer`
 - `small_explicit_function_reviewer`
 - `object_method_placement_reviewer`
+- `repeated_dependency_class_reviewer`
 - `dependency_light_foundation_reviewer`
 - `descriptive_name_reviewer`
 - `public_contract_discoverability_reviewer`

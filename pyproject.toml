@@ -9,10 +9,15 @@ description = "Standalone custom Polymarket bot framework."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic==1.19.0",
+    "asyncpg==0.31.0",
     "python-dotenv>=1.1,<2.0",
     "asciichartpy==1.5.25",
     "polymarket-client==0.1.0b17",
+    "pydantic==2.13.4",
     "rich==15.0.0",
+    "SQLAlchemy[asyncio]==2.0.51",
+    "sqlmodel==0.0.39",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +68,9 @@ packages = [
   "polybot.recording.service",
   "polybot.runtime",
   "polybot.runtime.performance",
+  "polybot_control_plane",
+  "polybot_control_plane.catalog",
+  "polybot_control_plane.runs",
   "scripts",
   "scripts.select_wallet_for_analysis",
   "scripts.polymarket_wallet_api",
@@ -81,3 +89,6 @@ scripts = "scripts"
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+  "postgres: requires POLYBOT_TEST_POSTGRES_URL for an isolated PostgreSQL database",
+]

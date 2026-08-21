@@ -18,7 +18,8 @@ Start with:
 - `docs/api-notes.md`
 - `docs/implementation-plan.md`
 
-Planned, not yet implemented, web-control-plane work is specified separately:
+The web-control-plane contract and remaining implementation work are specified
+separately:
 
 - `docs/web-control-plane-spec.md`
 - `docs/web-control-plane-architecture.md`
@@ -28,16 +29,29 @@ validation, safety, and test budgets for each implementation slice. A task that
 names one Slice 12 sub-slice must not scaffold later slices.
 
 That plan adds a private, paper-only SvelteKit/FastAPI control plane around this
-standalone package. Until its implementation slices are complete, the current
-package still has no FastAPI application, PostgreSQL run store, Taskiq worker,
-Redis event path, or web frontend.
+standalone package. Slice 12A now provides its strict launch/run contracts,
+code-owned bot catalog, minimal PostgreSQL run row, Alembic migration, and async
+create/read/list store. It does not yet provide a FastAPI application, Taskiq
+worker, Redis event path, durable events, or web frontend.
+
+For local migration work, add the exact disposable PostgreSQL target to `.env`:
+
+```dotenv
+POLYBOT_DATABASE_URL=postgresql://user:password@localhost:5432/polybot_dev
+```
+
+Then run the `Recreate control-plane database` launch configuration in VS Code.
+It terminates connections to that database, drops it if present, creates it,
+and applies Alembic migrations through `head`. The command is intentionally
+destructive and refuses the `postgres`, `template0`, and `template1` databases.
 
 The current package has the Slice 1 contract layer, Slice 2 paper fill engine,
 Slice 3 public market-data adapters, Slice 4 wallet activity inputs, Slice 5
 paper runner CLI, Slice 9A historical market recorder and local trim
 maintenance, Slice 9B deterministic archive backtester and performance
 artifacts, Slice 9B.1 opt-in coverage-gap blackout replay, Slice 10 terminal
-dashboard, and Slice 11 dynamic market tracking and resolution processing. The
+dashboard, Slice 11 dynamic market tracking and resolution processing, and the
+isolated Slice 12A control-plane foundation. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads

@@ -57,6 +57,10 @@ config_file = "./agents/reviewers/final-contract-scan-reviewer.toml"
 description = "Performs the required final scan for validation woven into domain logic."
 config_file = "./agents/reviewers/final-validation-scan-reviewer.toml"
 
+[agents.generic_helper_placement_reviewer]
+description = "Reports general-purpose helpers trapped in specialized modules."
+config_file = "./agents/reviewers/generic-helper-placement-reviewer.toml"
+
 [agents.important_branch_test_reviewer]
 description = "Reports important behavioral branches missing tests."
 config_file = "./agents/reviewers/important-branch-test-reviewer.toml"
@@ -124,6 +128,10 @@ config_file = "./agents/reviewers/primitive-precondition-reviewer.toml"
 [agents.public_contract_discoverability_reviewer]
 description = "Reports unstable or difficult-to-discover public contracts."
 config_file = "./agents/reviewers/public-contract-discoverability-reviewer.toml"
+
+[agents.repeated_dependency_class_reviewer]
+description = "Reports cohesive function families that should be methods on a class owning their repeated stateful dependency."
+config_file = "./agents/reviewers/repeated-dependency-class-reviewer.toml"
 
 [agents.pure_domain_function_reviewer]
 description = "Reports avoidable side effects in strategy, risk, fee, P&L, or simulation logic."

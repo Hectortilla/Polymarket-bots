@@ -13,7 +13,10 @@ from polybot.backtesting.scheduler.cursor import ReplayCursor
 from polybot.backtesting.state import ArchiveMarketState
 from polybot.execution.paper import PaperBroker
 from polybot.framework.base import BaseBot
-from polybot.framework.cadence import STREAM_PLAN_REFRESH_INTERVAL_MS
+from polybot.framework.cadence import (
+    STREAM_PLAN_REFRESH_INTERVAL_MS,
+    next_interval_boundary_ms,
+)
 from polybot.framework.coalescing import PendingByKey
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.events.books import BookSnapshot
@@ -74,7 +77,7 @@ class ReplayScheduler:
         self._pending_books: PendingByKey[str, BookSnapshot] = PendingByKey()
         self._settled_conditions: set[str] = set()
         self._plan_refresh_due = False
-        self._next_plan_refresh_ms = _next_interval(
+        self._next_plan_refresh_ms = next_interval_boundary_ms(
             clock.now_ms(), STREAM_PLAN_REFRESH_INTERVAL_MS
         )
         self.event_count = 0
@@ -427,7 +430,3 @@ class ReplayScheduler:
     async def _fast_forward_to_end(self) -> None:
         """Advance a flat, explicitly finished strategy without replaying I/O."""
         await self._move_to(self._clock.end_at_ms)
-
-
-def _next_interval(now_ms: int, interval_ms: int) -> int:
-    return ((now_ms // interval_ms) + 1) * interval_ms

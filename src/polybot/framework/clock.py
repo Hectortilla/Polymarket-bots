@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from time import time_ns
 from typing import Protocol
 
@@ -20,6 +21,11 @@ class Clock(Protocol):
 def system_now_ms() -> int:
     """Return the current system wall-clock time in whole milliseconds."""
     return time_ns() // 1_000_000
+
+
+def system_now_utc() -> datetime:
+    """Return the current system wall-clock time as an aware UTC datetime."""
+    return datetime.now(UTC)
 
 
 class SystemClock:

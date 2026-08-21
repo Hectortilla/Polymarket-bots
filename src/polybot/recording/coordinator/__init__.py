@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from polybot.framework.cadence import (
     RESOLUTION_RECONCILIATION_SECONDS,
     STREAM_PLAN_REFRESH_INTERVAL_SECONDS,
+    advance_deadline_past,
 )
 from polybot.framework.streams import StreamPlan
 from polybot.polymarket.book_projector import BookDepthProjector
@@ -187,7 +188,7 @@ class RecordingCoordinator:
                     await self._refresh_plan()
                     await self._detect_drops()
                     await self._ensure_captures()
-                    next_plan = _advance_deadline(
+                    next_plan = advance_deadline_past(
                         next_plan,
                         self._plan_refresh_seconds,
                         now,
@@ -198,14 +199,14 @@ class RecordingCoordinator:
                     await self._detect_drops()
                     await self._ensure_captures()
                     await self._write_checkpoints()
-                    next_checkpoint = _advance_deadline(
+                    next_checkpoint = advance_deadline_past(
                         next_checkpoint,
                         self._checkpoint_seconds,
                         now,
                     )
                 if now >= next_resolution:
                     await self._reconcile_resolutions()
-                    next_resolution = _advance_deadline(
+                    next_resolution = advance_deadline_past(
                         next_resolution,
                         self._resolution_reconciliation_seconds,
                         now,
@@ -574,9 +575,3 @@ class RecordingCoordinator:
         failure = self._writer.failure
         if failure is not None:
             raise RuntimeError("recording writer failed") from failure
-
-
-def _advance_deadline(deadline: float, interval: float, now: float) -> float:
-    while deadline <= now:
-        deadline += interval
-    return deadline
