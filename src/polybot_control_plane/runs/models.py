@@ -61,3 +61,7 @@ class RunRow(SQLModel, table=True):
             nullable=False,
         ),
     )
+    started_at: datetime | None = Field(default=None, sa_column=Column(RunColumn.STARTED_AT, DateTime(timezone=True)))
+    ended_at: datetime | None = Field(default=None, sa_column=Column(RunColumn.ENDED_AT, DateTime(timezone=True)))
+    heartbeat_at: datetime | None = Field(default=None, sa_column=Column(RunColumn.HEARTBEAT_AT, DateTime(timezone=True)))
+    failure_detail: str | None = Field(default=None, sa_column=Column(RunColumn.FAILURE_DETAIL, String, nullable=True))

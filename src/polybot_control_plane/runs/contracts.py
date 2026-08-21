@@ -90,3 +90,7 @@ class RunRead(BaseModel):
     config: PaperRunConfig
     status: RunStatus
     created_at: datetime
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+    failure_detail: str | None = None

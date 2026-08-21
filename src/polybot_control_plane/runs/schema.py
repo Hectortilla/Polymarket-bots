@@ -20,6 +20,10 @@ class RunColumn(StrEnum):
     CONFIG = "config"
     STATUS = "status"
     CREATED_AT = "created_at"
+    STARTED_AT = "started_at"
+    ENDED_AT = "ended_at"
+    HEARTBEAT_AT = "heartbeat_at"
+    FAILURE_DETAIL = "failure_detail"
 
 
 def run_status_column_type() -> Enum:

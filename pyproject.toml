@@ -18,6 +18,9 @@ dependencies = [
     "rich==15.0.0",
     "SQLAlchemy[asyncio]==2.0.51",
     "sqlmodel==0.0.39",
+    "redis==5.2.1",
+    "taskiq==0.11.20",
+    "taskiq-redis==1.0.5",
 ]
 
 [project.optional-dependencies]
@@ -71,6 +74,8 @@ packages = [
   "polybot_control_plane",
   "polybot_control_plane.catalog",
   "polybot_control_plane.runs",
+  "polybot_control_plane.events",
+  "polybot_control_plane.execution",
   "scripts",
   "scripts.select_wallet_for_analysis",
   "scripts.polymarket_wallet_api",

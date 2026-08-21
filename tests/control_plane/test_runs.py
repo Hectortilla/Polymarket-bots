@@ -5,9 +5,9 @@ from polybot_control_plane.runs.contracts import RunRead, RunStatus
 from polybot_control_plane.runs.models import RunRow
 
 
-def test_run_contract_matches_the_slice_12a_row() -> None:
+def test_run_contract_matches_the_run_row() -> None:
     assert tuple(RunRead.model_fields) == tuple(RunRow.__table__.columns.keys())
-    assert len(RunRead.model_fields) == 6
+    assert len(RunRead.model_fields) == 10
     assert RunRow.__table__.columns.status.type.enums == [
         status.value for status in RunStatus
     ]

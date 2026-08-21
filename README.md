@@ -29,10 +29,10 @@ validation, safety, and test budgets for each implementation slice. A task that
 names one Slice 12 sub-slice must not scaffold later slices.
 
 That plan adds a private, paper-only SvelteKit/FastAPI control plane around this
-standalone package. Slice 12A now provides its strict launch/run contracts,
-code-owned bot catalog, minimal PostgreSQL run row, Alembic migration, and async
-create/read/list store. It does not yet provide a FastAPI application, Taskiq
-worker, Redis event path, durable events, or web frontend.
+standalone package. Slices 12A and 12B provide its strict launch/run contracts,
+code-owned bot catalog, PostgreSQL run row, Taskiq worker, durable progress
+events, migrations, and async run store. It does not yet provide a FastAPI
+application, SSE path, or web frontend.
 
 For local migration work, add the exact disposable PostgreSQL target to `.env`:
 

@@ -907,7 +907,7 @@ Acceptance:
 
 ## Slice 12B: Taskiq Worker and Durable Progress
 
-Status: planned; depends on Slice 12A.
+Status: implemented; depends on Slice 12A.
 
 Minimum deliverable:
 

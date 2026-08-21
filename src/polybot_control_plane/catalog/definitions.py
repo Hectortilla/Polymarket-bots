@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from typing import TYPE_CHECKING
 
 from polybot.examples.btc_5m import create as create_market_watcher
@@ -36,6 +37,7 @@ from polybot_control_plane.catalog.inputs import (
 
 if TYPE_CHECKING:
     from polybot.framework.factories import BotFactory
+    from polybot.framework.config.models import BotConfig
     from polybot_control_plane.runs.contracts import PaperRunConfig
 
 
@@ -75,6 +77,14 @@ class CatalogEntry:
 
     def parse_config(self, inputs: object) -> PaperRunConfig:
         return self.launch_model.model_validate(inputs).to_run_config()
+
+    def create_bot(self, bot_config: BotConfig):
+        # The public BotFactory contract permits either zero arguments or BotConfig.
+        try:
+            inspect.signature(self.factory).bind(bot_config)
+        except TypeError:
+            return self.factory()
+        return self.factory(bot_config)
 
 
 CATALOG: dict[str, CatalogEntry] = {
