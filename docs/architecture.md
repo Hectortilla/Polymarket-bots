@@ -11,7 +11,7 @@
 
 ## Current Status
 
-Slices 1 through 5, Slices 9A through 11, and Slices 12A through 12C are
+Slices 1 through 5, Slices 9A through 11, and Slices 12A through 12D are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -20,7 +20,7 @@ performance artifacts, opt-in coverage-gap blackout replay, the terminal
 dashboard, dynamic market tracking and resolution settlement, and the isolated
 control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, durable SSE path,
-and deterministic OpenAPI artifact.
+deterministic OpenAPI artifact, and static client-rendered launch/run UI.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -79,8 +79,8 @@ adapter behavior covered by contract tests, especially while
 These statements describe the implemented `polybot` boundary. The paper-only
 Web Control Plane v0 changes those capabilities only in the separate
 `polybot_control_plane` package and does not connect this repository to the
-Polyfollow application. Slices 12A through 12C supply persistence, worker
-execution, the runs API, and durable SSE, but no frontend;
+Polyfollow application. Slices 12A through 12D supply persistence, worker
+execution, the runs API, durable SSE, and a static SvelteKit deployment peer;
 see `web-control-plane-spec.md` and `web-control-plane-architecture.md`.
 
 ## Package Layout
@@ -178,6 +178,7 @@ polyfollow-polybot/
     events/          # Typed durable progress projection, persistence, Redis wake-up.
     execution/       # RunLauncher, Taskiq adapter, and worker lifecycle.
   migrations/       # Alembic-owned PostgreSQL schema history.
+  frontend/         # Static client-rendered SvelteKit launch and run UI.
   tests/
 ```
 

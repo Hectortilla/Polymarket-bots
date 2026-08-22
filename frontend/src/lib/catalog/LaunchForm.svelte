@@ -1,0 +1,140 @@
+<script lang="ts">
+  import type { AnySchemaObject } from 'ajv';
+
+  import type { BotDefinitionDescriptor } from '$lib/api/generated';
+  import {
+    WIDGET_KIND,
+    fieldLabel,
+    initialLaunchInputs,
+    launchFields,
+    launchValidator,
+    resolvedFieldSchema,
+    selectionExplanation,
+    validationMessages,
+    widgetKind,
+    type LaunchInputs
+  } from './schema';
+
+  let {
+    descriptor,
+    onsubmit,
+    busy = false
+  }: {
+    descriptor: BotDefinitionDescriptor;
+    onsubmit: (inputs: LaunchInputs) => void | Promise<void>;
+    busy?: boolean;
+  } = $props();
+
+  const fields = $derived(launchFields(descriptor));
+  const validator = $derived(launchValidator(descriptor));
+  let inputs = $state<LaunchInputs>({});
+  let activeDefinitionId = $state('');
+  let errors = $state<string[]>([]);
+
+  $effect(() => {
+    if (activeDefinitionId !== descriptor.definition_id) {
+      activeDefinitionId = descriptor.definition_id;
+      inputs = initialLaunchInputs(descriptor);
+      errors = [];
+    }
+  });
+
+  function update(name: string, value: unknown): void {
+    inputs = { ...inputs, [name]: value };
+    errors = validationMessages(validator, inputs);
+  }
+
+  function updateList(name: string, value: string): void {
+    update(
+      name,
+      value
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    );
+  }
+
+  function updateJson(name: string, value: string): void {
+    try {
+      update(name, JSON.parse(value));
+    } catch {
+      update(name, value);
+    }
+  }
+
+  function inputType(field: AnySchemaObject): string {
+    const type = resolvedFieldSchema(descriptor, field).type;
+    return type === 'integer' || type === 'number' ? 'number' : 'text';
+  }
+
+  function parseFieldInput(field: AnySchemaObject, value: string): string | number {
+    return inputType(field) === 'number' && value !== '' ? Number(value) : value;
+  }
+
+  async function submit(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    errors = validationMessages(validator, inputs);
+    if (errors.length === 0) await onsubmit(inputs);
+  }
+</script>
+
+<div class="selection-notes" aria-label="Selection behavior">
+  <p>{selectionExplanation('Market', descriptor.market_selection)}</p>
+  <p>{selectionExplanation('Wallet', descriptor.wallet_selection)}</p>
+</div>
+
+<form onsubmit={submit} novalidate>
+  <div class="form-grid">
+    {#each fields as [name, field] (name)}
+      {@const schema = resolvedFieldSchema(descriptor, field)}
+      {@const widget = widgetKind(field)}
+      <label class:wide={widget === WIDGET_KIND.streamRules}>
+        <span>{fieldLabel(name, schema)}</span>
+
+        {#if widget === WIDGET_KIND.walletAddresses || widget === WIDGET_KIND.marketSlugs}
+          <textarea
+            rows="3"
+            value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
+            oninput={(event) => updateList(name, event.currentTarget.value)}
+            placeholder={widget === WIDGET_KIND.walletAddresses ? 'One wallet address per line' : 'One market slug per line'}
+          ></textarea>
+        {:else if widget === WIDGET_KIND.streamRules}
+          <textarea
+            rows="6"
+            value={JSON.stringify(inputs[name], null, 2)}
+            oninput={(event) => updateJson(name, event.currentTarget.value)}
+            spellcheck="false"
+          ></textarea>
+        {:else if schema.type === 'boolean'}
+          <input
+            type="checkbox"
+            checked={inputs[name] === true}
+            onchange={(event) => update(name, event.currentTarget.checked)}
+          />
+        {:else}
+          <input
+            type={widget === WIDGET_KIND.decimal ? 'text' : inputType(field)}
+            inputmode={widget === WIDGET_KIND.decimal ? 'decimal' : undefined}
+            value={String(inputs[name] ?? '')}
+            required={Array.isArray(descriptor.input_schema.required) && descriptor.input_schema.required.includes(name)}
+            min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
+            max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
+            step={inputType(field) === 'number' ? '1' : undefined}
+            oninput={(event) =>
+              update(name, parseFieldInput(field, event.currentTarget.value))}
+          />
+        {/if}
+      </label>
+    {/each}
+  </div>
+
+  {#if errors.length > 0}
+    <div class="form-errors" role="alert">
+      {#each errors as error}
+        <p>{error}</p>
+      {/each}
+    </div>
+  {/if}
+
+  <button type="submit" disabled={busy}>{busy ? 'Starting…' : 'Start paper run'}</button>
+</form>

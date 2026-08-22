@@ -29,10 +29,25 @@ validation, safety, and test budgets for each implementation slice. A task that
 names one Slice 12 sub-slice must not scaffold later slices.
 
 That plan adds a private, paper-only SvelteKit/FastAPI control plane around this
-standalone package. Slices 12A through 12C provide its strict launch/run
+standalone package. Slices 12A through 12D provide its strict launch/run
 contracts, code-owned bot catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, durable SSE path,
-and deterministic OpenAPI artifact. It does not yet provide a web frontend.
+deterministic OpenAPI artifact, and static client-rendered launch/run UI.
+
+Install and verify the frontend from `frontend/`:
+
+```sh
+npm ci
+npm run generate:check
+npm run check
+npm test
+npm run build
+```
+
+For local UI development, run the FastAPI control plane on port `8000` and then
+run `npm run dev` from `frontend/`; Vite proxies same-origin `/api` requests to
+that API. Slice 12D shows durable run progress and intentionally leaves live
+dashboard charts to Slice 12E.
 
 For local migration work, add the exact disposable PostgreSQL target to `.env`:
 
@@ -51,8 +66,8 @@ paper runner CLI, Slice 9A historical market recorder and local trim
 maintenance, Slice 9B deterministic archive backtester and performance
 artifacts, Slice 9B.1 opt-in coverage-gap blackout replay, Slice 10 terminal
 dashboard, Slice 11 dynamic market tracking and resolution processing, and the
-isolated Slices 12A through 12C control-plane foundation, worker, durable
-progress path, runs API, and SSE stream. The
+isolated Slices 12A through 12D control-plane foundation, worker, durable
+progress path, runs API, SSE stream, and static launch/run UI. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads

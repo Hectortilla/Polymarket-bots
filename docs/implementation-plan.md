@@ -995,7 +995,7 @@ Acceptance:
 
 ## Slice 12D: Static SvelteKit Launch and Run UI
 
-Status: planned; depends on Slice 12C.
+Status: done; depends on Slice 12C.
 
 Minimum deliverable:
 

@@ -1,6 +1,6 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12C are implemented. This document
+Status: planned overall; Slices 12A through 12D are implemented. This document
 is the single technical contract for the product in
 `web-control-plane-spec.md`.
 

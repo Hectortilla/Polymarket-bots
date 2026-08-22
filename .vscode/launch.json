@@ -2,7 +2,11 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Wallets finder (loop)",
+      "name": "Wallets: Find candidates (loop)",
+      "presentation": {
+        "group": "Wallet tools",
+        "order": 30
+      },
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/wallets_finder/__init__.py",
@@ -19,7 +23,11 @@
       "subProcess": true
     },
     {
-      "name": "Select wallet for analysis",
+      "name": "Wallets: Select for analysis",
+      "presentation": {
+        "group": "Wallet tools",
+        "order": 31
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "scripts.select_wallet_for_analysis",
@@ -33,7 +41,11 @@
       "subProcess": true
     },
     {
-      "name": "Run polybot CLI",
+      "name": "Bot: Run paper CLI",
+      "presentation": {
+        "group": "Bots",
+        "order": 20
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "polybot.cli",
@@ -51,7 +63,11 @@
       "subProcess": true
     },
     {
-      "name": "Recreate control-plane database",
+      "name": "Control plane: Recreate database",
+      "presentation": {
+        "group": "Control plane",
+        "order": 14
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "scripts.recreate_control_plane_database",
@@ -65,7 +81,11 @@
       "justMyCode": true
     },
     {
-      "name": "Run control-plane backend",
+      "name": "Control plane: Run backend",
+      "presentation": {
+        "group": "Control plane",
+        "order": 10
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "uvicorn",
@@ -88,7 +108,61 @@
       "subProcess": true
     },
     {
-      "name": "Record BTC 5m buckets",
+      "name": "Control plane: Run worker",
+      "presentation": {
+        "group": "Control plane",
+        "order": 11
+      },
+      "type": "debugpy",
+      "request": "launch",
+      "module": "taskiq",
+      "args": [
+        "worker",
+        "polybot_control_plane.execution.taskiq_app:broker",
+        "--workers",
+        "1",
+        "--max-async-tasks",
+        "4"
+      ],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true
+    },
+    {
+      "name": "Control plane: Run frontend",
+      "presentation": {
+        "group": "Control plane",
+        "order": 12
+      },
+      "type": "node-terminal",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Control plane: Generate API client",
+      "presentation": {
+        "group": "Control plane",
+        "order": 13
+      },
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run generate",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Recording: Record BTC 5m buckets",
+      "presentation": {
+        "group": "Recordings",
+        "order": 40
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "polybot.recording",
@@ -106,7 +180,11 @@
       "subProcess": true
     },
     {
-      "name": "Inspect recording (pick file)",
+      "name": "Recording: Inspect archive",
+      "presentation": {
+        "group": "Recordings",
+        "order": 41
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "polybot.recording.inspect",
@@ -123,7 +201,11 @@
       "subProcess": true
     },
     {
-      "name": "Trim recording (pick file)",
+      "name": "Recording: Trim archive",
+      "presentation": {
+        "group": "Recordings",
+        "order": 42
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "polybot.recording.trim",
@@ -140,7 +222,11 @@
       "subProcess": true
     },
     {
-      "name": "Chart saved backtest PnL (pick directory)",
+      "name": "Backtest: Chart saved PnL",
+      "presentation": {
+        "group": "Backtests",
+        "order": 50
+      },
       "type": "debugpy",
       "request": "launch",
       "module": "polybot.cli.performance_chart",
@@ -157,7 +243,21 @@
       "subProcess": true
     }
   ],
-  "compounds": [],
+  "compounds": [
+    {
+      "name": "Control plane: Run development stack",
+      "configurations": [
+        "Control plane: Run backend",
+        "Control plane: Run worker",
+        "Control plane: Run frontend"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "group": "Control plane",
+        "order": 9
+      }
+    }
+  ],
   "inputs": [
     {
       "id": "pickRecordingFileToInspect",

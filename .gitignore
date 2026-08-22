@@ -5,6 +5,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+frontend/.svelte-kit/
+frontend/node_modules/
 .env
 .bot-state/
 /recordings/
