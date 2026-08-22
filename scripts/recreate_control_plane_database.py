@@ -5,36 +5,27 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from typing import cast
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.engine import URL, make_url
+from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from polybot_control_plane.database import DATABASE_URL_ENV, async_database_url
 
-DATABASE_URL_ENV = "POLYBOT_DATABASE_URL"
 MAINTENANCE_DATABASE = "postgres"
 PROTECTED_DATABASES = frozenset({MAINTENANCE_DATABASE, "template0", "template1"})
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _database_urls(raw_url: str) -> tuple[URL, URL]:
-    target_url = make_url(raw_url)
-    if target_url.get_backend_name() != "postgresql":
-        raise ValueError("database recreation requires a PostgreSQL URL")
-
-    database_name = (target_url.database or "").strip()
-    if not database_name:
-        raise ValueError("database recreation requires a database name")
+    target_url = async_database_url(raw_url)
+    database_name = cast(str, target_url.database)
     if database_name.lower() in PROTECTED_DATABASES:
         raise ValueError(f"refusing to recreate protected database {database_name!r}")
-
-    target_url = target_url.set(
-        drivername="postgresql+asyncpg",
-        database=database_name,
-    )
     return target_url, target_url.set(database=MAINTENANCE_DATABASE)
 
 

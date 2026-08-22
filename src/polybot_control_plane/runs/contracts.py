@@ -61,6 +61,8 @@ class PaperRunConfig(BaseModel):
         )
 
     def to_bot_config(self) -> BotConfig:
+        # The web boundary is paper-only: persisted input cannot select live
+        # mode or smuggle credentials into the existing runtime contract.
         return BotConfig(
             name=self.name,
             mode=BotMode.PAPER,

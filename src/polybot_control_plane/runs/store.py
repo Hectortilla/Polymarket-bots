@@ -1,4 +1,4 @@
-"""Small async persistence boundary for Slice 12A runs."""
+"""Async persistence boundary for durable paper-run lifecycle state."""
 
 from datetime import datetime
 from uuid import UUID
@@ -9,7 +9,11 @@ from sqlmodel import select
 
 from polybot_control_plane.runs.contracts import PaperRunConfig, RunRead
 from polybot_control_plane.runs.models import RunRow
-from polybot_control_plane.runs.status import RunStatus
+from polybot_control_plane.runs.status import (
+    INTERRUPTIBLE_RUN_STATUSES,
+    TERMINAL_RUN_STATUSES,
+    RunStatus,
+)
 
 
 class RunStore:
@@ -46,6 +50,8 @@ class RunStore:
         return tuple(self._read_from_row(row) for row in rows)
 
     async def claim(self, run_id: UUID, *, now: datetime) -> RunRead | None:
+        # The status predicate makes duplicate Taskiq deliveries race on one
+        # database write; only the winner receives a typed run to execute.
         statement = (
             update(RunRow)
             .where(RunRow.id == run_id, RunRow.status == RunStatus.QUEUED)
@@ -53,28 +59,127 @@ class RunStore:
             .returning(RunRow)
         )
         row = (await self._session.execute(statement)).scalar_one_or_none()
+        if row is None:
+            await self._session.commit()
+            return None
+        try:
+            claimed = self._read_from_row(row)
+        except Exception:
+            await self._session.rollback()
+            raise
         await self._session.commit()
-        return None if row is None else self._read_from_row(row)
+        return claimed
 
-    async def heartbeat(self, run_id: UUID, *, now: datetime) -> None:
-        await self._session.execute(update(RunRow).where(RunRow.id == run_id).values(heartbeat_at=now))
-        await self._session.commit()
+    async def mark_running(self, run_id: UUID) -> bool:
+        return await self._transition(run_id, RunStatus.RUNNING)
 
-    async def set_status(self, run_id: UUID, status: RunStatus) -> None:
-        await self._session.execute(update(RunRow).where(RunRow.id == run_id).values(status=status))
+    async def begin_completion(self, run_id: UUID) -> bool:
+        return await self._transition(
+            run_id,
+            RunStatus.STOPPING,
+            expected_statuses=frozenset({RunStatus.RUNNING}),
+        )
+
+    async def begin_stopping(self, run_id: UUID) -> bool:
+        return await self._transition(
+            run_id,
+            RunStatus.STOPPING,
+            expected_statuses=frozenset({RunStatus.STOP_REQUESTED}),
+        )
+
+    async def request_stop(self, run_id: UUID, *, now: datetime) -> RunStatus | None:
+        if await self._transition(
+            run_id,
+            RunStatus.STOPPED,
+            expected_statuses=frozenset({RunStatus.QUEUED}),
+            ended_at=now,
+        ):
+            return RunStatus.STOPPED
+        if await self._transition(
+            run_id,
+            RunStatus.STOP_REQUESTED,
+            expected_statuses=frozenset({RunStatus.STARTING, RunStatus.RUNNING}),
+        ):
+            return RunStatus.STOP_REQUESTED
+        return await self.status(run_id)
+
+    async def heartbeat(self, run_id: UUID, *, now: datetime) -> bool:
+        result = await self._session.execute(
+            update(RunRow)
+            .where(
+                RunRow.id == run_id,
+                RunRow.status.in_(INTERRUPTIBLE_RUN_STATUSES),
+            )
+            .values(heartbeat_at=now)
+        )
         await self._session.commit()
+        return result.rowcount == 1
 
     async def status(self, run_id: UUID) -> RunStatus | None:
         row = await self._session.get(RunRow, run_id)
         return None if row is None else row.status
 
-    async def finish(self, run_id: UUID, *, status: RunStatus, now: datetime, failure_detail: str | None = None) -> None:
-        await self._session.execute(
-            update(RunRow).where(RunRow.id == run_id).values(
-                status=status, ended_at=now, heartbeat_at=now, failure_detail=failure_detail,
+    async def finish(
+        self,
+        run_id: UUID,
+        *,
+        status: RunStatus,
+        now: datetime,
+        failure_detail: str | None = None,
+    ) -> bool:
+        if status not in TERMINAL_RUN_STATUSES:
+            raise ValueError("finish requires a terminal run status")
+        expected_statuses = (
+            frozenset({RunStatus.STOPPING})
+            if status is RunStatus.STOPPED
+            else None
+        )
+        return await self._transition(
+            run_id,
+            status,
+            expected_statuses=expected_statuses,
+            ended_at=now,
+            failure_detail=failure_detail,
+        )
+
+    async def interrupt_expired(
+        self,
+        run_id: UUID,
+        *,
+        expired_before: datetime,
+        now: datetime,
+    ) -> bool:
+        result = await self._session.execute(
+            update(RunRow)
+            .where(
+                RunRow.id == run_id,
+                RunRow.status.in_(INTERRUPTIBLE_RUN_STATUSES),
+                RunRow.heartbeat_at < expired_before,
             )
+            .values(status=RunStatus.INTERRUPTED, ended_at=now)
         )
         await self._session.commit()
+        return result.rowcount == 1
+
+    async def _transition(
+        self,
+        run_id: UUID,
+        status: RunStatus,
+        *,
+        expected_statuses: frozenset[RunStatus] | None = None,
+        **values: object,
+    ) -> bool:
+        allowed_previous = status.previous_statuses()
+        expected = expected_statuses or allowed_previous
+        if not expected or not expected.issubset(allowed_previous):
+            raise ValueError(f"invalid previous statuses for transition to {status}")
+        result = await self._session.execute(
+            update(RunRow)
+            .where(RunRow.id == run_id, RunRow.status.in_(expected))
+            .values(status=status, **values)
+        )
+        await self._session.commit()
+        return result.rowcount == 1
 
     @staticmethod
     def _read_from_row(row: RunRow) -> RunRead:

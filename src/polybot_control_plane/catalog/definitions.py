@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import inspect
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from polybot.examples.btc_5m import create as create_market_watcher
@@ -18,6 +17,7 @@ from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
 )
 from polybot.examples.meh_trading_bot import create as create_contrarian
 from polybot.examples.winner_trading_bot import create as create_winner
+from polybot.framework.factories import BoundBotFactory, bind_bot_factory
 from polybot_control_plane.catalog.contracts import (
     BotDefinitionDescriptor,
     BotDefinitionLabel,
@@ -62,6 +62,10 @@ class CatalogEntry:
     wallet_selection: SelectionMode
     launch_model: type[PaperLaunchInputs]
     factory: BotFactory
+    _bound_factory: BoundBotFactory = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_bound_factory", bind_bot_factory(self.factory))
 
     def descriptor(self, definition_id: DefinitionId) -> BotDefinitionDescriptor:
         return BotDefinitionDescriptor(
@@ -79,12 +83,7 @@ class CatalogEntry:
         return self.launch_model.model_validate(inputs).to_run_config()
 
     def create_bot(self, bot_config: BotConfig):
-        # The public BotFactory contract permits either zero arguments or BotConfig.
-        try:
-            inspect.signature(self.factory).bind(bot_config)
-        except TypeError:
-            return self.factory()
-        return self.factory(bot_config)
+        return self._bound_factory(bot_config)
 
 
 CATALOG: dict[str, CatalogEntry] = {

@@ -51,7 +51,8 @@ paper runner CLI, Slice 9A historical market recorder and local trim
 maintenance, Slice 9B deterministic archive backtester and performance
 artifacts, Slice 9B.1 opt-in coverage-gap blackout replay, Slice 10 terminal
 dashboard, Slice 11 dynamic market tracking and resolution processing, and the
-isolated Slice 12A control-plane foundation. The
+isolated Slices 12A and 12B control-plane foundation, worker, and durable
+progress path. The
 dashboard has market-price and followed-wallet timeline views; press `v` to
 switch between them. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads

@@ -85,8 +85,9 @@ supporting private modules are not prescribed:
   `BotDefinitionDescriptor`, and `LaunchRequest`.
 - `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
   `RunRead`.
-- `polybot_control_plane.events.contracts`: `EventKind`, `DurableEvent`, and
-  `LiveChartEvent` plus their discriminated payloads.
+- `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
+  their discriminated payloads. Slice 12E adds `LiveChartEvent` and the
+  `chart.sample` durable variant when it first implements chart cadence.
 - `polybot_control_plane.execution.launcher`: the `RunLauncher` protocol.
 
 Finite wire values are `StrEnum`s. The generated frontend types come from these
@@ -218,7 +219,9 @@ The canonical durable event kinds are:
 - `wallet.timeline`
 - `stream.health`
 - `run.failure`
-- `chart.sample`
+
+Slice 12E extends this list with `chart.sample`; Slice 12B does not advertise a
+wire kind whose payload contract is not implemented yet.
 
 Raw book events and individual dispatch callbacks are not durable. The web
 observer maps runtime events to the list above and enqueues those records; raw

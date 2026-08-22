@@ -1,63 +1,195 @@
-"""Dependency-light runtime event projection."""
+"""Presentation-neutral runtime-to-durable event projection."""
 
-from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
-from enum import Enum
-from typing import Any
 from uuid import UUID
 
 from polybot.cli.observability.events import (
-    BootstrapProgress, BrokerFailed, FillCompleted, MarketSettled,
-    OrderSubmitted, PortfolioSnapshot, RuntimeEvent, RuntimeFailed,
-    RuntimeStarted, RuntimeStateChanged, StreamHealth,
+    BootstrapProgress,
+    BrokerFailed,
+    DispatchCompleted,
+    FillCompleted,
+    MarketSettled,
+    OrderSubmitted,
+    RuntimeEvent,
+    RuntimeFailed,
+    RuntimeStarted,
+    RuntimeStateChanged,
+    StreamHealth,
 )
+from polybot.cli.observability.states import RuntimeState
+from polybot.cli.streams.contracts import WalletStreamEvent
 from polybot.framework.activity import BotActivityEvent
+from polybot_control_plane.runs.status import RunStatus
 
-from .contracts import DurableEvent, EventKind
+from .contracts import (
+    BotActivityDurableEvent,
+    BotActivityPayload,
+    BrokerFailureEvent,
+    BrokerFailurePayload,
+    BrokerFillEvent,
+    BrokerFillPayload,
+    BrokerOrderEvent,
+    BrokerOrderPayload,
+    DurableEvent,
+    MarketSettlementDurableEvent,
+    MarketSettlementPayload,
+    PortfolioSnapshotEvent,
+    RunBootstrapEvent,
+    RunBootstrapPayload,
+    RunFailureEvent,
+    RunFailurePayload,
+    RunLifecycleEvent,
+    RunStartedPayload,
+    RunStatusPayload,
+    StreamHealthEvent,
+    StreamHealthPayload,
+    WalletTimelineDurableEvent,
+    WalletTimelinePayload,
+)
 
 
-def _json_value(value: Any) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Decimal):
-        return str(value)
-    if is_dataclass(value):
-        return {key: _json_value(item) for key, item in asdict(value).items()}
-    if isinstance(value, tuple):
-        return [_json_value(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _json_value(item) for key, item in value.items()}
-    return value
-
-
-def project_event(run_id: UUID, event: RuntimeEvent) -> DurableEvent | None:
-    kind: EventKind | None = None
-    if isinstance(event, (RuntimeStarted, RuntimeStateChanged)):
-        kind = EventKind.RUN_LIFECYCLE
-    elif isinstance(event, BootstrapProgress):
-        kind = EventKind.RUN_BOOTSTRAP
-    elif isinstance(event, BotActivityEvent):
-        kind = EventKind.BOT_ACTIVITY
-    elif isinstance(event, OrderSubmitted):
-        kind = EventKind.BROKER_ORDER
-    elif isinstance(event, FillCompleted):
-        kind = EventKind.BROKER_FILL
-    elif isinstance(event, BrokerFailed):
-        kind = EventKind.BROKER_FAILURE
-    elif isinstance(event, MarketSettled):
-        kind = EventKind.MARKET_SETTLEMENT
-    elif isinstance(event, PortfolioSnapshot):
-        kind = EventKind.PORTFOLIO_SNAPSHOT
-    elif isinstance(event, StreamHealth):
-        kind = EventKind.STREAM_HEALTH
-    elif isinstance(event, RuntimeFailed):
-        kind = EventKind.RUN_FAILURE
-    if kind is None:
-        return None
-    payload = _json_value(event)
-    if not isinstance(payload, dict):
-        raise TypeError("runtime event projection must be an object")
-    return DurableEvent(
-        run_id=run_id, kind=kind, occurred_at=datetime.now(UTC), payload=payload
-    )
+def project_runtime_event_to_durable(
+    run_id: UUID,
+    event: RuntimeEvent,
+) -> tuple[DurableEvent, ...]:
+    occurred_at = datetime.now(UTC)
+    if isinstance(event, RuntimeStarted):
+        return (
+            RunLifecycleEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=RunStartedPayload(
+                    name=event.name,
+                    mode=event.mode,
+                    initial_cash_usdc=event.initial_cash_usdc,
+                ),
+            ),
+        )
+    if isinstance(event, RuntimeStateChanged):
+        # The worker writes the authoritative terminal outcome after the
+        # observer drains, so runtime STOPPED cannot mask INTERRUPTED/FAILED.
+        if event.state is RuntimeState.STOPPED:
+            return ()
+        return (
+            RunLifecycleEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=RunStatusPayload(status=RunStatus(event.state.value)),
+            ),
+        )
+    if isinstance(event, BootstrapProgress):
+        return (
+            RunBootstrapEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=RunBootstrapPayload(
+                    phase=event.phase,
+                    completed=event.completed,
+                    total=event.total,
+                ),
+            ),
+        )
+    if isinstance(event, BotActivityEvent):
+        return (
+            BotActivityDurableEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=BotActivityPayload(
+                    message=event.message,
+                    severity=event.severity,
+                ),
+            ),
+        )
+    if isinstance(event, OrderSubmitted):
+        return (
+            BrokerOrderEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=BrokerOrderPayload(order=event.order),
+            ),
+        )
+    if isinstance(event, FillCompleted):
+        projected: list[DurableEvent] = [
+            BrokerFillEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=BrokerFillPayload(
+                    order=event.order,
+                    fill=event.fill,
+                    portfolio=event.portfolio,
+                    latency_ms=event.latency_ms,
+                ),
+            )
+        ]
+        if event.portfolio is not None:
+            projected.append(
+                PortfolioSnapshotEvent.from_snapshot(
+                    run_id,
+                    event.portfolio,
+                    occurred_at=occurred_at,
+                )
+            )
+        return tuple(projected)
+    if isinstance(event, BrokerFailed):
+        return (
+            BrokerFailureEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=BrokerFailurePayload(order=event.order, error=event.error),
+            ),
+        )
+    if isinstance(event, MarketSettled):
+        return (
+            MarketSettlementDurableEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=MarketSettlementPayload(
+                    settlement=event.settlement,
+                    portfolio=event.portfolio,
+                ),
+            ),
+            PortfolioSnapshotEvent.from_snapshot(
+                run_id,
+                event.portfolio,
+                occurred_at=occurred_at,
+            ),
+        )
+    if isinstance(event, StreamHealth):
+        return (
+            StreamHealthEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=StreamHealthPayload(
+                    queue_depth=event.queue_depth,
+                    peak_queue_depth=event.peak_queue_depth,
+                    book_dispatch_lag_ms=event.book_dispatch_lag_ms,
+                    book_stale=event.book_stale,
+                    book_received_count=event.book_received_count,
+                    book_coalesced_count=event.book_coalesced_count,
+                ),
+            ),
+        )
+    if isinstance(event, RuntimeFailed):
+        return (
+            RunFailureEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=RunFailurePayload(error=event.error),
+            ),
+        )
+    if isinstance(event, DispatchCompleted) and isinstance(
+        event.item, WalletStreamEvent
+    ):
+        return (
+            WalletTimelineDurableEvent(
+                run_id=run_id,
+                occurred_at=occurred_at,
+                payload=WalletTimelinePayload(
+                    trade=event.item.event,
+                    outcome=event.outcome,
+                ),
+            ),
+        )
+    # Raw books, market hints, and individual non-wallet dispatch callbacks are
+    # deliberately non-durable; later chart cadence owns their aggregation.
+    return ()

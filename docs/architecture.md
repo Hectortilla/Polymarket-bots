@@ -171,6 +171,8 @@ polyfollow-polybot/
   src/polybot_control_plane/ # Inward-dependent private web control plane.
     catalog/         # Public catalog contracts, launch models, definitions.
     runs/            # Paper-run contracts, SQLModel row, and async store.
+    events/          # Typed durable progress projection, persistence, Redis wake-up.
+    execution/       # RunLauncher, Taskiq adapter, and worker lifecycle.
   migrations/       # Alembic-owned PostgreSQL schema history.
   tests/
 ```

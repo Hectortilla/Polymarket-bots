@@ -31,7 +31,7 @@ from polybot.cli.entrypoint import (
     main,
 )
 from polybot.cli.performance_chart.contracts import PerformanceChartError
-from polybot.cli.factories import load_bot
+from polybot.cli.factories import INVALID_BOT_FACTORY_PREFIX, load_bot
 from polybot.cli.markets import resolve_plan_markets
 from polybot.runtime import run_bot
 from polybot.cli.runner.factory import RuntimeComponents, create_runtime
@@ -1043,7 +1043,7 @@ def test_load_bot_supports_config_and_zero_argument_factories(monkeypatch) -> No
 
 
 def test_load_bot_rejects_invalid_factory() -> None:
-    with pytest.raises(ValueError, match="invalid bot factory"):
+    with pytest.raises(ValueError, match=INVALID_BOT_FACTORY_PREFIX):
         load_bot("missing_module:bot", BotConfig(name="factory"))
 
 

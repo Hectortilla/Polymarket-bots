@@ -1,8 +1,11 @@
 import pytest
 
 from scripts import recreate_control_plane_database as database_recreation
-from scripts.recreate_control_plane_database import (
+from polybot_control_plane.database import (
+    ASYNC_POSTGRESQL_DRIVER_NAME,
     DATABASE_URL_ENV,
+)
+from scripts.recreate_control_plane_database import (
     _database_urls,
     _quoted_database_name,
     main,
@@ -14,7 +17,7 @@ def test_database_urls_use_asyncpg_and_postgres_for_maintenance() -> None:
         "postgresql://polybot:secret@localhost:5432/polybot_dev"
     )
 
-    assert target_url.drivername == "postgresql+asyncpg"
+    assert target_url.drivername == ASYNC_POSTGRESQL_DRIVER_NAME
     assert target_url.database == "polybot_dev"
     assert maintenance_url.database == "postgres"
     assert maintenance_url.username == target_url.username

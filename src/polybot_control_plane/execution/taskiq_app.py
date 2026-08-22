@@ -1,14 +1,14 @@
 """Taskiq broker and the thin run-launch adapter."""
 
-import os
 from uuid import UUID
 
 from taskiq_redis import RedisStreamBroker
+
+from polybot_control_plane.execution.config import configured_redis_url
 from polybot_control_plane.execution.worker import execute_run
 
 
-REDIS_URL = os.getenv("POLYBOT_REDIS_URL", "redis://localhost:6379/0")
-broker = RedisStreamBroker(REDIS_URL)
+broker = RedisStreamBroker(configured_redis_url())
 
 
 @broker.task

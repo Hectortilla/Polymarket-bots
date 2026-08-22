@@ -15,7 +15,7 @@ from polybot.framework.events import FillEvent, OrderRequest
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketSettlementEvent
 
-from .states import BootstrapPhase, RuntimeState
+from .states import BootstrapPhase, RuntimeState, validate_bootstrap_progress
 
 if TYPE_CHECKING:
     from polybot.cli.streams.contracts import StreamEvent
@@ -31,10 +31,7 @@ class BootstrapProgress:
     occurred_at_monotonic_seconds: float = field(default_factory=monotonic)
 
     def __post_init__(self) -> None:
-        if self.completed < 0 or self.total < 0:
-            raise ValueError("bootstrap progress values must not be negative")
-        if self.completed > self.total:
-            raise ValueError("bootstrap progress cannot exceed its total")
+        validate_bootstrap_progress(self.completed, self.total)
 
 
 @dataclass(frozen=True, slots=True)

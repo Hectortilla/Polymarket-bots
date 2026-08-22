@@ -1,11 +1,14 @@
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from polybot.framework.base import BaseBot
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
+from polybot.framework.factories import bind_bot_factory
 from polybot.framework.streams import StreamRelation
 from polybot_control_plane.catalog.contracts import (
     LaunchRequest,
@@ -81,6 +84,35 @@ def test_bot_managed_definition_converts_without_selection_inputs() -> None:
     assert descriptor.market_selection is SelectionMode.BOT_MANAGED
     assert descriptor.wallet_selection is SelectionMode.ABSENT
     assert config.stream_rules == ()
+
+
+def test_catalog_normalizes_zero_and_one_config_factories_once() -> None:
+    config = BotConfig(name="factory")
+
+    def without_config() -> BaseBot:
+        return BaseBot()
+
+    def with_config(received: BotConfig) -> BaseBot:
+        assert received is config
+        return BaseBot()
+
+    template = CATALOG[WINNER_DEFINITION_ID]
+
+    assert isinstance(replace(template, factory=without_config).create_bot(config), BaseBot)
+    assert isinstance(replace(template, factory=with_config).create_bot(config), BaseBot)
+
+
+def test_bot_factory_contract_rejects_invalid_signature_and_return() -> None:
+    def two_arguments(first: object, second: object) -> BaseBot:
+        return BaseBot()
+
+    def wrong_return() -> object:
+        return object()
+
+    with pytest.raises(TypeError, match="zero arguments or one BotConfig"):
+        bind_bot_factory(two_arguments)
+    with pytest.raises(TypeError, match="did not return BaseBot"):
+        bind_bot_factory(wrong_return)(BotConfig(name="factory"))
 
 
 def test_wallet_definition_owns_normalized_wallet_widget_and_rule() -> None:

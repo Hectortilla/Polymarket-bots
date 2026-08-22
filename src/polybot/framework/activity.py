@@ -15,6 +15,11 @@ class ActivitySeverity(StrEnum):
     ERROR = "error"
 
 
+def validate_activity_message(message: object) -> None:
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("activity messages must be non-empty strings")
+
+
 @dataclass(frozen=True, slots=True)
 class BotActivityEvent:
     message: str
@@ -22,8 +27,7 @@ class BotActivityEvent:
     occurred_at_monotonic_seconds: float = field(default_factory=monotonic)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.message, str) or not self.message.strip():
-            raise ValueError("activity messages must be non-empty strings")
+        validate_activity_message(self.message)
         if not isinstance(self.severity, ActivitySeverity):
             raise ValueError("activity severity must be an ActivitySeverity")
 
