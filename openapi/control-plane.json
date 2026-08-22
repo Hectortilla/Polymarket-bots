@@ -1,0 +1,2043 @@
+{
+  "components": {
+    "schemas": {
+      "ActivitySeverity": {
+        "enum": [
+          "info",
+          "success",
+          "warning",
+          "error"
+        ],
+        "title": "ActivitySeverity",
+        "type": "string"
+      },
+      "BootstrapPhase": {
+        "enum": [
+          "markets",
+          "wallets"
+        ],
+        "title": "BootstrapPhase",
+        "type": "string"
+      },
+      "BotActivityDurableEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "bot.activity",
+            "default": "bot.activity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BotActivityPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "BotActivityDurableEvent",
+        "type": "object"
+      },
+      "BotActivityPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ActivitySeverity"
+          }
+        },
+        "required": [
+          "message",
+          "severity"
+        ],
+        "title": "BotActivityPayload",
+        "type": "object"
+      },
+      "BotDefinitionDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "definition_id": {
+            "$ref": "#/components/schemas/DefinitionId"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "title": "Input Schema",
+            "type": "object"
+          },
+          "label": {
+            "$ref": "#/components/schemas/BotDefinitionLabel"
+          },
+          "market_selection": {
+            "$ref": "#/components/schemas/SelectionMode"
+          },
+          "version": {
+            "$ref": "#/components/schemas/DefinitionVersion"
+          },
+          "wallet_selection": {
+            "$ref": "#/components/schemas/SelectionMode"
+          }
+        },
+        "required": [
+          "definition_id",
+          "version",
+          "display_name",
+          "description",
+          "label",
+          "market_selection",
+          "wallet_selection",
+          "input_schema"
+        ],
+        "title": "BotDefinitionDescriptor",
+        "type": "object"
+      },
+      "BotDefinitionLabel": {
+        "enum": [
+          "standard",
+          "example",
+          "non_trading"
+        ],
+        "title": "BotDefinitionLabel",
+        "type": "string"
+      },
+      "BotMode": {
+        "enum": [
+          "paper",
+          "live"
+        ],
+        "title": "BotMode",
+        "type": "string"
+      },
+      "BrokerFailureEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "broker.failure",
+            "default": "broker.failure",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BrokerFailurePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "BrokerFailureEvent",
+        "type": "object"
+      },
+      "BrokerFailurePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "minLength": 1,
+            "title": "Error",
+            "type": "string"
+          },
+          "order": {
+            "$ref": "#/components/schemas/OrderRequest"
+          }
+        },
+        "required": [
+          "order",
+          "error"
+        ],
+        "title": "BrokerFailurePayload",
+        "type": "object"
+      },
+      "BrokerFillEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "broker.fill",
+            "default": "broker.fill",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BrokerFillPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "BrokerFillEvent",
+        "type": "object"
+      },
+      "BrokerFillPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "fill": {
+            "$ref": "#/components/schemas/FillEvent"
+          },
+          "latency_ms": {
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "order": {
+            "$ref": "#/components/schemas/OrderRequest"
+          },
+          "portfolio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortfolioSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "order",
+          "fill",
+          "portfolio",
+          "latency_ms"
+        ],
+        "title": "BrokerFillPayload",
+        "type": "object"
+      },
+      "BrokerOrderEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "broker.order",
+            "default": "broker.order",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BrokerOrderPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "BrokerOrderEvent",
+        "type": "object"
+      },
+      "BrokerOrderPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/OrderRequest"
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "title": "BrokerOrderPayload",
+        "type": "object"
+      },
+      "DataTradesBudget": {
+        "maximum": 180.0,
+        "minimum": 1.0,
+        "type": "integer"
+      },
+      "DefinitionId": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "DefinitionVersion": {
+        "exclusiveMinimum": 0.0,
+        "type": "integer"
+      },
+      "DispatchOutcome": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "skip_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DispatchSkipReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "DispatchOutcome",
+        "type": "object"
+      },
+      "DispatchSkipReason": {
+        "enum": [
+          "market_metadata_missing",
+          "market_not_tracked",
+          "market_resolved",
+          "wallet_not_tracked",
+          "book_stale",
+          "book_future_dated",
+          "bad_book_level",
+          "book_crossed",
+          "wallet_trade_invalid",
+          "wallet_trade_future_dated",
+          "wallet_trade_stale",
+          "duplicate_source_event"
+        ],
+        "title": "DispatchSkipReason",
+        "type": "string"
+      },
+      "DurableEvent": {
+        "discriminator": {
+          "mapping": {
+            "bot.activity": "#/components/schemas/BotActivityDurableEvent",
+            "broker.failure": "#/components/schemas/BrokerFailureEvent",
+            "broker.fill": "#/components/schemas/BrokerFillEvent",
+            "broker.order": "#/components/schemas/BrokerOrderEvent",
+            "market.settlement": "#/components/schemas/MarketSettlementDurableEvent",
+            "portfolio.snapshot": "#/components/schemas/PortfolioSnapshotEvent",
+            "run.bootstrap": "#/components/schemas/RunBootstrapEvent",
+            "run.failure": "#/components/schemas/RunFailureEvent",
+            "run.lifecycle": "#/components/schemas/RunLifecycleEvent",
+            "stream.health": "#/components/schemas/StreamHealthEvent",
+            "wallet.timeline": "#/components/schemas/WalletTimelineDurableEvent"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RunLifecycleEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunBootstrapEvent"
+          },
+          {
+            "$ref": "#/components/schemas/BotActivityDurableEvent"
+          },
+          {
+            "$ref": "#/components/schemas/BrokerOrderEvent"
+          },
+          {
+            "$ref": "#/components/schemas/BrokerFillEvent"
+          },
+          {
+            "$ref": "#/components/schemas/BrokerFailureEvent"
+          },
+          {
+            "$ref": "#/components/schemas/MarketSettlementDurableEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PortfolioSnapshotEvent"
+          },
+          {
+            "$ref": "#/components/schemas/WalletTimelineDurableEvent"
+          },
+          {
+            "$ref": "#/components/schemas/StreamHealthEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunFailureEvent"
+          }
+        ]
+      },
+      "DurableEventId": {
+        "maximum": 9.223372036854776e+18,
+        "minimum": 1.0,
+        "type": "integer"
+      },
+      "EventCursorValue": {
+        "maximum": 9.223372036854776e+18,
+        "minimum": 0.0,
+        "type": "integer"
+      },
+      "FillEvent": {
+        "properties": {
+          "average_price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Price"
+          },
+          "fee_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fee Usdc",
+            "type": "string"
+          },
+          "filled_size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Filled Size",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "received_at_ms": {
+            "title": "Received At Ms",
+            "type": "integer"
+          },
+          "reject_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reject Message"
+          },
+          "reject_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FillRejectReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Requested Size",
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "token_id",
+          "side",
+          "status",
+          "requested_size",
+          "filled_size",
+          "average_price",
+          "fee_usdc",
+          "received_at_ms"
+        ],
+        "title": "FillEvent",
+        "type": "object"
+      },
+      "FillRejectReason": {
+        "enum": [
+          "missing_token_id",
+          "bad_side",
+          "bad_price",
+          "bad_size",
+          "book_unavailable",
+          "book_mismatch",
+          "book_stale",
+          "book_future_dated",
+          "bad_book_level",
+          "book_crossed",
+          "market_unavailable",
+          "market_fee_invalid",
+          "market_metadata_mismatch",
+          "market_resolved",
+          "no_depth_within_slippage",
+          "duplicate_source_id",
+          "invalid_source_id",
+          "backtest_data_exhausted",
+          "backtest_coverage_gap"
+        ],
+        "title": "FillRejectReason",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "LaunchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "definition_id": {
+            "$ref": "#/components/schemas/DefinitionId"
+          },
+          "definition_version": {
+            "$ref": "#/components/schemas/DefinitionVersion"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "definition_id",
+          "definition_version",
+          "inputs"
+        ],
+        "title": "LaunchRequest",
+        "type": "object"
+      },
+      "MarketResolutionEvent": {
+        "properties": {
+          "condition_id": {
+            "title": "Condition Id",
+            "type": "string"
+          },
+          "market_slug": {
+            "title": "Market Slug",
+            "type": "string"
+          },
+          "resolved_at_ms": {
+            "title": "Resolved At Ms",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "token_ids": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Token Ids",
+            "type": "array"
+          },
+          "winning_outcome": {
+            "title": "Winning Outcome",
+            "type": "string"
+          },
+          "winning_token_id": {
+            "title": "Winning Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition_id",
+          "market_slug",
+          "token_ids",
+          "winning_token_id",
+          "winning_outcome",
+          "resolved_at_ms",
+          "source"
+        ],
+        "title": "MarketResolutionEvent",
+        "type": "object"
+      },
+      "MarketSettlementDurableEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "market.settlement",
+            "default": "market.settlement",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MarketSettlementPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "MarketSettlementDurableEvent",
+        "type": "object"
+      },
+      "MarketSettlementEvent": {
+        "properties": {
+          "followed_wallet_positions": {
+            "items": {
+              "$ref": "#/components/schemas/SettledPosition"
+            },
+            "title": "Followed Wallet Positions",
+            "type": "array"
+          },
+          "paper_positions": {
+            "items": {
+              "$ref": "#/components/schemas/SettledPosition"
+            },
+            "title": "Paper Positions",
+            "type": "array"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/MarketResolutionEvent"
+          },
+          "settled_at_ms": {
+            "title": "Settled At Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolution",
+          "paper_positions",
+          "followed_wallet_positions",
+          "settled_at_ms"
+        ],
+        "title": "MarketSettlementEvent",
+        "type": "object"
+      },
+      "MarketSettlementPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "portfolio": {
+            "$ref": "#/components/schemas/PortfolioSnapshot"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/MarketSettlementEvent"
+          }
+        },
+        "required": [
+          "settlement",
+          "portfolio"
+        ],
+        "title": "MarketSettlementPayload",
+        "type": "object"
+      },
+      "NonnegativeDecimal": {
+        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+        "type": "string"
+      },
+      "NonnegativeMilliseconds": {
+        "minimum": 0.0,
+        "type": "integer"
+      },
+      "OrderRequest": {
+        "properties": {
+          "condition_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Id"
+          },
+          "market_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Slug"
+          },
+          "price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Size",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "side",
+          "price",
+          "size"
+        ],
+        "title": "OrderRequest",
+        "type": "object"
+      },
+      "OrderStatus": {
+        "enum": [
+          "accepted",
+          "filled",
+          "partial",
+          "rejected",
+          "canceled"
+        ],
+        "title": "OrderStatus",
+        "type": "string"
+      },
+      "PaperRunConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "data_trades_budget_per_10s": {
+            "$ref": "#/components/schemas/DataTradesBudget"
+          },
+          "event_max_age_ms": {
+            "$ref": "#/components/schemas/NonnegativeMilliseconds"
+          },
+          "max_order_size": {
+            "$ref": "#/components/schemas/PositiveDecimal"
+          },
+          "max_slippage_pct": {
+            "$ref": "#/components/schemas/NonnegativeDecimal"
+          },
+          "name": {
+            "$ref": "#/components/schemas/RunName"
+          },
+          "paper_latency_jitter_ms": {
+            "$ref": "#/components/schemas/NonnegativeMilliseconds"
+          },
+          "paper_latency_ms": {
+            "$ref": "#/components/schemas/NonnegativeMilliseconds"
+          },
+          "paper_portfolio_usdc": {
+            "$ref": "#/components/schemas/PositiveDecimal"
+          },
+          "stream_rules": {
+            "items": {
+              "$ref": "#/components/schemas/StreamRule"
+            },
+            "title": "Stream Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "stream_rules",
+          "data_trades_budget_per_10s",
+          "max_order_size",
+          "max_slippage_pct",
+          "paper_latency_ms",
+          "paper_latency_jitter_ms",
+          "event_max_age_ms",
+          "paper_portfolio_usdc"
+        ],
+        "title": "PaperRunConfig",
+        "type": "object"
+      },
+      "PortfolioPositionSnapshot": {
+        "properties": {
+          "average_entry_price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Entry Price"
+          },
+          "size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Size",
+            "type": "string"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "size",
+          "average_entry_price"
+        ],
+        "title": "PortfolioPositionSnapshot",
+        "type": "object"
+      },
+      "PortfolioSnapshot": {
+        "properties": {
+          "cash_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash Usdc",
+            "type": "string"
+          },
+          "cumulative_fees_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cumulative Fees Usdc",
+            "type": "string"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPositionSnapshot"
+            },
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cash_usdc",
+          "cumulative_fees_usdc",
+          "positions"
+        ],
+        "title": "PortfolioSnapshot",
+        "type": "object"
+      },
+      "PortfolioSnapshotEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "portfolio.snapshot",
+            "default": "portfolio.snapshot",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/PortfolioSnapshotPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PortfolioSnapshotEvent",
+        "type": "object"
+      },
+      "PortfolioSnapshotPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "cash_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash Usdc",
+            "type": "string"
+          },
+          "cumulative_fees_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cumulative Fees Usdc",
+            "type": "string"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPositionSnapshot"
+            },
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cash_usdc",
+          "cumulative_fees_usdc",
+          "positions"
+        ],
+        "title": "PortfolioSnapshotPayload",
+        "type": "object"
+      },
+      "PositiveDecimal": {
+        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+        "type": "string"
+      },
+      "RunBootstrapEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "run.bootstrap",
+            "default": "run.bootstrap",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunBootstrapPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "RunBootstrapEvent",
+        "type": "object"
+      },
+      "RunBootstrapPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/BootstrapPhase"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "phase",
+          "completed",
+          "total"
+        ],
+        "title": "RunBootstrapPayload",
+        "type": "object"
+      },
+      "RunFailureEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "run.failure",
+            "default": "run.failure",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunFailurePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "RunFailureEvent",
+        "type": "object"
+      },
+      "RunFailurePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "minLength": 1,
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "RunFailurePayload",
+        "type": "object"
+      },
+      "RunLifecycleEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "run.lifecycle",
+            "default": "run.lifecycle",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunStartedPayload"
+              },
+              {
+                "$ref": "#/components/schemas/RunStatusPayload"
+              }
+            ],
+            "title": "Payload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "RunLifecycleEvent",
+        "type": "object"
+      },
+      "RunName": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "RunRead": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/PaperRunConfig"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_id": {
+            "$ref": "#/components/schemas/DefinitionId"
+          },
+          "definition_version": {
+            "$ref": "#/components/schemas/DefinitionVersion"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "failure_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Detail"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          }
+        },
+        "required": [
+          "id",
+          "definition_id",
+          "definition_version",
+          "config",
+          "status",
+          "created_at"
+        ],
+        "title": "RunRead",
+        "type": "object"
+      },
+      "RunStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "initial_cash_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Initial Cash Usdc",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/BotMode"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "const": "starting",
+            "default": "starting",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "mode",
+          "initial_cash_usdc"
+        ],
+        "title": "RunStartedPayload",
+        "type": "object"
+      },
+      "RunStatus": {
+        "enum": [
+          "queued",
+          "starting",
+          "running",
+          "stop_requested",
+          "stopping",
+          "stopped",
+          "failed",
+          "interrupted"
+        ],
+        "title": "RunStatus",
+        "type": "string"
+      },
+      "RunStatusPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RunStatusPayload",
+        "type": "object"
+      },
+      "SelectionMode": {
+        "enum": [
+          "user_configured",
+          "bot_managed",
+          "absent"
+        ],
+        "title": "SelectionMode",
+        "type": "string"
+      },
+      "SettledPosition": {
+        "properties": {
+          "cash_payout_usdc": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash Payout Usdc",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "payout_per_token": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Payout Per Token",
+            "type": "string"
+          },
+          "realized_pnl_usdc": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Pnl Usdc"
+          },
+          "size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Size",
+            "type": "string"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "token_id",
+          "size",
+          "payout_per_token",
+          "cash_payout_usdc"
+        ],
+        "title": "SettledPosition",
+        "type": "object"
+      },
+      "Side": {
+        "enum": [
+          "BUY",
+          "SELL"
+        ],
+        "title": "Side",
+        "type": "string"
+      },
+      "StreamHealthEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "stream.health",
+            "default": "stream.health",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StreamHealthPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "StreamHealthEvent",
+        "type": "object"
+      },
+      "StreamHealthPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "book_coalesced_count": {
+            "minimum": 0.0,
+            "title": "Book Coalesced Count",
+            "type": "integer"
+          },
+          "book_dispatch_lag_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Dispatch Lag Ms"
+          },
+          "book_received_count": {
+            "minimum": 0.0,
+            "title": "Book Received Count",
+            "type": "integer"
+          },
+          "book_stale": {
+            "title": "Book Stale",
+            "type": "boolean"
+          },
+          "peak_queue_depth": {
+            "minimum": 0.0,
+            "title": "Peak Queue Depth",
+            "type": "integer"
+          },
+          "queue_depth": {
+            "minimum": 0.0,
+            "title": "Queue Depth",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queue_depth",
+          "peak_queue_depth",
+          "book_dispatch_lag_ms",
+          "book_stale",
+          "book_received_count",
+          "book_coalesced_count"
+        ],
+        "title": "StreamHealthPayload",
+        "type": "object"
+      },
+      "StreamRelation": {
+        "enum": [
+          "filtered",
+          "independent"
+        ],
+        "title": "StreamRelation",
+        "type": "string"
+      },
+      "StreamRule": {
+        "properties": {
+          "market_slugs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Market Slugs",
+            "type": "array"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/StreamRelation"
+          },
+          "wallet_addresses": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Wallet Addresses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "relation"
+        ],
+        "title": "StreamRule",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WalletTimelineDurableEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "wallet.timeline",
+            "default": "wallet.timeline",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WalletTimelinePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "WalletTimelineDurableEvent",
+        "type": "object"
+      },
+      "WalletTimelinePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DispatchOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trade": {
+            "$ref": "#/components/schemas/WalletTradeEvent"
+          }
+        },
+        "required": [
+          "trade",
+          "outcome"
+        ],
+        "title": "WalletTimelinePayload",
+        "type": "object"
+      },
+      "WalletTradeEvent": {
+        "properties": {
+          "condition_id": {
+            "title": "Condition Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WalletTradeKind",
+            "default": "trade"
+          },
+          "market_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Slug"
+          },
+          "observed_at_ms": {
+            "title": "Observed At Ms",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price",
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Size",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          },
+          "trade_timestamp_ms": {
+            "title": "Trade Timestamp Ms",
+            "type": "integer"
+          },
+          "transaction_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Hash"
+          },
+          "wallet": {
+            "title": "Wallet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wallet",
+          "condition_id",
+          "token_id",
+          "side",
+          "size",
+          "price",
+          "source_id",
+          "trade_timestamp_ms",
+          "observed_at_ms"
+        ],
+        "title": "WalletTradeEvent",
+        "type": "object"
+      },
+      "WalletTradeKind": {
+        "enum": [
+          "trade",
+          "backfill",
+          "reconciliation"
+        ],
+        "title": "WalletTradeKind",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "title": "Polybot Control Plane",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/bot-definitions": {
+      "get": {
+        "operationId": "list_bot_definitions_api_v1_bot_definitions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BotDefinitionDescriptor"
+                  },
+                  "title": "Response List Bot Definitions Api V1 Bot Definitions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Bot Definitions"
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/v1/runs": {
+      "get": {
+        "operationId": "list_runs_api_v1_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunRead"
+                  },
+                  "title": "Response List Runs Api V1 Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Runs"
+      },
+      "post": {
+        "operationId": "launch_run_api_v1_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Launch Run"
+      }
+    },
+    "/api/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "read_run_api_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Run"
+      }
+    },
+    "/api/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "read_run_events_api_v1_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_event_id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EventCursorValue",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DurableEvent"
+                  },
+                  "title": "Response Read Run Events Api V1 Runs  Run Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Run Events"
+      }
+    },
+    "/api/v1/runs/{run_id}/events/stream": {
+      "get": {
+        "operationId": "stream_run_events_api_v1_runs__run_id__events_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_event_id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EventCursorValue",
+              "default": 0
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EventCursorValue"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/DurableEvent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Run Events"
+      }
+    },
+    "/api/v1/runs/{run_id}/stop": {
+      "post": {
+        "operationId": "stop_run_api_v1_runs__run_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Run"
+      }
+    }
+  }
+}

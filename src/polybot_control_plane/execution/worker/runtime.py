@@ -8,7 +8,7 @@ from polybot_control_plane.runs.contracts import RunRead
 
 async def run_claimed_bot(run: RunRead, observer: WebRuntimeObserver) -> None:
     entry = CATALOG.get(run.definition_id)
-    if entry is None or entry.version != run.definition_version:
+    if entry is None or not entry.matches_version(run.definition_version):
         raise RuntimeError("catalog definition version is no longer available")
     bot_config = run.config.to_bot_config()
     await run_bot(

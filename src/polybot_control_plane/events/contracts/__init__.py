@@ -11,11 +11,14 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    PositiveInt,
     TypeAdapter,
 )
 
 from polybot.cli.observability.events import PortfolioSnapshot
+from polybot_control_plane.events.ids import (
+    FIRST_DURABLE_EVENT_ID,
+    MAX_DURABLE_EVENT_ID,
+)
 from polybot_control_plane.runs.status import TERMINAL_RUN_STATUSES, RunStatus
 
 from ..kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
@@ -35,10 +38,16 @@ from .payloads import (
 )
 
 
+type DurableEventId = Annotated[
+    int,
+    Field(ge=FIRST_DURABLE_EVENT_ID, le=MAX_DURABLE_EVENT_ID),
+]
+
+
 class DurableEventBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: PositiveInt | None = None
+    id: DurableEventId | None = None
     run_id: UUID
     occurred_at: AwareDatetime
 
@@ -46,6 +55,9 @@ class DurableEventBase(BaseModel):
 class RunLifecycleEvent(DurableEventBase):
     kind: Literal[EventKind.RUN_LIFECYCLE] = EventKind.RUN_LIFECYCLE
     payload: RunStartedPayload | RunStatusPayload
+
+    def is_terminal(self) -> bool:
+        return self.payload.status in TERMINAL_RUN_STATUSES
 
     @classmethod
     def from_terminal_status(

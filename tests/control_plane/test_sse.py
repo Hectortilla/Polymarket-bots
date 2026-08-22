@@ -1,0 +1,251 @@
+import asyncio
+from datetime import UTC, datetime
+import logging
+from uuid import UUID, uuid4
+
+import pytest
+
+import polybot_control_plane.api.sse as sse_module
+from polybot_control_plane.api.sse import (
+    SSE_FIELD_SEPARATOR,
+    SSE_ID_FIELD,
+    stream_durable_events,
+)
+from polybot_control_plane.events.channels import (
+    decode_durable_wake_frame,
+    encode_durable_wake_frame,
+)
+from polybot_control_plane.events.contracts import (
+    RunLifecycleEvent,
+    RunStatusPayload,
+)
+from polybot_control_plane.events.ids import (
+    FIRST_DURABLE_EVENT_ID,
+    FIRST_EVENT_CURSOR,
+    MAX_DURABLE_EVENT_ID,
+    MAX_DURABLE_EVENT_ID_DIGITS,
+)
+from polybot_control_plane.runs.status import RunStatus
+
+
+def test_durable_wake_frame_is_strict_positive_bigint_ascii() -> None:
+    assert encode_durable_wake_frame(MAX_DURABLE_EVENT_ID) == str(
+        MAX_DURABLE_EVENT_ID
+    )
+    with pytest.raises(ValueError):
+        encode_durable_wake_frame(FIRST_DURABLE_EVENT_ID - 1)
+    with pytest.raises(ValueError):
+        encode_durable_wake_frame(MAX_DURABLE_EVENT_ID + 1)
+    assert decode_durable_wake_frame(b"42") == 42
+    assert decode_durable_wake_frame("42") == 42
+    for invalid in (
+        b"",
+        str(FIRST_DURABLE_EVENT_ID - 1).encode(),
+        b"+1",
+        b" 1",
+        b"1\n",
+        "N{ARABIC-INDIC DIGIT ONE}",
+        str(MAX_DURABLE_EVENT_ID + 1),
+        1,
+        b"1" * (MAX_DURABLE_EVENT_ID_DIGITS + 1),
+    ):
+        assert decode_durable_wake_frame(invalid) is None
+
+
+def test_terminal_initial_replay_does_not_subscribe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    pubsub = _PubSub(())
+    redis = _Redis(pubsub)
+
+    async def read_events(*args, **kwargs):
+        return (_event(run_id, 1, RunStatus.STOPPED),)
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+
+    frames = asyncio.run(_collect(run_id, redis))
+
+    assert tuple(_frame_id(frame) for frame in frames) == (1,)
+    assert redis.pubsub_requested is False
+
+
+def test_persisted_event_without_id_is_rejected_at_sse_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    pubsub = _PubSub(())
+    redis = _Redis(pubsub)
+
+    async def read_events(*args, **kwargs):
+        return (
+            RunLifecycleEvent(
+                run_id=run_id,
+                occurred_at=datetime.now(UTC),
+                payload=RunStatusPayload(status=RunStatus.RUNNING),
+            ),
+        )
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+
+    with pytest.raises(ValueError, match="missing its ID"):
+        asyncio.run(_collect(run_id, redis))
+    assert redis.pubsub_requested is False
+
+
+def test_idle_connection_emits_keep_alive_before_terminal_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    pubsub = _PubSub((None, {"data": b"2"}))
+    redis = _Redis(pubsub)
+    reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
+
+    async def read_events(*args, **kwargs):
+        return next(reads)
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+
+    frames = asyncio.run(_collect(run_id, redis))
+
+    assert frames[0] == sse_module.SSE_IDLE_COMMENT
+    assert _frame_id(frames[1]) == 2
+
+
+def test_replay_subscribe_recheck_delivers_handoff_event_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    pubsub = _PubSub([])
+    redis = _Redis(pubsub)
+    reads = iter(
+        (
+            (_event(run_id, 1, RunStatus.RUNNING),),
+            (_event(run_id, 2, RunStatus.STOPPED),),
+        )
+    )
+
+    async def read_events(*args, **kwargs):
+        return next(reads)
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+
+    frames = asyncio.run(_collect(run_id, redis))
+
+    assert tuple(_frame_id(frame) for frame in frames) == (1, 2)
+    assert pubsub.subscribed is True
+    assert pubsub.unsubscribed is True
+    assert pubsub.closed is True
+
+
+def test_malformed_wake_is_dropped_before_valid_terminal_wake(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run_id = uuid4()
+    pubsub = _PubSub(({"data": b"bad"}, {"data": b"2"}))
+    redis = _Redis(pubsub)
+    reads = iter(((), (), (_event(run_id, 2, RunStatus.FAILED),)))
+
+    async def read_events(*args, **kwargs):
+        return next(reads)
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    caplog.set_level(logging.WARNING)
+
+    frames = asyncio.run(_collect(run_id, redis))
+
+    assert tuple(_frame_id(frame) for frame in frames) == (2,)
+    assert "dropping malformed durable wake frame" in caplog.text
+    assert pubsub.closed is True
+
+
+def test_disconnect_releases_pubsub_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    pubsub = _PubSub([])
+    redis = _Redis(pubsub)
+
+    async def read_events(*args, **kwargs):
+        return ()
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+
+    frames = asyncio.run(_collect(run_id, redis, disconnected=True))
+
+    assert frames == []
+    assert pubsub.unsubscribed is True
+    assert pubsub.closed is True
+
+
+async def _collect(
+    run_id: UUID,
+    redis: "_Redis",
+    *,
+    disconnected: bool = False,
+) -> list[str]:
+    return [
+        frame
+        async for frame in stream_durable_events(
+            run_id,
+            after_event_id=FIRST_EVENT_CURSOR,
+            request=_Request(disconnected),
+            session_factory=object(),
+            redis=redis,
+        )
+    ]
+
+
+def _event(run_id: UUID, event_id: int, status: RunStatus) -> RunLifecycleEvent:
+    return RunLifecycleEvent(
+        id=event_id,
+        run_id=run_id,
+        occurred_at=datetime.now(UTC),
+        payload=RunStatusPayload(status=status),
+    )
+
+
+def _frame_id(frame: str) -> int:
+    first_line = frame.splitlines()[0]
+    return int(
+        first_line.removeprefix(f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}")
+    )
+
+
+class _Request:
+    def __init__(self, disconnected: bool) -> None:
+        self.disconnected = disconnected
+
+    async def is_disconnected(self) -> bool:
+        return self.disconnected
+
+
+class _Redis:
+    def __init__(self, pubsub: "_PubSub") -> None:
+        self._pubsub = pubsub
+        self.pubsub_requested = False
+
+    def pubsub(self) -> "_PubSub":
+        self.pubsub_requested = True
+        return self._pubsub
+
+
+class _PubSub:
+    def __init__(self, messages) -> None:
+        self.messages = iter(messages)
+        self.subscribed = False
+        self.unsubscribed = False
+        self.closed = False
+
+    async def subscribe(self, channel: str) -> None:
+        self.subscribed = True
+
+    async def get_message(self, **kwargs):
+        return next(self.messages)
+
+    async def unsubscribe(self, channel: str) -> None:
+        self.unsubscribed = True
+
+    async def aclose(self) -> None:
+        self.closed = True

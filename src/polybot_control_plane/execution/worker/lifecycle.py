@@ -9,6 +9,7 @@ from polybot.framework.clock import system_now_utc
 from polybot_control_plane.events.contracts import RunLifecycleEvent
 from polybot_control_plane.events.observer import WebRuntimeObserver
 from polybot_control_plane.events.writer import RunEventWriter
+from polybot_control_plane.runs.failures import sanitized_failure_detail
 from polybot_control_plane.runs.status import RunStatus
 from polybot_control_plane.runs.store import RunStore
 
@@ -33,7 +34,10 @@ async def execute_claimed_run_lifecycle(
             store,
             event_writer,
             RunStatus.FAILED,
-            failure_detail=_sanitized_failure_detail(error),
+            failure_detail=sanitized_failure_detail(
+                error,
+                PAPER_RUN_FAILURE_REASON,
+            ),
         )
         return
     if run is None:
@@ -82,7 +86,7 @@ async def execute_claimed_run_lifecycle(
         propagate_cancellation = True
     except Exception as error:
         terminal_status = RunStatus.FAILED
-        failure_detail = _sanitized_failure_detail(error)
+        failure_detail = sanitized_failure_detail(error, PAPER_RUN_FAILURE_REASON)
     else:
         if terminal_status is RunStatus.STOPPED:
             await store.begin_completion(run_id)
@@ -148,7 +152,3 @@ async def _finish_run(
     except Exception:
         # The run outcome is authoritative even when web observability is down.
         return
-
-
-def _sanitized_failure_detail(error: Exception) -> str:
-    return f"{type(error).__name__}: {PAPER_RUN_FAILURE_REASON}"

@@ -49,12 +49,12 @@ from polybot_control_plane.runs.schema import (
     RUN_STATUS_CONSTRAINT_NAME,
 )
 from polybot_control_plane.runs.store import RunStore
-
-
-TEST_POSTGRES_URL_ENV = "POLYBOT_TEST_POSTGRES_URL"
-POSTGRES_NOT_CONFIGURED_SKIP_REASON = (
-    f"{TEST_POSTGRES_URL_ENV} is not configured"
+from control_plane.service_config import (
+    POSTGRES_NOT_CONFIGURED_SKIP_REASON,
+    TEST_POSTGRES_URL_ENV,
 )
+
+
 PROJECT_ROOT = Path(__file__).parents[2]
 
 

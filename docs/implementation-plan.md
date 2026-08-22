@@ -948,7 +948,7 @@ Acceptance:
 
 ## Slice 12C: FastAPI Runs API and SSE
 
-Status: planned; depends on Slices 12A and 12B.
+Status: implemented; depends on Slices 12A and 12B.
 
 Minimum deliverable:
 

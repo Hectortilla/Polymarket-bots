@@ -56,6 +56,10 @@ TERMINAL_RUN_STATUSES = frozenset(
     for status, next_statuses in RUN_STATUS_TRANSITIONS.items()
     if not next_statuses
 )
+QUEUED_PREVIOUS_STATUSES = frozenset({RunStatus.QUEUED})
+OWNED_STOP_PREVIOUS_STATUSES = frozenset(
+    {RunStatus.STARTING, RunStatus.RUNNING}
+)
 INTERRUPTIBLE_RUN_STATUSES = frozenset(
     {
         RunStatus.STARTING,

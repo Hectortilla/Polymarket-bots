@@ -82,6 +82,9 @@ class CatalogEntry:
     def parse_config(self, inputs: object) -> PaperRunConfig:
         return self.launch_model.model_validate(inputs).to_run_config()
 
+    def matches_version(self, version: DefinitionVersion) -> bool:
+        return self.version == version
+
     def create_bot(self, bot_config: BotConfig):
         return self._bound_factory(bot_config)
 

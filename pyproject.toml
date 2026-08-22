@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic==1.19.0",
     "asyncpg==0.31.0",
+    "fastapi==0.141.1",
     "python-dotenv>=1.1,<2.0",
     "asciichartpy==1.5.25",
     "polymarket-client==0.1.0b17",
@@ -21,6 +22,7 @@ dependencies = [
     "redis==5.2.1",
     "taskiq==0.11.20",
     "taskiq-redis==1.0.5",
+    "uvicorn==0.52.1",
 ]
 
 [project.optional-dependencies]
@@ -72,6 +74,7 @@ packages = [
   "polybot.runtime",
   "polybot.runtime.performance",
   "polybot_control_plane",
+  "polybot_control_plane.api",
   "polybot_control_plane.catalog",
   "polybot_control_plane.runs",
   "polybot_control_plane.events",

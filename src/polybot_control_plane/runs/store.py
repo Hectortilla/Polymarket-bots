@@ -1,5 +1,6 @@
 """Async persistence boundary for durable paper-run lifecycle state."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -11,9 +12,17 @@ from polybot_control_plane.runs.contracts import PaperRunConfig, RunRead
 from polybot_control_plane.runs.models import RunRow
 from polybot_control_plane.runs.status import (
     INTERRUPTIBLE_RUN_STATUSES,
+    OWNED_STOP_PREVIOUS_STATUSES,
+    QUEUED_PREVIOUS_STATUSES,
     TERMINAL_RUN_STATUSES,
     RunStatus,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RunStopTransition:
+    row: RunRow | None
+    applied_status: RunStatus | None
 
 
 class RunStore:
@@ -35,11 +44,11 @@ class RunStore:
         self._session.add(row)
         await self._session.commit()
         await self._session.refresh(row)
-        return self._read_from_row(row)
+        return self.read_from_row(row)
 
     async def read(self, run_id: UUID) -> RunRead | None:
         row = await self._session.get(RunRow, run_id)
-        return None if row is None else self._read_from_row(row)
+        return None if row is None else self.read_from_row(row)
 
     async def list(self) -> tuple[RunRead, ...]:
         statement = select(RunRow).order_by(
@@ -47,7 +56,7 @@ class RunStore:
             RunRow.id.desc(),
         )
         rows = (await self._session.execute(statement)).scalars()
-        return tuple(self._read_from_row(row) for row in rows)
+        return tuple(self.read_from_row(row) for row in rows)
 
     async def claim(self, run_id: UUID, *, now: datetime) -> RunRead | None:
         # The status predicate makes duplicate Taskiq deliveries race on one
@@ -63,7 +72,7 @@ class RunStore:
             await self._session.commit()
             return None
         try:
-            claimed = self._read_from_row(row)
+            claimed = self.read_from_row(row)
         except Exception:
             await self._session.rollback()
             raise
@@ -88,20 +97,34 @@ class RunStore:
         )
 
     async def request_stop(self, run_id: UUID, *, now: datetime) -> RunStatus | None:
-        if await self._transition(
+        transition = await self.request_stop_transition(run_id, now=now)
+        await self._session.commit()
+        return None if transition.row is None else transition.row.status
+
+    async def request_stop_transition(
+        self,
+        run_id: UUID,
+        *,
+        now: datetime,
+    ) -> RunStopTransition:
+        stopped_row = await self.transition_row(
             run_id,
             RunStatus.STOPPED,
-            expected_statuses=frozenset({RunStatus.QUEUED}),
+            expected_statuses=QUEUED_PREVIOUS_STATUSES,
             ended_at=now,
-        ):
-            return RunStatus.STOPPED
-        if await self._transition(
+        )
+        if stopped_row is not None:
+            return RunStopTransition(stopped_row, RunStatus.STOPPED)
+
+        requested_row = await self.transition_row(
             run_id,
             RunStatus.STOP_REQUESTED,
-            expected_statuses=frozenset({RunStatus.STARTING, RunStatus.RUNNING}),
-        ):
-            return RunStatus.STOP_REQUESTED
-        return await self.status(run_id)
+            expected_statuses=OWNED_STOP_PREVIOUS_STATUSES,
+        )
+        if requested_row is not None:
+            return RunStopTransition(requested_row, RunStatus.STOP_REQUESTED)
+
+        return RunStopTransition(await self._session.get(RunRow, run_id), None)
 
     async def heartbeat(self, run_id: UUID, *, now: datetime) -> bool:
         result = await self._session.execute(
@@ -161,6 +184,26 @@ class RunStore:
         await self._session.commit()
         return result.rowcount == 1
 
+    async def transition_row(
+        self,
+        run_id: UUID,
+        status: RunStatus,
+        *,
+        expected_statuses: frozenset[RunStatus] | None = None,
+        **values: object,
+    ) -> RunRow | None:
+        allowed_previous = status.previous_statuses()
+        expected = expected_statuses or allowed_previous
+        if not expected or not expected.issubset(allowed_previous):
+            raise ValueError(f"invalid previous statuses for transition to {status}")
+        statement = (
+            update(RunRow)
+            .where(RunRow.id == run_id, RunRow.status.in_(expected))
+            .values(status=status, **values)
+            .returning(RunRow)
+        )
+        return (await self._session.execute(statement)).scalar_one_or_none()
+
     async def _transition(
         self,
         run_id: UUID,
@@ -169,20 +212,17 @@ class RunStore:
         expected_statuses: frozenset[RunStatus] | None = None,
         **values: object,
     ) -> bool:
-        allowed_previous = status.previous_statuses()
-        expected = expected_statuses or allowed_previous
-        if not expected or not expected.issubset(allowed_previous):
-            raise ValueError(f"invalid previous statuses for transition to {status}")
-        result = await self._session.execute(
-            update(RunRow)
-            .where(RunRow.id == run_id, RunRow.status.in_(expected))
-            .values(status=status, **values)
+        row = await self.transition_row(
+            run_id,
+            status,
+            expected_statuses=expected_statuses,
+            **values,
         )
         await self._session.commit()
-        return result.rowcount == 1
+        return row is not None
 
     @staticmethod
-    def _read_from_row(row: RunRow) -> RunRead:
+    def read_from_row(row: RunRow) -> RunRead:
         return RunRead(
             id=row.id,
             definition_id=row.definition_id,

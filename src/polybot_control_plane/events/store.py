@@ -10,10 +10,8 @@ from polybot_control_plane.events.contracts import (
     DurableEvent,
     EVENT_DISCRIMINATOR_FIELD,
 )
+from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR
 from polybot_control_plane.events.models import EventRow
-
-
-FIRST_EVENT_CURSOR = 0
 
 
 class EventStore:
