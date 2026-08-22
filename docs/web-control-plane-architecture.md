@@ -159,8 +159,10 @@ The HTTP launch boundary performs the only request normalization:
 5. Persist the queued run and commit.
 6. Call `RunLauncher.launch(run_id)`.
 
-If delivery fails, update the committed run to `failed` with a sanitized
-`failure_detail`. Do not invent a custom error taxonomy for v0.
+If delivery fails, atomically update the committed run to `failed` and append
+its terminal lifecycle event in one new PostgreSQL transaction, using a
+sanitized `failure_detail`. Publish the durable Redis wake-up only after that
+transaction commits. Do not invent a custom error taxonomy for v0.
 
 ## Persistence Contract
 
@@ -270,6 +272,14 @@ Stop is a durable status change. The worker polls PostgreSQL; no Redis-assisted
 stop path is needed in v0. Lease reconciliation marks an expired non-terminal
 owned run `interrupted`. It never relaunches it.
 
+The API owns terminal completion when it stops a queued run. That conditional
+`queued -> stopped` update and its terminal lifecycle event are one PostgreSQL
+transaction, followed by a Redis wake-up after commit. A repeated stop observes
+the existing terminal state and does not append another terminal event. A stop
+of an owned run changes only the durable status to `stop_requested`; the worker
+owns its later `stopping` and terminal transitions. Together with launch
+delivery failure, these are the only API-owned terminal transitions in v0.
+
 The web observer preserves the existing synchronous, fail-open
 `RuntimeObserver.emit()` contract. `emit()` does bounded in-memory projection
 and enqueue only. Owned async work writes PostgreSQL and publishes Redis. On
@@ -306,16 +316,17 @@ identical. Render colors and glyphs remain frontend-specific.
 
 ## SSE Delivery
 
-The SSE route listed in **HTTP API**:
+Through Slice 12D, the SSE route carries durable events only. It:
 
 1. accepts an `after_event_id` query value within the nonnegative PostgreSQL
    bigint range for the first connection;
 2. prefers the standard validated `Last-Event-ID` header on browser reconnect;
-3. replays later durable rows in ascending ID order;
-4. subscribes to the run's Redis channel;
-5. rechecks PostgreSQL once to close the replay/subscribe race; and
-6. sends later durable events with their database ID and live chart events
-   without an SSE ID.
+3. rejects a missing run with the route's normal `404` before opening the
+   streaming response;
+4. replays later durable rows in ascending ID order;
+5. subscribes to the run's Redis channel;
+6. rechecks PostgreSQL once to close the replay/subscribe race; and
+7. sends later durable events with their database ID.
 
 Durable transport is at-least-once across reconnects. The frontend adapter
 deduplicates durable database IDs so each committed event is presented once.
@@ -324,11 +335,18 @@ it. The stream also sends idle comments and releases Redis resources on
 disconnect. Redis is required for live continuation. Do not add a polling
 fallback for Redis outages.
 
-Redis messages are decoded into `LiveChartEvent` at the subscriber boundary;
-malformed messages are logged and dropped there. Both `DurableEvent` and
-`LiveChartEvent` are explicit schemas on the SSE route so FastAPI OpenAPI and
-Hey API generate the frontend payload types even though transport code is
-handwritten.
+Slices 12B through 12D use one Redis run-channel frame: the durable event ID as
+strict unsigned base-10 ASCII within the positive PostgreSQL bigint range. It
+is a wake-up hint, not an SSE payload or source of truth; after a valid frame,
+the subscriber reads PostgreSQL after its current cursor. Malformed frames are
+logged and dropped at this Redis ingress boundary.
+
+Slice 12E extends that same channel with JSON `LiveChartEvent` frames. The
+subscriber distinguishes the existing strict decimal wake-up from a JSON frame,
+validates JSON as `LiveChartEvent` once at ingress, and logs and drops malformed
+input. Live events are sent without an SSE ID. Slice 12E also adds
+`LiveChartEvent` as an explicit SSE-route schema alongside `DurableEvent` so
+OpenAPI generates both frontend payload types.
 
 ## HTTP API
 
@@ -337,21 +355,31 @@ The route prefix `/api/v1` is defined here once. v0 has only:
 - `GET /bot-definitions` — all public descriptors in display order.
 - `POST /runs` — validate, persist, launch, and return `202` with `RunRead`.
 - `GET /runs` — all runs, newest first.
-- `GET /runs/{run_id}` — one run and its current event-derived summary.
+- `GET /runs/{run_id}` — one run; Slice 12E adds its event-derived summary.
 - `POST /runs/{run_id}/stop` — idempotently request/complete stop.
 - `GET /runs/{run_id}/events?after_event_id=` — later durable events in order.
-- `GET /runs/{run_id}/events/stream` — replay/live SSE.
+- `GET /runs/{run_id}/events/stream` — durable replay/continuation SSE; Slice
+  12E adds live chart frames.
 - `GET /health` — database and Redis readiness for the private deployment.
+
+Both event routes require the run to exist and return the normal small `404`
+when it does not.
 
 UUIDs, enums, cursors, headers, and bodies are typed at FastAPI ingress. Use
 FastAPI's normal validation response and small `HTTPException` details for 404
 and stale-definition 409. Do not build a custom problem-details framework,
 pagination system, status filtering, links, or response envelopes in v0.
 
-`RunRead` exposes the final run-row fields above plus nullable `latest_equity`
-and `equity_status`, derived from the latest durable portfolio/chart event and
-typed with the existing valuation-quality contract. Do not persist summary
-columns or add other summary fields in v0.
+Through Slice 12D, `RunRead` exposes exactly the final run-row fields above.
+Slice 12E adds nullable `latest_equity` and `equity_status`, derived from the
+latest durable `chart.sample` event and typed with the existing
+valuation-quality contract. Do not persist summary columns or add other summary
+fields in v0.
+
+`GET /health` executes a PostgreSQL `SELECT 1` and Redis `PING`. It returns
+`200` with exactly `{"status": "ok"}` only when both succeed; otherwise it
+returns `503` with the small detail `service unavailable` and does not expose a
+dependency error.
 
 ## Frontend
 
@@ -359,9 +387,9 @@ columns or add other summary fields in v0.
   the API same-origin at `/api/`.
 - Export OpenAPI deterministically and generate the Fetch client/types with
   `@hey-api/openapi-ts`. Generated files are never edited.
-- Use the generated client for ordinary HTTP. The sole handwritten transport is
-  a small EventSource adapter using the generated `DurableEvent` and
-  `LiveChartEvent` types.
+- Use the generated client for ordinary HTTP. Slice 12D's sole handwritten
+  transport is a small EventSource adapter using generated `DurableEvent`
+  types; Slice 12E extends it with generated `LiveChartEvent` types.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
 - Wrap Apache ECharts in one thin `EChart.svelte` component that owns init,

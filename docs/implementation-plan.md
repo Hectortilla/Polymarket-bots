@@ -958,9 +958,18 @@ Minimum deliverable:
   call the injected `RunLauncher`.
 - Keep API workers stateless. Stop changes durable state; no API process reaches
   into a local worker task.
-- Implement the canonical replay/subscription/recheck SSE sequence. Decode Redis
-  frames at that adapter boundary and expose both stream variants in OpenAPI.
-- Export OpenAPI deterministically without starting a server.
+- For queued stop and launch-delivery failure, commit the API-owned terminal
+  run transition and terminal lifecycle event atomically, then publish the
+  durable Redis wake-up. Idempotent stop must not append a second terminal event.
+- Implement the canonical durable-only replay/subscription/recheck SSE sequence.
+  Decode the strict decimal durable-wake frame at the Redis adapter boundary and
+  expose `DurableEvent` on the SSE route in OpenAPI. Live chart frames remain
+  Slice 12E scope.
+- Keep `RunRead` at the exact durable run-row contract; Slice 12E first adds
+  event-derived equity summary fields.
+- Export OpenAPI deterministically without starting a server. Running
+  `uv run python -m polybot_control_plane.api.openapi` writes the canonical
+  `openapi/control-plane.json` artifact.
 - Use FastAPI's built-in request errors and small 404/409 details.
 
 Do not add authentication, users, CORS for a separate production origin,
@@ -970,15 +979,19 @@ fallback, caching, WebSockets, or live-mode fields.
 Acceptance:
 
 - API tests cover launch, stale definition version, list/detail, and idempotent
-  queued/running stop.
+  queued/running stop. Queued stop writes exactly one terminal event; running
+  stop leaves terminal event ownership with the worker.
 - An ingress test proves requests violating the product-spec **Trust Boundary**
   are rejected without persisting a run.
-- A launcher failure leaves a visible durable failed run.
+- A launcher failure leaves a visible durable failed run with one terminal
+  lifecycle event.
 - One PostgreSQL+Redis integration scenario injects a durable event in the
   replay/subscribe handoff and proves the architecture-owned delivery guarantee,
   ending after the terminal event.
-- A stream reconnect uses the durable cursor; live frames carry no cursor; a
-  malformed Redis frame is dropped at ingress; disconnect releases resources.
+- A stream reconnect uses the durable cursor; a malformed durable-wake frame is
+  dropped at Redis ingress; disconnect releases resources.
+- Health returns the architecture-owned success response only when PostgreSQL
+  and Redis are ready and otherwise returns the sanitized `503`.
 
 ## Slice 12D: Static SvelteKit Launch and Run UI
 
@@ -991,7 +1004,8 @@ Minimum deliverable:
 - Generate the Fetch client and TypeScript types from FastAPI OpenAPI with
   `@hey-api/openapi-ts`; commit deterministic artifacts and a drift check.
 - Use the generated client for every ordinary request. Add one small handwritten
-  EventSource adapter using the generated durable/live stream types.
+  EventSource adapter using the generated durable-event types; Slice 12E extends
+  it for live chart frames.
 - Render launch inputs from JSON Schema with Ajv feedback and only the widget
   kinds owned by the catalog contract. Bot-managed/absent selectors are
   explanatory and omitted from submission.
@@ -1022,6 +1036,11 @@ Minimum deliverable:
 
 - Follow the existing terminal-observability behavior and the architecture's
   single Chart Data Flow contract.
+- Add the canonical `LiveChartEvent` variants and `chart.sample` durable event,
+  extend the SSE route's OpenAPI schemas and the Slice 12D EventSource adapter,
+  and send live frames without an SSE cursor.
+- Extend `RunRead` with nullable `latest_equity` and `equity_status` derived
+  from the latest durable `chart.sample`; do not persist summary columns.
 - Extract only pure constants/functions/models that now have both terminal and
   web consumers into dependency-light `polybot` owners. Keep equity valuation
   in `polybot.performance`; keep Rich and ECharts out of shared code.
@@ -1045,6 +1064,8 @@ Acceptance:
 - A controlled-clock test proves ephemeral-versus-durable cadence, the
   architecture-owned persistence classification, reload history, and live
   continuation.
+- The run-contract test keeps the ten row-backed fields aligned with the table
+  while proving the two computed summary fields are not database columns.
 - Component tests cover the thin ECharts lifecycle, toggle/navigation controls,
   and narrow/wide layout.
 - Web rendering or delivery failure cannot affect the paper bot.
