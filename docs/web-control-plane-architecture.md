@@ -69,7 +69,7 @@ an independent shape or algorithm; this document controls if wording conflicts.
   or progress queue.
 - PostgreSQL owns durable runs, commands, and events.
 - Taskiq with its Redis broker delivers run IDs to workers.
-- Redis Pub/Sub wakes SSE connections and carries ephemeral chart frames.
+- Redis Pub/Sub wakes SSE connections and carries ephemeral live frames.
 - SvelteKit uses TypeScript, `adapter-static`, and client-side rendering.
 - FastAPI/Pydantic own HTTP contracts; SQLModel/SQLAlchemy with `asyncpg` own
   persistence; Alembic owns schema creation and change.
@@ -87,8 +87,9 @@ supporting private modules are not prescribed:
 - `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
   `RunRead`.
 - `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
-  their discriminated payloads. Slice 12E adds `LiveChartEvent` and the
-  `chart.sample` durable variant when it first implements chart cadence.
+  their discriminated payloads. Slice 12E adds `LiveChartEvent`,
+  `LiveStreamHealthEvent`, their `LiveRunEvent` union, and the `chart.sample`
+  durable variant when it first implements live observability cadence.
 - `polybot_control_plane.execution.launcher`: the `RunLauncher` protocol.
 
 Finite wire values are `StrEnum`s. The generated frontend types come from these
@@ -232,8 +233,9 @@ shutdown, the latest state is appended once as the run's final `stream.health`
 summary before the terminal lifecycle event. A run that observes no stream
 health, or loses its process before graceful observer shutdown, has no such
 summary. Through Slice 12D, a running browser therefore receives no live health
-updates. Slice 12E's ephemeral frames own live continuation while its durable
-chart cadence owns chart reload history.
+updates. Slice 12E publishes the latest state once per second as an ephemeral
+`LiveStreamHealthEvent`; it never persists those live frames. The terminal
+durable summary remains the reload contract.
 
 The web observer maps runtime events to the durable list above and enqueues
 those records; raw books only replace the latest in-memory chart input. Keep
@@ -304,12 +306,23 @@ This section is the sole owner of chart cadence and durability:
 accepted runtime events
   -> presentation-neutral projections
   -> every 250 ms: LiveChartEvent -> Redis Pub/Sub -> SSE (ephemeral)
+  -> every 1 s: LiveStreamHealthEvent -> Redis Pub/Sub -> SSE (ephemeral)
   -> every 1 s: chart.sample DurableEvent -> PostgreSQL -> Redis wake-up
 ```
 
-The event persistence section owns which inputs are durable. The browser may
-merge its detailed in-memory live window with older durable samples but must
-preserve their different resolution.
+`LiveRunEvent` is the discriminated union of `LiveChartEvent` and
+`LiveStreamHealthEvent`. The event persistence section owns which inputs are
+durable. The browser merges its detailed in-memory live window with loaded
+durable samples but preserves their different resolution. On initial hydration
+it uses only the newest bounded durable-event page. Explicit older-page requests
+may expand chart history, but the chart retains at most the shared
+`MAX_CHART_HISTORY_POINTS` (currently 720) newest durable samples and never
+auto-drains the complete run history.
+
+The one-second durable cadence is an explicit v0 storage budget: at most 86,400
+scheduled `chart.sample` rows per continuously active run-day, in addition to
+semantic events. v0 does not compact or delete them. Capacity planning for that
+rate is required in Slice 12F; retention remains post-v0 scope.
 
 Slice 12E extracts only the pure pieces actually needed by both terminal and
 web from the current terminal implementation. Shared code belongs in a
@@ -354,12 +367,12 @@ is a wake-up hint, not an SSE payload or source of truth; after a valid frame,
 the subscriber reads PostgreSQL after its current cursor. Malformed frames are
 logged and dropped at this Redis ingress boundary.
 
-Slice 12E extends that same channel with JSON `LiveChartEvent` frames. The
+Slice 12E extends that same channel with JSON `LiveRunEvent` frames. The
 subscriber distinguishes the existing strict decimal wake-up from a JSON frame,
-validates JSON as `LiveChartEvent` once at ingress, and logs and drops malformed
+validates JSON as `LiveRunEvent` once at ingress, and logs and drops malformed
 input. Live events are sent without an SSE ID. Slice 12E also adds
-`LiveChartEvent` as an explicit SSE-route schema alongside `DurableEvent` so
-OpenAPI generates both frontend payload types.
+`LiveChartEvent` and `LiveStreamHealthEvent` as explicit SSE-route schemas
+alongside `DurableEvent` so OpenAPI generates every frontend payload type.
 
 ## HTTP API
 
@@ -374,7 +387,7 @@ The route prefix `/api/v1` is defined here once. v0 has only:
   durable-event page before an optional exclusive cursor, returned in ascending
   display order with the next older cursor.
 - `GET /runs/{run_id}/events/stream` — durable replay/continuation SSE; Slice
-  12E adds live chart frames.
+  12E adds ephemeral live chart and stream-health frames.
 - `GET /health` — database and Redis readiness for the private deployment.
 
 Both event routes require the run to exist and return the normal small `404`
@@ -406,7 +419,7 @@ dependency error.
   `@hey-api/openapi-ts`. Generated files are never edited.
 - Use the generated client for ordinary HTTP. Slice 12D's sole handwritten
   transport is a small EventSource adapter using generated `DurableEvent`
-  types; Slice 12E extends it with generated `LiveChartEvent` types.
+  types; Slice 12E extends it with the generated `LiveRunEvent` variants.
 - Hydrate run detail from the newest bounded durable-event page, open SSE after
   that page's newest ID for race-free continuation, and request older pages only
   from the server-provided exclusive cursor. Terminal hydration does not open a

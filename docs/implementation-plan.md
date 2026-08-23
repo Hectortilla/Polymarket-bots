@@ -1010,7 +1010,7 @@ Minimum deliverable:
   `@hey-api/openapi-ts`; commit deterministic artifacts and a drift check.
 - Use the generated client for every ordinary request. Add one small handwritten
   EventSource adapter using the generated durable-event types; Slice 12E extends
-  it for live chart frames.
+  it for live chart and stream-health frames.
 - Render launch inputs from JSON Schema with Ajv feedback and only the widget
   kinds owned by the catalog contract. Bot-managed/absent selectors are
   explanatory and omitted from submission.
@@ -1043,16 +1043,23 @@ Minimum deliverable:
 
 - Follow the existing terminal-observability behavior and the architecture's
   single Chart Data Flow contract.
-- Add the canonical `LiveChartEvent` variants and `chart.sample` durable event,
-  extend the SSE route's OpenAPI schemas and the Slice 12D EventSource adapter,
-  and send live frames without an SSE cursor.
+- Add the canonical `LiveChartEvent` variants, ephemeral
+  `LiveStreamHealthEvent`, their `LiveRunEvent` union, and the `chart.sample`
+  durable event. Extend the SSE route's OpenAPI schemas and the Slice 12D
+  EventSource adapter, and send live frames without an SSE cursor.
 - Extend `RunRead` with nullable `latest_equity` and `equity_status` derived
   from the latest durable `chart.sample`; do not persist summary columns.
 - Extract only pure constants/functions/models that now have both terminal and
   web consumers into dependency-light `polybot` owners. Keep equity valuation
   in `polybot.performance`; keep Rich and ECharts out of shared code.
-- Publish the live frame and append the durable sample at the architecture-owned
-  cadences and follow its event-persistence classification.
+- Publish chart frames every 250 ms, publish only the latest stream-health state
+  every second, and append the durable chart sample every second. Never persist
+  individual or periodic live-health frames; retain the existing one terminal
+  durable health summary.
+- On reload, chart only the durable samples present in the bounded event pages
+  the browser has loaded. Older-page requests may expand history, but retain at
+  most the shared `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable
+  samples and never auto-fetch the complete run.
 - Add one thin `EChart.svelte` lifecycle wrapper and focused market, equity,
   and wallet option builders. The combined component only composes layout and
   the market/wallet toggle.
@@ -1061,16 +1068,18 @@ Minimum deliverable:
 
 Do not create a generic chart-policy/service hierarchy, copy terminal formulas
 into TypeScript, move rendering code into shared modules, add alternative chart
-libraries, or build history compaction/retention.
+libraries, auto-drain all event pages for chart hydration, or build history
+compaction/retention. The accepted v0 durable-chart budget is at most 86,400
+scheduled sample rows per continuously active run-day; retention is post-v0.
 
 Acceptance:
 
 - One shared synthetic-event scenario proves equivalent terminal/web semantic
   output for token admission, stale/gap state, markers, settlement removal,
   executable equity, and wallet buckets.
-- A controlled-clock test proves ephemeral-versus-durable cadence, the
-  architecture-owned persistence classification, reload history, and live
-  continuation.
+- A controlled-clock test proves chart/live-health cadence, the
+  architecture-owned persistence classification, terminal-only durable health,
+  bounded reload history, and live continuation.
 - The run-contract test keeps the ten row-backed fields aligned with the table
   while proving the two computed summary fields are not database columns.
 - Component tests cover the thin ECharts lifecycle, toggle/navigation controls,
@@ -1092,7 +1101,8 @@ Minimum deliverable:
 - Add one typed startup settings model for only the deployment values named in
   the architecture.
 - Document startup, migration, development, client regeneration, tests, clean
-  shutdown, and the private-network restriction.
+  shutdown, the private-network restriction, and capacity planning for the
+  Slice 12E maximum durable chart-sample rate.
 
 Do not add Kubernetes/ECS/Terraform, cloud discovery, auth proxies, production
 TLS automation, monitoring stacks, autoscaling, backup/restore, or CI deployment

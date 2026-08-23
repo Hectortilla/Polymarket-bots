@@ -115,8 +115,10 @@ Frontend validation is only feedback; backend ingress is authoritative.
 
 The detail page shows lifecycle/timing, immutable configuration, bootstrap and
 activity progress, portfolio/equity, orders/fills/failures/settlements, stream
-health, the dashboard charts, and Stop while the run is stoppable. Terminal
-runs remain readable. There is no edit, delete, resume, or rerun action.
+health, the dashboard charts, and Stop while the run is stoppable. Running
+stream health is ephemeral and the final graceful-shutdown summary is durable.
+Terminal runs remain readable. There is no edit, delete, resume, or rerun
+action.
 
 ## Dashboard Parity
 
@@ -135,7 +137,10 @@ The technical chart cadence, persistence, and stream contract is owned by
 ## Availability
 
 Committed progress survives reload and reconnect; ephemeral frames are not
-recoverable. `web-control-plane-architecture.md` owns the storage and delivery
+recoverable. Reload immediately restores only the newest bounded event page,
+and the operator explicitly requests older progress. Chart rendering retains a
+bounded terminal-equivalent history rather than automatically loading the
+complete run. `web-control-plane-architecture.md` owns the storage and delivery
 mechanism.
 
 Web observability failure must not change paper-bot execution. The technical
@@ -150,7 +155,8 @@ v0 is complete when one trusted operator can:
   remain queued;
 - stop queued and running runs without duplicate execution;
 - see worker loss become `interrupted` without automatic resume;
-- reload or reconnect and recover committed progress in order;
+- reload or reconnect, recover the newest committed progress in order, and load
+  older committed pages on demand;
 - use market, equity, and followed-wallet views with terminal-equivalent
   semantics and controls; and
 - add a trusted definition using an already-supported field/widget kind without
