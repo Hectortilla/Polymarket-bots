@@ -1,12 +1,12 @@
 import type {
   DurableEvent,
   EventCursorValue,
-  ReadRunEventsApiV1RunsRunIdEventsGetData,
+  RunEventPage,
   StreamRunEventsApiV1RunsRunIdEventsStreamGetData,
   RunStatus
 } from '$lib/api/generated';
 
-import { INITIAL_RUN_STATUS } from './status';
+import { INITIAL_RUN_STATUS, isTerminalRunStatus } from './status';
 
 export const INITIAL_EVENT_CURSOR: EventCursorValue = 0;
 const FIRST_DURABLE_EVENT_ID = INITIAL_EVENT_CURSOR + 1;
@@ -24,9 +24,8 @@ export const EVENT_KIND = {
   runFailure: 'run.failure'
 } as const satisfies Record<string, DurableEvent['kind']>;
 type EventCursorQuery = NonNullable<
-  ReadRunEventsApiV1RunsRunIdEventsGetData['query']
-> &
-  NonNullable<StreamRunEventsApiV1RunsRunIdEventsStreamGetData['query']>;
+  StreamRunEventsApiV1RunsRunIdEventsStreamGetData['query']
+>;
 
 type WithPersistedId<T> = T extends DurableEvent
   ? Omit<T, 'id'> & { id: number }
@@ -46,6 +45,11 @@ export type PersistedDurableEvent =
   | (Omit<PersistedLifecycleEvent, 'payload'> & {
       payload: PersistedLifecycleEvent['payload'] & { status: RunStatus };
     });
+
+export type PersistedEventPage = {
+  events: PersistedDurableEvent[];
+  nextBeforeEventId: number | null;
+};
 
 export function eventCursorQuery(afterEventId: number): EventCursorQuery {
   return { after_event_id: afterEventId };
@@ -86,6 +90,27 @@ export function requirePersistedDurableEvents(
     if (persisted === null) throw new Error('Invalid persisted run event');
     return persisted;
   });
+}
+
+export function requirePersistedEventPage(
+  page: RunEventPage,
+  runId: string
+): PersistedEventPage {
+  const events = requirePersistedDurableEvents(page.events, runId);
+  const nextBeforeEventId = page.next_before_event_id;
+  if (nextBeforeEventId !== null && nextBeforeEventId !== events[0]?.id) {
+    throw new Error('Invalid run event page cursor');
+  }
+  return { events, nextBeforeEventId };
+}
+
+export function isTerminalLifecycleEvent(
+  event: PersistedDurableEvent
+): boolean {
+  return (
+    event.kind === EVENT_KIND.runLifecycle &&
+    isTerminalRunStatus(event.payload.status)
+  );
 }
 
 export function latestEventCursor(events: PersistedDurableEvent[]): number {

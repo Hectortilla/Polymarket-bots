@@ -10,7 +10,7 @@ from sqlmodel import Field, SQLModel
 from polybot_control_plane.events.contracts import DurableEvent, EventKind
 from polybot_control_plane.events.schema import (
     EventColumn,
-    RUN_EVENTS_RUN_ID_INDEX_NAME,
+    RUN_EVENTS_CURSOR_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
     event_kind_column_type,
 )
@@ -20,7 +20,11 @@ from polybot_control_plane.runs.schema import RunColumn, RUNS_TABLE_NAME
 class EventRow(SQLModel, table=True):
     __tablename__ = RUN_EVENTS_TABLE_NAME
     __table_args__ = (
-        Index(RUN_EVENTS_RUN_ID_INDEX_NAME, EventColumn.RUN_ID),
+        Index(
+            RUN_EVENTS_CURSOR_INDEX_NAME,
+            EventColumn.RUN_ID,
+            EventColumn.ID,
+        ),
     )
 
     id: int = Field(

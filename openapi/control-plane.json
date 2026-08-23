@@ -1086,6 +1086,34 @@
         "title": "RunBootstrapPayload",
         "type": "object"
       },
+      "RunEventPage": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/DurableEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "next_before_event_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "next_before_event_id"
+        ],
+        "title": "RunEventPage",
+        "type": "object"
+      },
       "RunFailureEvent": {
         "additionalProperties": false,
         "properties": {
@@ -1897,11 +1925,30 @@
           },
           {
             "in": "query",
-            "name": "after_event_id",
+            "name": "before_event_id",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/EventCursorValue",
-              "default": 0
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EventCursorValue"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],
@@ -1910,11 +1957,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DurableEvent"
-                  },
-                  "title": "Response Read Run Events Api V1 Runs  Run Id  Events Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/RunEventPage"
                 }
               }
             },

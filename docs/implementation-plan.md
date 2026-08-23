@@ -966,6 +966,9 @@ Minimum deliverable:
   Decode the strict decimal durable-wake frame at the Redis adapter boundary and
   expose `DurableEvent` on the SSE route in OpenAPI. Live chart frames remain
   Slice 12E scope.
+- Return durable history as newest-first cursor pages with strict default and
+  maximum limits, and read SSE replay backlogs in bounded batches. Add the
+  composite per-run event cursor index in one migration.
 - Keep `RunRead` at the exact durable run-row contract; Slice 12E first adds
   event-derived equity summary fields.
 - Export OpenAPI deterministically without starting a server. Running
@@ -974,7 +977,7 @@ Minimum deliverable:
 - Use FastAPI's built-in request errors and small 404/409 details.
 
 Do not add authentication, users, CORS for a separate production origin,
-pagination/filter frameworks, custom problem details, database-polling SSE
+generic pagination/filter frameworks, custom problem details, database-polling SSE
 fallback, caching, WebSockets, or live-mode fields.
 
 Acceptance:
@@ -990,7 +993,8 @@ Acceptance:
   replay/subscribe handoff and proves the architecture-owned delivery guarantee,
   ending after the terminal event.
 - A stream reconnect uses the durable cursor; a malformed durable-wake frame is
-  dropped at Redis ingress; disconnect releases resources.
+  dropped at Redis ingress; disconnect releases resources. Event pages enforce
+  their bounds and an SSE backlog is read in bounded ordered batches.
 - Health returns the architecture-owned success response only when PostgreSQL
   and Redis are ready and otherwise returns the sanitized `503`.
 
@@ -1025,7 +1029,9 @@ Acceptance:
 - Adding a test catalog definition composed of supported fields/widgets requires
   no launch-page branch.
 - Reload hydrates HTTP state before SSE continuation and every public lifecycle
-  state has a readable label/action state.
+  state has a readable label/action state. It loads only the newest event page,
+  fetches older pages on demand, and does not retain an SSE connection after a
+  terminal lifecycle state.
 - CI regenerates the client, fails on drift, and type-checks with no handwritten
   ordinary fetch contract.
 

@@ -3,6 +3,7 @@ import { client } from '$lib/api/generated/client.gen';
 
 import {
   eventCursorQuery,
+  isTerminalLifecycleEvent,
   persistedDurableEvent,
   type PersistedDurableEvent
 } from './durableEvents';
@@ -31,6 +32,7 @@ export const openRunEventStream: EventStreamOpener = (
     if (event === null || event.id <= cursor) return;
     cursor = event.id;
     onEvent(event);
+    if (isTerminalLifecycleEvent(event)) source.close();
   };
 
   return () => source.close();

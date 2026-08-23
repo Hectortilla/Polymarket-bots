@@ -11,7 +11,10 @@
     type PersistedDurableEvent
   } from '$lib/runs/durableEvents';
   import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
-  import { loadAndContinueRunDetail } from '$lib/runs/hydrate';
+  import {
+    loadAndContinueRunDetail,
+    loadOlderRunEvents
+  } from '$lib/runs/hydrate';
   import {
     RUN_STATUS_PRESENTATION,
     runStatusLabel
@@ -22,6 +25,8 @@
   let events = $state<PersistedDurableEvent[]>([]);
   let loading = $state(true);
   let stopping = $state(false);
+  let loadingOlderEvents = $state(false);
+  let nextBeforeEventId = $state<number | null>(null);
   let error = $state('');
   let closeStream = () => {};
 
@@ -43,6 +48,7 @@
         if (!disposed) {
           run = hydration.run;
           events = hydration.events;
+          nextBeforeEventId = hydration.nextBeforeEventId;
         }
       },
       appendEvent
@@ -85,6 +91,21 @@
       error = 'The stop request could not be sent.';
     } finally {
       stopping = false;
+    }
+  }
+
+  async function loadOlderEvents(): Promise<void> {
+    if (!run || nextBeforeEventId === null || loadingOlderEvents) return;
+    loadingOlderEvents = true;
+    error = '';
+    try {
+      const older = await loadOlderRunEvents(run.id, nextBeforeEventId);
+      events = [...older.events, ...events];
+      nextBeforeEventId = older.nextBeforeEventId;
+    } catch {
+      error = 'Older durable events could not be loaded.';
+    } finally {
+      loadingOlderEvents = false;
     }
   }
 
@@ -185,8 +206,17 @@
   <section>
     <div class="section-heading">
       <h2>Durable progress</h2>
-      <span>{events.length} events</span>
+      <span>{events.length} events loaded</span>
     </div>
+    {#if nextBeforeEventId !== null}
+      <button
+        class="secondary"
+        onclick={loadOlderEvents}
+        disabled={loadingOlderEvents}
+      >
+        {loadingOlderEvents ? 'Loading…' : 'Load earlier events'}
+      </button>
+    {/if}
     {#if events.length === 0}
       <p class="empty-state">No durable events yet.</p>
     {:else}

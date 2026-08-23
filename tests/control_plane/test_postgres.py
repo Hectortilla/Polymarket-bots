@@ -34,6 +34,7 @@ from polybot_control_plane.events.contracts import (
 from polybot_control_plane.events.models import EventRow
 from polybot_control_plane.events.schema import (
     EVENT_KIND_CONSTRAINT_NAME,
+    RUN_EVENTS_CURSOR_INDEX_NAME,
     RUN_EVENTS_RUN_ID_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
 )
@@ -87,7 +88,7 @@ def _run_insert_statement() -> TextClause:
 
 
 @pytest.mark.postgres
-def test_migration_upgrades_and_downgrades_slice_12b_schema() -> None:
+def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> None:
     url = _postgres_url()
     config = _alembic_config(url)
     command.downgrade(config, "base")
@@ -218,8 +219,12 @@ def test_migration_upgrades_and_downgrades_slice_12b_schema() -> None:
         assert database_column["nullable"] is model_column.nullable
     assert event_primary_key["constrained_columns"] == [EventRow.id.name]
     assert {index["name"] for index in event_indexes} == {
-        RUN_EVENTS_RUN_ID_INDEX_NAME
+        RUN_EVENTS_CURSOR_INDEX_NAME
     }
+    assert event_indexes[0]["column_names"] == [
+        EventRow.run_id.name,
+        EventRow.id.name,
+    ]
     assert {check["name"] for check in event_checks} == {
         EVENT_KIND_CONSTRAINT_NAME
     }
@@ -261,6 +266,13 @@ def test_migration_upgrades_and_downgrades_slice_12b_schema() -> None:
         await engine.dispose()
 
     asyncio.run(assert_constraint_rejections())
+
+    command.downgrade(config, "0002")
+    slice_12b_schema = asyncio.run(inspect_schema())
+    assert {index["name"] for index in slice_12b_schema[5]} == {
+        RUN_EVENTS_RUN_ID_INDEX_NAME
+    }
+    assert slice_12b_schema[5][0]["column_names"] == [EventRow.run_id.name]
 
     command.downgrade(config, "0001")
     downgraded_schema = asyncio.run(inspect_schema())
@@ -524,12 +536,28 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
                 queued.id,
                 after_event_id=stored_first.id,
             )
+            bounded = await event_store.read(queued.id, limit=1)
+            newest_page = await event_store.read_page(
+                queued.id,
+                before_event_id=None,
+                limit=1,
+            )
+            older_page = await event_store.read_page(
+                queued.id,
+                before_event_id=newest_page.next_before_event_id,
+                limit=1,
+            )
 
         assert [event.id for event in restored] == [
             stored_first.id,
             stored_last.id,
         ]
         assert after_first == (stored_last,)
+        assert bounded == (stored_first,)
+        assert newest_page.events == (stored_last,)
+        assert newest_page.next_before_event_id == stored_last.id
+        assert older_page.events == (stored_first,)
+        assert older_page.next_before_event_id is None
         assert all(event.kind is EventKind.RUN_LIFECYCLE for event in restored)
         await engine.dispose()
 

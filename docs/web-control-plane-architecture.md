@@ -200,7 +200,7 @@ never re-runs request validation.
 The append-only event row has exactly:
 
 - `id` (globally ordered bigint primary key and SSE cursor)
-- `run_id` (indexed UUID foreign key)
+- `run_id` (UUID foreign key; indexed with `id` for per-run cursor reads)
 - `kind` (`EventKind`)
 - `occurred_at` (UTC)
 - `payload` (JSONB)
@@ -337,6 +337,10 @@ Through Slice 12D, the SSE route carries durable events only. It:
 6. rechecks PostgreSQL once to close the replay/subscribe race; and
 7. sends later durable events with their database ID.
 
+Replay and recheck reads use the same bounded maximum batch size as HTTP event
+pages. A long reconnect backlog can require multiple ordered PostgreSQL reads;
+no individual query or decoded batch is unbounded.
+
 Durable transport is at-least-once across reconnects. The frontend adapter
 deduplicates durable database IDs so each committed event is presented once.
 The terminal lifecycle event is written last; the stream closes after sending
@@ -366,7 +370,9 @@ The route prefix `/api/v1` is defined here once. v0 has only:
 - `GET /runs` — all runs, newest first.
 - `GET /runs/{run_id}` — one run; Slice 12E adds its event-derived summary.
 - `POST /runs/{run_id}/stop` — idempotently request/complete stop.
-- `GET /runs/{run_id}/events?after_event_id=` — later durable events in order.
+- `GET /runs/{run_id}/events?before_event_id=&limit=` — the newest bounded
+  durable-event page before an optional exclusive cursor, returned in ascending
+  display order with the next older cursor.
 - `GET /runs/{run_id}/events/stream` — durable replay/continuation SSE; Slice
   12E adds live chart frames.
 - `GET /health` — database and Redis readiness for the private deployment.
@@ -377,7 +383,9 @@ when it does not.
 UUIDs, enums, cursors, headers, and bodies are typed at FastAPI ingress. Use
 FastAPI's normal validation response and small `HTTPException` details for 404
 and stale-definition 409. Do not build a custom problem-details framework,
-pagination system, status filtering, links, or response envelopes in v0.
+generic pagination framework, status filtering, or links in v0. Durable events
+use only the cursor page contract above because their append-only history can be
+unbounded.
 
 Through Slice 12D, `RunRead` exposes exactly the final run-row fields above.
 Slice 12E adds nullable `latest_equity` and `equity_status`, derived from the
@@ -399,6 +407,10 @@ dependency error.
 - Use the generated client for ordinary HTTP. Slice 12D's sole handwritten
   transport is a small EventSource adapter using generated `DurableEvent`
   types; Slice 12E extends it with generated `LiveChartEvent` types.
+- Hydrate run detail from the newest bounded durable-event page, open SSE after
+  that page's newest ID for race-free continuation, and request older pages only
+  from the server-provided exclusive cursor. Terminal hydration does not open a
+  stream, and receipt of a terminal lifecycle event closes the current stream.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
 - Wrap Apache ECharts in one thin `EChart.svelte` component that owns init,

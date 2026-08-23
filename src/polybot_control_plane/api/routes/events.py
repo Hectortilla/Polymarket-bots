@@ -6,7 +6,11 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 
-from polybot_control_plane.api.contracts import EventCursorValue
+from polybot_control_plane.api.contracts import (
+    EventCursorValue,
+    EventPageLimitValue,
+    RunEventPage,
+)
 from polybot_control_plane.api.dependencies import (
     RedisDependency,
     SessionFactoryDependency,
@@ -21,6 +25,7 @@ from polybot_control_plane.api.routes.run_lookup import require_stored_run
 from polybot_control_plane.api.sse import stream_durable_events
 from polybot_control_plane.events.contracts import DurableEvent
 from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR
+from polybot_control_plane.events.pagination import DEFAULT_EVENT_PAGE_LIMIT
 from polybot_control_plane.events.store import EventStore
 
 
@@ -28,27 +33,31 @@ SSE_MEDIA_TYPE = "text/event-stream"
 LAST_EVENT_ID_HEADER = "Last-Event-ID"
 DURABLE_EVENT_SCHEMA_REFERENCE = "#/components/schemas/DurableEvent"
 
-type EventCursor = Annotated[EventCursorValue, Query()]
-
 router = APIRouter()
 
 
 @router.get(
     RUN_EVENTS_PATH,
-    response_model=list[DurableEvent],
+    response_model=RunEventPage,
     operation_id=READ_RUN_EVENTS_OPERATION_ID,
 )
 async def read_run_events(
     run_id: UUID,
     session_factory: SessionFactoryDependency,
-    after_event_id: EventCursor = FIRST_EVENT_CURSOR,
-) -> tuple[DurableEvent, ...]:
+    before_event_id: EventCursorValue | None = None,
+    limit: EventPageLimitValue = DEFAULT_EVENT_PAGE_LIMIT,
+) -> RunEventPage:
     async with session_factory() as session:
         await require_stored_run(session, run_id)
-        return await EventStore(session).read(
+        page = await EventStore(session).read_page(
             run_id,
-            after_event_id=after_event_id,
+            before_event_id=before_event_id,
+            limit=limit,
         )
+    return RunEventPage(
+        events=page.events,
+        next_before_event_id=page.next_before_event_id,
+    )
 
 
 @router.get(
@@ -70,7 +79,7 @@ async def stream_run_events(
     request: Request,
     session_factory: SessionFactoryDependency,
     redis: RedisDependency,
-    after_event_id: EventCursor = FIRST_EVENT_CURSOR,
+    after_event_id: Annotated[EventCursorValue, Query()] = FIRST_EVENT_CURSOR,
     last_event_id: Annotated[
         EventCursorValue | None,
         Header(alias=LAST_EVENT_ID_HEADER),

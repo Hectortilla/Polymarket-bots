@@ -20,7 +20,7 @@ class FakeEventSource {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('run EventSource adapter', () => {
-  it('continues from the durable cursor and drops duplicate or malformed events', () => {
+  it('continues from the cursor, filters invalid events, and closes at terminal', () => {
     vi.stubGlobal('EventSource', FakeEventSource);
     const onEvent = vi.fn();
     const close = openRunEventStream(RUN_ID, 4, onEvent);
@@ -58,8 +58,15 @@ describe('run EventSource adapter', () => {
       `/api/v1/runs/${RUN_ID}/events/stream?after_event_id=4`
     );
     expect(onEvent).toHaveBeenCalledOnce();
-    close();
+    expect(source.close).not.toHaveBeenCalled();
+    source.onmessage?.(
+      new MessageEvent('message', {
+        data: JSON.stringify({ ...event, id: 7, payload: { status: 'stopped' } })
+      })
+    );
     expect(source.close).toHaveBeenCalledOnce();
+    close();
+    expect(source.close).toHaveBeenCalledTimes(2);
   });
 
   it('normalizes the generated starting lifecycle default at ingress', () => {

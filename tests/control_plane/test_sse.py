@@ -25,6 +25,7 @@ from polybot_control_plane.events.ids import (
     MAX_DURABLE_EVENT_ID,
     MAX_DURABLE_EVENT_ID_DIGITS,
 )
+from polybot_control_plane.events.pagination import MAX_EVENT_PAGE_LIMIT
 from polybot_control_plane.runs.status import RunStatus
 
 
@@ -93,23 +94,36 @@ def test_persisted_event_without_id_is_rejected_at_sse_boundary(
     assert redis.pubsub_requested is False
 
 
-def test_idle_connection_emits_keep_alive_before_terminal_event(
+def test_replay_recheck_and_wake_share_the_latest_cursor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run_id = uuid4()
-    pubsub = _PubSub((None, {"data": b"2"}))
+    pubsub = _PubSub((None, {"data": b"3"}))
     redis = _Redis(pubsub)
-    reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
+    reads = iter(
+        (
+            (_event(run_id, 1, RunStatus.RUNNING),),
+            (_event(run_id, 2, RunStatus.RUNNING),),
+            (_event(run_id, 3, RunStatus.STOPPED),),
+        )
+    )
+    cursors: list[int] = []
 
-    async def read_events(*args, **kwargs):
+    async def read_events(*args, after_event_id: int, **kwargs):
+        cursors.append(after_event_id)
         return next(reads)
 
     monkeypatch.setattr(sse_module, "_read_events", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
-    assert frames[0] == sse_module.SSE_IDLE_COMMENT
-    assert _frame_id(frames[1]) == 2
+    assert tuple(_frame_id(frame) for frame in frames if not frame.startswith(":")) == (
+        1,
+        2,
+        3,
+    )
+    assert sse_module.SSE_IDLE_COMMENT in frames
+    assert cursors == [0, 1, 2]
 
 
 def test_replay_subscribe_recheck_delivers_handoff_event_and_closes(
@@ -136,6 +150,37 @@ def test_replay_subscribe_recheck_delivers_handoff_event_and_closes(
     assert pubsub.subscribed is True
     assert pubsub.unsubscribed is True
     assert pubsub.closed is True
+
+
+def test_initial_replay_reads_large_backlog_in_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    terminal_id = MAX_EVENT_PAGE_LIMIT * 2 + 1
+    events = tuple(
+        _event(
+            run_id,
+            event_id,
+            RunStatus.STOPPED if event_id == terminal_id else RunStatus.RUNNING,
+        )
+        for event_id in range(1, terminal_id + 1)
+    )
+    cursors: list[int] = []
+
+    async def read_events(*args, after_event_id: int, **kwargs):
+        cursors.append(after_event_id)
+        return events[
+            after_event_id : after_event_id + MAX_EVENT_PAGE_LIMIT
+        ]
+
+    redis = _Redis(_PubSub(()))
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+
+    frames = asyncio.run(_collect(run_id, redis))
+
+    assert len(frames) == terminal_id
+    assert cursors == [0, MAX_EVENT_PAGE_LIMIT, MAX_EVENT_PAGE_LIMIT * 2]
+    assert redis.pubsub_requested is False
 
 
 def test_malformed_wake_is_dropped_before_valid_terminal_wake(

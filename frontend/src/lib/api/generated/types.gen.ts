@@ -559,6 +559,17 @@ export type RunBootstrapPayload = {
 };
 
 /**
+ * RunEventPage
+ */
+export type RunEventPage = {
+    /**
+     * Events
+     */
+    events: Array<DurableEvent>;
+    next_before_event_id: DurableEventId | null;
+};
+
+/**
  * RunFailureEvent
  */
 export type RunFailureEvent = {
@@ -1017,7 +1028,14 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetData = {
         run_id: string;
     };
     query?: {
-        after_event_id?: EventCursorValue;
+        /**
+         * Before Event Id
+         */
+        before_event_id?: EventCursorValue | null;
+        /**
+         * Limit
+         */
+        limit?: number;
     };
     url: '/api/v1/runs/{run_id}/events';
 };
@@ -1033,11 +1051,9 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetError = ReadRunEventsApiV1RunsRu
 
 export type ReadRunEventsApiV1RunsRunIdEventsGetResponses = {
     /**
-     * Response Read Run Events Api V1 Runs  Run Id  Events Get
-     *
      * Successful Response
      */
-    200: Array<DurableEvent>;
+    200: RunEventPage;
 };
 
 export type ReadRunEventsApiV1RunsRunIdEventsGetResponse = ReadRunEventsApiV1RunsRunIdEventsGetResponses[keyof ReadRunEventsApiV1RunsRunIdEventsGetResponses];

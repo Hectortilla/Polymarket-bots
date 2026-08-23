@@ -14,6 +14,7 @@ from polybot_control_plane.events.channels import (
 )
 from polybot_control_plane.events.contracts import DurableEvent, RunLifecycleEvent
 from polybot_control_plane.events.ids import require_persisted_event_id
+from polybot_control_plane.events.pagination import MAX_EVENT_PAGE_LIMIT
 from polybot_control_plane.events.store import EventStore
 
 
@@ -35,8 +36,11 @@ async def stream_durable_events(
     redis: Redis,
 ) -> AsyncIterator[str]:
     cursor = after_event_id
-    replay = await _read_events(session_factory, run_id, after_event_id=cursor)
-    for frame, cursor, terminal in _event_frames(replay):
+    async for frame, cursor, terminal in _event_frames_after(
+        session_factory,
+        run_id,
+        after_event_id=cursor,
+    ):
         yield frame
         if terminal:
             return
@@ -47,8 +51,11 @@ async def stream_durable_events(
     try:
         await pubsub.subscribe(channel)
         subscribed = True
-        recheck = await _read_events(session_factory, run_id, after_event_id=cursor)
-        for frame, cursor, terminal in _event_frames(recheck):
+        async for frame, cursor, terminal in _event_frames_after(
+            session_factory,
+            run_id,
+            after_event_id=cursor,
+        ):
             yield frame
             if terminal:
                 return
@@ -67,12 +74,11 @@ async def stream_durable_events(
                     run_id,
                 )
                 continue
-            events = await _read_events(
+            async for frame, cursor, terminal in _event_frames_after(
                 session_factory,
                 run_id,
                 after_event_id=cursor,
-            )
-            for frame, cursor, terminal in _event_frames(events):
+            ):
                 yield frame
                 if terminal:
                     return
@@ -104,6 +110,29 @@ async def _read_events(
             run_id,
             after_event_id=after_event_id,
         )
+
+
+async def _event_frames_after(
+    session_factory: async_sessionmaker[AsyncSession],
+    run_id: UUID,
+    *,
+    after_event_id: int,
+) -> AsyncIterator[tuple[str, int, bool]]:
+    cursor = after_event_id
+    while True:
+        events = await _read_events(
+            session_factory,
+            run_id,
+            after_event_id=cursor,
+        )
+        if not events:
+            return
+        for frame, cursor, terminal in _event_frames(events):
+            yield frame, cursor, terminal
+            if terminal:
+                return
+        if len(events) < MAX_EVENT_PAGE_LIMIT:
+            return
 
 
 def _sse_frame(event: DurableEvent) -> str:

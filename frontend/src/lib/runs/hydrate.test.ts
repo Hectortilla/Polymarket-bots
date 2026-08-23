@@ -6,7 +6,7 @@ import {
   readRunEventsApiV1RunsRunIdEventsGet
 } from '$lib/api/generated';
 import { EVENT_KIND } from './durableEvents';
-import { loadAndContinueRunDetail } from './hydrate';
+import { loadAndContinueRunDetail, loadOlderRunEvents } from './hydrate';
 
 vi.mock('$lib/api/generated', async (importOriginal) => {
   const original = await importOriginal<typeof import('$lib/api/generated')>();
@@ -50,7 +50,7 @@ describe('run reload', () => {
   it('hydrates ordinary HTTP state before opening SSE from the durable cursor', async () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
-      data: [EVENT]
+      data: { events: [EVENT], next_before_event_id: 7 }
     } as never);
     const calls: string[] = [];
     const openStream = vi.fn(() => {
@@ -64,6 +64,7 @@ describe('run reload', () => {
         calls.push('hydrated');
         expect(hydration.run).toEqual(RUN);
         expect(hydration.events).toEqual([EVENT]);
+        expect(hydration.nextBeforeEventId).toBe(7);
       },
       vi.fn(),
       openStream
@@ -71,5 +72,67 @@ describe('run reload', () => {
 
     expect(calls).toEqual(['hydrated', 'stream']);
     expect(openStream).toHaveBeenCalledWith(RUN.id, 7, expect.any(Function));
+    expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
+      path: { run_id: RUN.id },
+      throwOnError: true
+    });
+  });
+
+  it('does not open SSE when the hydrated run is terminal', async () => {
+    vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({
+      data: { ...RUN, status: 'stopped' }
+    } as never);
+    vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
+      data: { events: [EVENT], next_before_event_id: null }
+    } as never);
+    const openStream = vi.fn();
+
+    const close = await loadAndContinueRunDetail(
+      RUN.id,
+      vi.fn(),
+      vi.fn(),
+      openStream
+    );
+
+    expect(openStream).not.toHaveBeenCalled();
+    expect(close()).toBeUndefined();
+  });
+
+  it('does not open SSE past a terminal event committed during hydration', async () => {
+    vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
+    vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
+      data: {
+        events: [{ ...EVENT, payload: { status: 'stopped' } }],
+        next_before_event_id: null
+      }
+    } as never);
+    const openStream = vi.fn();
+
+    await loadAndContinueRunDetail(RUN.id, vi.fn(), vi.fn(), openStream);
+
+    expect(openStream).not.toHaveBeenCalled();
+  });
+
+  it('loads only the older page selected by the server cursor', async () => {
+    const olderEvent = { ...EVENT, id: 3 };
+    vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
+      data: { events: [olderEvent], next_before_event_id: null }
+    } as never);
+
+    const page = await loadOlderRunEvents(RUN.id, 7);
+
+    expect(page).toEqual({ events: [olderEvent], nextBeforeEventId: null });
+    expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
+      path: { run_id: RUN.id },
+      query: { before_event_id: 7 },
+      throwOnError: true
+    });
+
+    vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
+      data: { events: [olderEvent], next_before_event_id: 4 }
+    } as never);
+    await expect(loadOlderRunEvents(RUN.id, 7)).rejects.toThrow(
+      'Invalid run event page cursor'
+    );
   });
 });

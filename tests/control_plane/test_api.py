@@ -42,9 +42,13 @@ from polybot_control_plane.events.contracts import (
     RunStatusPayload,
 )
 from polybot_control_plane.events.ids import (
-    FIRST_EVENT_CURSOR,
     MAX_DURABLE_EVENT_ID,
 )
+from polybot_control_plane.events.pagination import (
+    DEFAULT_EVENT_PAGE_LIMIT,
+    MAX_EVENT_PAGE_LIMIT,
+)
+from polybot_control_plane.events.store import StoredEventPage
 from polybot_control_plane.runs.contracts import RunRead
 from polybot_control_plane.runs.status import RunStatus
 
@@ -216,7 +220,7 @@ def test_stream_prefers_last_event_id_header(
     assert cursors == [2, 3]
 
 
-def test_missing_run_event_routes_and_cursor_bounds(
+def test_missing_run_event_routes_and_pagination_bounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _client(monkeypatch, _State())
@@ -239,17 +243,25 @@ def test_missing_run_event_routes_and_cursor_bounds(
     assert (
         client.get(
             api_route_path(RUN_EVENTS_PATH, run_id=missing_id),
-            params={"after_event_id": -1},
+            params={"before_event_id": -1},
         ).status_code
         == 422
     )
     assert (
         client.get(
             api_route_path(RUN_EVENTS_PATH, run_id=missing_id),
-            params={"after_event_id": MAX_DURABLE_EVENT_ID + 1},
+            params={"before_event_id": MAX_DURABLE_EVENT_ID + 1},
         ).status_code
         == 422
     )
+    for invalid_limit in (0, MAX_EVENT_PAGE_LIMIT + 1):
+        assert (
+            client.get(
+                api_route_path(RUN_EVENTS_PATH, run_id=missing_id),
+                params={"limit": invalid_limit},
+            ).status_code
+            == 422
+        )
     assert (
         client.get(
             api_route_path(RUN_EVENTS_STREAM_PATH, run_id=missing_id),
@@ -259,7 +271,7 @@ def test_missing_run_event_routes_and_cursor_bounds(
     )
 
 
-def test_event_route_returns_ordered_events_after_cursor(
+def test_event_route_returns_bounded_newest_page_and_older_cursor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _State()
@@ -268,17 +280,44 @@ def test_event_route_returns_ordered_events_after_cursor(
     state.events.extend(
         (
             _lifecycle_event(run_id, 1, RunStatus.RUNNING),
-            _lifecycle_event(run_id, 2, RunStatus.STOPPED),
+            _lifecycle_event(run_id, 2, RunStatus.STOPPING),
+            _lifecycle_event(run_id, 3, RunStatus.STOPPED),
         )
     )
 
-    response = client.get(
+    newest = client.get(
         api_route_path(RUN_EVENTS_PATH, run_id=run_id),
-        params={"after_event_id": 1},
+        params={"limit": 2},
+    )
+    older = client.get(
+        api_route_path(RUN_EVENTS_PATH, run_id=run_id),
+        params={"before_event_id": 2, "limit": 2},
     )
 
-    assert response.status_code == 200
-    assert [event["id"] for event in response.json()] == [2]
+    assert newest.status_code == 200
+    assert [event["id"] for event in newest.json()["events"]] == [2, 3]
+    assert newest.json()["next_before_event_id"] == 2
+    assert [event["id"] for event in older.json()["events"]] == [1]
+    assert older.json()["next_before_event_id"] is None
+
+
+def test_event_route_enforces_default_page_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _State()
+    client = _client(monkeypatch, state)
+    run_id = client.post(api_route_path(RUNS_PATH), json=_launch_body()).json()["id"]
+    state.events.extend(
+        _lifecycle_event(run_id, event_id, RunStatus.RUNNING)
+        for event_id in range(1, DEFAULT_EVENT_PAGE_LIMIT + 2)
+    )
+
+    page = client.get(api_route_path(RUN_EVENTS_PATH, run_id=run_id)).json()
+
+    assert len(page["events"]) == DEFAULT_EVENT_PAGE_LIMIT
+    assert page["events"][0]["id"] == 2
+    assert page["events"][-1]["id"] == DEFAULT_EVENT_PAGE_LIMIT + 1
+    assert page["next_before_event_id"] == 2
 
 
 def test_openapi_has_only_slice_12c_routes_and_is_current() -> None:
@@ -461,13 +500,20 @@ class _EventStore:
     def __init__(self, session: _Session) -> None:
         self.state = session.state
 
-    async def read(self, run_id, *, after_event_id=FIRST_EVENT_CURSOR):
-        return tuple(
+    async def read_page(self, run_id, *, before_event_id, limit):
+        events = tuple(
             event
             for event in self.state.events
             if event.run_id == run_id
             and event.id is not None
-            and event.id > after_event_id
+            and (before_event_id is None or event.id < before_event_id)
+        )
+        descending = tuple(reversed(events))
+        has_more = len(descending) > limit
+        page = descending[:limit]
+        return StoredEventPage(
+            events=tuple(reversed(page)),
+            next_before_event_id=page[-1].id if has_more else None,
         )
 
 
