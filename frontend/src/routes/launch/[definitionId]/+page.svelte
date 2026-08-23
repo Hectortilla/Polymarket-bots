@@ -56,15 +56,20 @@
   }
 </script>
 
-<a class="back-link" href="/">← Back to catalog</a>
+<a class="back-link" href="/">Back to catalog</a>
 
 {#if loading}
-  <p class="notice">Loading definition…</p>
+  <div class="loading-state" aria-live="polite">
+    <span class="sr-only">Loading definition</span>
+    <div class="skeleton skeleton-heading" aria-hidden="true"></div>
+    <div class="skeleton skeleton-line" aria-hidden="true"></div>
+    <div class="skeleton skeleton-panel" aria-hidden="true"></div>
+  </div>
 {:else if !descriptor}
   <p class="notice error" role="alert">{error}</p>
 {:else}
   <section class="narrow-page">
-    <p class="eyebrow">Paper run · {descriptor.label.replace('_', ' ')}</p>
+    <p class="eyebrow">Paper run / {descriptor.label.replace('_', ' ')}</p>
     <h1>{descriptor.display_name}</h1>
     <p>{descriptor.description}</p>
 

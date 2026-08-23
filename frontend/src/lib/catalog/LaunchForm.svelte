@@ -90,6 +90,9 @@
       {@const widget = widgetKind(field)}
       <label class:wide={widget === WIDGET_KIND.streamRules}>
         <span>{fieldLabel(name, schema)}</span>
+        {#if typeof schema.description === 'string'}
+          <span class="field-helper">{schema.description}</span>
+        {/if}
 
         {#if widget === WIDGET_KIND.walletAddresses || widget === WIDGET_KIND.marketSlugs}
           <textarea

@@ -50,9 +50,9 @@
 
 <section class="page-heading">
   <div>
-    <p class="eyebrow">Private · paper only</p>
-    <h1>Launch and follow bot runs</h1>
-    <p>Choose a trusted definition, configure its paper inputs, and follow durable progress.</p>
+    <p class="eyebrow">Paper operations</p>
+    <h1>Run bots with a clear view of risk.</h1>
+    <p>Configure trusted strategies, start paper runs, and inspect durable progress from one place.</p>
   </div>
   <button class="secondary" onclick={loadHome} disabled={loading}>Refresh</button>
 </section>
@@ -60,7 +60,12 @@
 {#if error}
   <p class="notice error" role="alert">{error}</p>
 {:else if loading}
-  <p class="notice">Loading control plane…</p>
+  <div class="loading-state" aria-live="polite">
+    <span class="sr-only">Loading control plane</span>
+    <div class="skeleton skeleton-heading" aria-hidden="true"></div>
+    <div class="skeleton skeleton-line" aria-hidden="true"></div>
+    <div class="skeleton skeleton-panel" aria-hidden="true"></div>
+  </div>
 {:else}
   <section>
     <div class="section-heading">
@@ -96,10 +101,10 @@
           <tbody>
             {#each activeRuns as run (run.id)}
               <tr>
-                <td><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
-                <td>{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
-                <td><RunStatusBadge status={run.status} /></td>
-                <td>{formatTime(run.created_at)}</td>
+                <td data-label="Run"><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
+                <td data-label="Definition">{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
+                <td data-label="Status"><RunStatusBadge status={run.status} /></td>
+                <td data-label="Created">{formatTime(run.created_at)}</td>
               </tr>
             {/each}
           </tbody>
@@ -122,10 +127,10 @@
           <tbody>
             {#each terminalRuns as run (run.id)}
               <tr>
-                <td><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
-                <td>{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
-                <td><RunStatusBadge status={run.status} /></td>
-                <td>{formatTime(run.ended_at)}</td>
+                <td data-label="Run"><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
+                <td data-label="Definition">{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
+                <td data-label="Status"><RunStatusBadge status={run.status} /></td>
+                <td data-label="Ended">{formatTime(run.ended_at)}</td>
               </tr>
             {/each}
           </tbody>

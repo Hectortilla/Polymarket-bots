@@ -101,37 +101,44 @@
       case EVENT_KIND.botActivity:
         return event.payload.message;
       case EVENT_KIND.brokerOrder:
-        return `${event.payload.order.side} ${event.payload.order.size} · ${event.payload.order.token_id}`;
+        return `${event.payload.order.side} ${event.payload.order.size} / ${event.payload.order.token_id}`;
       case EVENT_KIND.brokerFill:
-        return `${event.payload.fill.status} · ${event.payload.fill.filled_size} filled`;
+        return `${event.payload.fill.status} / ${event.payload.fill.filled_size} filled`;
       case EVENT_KIND.brokerFailure:
         return event.payload.error;
       case EVENT_KIND.marketSettlement:
-        return `${event.payload.settlement.resolution.market_slug} · ${event.payload.settlement.resolution.winning_outcome}`;
+        return `${event.payload.settlement.resolution.market_slug} / ${event.payload.settlement.resolution.winning_outcome}`;
       case EVENT_KIND.portfolioSnapshot:
         return `Cash ${event.payload.cash_usdc} USDC`;
       case EVENT_KIND.walletTimeline:
-        return `${event.payload.trade.side} ${event.payload.trade.size} · ${event.payload.trade.wallet}`;
+        return `${event.payload.trade.side} ${event.payload.trade.size} / ${event.payload.trade.wallet}`;
       case EVENT_KIND.streamHealth:
-        return `Queue ${event.payload.queue_depth} · ${event.payload.book_received_count} books`;
+        return `Queue ${event.payload.queue_depth} / ${event.payload.book_received_count} books`;
       case EVENT_KIND.runFailure:
         return event.payload.error;
     }
   }
 </script>
 
-<a class="back-link" href="/">← Back to runs</a>
+<a class="back-link" href="/">Back to runs</a>
 
 {#if loading}
-  <p class="notice">Hydrating run and durable events…</p>
+  <div class="loading-state" aria-live="polite">
+    <span class="sr-only">Loading run and durable events</span>
+    <div class="skeleton skeleton-heading" aria-hidden="true"></div>
+    <div class="skeleton skeleton-line" aria-hidden="true"></div>
+    <div class="skeleton skeleton-panel" aria-hidden="true"></div>
+  </div>
 {:else if !run}
   <p class="notice error" role="alert">{error}</p>
 {:else}
   <section class="page-heading run-heading">
     <div>
-      <p class="eyebrow">{run.definition_id} · v{run.definition_version}</p>
-      <h1>{run.config.name}</h1>
-      <RunStatusBadge status={run.status} />
+      <p class="eyebrow">{run.definition_id} / v{run.definition_version}</p>
+      <div class="run-title-row">
+        <h1>{run.config.name}</h1>
+        <RunStatusBadge status={run.status} />
+      </div>
     </div>
     {#if statusPresentation?.stopLabel}
       <button onclick={stopRun} disabled={!statusPresentation.canStop || stopping}>
@@ -170,9 +177,9 @@
   </section>
 
   <section class="chart-placeholder" aria-label="Dashboard chart placeholder">
-    <p class="eyebrow">Dashboard charts</p>
-    <h2>Live charts arrive in Slice 12E</h2>
-    <p>Durable lifecycle, activity, portfolio, order, fill, and stream progress is available below.</p>
+    <p class="eyebrow">Dashboard preview</p>
+    <h2>Live charts arrive with dashboard parity</h2>
+    <p>Lifecycle, activity, portfolio, order, fill, and stream progress is already durable below.</p>
   </section>
 
   <section>
@@ -189,9 +196,9 @@
           <tbody>
             {#each events as event (event.id)}
               <tr>
-                <td>{formatTime(event.occurred_at)}</td>
-                <td><span class="event-kind">{event.kind}</span></td>
-                <td>{eventSummary(event)}</td>
+                <td data-label="Time">{formatTime(event.occurred_at)}</td>
+                <td data-label="Kind"><span class="event-kind">{event.kind}</span></td>
+                <td data-label="Detail">{eventSummary(event)}</td>
               </tr>
             {/each}
           </tbody>
