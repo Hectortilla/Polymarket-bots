@@ -7,13 +7,14 @@ import pytest
 
 import polybot_control_plane.execution.worker.lifecycle as worker_lifecycle
 import polybot_control_plane.execution.worker.runtime as worker_runtime
+from polybot.cli.observability.events import StreamHealth
 from polybot.framework.base import BaseBot
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
     INITIAL_DEFINITION_VERSION,
     WINNER_DEFINITION_ID,
 )
-from polybot_control_plane.events.contracts import RunLifecycleEvent
+from polybot_control_plane.events.contracts import DurableEvent, EventKind
 from polybot_control_plane.execution.config import REDIS_URL_ENV, configured_redis_url
 from polybot_control_plane.execution.worker.lifecycle import PAPER_RUN_FAILURE_REASON
 from polybot_control_plane.runs.contracts import RunRead
@@ -42,6 +43,35 @@ def test_worker_completes_normally_and_writes_terminal_event(
 
     assert store.transitions == [RunStatus.RUNNING, RunStatus.STOPPING]
     assert store.finished == [(RunStatus.STOPPED, None)]
+    assert writer.events[-1].payload.status is RunStatus.STOPPED
+
+
+def test_worker_writes_final_stream_health_before_terminal_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run_claimed_bot(run, observer) -> None:
+        await observer.start(run.config.to_bot_config())
+        observer.emit(StreamHealth(1, 2, 3, False, 1.0, 4, 1))
+        await observer.stop()
+
+    async def poll(*args) -> None:
+        await asyncio.Future()
+
+    monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
+    monkeypatch.setattr(worker_lifecycle, "poll_stop_request_and_heartbeat", poll)
+    store = _FakeRunStore(_run())
+    writer = _CollectingEventWriter()
+
+    asyncio.run(
+        worker_lifecycle.execute_claimed_run_lifecycle(
+            uuid4(), store, object(), writer
+        )
+    )
+
+    assert [event.kind for event in writer.events] == [
+        EventKind.STREAM_HEALTH,
+        EventKind.RUN_LIFECYCLE,
+    ]
     assert writer.events[-1].payload.status is RunStatus.STOPPED
 
 
@@ -354,7 +384,7 @@ class _FakeRunStore:
 
 class _CollectingEventWriter:
     def __init__(self, *, fail: bool = False) -> None:
-        self.events: list[RunLifecycleEvent] = []
+        self.events: list[DurableEvent] = []
         self._fail = fail
 
     async def append(self, event):

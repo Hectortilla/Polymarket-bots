@@ -925,7 +925,8 @@ Minimum deliverable:
   durable stop state, and record lifecycle outcome.
 - Implement the web observer with a small runtime-event projection and separate
   async event-store/Redis I/O, following the architecture-owned durability
-  classification.
+  classification. Retain only the latest stream-health input in memory and
+  append it once as a final summary during graceful observer shutdown.
 - Drain accepted durable progress before the terminal event on cooperative
   stop. Preserve the architecture-owned observer boundary.
 
@@ -942,8 +943,8 @@ Acceptance:
 - Failure scenarios cover runtime failure sanitization and prove the
   architecture-owned observer isolation invariant.
 - Event tests cover the canonical projection/durability mapping, ordered
-  append/read, and graceful drain. Do not add an idempotency subsystem merely
-  for a test.
+  append/read, terminal-only stream-health coalescing, and graceful drain. Do
+  not add an idempotency subsystem merely for a test.
 - A migration test proves the 12A-to-12B upgrade and downgrade.
 
 ## Slice 12C: FastAPI Runs API and SSE

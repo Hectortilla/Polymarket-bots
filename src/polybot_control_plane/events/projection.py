@@ -52,6 +52,9 @@ def project_runtime_event_to_durable(
     run_id: UUID,
     event: RuntimeEvent,
 ) -> tuple[DurableEvent, ...]:
+    if isinstance(event, StreamHealth):
+        # The observer owns terminal-only coalescing for this high-rate input.
+        return ()
     occurred_at = datetime.now(UTC)
     if isinstance(event, RuntimeStarted):
         return (
@@ -154,21 +157,6 @@ def project_runtime_event_to_durable(
                 occurred_at=occurred_at,
             ),
         )
-    if isinstance(event, StreamHealth):
-        return (
-            StreamHealthEvent(
-                run_id=run_id,
-                occurred_at=occurred_at,
-                payload=StreamHealthPayload(
-                    queue_depth=event.queue_depth,
-                    peak_queue_depth=event.peak_queue_depth,
-                    book_dispatch_lag_ms=event.book_dispatch_lag_ms,
-                    book_stale=event.book_stale,
-                    book_received_count=event.book_received_count,
-                    book_coalesced_count=event.book_coalesced_count,
-                ),
-            ),
-        )
     if isinstance(event, RuntimeFailed):
         return (
             RunFailureEvent(
@@ -193,3 +181,21 @@ def project_runtime_event_to_durable(
     # Raw books, market hints, and individual non-wallet dispatch callbacks are
     # deliberately non-durable; later chart cadence owns their aggregation.
     return ()
+
+
+def project_terminal_stream_health(
+    run_id: UUID,
+    event: StreamHealth,
+) -> StreamHealthEvent:
+    return StreamHealthEvent(
+        run_id=run_id,
+        occurred_at=datetime.now(UTC),
+        payload=StreamHealthPayload(
+            queue_depth=event.queue_depth,
+            peak_queue_depth=event.peak_queue_depth,
+            book_dispatch_lag_ms=event.book_dispatch_lag_ms,
+            book_stale=event.book_stale,
+            book_received_count=event.book_received_count,
+            book_coalesced_count=event.book_coalesced_count,
+        ),
+    )

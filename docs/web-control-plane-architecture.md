@@ -226,12 +226,20 @@ The canonical durable event kinds are:
 Slice 12E extends this list with `chart.sample`; Slice 12B does not advertise a
 wire kind whose payload contract is not implemented yet.
 
-Raw book events and individual dispatch callbacks are not durable. The web
-observer maps runtime events to the list above and enqueues those records; raw
-books only replace the latest in-memory chart input. Keep that mapping in one
-owning function/table, not a generic policy class or repeated `isinstance`
-lists. Pure projection and database/Redis I/O must not become one monolithic
-module.
+Raw book events and individual dispatch callbacks are not durable. Individual
+stream-health inputs are also retained only in memory; on graceful observer
+shutdown, the latest state is appended once as the run's final `stream.health`
+summary before the terminal lifecycle event. A run that observes no stream
+health, or loses its process before graceful observer shutdown, has no such
+summary. Through Slice 12D, a running browser therefore receives no live health
+updates. Slice 12E's ephemeral frames own live continuation while its durable
+chart cadence owns chart reload history.
+
+The web observer maps runtime events to the durable list above and enqueues
+those records; raw books only replace the latest in-memory chart input. Keep
+that mapping in one owning function/table, not a generic policy class or
+repeated `isinstance` lists. Pure projection and database/Redis I/O must not
+become one monolithic module.
 
 ## Execution and Lifecycle
 

@@ -81,7 +81,7 @@ def test_runtime_projection_keeps_typed_lifecycle_payloads() -> None:
     ) == ()
 
 
-def test_runtime_projection_maps_every_current_single_event_kind() -> None:
+def test_runtime_projection_maps_every_immediately_durable_event_kind() -> None:
     run_id = uuid4()
     order = _order()
     events = (
@@ -89,7 +89,6 @@ def test_runtime_projection_maps_every_current_single_event_kind() -> None:
         BotActivityEvent("ready", ActivitySeverity.SUCCESS, 1.0),
         OrderSubmitted(order, 1.0),
         BrokerFailed(order, "rejected", 1.0),
-        StreamHealth(1, 2, 3, False, 1.0, 4, 1),
         RuntimeFailed("safe", 1.0),
         DispatchCompleted(
             WalletStreamEvent(kind=StreamKind.WALLET, event=_wallet_trade()),
@@ -108,10 +107,13 @@ def test_runtime_projection_maps_every_current_single_event_kind() -> None:
         EventKind.BOT_ACTIVITY,
         EventKind.BROKER_ORDER,
         EventKind.BROKER_FAILURE,
-        EventKind.STREAM_HEALTH,
         EventKind.RUN_FAILURE,
         EventKind.WALLET_TIMELINE,
     )
+    assert project_runtime_event_to_durable(
+        run_id,
+        StreamHealth(1, 2, 3, False, 1.0, 4, 1),
+    ) == ()
 
 
 def test_durable_event_adapter_rejects_invalid_finite_state() -> None:
@@ -282,6 +284,7 @@ def test_observer_drains_accepted_events_and_isolates_writer_failures() -> None:
         failing_observer = WebRuntimeObserver(uuid4(), failing)
         await failing_observer.start(BotConfig(name="test"))
         failing_observer.emit(RuntimeFailed("ignored failure", 4.0))
+        failing_observer.emit(StreamHealth(1, 2, 3, False, 5.0, 4, 1))
         await failing_observer.stop()
         return (
             [event.kind for event in collecting.events],
@@ -291,20 +294,54 @@ def test_observer_drains_accepted_events_and_isolates_writer_failures() -> None:
     collected, failed = asyncio.run(scenario())
 
     assert collected == [EventKind.RUN_FAILURE, EventKind.RUN_FAILURE]
-    assert failed == [EventKind.RUN_FAILURE]
+    assert failed == [EventKind.RUN_FAILURE, EventKind.STREAM_HEALTH]
 
 
-def test_observer_drops_overflow_without_blocking_emit() -> None:
+def test_observer_persists_only_latest_stream_health_during_shutdown() -> None:
+    async def scenario() -> list[DurableEvent]:
+        writer = _CollectingWriter()
+        observer = WebRuntimeObserver(uuid4(), writer)
+        await observer.start(BotConfig(name="test"))
+        for count in range(5_000):
+            observer.emit(
+                StreamHealth(
+                    queue_depth=count % 4,
+                    peak_queue_depth=4,
+                    book_dispatch_lag_ms=count,
+                    book_stale=False,
+                    occurred_at_monotonic_seconds=float(count),
+                    book_received_count=count + 10,
+                    book_coalesced_count=count,
+                )
+            )
+        await observer.stop()
+        return writer.events
+
+    events = asyncio.run(scenario())
+
+    assert [event.kind for event in events] == [EventKind.STREAM_HEALTH]
+    health = events[0].payload
+    assert health.queue_depth == 3
+    assert health.book_dispatch_lag_ms == 4_999
+    assert health.book_received_count == 5_009
+    assert health.book_coalesced_count == 4_999
+
+
+def test_observer_drops_overflow_but_preserves_final_stream_health() -> None:
     async def scenario() -> list[EventKind]:
         writer = _CollectingWriter()
         observer = WebRuntimeObserver(uuid4(), writer, max_pending_events=1)
         await observer.start(BotConfig(name="test"))
         observer.emit(RuntimeFailed("accepted", 1.0))
         observer.emit(RuntimeFailed("overflow", 2.0))
+        observer.emit(StreamHealth(1, 2, 3, False, 3.0, 4, 1))
         await observer.stop()
         return [event.kind for event in writer.events]
 
-    assert asyncio.run(scenario()) == [EventKind.RUN_FAILURE]
+    assert asyncio.run(scenario()) == [
+        EventKind.RUN_FAILURE,
+        EventKind.STREAM_HEALTH,
+    ]
 
 
 def test_event_writer_publishes_only_after_committed_append(
