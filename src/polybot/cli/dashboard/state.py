@@ -31,13 +31,14 @@ from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.performance.contracts.valuation import PortfolioValuation
+from polybot.dashboard.projection import DashboardProjection
+from polybot.dashboard.contracts import format_token_label
 
 from .chart_history import DashboardCharts
 from .event_ticker import DashboardTicker, TickerRow
 from .market_state import DashboardMarkets
 from .runtime_state import DashboardRuntime
 from .stream_health import DashboardStreamHealth
-from .token_labels import format_token_label
 from .view_state import DashboardView, DashboardViewState
 from .wallet_state import (
     DashboardWalletTimeline,
@@ -106,6 +107,7 @@ class DashboardState:
         "charts",
         "wallets",
         "view_state",
+        "projection",
     )
 
     # Runtime identity and lifecycle.
@@ -170,8 +172,8 @@ class DashboardState:
         "charts"
     )
     pending_trade_markers: dict[str, list[Side]] = _ProjectionAttribute("charts")
-    wallet_value_history: deque[float] = _ProjectionAttribute("charts")
-    wallet_value_stale_history: deque[bool] = _ProjectionAttribute("charts")
+    executable_equity_history: deque[float] = _ProjectionAttribute("charts")
+    executable_equity_stale_history: deque[bool] = _ProjectionAttribute("charts")
     chart_sample_epoch_seconds: deque[float] = _ProjectionAttribute("charts")
     time_zoom_level: int = _ProjectionAttribute("charts")
 
@@ -206,10 +208,17 @@ class DashboardState:
             chart_tokens=deque(() if chart_tokens is None else chart_tokens)
         )
         self.wallets = DashboardWalletTimeline()
+        self.projection = DashboardProjection(
+            markets=self.markets,
+            charts=self.charts,
+            wallets=self.wallets,
+            initial_cash_usdc=initial_cash_usdc,
+        )
         self.view_state = DashboardViewState(view=view)
 
     def apply(self, event: RuntimeEvent) -> None:
         """Route a runtime event to its owning state projection."""
+        change = self.projection.apply(event)
         self.stream_health.remember_event(event.occurred_at_monotonic_seconds)
         match event:
             case RuntimeStarted():
@@ -233,11 +242,14 @@ class DashboardState:
                     event.total,
                 )
             case StreamReceived():
-                self._record_stream_received(event)
+                self._record_stream_received(event, change.accepted_book)
             case PortfolioBookBootstrap():
-                self._record_book(event.book, event.occurred_at_monotonic_seconds)
+                self._record_market_ticker(
+                    event.book,
+                    event.occurred_at_monotonic_seconds,
+                )
             case DispatchCompleted():
-                self._record_dispatch_completed(event)
+                self._record_dispatch_completed(event, change.accepted_book)
             case StreamHealth():
                 self.stream_health.record_health(
                     queue_depth=event.queue_depth,
@@ -259,12 +271,7 @@ class DashboardState:
             case BrokerFailed():
                 self.ticker_state.add("bold red", f"BROKER ERROR {event.error}")
             case MarketSettled():
-                self.markets.portfolio = event.portfolio
-                settled_token_ids = self.markets.settle(
-                    condition_id=event.settlement.resolution.condition_id,
-                    token_ids=event.settlement.resolution.token_ids,
-                )
-                self.charts.remove_tokens(settled_token_ids)
+                pass
             case RuntimeFailed():
                 self.runtime.fail()
                 self.ticker_state.add("bold red", f"RUN FAILED {event.error}")
@@ -276,11 +283,7 @@ class DashboardState:
 
     def record_chart_sample(self, now_ms: int | None = None) -> None:
         sampled_at_ms = system_now_ms() if now_ms is None else now_ms
-        self.charts.record_sample(
-            sampled_at_ms,
-            current_book=self.markets.current_book,
-            executable_equity=self.executable_equity(sampled_at_ms),
-        )
+        self.projection.sample(sampled_at_ms)
 
     def chart_window_points(self, width: int) -> int:
         return self.charts.chart_window_points(width)
@@ -365,23 +368,25 @@ class DashboardState:
     def market_label(self, token_id: str) -> str:
         return self.markets.market_label(token_id)
 
-    def _record_stream_received(self, event: StreamReceived) -> None:
+    def _record_stream_received(
+        self,
+        event: StreamReceived,
+        accepted_book: BookSnapshot | None,
+    ) -> None:
         kind = event.item.kind
         self.stream_health.record_stream_received(kind, event.occurred_at_monotonic_seconds)
         if kind is StreamKind.BOOK:
-            book = event.item.event
-            if self.markets.require_accepted_books:
-                self.markets.stage_book(book)
-            else:
-                self._record_book(book, event.occurred_at_monotonic_seconds)
+            if accepted_book is not None:
+                self._record_market_ticker(
+                    accepted_book,
+                    event.occurred_at_monotonic_seconds,
+                )
             return
         if kind is StreamKind.BOOK_GAP:
-            self.markets.invalidate_gap(event.item.event)
             return
         if kind is StreamKind.WALLET:
             trade = event.item.event
             if isinstance(trade, WalletTradeEvent):
-                self.wallets.record_trade(trade)
                 self.stream_health.record_wallet_detection_lag(
                     trade.observed_at_ms - trade.trade_timestamp_ms
                 )
@@ -398,29 +403,30 @@ class DashboardState:
                 f"MARKET HINT {format_token_label(hint.token_id)}",
             )
 
-    def _record_book(self, book: BookSnapshot, occurred_at_monotonic_seconds: float) -> None:
-        self.markets.record_book(
+    def _record_market_ticker(
+        self,
+        book: BookSnapshot,
+        occurred_at_monotonic_seconds: float,
+    ) -> None:
+        message = self.markets.market_ticker_message(
             book,
             occurred_at_monotonic_seconds,
-            activate_chart_token=self.charts.activate_token,
-            add_market_ticker=self.ticker_state.add_market_event,
         )
+        if message is not None:
+            self.ticker_state.add_market_event("cyan", message)
 
-    def _record_dispatch_completed(self, event: DispatchCompleted) -> None:
-        if self.markets.require_accepted_books and event.kind is StreamKind.BOOK:
-            book = event.item.event
-            self.markets.pending_books.pop(book.token_id, None)
-            if event.outcome is not None and event.outcome.accepted:
-                self._record_book(book, event.occurred_at_monotonic_seconds)
+    def _record_dispatch_completed(
+        self,
+        event: DispatchCompleted,
+        accepted_book: BookSnapshot | None,
+    ) -> None:
+        if accepted_book is not None:
+            self._record_market_ticker(
+                accepted_book,
+                event.occurred_at_monotonic_seconds,
+            )
         if event.outcome is None or event.kind is StreamKind.MARKET_HINT:
             return
-        if event.kind is StreamKind.WALLET and isinstance(
-            event.item.event, WalletTradeEvent
-        ):
-            self.wallets.mark_dispatch(
-                event.item.event.source_key,
-                accepted=event.outcome.accepted,
-            )
         self.stream_health.record_dispatch(
             event.kind,
             accepted=event.outcome.accepted,
@@ -436,7 +442,6 @@ class DashboardState:
         fill = event.fill
         is_rejected = fill.status is OrderStatus.REJECTED
         self.stream_health.record_fill(event.latency_ms, rejected=is_rejected)
-        self.markets.portfolio = event.portfolio
         if is_rejected:
             self.ticker_state.add(
                 "bold red",
@@ -444,9 +449,6 @@ class DashboardState:
                 f"{fill.reject_reason.value if fill.reject_reason else 'unknown'}",
             )
             return
-        self.markets.refresh_fill_mark(fill)
-        if fill.has_execution:
-            self.charts.record_trade(fill.token_id, fill.side)
         price = "-" if fill.average_price is None else str(fill.average_price)
         self.ticker_state.add(
             self.ticker_state.side_style(fill.side),
@@ -460,8 +462,9 @@ class DashboardState:
         *,
         allow_stale_marks: bool,
     ) -> PortfolioValuation:
+        sampled_at_ms = system_now_ms() if now_ms is None else now_ms
         return self.markets.portfolio_valuation(
-            now_ms,
+            sampled_at_ms,
             initial_cash_usdc=self.runtime.initial_cash_usdc,
             allow_stale_marks=allow_stale_marks,
         )

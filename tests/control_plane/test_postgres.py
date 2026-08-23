@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 import json
 import os
 from pathlib import Path
@@ -27,13 +28,17 @@ from polybot_control_plane.catalog.definitions import (
 )
 from polybot_control_plane.database import DATABASE_URL_ENV, async_database_url
 from polybot_control_plane.events.contracts import (
+    ChartSampleEvent,
+    ChartSamplePayload,
     EventKind,
     RunLifecycleEvent,
     RunStatusPayload,
 )
+from polybot_control_plane.events.contracts.payloads import EquityChartPointPayload
 from polybot_control_plane.events.models import EventRow
 from polybot_control_plane.events.schema import (
     EVENT_KIND_CONSTRAINT_NAME,
+    EventColumn,
     RUN_EVENTS_CURSOR_INDEX_NAME,
     RUN_EVENTS_RUN_ID_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
@@ -50,6 +55,7 @@ from polybot_control_plane.runs.schema import (
     RUN_STATUS_CONSTRAINT_NAME,
 )
 from polybot_control_plane.runs.store import RunStore
+from polybot.performance.contracts.valuation_status import ValuationStatus
 from control_plane.service_config import (
     POSTGRES_NOT_CONFIGURED_SKIP_REASON,
     TEST_POSTGRES_URL_ENV,
@@ -228,6 +234,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     assert {check["name"] for check in event_checks} == {
         EVENT_KIND_CONSTRAINT_NAME
     }
+    assert EventKind.CHART_SAMPLE.value in event_checks[0]["sqltext"]
     assert len(event_foreign_keys) == 1
     assert event_foreign_keys[0]["constrained_columns"] == [EventRow.run_id.name]
     assert event_foreign_keys[0]["referred_table"] == RUNS_TABLE_NAME
@@ -267,12 +274,65 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
 
     asyncio.run(assert_constraint_rejections())
 
+    async def insert_chart_sample(*, accepted: bool) -> None:
+        engine = create_async_engine(url)
+        run_id = uuid4()
+        run_values = {
+            RunColumn.ID.value: run_id,
+            RunColumn.DEFINITION_ID.value: "definition",
+            RunColumn.DEFINITION_VERSION.value: INITIAL_DEFINITION_VERSION,
+            RunColumn.CONFIG.value: json.dumps({}),
+            RunColumn.STATUS.value: RunStatus.QUEUED.value,
+            RunColumn.CREATED_AT.value: datetime.now(UTC),
+            RunColumn.STARTED_AT.value: None,
+            RunColumn.ENDED_AT.value: None,
+            RunColumn.HEARTBEAT_AT.value: None,
+            RunColumn.FAILURE_DETAIL.value: None,
+        }
+        event_statement = text(
+            f"INSERT INTO {RUN_EVENTS_TABLE_NAME} "
+            f"({EventColumn.RUN_ID}, {EventColumn.KIND}, "
+            f"{EventColumn.OCCURRED_AT}, {EventColumn.PAYLOAD}) "
+            "VALUES (:run_id, :kind, :occurred_at, CAST(:payload AS JSONB))"
+        )
+
+        async def insert() -> None:
+            async with engine.begin() as connection:
+                await connection.execute(_run_insert_statement(), run_values)
+                await connection.execute(
+                    event_statement,
+                    {
+                        "run_id": run_id,
+                        "kind": EventKind.CHART_SAMPLE.value,
+                        "occurred_at": datetime.now(UTC),
+                        "payload": json.dumps({}),
+                    },
+                )
+                await connection.execute(
+                    text(
+                        f"DELETE FROM {RUN_EVENTS_TABLE_NAME} "
+                        f"WHERE {EventColumn.RUN_ID} = :run_id"
+                    ),
+                    {"run_id": run_id},
+                )
+
+        if accepted:
+            await insert()
+        else:
+            with pytest.raises(IntegrityError):
+                await insert()
+        await engine.dispose()
+
+    asyncio.run(insert_chart_sample(accepted=True))
+
     command.downgrade(config, "0002")
     slice_12b_schema = asyncio.run(inspect_schema())
     assert {index["name"] for index in slice_12b_schema[5]} == {
         RUN_EVENTS_RUN_ID_INDEX_NAME
     }
     assert slice_12b_schema[5][0]["column_names"] == [EventRow.run_id.name]
+    assert EventKind.CHART_SAMPLE.value not in slice_12b_schema[6][0]["sqltext"]
+    asyncio.run(insert_chart_sample(accepted=False))
 
     command.downgrade(config, "0001")
     downgraded_schema = asyncio.run(inspect_schema())
@@ -547,6 +607,28 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
                 before_event_id=newest_page.next_before_event_id,
                 limit=1,
             )
+            for run_id, equity in (
+                (queued.id, "101"),
+                (other_run_id, "201"),
+                (queued.id, "102"),
+            ):
+                await event_store.append(
+                    ChartSampleEvent(
+                        run_id=run_id,
+                        occurred_at=now,
+                        payload=ChartSamplePayload(
+                            sampled_at_ms=int(equity),
+                            markets=(),
+                            equity=EquityChartPointPayload(
+                                value=equity,
+                                status=ValuationStatus.FRESH,
+                            ),
+                        ),
+                    )
+                )
+            latest_samples = await event_store.latest_chart_samples(
+                (queued.id, other_run_id)
+            )
 
         assert [event.id for event in restored] == [
             stored_first.id,
@@ -558,6 +640,8 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         assert newest_page.next_before_event_id == stored_last.id
         assert older_page.events == (stored_first,)
         assert older_page.next_before_event_id is None
+        assert latest_samples[queued.id].payload.equity.value == Decimal("102")
+        assert latest_samples[other_run_id].payload.equity.value == Decimal("201")
         assert all(event.kind is EventKind.RUN_LIFECYCLE for event in restored)
         await engine.dispose()
 

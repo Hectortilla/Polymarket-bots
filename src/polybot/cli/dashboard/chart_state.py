@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from collections import deque
-from math import isfinite, nan
+from math import nan
 
 from polybot.cli.charting import (
     MAX_TERMINAL_CHART_POINTS,
     MIN_TERMINAL_CHART_POINTS,
 )
+from polybot.dashboard.contracts import MAX_CHART_HISTORY_POINTS
+from polybot.dashboard.history import last_chart_value, trim
 
 from .layout import chart_panel_width
 
-MAX_CHART_HISTORY_POINTS = 720
 MIN_TIME_ZOOM_LEVEL = -3
 MAX_TIME_ZOOM_LEVEL = 3
 
@@ -45,12 +46,3 @@ def visible_epoch_seconds_range(
     if not timestamps:
         return None
     return timestamps[0], timestamps[-1]
-
-
-def trim(values: deque[object], limit: int) -> None:
-    while len(values) > limit:
-        values.popleft()
-
-
-def last_chart_value(values: deque[float]) -> float | None:
-    return next((value for value in reversed(values) if isfinite(value)), None)

@@ -8,6 +8,7 @@ from decimal import Decimal
 from rich.console import Group
 from rich.text import Text
 
+from polybot.dashboard.wallets import wallet_bucket_index, wallet_notional_tier
 from polybot.framework.events import Side
 
 from .layout import WALLET_SUMMARY_MIN_WIDTH, primary_chart_available_height
@@ -92,39 +93,23 @@ def wallet_timeline_buckets(
     lane_set = set(lanes)
     if end_epoch_seconds <= start_epoch_seconds:
         return events_by_wallet_and_bucket
-    span_seconds = end_epoch_seconds - start_epoch_seconds
+    start_ms = round(start_epoch_seconds * 1_000)
+    end_ms = round(end_epoch_seconds * 1_000)
     for event in events:
-        timestamp_epoch_seconds = event.trade_timestamp_ms / 1_000
         if (
             event.wallet not in lane_set
-            or timestamp_epoch_seconds < start_epoch_seconds
-            or timestamp_epoch_seconds > end_epoch_seconds
+            or event.trade_timestamp_ms < start_ms
+            or event.trade_timestamp_ms > end_ms
         ):
             continue
-        bucket = _timeline_bucket_for_timestamp(
-            timestamp_epoch_seconds,
-            start_epoch_seconds,
-            span_seconds,
+        bucket = wallet_bucket_index(
+            event.trade_timestamp_ms,
+            start_ms,
+            end_ms,
             columns,
         )
         events_by_wallet_and_bucket[event.wallet][bucket].append(event)
     return events_by_wallet_and_bucket
-
-
-def _timeline_bucket_for_timestamp(
-    timestamp_epoch_seconds: float,
-    start_epoch_seconds: float,
-    span_seconds: float,
-    columns: int,
-) -> int:
-    return min(
-        columns - 1,
-        int(
-            (timestamp_epoch_seconds - start_epoch_seconds)
-            / span_seconds
-            * columns
-        ),
-    )
 
 
 def wallet_bucket_glyph(
@@ -135,12 +120,9 @@ def wallet_bucket_glyph(
         return " ", ""
     sides = {event.side for event in events}
     notional = sum((event.notional for event in events), Decimal("0"))
-    if maximum_notional <= 0 or notional <= maximum_notional / 3:
-        glyph = "·"
-    elif notional <= maximum_notional * 2 / 3:
-        glyph = "●"
-    else:
-        glyph = "◆"
+    glyph = ("·", "●", "◆")[
+        wallet_notional_tier(notional, maximum_notional) - 1
+    ]
     style = "yellow" if len(sides) > 1 else side_text_style(next(iter(sides)))
     if all(event.accepted is False for event in events):
         style = f"dim {style}"

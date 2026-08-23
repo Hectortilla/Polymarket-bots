@@ -18,3 +18,11 @@ class EventKind(StrEnum):
     WALLET_TIMELINE = "wallet.timeline"
     STREAM_HEALTH = "stream.health"
     RUN_FAILURE = "run.failure"
+    CHART_SAMPLE = "chart.sample"
+
+
+class LiveEventKind(StrEnum):
+    CHART_MARKET = "chart.market"
+    CHART_EQUITY = "chart.equity"
+    CHART_WALLET = "chart.wallet"
+    STREAM_HEALTH = "stream.health.live"

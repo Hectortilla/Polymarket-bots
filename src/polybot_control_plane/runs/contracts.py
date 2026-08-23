@@ -20,6 +20,7 @@ from polybot.framework.config.constants import MAX_DATA_TRADES_PER_RATE_LIMIT_WI
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRule
+from polybot.performance.contracts.valuation_status import ValuationStatus
 from polybot_control_plane.catalog.contracts import DefinitionId, DefinitionVersion
 from polybot_control_plane.runs.status import RunStatus
 
@@ -96,3 +97,5 @@ class RunRead(BaseModel):
     ended_at: datetime | None = None
     heartbeat_at: datetime | None = None
     failure_detail: str | None = None
+    latest_equity: Decimal | None = None
+    equity_status: ValuationStatus | None = None

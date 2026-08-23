@@ -1,0 +1,1 @@
+"""Presentation-neutral dashboard semantics."""

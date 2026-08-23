@@ -1,24 +1,32 @@
 import asyncio
 from datetime import UTC, datetime
 import logging
+import json
 from uuid import UUID, uuid4
 
 import pytest
 
 import polybot_control_plane.api.sse as sse_module
 from polybot_control_plane.api.sse import (
+    SSE_DATA_FIELD,
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
-    stream_durable_events,
+    stream_run_event_frames,
 )
 from polybot_control_plane.events.channels import (
     decode_durable_wake_frame,
     encode_durable_wake_frame,
+    encode_live_event_frame,
 )
 from polybot_control_plane.events.contracts import (
+    EVENT_DISCRIMINATOR_FIELD,
+    EquityChartPayload,
+    LiveEquityChartEvent,
+    LiveEventKind,
     RunLifecycleEvent,
     RunStatusPayload,
 )
+from polybot_control_plane.events.contracts.payloads import EquityChartPointPayload
 from polybot_control_plane.events.ids import (
     FIRST_DURABLE_EVENT_ID,
     FIRST_EVENT_CURSOR,
@@ -27,6 +35,7 @@ from polybot_control_plane.events.ids import (
 )
 from polybot_control_plane.events.pagination import MAX_EVENT_PAGE_LIMIT
 from polybot_control_plane.runs.status import RunStatus
+from polybot.performance.contracts.valuation_status import ValuationStatus
 
 
 def test_durable_wake_frame_is_strict_positive_bigint_ascii() -> None:
@@ -201,8 +210,77 @@ def test_malformed_wake_is_dropped_before_valid_terminal_wake(
     frames = asyncio.run(_collect(run_id, redis))
 
     assert tuple(_frame_id(frame) for frame in frames) == (2,)
-    assert "dropping malformed durable wake frame" in caplog.text
+    assert "dropping malformed run event frame" in caplog.text
     assert pubsub.closed is True
+
+
+def test_live_frame_has_no_cursor_and_durable_continuation_keeps_its_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    live = LiveEquityChartEvent(
+        run_id=run_id,
+        occurred_at=datetime.now(UTC),
+        payload=EquityChartPayload(
+            sampled_at_ms=1_000,
+            point=EquityChartPointPayload(
+                value="101.5",
+                status=ValuationStatus.FRESH,
+            ),
+        ),
+    )
+    pubsub = _PubSub(
+        ({"data": encode_live_event_frame(live)}, {"data": b"2"})
+    )
+    reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
+
+    async def read_events(*args, **kwargs):
+        return next(reads)
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
+
+    data_prefix = f"{SSE_DATA_FIELD}{SSE_FIELD_SEPARATOR}"
+    id_prefix = f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}"
+    assert frames[0].startswith(data_prefix)
+    assert not frames[0].startswith(id_prefix)
+    assert json.loads(frames[0].split(data_prefix, 1)[1])[
+        EVENT_DISCRIMINATOR_FIELD
+    ] == LiveEventKind.CHART_EQUITY.value
+    assert _frame_id(frames[1]) == 2
+
+
+def test_live_event_for_another_run_is_dropped_before_target_continues(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run_id = uuid4()
+    wrong_run_event = LiveEquityChartEvent(
+        run_id=uuid4(),
+        occurred_at=datetime.now(UTC),
+        payload=EquityChartPayload(
+            sampled_at_ms=1_000,
+            point=EquityChartPointPayload(
+                value="101.5",
+                status=ValuationStatus.FRESH,
+            ),
+        ),
+    )
+    pubsub = _PubSub(
+        ({"data": encode_live_event_frame(wrong_run_event)}, {"data": b"2"})
+    )
+    reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
+
+    async def read_events(*args, **kwargs):
+        return next(reads)
+
+    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    caplog.set_level(logging.WARNING)
+
+    frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
+
+    assert tuple(_frame_id(frame) for frame in frames) == (2,)
+    assert "dropping malformed run event frame" in caplog.text
 
 
 def test_disconnect_releases_pubsub_resources(
@@ -232,7 +310,7 @@ async def _collect(
 ) -> list[str]:
     return [
         frame
-        async for frame in stream_durable_events(
+        async for frame in stream_run_event_frames(
             run_id,
             after_event_id=FIRST_EVENT_CURSOR,
             request=_Request(disconnected),

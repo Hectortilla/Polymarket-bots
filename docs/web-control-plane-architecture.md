@@ -1,6 +1,6 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12D are implemented. This document
+Status: planned overall; Slices 12A through 12E are implemented. This document
 is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
@@ -319,6 +319,11 @@ may expand chart history, but the chart retains at most the shared
 `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable samples and never
 auto-drains the complete run history.
 
+Each durable `wallet.timeline` payload stores the canonical projected chart
+point, so reload does not reconstruct labels, source keys, or decimal notionals
+in the browser. The terminal `stream.health` event is likewise the reload
+fallback until a newer live health frame arrives.
+
 The one-second durable cadence is an explicit v0 storage budget: at most 86,400
 scheduled `chart.sample` rows per continuously active run-day, in addition to
 semantic events. v0 does not compact or delete them. Capacity planning for that
@@ -331,6 +336,10 @@ a Rich/ECharts module. Keep the existing `polybot.performance` valuation owner.
 Move the stable token cap, cadence, bounds/resampling helpers, market projection,
 and wallet bucketing only as each gains its second consumer. Do not create a
 generic `ChartPolicy`, `ProjectionManager`, or all-purpose chart service.
+
+The shared terminal/browser wallet scenario locks integer-millisecond bucket
+boundaries and exact-decimal notional tiers so renderer-specific glyph and
+symbol choices cannot change the underlying grouping semantics.
 
 Finite availability and wallet-bucket values used on the wire are typed enums;
 reuse existing `Side` and valuation-quality types where their meaning is

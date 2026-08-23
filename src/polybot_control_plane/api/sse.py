@@ -10,9 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from polybot_control_plane.events.channels import (
     decode_durable_wake_frame,
+    decode_live_event_frame,
     run_event_channel,
 )
-from polybot_control_plane.events.contracts import DurableEvent, RunLifecycleEvent
+from polybot_control_plane.events.contracts import (
+    DurableEvent,
+    LiveRunEvent,
+    RunLifecycleEvent,
+)
 from polybot_control_plane.events.ids import require_persisted_event_id
 from polybot_control_plane.events.pagination import MAX_EVENT_PAGE_LIMIT
 from polybot_control_plane.events.store import EventStore
@@ -27,7 +32,7 @@ SSE_FRAME_TERMINATOR = "\n\n"
 LOGGER = logging.getLogger(__name__)
 
 
-async def stream_durable_events(
+async def stream_run_event_frames(
     run_id: UUID,
     *,
     after_event_id: int,
@@ -68,20 +73,25 @@ async def stream_durable_events(
             if message is None:
                 yield SSE_IDLE_COMMENT
                 continue
-            if decode_durable_wake_frame(message.get("data")) is None:
+            channel_frame = message.get("data")
+            if decode_durable_wake_frame(channel_frame) is not None:
+                async for frame, cursor, terminal in _event_frames_after(
+                    session_factory,
+                    run_id,
+                    after_event_id=cursor,
+                ):
+                    yield frame
+                    if terminal:
+                        return
+                continue
+            live_event = decode_live_event_frame(channel_frame)
+            if live_event is None or live_event.run_id != run_id:
                 LOGGER.warning(
-                    "dropping malformed durable wake frame for run %s",
+                    "dropping malformed run event frame for run %s",
                     run_id,
                 )
                 continue
-            async for frame, cursor, terminal in _event_frames_after(
-                session_factory,
-                run_id,
-                after_event_id=cursor,
-            ):
-                yield frame
-                if terminal:
-                    return
+            yield _sse_frame(live_event)
     finally:
         try:
             if subscribed:
@@ -135,9 +145,14 @@ async def _event_frames_after(
             return
 
 
-def _sse_frame(event: DurableEvent) -> str:
+def _sse_frame(event: DurableEvent | LiveRunEvent) -> str:
+    persisted_id = getattr(event, "id", None)
+    event_id = (
+        ""
+        if persisted_id is None
+        else f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}{persisted_id}\n"
+    )
     return (
-        f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}{event.id}\n"
-        f"{SSE_DATA_FIELD}{SSE_FIELD_SEPARATOR}{event.model_dump_json()}"
+        f"{event_id}{SSE_DATA_FIELD}{SSE_FIELD_SEPARATOR}{event.model_dump_json()}"
         f"{SSE_FRAME_TERMINATOR}"
     )

@@ -10,7 +10,11 @@ import {
   type PersistedDurableEvent,
   type PersistedEventPage
 } from './durableEvents';
-import { openRunEventStream, type EventStreamOpener } from './events';
+import {
+  openRunEventStream,
+  type EventStreamOpener,
+  type LiveRunEvent
+} from './events';
 import { isTerminalRunStatus } from './status';
 
 export type RunHydration = PersistedEventPage & {
@@ -54,7 +58,8 @@ export async function loadOlderRunEvents(
 export async function loadAndContinueRunDetail(
   runId: string,
   onHydrated: (hydration: RunHydration) => void,
-  onEvent: (event: PersistedDurableEvent) => void,
+  onDurableEvent: (event: PersistedDurableEvent) => void,
+  onLiveEvent: (event: LiveRunEvent) => void,
   openStream: EventStreamOpener = openRunEventStream
 ): Promise<() => void> {
   const hydration = await hydrateRunDetail(runId);
@@ -65,5 +70,10 @@ export async function loadAndContinueRunDetail(
   ) {
     return () => {};
   }
-  return openStream(hydration.run.id, hydration.cursor, onEvent);
+  return openStream(
+    hydration.run.id,
+    hydration.cursor,
+    onDurableEvent,
+    onLiveEvent
+  );
 }

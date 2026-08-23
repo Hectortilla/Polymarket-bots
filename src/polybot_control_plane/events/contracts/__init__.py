@@ -21,19 +21,23 @@ from polybot_control_plane.events.ids import (
 )
 from polybot_control_plane.runs.status import TERMINAL_RUN_STATUSES, RunStatus
 
-from ..kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
+from ..kinds import EVENT_DISCRIMINATOR_FIELD, EventKind, LiveEventKind
 from .payloads import (
     BotActivityPayload,
     BrokerFailurePayload,
     BrokerFillPayload,
     BrokerOrderPayload,
+    ChartSamplePayload,
+    EquityChartPayload,
     MarketSettlementPayload,
+    MarketChartPayload,
     PortfolioSnapshotPayload,
     RunBootstrapPayload,
     RunFailurePayload,
     RunStartedPayload,
     RunStatusPayload,
     StreamHealthPayload,
+    WalletChartPayload,
     WalletTimelinePayload,
 )
 
@@ -143,6 +147,11 @@ class RunFailureEvent(DurableEventBase):
     payload: RunFailurePayload
 
 
+class ChartSampleEvent(DurableEventBase):
+    kind: Literal[EventKind.CHART_SAMPLE] = EventKind.CHART_SAMPLE
+    payload: ChartSamplePayload
+
+
 type DurableEvent = Annotated[
     RunLifecycleEvent
     | RunBootstrapEvent
@@ -154,9 +163,61 @@ type DurableEvent = Annotated[
     | PortfolioSnapshotEvent
     | WalletTimelineDurableEvent
     | StreamHealthEvent
-    | RunFailureEvent,
+    | RunFailureEvent
+    | ChartSampleEvent,
     Field(discriminator=EVENT_DISCRIMINATOR_FIELD),
 ]
 
 
 DURABLE_EVENT_ADAPTER = TypeAdapter(DurableEvent)
+
+
+class LiveEventBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    occurred_at: AwareDatetime
+
+
+class LiveMarketChartEvent(LiveEventBase):
+    kind: Literal[LiveEventKind.CHART_MARKET] = LiveEventKind.CHART_MARKET
+    payload: MarketChartPayload
+
+
+class LiveEquityChartEvent(LiveEventBase):
+    kind: Literal[LiveEventKind.CHART_EQUITY] = LiveEventKind.CHART_EQUITY
+    payload: EquityChartPayload
+
+
+class LiveWalletChartEvent(LiveEventBase):
+    kind: Literal[LiveEventKind.CHART_WALLET] = LiveEventKind.CHART_WALLET
+    payload: WalletChartPayload
+
+
+class LiveStreamHealthEvent(LiveEventBase):
+    kind: Literal[LiveEventKind.STREAM_HEALTH] = LiveEventKind.STREAM_HEALTH
+    payload: StreamHealthPayload
+
+
+LIVE_EVENT_MODELS = (
+    LiveMarketChartEvent,
+    LiveEquityChartEvent,
+    LiveWalletChartEvent,
+    LiveStreamHealthEvent,
+)
+
+
+type LiveChartEvent = Annotated[
+    LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent,
+    Field(discriminator=EVENT_DISCRIMINATOR_FIELD),
+]
+type LiveRunEvent = Annotated[
+    LiveMarketChartEvent
+    | LiveEquityChartEvent
+    | LiveWalletChartEvent
+    | LiveStreamHealthEvent,
+    Field(discriminator=EVENT_DISCRIMINATOR_FIELD),
+]
+
+
+LIVE_RUN_EVENT_ADAPTER = TypeAdapter(LiveRunEvent)

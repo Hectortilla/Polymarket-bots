@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from polybot.framework.clock import system_now_utc
 from polybot_control_plane.api.dependencies import (
@@ -28,6 +29,8 @@ from polybot_control_plane.api.routes.run_lookup import (
 )
 from polybot_control_plane.catalog.contracts import LaunchRequest
 from polybot_control_plane.catalog.definitions import CATALOG
+from polybot_control_plane.events.contracts import ChartSampleEvent
+from polybot_control_plane.events.store import EventStore
 from polybot_control_plane.events.writer import publish_durable_wake
 from polybot_control_plane.runs.contracts import RunRead
 from polybot_control_plane.runs.failures import sanitized_failure_detail
@@ -98,7 +101,8 @@ async def list_runs(
     session_factory: SessionFactoryDependency,
 ) -> tuple[RunRead, ...]:
     async with session_factory() as session:
-        return await RunStore(session).list()
+        runs = await RunStore(session).list()
+        return await _with_equity_summaries(session, runs)
 
 
 @router.get(
@@ -111,8 +115,8 @@ async def read_run(
     session_factory: SessionFactoryDependency,
 ) -> RunRead:
     async with session_factory() as session:
-        run = await RunStore(session).read(run_id)
-    return require_run(run)
+        run = require_run(await RunStore(session).read(run_id))
+        return (await _with_equity_summaries(session, (run,)))[0]
 
 
 @router.post(
@@ -128,9 +132,10 @@ async def stop_run(
     now = system_now_utc()
     async with session_factory() as session:
         transition = await ApiRunLifecycle(session).request_stop(run_id, now=now)
-    if transition is None:
-        raise_run_not_found()
-    run, terminal_event_id = transition
+        if transition is None:
+            raise_run_not_found()
+        run, terminal_event_id = transition
+        run = (await _with_equity_summaries(session, (run,)))[0]
     if terminal_event_id is not None:
         await publish_durable_wake(redis, run_id, terminal_event_id)
     return run
@@ -141,3 +146,30 @@ def _input_validation_errors(error: ValidationError) -> list[dict[str, object]]:
         {**issue, "loc": ("body", "inputs", *issue["loc"])}
         for issue in error.errors()
     ]
+
+
+async def _with_equity_summaries(
+    session: AsyncSession,
+    runs: tuple[RunRead, ...],
+) -> tuple[RunRead, ...]:
+    latest_chart_samples_by_run = await EventStore(session).latest_chart_samples(
+        tuple(run.id for run in runs)
+    )
+    return tuple(
+        _with_equity_summary(run, latest_chart_samples_by_run.get(run.id))
+        for run in runs
+    )
+
+
+def _with_equity_summary(
+    run: RunRead,
+    sample: ChartSampleEvent | None,
+) -> RunRead:
+    if sample is None:
+        return run
+    return run.model_copy(
+        update={
+            "latest_equity": sample.payload.equity.value,
+            "equity_status": sample.payload.equity.status,
+        }
+    )

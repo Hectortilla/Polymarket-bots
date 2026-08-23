@@ -18,6 +18,8 @@ from polybot.cli.observability.events import (
 )
 from polybot.cli.observability.states import RuntimeState
 from polybot.cli.streams.contracts import WalletStreamEvent
+from polybot.dashboard.contracts import DashboardSample, WalletChartPoint
+from polybot.dashboard.wallets import wallet_chart_point
 from polybot.framework.activity import BotActivityEvent
 from polybot_control_plane.runs.status import RunStatus
 
@@ -30,7 +32,16 @@ from .contracts import (
     BrokerFillPayload,
     BrokerOrderEvent,
     BrokerOrderPayload,
+    ChartSampleEvent,
+    ChartSamplePayload,
     DurableEvent,
+    EquityChartPayload,
+    LiveEquityChartEvent,
+    LiveMarketChartEvent,
+    LiveRunEvent,
+    LiveStreamHealthEvent,
+    LiveWalletChartEvent,
+    MarketChartPayload,
     MarketSettlementDurableEvent,
     MarketSettlementPayload,
     PortfolioSnapshotEvent,
@@ -45,7 +56,9 @@ from .contracts import (
     StreamHealthPayload,
     WalletTimelineDurableEvent,
     WalletTimelinePayload,
+    WalletChartPayload,
 )
+from .contracts.payloads import WalletChartPointPayload
 
 
 def project_runtime_event_to_durable(
@@ -172,15 +185,24 @@ def project_runtime_event_to_durable(
             WalletTimelineDurableEvent(
                 run_id=run_id,
                 occurred_at=occurred_at,
-                payload=WalletTimelinePayload(
-                    trade=event.item.event,
-                    outcome=event.outcome,
-                ),
+                payload=_wallet_timeline_payload(event),
             ),
         )
     # Raw books, market hints, and individual non-wallet dispatch callbacks are
     # deliberately non-durable; later chart cadence owns their aggregation.
     return ()
+
+
+def _wallet_timeline_payload(event: DispatchCompleted) -> WalletTimelinePayload:
+    trade = event.item.event
+    accepted = None if event.outcome is None else event.outcome.accepted
+    return WalletTimelinePayload(
+        trade=trade,
+        outcome=event.outcome,
+        point=WalletChartPointPayload.from_point(
+            wallet_chart_point(trade, accepted=accepted)
+        ),
+    )
 
 
 def project_terminal_stream_health(
@@ -198,4 +220,63 @@ def project_terminal_stream_health(
             book_received_count=event.book_received_count,
             book_coalesced_count=event.book_coalesced_count,
         ),
+    )
+
+
+def project_chart_sample(
+    run_id: UUID,
+    sample: DashboardSample,
+    *,
+    occurred_at: datetime,
+) -> ChartSampleEvent:
+    return ChartSampleEvent(
+        run_id=run_id,
+        occurred_at=occurred_at,
+        payload=ChartSamplePayload.from_sample(sample),
+    )
+
+
+def project_live_chart_events(
+    run_id: UUID,
+    sample: DashboardSample,
+    wallet_points: tuple[WalletChartPoint, ...],
+    *,
+    occurred_at: datetime,
+) -> tuple[LiveRunEvent, ...]:
+    return (
+        LiveMarketChartEvent(
+            run_id=run_id,
+            occurred_at=occurred_at,
+            payload=MarketChartPayload.from_sample(sample),
+        ),
+        LiveEquityChartEvent(
+            run_id=run_id,
+            occurred_at=occurred_at,
+            payload=EquityChartPayload.from_sample(sample),
+        ),
+        LiveWalletChartEvent(
+            run_id=run_id,
+            occurred_at=occurred_at,
+            payload=WalletChartPayload(
+                sampled_at_ms=sample.sampled_at_ms,
+                points=tuple(
+                    WalletChartPointPayload.from_point(point)
+                    for point in wallet_points
+                ),
+            ),
+        ),
+    )
+
+
+def project_live_stream_health(
+    run_id: UUID,
+    event: StreamHealth,
+    *,
+    occurred_at: datetime,
+) -> LiveStreamHealthEvent:
+    durable_health_event = project_terminal_stream_health(run_id, event)
+    return LiveStreamHealthEvent(
+        run_id=run_id,
+        occurred_at=occurred_at,
+        payload=durable_health_event.payload,
     )

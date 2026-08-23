@@ -77,6 +77,10 @@ export function runStatusLabel(status: RunStatus): string {
   return RUN_STATUS_PRESENTATION[status].label;
 }
 
+export function isRunStatus(value: unknown): value is RunStatus {
+  return typeof value === 'string' && value in RUN_STATUS_PRESENTATION;
+}
+
 export function isTerminalRunStatus(status: RunStatus): boolean {
   return RUN_STATUS_PRESENTATION[status].terminal;
 }

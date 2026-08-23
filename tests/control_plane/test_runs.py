@@ -6,8 +6,15 @@ from polybot_control_plane.runs.models import RunRow
 
 
 def test_run_contract_matches_the_run_row() -> None:
-    assert tuple(RunRead.model_fields) == tuple(RunRow.__table__.columns.keys())
-    assert len(RunRead.model_fields) == 10
+    row_fields = tuple(RunRow.__table__.columns.keys())
+    assert tuple(RunRead.model_fields)[: len(row_fields)] == row_fields
+    assert tuple(RunRead.model_fields)[len(row_fields) :] == (
+        "latest_equity",
+        "equity_status",
+    )
+    assert len(row_fields) == 10
+    assert "latest_equity" not in RunRow.__table__.columns
+    assert "equity_status" not in RunRow.__table__.columns
     assert RunRow.__table__.columns.status.type.enums == [
         status.value for status in RunStatus
     ]

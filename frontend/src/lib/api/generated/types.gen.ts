@@ -171,6 +171,41 @@ export type BrokerOrderPayload = {
     order: OrderRequest;
 };
 
+/**
+ * ChartSampleEvent
+ */
+export type ChartSampleEvent = {
+    id?: DurableEventId | null;
+    /**
+     * Kind
+     */
+    kind?: 'chart.sample';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: ChartSamplePayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * ChartSamplePayload
+ */
+export type ChartSamplePayload = {
+    equity: EquityChartPointPayload;
+    /**
+     * Markets
+     */
+    markets: Array<MarketChartPointPayload>;
+    /**
+     * Sampled At Ms
+     */
+    sampled_at_ms: number;
+};
+
 export type DataTradesBudget = number;
 
 export type DefinitionId = string;
@@ -215,9 +250,33 @@ export type DurableEvent = ({
     kind: 'stream.health';
 } & StreamHealthEvent) | ({
     kind: 'run.failure';
-} & RunFailureEvent);
+} & RunFailureEvent) | ({
+    kind: 'chart.sample';
+} & ChartSampleEvent);
 
 export type DurableEventId = number;
+
+/**
+ * EquityChartPayload
+ */
+export type EquityChartPayload = {
+    point: EquityChartPointPayload;
+    /**
+     * Sampled At Ms
+     */
+    sampled_at_ms: number;
+};
+
+/**
+ * EquityChartPointPayload
+ */
+export type EquityChartPointPayload = {
+    status: ValuationStatus;
+    /**
+     * Value
+     */
+    value: string | null;
+};
 
 export type EventCursorValue = number;
 
@@ -299,6 +358,129 @@ export type LaunchRequest = {
     inputs: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * LiveEquityChartEvent
+ */
+export type LiveEquityChartEvent = {
+    /**
+     * Kind
+     */
+    kind?: 'chart.equity';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: EquityChartPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * LiveMarketChartEvent
+ */
+export type LiveMarketChartEvent = {
+    /**
+     * Kind
+     */
+    kind?: 'chart.market';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: MarketChartPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+export type LiveRunEvent = ({
+    kind: 'chart.market';
+} & LiveMarketChartEvent) | ({
+    kind: 'chart.equity';
+} & LiveEquityChartEvent) | ({
+    kind: 'chart.wallet';
+} & LiveWalletChartEvent) | ({
+    kind: 'stream.health.live';
+} & LiveStreamHealthEvent);
+
+/**
+ * LiveStreamHealthEvent
+ */
+export type LiveStreamHealthEvent = {
+    /**
+     * Kind
+     */
+    kind?: 'stream.health.live';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: StreamHealthPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * LiveWalletChartEvent
+ */
+export type LiveWalletChartEvent = {
+    /**
+     * Kind
+     */
+    kind?: 'chart.wallet';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: WalletChartPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * MarketChartPayload
+ */
+export type MarketChartPayload = {
+    /**
+     * Points
+     */
+    points: Array<MarketChartPointPayload>;
+    /**
+     * Sampled At Ms
+     */
+    sampled_at_ms: number;
+};
+
+/**
+ * MarketChartPointPayload
+ */
+export type MarketChartPointPayload = {
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Markers
+     */
+    markers: Array<Side>;
+    status: ValuationStatus;
+    /**
+     * Token Id
+     */
+    token_id: string;
+    /**
+     * Value
+     */
+    value: string | null;
 };
 
 /**
@@ -639,6 +821,7 @@ export type RunRead = {
      * Ended At
      */
     ended_at?: string | null;
+    equity_status?: ValuationStatus | null;
     /**
      * Failure Detail
      */
@@ -651,6 +834,10 @@ export type RunRead = {
      * Id
      */
     id: string;
+    /**
+     * Latest Equity
+     */
+    latest_equity?: string | null;
     /**
      * Started At
      */
@@ -828,6 +1015,56 @@ export type ValidationError = {
 };
 
 /**
+ * ValuationStatus
+ */
+export type ValuationStatus = 'fresh' | 'stale' | 'unavailable';
+
+/**
+ * WalletChartPayload
+ */
+export type WalletChartPayload = {
+    /**
+     * Points
+     */
+    points: Array<WalletChartPointPayload>;
+    /**
+     * Sampled At Ms
+     */
+    sampled_at_ms: number;
+};
+
+/**
+ * WalletChartPointPayload
+ */
+export type WalletChartPointPayload = {
+    /**
+     * Accepted
+     */
+    accepted: boolean | null;
+    /**
+     * Market Label
+     */
+    market_label: string;
+    /**
+     * Notional
+     */
+    notional: string;
+    side: Side;
+    /**
+     * Source Key
+     */
+    source_key: string;
+    /**
+     * Trade Timestamp Ms
+     */
+    trade_timestamp_ms: number;
+    /**
+     * Wallet
+     */
+    wallet: string;
+};
+
+/**
  * WalletTimelineDurableEvent
  */
 export type WalletTimelineDurableEvent = {
@@ -852,6 +1089,7 @@ export type WalletTimelineDurableEvent = {
  */
 export type WalletTimelinePayload = {
     outcome: DispatchOutcome | null;
+    point: WalletChartPointPayload;
     trade: WalletTradeEvent;
 };
 
@@ -1091,7 +1329,7 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses = {
     /**
      * Successful Response
      */
-    200: DurableEvent;
+    200: DurableEvent | LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent | LiveStreamHealthEvent;
 };
 
 export type StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse = StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses[keyof StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses];

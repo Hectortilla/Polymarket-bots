@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from polybot_control_plane.events.contracts import (
+    ChartSampleEvent,
     DURABLE_EVENT_ADAPTER,
     DurableEvent,
     EVENT_DISCRIMINATOR_FIELD,
+    EventKind,
 )
 from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR
 from polybot_control_plane.events.models import EventRow
@@ -75,6 +77,32 @@ class EventStore:
             events=tuple(self._event_from_row(row) for row in reversed(page_rows)),
             next_before_event_id=page_rows[-1].id if has_more else None,
         )
+
+    async def latest_chart_samples(
+        self,
+        run_ids: tuple[UUID, ...],
+    ) -> dict[UUID, ChartSampleEvent]:
+        if not run_ids:
+            return {}
+        rows = tuple(
+            (
+                await self._session.execute(
+                    select(EventRow)
+                    .where(
+                        EventRow.run_id.in_(run_ids),
+                        EventRow.kind == EventKind.CHART_SAMPLE,
+                    )
+                    .distinct(EventRow.run_id)
+                    .order_by(EventRow.run_id, EventRow.id.desc())
+                )
+            ).scalars()
+        )
+        latest_chart_samples_by_run: dict[UUID, ChartSampleEvent] = {}
+        for row in rows:
+            event = self._event_from_row(row)
+            if isinstance(event, ChartSampleEvent):
+                latest_chart_samples_by_run[row.run_id] = event
+        return latest_chart_samples_by_run
 
     @staticmethod
     def _event_from_row(row: EventRow) -> DurableEvent:

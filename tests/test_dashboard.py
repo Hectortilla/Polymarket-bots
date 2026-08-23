@@ -1,9 +1,12 @@
 import asyncio
 from collections import deque
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 from io import StringIO
+import json
 from math import inf, isnan, nan
+from pathlib import Path
 from threading import Event, Thread
 
 import asciichartpy
@@ -29,10 +32,11 @@ from polybot.cli.dashboard.render import (
 )
 from polybot.cli.dashboard.controller import TerminalDashboard
 from polybot.cli.dashboard.status import filled_progress_width, optional_money
-from polybot.cli.dashboard.chart_history import (
+from polybot.dashboard.contracts import (
     MAX_CHART_HISTORY_POINTS,
     MAX_CHART_TOKENS,
 )
+from polybot.dashboard.wallets import wallet_notional_tier
 from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.dashboard.view_state import DashboardView
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
@@ -1078,7 +1082,7 @@ def test_dashboard_render_handles_all_missing_chart_samples() -> None:
         "one": deque((nan,)),
         "two": deque((nan,)),
     }
-    state.wallet_value_history.append(nan)
+    state.executable_equity_history.append(nan)
 
     Console(width=120, height=35).print(render_dashboard(state, 120, 35))
 
@@ -1086,7 +1090,7 @@ def test_dashboard_render_handles_all_missing_chart_samples() -> None:
 def test_dashboard_chart_bounds_fix_prices_and_pad_wallet_value(monkeypatch) -> None:
     state = DashboardState(chart_tokens=deque(("token",)))
     state.price_history = {"token": deque((0.45, 0.55))}
-    state.wallet_value_history = deque((100.0, 110.0))
+    state.executable_equity_history = deque((100.0, 110.0))
     configurations: list[dict[str, object]] = []
 
     def plot(series, config):
@@ -1107,7 +1111,7 @@ def test_dashboard_chart_bounds_fix_prices_and_pad_wallet_value(monkeypatch) -> 
 def test_dashboard_wallet_chart_padding_follows_observed_variance(monkeypatch) -> None:
     state = DashboardState(chart_tokens=deque(("token",)))
     state.price_history = {"token": deque((0.45, 0.55))}
-    state.wallet_value_history = deque((100.0, 100.1))
+    state.executable_equity_history = deque((100.0, 100.1))
     configurations: list[dict[str, object]] = []
 
     def plot(series, config):
@@ -1132,10 +1136,10 @@ def test_dashboard_price_chart_is_taller_on_normal_terminal_heights() -> None:
 def test_dashboard_time_zoom_retains_history_and_changes_window() -> None:
     state = DashboardState()
     for value in range(MAX_CHART_HISTORY_POINTS + 1):
-        state.wallet_value_history.append(float(value))
+        state.executable_equity_history.append(float(value))
     state.record_chart_sample()
 
-    assert len(state.wallet_value_history) == MAX_CHART_HISTORY_POINTS
+    assert len(state.executable_equity_history) == MAX_CHART_HISTORY_POINTS
     assert state.chart_window_points(100) == 88
     assert state.zoom_time(-1)
     assert state.chart_window_points(100) == 44
@@ -1147,8 +1151,8 @@ def test_dashboard_time_zoom_keeps_the_rendered_chart_width(monkeypatch) -> None
     state = DashboardState(chart_tokens=deque(("token",)))
     state.price_history = {"token": deque(float(value) / 200 for value in range(200))}
     state.price_stale_history = {"token": deque(False for _ in range(200))}
-    state.wallet_value_history = deque(float(value) for value in range(200))
-    state.wallet_value_stale_history = deque(False for _ in range(200))
+    state.executable_equity_history = deque(float(value) for value in range(200))
+    state.executable_equity_stale_history = deque(False for _ in range(200))
     state.chart_sample_epoch_seconds = deque(float(value) for value in range(200))
     rendered_widths: list[int] = []
 
@@ -1262,6 +1266,62 @@ def test_wallet_timeline_buckets_by_trade_time_and_styles_skipped_events() -> No
     assert accepted_style == "bold red"
 
 
+def test_wallet_buckets_match_the_shared_terminal_browser_scenario() -> None:
+    fixture = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "contracts"
+            / "dashboard-wallet-bucket-parity.json"
+        ).read_text()
+    )
+    state = DashboardState()
+    for point in fixture["points"]:
+        trade = replace(
+            _wallet_trade(
+                point["wallet"],
+                point["source_key"].split("\0", 1)[1],
+                Side(point["side"]),
+                point["trade_timestamp_ms"],
+            ),
+            size=Decimal(point["notional"]) * 2,
+        )
+        item = WalletStreamEvent(StreamKind.WALLET, trade)
+        state.apply(StreamReceived(item, 1.0))
+        outcome = (
+            DispatchOutcome.accepted_event()
+            if point["accepted"]
+            else DispatchOutcome.skipped(DispatchSkipReason.WALLET_NOT_TRACKED)
+        )
+        state.apply(DispatchCompleted(item, outcome, 1.0))
+
+    buckets = _wallet_timeline_buckets(
+        state.wallet_timeline,
+        fixture["lanes"],
+        fixture["start_ms"] / 1_000,
+        fixture["end_ms"] / 1_000,
+        fixture["columns"],
+    )
+    maximum_notional = max(
+        sum((event.notional for event in events), Decimal("0"))
+        for wallet_buckets in buckets.values()
+        for events in wallet_buckets.values()
+    )
+    actual = []
+    for expected in fixture["terminal_expected"]:
+        events = buckets[expected["wallet"]][expected["bucket"]]
+        glyph, style = _wallet_bucket_glyph(events, maximum_notional)
+        actual.append({**expected, "glyph": glyph, "style": style})
+
+    assert actual == fixture["terminal_expected"]
+    boundary = fixture["decimal_boundary"]
+    notionals = [Decimal(point["notional"]) for point in boundary["points"]]
+    maximum = max(notionals)
+    sizes = (5, 9, 13)
+    assert [sizes[wallet_notional_tier(value, maximum) - 1] for value in notionals] == (
+        boundary["sizes"]
+    )
+
+
 def test_dashboard_renders_wallet_view_with_trade_time_lanes() -> None:
     state = DashboardState(view=DashboardView.WALLET)
     trade = _wallet_trade("0x" + "5" * 40, "trade", Side.BUY, 1_000)
@@ -1281,7 +1341,7 @@ def test_dashboard_samples_executable_wallet_value() -> None:
 
     state.record_chart_sample()
 
-    assert list(state.wallet_value_history) == [125.0]
+    assert list(state.executable_equity_history) == [125.0]
 
 
 def test_dashboard_retains_stale_chart_values_with_stale_markers() -> None:
@@ -1306,8 +1366,8 @@ def test_dashboard_retains_stale_chart_values_with_stale_markers() -> None:
 
     assert list(state.price_history["token"]) == [0.5, 0.5]
     assert list(state.price_stale_history["token"]) == [False, True]
-    assert list(state.wallet_value_history) == [90.4, 90.4]
-    assert list(state.wallet_value_stale_history) == [False, True]
+    assert list(state.executable_equity_history) == [90.4, 90.4]
+    assert list(state.executable_equity_stale_history) == [False, True]
 
 
 def test_dashboard_removes_settled_market_state_and_counts_it_once() -> None:
@@ -1361,8 +1421,8 @@ def test_dashboard_renders_stale_samples_in_dimmed_series(monkeypatch) -> None:
     state = DashboardState(chart_tokens=deque(("token",)))
     state.price_history = {"token": deque((0.45, 0.55))}
     state.price_stale_history = {"token": deque((False, True))}
-    state.wallet_value_history = deque((100.0, 110.0))
-    state.wallet_value_stale_history = deque((False, True))
+    state.executable_equity_history = deque((100.0, 110.0))
+    state.executable_equity_stale_history = deque((False, True))
     calls: list[tuple[object, dict[str, object]]] = []
 
     def plot(series, config):

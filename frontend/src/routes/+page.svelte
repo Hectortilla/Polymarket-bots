@@ -105,13 +105,14 @@
     {:else}
       <div class="table-wrap">
         <table aria-label="Active and queued runs">
-          <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Created</th></tr></thead>
+          <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Equity</th><th>Created</th></tr></thead>
           <tbody>
             {#each activeRuns as run (run.id)}
               <tr>
                 <td data-label="Run"><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
                 <td data-label="Definition">{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
                 <td data-label="Status"><RunStatusBadge status={run.status} /></td>
+                <td data-label="Equity">{run.latest_equity ?? '—'}{run.equity_status ? ` / ${run.equity_status}` : ''}</td>
                 <td data-label="Created">{formatTime(run.created_at)}</td>
               </tr>
             {/each}
@@ -131,13 +132,14 @@
     {:else}
       <div class="table-wrap">
         <table aria-label="Recent terminal runs">
-          <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Ended</th></tr></thead>
+          <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Equity</th><th>Ended</th></tr></thead>
           <tbody>
             {#each terminalRuns as run (run.id)}
               <tr>
                 <td data-label="Run"><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
                 <td data-label="Definition">{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
                 <td data-label="Status"><RunStatusBadge status={run.status} /></td>
+                <td data-label="Equity">{run.latest_equity ?? '—'}{run.equity_status ? ` / ${run.equity_status}` : ''}</td>
                 <td data-label="Ended">{formatTime(run.ended_at)}</td>
               </tr>
             {/each}

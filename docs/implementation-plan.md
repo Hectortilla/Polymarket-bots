@@ -1037,7 +1037,7 @@ Acceptance:
 
 ## Slice 12E: Browser Dashboard Parity
 
-Status: planned; depends on Slices 12B through 12D.
+Status: implemented; depends on Slices 12B through 12D.
 
 Minimum deliverable:
 

@@ -87,8 +87,8 @@ def _chart_panel(state: DashboardState, width: int, height: int) -> Panel:
             border_style="cyan",
         )
     wallet_values, wallet_stale_samples = _visible_chart_samples(
-        state.wallet_value_history,
-        state.wallet_value_stale_history,
+        state.executable_equity_history,
+        state.executable_equity_stale_history,
         state,
         width,
     )

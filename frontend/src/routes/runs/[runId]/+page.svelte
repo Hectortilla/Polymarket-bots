@@ -11,6 +11,14 @@
     type PersistedDurableEvent
   } from '$lib/runs/durableEvents';
   import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
+  import DashboardCharts from '$lib/charts/DashboardCharts.svelte';
+  import {
+    emptyDashboardHistory,
+    mergeDurableEvents,
+    mergeLiveEvents,
+    type DashboardHistory
+  } from '$lib/charts/history';
+  import { createLiveDashboardBatcher } from '$lib/charts/liveBatch';
   import {
     loadAndContinueRunDetail,
     loadOlderRunEvents
@@ -23,6 +31,7 @@
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
+  let dashboard = $state<DashboardHistory>(emptyDashboardHistory());
   let loading = $state(true);
   let stopping = $state(false);
   let loadingOlderEvents = $state(false);
@@ -33,14 +42,20 @@
   const statusPresentation = $derived(
     run ? RUN_STATUS_PRESENTATION[run.status] : undefined
   );
+  const configuredWallets = $derived(
+    run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? []
+  );
 
   onMount(() => {
     let disposed = false;
+    const liveBatcher = createLiveDashboardBatcher((liveEvents) => {
+      if (!disposed) dashboard = mergeLiveEvents(dashboard, liveEvents);
+    });
     const runId = page.params.runId;
     if (!runId) {
       error = 'Run not found.';
       loading = false;
-      return;
+      return liveBatcher.dispose;
     }
     void loadAndContinueRunDetail(
       runId,
@@ -48,10 +63,12 @@
         if (!disposed) {
           run = hydration.run;
           events = hydration.events;
+          dashboard = mergeDurableEvents(emptyDashboardHistory(), hydration.events);
           nextBeforeEventId = hydration.nextBeforeEventId;
         }
       },
-      appendEvent
+      appendDurableEvent,
+      liveBatcher.push
     )
       .then((close) => {
         if (disposed) close();
@@ -66,12 +83,14 @@
 
     return () => {
       disposed = true;
+      liveBatcher.dispose();
       closeStream();
     };
   });
 
-  function appendEvent(event: PersistedDurableEvent): void {
+  function appendDurableEvent(event: PersistedDurableEvent): void {
     events = [...events, event];
+    dashboard = mergeDurableEvents(dashboard, [event]);
     if (run && event.kind === EVENT_KIND.runLifecycle) {
       run = { ...run, status: event.payload.status };
     }
@@ -101,6 +120,7 @@
     try {
       const older = await loadOlderRunEvents(run.id, nextBeforeEventId);
       events = [...older.events, ...events];
+      dashboard = mergeDurableEvents(dashboard, older.events);
       nextBeforeEventId = older.nextBeforeEventId;
     } catch {
       error = 'Older durable events could not be loaded.';
@@ -137,6 +157,10 @@
         return `Queue ${event.payload.queue_depth} / ${event.payload.book_received_count} books`;
       case EVENT_KIND.runFailure:
         return event.payload.error;
+      case EVENT_KIND.chartSample:
+        return event.payload.equity.value === null
+          ? `Equity ${event.payload.equity.status}`
+          : `Equity ${event.payload.equity.value} USDC / ${event.payload.equity.status}`;
     }
   }
 </script>
@@ -206,9 +230,28 @@
     </article>
   </section>
 
-  <section class="chart-placeholder" aria-label="Dashboard chart placeholder">
-    <h2>Live charts arrive with dashboard parity</h2>
-    <p>Lifecycle, activity, portfolio, order, fill, and stream progress is already durable below.</p>
+  <DashboardCharts
+    samples={dashboard.samples}
+    walletTimelinePoints={dashboard.walletTimelinePoints}
+    {configuredWallets}
+  />
+
+  <section class="stream-health-panel" aria-label="Live stream health">
+    <div class="section-heading">
+      <h2>Stream health</h2>
+      <span class:health-stale={dashboard.streamHealth?.book_stale} class="section-count">
+        {dashboard.streamHealth ? (dashboard.streamHealth.book_stale ? 'stale book input' : 'current') : 'awaiting telemetry'}
+      </span>
+    </div>
+    {#if dashboard.streamHealth}
+      <dl class="health-metrics">
+        <div><dt>Queue</dt><dd>{dashboard.streamHealth.queue_depth}</dd></div>
+        <div><dt>Peak</dt><dd>{dashboard.streamHealth.peak_queue_depth}</dd></div>
+        <div><dt>Book lag</dt><dd>{dashboard.streamHealth.book_dispatch_lag_ms ?? '—'} ms</dd></div>
+        <div><dt>Books</dt><dd>{dashboard.streamHealth.book_received_count}</dd></div>
+        <div><dt>Coalesced</dt><dd>{dashboard.streamHealth.book_coalesced_count}</dd></div>
+      </dl>
+    {/if}
   </section>
 
   <section class="progress-section">

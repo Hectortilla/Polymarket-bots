@@ -1,0 +1,48 @@
+{
+  "columns": 60,
+  "end_ms": 2000,
+  "lanes": ["wallet-a", "wallet-b"],
+  "points": [
+    {
+      "accepted": false,
+      "notional": "1",
+      "side": "BUY",
+      "source_key": "wallet-a\u0000buy",
+      "trade_timestamp_ms": 1100,
+      "wallet": "wallet-a"
+    },
+    {
+      "accepted": false,
+      "notional": "2",
+      "side": "SELL",
+      "source_key": "wallet-a\u0000sell",
+      "trade_timestamp_ms": 1101,
+      "wallet": "wallet-a"
+    },
+    {
+      "accepted": true,
+      "notional": "1",
+      "side": "BUY",
+      "source_key": "wallet-b\u0000buy",
+      "trade_timestamp_ms": 1150,
+      "wallet": "wallet-b"
+    }
+  ],
+  "start_ms": 1000,
+  "web_expected": [
+    { "color": "#f6c453", "notional": 3, "opacity": 0.32, "size": 13, "time": 1100 },
+    { "color": "#72df98", "notional": 1, "opacity": 1, "size": 5, "time": 1150 }
+  ],
+  "terminal_expected": [
+    { "bucket": 6, "glyph": "◆", "style": "dim yellow", "wallet": "wallet-a" },
+    { "bucket": 9, "glyph": "·", "style": "green", "wallet": "wallet-b" }
+  ],
+  "decimal_boundary": {
+    "lanes": ["maximum", "threshold"],
+    "points": [
+      { "accepted": true, "notional": "0.3", "side": "BUY", "source_key": "maximum\u0000trade", "trade_timestamp_ms": 1100, "wallet": "maximum" },
+      { "accepted": true, "notional": "0.1", "side": "BUY", "source_key": "threshold\u0000trade", "trade_timestamp_ms": 1200, "wallet": "threshold" }
+    ],
+    "sizes": [13, 5]
+  }
+}

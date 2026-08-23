@@ -11,7 +11,7 @@
 
 ## Current Status
 
-Slices 1 through 5, Slices 9A through 11, and Slices 12A through 12D are
+Slices 1 through 5, Slices 9A through 11, and Slices 12A through 12E are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -19,8 +19,8 @@ market recorder and local trim maintenance, deterministic archive replay and
 performance artifacts, opt-in coverage-gap blackout replay, the terminal
 dashboard, dynamic market tracking and resolution settlement, and the isolated
 control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
-progress events, migrations, async stores, FastAPI runs API, durable SSE path,
-deterministic OpenAPI artifact, and static client-rendered launch/run UI.
+progress events, migrations, async stores, FastAPI runs API, mixed durable/live
+SSE path, deterministic OpenAPI artifact, and browser dashboard.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -79,8 +79,8 @@ adapter behavior covered by contract tests, especially while
 These statements describe the implemented `polybot` boundary. The paper-only
 Web Control Plane v0 changes those capabilities only in the separate
 `polybot_control_plane` package and does not connect this repository to the
-Polyfollow application. Slices 12A through 12D supply persistence, worker
-execution, the runs API, durable SSE, and a static SvelteKit deployment peer;
+Polyfollow application. Slices 12A through 12E supply persistence, worker
+execution, the runs API, durable/live SSE, and a static SvelteKit dashboard peer;
 see `web-control-plane-spec.md` and `web-control-plane-architecture.md`.
 
 ## Package Layout

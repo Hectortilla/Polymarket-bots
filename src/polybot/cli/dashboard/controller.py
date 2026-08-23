@@ -24,9 +24,8 @@ from polybot.cli.dashboard.render import render_dashboard, wallet_lane_capacity
 from polybot.async_io import run_blocking
 from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.observability.events import RuntimeEvent
+from polybot.dashboard.contracts import CHART_SAMPLE_INTERVAL_SECONDS
 from polybot.framework.config.models import BotConfig
-
-DASHBOARD_REFRESH_SECONDS = 0.25
 
 
 class TerminalDashboard:
@@ -44,14 +43,7 @@ class TerminalDashboard:
     async def start(self, config: BotConfig) -> None:
         self._loop = asyncio.get_running_loop()
         with self._state_lock:
-            self._state.book_max_age_ms = config.event_max_age_ms
-            self._state.set_wallet_lanes(
-                tuple(
-                    wallet
-                    for rule in config.stream_rules
-                    for wallet in rule.wallet_addresses
-                )
-            )
+            self._state.projection.configure(config)
         self._live = Live(
             console=self._console,
             screen=True,
@@ -121,7 +113,9 @@ class TerminalDashboard:
         try:
             while self._live is not None:
                 try:
-                    await asyncio.wait_for(self._wake.wait(), DASHBOARD_REFRESH_SECONDS)
+                    await asyncio.wait_for(
+                        self._wake.wait(), CHART_SAMPLE_INTERVAL_SECONDS
+                    )
                 except TimeoutError:
                     pass
                 self._wake.clear()
@@ -142,7 +136,7 @@ class TerminalDashboard:
             tty.setcbreak(file_descriptor)
             while self._live is not None and not self._input_stop.is_set():
                 ready, _, _ = select.select(
-                    (sys.stdin,), (), (), DASHBOARD_REFRESH_SECONDS
+                    (sys.stdin,), (), (), CHART_SAMPLE_INTERVAL_SECONDS
                 )
                 if ready:
                     self._handle_key(sys.stdin.read(1))

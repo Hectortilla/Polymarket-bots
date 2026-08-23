@@ -67,11 +67,17 @@ describe('run reload', () => {
         expect(hydration.nextBeforeEventId).toBe(7);
       },
       vi.fn(),
+      vi.fn(),
       openStream
     );
 
     expect(calls).toEqual(['hydrated', 'stream']);
-    expect(openStream).toHaveBeenCalledWith(RUN.id, 7, expect.any(Function));
+    expect(openStream).toHaveBeenCalledWith(
+      RUN.id,
+      7,
+      expect.any(Function),
+      expect.any(Function)
+    );
     expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
       path: { run_id: RUN.id },
       throwOnError: true
@@ -91,6 +97,7 @@ describe('run reload', () => {
       RUN.id,
       vi.fn(),
       vi.fn(),
+      vi.fn(),
       openStream
     );
 
@@ -108,7 +115,7 @@ describe('run reload', () => {
     } as never);
     const openStream = vi.fn();
 
-    await loadAndContinueRunDetail(RUN.id, vi.fn(), vi.fn(), openStream);
+    await loadAndContinueRunDetail(RUN.id, vi.fn(), vi.fn(), vi.fn(), openStream);
 
     expect(openStream).not.toHaveBeenCalled();
   });

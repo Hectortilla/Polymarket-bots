@@ -49,6 +49,7 @@ packages = [
   "polybot.cli.performance_chart",
   "polybot.cli.resolution",
   "polybot.cli.runner",
+  "polybot.dashboard",
   "polybot.polymarket",
   "polybot.polymarket.public_data",
   "polybot.polymarket.wallet_activity",

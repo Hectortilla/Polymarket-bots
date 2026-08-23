@@ -38,9 +38,13 @@ from polybot_control_plane.catalog.definitions import (
     WINNER_DEFINITION_ID,
 )
 from polybot_control_plane.events.contracts import (
+    ChartSampleEvent,
+    ChartSamplePayload,
+    DurableEvent,
     RunLifecycleEvent,
     RunStatusPayload,
 )
+from polybot_control_plane.events.contracts.payloads import EquityChartPointPayload
 from polybot_control_plane.events.ids import (
     MAX_DURABLE_EVENT_ID,
 )
@@ -51,6 +55,7 @@ from polybot_control_plane.events.pagination import (
 from polybot_control_plane.events.store import StoredEventPage
 from polybot_control_plane.runs.contracts import RunRead
 from polybot_control_plane.runs.status import RunStatus
+from polybot.performance.contracts.valuation_status import ValuationStatus
 
 
 def test_launch_list_detail_and_ingress_rejection(
@@ -110,6 +115,26 @@ def test_catalog_route_and_unknown_definition(
     assert launcher.run_ids == []
 
 
+def test_list_and_detail_derive_latest_equity_without_run_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _State()
+    client = _client(monkeypatch, state)
+    run = client.post(api_route_path(RUNS_PATH), json=_launch_body()).json()
+    run_id = run["id"]
+    state.events.extend(
+        _chart_sample(run_id, index, equity)
+        for index, equity in ((1, "101.25"), (2, "102.50"))
+    )
+
+    listed = client.get(api_route_path(RUNS_PATH)).json()[0]
+    detailed = client.get(api_route_path(RUN_PATH, run_id=run_id)).json()
+
+    for response in (listed, detailed):
+        assert response["latest_equity"] == "102.50"
+        assert response["equity_status"] == ValuationStatus.FRESH.value
+
+
 def test_queued_and_running_stop_are_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -127,6 +152,7 @@ def test_queued_and_running_stop_are_idempotent(
     state.runs[running_id] = state.runs[running_id].model_copy(
         update={"status": RunStatus.RUNNING}
     )
+    state.events.append(_chart_sample(running_id, 1, "101.25"))
 
     queued_first = client.post(api_route_path(RUN_STOP_PATH, run_id=queued_id))
     queued_second = client.post(api_route_path(RUN_STOP_PATH, run_id=queued_id))
@@ -136,6 +162,7 @@ def test_queued_and_running_stop_are_idempotent(
     assert queued_first.json()["status"] == RunStatus.STOPPED
     assert queued_second.json()["status"] == RunStatus.STOPPED
     assert running_first.json()["status"] == RunStatus.STOP_REQUESTED
+    assert running_first.json()["latest_equity"] == "101.25"
     assert running_second.json()["status"] == RunStatus.STOP_REQUESTED
     assert state.terminal_event_count == 1
     assert len(redis.published) == 1
@@ -200,7 +227,7 @@ def test_stream_prefers_last_event_id_header(
         yield ": complete\n\n"
 
     client = _client(monkeypatch, state)
-    monkeypatch.setattr(events_routes, "stream_durable_events", stream)
+    monkeypatch.setattr(events_routes, "stream_run_event_frames", stream)
     run_id = client.post(api_route_path(RUNS_PATH), json=_launch_body()).json()["id"]
 
     response = client.get(
@@ -320,14 +347,22 @@ def test_event_route_enforces_default_page_limit(
     assert page["next_before_event_id"] == 2
 
 
-def test_openapi_has_only_slice_12c_routes_and_is_current() -> None:
+def test_openapi_has_only_v0_routes_and_all_stream_schemas() -> None:
     document = app.openapi()
 
     assert all(path.startswith(API_PREFIX) for path in document["paths"])
     stream_schema = document["paths"][
         api_route_path(RUN_EVENTS_STREAM_PATH)
     ]["get"]["responses"]["200"]["content"][SSE_MEDIA_TYPE]["schema"]
-    assert stream_schema == {"$ref": DURABLE_EVENT_SCHEMA_REFERENCE}
+    assert stream_schema == {
+        "oneOf": [
+            {"$ref": DURABLE_EVENT_SCHEMA_REFERENCE},
+            *(
+                {"$ref": reference}
+                for reference in events_routes.LIVE_EVENT_SCHEMA_REFERENCES
+            ),
+        ]
+    }
     expected = f"{json.dumps(document, indent=2, sort_keys=True)}\n"
     assert OPENAPI_OUTPUT_PATH.read_text() == expected
     assert Path(OPENAPI_OUTPUT_PATH).name == "control-plane.json"
@@ -411,6 +446,7 @@ def _client(
     monkeypatch.setattr(runs_routes, "ApiRunLifecycle", _ApiRunLifecycle)
     monkeypatch.setattr(run_lookup, "RunStore", _RunStore)
     monkeypatch.setattr(events_routes, "EventStore", _EventStore)
+    monkeypatch.setattr(runs_routes, "EventStore", _EventStore)
     return TestClient(
         create_app(
             session_factory=_SessionFactory(state),
@@ -441,13 +477,29 @@ def _lifecycle_event(
     )
 
 
+def _chart_sample(run_id: str, event_id: int, equity: str) -> ChartSampleEvent:
+    return ChartSampleEvent(
+        id=event_id,
+        run_id=run_id,
+        occurred_at=datetime.now(UTC),
+        payload=ChartSamplePayload(
+            sampled_at_ms=event_id * 1_000,
+            markets=(),
+            equity=EquityChartPointPayload(
+                value=equity,
+                status=ValuationStatus.FRESH,
+            ),
+        ),
+    )
+
+
 class _State:
     def __init__(self, *, database_ready: bool = True) -> None:
         self.database_ready = database_ready
         self.runs: dict[str, RunRead] = {}
         self.next_event_id = 1
         self.terminal_event_count = 0
-        self.events: list[RunLifecycleEvent] = []
+        self.events: list[DurableEvent] = []
 
 
 class _SessionFactory:
@@ -515,6 +567,13 @@ class _EventStore:
             events=tuple(reversed(page)),
             next_before_event_id=page[-1].id if has_more else None,
         )
+
+    async def latest_chart_samples(self, run_ids):
+        result = {}
+        for event in self.state.events:
+            if isinstance(event, ChartSampleEvent) and event.run_id in run_ids:
+                result[event.run_id] = event
+        return result
 
 
 class _ApiRunLifecycle:

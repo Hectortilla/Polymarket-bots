@@ -19,14 +19,24 @@ from polybot.cli.observability.states import (
     BootstrapPhase,
     validate_bootstrap_progress,
 )
+from polybot.dashboard.contracts import (
+    DashboardSample,
+    EquityChartPoint,
+    MAX_CHART_TOKENS,
+    MAX_WALLET_TIMELINE_EVENTS,
+    MarketChartPoint,
+    WalletChartPoint,
+)
+from polybot.dashboard.wallets import wallet_chart_point
 from polybot.execution.paper.validation import validate_order
 from polybot.framework.activity import ActivitySeverity, validate_activity_message
 from polybot.framework.config.mode import BotMode
 from polybot.framework.dispatch import DispatchOutcome
-from polybot.framework.events import FillEvent, OrderRequest
+from polybot.framework.events import FillEvent, OrderRequest, Side
 from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.events.resolutions import MarketSettlementEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.performance.contracts.valuation_status import ValuationStatus
 from polybot_control_plane.runs.status import RunStatus
 
 
@@ -124,17 +134,6 @@ class PortfolioSnapshotPayload(EventPayload):
         return self
 
 
-class WalletTimelinePayload(EventPayload):
-    trade: WalletTradeEvent
-    outcome: DispatchOutcome | None
-
-    @model_validator(mode="after")
-    def _validate_trade(self) -> "WalletTimelinePayload":
-        if not self.trade.is_valid():
-            raise ValueError("wallet timeline trade is invalid")
-        return self
-
-
 class StreamHealthPayload(EventPayload):
     queue_depth: NonNegativeInt
     peak_queue_depth: NonNegativeInt
@@ -142,6 +141,122 @@ class StreamHealthPayload(EventPayload):
     book_stale: bool
     book_received_count: NonNegativeInt
     book_coalesced_count: NonNegativeInt
+
+
+class MarketChartPointPayload(EventPayload):
+    token_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    value: Decimal | None
+    status: ValuationStatus
+    markers: tuple[Side, ...]
+
+    @classmethod
+    def from_point(cls, point: MarketChartPoint) -> "MarketChartPointPayload":
+        return cls.model_validate(point, from_attributes=True)
+
+    @model_validator(mode="after")
+    def _validate_value_status(self) -> "MarketChartPointPayload":
+        _validate_chart_value_status(self.value, self.status)
+        return self
+
+
+class EquityChartPointPayload(EventPayload):
+    value: Decimal | None
+    status: ValuationStatus
+
+    @classmethod
+    def from_point(cls, point: EquityChartPoint) -> "EquityChartPointPayload":
+        return cls.model_validate(point, from_attributes=True)
+
+    @model_validator(mode="after")
+    def _validate_value_status(self) -> "EquityChartPointPayload":
+        _validate_chart_value_status(self.value, self.status)
+        return self
+
+
+class WalletChartPointPayload(EventPayload):
+    source_key: str = Field(min_length=1)
+    wallet: str = Field(min_length=1)
+    trade_timestamp_ms: NonNegativeInt
+    side: Side
+    notional: Decimal = Field(ge=0)
+    market_label: str = Field(min_length=1)
+    accepted: bool | None
+
+    @classmethod
+    def from_point(cls, point: WalletChartPoint) -> "WalletChartPointPayload":
+        return cls.model_validate(point, from_attributes=True)
+
+
+class WalletTimelinePayload(EventPayload):
+    trade: WalletTradeEvent
+    outcome: DispatchOutcome | None
+    point: WalletChartPointPayload
+
+    @model_validator(mode="after")
+    def _validate_trade_and_point(self) -> "WalletTimelinePayload":
+        if not self.trade.is_valid():
+            raise ValueError("wallet timeline trade is invalid")
+        expected = WalletChartPointPayload.from_point(
+            wallet_chart_point(
+                self.trade,
+                accepted=None if self.outcome is None else self.outcome.accepted,
+            )
+        )
+        if self.point != expected:
+            raise ValueError("wallet timeline point does not match its trade")
+        return self
+
+
+class MarketChartPayload(EventPayload):
+    sampled_at_ms: NonNegativeInt
+    points: tuple[MarketChartPointPayload, ...] = Field(max_length=MAX_CHART_TOKENS)
+
+    @classmethod
+    def from_sample(cls, sample: DashboardSample) -> "MarketChartPayload":
+        return cls(
+            sampled_at_ms=sample.sampled_at_ms,
+            points=tuple(
+                MarketChartPointPayload.from_point(point)
+                for point in sample.markets
+            ),
+        )
+
+
+class EquityChartPayload(EventPayload):
+    sampled_at_ms: NonNegativeInt
+    point: EquityChartPointPayload
+
+    @classmethod
+    def from_sample(cls, sample: DashboardSample) -> "EquityChartPayload":
+        return cls(
+            sampled_at_ms=sample.sampled_at_ms,
+            point=EquityChartPointPayload.from_point(sample.equity),
+        )
+
+
+class WalletChartPayload(EventPayload):
+    sampled_at_ms: NonNegativeInt
+    points: tuple[WalletChartPointPayload, ...] = Field(
+        max_length=MAX_WALLET_TIMELINE_EVENTS
+    )
+
+
+class ChartSamplePayload(EventPayload):
+    sampled_at_ms: NonNegativeInt
+    markets: tuple[MarketChartPointPayload, ...] = Field(max_length=MAX_CHART_TOKENS)
+    equity: EquityChartPointPayload
+
+    @classmethod
+    def from_sample(cls, sample: DashboardSample) -> "ChartSamplePayload":
+        return cls(
+            sampled_at_ms=sample.sampled_at_ms,
+            markets=tuple(
+                MarketChartPointPayload.from_point(point)
+                for point in sample.markets
+            ),
+            equity=EquityChartPointPayload.from_point(sample.equity),
+        )
 
 
 class RunFailurePayload(EventPayload):
@@ -153,6 +268,18 @@ def _validate_durable_order(order: OrderRequest) -> None:
     if issue is not None:
         _, detail = issue
         raise ValueError(detail)
+
+
+def _validate_chart_value_status(
+    value: Decimal | None,
+    status: ValuationStatus,
+) -> None:
+    if value is not None and not value.is_finite():
+        raise ValueError("chart value must be finite")
+    if status is ValuationStatus.UNAVAILABLE and value is not None:
+        raise ValueError("unavailable chart value must be null")
+    if status is not ValuationStatus.UNAVAILABLE and value is None:
+        raise ValueError("chart value and valuation status disagree")
 
 
 def _validate_portfolio_snapshot(snapshot: PortfolioSnapshot) -> None:

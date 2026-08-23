@@ -7,10 +7,11 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from polybot_control_plane.events.schema import (
+    EVENT_KIND_CONSTRAINT_NAME,
+    MIGRATION_0002_EVENT_KINDS,
     EventColumn,
     RUN_EVENTS_RUN_ID_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
-    event_kind_column_type,
 )
 from polybot_control_plane.runs.schema import RunColumn, RUNS_TABLE_NAME
 
@@ -48,7 +49,17 @@ def upgrade() -> None:
             sa.ForeignKey(f"{RUNS_TABLE_NAME}.{RunColumn.ID}"),
             nullable=False,
         ),
-        sa.Column(EventColumn.KIND, event_kind_column_type(), nullable=False),
+        sa.Column(
+            EventColumn.KIND,
+            sa.Enum(
+                *MIGRATION_0002_EVENT_KINDS,
+                name=EVENT_KIND_CONSTRAINT_NAME,
+                native_enum=False,
+                create_constraint=True,
+                validate_strings=True,
+            ),
+            nullable=False,
+        ),
         sa.Column(
             EventColumn.OCCURRED_AT,
             sa.DateTime(timezone=True),

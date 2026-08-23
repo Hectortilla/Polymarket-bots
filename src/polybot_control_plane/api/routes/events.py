@@ -22,8 +22,12 @@ from polybot_control_plane.api.routes.paths import (
     STREAM_RUN_EVENTS_OPERATION_ID,
 )
 from polybot_control_plane.api.routes.run_lookup import require_stored_run
-from polybot_control_plane.api.sse import stream_durable_events
-from polybot_control_plane.events.contracts import DurableEvent
+from polybot_control_plane.api.sse import stream_run_event_frames
+from polybot_control_plane.events.contracts import (
+    DurableEvent,
+    LIVE_EVENT_MODELS,
+    LiveRunEvent,
+)
 from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR
 from polybot_control_plane.events.pagination import DEFAULT_EVENT_PAGE_LIMIT
 from polybot_control_plane.events.store import EventStore
@@ -32,6 +36,10 @@ from polybot_control_plane.events.store import EventStore
 SSE_MEDIA_TYPE = "text/event-stream"
 LAST_EVENT_ID_HEADER = "Last-Event-ID"
 DURABLE_EVENT_SCHEMA_REFERENCE = "#/components/schemas/DurableEvent"
+LIVE_EVENT_SCHEMA_REFERENCES = tuple(
+    f"#/components/schemas/{model.__name__}"
+    for model in LIVE_EVENT_MODELS
+)
 
 router = APIRouter()
 
@@ -63,12 +71,21 @@ async def read_run_events(
 @router.get(
     RUN_EVENTS_STREAM_PATH,
     response_class=StreamingResponse,
+    response_model=DurableEvent | LiveRunEvent,
     operation_id=STREAM_RUN_EVENTS_OPERATION_ID,
     responses={
         status.HTTP_200_OK: {
             "content": {
                 SSE_MEDIA_TYPE: {
-                    "schema": {"$ref": DURABLE_EVENT_SCHEMA_REFERENCE}
+                    "schema": {
+                        "oneOf": [
+                            {"$ref": DURABLE_EVENT_SCHEMA_REFERENCE},
+                            *(
+                                {"$ref": reference}
+                                for reference in LIVE_EVENT_SCHEMA_REFERENCES
+                            ),
+                        ]
+                    }
                 }
             }
         }
@@ -89,7 +106,7 @@ async def stream_run_events(
         await require_stored_run(session, run_id)
     cursor = last_event_id if last_event_id is not None else after_event_id
     return StreamingResponse(
-        stream_durable_events(
+        stream_run_event_frames(
             run_id,
             after_event_id=cursor,
             request=request,

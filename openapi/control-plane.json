@@ -329,6 +329,75 @@
         "title": "BrokerOrderPayload",
         "type": "object"
       },
+      "ChartSampleEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "chart.sample",
+            "default": "chart.sample",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ChartSamplePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "ChartSampleEvent",
+        "type": "object"
+      },
+      "ChartSamplePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "equity": {
+            "$ref": "#/components/schemas/EquityChartPointPayload"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/MarketChartPointPayload"
+            },
+            "maxItems": 20,
+            "title": "Markets",
+            "type": "array"
+          },
+          "sampled_at_ms": {
+            "minimum": 0.0,
+            "title": "Sampled At Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sampled_at_ms",
+          "markets",
+          "equity"
+        ],
+        "title": "ChartSamplePayload",
+        "type": "object"
+      },
       "DataTradesBudget": {
         "maximum": 180.0,
         "minimum": 1.0,
@@ -390,6 +459,7 @@
             "broker.failure": "#/components/schemas/BrokerFailureEvent",
             "broker.fill": "#/components/schemas/BrokerFillEvent",
             "broker.order": "#/components/schemas/BrokerOrderEvent",
+            "chart.sample": "#/components/schemas/ChartSampleEvent",
             "market.settlement": "#/components/schemas/MarketSettlementDurableEvent",
             "portfolio.snapshot": "#/components/schemas/PortfolioSnapshotEvent",
             "run.bootstrap": "#/components/schemas/RunBootstrapEvent",
@@ -433,6 +503,9 @@
           },
           {
             "$ref": "#/components/schemas/RunFailureEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChartSampleEvent"
           }
         ]
       },
@@ -440,6 +513,51 @@
         "maximum": 9.223372036854776e+18,
         "minimum": 1.0,
         "type": "integer"
+      },
+      "EquityChartPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "point": {
+            "$ref": "#/components/schemas/EquityChartPointPayload"
+          },
+          "sampled_at_ms": {
+            "minimum": 0.0,
+            "title": "Sampled At Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sampled_at_ms",
+          "point"
+        ],
+        "title": "EquityChartPayload",
+        "type": "object"
+      },
+      "EquityChartPointPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ValuationStatus"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "status"
+        ],
+        "title": "EquityChartPointPayload",
+        "type": "object"
       },
       "EventCursorValue": {
         "maximum": 9.223372036854776e+18,
@@ -601,6 +719,225 @@
           "inputs"
         ],
         "title": "LaunchRequest",
+        "type": "object"
+      },
+      "LiveEquityChartEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "chart.equity",
+            "default": "chart.equity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/EquityChartPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "LiveEquityChartEvent",
+        "type": "object"
+      },
+      "LiveMarketChartEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "chart.market",
+            "default": "chart.market",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MarketChartPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "LiveMarketChartEvent",
+        "type": "object"
+      },
+      "LiveRunEvent": {
+        "discriminator": {
+          "mapping": {
+            "chart.equity": "#/components/schemas/LiveEquityChartEvent",
+            "chart.market": "#/components/schemas/LiveMarketChartEvent",
+            "chart.wallet": "#/components/schemas/LiveWalletChartEvent",
+            "stream.health.live": "#/components/schemas/LiveStreamHealthEvent"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LiveMarketChartEvent"
+          },
+          {
+            "$ref": "#/components/schemas/LiveEquityChartEvent"
+          },
+          {
+            "$ref": "#/components/schemas/LiveWalletChartEvent"
+          },
+          {
+            "$ref": "#/components/schemas/LiveStreamHealthEvent"
+          }
+        ]
+      },
+      "LiveStreamHealthEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "stream.health.live",
+            "default": "stream.health.live",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StreamHealthPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "LiveStreamHealthEvent",
+        "type": "object"
+      },
+      "LiveWalletChartEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "chart.wallet",
+            "default": "chart.wallet",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WalletChartPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "LiveWalletChartEvent",
+        "type": "object"
+      },
+      "MarketChartPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MarketChartPointPayload"
+            },
+            "maxItems": 20,
+            "title": "Points",
+            "type": "array"
+          },
+          "sampled_at_ms": {
+            "minimum": 0.0,
+            "title": "Sampled At Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sampled_at_ms",
+          "points"
+        ],
+        "title": "MarketChartPayload",
+        "type": "object"
+      },
+      "MarketChartPointPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "markers": {
+            "items": {
+              "$ref": "#/components/schemas/Side"
+            },
+            "title": "Markers",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ValuationStatus"
+          },
+          "token_id": {
+            "minLength": 1,
+            "title": "Token Id",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "value",
+          "status",
+          "markers"
+        ],
+        "title": "MarketChartPointPayload",
         "type": "object"
       },
       "MarketResolutionEvent": {
@@ -1252,6 +1589,16 @@
             ],
             "title": "Ended At"
           },
+          "equity_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValuationStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "failure_detail": {
             "anyOf": [
               {
@@ -1279,6 +1626,18 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "latest_equity": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Equity"
           },
           "started_at": {
             "anyOf": [
@@ -1598,6 +1957,94 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "ValuationStatus": {
+        "enum": [
+          "fresh",
+          "stale",
+          "unavailable"
+        ],
+        "title": "ValuationStatus",
+        "type": "string"
+      },
+      "WalletChartPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/WalletChartPointPayload"
+            },
+            "maxItems": 5000,
+            "title": "Points",
+            "type": "array"
+          },
+          "sampled_at_ms": {
+            "minimum": 0.0,
+            "title": "Sampled At Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sampled_at_ms",
+          "points"
+        ],
+        "title": "WalletChartPayload",
+        "type": "object"
+      },
+      "WalletChartPointPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted"
+          },
+          "market_label": {
+            "minLength": 1,
+            "title": "Market Label",
+            "type": "string"
+          },
+          "notional": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Notional",
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "source_key": {
+            "minLength": 1,
+            "title": "Source Key",
+            "type": "string"
+          },
+          "trade_timestamp_ms": {
+            "minimum": 0.0,
+            "title": "Trade Timestamp Ms",
+            "type": "integer"
+          },
+          "wallet": {
+            "minLength": 1,
+            "title": "Wallet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_key",
+          "wallet",
+          "trade_timestamp_ms",
+          "side",
+          "notional",
+          "market_label",
+          "accepted"
+        ],
+        "title": "WalletChartPointPayload",
+        "type": "object"
+      },
       "WalletTimelineDurableEvent": {
         "additionalProperties": false,
         "properties": {
@@ -1652,13 +2099,17 @@
               }
             ]
           },
+          "point": {
+            "$ref": "#/components/schemas/WalletChartPointPayload"
+          },
           "trade": {
             "$ref": "#/components/schemas/WalletTradeEvent"
           }
         },
         "required": [
           "trade",
-          "outcome"
+          "outcome",
+          "point"
         ],
         "title": "WalletTimelinePayload",
         "type": "object"
@@ -2022,7 +2473,23 @@
             "content": {
               "text/event-stream": {
                 "schema": {
-                  "$ref": "#/components/schemas/DurableEvent"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/DurableEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LiveMarketChartEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LiveEquityChartEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LiveWalletChartEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LiveStreamHealthEvent"
+                    }
+                  ]
                 }
               }
             },

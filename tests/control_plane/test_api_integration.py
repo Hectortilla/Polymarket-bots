@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from polybot_control_plane.api.sse import (
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
-    stream_durable_events,
+    stream_run_event_frames,
 )
 from polybot_control_plane.api.lifecycle import ApiRunLifecycle
 from polybot_control_plane.api.routes.runs import RUN_LAUNCH_FAILURE_REASON
@@ -237,7 +237,7 @@ def test_sse_handoff_rechecks_postgres_after_real_redis_subscribe() -> None:
             wrapped_redis = _InjectingRedis(redis, inject_terminal_event)
             frames = [
                 frame
-                async for frame in stream_durable_events(
+                async for frame in stream_run_event_frames(
                     run.id,
                     after_event_id=FIRST_EVENT_CURSOR,
                     request=_ConnectedRequest(),
