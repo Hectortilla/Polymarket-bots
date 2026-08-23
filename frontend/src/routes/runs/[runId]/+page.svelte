@@ -141,6 +141,10 @@
   }
 </script>
 
+<svelte:head>
+  <title>{run ? `${run.config.name} | Polybot` : 'Run detail | Polybot'}</title>
+</svelte:head>
+
 <a class="back-link" href="/">Back to runs</a>
 
 {#if loading}
@@ -155,14 +159,19 @@
 {:else}
   <section class="page-heading run-heading">
     <div>
-      <p class="eyebrow">{run.definition_id} / v{run.definition_version}</p>
+      <p class="route-meta">{run.definition_id} / v{run.definition_version}</p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
         <RunStatusBadge status={run.status} />
       </div>
     </div>
     {#if statusPresentation?.stopLabel}
-      <button onclick={stopRun} disabled={!statusPresentation.canStop || stopping}>
+      <button
+        class="danger-action"
+        onclick={stopRun}
+        disabled={!statusPresentation.canStop || stopping}
+        aria-busy={stopping}
+      >
         {stopping ? 'Sending…' : statusPresentation.stopLabel}
       </button>
     {/if}
@@ -177,7 +186,7 @@
   {/if}
 
   <section class="detail-grid">
-    <article class="panel">
+    <article class="detail-section timing-panel">
       <div class="section-heading"><h2>Timing</h2></div>
       <dl>
         <div><dt>Created</dt><dd>{formatTime(run.created_at)}</dd></div>
@@ -187,7 +196,7 @@
       </dl>
     </article>
 
-    <article class="panel">
+    <article class="detail-section configuration-panel">
       <div class="section-heading"><h2>Immutable configuration</h2></div>
       <dl>
         {#each Object.entries(run.config) as [name, value] (name)}
@@ -198,30 +207,32 @@
   </section>
 
   <section class="chart-placeholder" aria-label="Dashboard chart placeholder">
-    <p class="eyebrow">Dashboard preview</p>
     <h2>Live charts arrive with dashboard parity</h2>
     <p>Lifecycle, activity, portfolio, order, fill, and stream progress is already durable below.</p>
   </section>
 
-  <section>
+  <section class="progress-section">
     <div class="section-heading">
       <h2>Durable progress</h2>
-      <span>{events.length} events loaded</span>
+      <div class="section-actions">
+        <span class="section-count">{events.length} events loaded</span>
+        {#if nextBeforeEventId !== null}
+          <button
+            class="secondary compact"
+            onclick={loadOlderEvents}
+            disabled={loadingOlderEvents}
+            aria-busy={loadingOlderEvents}
+          >
+            {loadingOlderEvents ? 'Loading…' : 'Load earlier events'}
+          </button>
+        {/if}
+      </div>
     </div>
-    {#if nextBeforeEventId !== null}
-      <button
-        class="secondary"
-        onclick={loadOlderEvents}
-        disabled={loadingOlderEvents}
-      >
-        {loadingOlderEvents ? 'Loading…' : 'Load earlier events'}
-      </button>
-    {/if}
     {#if events.length === 0}
       <p class="empty-state">No durable events yet.</p>
     {:else}
       <div class="table-wrap event-table">
-        <table>
+        <table aria-label="Durable progress events">
           <thead><tr><th>Time</th><th>Kind</th><th>Detail</th></tr></thead>
           <tbody>
             {#each events as event (event.id)}

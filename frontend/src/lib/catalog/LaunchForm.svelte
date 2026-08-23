@@ -83,15 +83,20 @@
   <p>{selectionExplanation('Wallet', descriptor.wallet_selection)}</p>
 </div>
 
-<form onsubmit={submit} novalidate>
+<form class="launch-form" onsubmit={submit} novalidate aria-busy={busy}>
   <div class="form-grid">
     {#each fields as [name, field] (name)}
       {@const schema = resolvedFieldSchema(descriptor, field)}
       {@const widget = widgetKind(field)}
-      <label class:wide={widget === WIDGET_KIND.streamRules}>
-        <span>{fieldLabel(name, schema)}</span>
+      {@const labelId = `field-${name}-label`}
+      {@const helperId = `field-${name}-helper`}
+      <label
+        class:wide={widget === WIDGET_KIND.streamRules}
+        class:checkbox-field={schema.type === 'boolean'}
+      >
+        <span class="field-label" id={labelId}>{fieldLabel(name, schema)}</span>
         {#if typeof schema.description === 'string'}
-          <span class="field-helper">{schema.description}</span>
+          <span class="field-helper" id={helperId}>{schema.description}</span>
         {/if}
 
         {#if widget === WIDGET_KIND.walletAddresses || widget === WIDGET_KIND.marketSlugs}
@@ -100,6 +105,8 @@
             value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
             oninput={(event) => updateList(name, event.currentTarget.value)}
             placeholder={widget === WIDGET_KIND.walletAddresses ? 'One wallet address per line' : 'One market slug per line'}
+            aria-labelledby={labelId}
+            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
           ></textarea>
         {:else if widget === WIDGET_KIND.streamRules}
           <textarea
@@ -107,12 +114,16 @@
             value={JSON.stringify(inputs[name], null, 2)}
             oninput={(event) => updateJson(name, event.currentTarget.value)}
             spellcheck="false"
+            aria-labelledby={labelId}
+            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
           ></textarea>
         {:else if schema.type === 'boolean'}
           <input
             type="checkbox"
             checked={inputs[name] === true}
             onchange={(event) => update(name, event.currentTarget.checked)}
+            aria-labelledby={labelId}
+            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
           />
         {:else}
           <input
@@ -123,6 +134,8 @@
             min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
             max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
             step={inputType(field) === 'number' ? '1' : undefined}
+            aria-labelledby={labelId}
+            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
             oninput={(event) =>
               update(name, parseFieldInput(field, event.currentTarget.value))}
           />
@@ -139,5 +152,5 @@
     </div>
   {/if}
 
-  <button type="submit" disabled={busy}>{busy ? 'Starting…' : 'Start paper run'}</button>
+  <button type="submit" disabled={busy} aria-busy={busy}>{busy ? 'Starting…' : 'Start paper run'}</button>
 </form>

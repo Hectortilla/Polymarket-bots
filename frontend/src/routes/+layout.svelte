@@ -17,13 +17,15 @@
 <a class="skip-link" href="#main-content">Skip to content</a>
 
 <header class="site-header">
-  <a class="brand" href="/" aria-label="Polybot catalog">
-    <span class="brand-mark" aria-hidden="true"></span>
-    <span>Polybot</span>
-  </a>
-  <div class="header-context">
-    <span>Private control plane</span>
-    <span class="environment-label">paper only</span>
+  <div class="site-header-inner">
+    <a class="brand" href="/" aria-label="Polybot catalog">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Polybot</span>
+    </a>
+    <div class="header-context">
+      <span>Private control plane</span>
+      <span class="environment-label">paper only</span>
+    </div>
   </div>
 </header>
 

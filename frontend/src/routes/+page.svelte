@@ -48,13 +48,17 @@
   }
 </script>
 
-<section class="page-heading">
+<svelte:head>
+  <title>Paper operations | Polybot</title>
+</svelte:head>
+
+<section class="page-heading home-heading">
   <div>
-    <p class="eyebrow">Paper operations</p>
+    <p class="page-kicker">Paper operations</p>
     <h1>Run bots with a clear view of risk.</h1>
     <p>Configure trusted strategies, start paper runs, and inspect durable progress from one place.</p>
   </div>
-  <button class="secondary" onclick={loadHome} disabled={loading}>Refresh</button>
+  <button class="secondary" onclick={loadHome} disabled={loading} aria-busy={loading}>Refresh</button>
 </section>
 
 {#if error}
@@ -70,18 +74,22 @@
   <section>
     <div class="section-heading">
       <h2>Bot catalog</h2>
-      <span>{definitions.length} definitions</span>
+      <span class="section-count">{definitions.length} definitions</span>
     </div>
     <div class="catalog-grid">
       {#each definitions as definition (definition.definition_id)}
-        <article class="catalog-card">
-          <div class="card-meta">
+        <article class="catalog-item">
+          <div class="catalog-meta">
             <span class="tag">{definition.label.replace('_', ' ')}</span>
             <span>v{definition.version}</span>
           </div>
           <h3>{definition.display_name}</h3>
           <p>{definition.description}</p>
-          <a class="button-link" href={`/launch/${definition.definition_id}`}>Configure run</a>
+          <a
+            class="catalog-link"
+            href={`/launch/${definition.definition_id}`}
+            aria-label={`Configure ${definition.display_name}`}
+          >Configure run</a>
         </article>
       {/each}
     </div>
@@ -90,13 +98,13 @@
   <section>
     <div class="section-heading">
       <h2>Active and queued</h2>
-      <span>{activeRuns.length} runs</span>
+      <span class="section-count">{activeRuns.length} runs</span>
     </div>
     {#if activeRuns.length === 0}
       <p class="empty-state">No runs are active or queued.</p>
     {:else}
       <div class="table-wrap">
-        <table>
+        <table aria-label="Active and queued runs">
           <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Created</th></tr></thead>
           <tbody>
             {#each activeRuns as run (run.id)}
@@ -116,13 +124,13 @@
   <section>
     <div class="section-heading">
       <h2>Recent terminal runs</h2>
-      <span>{terminalRuns.length} shown</span>
+      <span class="section-count">{terminalRuns.length} shown</span>
     </div>
     {#if terminalRuns.length === 0}
       <p class="empty-state">No terminal runs yet.</p>
     {:else}
       <div class="table-wrap">
-        <table>
+        <table aria-label="Recent terminal runs">
           <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Ended</th></tr></thead>
           <tbody>
             {#each terminalRuns as run (run.id)}
