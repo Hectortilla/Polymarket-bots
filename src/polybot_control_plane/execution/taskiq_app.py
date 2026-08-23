@@ -8,7 +8,10 @@ from polybot_control_plane.execution.config import configured_redis_url
 from polybot_control_plane.execution.worker import execute_run
 
 
-broker = RedisStreamBroker(configured_redis_url())
+broker = RedisStreamBroker(
+    configured_redis_url(),
+    consumer_id="0-0",
+)
 
 
 @broker.task
