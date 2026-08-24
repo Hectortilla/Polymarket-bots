@@ -785,6 +785,8 @@ Acceptance:
 - Dashboard failures cannot interrupt dispatch, execution, or shutdown.
 - Dashboard failures close the live display and leave a traceback in the
   terminal.
+- An empty paper portfolio shows configured cash and equity with zero PnL from
+  startup, before the first order or fill.
 - No strategy logging or rendering code is required.
 - PnL marks longs at best bid and shorts at best ask. If a held position loses
   its book, including while its market awaits resolution, show a clearly

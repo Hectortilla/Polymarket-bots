@@ -113,6 +113,14 @@ class PortfolioSnapshot:
     positions: tuple[PortfolioPositionSnapshot, ...]
 
     @classmethod
+    def initial(cls, cash_usdc: Decimal) -> PortfolioSnapshot:
+        return cls(
+            cash_usdc=cash_usdc,
+            cumulative_fees_usdc=Decimal(),
+            positions=(),
+        )
+
+    @classmethod
     def from_paper(cls, portfolio: PaperPortfolio) -> PortfolioSnapshot:
         return cls(
             cash_usdc=portfolio.cash_usdc,

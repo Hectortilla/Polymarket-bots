@@ -329,6 +329,32 @@ def test_dashboard_marks_long_at_bid_and_short_at_ask() -> None:
     assert state.executable_pnl() == Decimal("-900.10")
 
 
+def test_dashboard_start_paths_show_configured_cash_equity_and_zero_pnl() -> None:
+    config = BotConfig(
+        name="dashboard",
+        paper_portfolio_usdc=Decimal("125.50"),
+    )
+    configured_state = DashboardState()
+    configured_state.projection.configure(config)
+    runtime_started_state = DashboardState()
+    runtime_started_state.apply(RuntimeStarted.from_config(config))
+
+    for state in (configured_state, runtime_started_state):
+        state.record_chart_sample(now_ms=1_000)
+
+        valuation = state.portfolio_valuation(now_ms=1_000)
+        assert state.portfolio == PortfolioSnapshot.initial(
+            config.paper_portfolio_usdc
+        )
+        assert state.initial_cash_usdc == config.paper_portfolio_usdc
+        assert valuation.cash_usdc == config.paper_portfolio_usdc
+        assert valuation.equity_usdc == config.paper_portfolio_usdc
+        assert valuation.pnl_usdc == Decimal()
+        assert list(state.executable_equity_history) == [
+            float(config.paper_portfolio_usdc)
+        ]
+
+
 def test_dashboard_pnl_is_unavailable_when_position_cannot_be_marked() -> None:
     state = DashboardState(initial_cash_usdc=Decimal("100"))
     state.portfolio = PortfolioSnapshot(

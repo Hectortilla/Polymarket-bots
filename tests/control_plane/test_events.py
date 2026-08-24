@@ -567,6 +567,10 @@ def test_observer_cadence_and_persistence_classification() -> None:
     async def scenario():
         clock = _ControlledClock()
         writer = _CollectingWriter()
+        config = BotConfig(
+            name="cadence",
+            paper_portfolio_usdc=Decimal("125.50"),
+        )
         observer = WebRuntimeObserver(
             uuid4(),
             writer,
@@ -574,16 +578,16 @@ def test_observer_cadence_and_persistence_classification() -> None:
             now_ms=clock.now_ms,
             now_utc=clock.now_utc,
         )
-        await observer.start(BotConfig(name="cadence"))
+        await observer.start(config)
         observer.emit(StreamHealth(1, 2, 3, False, 1.0, 4, 1))
         for _ in range(4):
             clock.advance()
             await asyncio.sleep(0)
         await asyncio.sleep(0)
         await observer.stop()
-        return clock, writer
+        return clock, writer, config.paper_portfolio_usdc
 
-    clock, writer = asyncio.run(scenario())
+    clock, writer, initial_cash_usdc = asyncio.run(scenario())
 
     assert clock.delays == [CHART_SAMPLE_INTERVAL_SECONDS] * 5
     assert [event.kind for event in writer.live_events].count(
@@ -598,10 +602,22 @@ def test_observer_cadence_and_persistence_classification() -> None:
     assert [event.kind for event in writer.live_events].count(
         LiveEventKind.STREAM_HEALTH
     ) == 1
+    live_equity_events = [
+        event
+        for event in writer.live_events
+        if event.kind is LiveEventKind.CHART_EQUITY
+    ]
+    assert all(
+        event.payload.point.value == initial_cash_usdc
+        and event.payload.point.status is ValuationStatus.FRESH
+        for event in live_equity_events
+    )
     assert [event.kind for event in writer.events] == [
         EventKind.CHART_SAMPLE,
         EventKind.STREAM_HEALTH,
     ]
+    assert writer.events[0].payload.equity.value == initial_cash_usdc
+    assert writer.events[0].payload.equity.status is ValuationStatus.FRESH
 
 
 def test_observer_keeps_sampling_when_live_publication_fails() -> None:

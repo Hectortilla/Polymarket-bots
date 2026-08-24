@@ -115,7 +115,7 @@ class DashboardState:
     mode: BotMode | None = _ProjectionAttribute("runtime")
     lifecycle: RuntimeState = _ProjectionAttribute("runtime")
     started_at_monotonic_seconds: float | None = _ProjectionAttribute("runtime")
-    initial_cash_usdc: Decimal | None = _ProjectionAttribute("runtime")
+    initial_cash_usdc: Decimal | None = _ProjectionAttribute("projection")
 
     # Market books, labels, settlement, and portfolio marks.
     require_accepted_books: bool = _ProjectionAttribute("markets")
@@ -197,7 +197,7 @@ class DashboardState:
         chart_tokens: deque[str] | None = None,
         view: DashboardView = DashboardView.MARKET,
     ) -> None:
-        self.runtime = DashboardRuntime(initial_cash_usdc=initial_cash_usdc)
+        self.runtime = DashboardRuntime()
         self.markets = DashboardMarkets(
             require_accepted_books=require_accepted_books,
             book_max_age_ms=book_max_age_ms,
@@ -225,7 +225,6 @@ class DashboardState:
                 self.runtime.start(
                     name=event.name,
                     mode=event.mode,
-                    initial_cash_usdc=event.initial_cash_usdc,
                     occurred_at_monotonic_seconds=event.occurred_at_monotonic_seconds,
                 )
                 self.ticker_state.add(
@@ -465,6 +464,6 @@ class DashboardState:
         sampled_at_ms = system_now_ms() if now_ms is None else now_ms
         return self.markets.portfolio_valuation(
             sampled_at_ms,
-            initial_cash_usdc=self.runtime.initial_cash_usdc,
+            initial_cash_usdc=self.projection.initial_cash_usdc,
             allow_stale_marks=allow_stale_marks,
         )

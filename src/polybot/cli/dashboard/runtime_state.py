@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
 from time import monotonic
 
 from polybot.cli.observability.states import RuntimeState
@@ -18,19 +17,16 @@ class DashboardRuntime:
     mode: BotMode | None = None
     lifecycle: RuntimeState = RuntimeState.STARTING
     started_at_monotonic_seconds: float | None = None
-    initial_cash_usdc: Decimal | None = None
 
     def start(
         self,
         *,
         name: str,
         mode: BotMode,
-        initial_cash_usdc: Decimal,
         occurred_at_monotonic_seconds: float,
     ) -> None:
         self.name = name
         self.mode = mode
-        self.initial_cash_usdc = initial_cash_usdc
         self.started_at_monotonic_seconds = occurred_at_monotonic_seconds
         self.lifecycle = RuntimeState.STARTING
 

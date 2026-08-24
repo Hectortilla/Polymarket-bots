@@ -11,6 +11,7 @@ from polybot.cli.observability.events import (
     FillCompleted,
     MarketSettled,
     PortfolioBookBootstrap,
+    PortfolioSnapshot,
     RuntimeEvent,
     RuntimeStarted,
     StreamReceived,
@@ -60,7 +61,7 @@ class DashboardProjection:
 
     def configure(self, config: BotConfig) -> None:
         self.markets.book_max_age_ms = config.event_max_age_ms
-        self.initial_cash_usdc = config.paper_portfolio_usdc
+        self._start_paper_portfolio(config.paper_portfolio_usdc)
         self.wallets.set_lanes(
             tuple(
                 wallet
@@ -71,7 +72,7 @@ class DashboardProjection:
 
     def apply(self, event: RuntimeEvent) -> ProjectionChange:
         if isinstance(event, RuntimeStarted):
-            self.initial_cash_usdc = event.initial_cash_usdc
+            self._start_paper_portfolio(event.initial_cash_usdc)
             return ProjectionChange()
         if isinstance(event, StreamReceived):
             return self._stream_received(event)
@@ -189,6 +190,10 @@ class DashboardProjection:
 
     def _record_book(self, book: BookSnapshot) -> None:
         self.markets.record_book(book, activate_chart_token=self.charts.activate_token)
+
+    def _start_paper_portfolio(self, initial_cash_usdc: Decimal) -> None:
+        self.initial_cash_usdc = initial_cash_usdc
+        self.markets.portfolio = PortfolioSnapshot.initial(initial_cash_usdc)
 
 
 def _decimal_chart_value(value: float) -> Decimal | None:

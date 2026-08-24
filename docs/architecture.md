@@ -641,7 +641,9 @@ only event that converts a position to its contractual `1`/`0` cash payout.
 The dashboard renders independently of bot execution. During startup, its Activity
 panel also reports fail-open wallet and market bootstrap progress as
 completed/total counters while configured markets and followed-wallet positions
-are loaded.
+are loaded. Its empty paper portfolio immediately shows configured cash and
+equity with zero PnL; it does not wait for the first order or fill to establish
+the valuation baseline.
 The market-price chart plots up to twenty tokens and keeps its admitted selection
 stable when more books are tracked than can be plotted. Overflow books still
 update runtime state and the activity ticker, but repeated union snapshots
