@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from polybot.framework.context import BotContext
 from polybot.framework.markets import market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.examples.example_random_hold import ExampleRandomHoldBot
+
+
+DYNAMIC_RANDOM_HOLD_ORDER_SIZE = Decimal("5")
 
 
 class ExampleDynamicRandomHoldBot(ExampleRandomHoldBot):
@@ -13,9 +18,11 @@ class ExampleDynamicRandomHoldBot(ExampleRandomHoldBot):
         self,
         slug_prefix: str,
         bucket_seconds: int = 300,
+        *,
+        order_size: Decimal = DYNAMIC_RANDOM_HOLD_ORDER_SIZE,
         **kwargs: object,
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__(order_size=order_size, **kwargs)
         self.slug_prefix = slug_prefix
         self.bucket_seconds = bucket_seconds
 

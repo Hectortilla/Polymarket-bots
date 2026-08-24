@@ -2,7 +2,15 @@ import asyncio
 from decimal import Decimal
 
 from polybot.framework.context import BotContext
-from polybot.examples.example_dynamic_random_hold import ExampleDynamicRandomHoldBot
+from polybot.examples.example_dynamic_random_hold import (
+    DYNAMIC_RANDOM_HOLD_ORDER_SIZE,
+    ExampleDynamicRandomHoldBot,
+    create,
+)
+
+
+def test_dynamic_random_hold_factory_uses_its_fixed_order_size() -> None:
+    assert create().order_size == DYNAMIC_RANDOM_HOLD_ORDER_SIZE
 
 
 def test_dynamic_random_hold_bot_declares_current_and_next_buckets(

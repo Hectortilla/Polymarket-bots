@@ -33,7 +33,6 @@
   let zoom = $state(INITIAL_TIME_ZOOM_LEVEL);
   let walletPage = $state(0);
   let panel: HTMLElement;
-  let narrow = $state(false);
   let visible = $state(false);
   let activated = $state(false);
   let renderedSamples = $state<ChartSamplePayload[]>([]);
@@ -88,14 +87,9 @@
       activated ||= visible;
     }, { rootMargin: '200px 0px' });
     visibility.observe(panel);
-    const resize = new ResizeObserver(([entry]) => {
-      narrow = entry.contentRect.width < 800;
-    });
-    resize.observe(panel);
     return () => {
       window.removeEventListener('keydown', keydown);
       visibility.disconnect();
-      resize.disconnect();
     };
   });
 
@@ -137,7 +131,7 @@
   {:else if chartSamples.length === 0 && renderedWalletTimelinePoints.length === 0 && configuredWallets.length === 0}
     <p class="chart-empty">Waiting for the first dashboard sample.</p>
   {:else}
-    <div class="dashboard-grid" data-layout={narrow ? 'narrow' : 'wide'}>
+    <div class="dashboard-grid" data-layout="stacked">
       <div class="primary-chart">
         {#if view === 'market'}
           <MarketChart samples={chartSamples} />

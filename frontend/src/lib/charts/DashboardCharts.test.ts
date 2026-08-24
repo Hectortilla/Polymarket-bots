@@ -99,7 +99,7 @@ describe('dashboard controls and layout', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /r · reset/i }).disabled).toBe(true);
   });
 
-  it('switches the combined chart between wide and narrow layouts', async () => {
+  it('stacks the market and executable-equity charts', async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
@@ -117,12 +117,7 @@ describe('dashboard controls and layout', () => {
     await tick();
     const grid = view.container.querySelector('.dashboard-grid');
 
-    for (const observer of FakeResizeObserver.instances) observer.trigger(1_000);
-    await tick();
-    expect(grid?.getAttribute('data-layout')).toBe('wide');
-    for (const observer of FakeResizeObserver.instances) observer.trigger(600);
-    await tick();
-    expect(grid?.getAttribute('data-layout')).toBe('narrow');
+    expect(grid?.getAttribute('data-layout')).toBe('stacked');
   });
 
   it('keeps configured wallets visible before their first trade', async () => {
