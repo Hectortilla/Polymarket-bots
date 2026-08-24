@@ -23,11 +23,13 @@
   let {
     samples,
     walletTimelinePoints,
-    configuredWallets = []
+    configuredWallets = [],
+    terminal = false
   }: {
     samples: ChartSamplePayload[];
     walletTimelinePoints: WalletChartPointPayload[];
     configuredWallets?: string[];
+    terminal?: boolean;
   } = $props();
   let view = $state<'market' | 'wallet'>('market');
   let zoom = $state(INITIAL_TIME_ZOOM_LEVEL);
@@ -111,7 +113,7 @@
 <section bind:this={panel} class="dashboard-panel" aria-label="Run dashboard">
   <div class="dashboard-toolbar">
     <div>
-      <p class="page-kicker">Live dashboard</p>
+      <p class="page-kicker">{terminal ? 'Run history' : 'Live dashboard'}</p>
       <h2>{view === 'market' ? 'Market prices' : 'Followed-wallet activity'}</h2>
     </div>
     <div class="dashboard-controls" aria-label="Dashboard controls">
@@ -129,7 +131,11 @@
   {#if !activated}
     <div class="dashboard-viewport-placeholder" aria-hidden="true"></div>
   {:else if chartSamples.length === 0 && renderedWalletTimelinePoints.length === 0 && configuredWallets.length === 0}
-    <p class="chart-empty">Waiting for the first dashboard sample.</p>
+    <p class="chart-empty">
+      {terminal
+        ? 'No dashboard samples were recorded for this run.'
+        : 'Waiting for the first dashboard sample.'}
+    </p>
   {:else}
     <div class="dashboard-grid" data-layout="stacked">
       <div class="primary-chart">

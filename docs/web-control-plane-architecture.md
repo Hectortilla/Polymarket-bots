@@ -326,8 +326,11 @@ fallback until a newer live health frame arrives.
 
 The one-second durable cadence is an explicit v0 storage budget: at most 86,400
 scheduled `chart.sample` rows per continuously active run-day, in addition to
-semantic events. v0 does not compact or delete them. Capacity planning for that
-rate is required in Slice 12F; retention remains post-v0 scope.
+semantic events. Graceful observer shutdown appends one final sample before the
+terminal health summary and lifecycle event so terminal detail does not lose
+the run's last partial second. v0 does not compact or delete samples. Capacity
+planning for the scheduled rate is required in Slice 12F; retention remains
+post-v0 scope.
 
 Slice 12E extracts only the pure pieces actually needed by both terminal and
 web from the current terminal implementation. Shared code belongs in a

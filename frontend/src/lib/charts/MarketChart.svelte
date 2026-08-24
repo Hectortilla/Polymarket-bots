@@ -4,6 +4,7 @@
     MarketChartPointPayload
   } from '$lib/api/generated';
   import {
+    MAX_CHART_TOKENS,
     OUTCOME_PRICE_CEILING,
     OUTCOME_PRICE_FLOOR,
     SIDE,
@@ -19,9 +20,7 @@
   ];
 
   export function marketChartOption(samples: ChartSamplePayload[]): EChartsCoreOption {
-    const marketSeries = samples.at(-1)?.markets.map(
-      ({ token_id, label }) => ({ token_id, label })
-    ) ?? [];
+    const marketSeries = recentMarketSeries(samples);
     const pointsByToken = new Map(
       marketSeries.map(({ token_id }) => [
         token_id,
@@ -53,6 +52,17 @@
     };
   }
 
+  function recentMarketSeries(samples: ChartSamplePayload[]) {
+    const markets = new Map<string, { token_id: string; label: string }>();
+    for (let index = samples.length - 1; index >= 0; index -= 1) {
+      for (const { token_id, label } of samples[index].markets) {
+        if (!markets.has(token_id)) markets.set(token_id, { token_id, label });
+        if (markets.size === MAX_CHART_TOKENS) return [...markets.values()];
+      }
+    }
+    return [...markets.values()];
+  }
+
   function marketSeriesForToken(
     samples: ChartSamplePayload[],
     market: { token_id: string; label: string },
@@ -61,10 +71,13 @@
   ) {
     const { token_id: tokenId, label } = market;
     const color = MARKET_SERIES_PALETTE[index % MARKET_SERIES_PALETTE.length];
-    const values = points.map((point, sampleIndex) => [
-      samples[sampleIndex].sampled_at_ms,
-      point?.value == null ? null : Number(point.value)
-    ]);
+    const values = samples.map((sample, sampleIndex) => {
+      const point = points[sampleIndex];
+      return [
+        sample.sampled_at_ms,
+        point?.value == null ? null : Number(point.value)
+      ];
+    });
     const markers = points.flatMap((point, sampleIndex) =>
       (point?.markers ?? []).map((side) => ({
         value: [samples[sampleIndex].sampled_at_ms, point?.value == null ? null : Number(point.value)],

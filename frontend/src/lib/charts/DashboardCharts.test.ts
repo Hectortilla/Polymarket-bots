@@ -120,6 +120,21 @@ describe('dashboard controls and layout', () => {
     expect(grid?.getAttribute('data-layout')).toBe('stacked');
   });
 
+  it('presents durable samples as history for a terminal run', async () => {
+    installBrowserObservers();
+    const view = render(DashboardCharts, {
+      samples: [chartSample(1_000, '100')],
+      walletTimelinePoints: [],
+      terminal: true
+    });
+    FakeIntersectionObserver.current.trigger(true);
+    await tick();
+
+    expect(view.container.textContent).toContain('Run history');
+    expect(view.container.textContent).not.toContain('Live dashboard');
+    expect(echartsMocks.instances).toHaveLength(2);
+  });
+
   it('keeps configured wallets visible before their first trade', async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {

@@ -440,8 +440,16 @@ def test_observer_drains_accepted_events_and_isolates_writer_failures() -> None:
 
     collected, failed = asyncio.run(scenario())
 
-    assert collected == [EventKind.RUN_FAILURE, EventKind.RUN_FAILURE]
-    assert failed == [EventKind.RUN_FAILURE, EventKind.STREAM_HEALTH]
+    assert collected == [
+        EventKind.RUN_FAILURE,
+        EventKind.RUN_FAILURE,
+        EventKind.CHART_SAMPLE,
+    ]
+    assert failed == [
+        EventKind.RUN_FAILURE,
+        EventKind.CHART_SAMPLE,
+        EventKind.STREAM_HEALTH,
+    ]
 
 
 def test_observer_persists_only_latest_stream_health_during_shutdown() -> None:
@@ -466,8 +474,11 @@ def test_observer_persists_only_latest_stream_health_during_shutdown() -> None:
 
     events = asyncio.run(scenario())
 
-    assert [event.kind for event in events] == [EventKind.STREAM_HEALTH]
-    health = events[0].payload
+    assert [event.kind for event in events] == [
+        EventKind.CHART_SAMPLE,
+        EventKind.STREAM_HEALTH,
+    ]
+    health = events[1].payload
     assert health.queue_depth == 3
     assert health.book_dispatch_lag_ms == 4_999
     assert health.book_received_count == 5_009
@@ -487,6 +498,7 @@ def test_observer_drops_overflow_but_preserves_final_stream_health() -> None:
 
     assert asyncio.run(scenario()) == [
         EventKind.RUN_FAILURE,
+        EventKind.CHART_SAMPLE,
         EventKind.STREAM_HEALTH,
     ]
 
@@ -614,6 +626,7 @@ def test_observer_cadence_and_persistence_classification() -> None:
     )
     assert [event.kind for event in writer.events] == [
         EventKind.CHART_SAMPLE,
+        EventKind.CHART_SAMPLE,
         EventKind.STREAM_HEALTH,
     ]
     assert writer.events[0].payload.equity.value == initial_cash_usdc
@@ -641,6 +654,7 @@ def test_observer_keeps_sampling_when_live_publication_fails() -> None:
         return [event.kind for event in writer.events]
 
     assert asyncio.run(scenario()) == [
+        EventKind.CHART_SAMPLE,
         EventKind.CHART_SAMPLE,
         EventKind.STREAM_HEALTH,
     ]
@@ -765,8 +779,13 @@ def test_observer_publishes_wallet_points_and_persists_each_fill_marker_once() -
     assert [markers["token"] for markers in markers_by_token] == [
         (Side.BUY,),
         (),
+        (),
     ]
-    assert [markers["rejected-token"] for markers in markers_by_token] == [(), ()]
+    assert [markers["rejected-token"] for markers in markers_by_token] == [
+        (),
+        (),
+        (),
+    ]
 
 
 def test_event_writer_publishes_only_after_committed_append(

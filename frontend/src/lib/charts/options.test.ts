@@ -29,6 +29,21 @@ describe('dashboard option builders', () => {
     expect(series[2].data).toHaveLength(1);
   });
 
+  it('keeps recent market history when the final sample has no active market', () => {
+    const option = marketChartOption([
+      sample(1_000, '0.5', VALUATION_STATUS.fresh, []),
+      {
+        sampled_at_ms: 2_000,
+        markets: [],
+        equity: { value: '100', status: VALUATION_STATUS.fresh }
+      }
+    ]);
+    const series = option.series as Array<{ data: unknown[] }>;
+
+    expect(series).toHaveLength(3);
+    expect(series[0].data).toEqual([[1_000, 0.5], [2_000, null]]);
+  });
+
   it('separates fresh and stale executable equity', () => {
     const option = equityChartOption([
       sample(1_000, '100', VALUATION_STATUS.fresh, []),

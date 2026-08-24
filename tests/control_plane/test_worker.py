@@ -69,6 +69,7 @@ def test_worker_writes_final_stream_health_before_terminal_lifecycle(
     )
 
     assert [event.kind for event in writer.events] == [
+        EventKind.CHART_SAMPLE,
         EventKind.STREAM_HEALTH,
         EventKind.RUN_LIFECYCLE,
     ]

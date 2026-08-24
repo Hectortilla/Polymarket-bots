@@ -1057,7 +1057,8 @@ Minimum deliverable:
 - Publish chart frames every 250 ms, publish only the latest stream-health state
   every second, and append the durable chart sample every second. Never persist
   individual or periodic live-health frames; retain the existing one terminal
-  durable health summary.
+  durable health summary. Graceful shutdown also appends one final chart sample
+  before that health summary and the terminal lifecycle event.
 - On reload, chart only the durable samples present in the bounded event pages
   the browser has loaded. Older-page requests may expand history, but retain at
   most the shared `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable

@@ -90,6 +90,18 @@ class WebRuntimeObserver:
             self._cadence.cancel()
             await asyncio.gather(self._cadence, return_exceptions=True)
             self._cadence = None
+        projection = self._projection
+        if projection is not None:
+            occurred_at = self._now_utc()
+            await self._pending.put(
+                project_chart_sample(
+                    self._run_id,
+                    self._with_durable_markers(
+                        projection.sample(self._now_ms())
+                    ),
+                    occurred_at=occurred_at,
+                )
+            )
         if self._latest_stream_health is not None:
             await self._pending.put(
                 project_terminal_stream_health(

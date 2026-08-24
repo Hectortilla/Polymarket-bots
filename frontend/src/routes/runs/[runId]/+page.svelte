@@ -204,6 +204,7 @@
     samples={dashboard.samples}
     walletTimelinePoints={dashboard.walletTimelinePoints}
     {configuredWallets}
+    terminal={statusPresentation?.terminal ?? false}
   />
 
   <section class="stream-health-panel" aria-label="Live stream health">
