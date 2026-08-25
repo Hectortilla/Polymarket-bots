@@ -1122,3 +1122,38 @@ Acceptance:
 - Existing CLI, recorder, backtester, and terminal dashboard tests remain
   independent of all control-plane services.
 - The documented standalone extraction checks pass.
+
+## Slice 13: Non-Trading Node-Based Bot MVP
+
+Status: implemented; depends on Slices 12A through 12E.
+
+Minimum deliverable:
+
+- Add one `node-based-bot` catalog definition whose launch schema contains
+  user-configured market slugs and a typed `node_graph` widget.
+- Validate the versioned node/edge graph once at launch ingress and persist it
+  in the existing immutable `PaperRunConfig` JSONB snapshot. Do not add a table,
+  column, endpoint, reusable user definition, or second raw-input copy.
+- Add a Svelte Flow form component driven by the catalog widget annotation. It
+  owns only the canvas state and strips library-only fields before updating the
+  existing launch form input object.
+- Run the existing paper worker with a plain non-trading `BaseBot`. Configured
+  market streams keep the observer active until Stop; graph nodes never submit
+  or influence an order in this slice.
+
+Do not add node evaluation, graph compilation, trading-node semantics, auth,
+tenancy, sharing, graph editing after launch, or live-mode behavior.
+
+Acceptance:
+
+- Catalog and API tests cover the generated widget schema, default graph,
+  normalized market rule, exact graph persistence, and no enqueue on invalid
+  graph input.
+- Graph validation covers duplicate identities, dangling endpoints, unknown
+  node kinds, unknown/transient fields, finite bounded positions, and graph-size
+  limits.
+- Frontend tests cover metadata-driven rendering, initial graph state, add and
+  normalization behavior, exact form submission, and schema feedback.
+- Worker coverage proves the node definition uses the ordinary paper runtime
+  and a bot with no order-producing hook. Existing stop and duplicate-delivery
+  guarantees remain unchanged.

@@ -15,6 +15,7 @@ export const SELECTION_MODE = {
 export const WIDGET_KIND = {
   decimal: 'decimal',
   marketSlugs: 'market_slugs',
+  nodeGraph: 'node_graph',
   walletAddresses: 'wallet_addresses',
   streamRules: 'stream_rules'
 } as const;

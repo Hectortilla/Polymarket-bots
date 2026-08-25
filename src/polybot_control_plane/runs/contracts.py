@@ -22,6 +22,7 @@ from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRule
 from polybot.performance.contracts.valuation_status import ValuationStatus
 from polybot_control_plane.catalog.contracts import DefinitionId, DefinitionVersion
+from polybot_control_plane.catalog.graphs import NodeGraph
 from polybot_control_plane.runs.status import RunStatus
 
 
@@ -50,6 +51,11 @@ class PaperRunConfig(BaseModel):
     paper_latency_jitter_ms: NonnegativeMilliseconds
     event_max_age_ms: NonnegativeMilliseconds
     paper_portfolio_usdc: PositiveDecimal
+    graph: NodeGraph | None = Field(
+        default=None,
+        # Keep non-node run snapshots unchanged while retaining node graphs exactly.
+        exclude_if=lambda graph: graph is None,
+    )
 
     @field_validator("stream_rules", mode="before")
     @classmethod
@@ -63,7 +69,8 @@ class PaperRunConfig(BaseModel):
 
     def to_bot_config(self) -> BotConfig:
         # The web boundary is paper-only: persisted input cannot select live
-        # mode or smuggle credentials into the existing runtime contract.
+        # mode or smuggle credentials into the existing runtime contract. MVP
+        # graphs are storage-only and cannot influence runtime decisions or orders.
         return BotConfig(
             name=self.name,
             mode=BotMode.PAPER,

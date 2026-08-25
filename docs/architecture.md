@@ -11,7 +11,7 @@
 
 ## Current Status
 
-Slices 1 through 5, Slices 9A through 11, and Slices 12A through 12E are
+Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slice 13 are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -20,7 +20,8 @@ performance artifacts, opt-in coverage-gap blackout replay, the terminal
 dashboard, dynamic market tracking and resolution settlement, and the isolated
 control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, mixed durable/live
-SSE path, deterministic OpenAPI artifact, and browser dashboard.
+SSE path, deterministic OpenAPI artifact, browser dashboard, and the
+non-trading node-graph launch MVP.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade

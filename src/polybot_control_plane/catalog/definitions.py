@@ -17,6 +17,7 @@ from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
 )
 from polybot.examples.meh_trading_bot import create as create_contrarian
 from polybot.examples.winner_trading_bot import create as create_winner
+from polybot.framework.base import BaseBot
 from polybot.framework.factories import BoundBotFactory, bind_bot_factory
 from polybot_control_plane.catalog.contracts import (
     BotDefinitionDescriptor,
@@ -29,6 +30,7 @@ from polybot_control_plane.catalog.inputs import (
     ContrarianLaunchInputs,
     MarketWatcherLaunchInputs,
     MomentumExampleLaunchInputs,
+    NodeBasedLaunchInputs,
     PaperLaunchInputs,
     RandomHoldExampleLaunchInputs,
     WalletFilterCopyExampleLaunchInputs,
@@ -50,6 +52,11 @@ RANDOM_HOLD_EXAMPLE_DEFINITION_ID = "dynamic-random-hold-example"
 WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID = (
     "dynamic-wallet-filter-copy-example"
 )
+NODE_BASED_DEFINITION_ID = "node-based-bot"
+
+
+def create_node_based_bot() -> BaseBot:
+    return BaseBot()
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +156,16 @@ CATALOG: dict[str, CatalogEntry] = {
         wallet_selection=SelectionMode.USER_CONFIGURED,
         launch_model=WalletFilterCopyExampleLaunchInputs,
         factory=create_wallet_filter_copy_example,
+    ),
+    NODE_BASED_DEFINITION_ID: CatalogEntry(
+        version=INITIAL_DEFINITION_VERSION,
+        display_name="Node-Based Bot",
+        description="Visually compose and run a non-trading market observer.",
+        label=BotDefinitionLabel.NON_TRADING,
+        market_selection=SelectionMode.USER_CONFIGURED,
+        wallet_selection=SelectionMode.ABSENT,
+        launch_model=NodeBasedLaunchInputs,
+        factory=create_node_based_bot,
     ),
 }
 

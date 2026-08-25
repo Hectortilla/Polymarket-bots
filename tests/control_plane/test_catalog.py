@@ -22,10 +22,19 @@ from polybot_control_plane.catalog.definitions import (
     INITIAL_DEFINITION_VERSION,
     MARKET_WATCHER_DEFINITION_ID,
     MOMENTUM_EXAMPLE_DEFINITION_ID,
+    NODE_BASED_DEFINITION_ID,
     RANDOM_HOLD_EXAMPLE_DEFINITION_ID,
     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
     WINNER_DEFINITION_ID,
     catalog_descriptors,
+)
+from polybot_control_plane.catalog.graphs import (
+    MAX_NODE_GRAPH_EDGES,
+    MAX_NODE_GRAPH_NODES,
+    NODE_GRAPH_COORDINATE_LIMIT,
+    NODE_GRAPH_SCHEMA_VERSION,
+    STARTER_NODE_GRAPH,
+    GraphNodeType,
 )
 from polybot_control_plane.runs.contracts import PaperRunConfig
 
@@ -37,6 +46,7 @@ CATALOG_DEFINITION_IDS = (
     MARKET_WATCHER_DEFINITION_ID,
     RANDOM_HOLD_EXAMPLE_DEFINITION_ID,
     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
+    NODE_BASED_DEFINITION_ID,
 )
 WALLET = "0x0000000000000000000000000000000000000001"
 PROJECT_ROOT = Path(__file__).parents[2]
@@ -130,6 +140,89 @@ def test_wallet_definition_owns_normalized_wallet_widget_and_rule() -> None:
     assert wallet_schema[WIDGET_SCHEMA_KEY] == WidgetKind.WALLET_ADDRESSES.value
     assert config.stream_rules[0].relation is StreamRelation.INDEPENDENT
     assert config.stream_rules[0].wallet_addresses == (WALLET,)
+
+
+def test_node_based_definition_owns_graph_widget_snapshot_and_market_rule() -> None:
+    entry = CATALOG[NODE_BASED_DEFINITION_ID]
+    descriptor = entry.descriptor(NODE_BASED_DEFINITION_ID)
+    config = entry.parse_config(
+        {"name": "node-observer", "market_slugs": [" example-market "]}
+    )
+
+    graph_schema = descriptor.input_schema["properties"]["graph"]
+    assert descriptor.market_selection is SelectionMode.USER_CONFIGURED
+    assert descriptor.wallet_selection is SelectionMode.ABSENT
+    assert graph_schema[WIDGET_SCHEMA_KEY] == WidgetKind.NODE_GRAPH.value
+    assert graph_schema["default"] == STARTER_NODE_GRAPH.model_dump(mode="json")
+    assert config.graph == STARTER_NODE_GRAPH
+    assert config.stream_rules[0].market_slugs == ("example-market",)
+    assert type(entry.create_bot(config.to_bot_config())) is BaseBot
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda graph: graph["nodes"].append(graph["nodes"][0]),
+        lambda graph: graph["edges"].append(graph["edges"][0]),
+        lambda graph: graph["edges"][0].update(source="missing"),
+        lambda graph: graph["nodes"][0].update(type="unsupported"),
+        lambda graph: graph["nodes"][0].update(selected=True),
+        lambda graph: graph["nodes"][0]["position"].update(
+            x=NODE_GRAPH_COORDINATE_LIMIT + 1
+        ),
+        lambda graph: graph["nodes"][0]["position"].update(
+            x=-NODE_GRAPH_COORDINATE_LIMIT - 1
+        ),
+        lambda graph: graph["nodes"][0]["position"].update(x=float("nan")),
+        lambda graph: graph["edges"][0].update(selected=True),
+        lambda graph: graph.update(viewport={"x": 0, "y": 0, "zoom": 1}),
+        lambda graph: graph.update(
+            schema_version=NODE_GRAPH_SCHEMA_VERSION + 1
+        ),
+        lambda graph: graph.update(
+            nodes=[
+                {**graph["nodes"][0], "id": f"node-{index}"}
+                for index in range(MAX_NODE_GRAPH_NODES + 1)
+            ],
+            edges=[],
+        ),
+        lambda graph: graph.update(nodes=[]),
+        lambda graph: graph.update(
+            edges=[
+                {**graph["edges"][0], "id": f"edge-{index}"}
+                for index in range(MAX_NODE_GRAPH_EDGES + 1)
+            ]
+        ),
+    ],
+)
+def test_node_graph_rejects_invalid_structure(mutate) -> None:
+    graph = STARTER_NODE_GRAPH.model_dump(mode="json")
+    mutate(graph)
+
+    with pytest.raises(ValidationError):
+        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+            {
+                "name": "invalid-graph",
+                "market_slugs": ["example-market"],
+                "graph": graph,
+            }
+        )
+
+
+def test_node_graph_uses_typed_finite_node_kinds() -> None:
+    assert tuple(GraphNodeType) == (
+        GraphNodeType.INPUT,
+        GraphNodeType.DEFAULT,
+        GraphNodeType.OUTPUT,
+    )
+
+
+def test_node_based_definition_rejects_blank_market_slugs_at_ingress() -> None:
+    for market_slugs in (["   "], []):
+        with pytest.raises(ValidationError):
+            CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+                {"name": "node-observer", "market_slugs": market_slugs}
+            )
 
 
 def test_launch_inputs_and_request_reject_unknown_fields() -> None:

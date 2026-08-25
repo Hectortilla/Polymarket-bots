@@ -35,8 +35,10 @@ from polybot_control_plane.api.routes.runs import RUN_LAUNCH_FAILURE_REASON
 from polybot_control_plane.api.openapi import OPENAPI_OUTPUT_PATH
 from polybot_control_plane.catalog.definitions import (
     INITIAL_DEFINITION_VERSION,
+    NODE_BASED_DEFINITION_ID,
     WINNER_DEFINITION_ID,
 )
+from polybot_control_plane.catalog.graphs import STARTER_NODE_GRAPH
 from polybot_control_plane.events.contracts import (
     ChartSampleEvent,
     ChartSamplePayload,
@@ -71,6 +73,7 @@ def test_launch_list_detail_and_ingress_rejection(
     run = launched.json()
     assert run["definition_id"] == WINNER_DEFINITION_ID
     assert run["config"]["max_order_size"] == "2.500"
+    assert "graph" not in run["config"]
     assert launcher.run_ids == [run["id"]]
     assert client.get(api_route_path(RUNS_PATH)).json() == [run]
     assert client.get(api_route_path(RUN_PATH, run_id=run["id"])).json() == run
@@ -113,6 +116,54 @@ def test_catalog_route_and_unknown_definition(
     assert missing.status_code == 404
     assert state.runs == {}
     assert launcher.run_ids == []
+
+
+def test_node_graph_launch_persists_exact_snapshot_and_rejects_invalid_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _State()
+    launcher = _Launcher()
+    client = _client(monkeypatch, state, launcher=launcher)
+    graph = STARTER_NODE_GRAPH.model_dump(mode="json")
+    body = {
+        "definition_id": NODE_BASED_DEFINITION_ID,
+        "definition_version": INITIAL_DEFINITION_VERSION,
+        "inputs": {
+            "name": "node-observer",
+            "market_slugs": ["example-market"],
+            "graph": graph,
+        },
+    }
+
+    launched = client.post(api_route_path(RUNS_PATH), json=body)
+    invalid_inputs = (
+        {
+            **body["inputs"],
+            "graph": {
+                **graph,
+                "edges": [{**graph["edges"][0], "target": "missing"}],
+            },
+        },
+        {
+            **body["inputs"],
+            "graph": {**graph, "schema_version": graph["schema_version"] + 1},
+        },
+        {**body["inputs"], "market_slugs": []},
+    )
+    rejected = [
+        client.post(
+            api_route_path(RUNS_PATH),
+            json={**body, "inputs": inputs},
+        )
+        for inputs in invalid_inputs
+    ]
+
+    assert launched.status_code == 202
+    assert launched.json()["config"]["graph"] == graph
+    assert all(response.status_code == 422 for response in rejected)
+    assert rejected[0].json()["detail"][0]["loc"][:3] == ["body", "inputs", "graph"]
+    assert len(state.runs) == 1
+    assert launcher.run_ids == [launched.json()["id"]]
 
 
 def test_list_and_detail_derive_latest_equity_without_run_columns(

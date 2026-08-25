@@ -1,15 +1,32 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { BotDefinitionDescriptor } from '$lib/api/generated';
+import type { BotDefinitionDescriptor, NodeGraph } from '$lib/api/generated';
 import LaunchForm from './LaunchForm.svelte';
 import {
   SELECTION_MODE,
   WIDGET_KIND,
   WIDGET_SCHEMA_KEY
 } from './schema';
+import {
+  GRAPH_NODE_TYPE,
+  canvasNodes,
+  createCanvasNode
+} from './nodeGraph';
 
 const WALLET = '0x0000000000000000000000000000000000000001';
+const TEST_GRAPH: NodeGraph = {
+  schema_version: 1,
+  nodes: [
+    {
+      id: 'input-1',
+      type: GRAPH_NODE_TYPE.input,
+      position: { x: 0, y: 0 },
+      data: { label: 'Test input' }
+    }
+  ],
+  edges: []
+};
 
 afterEach(cleanup);
 
@@ -49,6 +66,43 @@ function descriptor(
     },
     ...overrides
   };
+}
+
+function graphDescriptor(
+  graph: NodeGraph,
+  definitionId = 'node-based-test'
+): BotDefinitionDescriptor {
+  return descriptor({
+    definition_id: definitionId,
+    market_selection: SELECTION_MODE.userConfigured,
+    wallet_selection: SELECTION_MODE.absent,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name', 'market_slugs', 'graph'],
+      properties: {
+        name: { type: 'string', minLength: 1 },
+        market_slugs: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'string' },
+          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.marketSlugs
+        },
+        graph: {
+          type: 'object',
+          default: graph,
+          required: ['schema_version', 'nodes', 'edges'],
+          properties: {
+            schema_version: { const: 1 },
+            nodes: { type: 'array', minItems: 1 },
+            edges: { type: 'array' }
+          },
+          additionalProperties: false,
+          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.nodeGraph
+        }
+      }
+    }
+  });
 }
 
 describe('LaunchForm', () => {
@@ -126,6 +180,73 @@ describe('LaunchForm', () => {
       market_slugs: ['btc-updown-5m-test'],
       wallet_addresses: [WALLET],
       stream_rules: [{ relation: 'independent' }]
+    });
+  });
+
+  it('binds a metadata-driven node graph into the submitted inputs', async () => {
+    const submit = vi.fn();
+    const nodeDefinition = graphDescriptor(TEST_GRAPH);
+    render(LaunchForm, { descriptor: nodeDefinition, onsubmit: submit });
+
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Visual observer' }
+    });
+    await fireEvent.input(screen.getByLabelText('Market slugs'), {
+      target: { value: 'example-market' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+
+    expect(submit).toHaveBeenCalledWith({
+      name: 'Visual observer',
+      market_slugs: ['example-market'],
+      graph: {
+        ...TEST_GRAPH,
+        nodes: [
+          ...TEST_GRAPH.nodes,
+          createCanvasNode(
+            canvasNodes(TEST_GRAPH),
+            GRAPH_NODE_TYPE.default
+          )
+        ]
+      }
+    });
+  });
+
+  it('resets canvas-owned graph state when the definition changes', async () => {
+    const submit = vi.fn();
+    const nextGraph: NodeGraph = {
+      ...TEST_GRAPH,
+      nodes: [
+        {
+          ...TEST_GRAPH.nodes[0],
+          id: 'next-input',
+          data: { label: 'Next input' }
+        }
+      ]
+    };
+    const view = render(LaunchForm, {
+      descriptor: graphDescriptor(TEST_GRAPH),
+      onsubmit: submit
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    await view.rerender({
+      descriptor: graphDescriptor(nextGraph, 'next-node-based-test'),
+      onsubmit: submit
+    });
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Next observer' }
+    });
+    await fireEvent.input(screen.getByLabelText('Market slugs'), {
+      target: { value: 'next-market' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+
+    expect(submit).toHaveBeenCalledWith({
+      name: 'Next observer',
+      market_slugs: ['next-market'],
+      graph: nextGraph
     });
   });
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 from polybot.framework.config.constants import (
     DEFAULT_DATA_TRADES_BUDGET,
@@ -18,6 +18,7 @@ from polybot.framework.config.constants import (
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.framework.wallets import validate_wallet_address
 from polybot_control_plane.catalog.contracts import WIDGET_SCHEMA_KEY, WidgetKind
+from polybot_control_plane.catalog.graphs import NodeGraph, STARTER_NODE_GRAPH
 from polybot_control_plane.runs.contracts import (
     DataTradesBudget,
     NonnegativeDecimal,
@@ -29,6 +30,10 @@ from polybot_control_plane.runs.contracts import (
 
 
 type WalletAddress = Annotated[str, AfterValidator(validate_wallet_address)]
+type MarketSlug = Annotated[
+    str,
+    StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200),
+]
 
 
 class PaperLaunchInputs(BaseModel):
@@ -88,6 +93,28 @@ class WalletPaperLaunchInputs(PaperLaunchInputs):
             StreamRule(
                 relation=StreamRelation.INDEPENDENT,
                 wallet_addresses=self.wallet_addresses,
+            ),
+        )
+
+
+class NodeBasedLaunchInputs(PaperLaunchInputs):
+    market_slugs: tuple[MarketSlug, ...] = Field(
+        min_length=1,
+        json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.MARKET_SLUGS.value},
+    )
+    graph: NodeGraph = Field(
+        default=STARTER_NODE_GRAPH,
+        json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.NODE_GRAPH.value},
+    )
+
+    def to_run_config(self) -> PaperRunConfig:
+        return super().to_run_config().model_copy(update={"graph": self.graph})
+
+    def _stream_rules(self) -> tuple[StreamRule, ...]:
+        return (
+            StreamRule(
+                relation=StreamRelation.INDEPENDENT,
+                market_slugs=self.market_slugs,
             ),
         )
 

@@ -1,7 +1,7 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12E are implemented. This document
-is the single technical contract for the product in
+Status: planned overall; Slices 12A through 12E and Slice 13 are implemented.
+This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 ## How to Implement This Plan
@@ -52,7 +52,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F in `docs/implementation-plan.md`.
+  Slices 12A-12F and Slice 13 in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -84,6 +84,8 @@ supporting private modules are not prescribed:
 
 - `polybot_control_plane.catalog.contracts`: `SelectionMode`, `WidgetKind`,
   `BotDefinitionDescriptor`, and `LaunchRequest`.
+- `polybot_control_plane.catalog.graphs`: the versioned `NodeGraph`, node/edge
+  contracts, validation limits, and starter graph snapshot.
 - `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
   `RunRead`.
 - `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
@@ -104,8 +106,8 @@ plain Pydantic models.
 ## Catalog and Launch Contract
 
 `SelectionMode` has exactly `user_configured`, `bot_managed`, and `absent`.
-`WidgetKind` contains only the widgets v0 renders: decimal, market slugs, wallet
-addresses, and stream rules.
+`WidgetKind` contains only the widgets the control plane renders: decimal,
+market slugs, node graph, wallet addresses, and stream rules.
 
 `BotDefinitionDescriptor` has exactly:
 
@@ -146,11 +148,20 @@ non-sensitive `BotConfig` inputs used by web runs:
 - `paper_latency_jitter_ms`
 - `event_max_age_ms`
 - `paper_portfolio_usdc`
+- `graph` (nullable; present only for the Slice 13 node-based definition)
 
 Decimal values serialize as canonical decimal strings. Fields prohibited by the
 product specification's **Trust Boundary** are absent rather than accepted and
 then rejected. Conversion to the existing `BotConfig` supplies paper mode and
 credential-free values itself.
+
+The Slice 13 graph contract has `schema_version=1`, one to fifty nodes, and up
+to one hundred edges. Nodes contain only a unique ID, the finite `input`,
+`default`, or `output` type, a finite bounded `x`/`y` position, and label data.
+Edges contain only a unique ID plus source and target node IDs; every endpoint
+must exist. The launch model rejects unknown fields and transient Svelte Flow
+state. The graph is an immutable run snapshot and has no execution semantics in
+this slice.
 
 The HTTP launch boundary performs the only request normalization:
 
@@ -469,6 +480,6 @@ to exercise framework/library behavior.
 ## Deferred Without Scaffolding
 
 Authentication, tenancy, payments, ECS, EventBridge, retention/deletion,
-scheduling, node programming, and live trading are later products. v0 creates
+scheduling, executable node programming, and live trading are later products. v0 creates
 no fields, tables, interfaces, routes, feature flags, or placeholder modules for
 them, except the explicitly required `RunLauncher` seam.

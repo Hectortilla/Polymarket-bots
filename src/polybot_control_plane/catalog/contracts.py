@@ -24,6 +24,7 @@ class SelectionMode(StrEnum):
 class WidgetKind(StrEnum):
     DECIMAL = "decimal"
     MARKET_SLUGS = "market_slugs"
+    NODE_GRAPH = "node_graph"
     WALLET_ADDRESSES = "wallet_addresses"
     STREAM_RULES = "stream_rules"
 

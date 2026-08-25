@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { AnySchemaObject } from 'ajv';
 
-  import type { BotDefinitionDescriptor } from '$lib/api/generated';
+  import type { BotDefinitionDescriptor, NodeGraph } from '$lib/api/generated';
+  import NodeGraphInput from './NodeGraphInput.svelte';
   import {
     WIDGET_KIND,
     fieldLabel,
@@ -71,6 +72,10 @@
     return inputType(field) === 'number' && value !== '' ? Number(value) : value;
   }
 
+  function graphInput(name: string, field: AnySchemaObject): NodeGraph {
+    return (inputs[name] ?? field.default) as NodeGraph;
+  }
+
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     errors = validationMessages(validator, inputs);
@@ -91,7 +96,7 @@
       {@const labelId = `field-${name}-label`}
       {@const helperId = `field-${name}-helper`}
       <label
-        class:wide={widget === WIDGET_KIND.streamRules}
+        class:wide={widget === WIDGET_KIND.streamRules || widget === WIDGET_KIND.nodeGraph}
         class:checkbox-field={schema.type === 'boolean'}
       >
         <span class="field-label" id={labelId}>{fieldLabel(name, schema)}</span>
@@ -99,7 +104,17 @@
           <span class="field-helper" id={helperId}>{schema.description}</span>
         {/if}
 
-        {#if widget === WIDGET_KIND.walletAddresses || widget === WIDGET_KIND.marketSlugs}
+        {#if widget === WIDGET_KIND.nodeGraph}
+          <!-- Reset canvas-owned state when the selected definition changes. -->
+          {#key descriptor.definition_id}
+            <NodeGraphInput
+              initialGraph={graphInput(name, schema)}
+              onchange={(graph) => update(name, graph)}
+              labelledby={labelId}
+              describedby={typeof schema.description === 'string' ? helperId : undefined}
+            />
+          {/key}
+        {:else if widget === WIDGET_KIND.walletAddresses || widget === WIDGET_KIND.marketSlugs}
           <textarea
             rows="3"
             value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}

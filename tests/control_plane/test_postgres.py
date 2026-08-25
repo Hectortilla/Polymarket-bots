@@ -24,8 +24,10 @@ from polybot.framework.streams import StreamRelation
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
     INITIAL_DEFINITION_VERSION,
+    NODE_BASED_DEFINITION_ID,
     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
 )
+from polybot_control_plane.catalog.graphs import STARTER_NODE_GRAPH
 from polybot_control_plane.database import DATABASE_URL_ENV, async_database_url
 from polybot_control_plane.events.contracts import (
     ChartSampleEvent,
@@ -349,12 +351,11 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     alembic_config = _alembic_config(url)
     command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")
-    config = CATALOG[WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID].parse_config(
+    definition_id = NODE_BASED_DEFINITION_ID
+    config = CATALOG[definition_id].parse_config(
         {
             "name": "first",
-            "wallet_addresses": [
-                "0x0000000000000000000000000000000000000001"
-            ],
+            "market_slugs": ["example-market"],
             "max_order_size": "3.250",
             "max_slippage_pct": "0.0150",
             "paper_portfolio_usdc": "1500.00",
@@ -373,12 +374,12 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
         async with AsyncSession(engine, expire_on_commit=False) as session:
             store = RunStore(session)
             first = await store.create(
-                definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
+                definition_id=definition_id,
                 definition_version=INITIAL_DEFINITION_VERSION,
                 config=config,
             )
             second = await store.create(
-                definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
+                definition_id=definition_id,
                 definition_version=INITIAL_DEFINITION_VERSION,
                 config=config.model_copy(update={"name": "second"}),
             )
@@ -388,14 +389,14 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
             tied_rows = (
                 RunRow(
                     id=uuid4(),
-                    definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
+                    definition_id=definition_id,
                     definition_version=INITIAL_DEFINITION_VERSION,
                     config=config.model_dump(mode="json"),
                     created_at=tied_at,
                 ),
                 RunRow(
                     id=uuid4(),
-                    definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
+                    definition_id=definition_id,
                     definition_version=INITIAL_DEFINITION_VERSION,
                     config=config.model_dump(mode="json"),
                     created_at=tied_at,
@@ -419,9 +420,8 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     assert restored.config.model_dump(mode="json") == config.model_dump(mode="json")
     assert restored.config.max_order_size.as_tuple() == config.max_order_size.as_tuple()
     assert restored.config.stream_rules[0].relation is StreamRelation.INDEPENDENT
-    assert restored.config.stream_rules[0].wallet_addresses == (
-        "0x0000000000000000000000000000000000000001",
-    )
+    assert restored.config.stream_rules[0].market_slugs == ("example-market",)
+    assert restored.config.graph == STARTER_NODE_GRAPH
     assert missing is None
     run_ids = tuple(run.id for run in runs)
     assert tuple(

@@ -326,6 +326,51 @@ export type FillEvent = {
  */
 export type FillRejectReason = 'missing_token_id' | 'bad_side' | 'bad_price' | 'bad_size' | 'book_unavailable' | 'book_mismatch' | 'book_stale' | 'book_future_dated' | 'bad_book_level' | 'book_crossed' | 'market_unavailable' | 'market_fee_invalid' | 'market_metadata_mismatch' | 'market_resolved' | 'no_depth_within_slippage' | 'duplicate_source_id' | 'invalid_source_id' | 'backtest_data_exhausted' | 'backtest_coverage_gap';
 
+export type GraphCoordinate = number;
+
+/**
+ * GraphEdge
+ */
+export type GraphEdge = {
+    id: GraphElementId;
+    source: GraphElementId;
+    target: GraphElementId;
+};
+
+export type GraphElementId = string;
+
+export type GraphLabel = string;
+
+/**
+ * GraphNode
+ */
+export type GraphNode = {
+    data: GraphNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    type: GraphNodeType;
+};
+
+/**
+ * GraphNodeData
+ */
+export type GraphNodeData = {
+    label: GraphLabel;
+};
+
+/**
+ * GraphNodeType
+ */
+export type GraphNodeType = 'input' | 'default' | 'output';
+
+/**
+ * GraphPosition
+ */
+export type GraphPosition = {
+    x: GraphCoordinate;
+    y: GraphCoordinate;
+};
+
 /**
  * HTTPValidationError
  */
@@ -567,6 +612,24 @@ export type MarketSettlementPayload = {
     settlement: MarketSettlementEvent;
 };
 
+/**
+ * NodeGraph
+ */
+export type NodeGraph = {
+    /**
+     * Edges
+     */
+    edges?: Array<GraphEdge>;
+    /**
+     * Nodes
+     */
+    nodes: Array<GraphNode>;
+    /**
+     * Schema Version
+     */
+    schema_version?: 1;
+};
+
 export type NonnegativeDecimal = string;
 
 export type NonnegativeMilliseconds = number;
@@ -617,6 +680,7 @@ export type OrderStatus = 'accepted' | 'filled' | 'partial' | 'rejected' | 'canc
 export type PaperRunConfig = {
     data_trades_budget_per_10s: DataTradesBudget;
     event_max_age_ms: NonnegativeMilliseconds;
+    graph?: NodeGraph | null;
     max_order_size: PositiveDecimal;
     max_slippage_pct: NonnegativeDecimal;
     name: RunName;

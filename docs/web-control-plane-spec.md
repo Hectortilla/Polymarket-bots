@@ -14,6 +14,8 @@ implementation of authentication, billing, tenancy, or live trading.
 
 - Show a trusted server-owned catalog of bot definitions.
 - Render a launch form from backend-provided metadata.
+- Let the trusted operator submit a validated node graph for a non-trading
+  market-observer definition.
 - Launch multiple paper runs and queue work above worker capacity.
 - Stop queued or running runs.
 - Persist run state and useful progress in PostgreSQL.
@@ -31,7 +33,8 @@ implementation of authentication, billing, tenancy, or live trading.
 - Scheduling, cloning, comparison, deletion, retention management, or bulk
   actions.
 - Recorder or backtest controls.
-- User-supplied Python paths, arbitrary code, plugins, or node programming.
+- User-supplied Python paths, arbitrary code, plugins, or executable node
+  programming. Slice 13 stores node graphs but does not interpret them.
 - ECS implementation. v0 keeps only the narrow launcher seam described in the
   architecture; it adds no ECS fields or adapters.
 
@@ -70,6 +73,7 @@ The initial catalog is exactly:
 | `btc-five-minute-market-watcher` | `polybot.examples.btc_5m:create` | bot-managed | absent | non-trading |
 | `dynamic-random-hold-example` | `polybot.examples.example_dynamic_random_hold:create` | bot-managed | absent | example |
 | `dynamic-wallet-filter-copy-example` | `polybot.examples.example_dynamic_random_hold_wallet_filter_copy:create` | bot-managed | user-configured | example |
+| `node-based-bot` | `polybot_control_plane.catalog.definitions:create_node_based_bot` | user-configured | absent | non-trading |
 
 `polybot.my_bot:create` is an alias of the winner strategy and is not another
 catalog entry.
@@ -110,6 +114,9 @@ The launch UI renders the selected descriptor's typed fields, gives immediate
 client feedback, submits definition ID/version plus its input object, and opens
 the created run. Decimal inputs remain decimal strings across the API boundary.
 Frontend validation is only feedback; backend ingress is authoritative.
+The node-based definition renders a Svelte Flow canvas, stores its graph in the
+immutable run configuration, observes the selected market streams, and never
+submits an order in this MVP.
 
 ### Run detail
 
@@ -158,9 +165,11 @@ v0 is complete when one trusted operator can:
 - reload or reconnect, recover the newest committed progress in order, and load
   older committed pages on demand;
 - use market, equity, and followed-wallet views with terminal-equivalent
-  semantics and controls; and
+  semantics and controls;
 - add a trusted definition using an already-supported field/widget kind without
-  editing the launch page.
+  editing the launch page; and
+- launch the node-based observer, reload its exact graph snapshot, and stop it
+  without any graph node producing an order.
 
 No endpoint may violate the **Trust Boundary**, and the existing CLI must remain
 usable without control-plane services.

@@ -12,6 +12,7 @@ from polybot.framework.base import BaseBot
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
     INITIAL_DEFINITION_VERSION,
+    NODE_BASED_DEFINITION_ID,
     WINNER_DEFINITION_ID,
 )
 from polybot_control_plane.events.contracts import DurableEvent, EventKind
@@ -287,6 +288,31 @@ def test_claimed_runtime_uses_exact_catalog_factory_and_observer(
     assert factory_config is runtime_config
     assert runtime_config.name == run.config.name
     assert runtime_observer is observer
+
+
+def test_node_based_run_uses_the_no_order_base_bot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = CATALOG[NODE_BASED_DEFINITION_ID]
+    config = entry.parse_config(
+        {"name": "node-observer", "market_slugs": ["example-market"]}
+    )
+    run = _run().model_copy(
+        update={"definition_id": NODE_BASED_DEFINITION_ID, "config": config}
+    )
+    received: list[tuple[BaseBot, object]] = []
+
+    async def run_bot(bot, runtime_config, *, observer) -> None:
+        received.append((bot, runtime_config))
+
+    monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
+
+    asyncio.run(worker_runtime.run_claimed_bot(run, object()))
+
+    bot, runtime_config = received[0]
+    assert type(bot) is BaseBot
+    assert runtime_config.stream_rules == config.stream_rules
+    assert not hasattr(runtime_config, "graph")
 
 
 def test_redis_configuration_validates_environment_ingress(

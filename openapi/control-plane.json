@@ -672,6 +672,106 @@
         "title": "FillRejectReason",
         "type": "string"
       },
+      "GraphCoordinate": {
+        "maximum": 10000.0,
+        "minimum": -10000.0,
+        "type": "number"
+      },
+      "GraphEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/GraphElementId"
+          },
+          "source": {
+            "$ref": "#/components/schemas/GraphElementId"
+          },
+          "target": {
+            "$ref": "#/components/schemas/GraphElementId"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target"
+        ],
+        "title": "GraphEdge",
+        "type": "object"
+      },
+      "GraphElementId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string"
+      },
+      "GraphLabel": {
+        "maxLength": 80,
+        "minLength": 1,
+        "type": "string"
+      },
+      "GraphNode": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GraphNodeData"
+          },
+          "id": {
+            "$ref": "#/components/schemas/GraphElementId"
+          },
+          "position": {
+            "$ref": "#/components/schemas/GraphPosition"
+          },
+          "type": {
+            "$ref": "#/components/schemas/GraphNodeType"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "position",
+          "data"
+        ],
+        "title": "GraphNode",
+        "type": "object"
+      },
+      "GraphNodeData": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "$ref": "#/components/schemas/GraphLabel"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "GraphNodeData",
+        "type": "object"
+      },
+      "GraphNodeType": {
+        "enum": [
+          "input",
+          "default",
+          "output"
+        ],
+        "title": "GraphNodeType",
+        "type": "string"
+      },
+      "GraphPosition": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "$ref": "#/components/schemas/GraphCoordinate"
+          },
+          "y": {
+            "$ref": "#/components/schemas/GraphCoordinate"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "GraphPosition",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1084,6 +1184,40 @@
         "title": "MarketSettlementPayload",
         "type": "object"
       },
+      "NodeGraph": {
+        "additionalProperties": false,
+        "properties": {
+          "edges": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "maxItems": 100,
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodes"
+        ],
+        "title": "NodeGraph",
+        "type": "object"
+      },
       "NonnegativeDecimal": {
         "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
         "type": "string"
@@ -1184,6 +1318,16 @@
           },
           "event_max_age_ms": {
             "$ref": "#/components/schemas/NonnegativeMilliseconds"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "max_order_size": {
             "$ref": "#/components/schemas/PositiveDecimal"
