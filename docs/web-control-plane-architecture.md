@@ -1,6 +1,7 @@
 # Web Control Plane v0 Architecture and API
 
 Status: planned overall; Slices 12A through 12E and Slice 13A are implemented.
+Slices 13B and 13C plan the functional graph contract and paper evaluator.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
@@ -52,7 +53,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F and Slice 13A in `docs/implementation-plan.md`.
+  Slices 12A-12F and Slices 13A-13C in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -84,10 +85,11 @@ supporting private modules are not prescribed:
 
 - `polybot_control_plane.catalog.contracts`: `SelectionMode`, `WidgetKind`,
   `BotDefinitionDescriptor`, and `LaunchRequest`.
-- `polybot_control_plane.catalog.graphs`: public trigger-catalog and versioned
+- `polybot_control_plane.catalog.graphs`: public node catalog and validated
   `NodeGraph` contracts, validation limits, and the starter graph snapshot.
-  Focused supporting modules discover `BaseBot` hook signatures and traverse
-  dataclass fields; the package root owns the public graph contract.
+  Focused supporting modules discover `BaseBot` hook signatures, traverse
+  dataclass and explicitly marked computed outputs, and describe the trusted
+  broker action; the package root owns the public graph contract.
 - `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
   `RunRead`.
 - `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
@@ -114,7 +116,6 @@ market slugs, node graph, wallet addresses, and stream rules.
 `BotDefinitionDescriptor` has exactly:
 
 - `definition_id`
-- `version`
 - `display_name`
 - `description`
 - `label` (`standard`, `example`, or `non_trading`)
@@ -123,10 +124,10 @@ market slugs, node graph, wallet addresses, and stream rules.
 - `input_schema`
 - `graph_catalog` (omitted for definitions without a node graph)
 
-`LaunchRequest` has exactly `definition_id`, `definition_version`, and `inputs`.
-The run name is a field in the definition's launch schema rather than a second
-top-level copy. External request and definition launch models reject unknown
-fields instead of silently ignoring them.
+`LaunchRequest` has exactly `definition_id` and `inputs`. The run name is a
+field in the definition's launch schema rather than a second top-level copy.
+External request and definition launch models reject unknown fields instead of
+silently ignoring them.
 
 Each catalog entry owns one Pydantic launch-input model and a conversion to
 `PaperRunConfig`. `model_json_schema()` is the only JSON Schema definition.
@@ -158,17 +159,24 @@ product specification's **Trust Boundary** are absent rather than accepted and
 then rejected. Conversion to the existing `BotConfig` supplies paper mode and
 credential-free values itself.
 
-The Slice 13A graph contract replaces the pre-production generic v1 contract in
-place and retains `schema_version=1`. `GraphNodeType` contains only `trigger`.
-Each of the one to fifty nodes contains a unique ID, a finite bounded `x`/`y`
-position, and data containing a supported `hook_name` plus unique structured
-`selected_output_paths`. A hook may appear only once. `on_start` and `on_stop`
-have no selectable event outputs. `edges` remains in the snapshot but must be
-empty until a downstream node type exists. Unknown hooks, paths, duplicate
-hooks or selections, mismatched payload selections, and transient Svelte Flow
-fields fail at launch ingress.
+During alpha, bot definitions and node graphs have no public version field. The
+code-owned catalog, generated client, and disposable control-plane database move
+together. Contract changes rewrite the alpha migration history and require a
+database recreation instead of compatibility migrations, legacy graph decoders,
+or simultaneous schema variants. A future stabilization slice may deliberately
+introduce versioning when persisted compatibility becomes a product requirement.
 
-The node-based descriptor alone includes a `GraphNodeCatalog`. Catalog
+`GraphNodeType` contains exactly `trigger`, `constant`, `comparison`, and
+`broker_action`. Every node contains a unique ID, a finite bounded `x`/`y`
+position, and the data variant owned by its type. Each `GraphEdge` contains
+unique ID, source node and handle IDs, and target node and handle IDs. Launch
+validation resolves every node and handle, enforces input cardinality and scalar
+type compatibility, rejects cycles, and requires every action to have exactly
+one upstream trigger ancestry. Constants can be shared within one trigger
+branch; processing/action nodes cannot be disconnected or join different
+triggers.
+
+The node-based descriptor alone includes a `GraphNodeCatalog`. Trigger catalog
 construction discovers every async `BaseBot` method beginning with `on_` in
 class-definition order, resolves postponed annotations, requires `BotContext`
 and at most one dataclass payload, and ignores return annotations. Stream-plan
@@ -176,22 +184,61 @@ and backtest-query methods are not lifecycle triggers. The catalog exposes the
 opaque context handle `context` plus selectable payload fields derived through
 Pydantic `TypeAdapter`. Ordinary nested dataclasses are traversed; lists and
 tuples are collection boundaries, so `BookSnapshot.bids` exists but
-`BookSnapshot.bids.price` does not. Methods and computed properties are not
-dataclass fields and are not exposed.
+`BookSnapshot.bids.price` does not.
 
-Selected fields persist as path segments. Their generated handle is
+Ordinary methods and properties remain hidden. The framework may explicitly
+mark a zero-argument annotated computed event property as graph-safe.
+`BookSnapshot.best_bid` and `best_ask` are the first such properties: best bid is
+the highest executable SELL-side level and best ask is the lowest executable
+BUY-side level. Both return `BookLevel | None`; discovery exposes their nested
+`price` and `size` fields and propagates the parent nullability. The stored
+`bids` and `asks` collections remain the single source of truth. `midpoint()` and
+other unmarked behavior are not graph outputs.
+
+Selected trigger fields persist as path segments. Their generated handle is
 `field:<dot-joined-path>` and display label is
-`<PayloadType>.<dot-joined-path>`; no whole-event output exists. The starter
-graph is one `on_book` trigger with `BookSnapshot.bids` selected. The frontend
-uses only this backend metadata for its palette, labels, and handles, disables
-duplicate hooks and connection creation, and strips only Svelte Flow transient
-state. The graph remains an immutable run snapshot with no dispatch,
-compilation, evaluation, worker behavior, or order semantics in this slice.
+`<PayloadType>.<dot-joined-path>`; no whole-event output exists. Constants are
+typed boolean, integer, exact decimal, or string scalar sources. Comparisons are
+binary `equal`, `not_equal`, `less_than`, `less_than_or_equal`, `greater_than`,
+or `greater_than_or_equal` nodes with one boolean output. A null comparison
+input evaluates `False` without coercion.
+
+The broker catalog explicitly publishes only
+`Broker.submit(OrderRequest) -> FillEvent`; it never exposes every broker method
+implicitly. Its order inputs are derived from the broker signature,
+`OrderRequest`, `Side`, and their annotations. BUY and SELL are fixed-side
+variants with required `enabled`, `token_id`, limit `price`, and share `size`
+inputs plus the existing optional market, condition, source, and reason fields.
+`cancel_all` and action-result outputs are outside the MVP.
+
+The frontend uses only backend catalog metadata and generated types for its
+palette, labels, handles, controls, and connections, and strips only Svelte Flow
+transient state. The starter graph remains non-trading. A complete supported
+graph can compare `BookSnapshot.best_ask.price` with a decimal constant and,
+when true, submit a BUY using the event token and ask price plus a constant
+share size.
+
+At runtime, the catalog constructs `NodeBasedBot(BaseBot)` from the decoded
+`PaperRunConfig`. That bot owns a focused evaluator; `BaseBot` and general
+`BotConfig` do not gain graph behavior or graph fields. The graph is compiled
+once to dependency indexes and deterministic topological order. Each accepted
+hook invocation creates one ephemeral frame and evaluates the matching trigger's
+reachable acyclic branch once. This is an event-driven DAG pass, not a state
+machine or a fixed-point loop.
+
+An action runs only when `enabled` is exactly true and all required values are
+non-null, then constructs the existing `OrderRequest` and awaits
+`ctx.broker.submit()`. A missing best level or required value fails closed with
+a stable graph skip reason. The evaluator has no cross-event state: every
+matching accepted event can submit again while its comparison remains true.
+Position checks, cooldowns, once/rising-edge behavior, and dedupe must be future
+explicit nodes rather than hidden action semantics. Broker results do not
+recursively dispatch `on_fill` in this MVP.
 
 The HTTP launch boundary performs the only request normalization:
 
 1. Parse `LaunchRequest`.
-2. Resolve its code-owned definition and require the submitted version.
+2. Resolve its code-owned definition ID.
 3. Parse `inputs` with that definition's launch model.
 4. Convert once to `PaperRunConfig`.
 5. Persist the queued run and commit.
@@ -210,7 +257,6 @@ The final v0 run row has exactly:
 
 - `id` (UUID primary key)
 - `definition_id`
-- `definition_version`
 - `config` (`PaperRunConfig` JSON)
 - `status` (`RunStatus`)
 - `created_at`
@@ -224,7 +270,8 @@ latest-summary columns, execution-backend fields, owner IDs, or idempotency keys
 Current summaries come from durable events. ECS can add its own reference when
 an ECS slice actually exists.
 
-Slice 12A creates only the first six fields. Slice 12B adds the four fields it
+The rewritten alpha Slice 12A migration creates only the first five fields.
+Slice 12B adds the four fields it
 first consumes (`started_at`, `ended_at`, `heartbeat_at`, `failure_detail`) and
 the event table in its own migration.
 
@@ -307,7 +354,8 @@ simultaneous runs.
 After a successful claim, `execute_run`:
 
 1. converts the already-decoded `PaperRunConfig` to the existing `BotConfig`;
-2. resolves the exact code-owned factory version and creates the bot;
+2. resolves the code-owned factory by definition ID and creates the bot, passing
+   the decoded run config to the node-based entry;
 3. starts heartbeat and stop polling;
 4. attaches the web observer and calls `polybot.runtime.run_bot()`; and
 5. records the lifecycle outcome defined in the product specification.

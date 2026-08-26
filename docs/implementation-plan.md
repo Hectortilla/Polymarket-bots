@@ -1200,3 +1200,178 @@ Acceptance:
   are disabled.
 - `uv run pytest`, `npm run generate:check`, `npm run check`, `npm test`, and
   `npm run build` pass.
+
+## Slice 13B: Alpha Graph Contracts and Functional Nodes
+
+Status: planned; depends on Slice 13A. This slice supersedes the definition-
+version and graph-schema-version requirements in earlier control-plane slices.
+The control plane is still an alpha product with a disposable database, so it
+keeps one current code-owned contract instead of compatibility layers.
+
+Minimum deliverable:
+
+- Remove definition versioning from the complete control-plane boundary:
+  `DefinitionVersion`, catalog-entry and descriptor versions,
+  `LaunchRequest.definition_version`, run-row and `RunRead.definition_version`,
+  stale-version handling, generated frontend fields, and their tests. Remove
+  `NodeGraph.schema_version` as well. Rewrite the alpha Alembic history and
+  recreate the disposable control-plane database; do not add a compatibility
+  migration, legacy graph decoder, or dual-version union.
+- Keep `definition_id` as the sole stable catalog identity. A queued run still
+  persists its complete immutable `PaperRunConfig`, including its exact graph,
+  but code and stored alpha data are expected to move together until a future
+  stabilization slice deliberately reintroduces versioning.
+- Add framework-owned `BookSnapshot.best_bid` and `BookSnapshot.best_ask`
+  computed properties. `best_bid` is the highest bid and therefore the
+  executable SELL side; `best_ask` is the lowest ask and therefore the
+  executable BUY side. Each returns `BookLevel | None` without changing the
+  stored `bids` or `asks` source of truth.
+- Introduce one narrow, explicit framework marker for graph-safe computed event
+  outputs. Extend trigger discovery to include only marked, zero-argument,
+  annotated computed properties in addition to dataclass fields. Expose
+  `best_bid.price`, `best_bid.size`, `best_ask.price`, and `best_ask.size` through
+  the existing recursive field descriptor logic, propagating parent nullability
+  to each nested path. Do not automatically expose every property or method, and
+  do not expose `midpoint()` or collection element paths.
+- Expand the code-owned `GraphNodeCatalog` and graph-node discriminated union
+  with exactly four node kinds: trigger, constant, comparison, and broker
+  action. Keep the frontend palette, labels, handles, controls, and validation
+  driven by this catalog and generated OpenAPI types; do not add a parallel
+  TypeScript registry.
+- Support typed scalar constants for boolean, integer, decimal, and string
+  values. Preserve decimals as exact strings at the wire boundary. A constant
+  has one typed output and no inputs.
+- Support binary comparisons with `equal`, `not_equal`, `less_than`,
+  `less_than_or_equal`, `greater_than`, and `greater_than_or_equal`. Equality
+  operators accept compatible equal scalar types; ordering operators accept
+  matching integer or decimal inputs. A comparison has exactly two required
+  inputs and one boolean output. A null input makes the comparison `False`
+  rather than being coerced or guessed.
+- Publish the broker action catalog from an explicit allowlist containing only
+  `Broker.submit(OrderRequest) -> FillEvent`. Derive its field metadata from the
+  broker signature, `OrderRequest`, `Side`, and their annotations rather than
+  copying order fields into graph-only contracts. Do not discover or expose
+  `cancel_all` merely because it is a broker method.
+- Present BUY and SELL as two fixed-side variants of the same submit-order
+  action. Each action has a required boolean `enabled` input plus required
+  `token_id`, `price`, and share `size` inputs; the existing optional
+  `market_slug`, `condition_id`, `source_id`, and `reason` inputs remain
+  optional. The action is a sink in this slice; do not expose `FillEvent`
+  outputs yet.
+- Extend `GraphEdge` with explicit source and target handle IDs. Validate once
+  at launch ingress that node IDs, edge IDs, nodes, handles, input cardinality,
+  scalar types, nullability metadata, and directions are valid;
+  each non-optional input has exactly one source; the graph is acyclic; and
+  every action has exactly one upstream trigger ancestry. Constants may be
+  shared within that trigger branch. A nullable source may feed a required
+  input, but its missing runtime value must fail closed as specified in Slice
+  13C. Reject disconnected processing/action nodes and cross-trigger joins.
+- Enable Svelte Flow connections and add focused renderers/editors for the
+  three new node kinds. Keep the starter graph non-trading, but add one complete
+  test fixture and frontend scenario for
+  `on_book.best_ask.price <= constant -> BUY`, with token ID and limit price
+  taken from the same `BookSnapshot` and order size supplied by a decimal
+  constant.
+- Persist the validated graph exactly in `PaperRunConfig`. The worker remains
+  non-executing in this slice; Slice 13C first interprets it.
+
+Do not add graph evaluation, loops, collection iteration, arithmetic, string
+composition, state, position reads, cooldown/debounce, action-result outputs,
+live mode, user code, plugins, reusable graph definitions, or graph editing
+after launch.
+
+Acceptance:
+
+- Contract, API, PostgreSQL, OpenAPI, and frontend tests prove no definition or
+  graph schema version field remains and the recreated alpha schema has no
+  `definition_version` column.
+- Framework tests prove best bid/ask selection for sorted and unsorted levels,
+  empty-side nullability, and no duplicated stored quote state. Catalog tests
+  prove only explicitly marked computed outputs are exposed.
+- Catalog and ingress tests cover every constant/comparison/action descriptor,
+  exact decimals, BUY/SELL derivation from `Side`, rejection of unallowlisted
+  broker methods, handle existence, type compatibility, required input
+  cardinality, cycles, disconnected nodes, and cross-trigger joins.
+- Frontend tests construct, connect, persist, reload, and reset the threshold
+  BUY fixture entirely from backend metadata without losing node data or
+  retaining transient Svelte Flow state.
+- Worker tests continue to prove that a stored action graph submits no order in
+  Slice 13B.
+
+## Slice 13C: Event-Driven Graph Evaluation and Paper Actions
+
+Status: planned; depends on Slice 13B.
+
+Minimum deliverable:
+
+- Implement a concrete `NodeBasedBot(BaseBot)` for the node-based catalog entry.
+  Compose a focused graph evaluator inside this bot; do not add evaluator state
+  or graph-specific behavior to `BaseBot` and do not make `polybot` import the
+  control-plane package.
+- Let the node-based catalog entry construct its bot from the already-decoded
+  `PaperRunConfig` so the immutable graph reaches `NodeBasedBot` without adding
+  graph fields to the general `BotConfig` or branching on definition IDs in the
+  worker.
+- Compile the already-validated graph once when the bot is constructed into
+  dependency indexes and a deterministic topological order. Runtime evaluation
+  trusts this internal compiled shape and does not repeat Pydantic request
+  validation.
+- For each accepted `BaseBot` hook invocation, create one ephemeral evaluation
+  frame containing `BotContext` and that hook's payload, then evaluate only the
+  downstream branch for the matching trigger. Resolve selected dataclass and
+  marked computed-property paths, evaluate each reachable pure node at most
+  once, and invoke each reachable action at most once in deterministic graph
+  order.
+- Treat evaluation as a bounded event-driven DAG pass. Do not loop until values
+  stabilize and do not model the evaluator as a state machine. Constants and
+  comparisons are pure; the only MVP side effect is the terminal broker action.
+- Run an action only when `enabled` is exactly `True` and every required order
+  input resolves to a non-null value. A missing best bid/ask or other nullable
+  required value skips the action with a stable graph skip reason; it never
+  substitutes zero, a stale value, or another book side. Construct the existing
+  `OrderRequest` and await `ctx.broker.submit()` so all paper validation,
+  fill-time books, slippage, fees, portfolio transitions, observability, and
+  future paper/live contract parity stay behind the broker boundary.
+- Execute on every matching accepted event. If the comparison remains true for
+  ten accepted book updates, a reachable action may submit ten orders. Do not
+  add rising-edge memory, implicit dedupe, position checks, cooldowns, or
+  in-flight suppression; those are explicit future graph nodes and policies the
+  operator must add when they exist.
+- Keep hook semantics unchanged. `on_book` returns `None` after graph handling;
+  graph actions do not fabricate a `DispatchSkipReason`. A returned
+  `FillEvent` remains broker/observer output and does not recursively dispatch
+  the graph's `on_fill` trigger in this slice, matching the current paper
+  runtime contract.
+- Keep the web node-based bot paper-only. Change its catalog presentation from
+  non-trading observer to paper-trading bot only when this evaluator lands;
+  preserve every existing web trust-boundary restriction and all live-execution
+  gates.
+
+Do not add fixed-point evaluation, cycles, persistent evaluator state,
+position/cash query nodes, once/cooldown/debounce nodes, concurrency between
+actions, compensation, order cancellation, fill-output chaining, live mode,
+backtest controls, or a generic workflow framework.
+
+Acceptance:
+
+- Unit tests prove deterministic topological evaluation, lazy per-trigger
+  branches, one evaluation per reachable node, exact path extraction for
+  `best_bid`/`best_ask`, and stable skips for nullable required inputs.
+- Comparison tests cover every operator, exact decimal behavior, false
+  conditions, and null inputs evaluating `False` without coercion.
+- Broker-action tests prove exact `OrderRequest` construction for BUY and SELL,
+  optional identity propagation, broker rejections remaining ordinary
+  `FillEvent` results, and no direct PaperBroker or Polymarket SDK dependency in
+  the evaluator.
+- A repeated-event test proves two matching accepted book events produce two
+  broker submissions. A false event between them adds no hidden rearming
+  semantics because the evaluator retains no cross-event state.
+- Worker and PostgreSQL integration tests launch the node-based definition from
+  its persisted graph, observe a paper order/fill through the existing event
+  path, and prove non-node definitions remain unchanged.
+- Safety tests prove missing/stale/malformed/crossed books are still rejected by
+  existing runtime or broker boundaries, missing graph values cannot submit,
+  web launches cannot select live mode or credentials, and live gates remain
+  unchanged.
+- `uv run pytest`, `npm run generate:check`, `npm run check`, `npm test`, and
+  `npm run build` pass.

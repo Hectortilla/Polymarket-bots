@@ -14,8 +14,9 @@ implementation of authentication, billing, tenancy, or live trading.
 
 - Show a trusted server-owned catalog of bot definitions.
 - Render a launch form from backend-provided metadata.
-- Let the trusted operator compose a validated, non-executable graph from
-  lifecycle triggers and event outputs described by the backend framework.
+- Let the trusted operator compose and run a validated paper-trading graph from
+  framework-described lifecycle triggers, event outputs, typed constants,
+  comparisons, and BUY/SELL broker actions.
 - Launch multiple paper runs and queue work above worker capacity.
 - Stop queued or running runs.
 - Persist run state and useful progress in PostgreSQL.
@@ -33,8 +34,9 @@ implementation of authentication, billing, tenancy, or live trading.
 - Scheduling, cloning, comparison, deletion, retention management, or bulk
   actions.
 - Recorder or backtest controls.
-- User-supplied Python paths, arbitrary code, plugins, or executable node
-  programming. Slice 13A stores node graphs but does not interpret them.
+- User-supplied Python paths, arbitrary code, plugins, unbounded loops, or
+  node-defined network/protocol operations. Graphs use only the finite
+  code-owned node catalog.
 - ECS implementation. v0 keeps only the narrow launcher seam described in the
   architecture; it adds no ECS fields or adapters.
 
@@ -53,9 +55,11 @@ billing, entitlement, credential, or tenant fields.
 
 ## Bot Catalog
 
-A bot definition is a trusted, versioned, code-owned mapping from a stable
-public ID to a private Python factory and one typed launch-input model. The API
-never returns or accepts factory/import paths.
+A bot definition is a trusted, code-owned mapping from a stable public ID to a
+private Python factory and one typed launch-input model. The API never returns
+or accepts factory/import paths. During alpha there is no public definition or
+graph schema version; code, generated clients, and the disposable database move
+together and the database is recreated after incompatible contract changes.
 
 The descriptor tells the frontend whether market and wallet selection are
 user-configured, bot-managed, or absent. A bot-managed definition remains
@@ -76,14 +80,16 @@ The initial catalog is exactly:
 | `node-based-bot` | `polybot_control_plane.catalog.definitions:create_node_based_bot` | user-configured | absent | non-trading |
 
 `polybot.my_bot:create` is an alias of the winner strategy and is not another
-catalog entry.
+catalog entry. The table reflects the implemented Slice 13A catalog; Slice 13C
+changes only the node-based entry's label to `standard` when graph actions begin
+executing.
 
 ## Run
 
-Each Start action creates a new UUID-backed run with an immutable definition
-ID/version and resolved paper configuration. A changed catalog definition must
-not reinterpret an existing run. A stale version submitted from an old browser
-view is rejected so the browser can reload the catalog.
+Each Start action creates a new UUID-backed run with an immutable definition ID
+and resolved paper configuration. Alpha deployments recreate their disposable
+control-plane database when the catalog or graph contract changes; they do not
+retain or reinterpret older incompatible runs.
 
 The public lifecycle is:
 
@@ -111,15 +117,26 @@ Each row shows the run name, definition, lifecycle, timing, and latest equity
 when available.
 
 The launch UI renders the selected descriptor's typed fields, gives immediate
-client feedback, submits definition ID/version plus its input object, and opens
-the created run. Decimal inputs remain decimal strings across the API boundary.
+client feedback, submits the definition ID plus its input object, and opens the
+created run. Decimal inputs remain decimal strings across the API boundary.
 Frontend validation is only feedback; backend ingress is authoritative.
 The node-based definition renders a Svelte Flow canvas. Its trigger palette is
 derived from `BaseBot` lifecycle hooks, and each trigger lets the operator
-select outputs derived from that hook's annotated event dataclass. The frontend
-contains no hook or event-field registry. The canvas stores its graph in the
-immutable run configuration, observes the selected market streams, and never
-dispatches a graph trigger or submits an order in this MVP.
+select outputs derived from that hook's annotated event dataclass and explicitly
+marked computed outputs. `BookSnapshot.best_bid` and `best_ask` provide nullable
+top-level price/size fields without duplicating the underlying books. The same
+backend catalog describes typed constants, binary comparisons, and fixed-side
+BUY/SELL actions derived from `Broker.submit(OrderRequest)`; the frontend
+contains no parallel hook, event-field, or broker-action registry.
+
+The canvas stores its exact validated graph in the immutable run configuration.
+For each accepted event, the node bot evaluates the matching acyclic branch once
+and submits each reachable enabled action at most once through the existing
+paper broker. Evaluation has no implicit cross-event state: while a condition
+remains true, every matching accepted event may submit another order. The
+operator is responsible for adding explicit position, cooldown, once, or other
+state nodes when those capabilities are introduced; the MVP does not silently
+invent them.
 
 ### Run detail
 
@@ -171,9 +188,10 @@ v0 is complete when one trusted operator can:
   semantics and controls;
 - add a trusted definition using an already-supported field/widget kind without
   editing the launch page; and
-- launch the node-based observer with framework-derived trigger nodes and
-  selected event-field outputs, reload its exact graph snapshot, and stop it
-  without any graph node executing or producing an order.
+- launch a node-based paper bot that compares a computed best bid/ask value with
+  a constant, submits the configured BUY or SELL through the existing broker,
+  reports its order/fill through the existing progress path, reloads its exact
+  graph snapshot, and stops cooperatively.
 
 No endpoint may violate the **Trust Boundary**, and the existing CLI must remain
 usable without control-plane services.
