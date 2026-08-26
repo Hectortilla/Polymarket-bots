@@ -50,7 +50,7 @@
 <style>
   .functional-node {
     width: 14rem;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid var(--line-strong);
     border-radius: 0.75rem;
     background: var(--surface-raised);

@@ -178,7 +178,7 @@ describe('LaunchForm', () => {
       '[data-handleid="field:best_ask.price"]'
     );
     expect(askPriceHandle?.classList.contains('connectable')).toBe(true);
-    expect(document.querySelector('fieldset.nowheel')).not.toBeNull();
+    expect(document.querySelector('.outputs.nowheel')).not.toBeNull();
     expect(
       document.querySelector('.node-graph-controls.horizontal')
     ).not.toBeNull();

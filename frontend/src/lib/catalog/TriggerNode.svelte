@@ -34,8 +34,8 @@
   </div>
 
   {#if trigger.payload}
-    <fieldset class="nodrag nowheel">
-      <legend>{trigger.payload.type_name} outputs</legend>
+    <div class="outputs nodrag nowheel">
+      <p class="outputs-title">{trigger.payload.type_name} outputs</p>
       {#each trigger.payload.fields as field (field.handle_id)}
         <div class="field-output">
           <span>{field.display_name}</span>
@@ -50,7 +50,7 @@
           />
         </div>
       {/each}
-    </fieldset>
+    </div>
   {:else}
     <p class="lifecycle-only">Lifecycle trigger with context only.</p>
   {/if}
@@ -59,7 +59,7 @@
 <style>
   .trigger-node {
     width: 20rem;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid var(--line-strong);
     border-radius: 0.75rem;
     background: var(--surface-raised);
@@ -99,33 +99,15 @@
     font-size: 0.76rem;
   }
 
-  fieldset {
+  .outputs {
     display: grid;
-    max-height: 15rem;
+    padding: 0.5rem 0 0.75rem;
+    overflow: visible;
+  }
+
+  .outputs-title {
     margin: 0;
-    padding: 0.5rem 0.75rem 0.75rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    border: 0;
-    scrollbar-color: var(--control-line) transparent;
-    scrollbar-width: thin;
-  }
-
-  fieldset::-webkit-scrollbar {
-    width: 0.4rem;
-  }
-
-  fieldset::-webkit-scrollbar-thumb {
-    border-radius: 1rem;
-    background: var(--control-line);
-  }
-
-  fieldset::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  legend {
-    padding-top: 0.4rem;
+    padding: 0.4rem 0.75rem 0;
     color: var(--text-muted);
     font-size: 0.72rem;
   }
@@ -134,7 +116,7 @@
     display: grid;
     gap: 0.1rem;
     align-items: center;
-    padding: 0.3rem 0;
+    padding: 0.3rem 0.75rem;
   }
 
   .field-output span {
@@ -143,10 +125,6 @@
     font-size: 0.72rem;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .field-output :global(.svelte-flow__handle-right) {
-    right: -0.75rem;
   }
 
   .lifecycle-only {

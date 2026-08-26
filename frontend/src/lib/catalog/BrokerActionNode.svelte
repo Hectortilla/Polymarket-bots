@@ -31,7 +31,7 @@
 <style>
   .action-node {
     width: 16rem;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid var(--accent);
     border-radius: 0.75rem;
     background: var(--surface-raised);
