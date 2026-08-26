@@ -58,6 +58,7 @@ export type BotDefinitionDescriptor = {
      * Display Name
      */
     display_name: string;
+    graph_catalog?: GraphNodeCatalog | null;
     /**
      * Input Schema
      */
@@ -339,7 +340,52 @@ export type GraphEdge = {
 
 export type GraphElementId = string;
 
-export type GraphLabel = string;
+/**
+ * GraphFieldDescriptor
+ */
+export type GraphFieldDescriptor = {
+    /**
+     * Collection
+     */
+    collection: boolean;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Handle Id
+     */
+    handle_id: string;
+    /**
+     * Nullable
+     */
+    nullable: boolean;
+    path: GraphFieldPath;
+    /**
+     * Value Schema
+     */
+    value_schema: {
+        [key: string]: unknown;
+    };
+    /**
+     * Value Type
+     */
+    value_type: string;
+};
+
+/**
+ * GraphFieldPath
+ */
+export type GraphFieldPath = {
+    /**
+     * Segments
+     */
+    segments: Array<GraphFieldPathSegment>;
+};
+
+export type GraphFieldPathSegment = string;
+
+export type GraphHookName = string;
 
 /**
  * GraphNode
@@ -348,20 +394,50 @@ export type GraphNode = {
     data: GraphNodeData;
     id: GraphElementId;
     position: GraphPosition;
-    type: GraphNodeType;
+    /**
+     * Type
+     */
+    type: 'trigger';
+};
+
+/**
+ * GraphNodeCatalog
+ */
+export type GraphNodeCatalog = {
+    /**
+     * Node Type
+     */
+    node_type: 'trigger';
+    /**
+     * Triggers
+     */
+    triggers: Array<GraphTriggerDescriptor>;
 };
 
 /**
  * GraphNodeData
  */
 export type GraphNodeData = {
-    label: GraphLabel;
+    hook_name: GraphHookName;
+    /**
+     * Selected Output Paths
+     */
+    selected_output_paths?: Array<GraphFieldPath>;
 };
 
 /**
- * GraphNodeType
+ * GraphPayloadDescriptor
  */
-export type GraphNodeType = 'input' | 'default' | 'output';
+export type GraphPayloadDescriptor = {
+    /**
+     * Fields
+     */
+    fields: Array<GraphFieldDescriptor>;
+    /**
+     * Type Name
+     */
+    type_name: string;
+};
 
 /**
  * GraphPosition
@@ -369,6 +445,22 @@ export type GraphNodeType = 'input' | 'default' | 'output';
 export type GraphPosition = {
     x: GraphCoordinate;
     y: GraphCoordinate;
+};
+
+/**
+ * GraphTriggerDescriptor
+ */
+export type GraphTriggerDescriptor = {
+    /**
+     * Context Handle Id
+     */
+    context_handle_id: 'context';
+    /**
+     * Context Type Name
+     */
+    context_type_name: 'BotContext';
+    hook_name: GraphHookName;
+    payload?: GraphPayloadDescriptor | null;
 };
 
 /**

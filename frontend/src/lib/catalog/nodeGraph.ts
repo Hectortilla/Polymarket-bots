@@ -1,23 +1,15 @@
 import type {
+  GraphEdge,
+  GraphFieldPath,
+  GraphNode,
+  GraphNodeCatalog,
   GraphNodeData,
-  GraphNodeType,
+  GraphTriggerDescriptor,
   NodeGraph
 } from '$lib/api/generated';
 import type { Edge, Node } from '@xyflow/svelte';
 
-export const GRAPH_NODE_TYPE = {
-  input: 'input',
-  default: 'default',
-  output: 'output'
-} as const satisfies Record<string, GraphNodeType>;
-
-const GRAPH_NODE_LABEL: Record<GraphNodeType, string> = {
-  [GRAPH_NODE_TYPE.input]: 'Market input',
-  [GRAPH_NODE_TYPE.default]: 'Condition',
-  [GRAPH_NODE_TYPE.output]: 'Output'
-};
-
-export type CanvasNode = Node<GraphNodeData, GraphNodeType>;
+export type CanvasNode = Node<GraphNodeData, GraphNode['type']>;
 export type CanvasEdge = Edge;
 
 export function canvasNodes(graph: NodeGraph): CanvasNode[] {
@@ -25,7 +17,7 @@ export function canvasNodes(graph: NodeGraph): CanvasNode[] {
     id: node.id,
     type: node.type,
     position: { ...node.position },
-    data: { ...node.data }
+    data: cloneNodeData(node.data)
   }));
 }
 
@@ -43,33 +35,95 @@ export function toPersistedNodeGraph(
     schema_version: schemaVersion,
     nodes: nodes.map(({ id, type, position, data }) => ({
       id,
-      type: type ?? GRAPH_NODE_TYPE.default,
+      type,
       position: { x: position.x, y: position.y },
-      data: { label: data.label }
+      data: cloneNodeData(data)
     })),
-    edges: edges.map(({ id, source, target }) => ({ id, source, target }))
+    edges: edges.map(({ id, source, target }): GraphEdge => ({
+      id,
+      source,
+      target
+    }))
   };
 }
 
-export function createCanvasNode(
+export function createTriggerNode(
   nodes: CanvasNode[],
-  type: GraphNodeType
+  catalog: GraphNodeCatalog,
+  trigger: GraphTriggerDescriptor
 ): CanvasNode {
-  const sequence = firstAvailableSequence(nodes, type);
   return {
-    id: `${type}-${sequence}`,
-    type,
+    id: `trigger-${trigger.hook_name.replaceAll('_', '-')}`,
+    type: catalog.node_type,
     position: {
-      x: 80 + ((nodes.length * 160) % 640),
-      y: 80 + Math.floor(nodes.length / 4) * 120
+      x: 80 + ((nodes.length * 220) % 660),
+      y: 80 + Math.floor(nodes.length / 3) * 180
     },
-    data: { label: GRAPH_NODE_LABEL[type] }
+    data: {
+      hook_name: trigger.hook_name,
+      selected_output_paths: []
+    }
   };
 }
 
-function firstAvailableSequence(nodes: CanvasNode[], type: GraphNodeType): number {
-  const ids = new Set(nodes.map((node) => node.id));
-  let sequence = 1;
-  while (ids.has(`${type}-${sequence}`)) sequence += 1;
-  return sequence;
+export function triggerAlreadyExists(
+  nodes: CanvasNode[],
+  trigger: GraphTriggerDescriptor
+): boolean {
+  return nodes.some((node) => node.data.hook_name === trigger.hook_name);
+}
+
+export function triggerForNode(
+  catalog: GraphNodeCatalog,
+  nodeData: GraphNodeData
+): GraphTriggerDescriptor {
+  const trigger = catalog.triggers.find(
+    (candidate) => candidate.hook_name === nodeData.hook_name
+  );
+  if (!trigger) {
+    throw new Error(`Unknown graph trigger: ${nodeData.hook_name}`);
+  }
+  return trigger;
+}
+
+export function setOutputPathSelected(
+  nodeData: GraphNodeData,
+  path: GraphFieldPath,
+  selected: boolean
+): GraphNodeData {
+  const selectedPaths = nodeData.selected_output_paths ?? [];
+  const pathKey = graphFieldPathKey(path);
+  const withoutPath = selectedPaths.filter(
+    (candidate) => graphFieldPathKey(candidate) !== pathKey
+  );
+  return {
+    ...nodeData,
+    selected_output_paths: selected ? [...withoutPath, clonePath(path)] : withoutPath
+  };
+}
+
+export function outputPathIsSelected(
+  nodeData: GraphNodeData,
+  path: GraphFieldPath
+): boolean {
+  const pathKey = graphFieldPathKey(path);
+  return (nodeData.selected_output_paths ?? []).some(
+    (candidate) => graphFieldPathKey(candidate) === pathKey
+  );
+}
+
+function graphFieldPathKey(path: GraphFieldPath): string {
+  return path.segments.join('.');
+}
+
+function cloneNodeData(data: GraphNodeData): GraphNodeData {
+  return {
+    ...data,
+    hook_name: data.hook_name,
+    selected_output_paths: (data.selected_output_paths ?? []).map(clonePath)
+  };
+}
+
+function clonePath(path: GraphFieldPath): GraphFieldPath {
+  return { segments: [...path.segments] };
 }

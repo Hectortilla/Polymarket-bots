@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from polybot.framework.base import BaseBot
+from polybot.framework.context import BotContext
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.framework.factories import bind_bot_factory
@@ -29,11 +30,17 @@ from polybot_control_plane.catalog.definitions import (
     catalog_descriptors,
 )
 from polybot_control_plane.catalog.graphs import (
+    GRAPH_CONTEXT_HANDLE_ID,
+    GRAPH_NODE_CATALOG,
     MAX_NODE_GRAPH_EDGES,
     MAX_NODE_GRAPH_NODES,
     NODE_GRAPH_COORDINATE_LIMIT,
     NODE_GRAPH_SCHEMA_VERSION,
+    STARTER_BOOK_OUTPUT_PATH,
     STARTER_NODE_GRAPH,
+    STARTER_TRIGGER_HOOK_NAME,
+    GraphFieldPath,
+    GraphNodeCatalog,
     GraphNodeType,
 )
 from polybot_control_plane.runs.contracts import PaperRunConfig
@@ -50,6 +57,25 @@ CATALOG_DEFINITION_IDS = (
 )
 WALLET = "0x0000000000000000000000000000000000000001"
 PROJECT_ROOT = Path(__file__).parents[2]
+
+
+@dataclass(frozen=True)
+class NestedGraphPayloadDetails:
+    price: Decimal
+
+
+@dataclass(frozen=True)
+class NestedGraphPayload:
+    details: NestedGraphPayloadDetails
+
+
+class NestedPayloadBot:
+    async def on_nested(
+        self,
+        ctx: BotContext,
+        payload: NestedGraphPayload,
+    ) -> None:
+        pass
 
 
 def test_catalog_has_exact_initial_entries_and_generated_schemas() -> None:
@@ -71,6 +97,11 @@ def test_catalog_has_exact_initial_entries_and_generated_schemas() -> None:
         for descriptor in descriptors
     )
     assert all("factory" not in descriptor.model_dump() for descriptor in descriptors)
+    assert all(
+        (descriptor.graph_catalog is not None)
+        == (descriptor.definition_id == NODE_BASED_DEFINITION_ID)
+        for descriptor in descriptors
+    )
     assert all(
         entry.factory.__module__ != "polybot.my_bot"
         for entry in CATALOG.values()
@@ -154,19 +185,204 @@ def test_node_based_definition_owns_graph_widget_snapshot_and_market_rule() -> N
     assert descriptor.wallet_selection is SelectionMode.ABSENT
     assert graph_schema[WIDGET_SCHEMA_KEY] == WidgetKind.NODE_GRAPH.value
     assert graph_schema["default"] == STARTER_NODE_GRAPH.model_dump(mode="json")
+    assert descriptor.graph_catalog == GRAPH_NODE_CATALOG
     assert config.graph == STARTER_NODE_GRAPH
     assert config.stream_rules[0].market_slugs == ("example-market",)
     assert type(entry.create_bot(config.to_bot_config())) is BaseBot
+
+
+def test_graph_catalog_derives_base_bot_lifecycle_hooks_and_payload_fields() -> None:
+    triggers = GRAPH_NODE_CATALOG.triggers
+    trigger_names = tuple(trigger.hook_name for trigger in triggers)
+
+    assert trigger_names == (
+        "on_start",
+        "on_book",
+        "on_book_gap",
+        "on_wallet_trade",
+        "on_fill",
+        "on_market_resolved",
+        "on_stop",
+    )
+    assert "current_stream_rules" not in trigger_names
+    assert "next_stream_rules" not in trigger_names
+    assert "backtest_is_quiescent" not in trigger_names
+    assert all(
+        trigger.context_handle_id == GRAPH_CONTEXT_HANDLE_ID
+        and trigger.context_type_name == BotContext.__name__
+        for trigger in triggers
+    )
+
+    book = GRAPH_NODE_CATALOG.trigger("on_book")
+    wallet_trade = GRAPH_NODE_CATALOG.trigger("on_wallet_trade")
+    assert book is not None and book.payload is not None
+    assert wallet_trade is not None and wallet_trade.payload is not None
+    book_fields = {field.path.dotted: field for field in book.payload.fields}
+    wallet_fields = {field.path.dotted: field for field in wallet_trade.payload.fields}
+    assert book_fields["bids"].collection is True
+    assert book_fields["bids"].value_type == "BookLevel"
+    assert book_fields["bids"].handle_id == "field:bids"
+    assert book_fields["bids"].display_name == "BookSnapshot.bids"
+    assert "bids.price" not in book_fields
+    assert wallet_fields["size"].value_type == "Decimal"
+    assert "source_key" not in wallet_fields
+    on_start = GRAPH_NODE_CATALOG.trigger("on_start")
+    on_stop = GRAPH_NODE_CATALOG.trigger("on_stop")
+    assert on_start is not None and on_start.payload is None
+    assert on_stop is not None and on_stop.payload is None
+
+
+@pytest.mark.parametrize(
+    ("hook_name", "expected_fields"),
+    [
+        (
+            "on_book",
+            (
+                ("token_id", "str", False, False),
+                ("bids", "BookLevel", False, True),
+                ("asks", "BookLevel", False, True),
+                ("received_at_ms", "int", False, False),
+                ("market_slug", "str", True, False),
+                ("condition_id", "str", True, False),
+                ("outcome", "str", True, False),
+            ),
+        ),
+        (
+            "on_book_gap",
+            (
+                ("condition_id", "str", True, False),
+                ("observed_at_ms", "int", False, False),
+                ("reason", "BookGapReason", False, False),
+            ),
+        ),
+        (
+            "on_wallet_trade",
+            (
+                ("wallet", "str", False, False),
+                ("condition_id", "str", False, False),
+                ("token_id", "str", False, False),
+                ("side", "Side", False, False),
+                ("size", "Decimal", False, False),
+                ("price", "Decimal", False, False),
+                ("source_id", "str", False, False),
+                ("trade_timestamp_ms", "int", False, False),
+                ("observed_at_ms", "int", False, False),
+                ("kind", "WalletTradeKind", False, False),
+                ("market_slug", "str", True, False),
+                ("transaction_hash", "str", True, False),
+                ("outcome", "str", True, False),
+            ),
+        ),
+        (
+            "on_fill",
+            (
+                ("order_id", "str", False, False),
+                ("token_id", "str", False, False),
+                ("side", "Side", False, False),
+                ("status", "OrderStatus", False, False),
+                ("requested_size", "Decimal", False, False),
+                ("filled_size", "Decimal", False, False),
+                ("average_price", "Decimal", True, False),
+                ("fee_usdc", "Decimal", False, False),
+                ("received_at_ms", "int", False, False),
+                ("reject_reason", "FillRejectReason", True, False),
+                ("reject_message", "str", True, False),
+            ),
+        ),
+        (
+            "on_market_resolved",
+            (
+                ("condition_id", "str", False, False),
+                ("market_slug", "str", False, False),
+                ("token_ids", "str", False, True),
+                ("winning_token_id", "str", False, False),
+                ("winning_outcome", "str", False, False),
+                ("resolved_at_ms", "int", False, False),
+                ("source", "str", False, False),
+            ),
+        ),
+    ],
+)
+def test_graph_catalog_derives_exact_payload_fields(
+    hook_name: str,
+    expected_fields: tuple[tuple[str, str, bool, bool], ...],
+) -> None:
+    trigger = GRAPH_NODE_CATALOG.trigger(hook_name)
+
+    assert trigger is not None and trigger.payload is not None
+    assert tuple(
+        (field.path.dotted, field.value_type, field.nullable, field.collection)
+        for field in trigger.payload.fields
+    ) == expected_fields
+
+
+def test_graph_catalog_preserves_enum_schema() -> None:
+    trigger = GRAPH_NODE_CATALOG.trigger("on_wallet_trade")
+
+    assert trigger is not None and trigger.payload is not None
+    side = trigger.payload.field_for_path(GraphFieldPath(segments=("side",)))
+    assert side is not None
+    assert side.value_schema["enum"] == ["BUY", "SELL"]
+
+
+def test_graph_catalog_recurses_through_nested_dataclasses() -> None:
+    catalog = GraphNodeCatalog.from_bot_type(NestedPayloadBot)
+    trigger = catalog.trigger("on_nested")
+
+    assert trigger is not None and trigger.payload is not None
+    assert tuple(field.path.dotted for field in trigger.payload.fields) == (
+        "details",
+        "details.price",
+    )
+
+
+def test_graph_catalog_rejects_unsupported_trigger_signatures() -> None:
+    class InvalidBot:
+        async def on_invalid(
+            self,
+            ctx: BotContext,
+            first: object,
+            second: object,
+        ) -> None:
+            pass
+
+    with pytest.raises(TypeError, match="at most one payload"):
+        GraphNodeCatalog.from_bot_type(InvalidBot)
+
+    class InvalidPayloadBot:
+        async def on_invalid(self, ctx: BotContext, payload: int) -> None:
+            pass
+
+    with pytest.raises(TypeError, match="dataclass"):
+        GraphNodeCatalog.from_bot_type(InvalidPayloadBot)
 
 
 @pytest.mark.parametrize(
     "mutate",
     [
         lambda graph: graph["nodes"].append(graph["nodes"][0]),
-        lambda graph: graph["edges"].append(graph["edges"][0]),
-        lambda graph: graph["edges"][0].update(source="missing"),
+        lambda graph: graph["nodes"].append(
+            {
+                **graph["nodes"][0],
+                "id": "duplicate-hook",
+                "position": {"x": 200, "y": 80},
+            }
+        ),
+        lambda graph: graph["edges"].append(
+            {"id": "forbidden", "source": "on-book-trigger", "target": "on-book-trigger"}
+        ),
         lambda graph: graph["nodes"][0].update(type="unsupported"),
         lambda graph: graph["nodes"][0].update(selected=True),
+        lambda graph: graph["nodes"][0]["data"].update(hook_name="on_unknown"),
+        lambda graph: graph["nodes"][0]["data"].update(
+            selected_output_paths=[{"segments": ["missing"]}]
+        ),
+        lambda graph: graph["nodes"][0]["data"].update(
+            selected_output_paths=[
+                STARTER_BOOK_OUTPUT_PATH.model_dump(mode="json"),
+                STARTER_BOOK_OUTPUT_PATH.model_dump(mode="json"),
+            ]
+        ),
         lambda graph: graph["nodes"][0]["position"].update(
             x=NODE_GRAPH_COORDINATE_LIMIT + 1
         ),
@@ -174,7 +390,6 @@ def test_node_based_definition_owns_graph_widget_snapshot_and_market_rule() -> N
             x=-NODE_GRAPH_COORDINATE_LIMIT - 1
         ),
         lambda graph: graph["nodes"][0]["position"].update(x=float("nan")),
-        lambda graph: graph["edges"][0].update(selected=True),
         lambda graph: graph.update(viewport={"x": 0, "y": 0, "zoom": 1}),
         lambda graph: graph.update(
             schema_version=NODE_GRAPH_SCHEMA_VERSION + 1
@@ -189,7 +404,11 @@ def test_node_based_definition_owns_graph_widget_snapshot_and_market_rule() -> N
         lambda graph: graph.update(nodes=[]),
         lambda graph: graph.update(
             edges=[
-                {**graph["edges"][0], "id": f"edge-{index}"}
+                {
+                    "id": f"edge-{index}",
+                    "source": "on-book-trigger",
+                    "target": "on-book-trigger",
+                }
                 for index in range(MAX_NODE_GRAPH_EDGES + 1)
             ]
         ),
@@ -210,11 +429,29 @@ def test_node_graph_rejects_invalid_structure(mutate) -> None:
 
 
 def test_node_graph_uses_typed_finite_node_kinds() -> None:
-    assert tuple(GraphNodeType) == (
-        GraphNodeType.INPUT,
-        GraphNodeType.DEFAULT,
-        GraphNodeType.OUTPUT,
+    assert tuple(GraphNodeType) == (GraphNodeType.TRIGGER,)
+    assert STARTER_NODE_GRAPH.nodes[0].data.hook_name == STARTER_TRIGGER_HOOK_NAME
+    assert STARTER_NODE_GRAPH.nodes[0].data.selected_output_paths == (
+        STARTER_BOOK_OUTPUT_PATH,
     )
+
+
+@pytest.mark.parametrize("hook_name", ["on_start", "on_stop"])
+def test_payloadless_trigger_rejects_field_selections(hook_name: str) -> None:
+    graph = STARTER_NODE_GRAPH.model_dump(mode="json")
+    graph["nodes"][0]["data"] = {
+        "hook_name": hook_name,
+        "selected_output_paths": [GraphFieldPath(segments=("bids",)).model_dump()],
+    }
+
+    with pytest.raises(ValidationError, match="payload-less"):
+        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+            {
+                "name": "invalid-lifecycle-output",
+                "market_slugs": ["example-market"],
+                "graph": graph,
+            }
+        )
 
 
 def test_node_based_definition_rejects_blank_market_slugs_at_ingress() -> None:

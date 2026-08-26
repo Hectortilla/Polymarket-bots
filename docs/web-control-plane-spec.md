@@ -14,8 +14,8 @@ implementation of authentication, billing, tenancy, or live trading.
 
 - Show a trusted server-owned catalog of bot definitions.
 - Render a launch form from backend-provided metadata.
-- Let the trusted operator submit a validated node graph for a non-trading
-  market-observer definition.
+- Let the trusted operator compose a validated, non-executable graph from
+  lifecycle triggers and event outputs described by the backend framework.
 - Launch multiple paper runs and queue work above worker capacity.
 - Stop queued or running runs.
 - Persist run state and useful progress in PostgreSQL.
@@ -34,7 +34,7 @@ implementation of authentication, billing, tenancy, or live trading.
   actions.
 - Recorder or backtest controls.
 - User-supplied Python paths, arbitrary code, plugins, or executable node
-  programming. Slice 13 stores node graphs but does not interpret them.
+  programming. Slice 13A stores node graphs but does not interpret them.
 - ECS implementation. v0 keeps only the narrow launcher seam described in the
   architecture; it adds no ECS fields or adapters.
 
@@ -114,9 +114,12 @@ The launch UI renders the selected descriptor's typed fields, gives immediate
 client feedback, submits definition ID/version plus its input object, and opens
 the created run. Decimal inputs remain decimal strings across the API boundary.
 Frontend validation is only feedback; backend ingress is authoritative.
-The node-based definition renders a Svelte Flow canvas, stores its graph in the
+The node-based definition renders a Svelte Flow canvas. Its trigger palette is
+derived from `BaseBot` lifecycle hooks, and each trigger lets the operator
+select outputs derived from that hook's annotated event dataclass. The frontend
+contains no hook or event-field registry. The canvas stores its graph in the
 immutable run configuration, observes the selected market streams, and never
-submits an order in this MVP.
+dispatches a graph trigger or submits an order in this MVP.
 
 ### Run detail
 
@@ -168,8 +171,9 @@ v0 is complete when one trusted operator can:
   semantics and controls;
 - add a trusted definition using an already-supported field/widget kind without
   editing the launch page; and
-- launch the node-based observer, reload its exact graph snapshot, and stop it
-  without any graph node producing an order.
+- launch the node-based observer with framework-derived trigger nodes and
+  selected event-field outputs, reload its exact graph snapshot, and stop it
+  without any graph node executing or producing an order.
 
 No endpoint may violate the **Trust Boundary**, and the existing CLI must remain
 usable without control-plane services.

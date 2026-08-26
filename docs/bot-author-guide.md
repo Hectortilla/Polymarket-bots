@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
 
@@ -15,7 +16,11 @@ class BuyCheapOutcome(BaseBot):
     def __init__(self, outcome_token_id: str) -> None:
         self.outcome_token_id = outcome_token_id
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
         if book.token_id != self.outcome_token_id or not book.asks:
             return
 
@@ -83,6 +88,14 @@ rules or other framework configuration. The discoverable typing contract is
 - React to public order-book updates.
 - Submit orders through the broker.
 - Keep decisions fast.
+- Return `None` after normal handling, or a `DispatchSkipReason` when the
+  runtime should record a stable skipped-dispatch outcome.
+
+`on_book_gap`
+
+- Clear strategy state derived from the affected order-book generation.
+- Wait for fresh full-book baselines rather than interpreting a gap as a price
+  or liquidity change.
 
 `on_wallet_trade`
 

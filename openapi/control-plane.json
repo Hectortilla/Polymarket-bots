@@ -92,6 +92,16 @@
             "title": "Display Name",
             "type": "string"
           },
+          "graph_catalog": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphNodeCatalog"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "input_schema": {
             "additionalProperties": true,
             "title": "Input Schema",
@@ -703,9 +713,76 @@
         "minLength": 1,
         "type": "string"
       },
-      "GraphLabel": {
-        "maxLength": 80,
-        "minLength": 1,
+      "GraphFieldDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "collection": {
+            "title": "Collection",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "handle_id": {
+            "title": "Handle Id",
+            "type": "string"
+          },
+          "nullable": {
+            "title": "Nullable",
+            "type": "boolean"
+          },
+          "path": {
+            "$ref": "#/components/schemas/GraphFieldPath"
+          },
+          "value_schema": {
+            "additionalProperties": true,
+            "title": "Value Schema",
+            "type": "object"
+          },
+          "value_type": {
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "handle_id",
+          "display_name",
+          "value_type",
+          "nullable",
+          "collection",
+          "value_schema"
+        ],
+        "title": "GraphFieldDescriptor",
+        "type": "object"
+      },
+      "GraphFieldPath": {
+        "additionalProperties": false,
+        "properties": {
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/GraphFieldPathSegment"
+            },
+            "minItems": 1,
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segments"
+        ],
+        "title": "GraphFieldPath",
+        "type": "object"
+      },
+      "GraphFieldPathSegment": {
+        "maxLength": 64,
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "type": "string"
+      },
+      "GraphHookName": {
+        "maxLength": 64,
+        "pattern": "^on_[a-z][a-z0-9_]*$",
         "type": "string"
       },
       "GraphNode": {
@@ -721,7 +798,9 @@
             "$ref": "#/components/schemas/GraphPosition"
           },
           "type": {
-            "$ref": "#/components/schemas/GraphNodeType"
+            "const": "trigger",
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
@@ -733,27 +812,71 @@
         "title": "GraphNode",
         "type": "object"
       },
-      "GraphNodeData": {
+      "GraphNodeCatalog": {
         "additionalProperties": false,
         "properties": {
-          "label": {
-            "$ref": "#/components/schemas/GraphLabel"
+          "node_type": {
+            "const": "trigger",
+            "title": "Node Type",
+            "type": "string"
+          },
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/GraphTriggerDescriptor"
+            },
+            "title": "Triggers",
+            "type": "array"
           }
         },
         "required": [
-          "label"
+          "node_type",
+          "triggers"
+        ],
+        "title": "GraphNodeCatalog",
+        "type": "object"
+      },
+      "GraphNodeData": {
+        "additionalProperties": false,
+        "properties": {
+          "hook_name": {
+            "$ref": "#/components/schemas/GraphHookName"
+          },
+          "selected_output_paths": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphFieldPath"
+            },
+            "title": "Selected Output Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "hook_name"
         ],
         "title": "GraphNodeData",
         "type": "object"
       },
-      "GraphNodeType": {
-        "enum": [
-          "input",
-          "default",
-          "output"
+      "GraphPayloadDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/GraphFieldDescriptor"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "type_name": {
+            "title": "Type Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type_name",
+          "fields"
         ],
-        "title": "GraphNodeType",
-        "type": "string"
+        "title": "GraphPayloadDescriptor",
+        "type": "object"
       },
       "GraphPosition": {
         "additionalProperties": false,
@@ -770,6 +893,41 @@
           "y"
         ],
         "title": "GraphPosition",
+        "type": "object"
+      },
+      "GraphTriggerDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "context_handle_id": {
+            "const": "context",
+            "title": "Context Handle Id",
+            "type": "string"
+          },
+          "context_type_name": {
+            "const": "BotContext",
+            "title": "Context Type Name",
+            "type": "string"
+          },
+          "hook_name": {
+            "$ref": "#/components/schemas/GraphHookName"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphPayloadDescriptor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hook_name",
+          "context_handle_id",
+          "context_type_name"
+        ],
+        "title": "GraphTriggerDescriptor",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1192,7 +1350,7 @@
             "items": {
               "$ref": "#/components/schemas/GraphEdge"
             },
-            "maxItems": 100,
+            "maxItems": 0,
             "title": "Edges",
             "type": "array"
           },

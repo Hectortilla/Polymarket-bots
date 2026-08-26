@@ -1,7 +1,11 @@
 <script lang="ts">
   import type { AnySchemaObject } from 'ajv';
 
-  import type { BotDefinitionDescriptor, NodeGraph } from '$lib/api/generated';
+  import type {
+    BotDefinitionDescriptor,
+    GraphNodeCatalog,
+    NodeGraph
+  } from '$lib/api/generated';
   import NodeGraphInput from './NodeGraphInput.svelte';
   import {
     WIDGET_KIND,
@@ -72,8 +76,15 @@
     return inputType(field) === 'number' && value !== '' ? Number(value) : value;
   }
 
-  function graphInput(name: string, field: AnySchemaObject): NodeGraph {
+  function initialGraphForField(name: string, field: AnySchemaObject): NodeGraph {
     return (inputs[name] ?? field.default) as NodeGraph;
+  }
+
+  function nodeGraphCatalog(): GraphNodeCatalog {
+    if (!descriptor.graph_catalog) {
+      throw new Error('Node graph widget requires graph catalog metadata.');
+    }
+    return descriptor.graph_catalog;
   }
 
   async function submit(event: SubmitEvent): Promise<void> {
@@ -108,7 +119,8 @@
           <!-- Reset canvas-owned state when the selected definition changes. -->
           {#key descriptor.definition_id}
             <NodeGraphInput
-              initialGraph={graphInput(name, schema)}
+              initialGraph={initialGraphForField(name, schema)}
+              graphCatalog={nodeGraphCatalog()}
               onchange={(graph) => update(name, graph)}
               labelledby={labelId}
               describedby={typeof schema.description === 'string' ? helperId : undefined}

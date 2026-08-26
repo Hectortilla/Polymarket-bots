@@ -8,25 +8,16 @@ import {
   WIDGET_KIND,
   WIDGET_SCHEMA_KEY
 } from './schema';
+import { canvasNodes, createTriggerNode } from './nodeGraph';
 import {
-  GRAPH_NODE_TYPE,
-  canvasNodes,
-  createCanvasNode
-} from './nodeGraph';
+  ON_START_TRIGGER,
+  ON_WALLET_TRADE_TRIGGER,
+  TEST_GRAPH,
+  TEST_GRAPH_CATALOG,
+  graphDescriptor
+} from './nodeGraphTestFixtures';
 
 const WALLET = '0x0000000000000000000000000000000000000001';
-const TEST_GRAPH: NodeGraph = {
-  schema_version: 1,
-  nodes: [
-    {
-      id: 'input-1',
-      type: GRAPH_NODE_TYPE.input,
-      position: { x: 0, y: 0 },
-      data: { label: 'Test input' }
-    }
-  ],
-  edges: []
-};
 
 afterEach(cleanup);
 
@@ -66,43 +57,6 @@ function descriptor(
     },
     ...overrides
   };
-}
-
-function graphDescriptor(
-  graph: NodeGraph,
-  definitionId = 'node-based-test'
-): BotDefinitionDescriptor {
-  return descriptor({
-    definition_id: definitionId,
-    market_selection: SELECTION_MODE.userConfigured,
-    wallet_selection: SELECTION_MODE.absent,
-    input_schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['name', 'market_slugs', 'graph'],
-      properties: {
-        name: { type: 'string', minLength: 1 },
-        market_slugs: {
-          type: 'array',
-          minItems: 1,
-          items: { type: 'string' },
-          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.marketSlugs
-        },
-        graph: {
-          type: 'object',
-          default: graph,
-          required: ['schema_version', 'nodes', 'edges'],
-          properties: {
-            schema_version: { const: 1 },
-            nodes: { type: 'array', minItems: 1 },
-            edges: { type: 'array' }
-          },
-          additionalProperties: false,
-          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.nodeGraph
-        }
-      }
-    }
-  });
 }
 
 describe('LaunchForm', () => {
@@ -194,19 +148,57 @@ describe('LaunchForm', () => {
     await fireEvent.input(screen.getByLabelText('Market slugs'), {
       target: { value: 'example-market' }
     });
-    await fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    expect(
+      screen.getByRole('button', { name: 'Add on_book' }).hasAttribute('disabled')
+    ).toBe(true);
+    const contextHandle = document.querySelector('[data-handleid="context"]');
+    expect(contextHandle).not.toBeNull();
+    expect(contextHandle?.classList.contains('connectable')).toBe(false);
+    expect(document.querySelector('[data-handleid="field:bids"]')).not.toBeNull();
+    expect(
+      [...document.querySelectorAll('[data-handleid]')].map((handle) =>
+        handle.getAttribute('data-handleid')
+      )
+    ).toEqual(['context', 'field:bids']);
+    expect(document.querySelector('fieldset.nowheel')).not.toBeNull();
+    expect(
+      document.querySelector('.node-graph-controls.horizontal')
+    ).not.toBeNull();
+    await fireEvent.click(
+      screen.getByLabelText('BookSnapshot.asks')
+    );
+    expect(document.querySelector('[data-handleid="field:asks"]')).not.toBeNull();
+    await fireEvent.click(
+      screen.getByRole('button', { name: 'Add on_wallet_trade' })
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Add on_wallet_trade' })
+        .hasAttribute('disabled')
+    ).toBe(true);
     await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
 
+    const onBookWithAsks = {
+      ...TEST_GRAPH.nodes[0],
+      data: {
+        ...TEST_GRAPH.nodes[0].data,
+        selected_output_paths: [
+          { segments: ['bids'] },
+          { segments: ['asks'] }
+        ]
+      }
+    };
     expect(submit).toHaveBeenCalledWith({
       name: 'Visual observer',
       market_slugs: ['example-market'],
       graph: {
         ...TEST_GRAPH,
         nodes: [
-          ...TEST_GRAPH.nodes,
-          createCanvasNode(
+          onBookWithAsks,
+          createTriggerNode(
             canvasNodes(TEST_GRAPH),
-            GRAPH_NODE_TYPE.default
+            TEST_GRAPH_CATALOG,
+            ON_WALLET_TRADE_TRIGGER
           )
         ]
       }
@@ -217,20 +209,16 @@ describe('LaunchForm', () => {
     const submit = vi.fn();
     const nextGraph: NodeGraph = {
       ...TEST_GRAPH,
-      nodes: [
-        {
-          ...TEST_GRAPH.nodes[0],
-          id: 'next-input',
-          data: { label: 'Next input' }
-        }
-      ]
+      nodes: [createTriggerNode([], TEST_GRAPH_CATALOG, ON_START_TRIGGER)]
     };
     const view = render(LaunchForm, {
       descriptor: graphDescriptor(TEST_GRAPH),
       onsubmit: submit
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    await fireEvent.click(
+      screen.getByRole('button', { name: 'Add on_wallet_trade' })
+    );
     await view.rerender({
       descriptor: graphDescriptor(nextGraph, 'next-node-based-test'),
       onsubmit: submit

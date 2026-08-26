@@ -1,43 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import type { NodeGraph } from '$lib/api/generated';
 import {
-  GRAPH_NODE_TYPE,
   canvasEdges,
   canvasNodes,
-  createCanvasNode,
+  createTriggerNode,
+  outputPathIsSelected,
+  setOutputPathSelected,
   toPersistedNodeGraph,
+  triggerAlreadyExists,
   type CanvasEdge,
   type CanvasNode
 } from './nodeGraph';
-
-const GRAPH: NodeGraph = {
-  schema_version: 1,
-  nodes: [
-    {
-      id: 'input-1',
-      type: GRAPH_NODE_TYPE.input,
-      position: { x: 0, y: 10 },
-      data: { label: 'Market input' }
-    },
-    {
-      id: 'output-1',
-      type: GRAPH_NODE_TYPE.output,
-      position: { x: 200, y: 10 },
-      data: { label: 'Output' }
-    }
-  ],
-  edges: [{ id: 'input-output', source: 'input-1', target: 'output-1' }]
-};
+import {
+  ON_BOOK_TRIGGER,
+  ON_START_TRIGGER,
+  TEST_GRAPH,
+  TEST_GRAPH_CATALOG
+} from './nodeGraphTestFixtures';
 
 describe('node graph canvas adapter', () => {
-  it('round-trips only the persisted graph contract', () => {
-    const nodes = canvasNodes(GRAPH);
-    const edges = canvasEdges(GRAPH);
+  it('round-trips trigger data while stripping XYFlow-only state', () => {
+    const nodes = canvasNodes(TEST_GRAPH);
+    const edges = canvasEdges(TEST_GRAPH);
     const transientNodes = nodes.map((node) => ({
       ...node,
       selected: true,
-      measured: { width: 120, height: 40 }
+      measured: { width: 320, height: 180 }
     })) as CanvasNode[];
     const transientEdges = edges.map((edge) => ({
       ...edge,
@@ -46,17 +34,41 @@ describe('node graph canvas adapter', () => {
     })) as CanvasEdge[];
 
     expect(
-      toPersistedNodeGraph(GRAPH.schema_version, transientNodes, transientEdges)
-    ).toEqual(GRAPH);
+      toPersistedNodeGraph(
+        TEST_GRAPH.schema_version,
+        transientNodes,
+        transientEdges
+      )
+    ).toEqual(TEST_GRAPH);
   });
 
-  it('adds typed nodes with the first available stable ID', () => {
-    const nodes = canvasNodes(GRAPH);
+  it('creates one catalog-derived trigger node and detects existing hooks', () => {
+    const nodes = canvasNodes(TEST_GRAPH);
+    const added = createTriggerNode(
+      nodes,
+      TEST_GRAPH_CATALOG,
+      ON_START_TRIGGER
+    );
 
-    expect(createCanvasNode(nodes, GRAPH_NODE_TYPE.input)).toMatchObject({
-      id: 'input-2',
-      type: GRAPH_NODE_TYPE.input,
-      data: { label: expect.any(String) }
+    expect(added).toMatchObject({
+      id: 'trigger-on-start',
+      type: TEST_GRAPH_CATALOG.node_type,
+      data: { hook_name: ON_START_TRIGGER.hook_name, selected_output_paths: [] }
     });
+    expect(triggerAlreadyExists(nodes, ON_BOOK_TRIGGER)).toBe(true);
+    expect(triggerAlreadyExists(nodes, ON_START_TRIGGER)).toBe(false);
+  });
+
+  it('adds and removes structured selected output paths', () => {
+    const data = TEST_GRAPH.nodes[0].data;
+    const asks = ON_BOOK_TRIGGER.payload!.fields[1].path;
+    const withAsks = setOutputPathSelected(data, asks, true);
+
+    expect(outputPathIsSelected(withAsks, asks)).toBe(true);
+    expect(withAsks.selected_output_paths).toEqual([
+      { segments: ['bids'] },
+      { segments: ['asks'] }
+    ]);
+    expect(setOutputPathSelected(withAsks, asks, false)).toEqual(data);
   });
 });

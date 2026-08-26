@@ -1,6 +1,6 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12E and Slice 13 are implemented.
+Status: planned overall; Slices 12A through 12E and Slice 13A are implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
@@ -52,7 +52,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F and Slice 13 in `docs/implementation-plan.md`.
+  Slices 12A-12F and Slice 13A in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -84,8 +84,10 @@ supporting private modules are not prescribed:
 
 - `polybot_control_plane.catalog.contracts`: `SelectionMode`, `WidgetKind`,
   `BotDefinitionDescriptor`, and `LaunchRequest`.
-- `polybot_control_plane.catalog.graphs`: the versioned `NodeGraph`, node/edge
-  contracts, validation limits, and starter graph snapshot.
+- `polybot_control_plane.catalog.graphs`: public trigger-catalog and versioned
+  `NodeGraph` contracts, validation limits, and the starter graph snapshot.
+  Focused supporting modules discover `BaseBot` hook signatures and traverse
+  dataclass fields; the package root owns the public graph contract.
 - `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
   `RunRead`.
 - `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
@@ -119,6 +121,7 @@ market slugs, node graph, wallet addresses, and stream rules.
 - `market_selection`
 - `wallet_selection`
 - `input_schema`
+- `graph_catalog` (omitted for definitions without a node graph)
 
 `LaunchRequest` has exactly `definition_id`, `definition_version`, and `inputs`.
 The run name is a field in the definition's launch schema rather than a second
@@ -148,20 +151,42 @@ non-sensitive `BotConfig` inputs used by web runs:
 - `paper_latency_jitter_ms`
 - `event_max_age_ms`
 - `paper_portfolio_usdc`
-- `graph` (nullable; present only for the Slice 13 node-based definition)
+- `graph` (nullable; present only for the Slice 13A node-based definition)
 
 Decimal values serialize as canonical decimal strings. Fields prohibited by the
 product specification's **Trust Boundary** are absent rather than accepted and
 then rejected. Conversion to the existing `BotConfig` supplies paper mode and
 credential-free values itself.
 
-The Slice 13 graph contract has `schema_version=1`, one to fifty nodes, and up
-to one hundred edges. Nodes contain only a unique ID, the finite `input`,
-`default`, or `output` type, a finite bounded `x`/`y` position, and label data.
-Edges contain only a unique ID plus source and target node IDs; every endpoint
-must exist. The launch model rejects unknown fields and transient Svelte Flow
-state. The graph is an immutable run snapshot and has no execution semantics in
-this slice.
+The Slice 13A graph contract replaces the pre-production generic v1 contract in
+place and retains `schema_version=1`. `GraphNodeType` contains only `trigger`.
+Each of the one to fifty nodes contains a unique ID, a finite bounded `x`/`y`
+position, and data containing a supported `hook_name` plus unique structured
+`selected_output_paths`. A hook may appear only once. `on_start` and `on_stop`
+have no selectable event outputs. `edges` remains in the snapshot but must be
+empty until a downstream node type exists. Unknown hooks, paths, duplicate
+hooks or selections, mismatched payload selections, and transient Svelte Flow
+fields fail at launch ingress.
+
+The node-based descriptor alone includes a `GraphNodeCatalog`. Catalog
+construction discovers every async `BaseBot` method beginning with `on_` in
+class-definition order, resolves postponed annotations, requires `BotContext`
+and at most one dataclass payload, and ignores return annotations. Stream-plan
+and backtest-query methods are not lifecycle triggers. The catalog exposes the
+opaque context handle `context` plus selectable payload fields derived through
+Pydantic `TypeAdapter`. Ordinary nested dataclasses are traversed; lists and
+tuples are collection boundaries, so `BookSnapshot.bids` exists but
+`BookSnapshot.bids.price` does not. Methods and computed properties are not
+dataclass fields and are not exposed.
+
+Selected fields persist as path segments. Their generated handle is
+`field:<dot-joined-path>` and display label is
+`<PayloadType>.<dot-joined-path>`; no whole-event output exists. The starter
+graph is one `on_book` trigger with `BookSnapshot.bids` selected. The frontend
+uses only this backend metadata for its palette, labels, and handles, disables
+duplicate hooks and connection creation, and strips only Svelte Flow transient
+state. The graph remains an immutable run snapshot with no dispatch,
+compilation, evaluation, worker behavior, or order semantics in this slice.
 
 The HTTP launch boundary performs the only request normalization:
 

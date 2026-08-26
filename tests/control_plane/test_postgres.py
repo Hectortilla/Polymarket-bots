@@ -27,7 +27,7 @@ from polybot_control_plane.catalog.definitions import (
     NODE_BASED_DEFINITION_ID,
     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
 )
-from polybot_control_plane.catalog.graphs import STARTER_NODE_GRAPH
+from polybot_control_plane.catalog.graphs import NodeGraph, STARTER_NODE_GRAPH
 from polybot_control_plane.database import DATABASE_URL_ENV, async_database_url
 from polybot_control_plane.events.contracts import (
     ChartSampleEvent,
@@ -352,6 +352,11 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")
     definition_id = NODE_BASED_DEFINITION_ID
+    graph_snapshot = STARTER_NODE_GRAPH.model_dump(mode="json")
+    graph_snapshot["nodes"][0]["data"]["selected_output_paths"].append(
+        {"segments": ["asks"]}
+    )
+    expected_graph = NodeGraph.model_validate(graph_snapshot)
     config = CATALOG[definition_id].parse_config(
         {
             "name": "first",
@@ -359,6 +364,7 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
             "max_order_size": "3.250",
             "max_slippage_pct": "0.0150",
             "paper_portfolio_usdc": "1500.00",
+            "graph": graph_snapshot,
         }
     )
 
@@ -421,7 +427,7 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     assert restored.config.max_order_size.as_tuple() == config.max_order_size.as_tuple()
     assert restored.config.stream_rules[0].relation is StreamRelation.INDEPENDENT
     assert restored.config.stream_rules[0].market_slugs == ("example-market",)
-    assert restored.config.graph == STARTER_NODE_GRAPH
+    assert restored.config.graph == expected_graph
     assert missing is None
     run_ids = tuple(run.id for run in runs)
     assert tuple(

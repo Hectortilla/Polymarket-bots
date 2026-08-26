@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
 
+from polybot_control_plane.catalog.graphs import GraphNodeCatalog
+
 
 WIDGET_SCHEMA_KEY = "x-widget"
 
@@ -46,6 +48,10 @@ class BotDefinitionDescriptor(BaseModel):
     market_selection: SelectionMode
     wallet_selection: SelectionMode
     input_schema: dict[str, object]
+    graph_catalog: GraphNodeCatalog | None = Field(
+        default=None,
+        exclude_if=lambda catalog: catalog is None,
+    )
 
 
 class LaunchRequest(BaseModel):

@@ -1123,37 +1123,80 @@ Acceptance:
   independent of all control-plane services.
 - The documented standalone extraction checks pass.
 
-## Slice 13: Non-Trading Node-Based Bot MVP
+## Slice 13A: Framework-Derived Trigger Nodes
 
-Status: implemented; depends on Slices 12A through 12E.
+Status: implemented; depends on Slices 12A through 12E. This replaces the
+pre-production generic graph contract from the first Slice 13 scaffold in place.
+The schema and node-based definition versions remain `1`; deployments must
+delete old node-based run rows before adopting this contract.
 
 Minimum deliverable:
 
-- Add one `node-based-bot` catalog definition whose launch schema contains
-  user-configured market slugs and a typed `node_graph` widget.
-- Validate the versioned node/edge graph once at launch ingress and persist it
-  in the existing immutable `PaperRunConfig` JSONB snapshot. Do not add a table,
-  column, endpoint, reusable user definition, or second raw-input copy.
-- Add a Svelte Flow form component driven by the catalog widget annotation. It
-  owns only the canvas state and strips library-only fields before updating the
-  existing launch form input object.
-- Run the existing paper worker with a plain non-trading `BaseBot`. Configured
-  market streams keep the observer active until Stop; graph nodes never submit
-  or influence an order in this slice.
+- Keep one `node-based-bot` catalog definition whose launch schema contains
+  user-configured market slugs and a typed `node_graph` widget. Extend only this
+  definition's descriptor with a generated `GraphNodeCatalog`; `input_schema`
+  remains exclusively the launch-input schema.
+- Discover every async `BaseBot` method beginning with `on_`, in class-definition
+  order. Resolve postponed annotations, require `BotContext` plus zero or one
+  dataclass payload, fail catalog construction on unsupported signatures, and
+  ignore hook return annotations. Do not include stream-planning or backtest
+  query methods.
+- Derive payload-field descriptors from existing dataclass annotations through
+  Pydantic `TypeAdapter`. Recurse into ordinary nested dataclasses, stop at list
+  and tuple boundaries, and preserve scalar type, enum schema, nullability, and
+  collection information. Do not maintain a Python or TypeScript field list or
+  expose methods and computed properties.
+- Expose the opaque context output as `context`. Persist selected event outputs
+  as structured field-path segments; derive handles as
+  `field:<dot-joined-path>` and labels as
+  `<PayloadType>.<dot-joined-path>`. Do not expose a whole-event output.
+- Replace graph v1 with trigger nodes only. Node data contains a supported
+  `hook_name` and unique `selected_output_paths`; each hook may occur once.
+  Payload-less hooks accept no selections. Keep `edges` in the graph snapshot
+  but require it to be empty. Reject unknown hooks, paths, duplicate selections,
+  payload mismatches, transient fields, invalid positions, and excessive nodes
+  at launch ingress.
+- Seed the starter graph with one `on_book` trigger and `BookSnapshot.bids`
+  selected.
+- Build the Svelte Flow palette, trigger labels, context handle, selectable
+  field handles, and node renderer entirely from catalog metadata. Disable hooks
+  already present, preserve complete graph-node data while stripping only
+  Svelte Flow state, and disable connection creation until processing nodes
+  exist.
+- Validate once at launch ingress and persist the exact immutable graph in the
+  existing `PaperRunConfig` JSONB snapshot. Add no table, column, endpoint,
+  evaluator, compiler, broker integration, or worker behavior.
+- Continue running the paper worker with a plain non-trading `BaseBot`. The
+  catalog shows `on_fill` because it is a framework lifecycle hook, but no graph
+  trigger is dispatched and no graph node can submit or influence an order.
+- Regenerate OpenAPI and frontend types from the Pydantic contracts. Update the
+  architecture, control-plane specification, README, and bot-author guide to
+  describe all lifecycle hooks and `on_book`'s dispatch-control return.
 
-Do not add node evaluation, graph compilation, trading-node semantics, auth,
-tenancy, sharing, graph editing after launch, or live-mode behavior.
+Do not add graph execution, loop/filter or other processing nodes,
+collection-element paths, edges, trading semantics, live mode, auth, tenancy,
+sharing, reusable user definitions, graph editing after launch, or destructive
+cleanup.
 
 Acceptance:
 
-- Catalog and API tests cover the generated widget schema, default graph,
-  normalized market rule, exact graph persistence, and no enqueue on invalid
-  graph input.
-- Graph validation covers duplicate identities, dangling endpoints, unknown
-  node kinds, unknown/transient fields, finite bounded positions, and graph-size
-  limits.
-- Frontend tests cover metadata-driven rendering, initial graph state, add and
-  normalization behavior, exact form submission, and schema feedback.
-- Worker coverage proves the node definition uses the ordinary paper runtime
-  and a bot with no order-producing hook. Existing stop and duplicate-delivery
-  guarantees remain unchanged.
+- Backend tests cover deterministic hook discovery, postponed annotation
+  resolution, opaque context, ignored return values, unsupported signatures,
+  and exact derived fields for book, gap, wallet-trade, fill, and resolution
+  payloads. Collections expose `bids` and `asks`, never element fields such as
+  `bids.price`.
+- Graph validation covers the starter graph, unique node and hook identities,
+  valid and invalid paths, duplicate selections, payload-less hooks, forbidden
+  edges, transient fields, bounded positions, and graph-size limits.
+- Catalog, API, and PostgreSQL tests prove graph metadata appears only on the
+  node-based definition, exact snapshots survive launch and JSONB round trips,
+  invalid hooks or paths enqueue no work, and worker behavior remains
+  graph-independent and non-trading.
+- Frontend tests prove the palette and labels are metadata-driven, used hooks
+  become unavailable, field selection creates the expected structured paths and
+  handles, context is always present, no whole-event output exists, transient
+  Svelte Flow state is removed without dropping trigger data, submissions and
+  definition resets are exact, schema feedback remains intact, and connections
+  are disabled.
+- `uv run pytest`, `npm run generate:check`, `npm run check`, `npm test`, and
+  `npm run build` pass.

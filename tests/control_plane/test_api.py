@@ -113,6 +113,17 @@ def test_catalog_route_and_unknown_definition(
     assert WINNER_DEFINITION_ID in {
         definition["definition_id"] for definition in definitions.json()
     }
+    node_definition = next(
+        definition
+        for definition in definitions.json()
+        if definition["definition_id"] == NODE_BASED_DEFINITION_ID
+    )
+    assert node_definition["graph_catalog"]["triggers"][0]["hook_name"] == "on_start"
+    assert all(
+        "graph_catalog" not in definition
+        for definition in definitions.json()
+        if definition["definition_id"] != NODE_BASED_DEFINITION_ID
+    )
     assert missing.status_code == 404
     assert state.runs == {}
     assert launcher.run_ids == []
@@ -141,7 +152,43 @@ def test_node_graph_launch_persists_exact_snapshot_and_rejects_invalid_graph(
             **body["inputs"],
             "graph": {
                 **graph,
-                "edges": [{**graph["edges"][0], "target": "missing"}],
+                "edges": [
+                    {
+                        "id": "forbidden-edge",
+                        "source": graph["nodes"][0]["id"],
+                        "target": graph["nodes"][0]["id"],
+                    }
+                ],
+            },
+        },
+        {
+            **body["inputs"],
+            "graph": {
+                **graph,
+                "nodes": [
+                    {
+                        **graph["nodes"][0],
+                        "data": {
+                            **graph["nodes"][0]["data"],
+                            "selected_output_paths": [{"segments": ["missing"]}],
+                        },
+                    }
+                ],
+            },
+        },
+        {
+            **body["inputs"],
+            "graph": {
+                **graph,
+                "nodes": [
+                    {
+                        **graph["nodes"][0],
+                        "data": {
+                            **graph["nodes"][0]["data"],
+                            "hook_name": "on_unknown",
+                        },
+                    }
+                ],
             },
         },
         {

@@ -26,6 +26,7 @@ from polybot_control_plane.catalog.contracts import (
     DefinitionVersion,
     SelectionMode,
 )
+from polybot_control_plane.catalog.graphs import GRAPH_NODE_CATALOG, GraphNodeCatalog
 from polybot_control_plane.catalog.inputs import (
     ContrarianLaunchInputs,
     MarketWatcherLaunchInputs,
@@ -69,6 +70,7 @@ class CatalogEntry:
     wallet_selection: SelectionMode
     launch_model: type[PaperLaunchInputs]
     factory: BotFactory
+    graph_catalog: GraphNodeCatalog | None = None
     _bound_factory: BoundBotFactory = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -84,6 +86,7 @@ class CatalogEntry:
             market_selection=self.market_selection,
             wallet_selection=self.wallet_selection,
             input_schema=self.launch_model.model_json_schema(),
+            graph_catalog=self.graph_catalog,
         )
 
     def parse_config(self, inputs: object) -> PaperRunConfig:
@@ -166,6 +169,7 @@ CATALOG: dict[str, CatalogEntry] = {
         wallet_selection=SelectionMode.ABSENT,
         launch_model=NodeBasedLaunchInputs,
         factory=create_node_based_bot,
+        graph_catalog=GRAPH_NODE_CATALOG,
     ),
 }
 

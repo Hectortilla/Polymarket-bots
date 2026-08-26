@@ -77,6 +77,7 @@ packages = [
   "polybot_control_plane",
   "polybot_control_plane.api",
   "polybot_control_plane.catalog",
+  "polybot_control_plane.catalog.graphs",
   "polybot_control_plane.runs",
   "polybot_control_plane.events",
   "polybot_control_plane.events.contracts",

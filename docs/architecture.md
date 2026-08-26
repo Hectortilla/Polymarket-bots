@@ -11,7 +11,7 @@
 
 ## Current Status
 
-Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slice 13 are
+Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slice 13A are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -21,7 +21,7 @@ dashboard, dynamic market tracking and resolution settlement, and the isolated
 control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, mixed durable/live
 SSE path, deterministic OpenAPI artifact, browser dashboard, and the
-non-trading node-graph launch MVP.
+non-trading framework-derived trigger-node launch MVP.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -695,7 +695,14 @@ class MyBot(BaseBot):
     async def next_stream_rules(self, ctx: BotContext, now_ms: int) -> tuple[StreamRule, ...]:
         ...
 
-    async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
+        ...
+
+    async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
         ...
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
@@ -706,10 +713,19 @@ class MyBot(BaseBot):
 
     async def on_market_resolved(self, ctx: BotContext, event: MarketResolutionEvent) -> None:
         ...
+
+    async def on_stop(self, ctx: BotContext) -> None:
+        ...
 ```
 
 Only override hooks that are needed. Do not put SDK clients, HTTP clients,
 signing, fee math, or simulation details in bot classes.
+
+The Slice 13A design-time trigger catalog discovers the async `on_*` methods
+above directly from `BaseBot`, including `on_start` and `on_stop`, while
+excluding stream-planning and backtest-query methods. Its payload outputs are
+derived from the annotated event dataclasses. This metadata does not dispatch
+hooks or give the stored graph execution semantics.
 
 Framework-aware strategy code should also obtain time and randomness from
 `ctx.clock` and `ctx.rng`. Their normal defaults use the system clock and a
