@@ -644,11 +644,21 @@ tbody tr:hover {
   align-items: start;
 }
 
+.launch-page.graph-launch {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
+}
+
 .launch-intro {
   position: sticky;
   top: 112px;
   min-width: 0;
   padding-top: 8px;
+}
+
+.graph-launch .launch-intro {
+  position: static;
+  max-width: 720px;
 }
 
 .launch-intro h1 {
@@ -668,6 +678,11 @@ tbody tr:hover {
 .launch-controls {
   min-width: 0;
   padding-top: 8px;
+}
+
+.graph-launch .launch-controls {
+  width: 100%;
+  padding-top: 0;
 }
 
 .selection-notes {

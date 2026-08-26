@@ -71,7 +71,10 @@
 {:else if !descriptor}
   <p class="notice error" role="alert">{error}</p>
 {:else}
-  <section class="launch-page">
+  <section
+    class="launch-page"
+    class:graph-launch={descriptor.graph_catalog !== null && descriptor.graph_catalog !== undefined}
+  >
     <header class="launch-intro">
       <p class="route-meta">Paper run / {descriptor.label.replace('_', ' ')}</p>
       <h1>{descriptor.display_name}</h1>
