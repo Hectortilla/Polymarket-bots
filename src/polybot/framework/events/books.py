@@ -7,6 +7,7 @@ from enum import StrEnum
 from polybot.framework.events import Side, require_side
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
+from polybot.framework.graph import graph_output
 
 BOOK_LEVEL_SIZE_FLOOR = Decimal("0")
 
@@ -79,6 +80,18 @@ class BookSnapshot:
     condition_id: str | None = None
     outcome: str | None = None
 
+    @property
+    @graph_output
+    def best_bid(self) -> BookLevel | None:
+        """Return the highest executable SELL-side level."""
+        return max(self.bids, key=lambda level: level.price, default=None)
+
+    @property
+    @graph_output
+    def best_ask(self) -> BookLevel | None:
+        """Return the lowest executable BUY-side level."""
+        return min(self.asks, key=lambda level: level.price, default=None)
+
     def is_fresh(self, now_ms: int, max_age_ms: int) -> bool:
         age_ms = now_ms - self.received_at_ms
         return 0 <= age_ms <= max_age_ms
@@ -100,11 +113,11 @@ class BookSnapshot:
         return len({level.price for level in levels}) == len(levels)
 
     def is_crossed(self) -> bool:
-        if not self.bids or not self.asks:
+        best_bid = self.best_bid
+        best_ask = self.best_ask
+        if best_bid is None or best_ask is None:
             return False
-        return max(level.price for level in self.bids) > min(
-            level.price for level in self.asks
-        )
+        return best_bid.price > best_ask.price
 
     def executable_levels(self, side: Side) -> tuple[BookLevel, ...]:
         require_side(side)
@@ -113,19 +126,20 @@ class BookSnapshot:
         return tuple(sorted(self.bids, key=lambda level: level.price, reverse=True))
 
     def midpoint(self) -> Decimal | None:
-        if not self.bids or not self.asks:
+        best_bid = self.best_bid
+        best_ask = self.best_ask
+        if best_bid is None or best_ask is None:
             return None
-        return (
-            max(level.price for level in self.bids)
-            + min(level.price for level in self.asks)
-        ) / 2
+        return (best_bid.price + best_ask.price) / 2
 
     def executable_mark(self, size: Decimal) -> Decimal | None:
         """Return the quote required to liquidate a non-zero position."""
-        if size > 0 and self.bids:
-            return max(level.price for level in self.bids)
-        if size < 0 and self.asks:
-            return min(level.price for level in self.asks)
+        best_bid = self.best_bid
+        best_ask = self.best_ask
+        if size > 0 and best_bid is not None:
+            return best_bid.price
+        if size < 0 and best_ask is not None:
+            return best_ask.price
         return None
 
     def validation_issue(

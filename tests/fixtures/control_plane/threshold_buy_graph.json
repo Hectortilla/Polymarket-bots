@@ -1,0 +1,78 @@
+{
+  "nodes": [
+    {
+      "id": "on-book-trigger",
+      "type": "trigger",
+      "position": { "x": 0, "y": 0 },
+      "data": { "hook_name": "on_book" }
+    },
+    {
+      "id": "constant-threshold",
+      "type": "constant",
+      "position": { "x": 0, "y": 200 },
+      "data": { "scalar_type": "decimal", "value": "0.5500" }
+    },
+    {
+      "id": "constant-size",
+      "type": "constant",
+      "position": { "x": 250, "y": 300 },
+      "data": { "scalar_type": "decimal", "value": "1.250" }
+    },
+    {
+      "id": "comparison-threshold",
+      "type": "comparison",
+      "position": { "x": 250, "y": 100 },
+      "data": { "operator": "less_than_or_equal" }
+    },
+    {
+      "id": "action-buy",
+      "type": "broker_action",
+      "position": { "x": 500, "y": 100 },
+      "data": { "action": "submit_buy" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ask-left",
+      "source": "on-book-trigger",
+      "source_handle": "field:best_ask.price",
+      "target": "comparison-threshold",
+      "target_handle": "left"
+    },
+    {
+      "id": "threshold-right",
+      "source": "constant-threshold",
+      "source_handle": "value",
+      "target": "comparison-threshold",
+      "target_handle": "right"
+    },
+    {
+      "id": "comparison-enabled",
+      "source": "comparison-threshold",
+      "source_handle": "result",
+      "target": "action-buy",
+      "target_handle": "enabled"
+    },
+    {
+      "id": "book-token",
+      "source": "on-book-trigger",
+      "source_handle": "field:token_id",
+      "target": "action-buy",
+      "target_handle": "token_id"
+    },
+    {
+      "id": "book-price",
+      "source": "on-book-trigger",
+      "source_handle": "field:best_ask.price",
+      "target": "action-buy",
+      "target_handle": "price"
+    },
+    {
+      "id": "constant-size",
+      "source": "constant-size",
+      "source_handle": "value",
+      "target": "action-buy",
+      "target_handle": "size"
+    }
+  ]
+}

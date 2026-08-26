@@ -1,89 +1,78 @@
 import type {
   BotDefinitionDescriptor,
-  GraphFieldDescriptor,
+  GraphBrokerActionDescriptor,
+  GraphComparisonDescriptor,
+  GraphConstantDescriptor,
   GraphNodeCatalog,
   GraphTriggerDescriptor,
   NodeGraph
 } from '$lib/api/generated';
+import graphNodeCatalog from './graphNodeCatalog.fixture.json';
+import thresholdBuyGraph from '../../../../tests/fixtures/control_plane/threshold_buy_graph.json';
 import { SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from './schema';
+import { GRAPH_NODE_TYPE } from './nodeGraph';
 
-const BIDS_FIELD: GraphFieldDescriptor = {
-  path: { segments: ['bids'] },
-  handle_id: 'field:bids',
-  display_name: 'BookSnapshot.bids',
-  value_type: 'BookLevel',
-  nullable: false,
-  collection: true,
-  value_schema: { type: 'array' }
-};
+export const TEST_GRAPH_CATALOG = graphNodeCatalog as GraphNodeCatalog;
 
-const ASKS_FIELD: GraphFieldDescriptor = {
-  path: { segments: ['asks'] },
-  handle_id: 'field:asks',
-  display_name: 'BookSnapshot.asks',
-  value_type: 'BookLevel',
-  nullable: false,
-  collection: true,
-  value_schema: { type: 'array' }
-};
+function requireDescriptor<T>(
+  descriptors: T[],
+  matches: (descriptor: T) => boolean,
+  description: string
+): T {
+  const descriptor = descriptors.find(matches);
+  if (!descriptor) throw new Error(`Missing graph catalog fixture: ${description}`);
+  return descriptor;
+}
 
-const SIZE_FIELD: GraphFieldDescriptor = {
-  path: { segments: ['size'] },
-  handle_id: 'field:size',
-  display_name: 'WalletTradeEvent.size',
-  value_type: 'Decimal',
-  nullable: false,
-  collection: false,
-  value_schema: { type: 'string' }
-};
-
-export const ON_START_TRIGGER: GraphTriggerDescriptor = {
-  hook_name: 'on_start',
-  context_handle_id: 'context',
-  context_type_name: 'BotContext',
-  payload: null
-};
-
-export const ON_BOOK_TRIGGER: GraphTriggerDescriptor = {
-  hook_name: 'on_book',
-  context_handle_id: 'context',
-  context_type_name: 'BotContext',
-  payload: {
-    type_name: 'BookSnapshot',
-    fields: [BIDS_FIELD, ASKS_FIELD]
-  }
-};
-
-export const ON_WALLET_TRADE_TRIGGER: GraphTriggerDescriptor = {
-  hook_name: 'on_wallet_trade',
-  context_handle_id: 'context',
-  context_type_name: 'BotContext',
-  payload: {
-    type_name: 'WalletTradeEvent',
-    fields: [SIZE_FIELD]
-  }
-};
-
-export const TEST_GRAPH_CATALOG: GraphNodeCatalog = {
-  node_type: 'trigger',
-  triggers: [ON_START_TRIGGER, ON_BOOK_TRIGGER, ON_WALLET_TRADE_TRIGGER]
-};
+export const ON_START_TRIGGER: GraphTriggerDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.triggers,
+  (descriptor) => descriptor.hook_name === 'on_start',
+  'on_start trigger'
+);
+export const ON_BOOK_TRIGGER: GraphTriggerDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.triggers,
+  (descriptor) => descriptor.hook_name === 'on_book',
+  'on_book trigger'
+);
+export const ON_WALLET_TRADE_TRIGGER: GraphTriggerDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.triggers,
+  (descriptor) => descriptor.hook_name === 'on_wallet_trade',
+  'on_wallet_trade trigger'
+);
+export const DECIMAL_CONSTANT: GraphConstantDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.constants,
+  (descriptor) => descriptor.scalar_type === 'decimal',
+  'decimal constant'
+);
+export const BOOLEAN_CONSTANT: GraphConstantDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.constants,
+  (descriptor) => descriptor.scalar_type === 'boolean',
+  'boolean constant'
+);
+export const LESS_THAN_OR_EQUAL: GraphComparisonDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.comparisons,
+  (descriptor) => descriptor.operator === 'less_than_or_equal',
+  'less-than-or-equal comparison'
+);
+export const BUY_ACTION: GraphBrokerActionDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.broker_actions,
+  (descriptor) => descriptor.action === 'submit_buy',
+  'buy action'
+);
 
 export const TEST_GRAPH: NodeGraph = {
-  schema_version: 1,
   nodes: [
     {
       id: 'on-book-trigger',
-      type: 'trigger',
+      type: GRAPH_NODE_TYPE.trigger,
       position: { x: 80, y: 80 },
-      data: {
-        hook_name: 'on_book',
-        selected_output_paths: [{ segments: ['bids'] }]
-      }
+      data: { hook_name: 'on_book' }
     }
   ],
   edges: []
 };
+
+export const THRESHOLD_BUY_GRAPH = thresholdBuyGraph as NodeGraph;
 
 export function graphDescriptor(
   graph: NodeGraph = TEST_GRAPH,
@@ -91,7 +80,6 @@ export function graphDescriptor(
 ): BotDefinitionDescriptor {
   return {
     definition_id: definitionId,
-    version: 1,
     display_name: 'Node based test',
     description: 'Test definition',
     label: 'non_trading',
@@ -113,13 +101,6 @@ export function graphDescriptor(
         graph: {
           type: 'object',
           default: graph,
-          required: ['schema_version', 'nodes', 'edges'],
-          properties: {
-            schema_version: { const: 1 },
-            nodes: { type: 'array', minItems: 1 },
-            edges: { type: 'array', maxItems: 0 }
-          },
-          additionalProperties: false,
           [WIDGET_SCHEMA_KEY]: WIDGET_KIND.nodeGraph
         }
       }

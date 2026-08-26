@@ -21,8 +21,8 @@ from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRule
 from polybot.performance.contracts.valuation_status import ValuationStatus
-from polybot_control_plane.catalog.contracts import DefinitionId, DefinitionVersion
-from polybot_control_plane.catalog.graphs import NodeGraph
+from polybot_control_plane.catalog.contracts import DefinitionId
+from polybot_control_plane.catalog.graphs.contracts import NodeGraph
 from polybot_control_plane.runs.status import RunStatus
 
 
@@ -96,7 +96,6 @@ class RunRead(BaseModel):
 
     id: UUID
     definition_id: DefinitionId
-    definition_version: DefinitionVersion
     config: PaperRunConfig
     status: RunStatus
     created_at: datetime

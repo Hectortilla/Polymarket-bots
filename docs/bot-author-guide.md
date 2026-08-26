@@ -21,10 +21,10 @@ class BuyCheapOutcome(BaseBot):
         ctx: BotContext,
         book: BookSnapshot,
     ) -> DispatchSkipReason | None:
-        if book.token_id != self.outcome_token_id or not book.asks:
+        best_ask = book.best_ask
+        if book.token_id != self.outcome_token_id or best_ask is None:
             return
 
-        best_ask = book.asks[0]
         if best_ask.price <= Decimal("0.45"):
             await ctx.broker.submit(
                 OrderRequest(
@@ -125,6 +125,13 @@ needs the event or settlement types.
 
 - Clean up bot-local resources.
 - The broker owns order cancellation behavior.
+
+The alpha web graph catalog derives these hooks from `BaseBot` and ordinary
+event dataclass fields. Only explicitly marked computed properties are added;
+`BookSnapshot.best_bid` and `best_ask` provide nullable top-of-book price and
+size leaves. Slice 13B can store validated graphs containing typed constants,
+comparisons, and fixed-side submit actions, but the worker deliberately keeps
+using a non-trading `BaseBot` until Slice 13C adds evaluation.
 
 ## Config Overrides
 

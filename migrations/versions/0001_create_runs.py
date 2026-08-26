@@ -1,4 +1,4 @@
-"""Create the minimal Slice 12A run row."""
+"""Create the current disposable alpha run row."""
 
 from collections.abc import Sequence
 
@@ -7,8 +7,6 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from polybot_control_plane.runs.schema import (
-    DEFINITION_VERSION_CHECK,
-    DEFINITION_VERSION_CONSTRAINT_NAME,
     RunColumn,
     RUNS_TABLE_NAME,
     run_status_column_type,
@@ -26,7 +24,6 @@ def upgrade() -> None:
         RUNS_TABLE_NAME,
         sa.Column(RunColumn.ID, postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(RunColumn.DEFINITION_ID, sa.String(), nullable=False),
-        sa.Column(RunColumn.DEFINITION_VERSION, sa.Integer(), nullable=False),
         sa.Column(
             RunColumn.CONFIG,
             postgresql.JSONB(astext_type=sa.Text()),
@@ -37,10 +34,6 @@ def upgrade() -> None:
             RunColumn.CREATED_AT,
             sa.DateTime(timezone=True),
             nullable=False,
-        ),
-        sa.CheckConstraint(
-            DEFINITION_VERSION_CHECK,
-            name=DEFINITION_VERSION_CONSTRAINT_NAME,
         ),
         sa.PrimaryKeyConstraint(RunColumn.ID),
     )

@@ -23,11 +23,10 @@ import polybot_control_plane.execution.worker.resources as worker_resources
 from polybot.framework.streams import StreamRelation
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
-    INITIAL_DEFINITION_VERSION,
     NODE_BASED_DEFINITION_ID,
     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
 )
-from polybot_control_plane.catalog.graphs import NodeGraph, STARTER_NODE_GRAPH
+from polybot_control_plane.catalog.graphs.contracts import NodeGraph
 from polybot_control_plane.database import DATABASE_URL_ENV, async_database_url
 from polybot_control_plane.events.contracts import (
     ChartSampleEvent,
@@ -51,7 +50,6 @@ from polybot_control_plane.execution.worker import execute_run
 from polybot_control_plane.runs.contracts import RunRead, RunStatus
 from polybot_control_plane.runs.models import RunRow
 from polybot_control_plane.runs.schema import (
-    DEFINITION_VERSION_CONSTRAINT_NAME,
     RunColumn,
     RUNS_TABLE_NAME,
     RUN_STATUS_CONSTRAINT_NAME,
@@ -62,6 +60,7 @@ from control_plane.service_config import (
     POSTGRES_NOT_CONFIGURED_SKIP_REASON,
     TEST_POSTGRES_URL_ENV,
 )
+from control_plane.graph_fixtures import threshold_buy_graph
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
@@ -181,7 +180,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     assert tuple(column["name"] for column in slice_12a_schema[1]) == tuple(
         column.value for column in RunColumn
         if column.value in RunRead.model_fields
-    )[:6]
+    )[:5]
     assert RUN_EVENTS_TABLE_NAME not in slice_12a_schema[0]
 
     command.upgrade(config, "head")
@@ -211,10 +210,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         )
         assert database_column["nullable"] is model_column.nullable
     assert primary_key["constrained_columns"] == [RunRow.id.name]
-    assert {check["name"] for check in checks} == {
-        DEFINITION_VERSION_CONSTRAINT_NAME,
-        RUN_STATUS_CONSTRAINT_NAME,
-    }
+    assert {check["name"] for check in checks} == {RUN_STATUS_CONSTRAINT_NAME}
     assert tuple(column["name"] for column in event_columns) == tuple(
         EventRow.__table__.columns.keys()
     )
@@ -247,7 +243,6 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         statement = _run_insert_statement()
         common_values = {
             RunColumn.DEFINITION_ID.value: "definition",
-            RunColumn.DEFINITION_VERSION.value: INITIAL_DEFINITION_VERSION,
             RunColumn.CONFIG.value: json.dumps({}),
             RunColumn.STATUS.value: RunStatus.QUEUED.value,
             RunColumn.CREATED_AT.value: datetime.now(UTC),
@@ -256,18 +251,11 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
             RunColumn.HEARTBEAT_AT.value: None,
             RunColumn.FAILURE_DETAIL.value: None,
         }
-        invalid_rows = (
-            {
-                **common_values,
-                RunColumn.ID.value: uuid4(),
-                RunColumn.DEFINITION_VERSION.value: 0,
-            },
-            {
-                **common_values,
-                RunColumn.ID.value: uuid4(),
-                RunColumn.STATUS.value: "unknown",
-            },
-        )
+        invalid_rows = ({
+            **common_values,
+            RunColumn.ID.value: uuid4(),
+            RunColumn.STATUS.value: "unknown",
+        },)
         for row in invalid_rows:
             with pytest.raises(IntegrityError):
                 async with engine.begin() as connection:
@@ -282,7 +270,6 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         run_values = {
             RunColumn.ID.value: run_id,
             RunColumn.DEFINITION_ID.value: "definition",
-            RunColumn.DEFINITION_VERSION.value: INITIAL_DEFINITION_VERSION,
             RunColumn.CONFIG.value: json.dumps({}),
             RunColumn.STATUS.value: RunStatus.QUEUED.value,
             RunColumn.CREATED_AT.value: datetime.now(UTC),
@@ -352,10 +339,7 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")
     definition_id = NODE_BASED_DEFINITION_ID
-    graph_snapshot = STARTER_NODE_GRAPH.model_dump(mode="json")
-    graph_snapshot["nodes"][0]["data"]["selected_output_paths"].append(
-        {"segments": ["asks"]}
-    )
+    graph_snapshot = threshold_buy_graph()
     expected_graph = NodeGraph.model_validate(graph_snapshot)
     config = CATALOG[definition_id].parse_config(
         {
@@ -381,12 +365,10 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
             store = RunStore(session)
             first = await store.create(
                 definition_id=definition_id,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config,
             )
             second = await store.create(
                 definition_id=definition_id,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config.model_copy(update={"name": "second"}),
             )
             restored = await store.read(first.id)
@@ -396,14 +378,12 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
                 RunRow(
                     id=uuid4(),
                     definition_id=definition_id,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config.model_dump(mode="json"),
                     created_at=tied_at,
                 ),
                 RunRow(
                     id=uuid4(),
                     definition_id=definition_id,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config.model_dump(mode="json"),
                     created_at=tied_at,
                 ),
@@ -459,32 +439,26 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         async with session_factory() as session:
             queued = await RunStore(session).create(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config,
             )
             queued_stop = await RunStore(session).create(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config.model_copy(update={"name": "queued-stop"}),
             )
             starting_stop = await RunStore(session).create(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config.model_copy(update={"name": "starting-stop"}),
             )
             failed_run = await RunStore(session).create(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config.model_copy(update={"name": "failed"}),
             )
             interrupted_run = await RunStore(session).create(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=config.model_copy(update={"name": "interrupted"}),
             )
             malformed_run = RunRow(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config={},
             )
             session.add(malformed_run)
@@ -692,7 +666,6 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
         async with AsyncSession(engine, expire_on_commit=False) as session:
             created = await RunStore(session).create(
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                definition_version=INITIAL_DEFINITION_VERSION,
                 config=CATALOG[
                     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID
                 ].parse_config(

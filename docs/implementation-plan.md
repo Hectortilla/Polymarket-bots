@@ -957,7 +957,7 @@ Minimum deliverable:
 
 - Add FastAPI and build exactly the HTTP routes in
   `web-control-plane-architecture.md`; do not add convenience endpoints.
-- At POST ingress, resolve/version-check/parse once, persist before launch, and
+- At POST ingress, resolve and parse once, persist before launch, and
   call the injected `RunLauncher`.
 - Keep API workers stateless. Stop changes durable state; no API process reaches
   into a local worker task.
@@ -976,7 +976,7 @@ Minimum deliverable:
 - Export OpenAPI deterministically without starting a server. Running
   `uv run python -m polybot_control_plane.api.openapi` writes the canonical
   `openapi/control-plane.json` artifact.
-- Use FastAPI's built-in request errors and small 404/409 details.
+- Use FastAPI's built-in request errors and a small 404 detail.
 
 Do not add authentication, users, CORS for a separate production origin,
 generic pagination/filter frameworks, custom problem details, database-polling SSE
@@ -984,7 +984,7 @@ fallback, caching, WebSockets, or live-mode fields.
 
 Acceptance:
 
-- API tests cover launch, stale definition version, list/detail, and idempotent
+- API tests cover launch, unknown definitions, list/detail, and idempotent
   queued/running stop. Queued stop writes exactly one terminal event; running
   stop leaves terminal event ownership with the worker.
 - An ingress test proves requests violating the product-spec **Trust Boundary**
@@ -1083,7 +1083,7 @@ Acceptance:
 - A controlled-clock test proves chart/live-health cadence, the
   architecture-owned persistence classification, terminal-only durable health,
   bounded reload history, and live continuation.
-- The run-contract test keeps the ten row-backed fields aligned with the table
+- The run-contract test keeps the nine row-backed fields aligned with the table
   while proving the two computed summary fields are not database columns.
 - Component tests cover the thin ECharts lifecycle, toggle/navigation controls,
   and narrow/wide layout.
@@ -1125,10 +1125,11 @@ Acceptance:
 
 ## Slice 13A: Framework-Derived Trigger Nodes
 
-Status: implemented; depends on Slices 12A through 12E. This replaces the
-pre-production generic graph contract from the first Slice 13 scaffold in place.
-The schema and node-based definition versions remain `1`; deployments must
-delete old node-based run rows before adopting this contract.
+Status: implemented historically and superseded by Slice 13B; depends on Slices
+12A through 12E. This section records the trigger-only Slice 13A contract. The
+current alpha contract is Slice 13B, which removes version fields, admits marked
+computed outputs, functional nodes, and edges, and requires recreating the
+disposable control-plane database.
 
 Minimum deliverable:
 
@@ -1203,7 +1204,7 @@ Acceptance:
 
 ## Slice 13B: Alpha Graph Contracts and Functional Nodes
 
-Status: planned; depends on Slice 13A. This slice supersedes the definition-
+Status: implemented; depends on Slice 13A. This slice supersedes the definition-
 version and graph-schema-version requirements in earlier control-plane slices.
 The control plane is still an alpha product with a disposable database, so it
 keeps one current code-owned contract instead of compatibility layers.
@@ -1238,6 +1239,11 @@ Minimum deliverable:
   action. Keep the frontend palette, labels, handles, controls, and validation
   driven by this catalog and generated OpenAPI types; do not add a parallel
   TypeScript registry.
+- Supersede Slice 13A's `selected_output_paths` trigger-node state. Render every
+  catalog-described scalar trigger handle continuously and use drawn edges as
+  the sole persisted record of which outputs a graph consumes. Collection
+  fields remain visible metadata but cannot connect until collection processing
+  is introduced.
 - Support typed scalar constants for boolean, integer, decimal, and string
   values. Preserve decimals as exact strings at the wire boundary. A constant
   has one typed output and no inputs.

@@ -1,7 +1,7 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12E and Slice 13A are implemented.
-Slices 13B and 13C plan the functional graph contract and paper evaluator.
+Status: planned overall; Slices 12A through 12E and Slices 13A through 13B are
+implemented. Slice 13C plans the paper graph evaluator.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
@@ -85,11 +85,17 @@ supporting private modules are not prescribed:
 
 - `polybot_control_plane.catalog.contracts`: `SelectionMode`, `WidgetKind`,
   `BotDefinitionDescriptor`, and `LaunchRequest`.
-- `polybot_control_plane.catalog.graphs`: public node catalog and validated
-  `NodeGraph` contracts, validation limits, and the starter graph snapshot.
-  Focused supporting modules discover `BaseBot` hook signatures, traverse
-  dataclass and explicitly marked computed outputs, and describe the trusted
-  broker action; the package root owns the public graph contract.
+- `polybot_control_plane.catalog.graphs.types`: dependency-light graph enums,
+  constrained identifiers, field paths, scalar types, and handle contracts.
+- `polybot_control_plane.catalog.graphs.catalog`: public node descriptors,
+  framework-derived `GraphNodeCatalog`, and the code-owned catalog snapshot.
+- `polybot_control_plane.catalog.graphs.contracts`: validated `NodeGraph`, node,
+  and edge contracts plus their validation limits.
+- `polybot_control_plane.catalog.graphs.starter`: the starter graph snapshot.
+  Focused private supporting modules discover `BaseBot` hook signatures,
+  traverse dataclass and explicitly marked computed outputs, describe the
+  trusted broker action, and share graph-validation primitives. The package
+  initializer remains empty rather than re-exporting these owners.
 - `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
   `RunRead`.
 - `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
@@ -152,7 +158,7 @@ non-sensitive `BotConfig` inputs used by web runs:
 - `paper_latency_jitter_ms`
 - `event_max_age_ms`
 - `paper_portfolio_usdc`
-- `graph` (nullable; present only for the Slice 13A node-based definition)
+- `graph` (nullable; present only for the current node-based definition)
 
 Decimal values serialize as canonical decimal strings. Fields prohibited by the
 product specification's **Trust Boundary** are absent rather than accepted and
@@ -181,7 +187,7 @@ construction discovers every async `BaseBot` method beginning with `on_` in
 class-definition order, resolves postponed annotations, requires `BotContext`
 and at most one dataclass payload, and ignores return annotations. Stream-plan
 and backtest-query methods are not lifecycle triggers. The catalog exposes the
-opaque context handle `context` plus selectable payload fields derived through
+opaque context handle `context` plus connectable payload fields derived through
 Pydantic `TypeAdapter`. Ordinary nested dataclasses are traversed; lists and
 tuples are collection boundaries, so `BookSnapshot.bids` exists but
 `BookSnapshot.bids.price` does not.
@@ -195,8 +201,8 @@ BUY-side level. Both return `BookLevel | None`; discovery exposes their nested
 `bids` and `asks` collections remain the single source of truth. `midpoint()` and
 other unmarked behavior are not graph outputs.
 
-Selected trigger fields persist as path segments. Their generated handle is
-`field:<dot-joined-path>` and display label is
+Every scalar trigger field has a generated handle
+`field:<dot-joined-path>` and display label
 `<PayloadType>.<dot-joined-path>`; no whole-event output exists. Constants are
 typed boolean, integer, exact decimal, or string scalar sources. Comparisons are
 binary `equal`, `not_equal`, `less_than`, `less_than_or_equal`, `greater_than`,
@@ -212,8 +218,10 @@ inputs plus the existing optional market, condition, source, and reason fields.
 `cancel_all` and action-result outputs are outside the MVP.
 
 The frontend uses only backend catalog metadata and generated types for its
-palette, labels, handles, controls, and connections, and strips only Svelte Flow
-transient state. The starter graph remains non-trading. A complete supported
+palette, labels, always-visible scalar trigger handles, controls, and
+connections, and strips only Svelte Flow transient state. Drawn edges are the
+sole persisted record of which trigger outputs a graph uses. The starter graph
+remains non-trading. A complete supported
 graph can compare `BookSnapshot.best_ask.price` with a decimal constant and,
 when true, submit a BUY using the event token and ask price plus a constant
 share size.

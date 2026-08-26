@@ -23,10 +23,12 @@ from polybot_control_plane.catalog.contracts import (
     BotDefinitionDescriptor,
     BotDefinitionLabel,
     DefinitionId,
-    DefinitionVersion,
     SelectionMode,
 )
-from polybot_control_plane.catalog.graphs import GRAPH_NODE_CATALOG, GraphNodeCatalog
+from polybot_control_plane.catalog.graphs.catalog import (
+    GRAPH_NODE_CATALOG,
+    GraphNodeCatalog,
+)
 from polybot_control_plane.catalog.inputs import (
     ContrarianLaunchInputs,
     MarketWatcherLaunchInputs,
@@ -44,7 +46,6 @@ if TYPE_CHECKING:
     from polybot_control_plane.runs.contracts import PaperRunConfig
 
 
-INITIAL_DEFINITION_VERSION = 1
 WINNER_DEFINITION_ID = "btc-five-minute-winner"
 MOMENTUM_EXAMPLE_DEFINITION_ID = "btc-five-minute-momentum-example"
 CONTRARIAN_DEFINITION_ID = "btc-five-minute-contrarian"
@@ -62,7 +63,6 @@ def create_node_based_bot() -> BaseBot:
 
 @dataclass(frozen=True, slots=True)
 class CatalogEntry:
-    version: DefinitionVersion
     display_name: str
     description: str
     label: BotDefinitionLabel
@@ -79,7 +79,6 @@ class CatalogEntry:
     def descriptor(self, definition_id: DefinitionId) -> BotDefinitionDescriptor:
         return BotDefinitionDescriptor(
             definition_id=definition_id,
-            version=self.version,
             display_name=self.display_name,
             description=self.description,
             label=self.label,
@@ -92,16 +91,12 @@ class CatalogEntry:
     def parse_config(self, inputs: object) -> PaperRunConfig:
         return self.launch_model.model_validate(inputs).to_run_config()
 
-    def matches_version(self, version: DefinitionVersion) -> bool:
-        return self.version == version
-
     def create_bot(self, bot_config: BotConfig):
         return self._bound_factory(bot_config)
 
 
 CATALOG: dict[str, CatalogEntry] = {
     WINNER_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="BTC five-minute winner",
         description="Trades a strong late leader in consecutive BTC markets.",
         label=BotDefinitionLabel.STANDARD,
@@ -111,7 +106,6 @@ CATALOG: dict[str, CatalogEntry] = {
         factory=create_winner,
     ),
     MOMENTUM_EXAMPLE_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="BTC five-minute momentum example",
         description="Example strategy driven by paired outcome-book momentum.",
         label=BotDefinitionLabel.EXAMPLE,
@@ -121,7 +115,6 @@ CATALOG: dict[str, CatalogEntry] = {
         factory=create_momentum_example,
     ),
     CONTRARIAN_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="BTC five-minute contrarian",
         description="Trades a selective late reversal in consecutive BTC markets.",
         label=BotDefinitionLabel.STANDARD,
@@ -131,7 +124,6 @@ CATALOG: dict[str, CatalogEntry] = {
         factory=create_contrarian,
     ),
     MARKET_WATCHER_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="BTC five-minute market watcher",
         description="Observes consecutive BTC markets without trading.",
         label=BotDefinitionLabel.NON_TRADING,
@@ -141,7 +133,6 @@ CATALOG: dict[str, CatalogEntry] = {
         factory=create_market_watcher,
     ),
     RANDOM_HOLD_EXAMPLE_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="Dynamic random-hold example",
         description="Example random-hold strategy for consecutive BTC markets.",
         label=BotDefinitionLabel.EXAMPLE,
@@ -151,7 +142,6 @@ CATALOG: dict[str, CatalogEntry] = {
         factory=create_random_hold_example,
     ),
     WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="Dynamic wallet-filter copy example",
         description="Example copy strategy for selected wallets and dynamic markets.",
         label=BotDefinitionLabel.EXAMPLE,
@@ -161,7 +151,6 @@ CATALOG: dict[str, CatalogEntry] = {
         factory=create_wallet_filter_copy_example,
     ),
     NODE_BASED_DEFINITION_ID: CatalogEntry(
-        version=INITIAL_DEFINITION_VERSION,
         display_name="Node-Based Bot",
         description="Visually compose and run a non-trading market observer.",
         label=BotDefinitionLabel.NON_TRADING,

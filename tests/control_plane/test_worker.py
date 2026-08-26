@@ -1,6 +1,8 @@
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -8,18 +10,22 @@ import pytest
 import polybot_control_plane.execution.worker.lifecycle as worker_lifecycle
 import polybot_control_plane.execution.worker.runtime as worker_runtime
 from polybot.cli.observability.events import StreamHealth
+from polybot.execution.broker import Broker
 from polybot.framework.base import BaseBot
+from polybot.framework.context import BotContext
+from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
-    INITIAL_DEFINITION_VERSION,
     NODE_BASED_DEFINITION_ID,
     WINNER_DEFINITION_ID,
 )
+from polybot_control_plane.catalog.graphs.types import GraphNodeType
 from polybot_control_plane.events.contracts import DurableEvent, EventKind
 from polybot_control_plane.execution.config import REDIS_URL_ENV, configured_redis_url
 from polybot_control_plane.execution.worker.lifecycle import PAPER_RUN_FAILURE_REASON
 from polybot_control_plane.runs.contracts import RunRead
 from polybot_control_plane.runs.status import RunStatus
+from control_plane.graph_fixtures import threshold_buy_graph
 
 
 def test_worker_completes_normally_and_writes_terminal_event(
@@ -290,20 +296,56 @@ def test_claimed_runtime_uses_exact_catalog_factory_and_observer(
     assert runtime_observer is observer
 
 
-def test_node_based_run_uses_the_no_order_base_bot(
+def test_claimed_runtime_rejects_an_unknown_catalog_definition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_bot = AsyncMock()
+    monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
+    run = _run().model_copy(update={"definition_id": "missing-definition"})
+
+    with pytest.raises(RuntimeError, match="definition is no longer available"):
+        asyncio.run(worker_runtime.run_claimed_bot(run, object()))
+
+    run_bot.assert_not_awaited()
+
+
+def test_node_based_action_graph_does_not_submit_orders(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = CATALOG[NODE_BASED_DEFINITION_ID]
     config = entry.parse_config(
-        {"name": "node-observer", "market_slugs": ["example-market"]}
+        {
+            "name": "node-observer",
+            "market_slugs": ["example-market"],
+            "graph": threshold_buy_graph(),
+        }
     )
     run = _run().model_copy(
         update={"definition_id": NODE_BASED_DEFINITION_ID, "config": config}
     )
+    broker = AsyncMock(spec=Broker)
     received: list[tuple[BaseBot, object]] = []
 
     async def run_bot(bot, runtime_config, *, observer) -> None:
         received.append((bot, runtime_config))
+        context = BotContext(
+            config=runtime_config,
+            broker=broker,
+            markets=AsyncMock(),
+            books=AsyncMock(),
+            wallet_activity=AsyncMock(),
+        )
+        await bot.on_start(context)
+        await bot.on_book(
+            context,
+            BookSnapshot(
+                token_id="token",
+                bids=(BookLevel(Decimal("0.49"), Decimal("10")),),
+                asks=(BookLevel(Decimal("0.50"), Decimal("10")),),
+                received_at_ms=1_000,
+            ),
+        )
+        await bot.on_stop(context)
 
     monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
 
@@ -313,6 +355,11 @@ def test_node_based_run_uses_the_no_order_base_bot(
     assert type(bot) is BaseBot
     assert runtime_config.stream_rules == config.stream_rules
     assert not hasattr(runtime_config, "graph")
+    assert config.graph is not None
+    assert any(
+        node.type == GraphNodeType.BROKER_ACTION for node in config.graph.nodes
+    )
+    broker.submit.assert_not_awaited()
 
 
 def test_redis_configuration_validates_environment_ingress(
@@ -479,7 +526,6 @@ def _run() -> RunRead:
     return RunRead(
         id=uuid4(),
         definition_id=WINNER_DEFINITION_ID,
-        definition_version=INITIAL_DEFINITION_VERSION,
         config=CATALOG[WINNER_DEFINITION_ID].parse_config({"name": "worker"}),
         status=RunStatus.STARTING,
         created_at=datetime.now(UTC),

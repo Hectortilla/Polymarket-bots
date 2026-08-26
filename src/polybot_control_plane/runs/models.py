@@ -3,14 +3,12 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
 from polybot.framework.clock import system_now_utc
 from polybot_control_plane.runs.schema import (
-    DEFINITION_VERSION_CHECK,
-    DEFINITION_VERSION_CONSTRAINT_NAME,
     RunColumn,
     RUNS_TABLE_NAME,
     run_status_column_type,
@@ -20,12 +18,6 @@ from polybot_control_plane.runs.status import RunStatus
 
 class RunRow(SQLModel, table=True):
     __tablename__ = RUNS_TABLE_NAME
-    __table_args__ = (
-        CheckConstraint(
-            DEFINITION_VERSION_CHECK,
-            name=DEFINITION_VERSION_CONSTRAINT_NAME,
-        ),
-    )
 
     id: UUID = Field(
         default_factory=uuid4,
@@ -38,9 +30,6 @@ class RunRow(SQLModel, table=True):
     )
     definition_id: str = Field(
         sa_column=Column(RunColumn.DEFINITION_ID, String, nullable=False)
-    )
-    definition_version: int = Field(
-        sa_column=Column(RunColumn.DEFINITION_VERSION, Integer, nullable=False)
     )
     config: dict[str, object] = Field(
         sa_column=Column(RunColumn.CONFIG, JSONB, nullable=False)
@@ -61,7 +50,19 @@ class RunRow(SQLModel, table=True):
             nullable=False,
         ),
     )
-    started_at: datetime | None = Field(default=None, sa_column=Column(RunColumn.STARTED_AT, DateTime(timezone=True)))
-    ended_at: datetime | None = Field(default=None, sa_column=Column(RunColumn.ENDED_AT, DateTime(timezone=True)))
-    heartbeat_at: datetime | None = Field(default=None, sa_column=Column(RunColumn.HEARTBEAT_AT, DateTime(timezone=True)))
-    failure_detail: str | None = Field(default=None, sa_column=Column(RunColumn.FAILURE_DETAIL, String, nullable=True))
+    started_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.STARTED_AT, DateTime(timezone=True)),
+    )
+    ended_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.ENDED_AT, DateTime(timezone=True)),
+    )
+    heartbeat_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.HEARTBEAT_AT, DateTime(timezone=True)),
+    )
+    failure_detail: str | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.FAILURE_DETAIL, String, nullable=True),
+    )

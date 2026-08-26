@@ -80,7 +80,7 @@ The initial catalog is exactly:
 | `node-based-bot` | `polybot_control_plane.catalog.definitions:create_node_based_bot` | user-configured | absent | non-trading |
 
 `polybot.my_bot:create` is an alias of the winner strategy and is not another
-catalog entry. The table reflects the implemented Slice 13A catalog; Slice 13C
+catalog entry. The table reflects the implemented Slice 13B catalog; Slice 13C
 changes only the node-based entry's label to `standard` when graph actions begin
 executing.
 
@@ -121,9 +121,10 @@ client feedback, submits the definition ID plus its input object, and opens the
 created run. Decimal inputs remain decimal strings across the API boundary.
 Frontend validation is only feedback; backend ingress is authoritative.
 The node-based definition renders a Svelte Flow canvas. Its trigger palette is
-derived from `BaseBot` lifecycle hooks, and each trigger lets the operator
-select outputs derived from that hook's annotated event dataclass and explicitly
-marked computed outputs. `BookSnapshot.best_bid` and `best_ask` provide nullable
+derived from `BaseBot` lifecycle hooks, and each trigger always exposes the
+outputs derived from that hook's annotated event dataclass and explicitly
+marked computed outputs. Drawn edges determine which outputs the graph uses.
+`BookSnapshot.best_bid` and `best_ask` provide nullable
 top-level price/size fields without duplicating the underlying books. The same
 backend catalog describes typed constants, binary comparisons, and fixed-side
 BUY/SELL actions derived from `Broker.submit(OrderRequest)`; the frontend

@@ -67,7 +67,6 @@ export type BotDefinitionDescriptor = {
     };
     label: BotDefinitionLabel;
     market_selection: SelectionMode;
-    version: DefinitionVersion;
     wallet_selection: SelectionMode;
 };
 
@@ -211,8 +210,6 @@ export type DataTradesBudget = number;
 
 export type DefinitionId = string;
 
-export type DefinitionVersion = number;
-
 /**
  * DispatchOutcome
  */
@@ -327,7 +324,175 @@ export type FillEvent = {
  */
 export type FillRejectReason = 'missing_token_id' | 'bad_side' | 'bad_price' | 'bad_size' | 'book_unavailable' | 'book_mismatch' | 'book_stale' | 'book_future_dated' | 'bad_book_level' | 'book_crossed' | 'market_unavailable' | 'market_fee_invalid' | 'market_metadata_mismatch' | 'market_resolved' | 'no_depth_within_slippage' | 'duplicate_source_id' | 'invalid_source_id' | 'backtest_data_exhausted' | 'backtest_coverage_gap';
 
+/**
+ * GraphBooleanConstantData
+ */
+export type GraphBooleanConstantData = {
+    /**
+     * Scalar Type
+     */
+    scalar_type: 'boolean';
+    /**
+     * Value
+     */
+    value: boolean;
+};
+
+/**
+ * GraphBrokerAction
+ */
+export type GraphBrokerAction = 'submit_buy' | 'submit_sell';
+
+/**
+ * GraphBrokerActionDescriptor
+ */
+export type GraphBrokerActionDescriptor = {
+    action: GraphBrokerAction;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Inputs
+     */
+    inputs: Array<GraphInputDescriptor>;
+    /**
+     * Method Name
+     */
+    method_name: 'submit';
+    /**
+     * Node Type
+     */
+    node_type?: 'broker_action';
+    side: Side;
+};
+
+/**
+ * GraphBrokerActionNode
+ */
+export type GraphBrokerActionNode = {
+    data: GraphBrokerActionNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    /**
+     * Type
+     */
+    type: 'broker_action';
+};
+
+/**
+ * GraphBrokerActionNodeData
+ */
+export type GraphBrokerActionNodeData = {
+    action: GraphBrokerAction;
+};
+
+/**
+ * GraphComparisonDescriptor
+ */
+export type GraphComparisonDescriptor = {
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Inputs
+     */
+    inputs: [
+        GraphInputDescriptor,
+        GraphInputDescriptor
+    ];
+    /**
+     * Node Type
+     */
+    node_type?: 'comparison';
+    operator: GraphComparisonOperator;
+    output: GraphOutputDescriptor;
+};
+
+/**
+ * GraphComparisonNode
+ */
+export type GraphComparisonNode = {
+    data: GraphComparisonNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    /**
+     * Type
+     */
+    type: 'comparison';
+};
+
+/**
+ * GraphComparisonNodeData
+ */
+export type GraphComparisonNodeData = {
+    operator: GraphComparisonOperator;
+};
+
+/**
+ * GraphComparisonOperator
+ */
+export type GraphComparisonOperator = 'equal' | 'not_equal' | 'less_than' | 'less_than_or_equal' | 'greater_than' | 'greater_than_or_equal';
+
+/**
+ * GraphConstantDescriptor
+ */
+export type GraphConstantDescriptor = {
+    /**
+     * Default Value
+     */
+    default_value: boolean | number | string;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Node Type
+     */
+    node_type?: 'constant';
+    output: GraphOutputDescriptor;
+    scalar_type: GraphScalarType;
+};
+
+/**
+ * GraphConstantNode
+ */
+export type GraphConstantNode = {
+    data: GraphConstantNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    /**
+     * Type
+     */
+    type: 'constant';
+};
+
+export type GraphConstantNodeData = ({
+    scalar_type: 'boolean';
+} & GraphBooleanConstantData) | ({
+    scalar_type: 'integer';
+} & GraphIntegerConstantData) | ({
+    scalar_type: 'decimal';
+} & GraphDecimalConstantData) | ({
+    scalar_type: 'string';
+} & GraphStringConstantData);
+
 export type GraphCoordinate = number;
+
+/**
+ * GraphDecimalConstantData
+ */
+export type GraphDecimalConstantData = {
+    /**
+     * Scalar Type
+     */
+    scalar_type: 'decimal';
+    /**
+     * Value
+     */
+    value: string;
+};
 
 /**
  * GraphEdge
@@ -335,7 +500,9 @@ export type GraphCoordinate = number;
 export type GraphEdge = {
     id: GraphElementId;
     source: GraphElementId;
+    source_handle: GraphElementId;
     target: GraphElementId;
+    target_handle: GraphElementId;
 };
 
 export type GraphElementId = string;
@@ -361,6 +528,7 @@ export type GraphFieldDescriptor = {
      */
     nullable: boolean;
     path: GraphFieldPath;
+    scalar_type: GraphScalarType | null;
     /**
      * Value Schema
      */
@@ -388,26 +556,71 @@ export type GraphFieldPathSegment = string;
 export type GraphHookName = string;
 
 /**
- * GraphNode
+ * GraphInputDescriptor
  */
-export type GraphNode = {
-    data: GraphNodeData;
-    id: GraphElementId;
-    position: GraphPosition;
+export type GraphInputDescriptor = {
     /**
-     * Type
+     * Display Name
      */
-    type: 'trigger';
+    display_name: string;
+    /**
+     * Handle Id
+     */
+    handle_id: string;
+    /**
+     * Nullable
+     */
+    nullable: boolean;
+    /**
+     * Required
+     */
+    required: boolean;
+    /**
+     * Scalar Types
+     */
+    scalar_types: Array<GraphScalarType>;
 };
+
+/**
+ * GraphIntegerConstantData
+ */
+export type GraphIntegerConstantData = {
+    /**
+     * Scalar Type
+     */
+    scalar_type: 'integer';
+    /**
+     * Value
+     */
+    value: number;
+};
+
+export type GraphNode = ({
+    type: 'trigger';
+} & GraphTriggerNode) | ({
+    type: 'constant';
+} & GraphConstantNode) | ({
+    type: 'comparison';
+} & GraphComparisonNode) | ({
+    type: 'broker_action';
+} & GraphBrokerActionNode);
 
 /**
  * GraphNodeCatalog
  */
 export type GraphNodeCatalog = {
     /**
-     * Node Type
+     * Broker Actions
      */
-    node_type: 'trigger';
+    broker_actions: Array<GraphBrokerActionDescriptor>;
+    /**
+     * Comparisons
+     */
+    comparisons: Array<GraphComparisonDescriptor>;
+    /**
+     * Constants
+     */
+    constants: Array<GraphConstantDescriptor>;
     /**
      * Triggers
      */
@@ -415,14 +628,22 @@ export type GraphNodeCatalog = {
 };
 
 /**
- * GraphNodeData
+ * GraphOutputDescriptor
  */
-export type GraphNodeData = {
-    hook_name: GraphHookName;
+export type GraphOutputDescriptor = {
     /**
-     * Selected Output Paths
+     * Display Name
      */
-    selected_output_paths?: Array<GraphFieldPath>;
+    display_name: string;
+    /**
+     * Handle Id
+     */
+    handle_id: string;
+    /**
+     * Nullable
+     */
+    nullable?: boolean;
+    scalar_type: GraphScalarType;
 };
 
 /**
@@ -448,6 +669,25 @@ export type GraphPosition = {
 };
 
 /**
+ * GraphScalarType
+ */
+export type GraphScalarType = 'boolean' | 'integer' | 'decimal' | 'string';
+
+/**
+ * GraphStringConstantData
+ */
+export type GraphStringConstantData = {
+    /**
+     * Scalar Type
+     */
+    scalar_type: 'string';
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
  * GraphTriggerDescriptor
  */
 export type GraphTriggerDescriptor = {
@@ -460,7 +700,31 @@ export type GraphTriggerDescriptor = {
      */
     context_type_name: 'BotContext';
     hook_name: GraphHookName;
+    /**
+     * Node Type
+     */
+    node_type?: 'trigger';
     payload?: GraphPayloadDescriptor | null;
+};
+
+/**
+ * GraphTriggerNode
+ */
+export type GraphTriggerNode = {
+    data: GraphTriggerNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    /**
+     * Type
+     */
+    type: 'trigger';
+};
+
+/**
+ * GraphTriggerNodeData
+ */
+export type GraphTriggerNodeData = {
+    hook_name: GraphHookName;
 };
 
 /**
@@ -488,7 +752,6 @@ export type HealthResponse = {
  */
 export type LaunchRequest = {
     definition_id: DefinitionId;
-    definition_version: DefinitionVersion;
     /**
      * Inputs
      */
@@ -716,10 +979,6 @@ export type NodeGraph = {
      * Nodes
      */
     nodes: Array<GraphNode>;
-    /**
-     * Schema Version
-     */
-    schema_version?: 1;
 };
 
 export type NonnegativeDecimal = string;
@@ -972,7 +1231,6 @@ export type RunRead = {
      */
     created_at: string;
     definition_id: DefinitionId;
-    definition_version: DefinitionVersion;
     /**
      * Ended At
      */

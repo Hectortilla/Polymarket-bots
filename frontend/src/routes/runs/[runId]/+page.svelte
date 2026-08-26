@@ -153,7 +153,7 @@
 {:else}
   <section class="page-heading run-heading">
     <div>
-      <p class="route-meta">{run.definition_id} / v{run.definition_version}</p>
+      <p class="route-meta">{run.definition_id}</p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
         <RunStatusBadge status={run.status} />

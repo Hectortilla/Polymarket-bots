@@ -70,6 +70,38 @@ def test_book_snapshot_orders_executable_levels_for_each_side() -> None:
     assert book.executable_levels(Side.SELL) == (high, low)
 
 
+def test_book_snapshot_computes_best_levels_without_stored_quote_state() -> None:
+    low = BookLevel(price=Decimal("0.40"), size=Decimal("1"))
+    middle = BookLevel(price=Decimal("0.55"), size=Decimal("2"))
+    high = BookLevel(price=Decimal("0.70"), size=Decimal("3"))
+
+    sorted_book = _book(bids=(high, middle), asks=(low, middle))
+    unsorted_book = _book(bids=(low, high, middle), asks=(high, low, middle))
+    empty_book = _book(bids=(), asks=())
+    bids_only = _book(bids=(high,), asks=())
+    asks_only = _book(bids=(), asks=(low,))
+
+    assert sorted_book.best_bid is high
+    assert sorted_book.best_ask is low
+    assert unsorted_book.best_bid is high
+    assert unsorted_book.best_ask is low
+    assert empty_book.best_bid is None
+    assert empty_book.best_ask is None
+    assert bids_only.best_bid is high
+    assert bids_only.best_ask is None
+    assert asks_only.best_bid is None
+    assert asks_only.best_ask is low
+    assert tuple(BookSnapshot.__dataclass_fields__) == (
+        "token_id",
+        "bids",
+        "asks",
+        "received_at_ms",
+        "market_slug",
+        "condition_id",
+        "outcome",
+    )
+
+
 def test_book_helpers_reject_an_unknown_side() -> None:
     book = _book(bids=(), asks=())
 

@@ -81,7 +81,6 @@
         <article class="catalog-item">
           <div class="catalog-meta">
             <span class="tag">{definition.label.replace('_', ' ')}</span>
-            <span>v{definition.version}</span>
           </div>
           <h3>{definition.display_name}</h3>
           <p>{definition.description}</p>

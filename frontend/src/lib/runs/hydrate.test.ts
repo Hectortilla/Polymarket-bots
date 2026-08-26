@@ -20,7 +20,6 @@ vi.mock('$lib/api/generated', async (importOriginal) => {
 const RUN: RunRead = {
   id: 'aaaaaaaa-0000-0000-0000-000000000001',
   definition_id: 'test-definition',
-  definition_version: 1,
   config: {
     name: 'Hydrated run',
     stream_rules: [],

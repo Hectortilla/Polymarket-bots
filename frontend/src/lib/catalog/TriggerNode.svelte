@@ -2,17 +2,17 @@
   import { getContext } from 'svelte';
   import { Handle, Position } from '@xyflow/svelte';
 
-  import type { GraphNodeData } from '$lib/api/generated';
-  import { outputPathIsSelected, triggerForNode } from './nodeGraph';
+  import type { GraphTriggerNodeData } from '$lib/api/generated';
+  import { triggerForNode } from './nodeGraph';
   import {
-    TRIGGER_NODE_EDITOR_CONTEXT,
-    type TriggerNodeEditorContext
-  } from './triggerNodeContext';
+    NODE_GRAPH_EDITOR_CONTEXT,
+    type NodeGraphEditorContext
+  } from './nodeGraphContext';
 
-  let { id, data }: { id: string; data: GraphNodeData } = $props();
+  let { data }: { data: GraphTriggerNodeData } = $props();
 
-  const editor = getContext<TriggerNodeEditorContext>(
-    TRIGGER_NODE_EDITOR_CONTEXT
+  const editor = getContext<NodeGraphEditorContext>(
+    NODE_GRAPH_EDITOR_CONTEXT
   );
   const trigger = $derived(triggerForNode(editor.catalog, data));
 </script>
@@ -37,28 +37,18 @@
     <fieldset class="nodrag nowheel">
       <legend>{trigger.payload.type_name} outputs</legend>
       {#each trigger.payload.fields as field (field.handle_id)}
-        {@const selected = outputPathIsSelected(data, field.path)}
-        <label>
-          <input
-            type="checkbox"
-            checked={selected}
-            aria-label={field.display_name}
-            onchange={(event) =>
-              editor.setOutputSelected(id, field.path, event.currentTarget.checked)}
-          />
+        <div class="field-output">
           <span>{field.display_name}</span>
           <small>
             {field.collection ? `collection<${field.value_type}>` : field.value_type}{field.nullable ? ' | null' : ''}
           </small>
-          {#if selected}
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={field.handle_id}
-              isConnectable={false}
-            />
-          {/if}
-        </label>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={field.handle_id}
+            isConnectable={field.scalar_type !== null}
+          />
+        </div>
       {/each}
     </fieldset>
   {:else}
@@ -98,7 +88,7 @@
   }
 
   .output,
-  fieldset label {
+  .field-output {
     position: relative;
   }
 
@@ -140,16 +130,14 @@
     font-size: 0.72rem;
   }
 
-  fieldset label {
+  .field-output {
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.1rem 0.45rem;
+    gap: 0.1rem;
     align-items: center;
     padding: 0.3rem 0;
-    cursor: pointer;
   }
 
-  fieldset label span {
+  .field-output span {
     overflow: hidden;
     font-family: 'Geist Mono Variable', ui-monospace, monospace;
     font-size: 0.72rem;
@@ -157,8 +145,8 @@
     white-space: nowrap;
   }
 
-  fieldset small {
-    grid-column: 2;
+  .field-output :global(.svelte-flow__handle-right) {
+    right: -0.75rem;
   }
 
   .lifecycle-only {

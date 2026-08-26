@@ -42,7 +42,6 @@
       const response = await launchRunApiV1RunsPost({
         body: {
           definition_id: descriptor.definition_id,
-          definition_version: descriptor.version,
           inputs
         },
         throwOnError: true

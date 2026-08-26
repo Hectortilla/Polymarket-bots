@@ -3,7 +3,9 @@ import Ajv, { type AnySchemaObject, type ErrorObject, type ValidateFunction } fr
 import type { BotDefinitionDescriptor, SelectionMode } from '$lib/api/generated';
 
 const ajv = new Ajv({ allErrors: true });
+const OPENAPI_DISCRIMINATOR_KEY = 'discriminator';
 export const WIDGET_SCHEMA_KEY = 'x-widget';
+ajv.addKeyword(OPENAPI_DISCRIMINATOR_KEY);
 ajv.addKeyword(WIDGET_SCHEMA_KEY);
 
 export const SELECTION_MODE = {

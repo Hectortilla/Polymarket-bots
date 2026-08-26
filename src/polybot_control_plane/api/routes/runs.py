@@ -38,7 +38,6 @@ from polybot_control_plane.runs.store import RunStore
 
 
 DEFINITION_NOT_FOUND_DETAIL = "bot definition not found"
-STALE_DEFINITION_DETAIL = "stale bot definition version"
 RUN_LAUNCH_FAILURE_REASON = "run launch failed"
 
 router = APIRouter()
@@ -59,8 +58,6 @@ async def launch_run(
     definition = CATALOG.get(request.definition_id)
     if definition is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, DEFINITION_NOT_FOUND_DETAIL)
-    if not definition.matches_version(request.definition_version):
-        raise HTTPException(status.HTTP_409_CONFLICT, STALE_DEFINITION_DETAIL)
     try:
         config = definition.parse_config(request.inputs)
     except ValidationError as error:
@@ -72,7 +69,6 @@ async def launch_run(
     async with session_factory() as session:
         run = await RunStore(session).create(
             definition_id=request.definition_id,
-            definition_version=request.definition_version,
             config=config,
         )
     try:

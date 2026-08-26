@@ -21,7 +21,6 @@ from polybot_control_plane.api.lifecycle import ApiRunLifecycle
 from polybot_control_plane.api.routes.runs import RUN_LAUNCH_FAILURE_REASON
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
-    INITIAL_DEFINITION_VERSION,
     WINNER_DEFINITION_ID,
 )
 from polybot_control_plane.database import async_database_url
@@ -67,7 +66,6 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
             async with session_factory() as session:
                 queued = await RunStore(session).create(
                     definition_id=WINNER_DEFINITION_ID,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config,
                 )
 
@@ -94,17 +92,14 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
             async with session_factory() as session:
                 failed = await RunStore(session).create(
                     definition_id=WINNER_DEFINITION_ID,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config,
                 )
                 running = await RunStore(session).create(
                     definition_id=WINNER_DEFINITION_ID,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config,
                 )
                 rollback = await RunStore(session).create(
                     definition_id=WINNER_DEFINITION_ID,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config,
                 )
                 claimed = await RunStore(session).claim(
@@ -217,7 +212,6 @@ def test_sse_handoff_rechecks_postgres_after_real_redis_subscribe() -> None:
             async with session_factory() as session:
                 run = await RunStore(session).create(
                     definition_id=WINNER_DEFINITION_ID,
-                    definition_version=INITIAL_DEFINITION_VERSION,
                     config=config,
                 )
                 first = await EventStore(session).append(

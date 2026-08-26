@@ -18,7 +18,8 @@ from polybot.framework.config.constants import (
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.framework.wallets import validate_wallet_address
 from polybot_control_plane.catalog.contracts import WIDGET_SCHEMA_KEY, WidgetKind
-from polybot_control_plane.catalog.graphs import NodeGraph, STARTER_NODE_GRAPH
+from polybot_control_plane.catalog.graphs.contracts import NodeGraph
+from polybot_control_plane.catalog.graphs.starter import STARTER_NODE_GRAPH
 from polybot_control_plane.runs.contracts import (
     DataTradesBudget,
     NonnegativeDecimal,

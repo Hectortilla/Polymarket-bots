@@ -33,12 +33,10 @@ class RunStore:
         self,
         *,
         definition_id: str,
-        definition_version: int,
         config: PaperRunConfig,
     ) -> RunRead:
         row = RunRow(
             definition_id=definition_id,
-            definition_version=definition_version,
             config=config.model_dump(mode="json"),
         )
         self._session.add(row)
@@ -226,7 +224,6 @@ class RunStore:
         return RunRead(
             id=row.id,
             definition_id=row.definition_id,
-            definition_version=row.definition_version,
             config=PaperRunConfig.model_validate(row.config),
             status=row.status,
             created_at=row.created_at,

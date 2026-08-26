@@ -701,7 +701,7 @@ label {
   color: var(--text-soft);
 }
 
-label.wide {
+.wide {
   grid-column: 1 / -1;
 }
 
@@ -1181,7 +1181,7 @@ dd {
     gap: 12px;
   }
 
-  label.wide {
+  .wide {
     grid-column: auto;
   }
 

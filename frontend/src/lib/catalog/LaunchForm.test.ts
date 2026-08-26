@@ -8,12 +8,17 @@ import {
   WIDGET_KIND,
   WIDGET_SCHEMA_KEY
 } from './schema';
-import { canvasNodes, createTriggerNode } from './nodeGraph';
+import { canvasNodes, createConstantNode, createTriggerNode } from './nodeGraph';
 import {
+  BOOLEAN_CONSTANT,
+  BUY_ACTION,
+  DECIMAL_CONSTANT,
+  LESS_THAN_OR_EQUAL,
   ON_START_TRIGGER,
   ON_WALLET_TRADE_TRIGGER,
   TEST_GRAPH,
   TEST_GRAPH_CATALOG,
+  THRESHOLD_BUY_GRAPH,
   graphDescriptor
 } from './nodeGraphTestFixtures';
 
@@ -26,7 +31,6 @@ function descriptor(
 ): BotDefinitionDescriptor {
   return {
     definition_id: 'schema-driven-test',
-    version: 1,
     display_name: 'Schema driven test',
     description: 'Test definition',
     label: 'example',
@@ -148,56 +152,52 @@ describe('LaunchForm', () => {
     await fireEvent.input(screen.getByLabelText('Market slugs'), {
       target: { value: 'example-market' }
     });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add node' }));
+    expect(screen.getByRole('dialog', { name: 'Add graph node' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Triggers' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Values' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Logic' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Actions' })).toBeTruthy();
+    const nodeSearch = screen.getByLabelText('Find a node');
+    await fireEvent.input(nodeSearch, { target: { value: 'decimal' } });
+    expect(
+      screen.getByRole('button', { name: `Add ${DECIMAL_CONSTANT.display_name}` })
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add on_book' })).toBeNull();
+    await fireEvent.input(nodeSearch, { target: { value: '' } });
     expect(
       screen.getByRole('button', { name: 'Add on_book' }).hasAttribute('disabled')
     ).toBe(true);
     const contextHandle = document.querySelector('[data-handleid="context"]');
     expect(contextHandle).not.toBeNull();
     expect(contextHandle?.classList.contains('connectable')).toBe(false);
-    expect(document.querySelector('[data-handleid="field:bids"]')).not.toBeNull();
-    expect(
-      [...document.querySelectorAll('[data-handleid]')].map((handle) =>
-        handle.getAttribute('data-handleid')
-      )
-    ).toEqual(['context', 'field:bids']);
+    const bidsHandle = document.querySelector('[data-handleid="field:bids"]');
+    expect(bidsHandle?.classList.contains('connectable')).toBe(false);
+    expect(document.querySelector('[data-handleid="field:asks"]')).not.toBeNull();
+    const askPriceHandle = document.querySelector(
+      '[data-handleid="field:best_ask.price"]'
+    );
+    expect(askPriceHandle?.classList.contains('connectable')).toBe(true);
     expect(document.querySelector('fieldset.nowheel')).not.toBeNull();
     expect(
       document.querySelector('.node-graph-controls.horizontal')
     ).not.toBeNull();
     await fireEvent.click(
-      screen.getByLabelText('BookSnapshot.asks')
-    );
-    expect(document.querySelector('[data-handleid="field:asks"]')).not.toBeNull();
-    await fireEvent.click(
       screen.getByRole('button', { name: 'Add on_wallet_trade' })
     );
-    expect(
-      screen
-        .getByRole('button', { name: 'Add on_wallet_trade' })
-        .hasAttribute('disabled')
-    ).toBe(true);
+    expect(screen.queryByRole('dialog', { name: 'Add graph node' })).toBeNull();
+    expect(screen.getByLabelText('on_wallet_trade trigger node')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
 
-    const onBookWithAsks = {
-      ...TEST_GRAPH.nodes[0],
-      data: {
-        ...TEST_GRAPH.nodes[0].data,
-        selected_output_paths: [
-          { segments: ['bids'] },
-          { segments: ['asks'] }
-        ]
-      }
-    };
     expect(submit).toHaveBeenCalledWith({
       name: 'Visual observer',
       market_slugs: ['example-market'],
       graph: {
         ...TEST_GRAPH,
         nodes: [
-          onBookWithAsks,
+          TEST_GRAPH.nodes[0],
           createTriggerNode(
             canvasNodes(TEST_GRAPH),
-            TEST_GRAPH_CATALOG,
             ON_WALLET_TRADE_TRIGGER
           )
         ]
@@ -209,13 +209,14 @@ describe('LaunchForm', () => {
     const submit = vi.fn();
     const nextGraph: NodeGraph = {
       ...TEST_GRAPH,
-      nodes: [createTriggerNode([], TEST_GRAPH_CATALOG, ON_START_TRIGGER)]
+      nodes: [createTriggerNode([], ON_START_TRIGGER) as NodeGraph['nodes'][number]]
     };
     const view = render(LaunchForm, {
       descriptor: graphDescriptor(TEST_GRAPH),
       onsubmit: submit
     });
 
+    await fireEvent.click(screen.getByRole('button', { name: 'Add node' }));
     await fireEvent.click(
       screen.getByRole('button', { name: 'Add on_wallet_trade' })
     );
@@ -235,6 +236,103 @@ describe('LaunchForm', () => {
       name: 'Next observer',
       market_slugs: ['next-market'],
       graph: nextGraph
+    });
+  });
+
+  it('reloads and submits the complete metadata-built threshold BUY graph', async () => {
+    const submit = vi.fn();
+    render(LaunchForm, {
+      descriptor: graphDescriptor(THRESHOLD_BUY_GRAPH),
+      onsubmit: submit
+    });
+
+    expect(
+      screen.getAllByLabelText(`${DECIMAL_CONSTANT.display_name} node`)
+    ).toHaveLength(2);
+    expect(
+      screen.getByLabelText(
+        `${LESS_THAN_OR_EQUAL.display_name} comparison node`
+      )
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText(`${BUY_ACTION.display_name} broker action node`)
+    ).toBeTruthy();
+    expect(
+      document.querySelector(
+        `[data-handleid="${BUY_ACTION.inputs[0].handle_id}"]`
+      )
+    ).not.toBeNull();
+    await fireEvent.change(
+      screen.getAllByLabelText(DECIMAL_CONSTANT.output.display_name)[0],
+      {
+        target: { value: '000.5400' }
+      }
+    );
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Threshold BUY' }
+    });
+    await fireEvent.input(screen.getByLabelText('Market slugs'), {
+      target: { value: 'example-market' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+
+    expect(submit).toHaveBeenCalledWith({
+      name: 'Threshold BUY',
+      market_slugs: ['example-market'],
+      graph: {
+        ...THRESHOLD_BUY_GRAPH,
+        nodes: THRESHOLD_BUY_GRAPH.nodes.map((node) =>
+          node.id === 'constant-threshold'
+            ? { ...node, data: { scalar_type: 'decimal', value: '000.5400' } }
+            : node
+        )
+      }
+    });
+  });
+
+  it('renders and edits the catalog-described boolean constant control', async () => {
+    const submit = vi.fn();
+    const constantNode = createConstantNode(
+      canvasNodes(TEST_GRAPH),
+      BOOLEAN_CONSTANT
+    );
+    const graph: NodeGraph = {
+      ...TEST_GRAPH,
+      nodes: [
+        ...TEST_GRAPH.nodes,
+        constantNode as NodeGraph['nodes'][number]
+      ]
+    };
+    render(LaunchForm, { descriptor: graphDescriptor(graph), onsubmit: submit });
+
+    const input = screen.getByLabelText(
+      BOOLEAN_CONSTANT.output.display_name
+    ) as HTMLInputElement;
+    expect(input.type).toBe('checkbox');
+    expect(input.checked).toBe(false);
+    await fireEvent.click(input);
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Boolean constant' }
+    });
+    await fireEvent.input(screen.getByLabelText('Market slugs'), {
+      target: { value: 'example-market' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+
+    expect(submit).toHaveBeenCalledWith({
+      name: 'Boolean constant',
+      market_slugs: ['example-market'],
+      graph: {
+        ...graph,
+        nodes: graph.nodes.map((node) =>
+          node.id === constantNode.id
+            ? {
+                ...node,
+                data: { scalar_type: BOOLEAN_CONSTANT.scalar_type, value: true }
+              }
+            : node
+        )
+      }
     });
   });
 

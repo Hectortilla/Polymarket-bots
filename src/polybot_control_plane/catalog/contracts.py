@@ -3,9 +3,9 @@
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from polybot_control_plane.catalog.graphs import GraphNodeCatalog
+from polybot_control_plane.catalog.graphs.catalog import GraphNodeCatalog
 
 
 WIDGET_SCHEMA_KEY = "x-widget"
@@ -14,9 +14,6 @@ type DefinitionId = Annotated[
     str,
     StringConstraints(strict=True, strip_whitespace=True, min_length=1),
 ]
-type DefinitionVersion = Annotated[StrictInt, Field(gt=0)]
-
-
 class SelectionMode(StrEnum):
     USER_CONFIGURED = "user_configured"
     BOT_MANAGED = "bot_managed"
@@ -41,7 +38,6 @@ class BotDefinitionDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     definition_id: DefinitionId
-    version: DefinitionVersion
     display_name: str
     description: str
     label: BotDefinitionLabel
@@ -58,5 +54,4 @@ class LaunchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     definition_id: DefinitionId
-    definition_version: DefinitionVersion
     inputs: dict[str, object]

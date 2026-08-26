@@ -11,7 +11,8 @@
 
 ## Current Status
 
-Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slice 13A are
+Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slices 13A
+through 13B are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -21,7 +22,8 @@ dashboard, dynamic market tracking and resolution settlement, and the isolated
 control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, mixed durable/live
 SSE path, deterministic OpenAPI artifact, browser dashboard, and the
-non-trading framework-derived trigger-node launch MVP.
+non-executing alpha graph contract with framework-derived triggers, typed
+constants, comparisons, and fixed-side broker actions.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -175,6 +177,7 @@ polyfollow-polybot/
       dependencies.py # Database, Redis, launcher injection, and cleanup.
       routes/         # Catalog, run, event/SSE, and health endpoint owners.
     catalog/         # Public catalog contracts, launch models, definitions.
+      graphs/        # Graph types, catalog metadata, validated contracts, starter.
     runs/            # Paper-run contracts, SQLModel row, and async store.
     events/          # Typed durable progress projection, persistence, Redis wake-up.
     execution/       # RunLauncher, Taskiq adapter, and worker lifecycle.
@@ -721,11 +724,15 @@ class MyBot(BaseBot):
 Only override hooks that are needed. Do not put SDK clients, HTTP clients,
 signing, fee math, or simulation details in bot classes.
 
-The Slice 13A design-time trigger catalog discovers the async `on_*` methods
+The alpha design-time trigger catalog discovers the async `on_*` methods
 above directly from `BaseBot`, including `on_start` and `on_stop`, while
 excluding stream-planning and backtest-query methods. Its payload outputs are
-derived from the annotated event dataclasses. This metadata does not dispatch
-hooks or give the stored graph execution semantics.
+derived from annotated event dataclasses plus explicitly marked computed
+properties. `BookSnapshot.best_bid` and `best_ask` expose nullable price and
+size leaves without duplicating stored depth. The same backend catalog owns
+typed constants, binary comparisons, and the allowlisted fixed-side
+`Broker.submit` actions. Slice 13B validates and stores these acyclic graphs but
+does not dispatch hooks or execute any node.
 
 Framework-aware strategy code should also obtain time and randomness from
 `ctx.clock` and `ctx.rng`. Their normal defaults use the system clock and a

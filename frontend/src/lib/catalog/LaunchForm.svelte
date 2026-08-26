@@ -106,7 +106,8 @@
       {@const widget = widgetKind(field)}
       {@const labelId = `field-${name}-label`}
       {@const helperId = `field-${name}-helper`}
-      <label
+      <svelte:element
+        this={widget === WIDGET_KIND.nodeGraph ? 'div' : 'label'}
         class:wide={widget === WIDGET_KIND.streamRules || widget === WIDGET_KIND.nodeGraph}
         class:checkbox-field={schema.type === 'boolean'}
       >
@@ -167,7 +168,7 @@
               update(name, parseFieldInput(field, event.currentTarget.value))}
           />
         {/if}
-      </label>
+      </svelte:element>
     {/each}
   </div>
 
