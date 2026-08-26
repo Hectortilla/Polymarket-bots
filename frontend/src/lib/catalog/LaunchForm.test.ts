@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within
+} from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BotDefinitionDescriptor, NodeGraph } from '$lib/api/generated';
@@ -8,11 +14,17 @@ import {
   WIDGET_KIND,
   WIDGET_SCHEMA_KEY
 } from './schema';
-import { canvasNodes, createConstantNode, createTriggerNode } from './nodeGraph';
+import {
+  canvasNodes,
+  createComparisonNode,
+  createConstantNode,
+  createTriggerNode
+} from './nodeGraph';
 import {
   BOOLEAN_CONSTANT,
   BUY_ACTION,
   DECIMAL_CONSTANT,
+  EQUAL_COMPARISON,
   LESS_THAN_OR_EQUAL,
   ON_START_TRIGGER,
   ON_WALLET_TRADE_TRIGGER,
@@ -158,7 +170,30 @@ describe('LaunchForm', () => {
     expect(screen.getByRole('heading', { name: 'Values' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Logic' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Actions' })).toBeTruthy();
+    const palette = screen.getByRole('dialog', { name: 'Add graph node' });
+    const paletteNodeButtons = within(palette).getAllByRole('button');
+    expect(paletteNodeButtons).toHaveLength(
+      TEST_GRAPH_CATALOG.triggers.length +
+        TEST_GRAPH_CATALOG.constants.length +
+        1 +
+        TEST_GRAPH_CATALOG.broker_actions.length
+    );
+    for (const button of paletteNodeButtons) {
+      expect(button.querySelector('.palette-icon svg')).not.toBeNull();
+    }
+    expect(
+      within(palette).getAllByRole('button', { name: 'Add Comparison' })
+    ).toHaveLength(1);
+    expect(
+      within(palette).queryByRole('button', {
+        name: `Add ${EQUAL_COMPARISON.display_name}`
+      })
+    ).toBeNull();
     const nodeSearch = screen.getByLabelText('Find a node');
+    await fireEvent.input(nodeSearch, { target: { value: 'comparison' } });
+    expect(
+      screen.getByRole('button', { name: 'Add Comparison' })
+    ).toBeTruthy();
     await fireEvent.input(nodeSearch, { target: { value: 'decimal' } });
     expect(
       screen.getByRole('button', { name: `Add ${DECIMAL_CONSTANT.display_name}` })
@@ -201,6 +236,102 @@ describe('LaunchForm', () => {
             ON_WALLET_TRADE_TRIGGER
           )
         ]
+      }
+    });
+  });
+
+  it('adds one comparison node and edits its catalog-driven operator', async () => {
+    const submit = vi.fn();
+    render(LaunchForm, {
+      descriptor: graphDescriptor(TEST_GRAPH),
+      onsubmit: submit
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Add node' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Add Comparison' }));
+    const operator = screen.getByLabelText(
+      'Comparison operator'
+    ) as HTMLSelectElement;
+    expect(operator.value).toBe(EQUAL_COMPARISON.operator);
+    expect(Array.from(operator.options, (option) => option.text)).toEqual(
+      TEST_GRAPH_CATALOG.comparisons.map((comparison) => comparison.display_name)
+    );
+    await fireEvent.change(operator, {
+      target: { value: LESS_THAN_OR_EQUAL.operator }
+    });
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Comparison editor' }
+    });
+    await fireEvent.input(screen.getByLabelText('Market slugs'), {
+      target: { value: 'example-market' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+
+    const createdComparison = createComparisonNode(
+      canvasNodes(TEST_GRAPH),
+      EQUAL_COMPARISON
+    );
+    expect(submit).toHaveBeenCalledWith({
+      name: 'Comparison editor',
+      market_slugs: ['example-market'],
+      graph: {
+        ...TEST_GRAPH,
+        nodes: [
+          ...TEST_GRAPH.nodes,
+          {
+            ...createdComparison,
+            data: { operator: LESS_THAN_OR_EQUAL.operator }
+          }
+        ]
+      }
+    });
+  });
+
+  it('removes inputs that become incompatible with a comparison operator', async () => {
+    const submit = vi.fn();
+    const booleanNode = createConstantNode([], BOOLEAN_CONSTANT);
+    const comparisonNode = createComparisonNode(
+      [booleanNode],
+      EQUAL_COMPARISON
+    );
+    const graph: NodeGraph = {
+      nodes: [
+        booleanNode as NodeGraph['nodes'][number],
+        comparisonNode as NodeGraph['nodes'][number]
+      ],
+      edges: [
+        {
+          id: 'boolean-to-comparison',
+          source: booleanNode.id,
+          source_handle: BOOLEAN_CONSTANT.output.handle_id,
+          target: comparisonNode.id,
+          target_handle: EQUAL_COMPARISON.inputs[0].handle_id
+        }
+      ]
+    };
+    render(LaunchForm, { descriptor: graphDescriptor(graph), onsubmit: submit });
+
+    await fireEvent.change(screen.getByLabelText('Comparison operator'), {
+      target: { value: LESS_THAN_OR_EQUAL.operator }
+    });
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Type-safe comparison' }
+    });
+    await fireEvent.input(screen.getByLabelText('Market slugs'), {
+      target: { value: 'example-market' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+
+    expect(submit).toHaveBeenCalledWith({
+      name: 'Type-safe comparison',
+      market_slugs: ['example-market'],
+      graph: {
+        nodes: graph.nodes.map((node) =>
+          node.id === comparisonNode.id
+            ? { ...node, data: { operator: LESS_THAN_OR_EQUAL.operator } }
+            : node
+        ),
+        edges: []
       }
     });
   });

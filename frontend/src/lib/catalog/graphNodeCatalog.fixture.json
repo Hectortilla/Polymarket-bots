@@ -220,6 +220,18 @@
     },
     {
       "node_type": "constant",
+      "scalar_type": "integer",
+      "display_name": "Integer constant",
+      "default_value": 0,
+      "output": {
+        "handle_id": "value",
+        "display_name": "Value",
+        "scalar_type": "integer",
+        "nullable": false
+      }
+    },
+    {
+      "node_type": "constant",
       "scalar_type": "decimal",
       "display_name": "Decimal constant",
       "default_value": "0",
@@ -229,13 +241,198 @@
         "scalar_type": "decimal",
         "nullable": false
       }
+    },
+    {
+      "node_type": "constant",
+      "scalar_type": "string",
+      "display_name": "String constant",
+      "default_value": "",
+      "output": {
+        "handle_id": "value",
+        "display_name": "Value",
+        "scalar_type": "string",
+        "nullable": false
+      }
     }
   ],
   "comparisons": [
     {
       "node_type": "comparison",
+      "operator": "equal",
+      "display_name": "Equal",
+      "inputs": [
+        {
+          "handle_id": "left",
+          "display_name": "Left",
+          "scalar_types": [
+            "boolean",
+            "integer",
+            "decimal",
+            "string"
+          ],
+          "nullable": true,
+          "required": true
+        },
+        {
+          "handle_id": "right",
+          "display_name": "Right",
+          "scalar_types": [
+            "boolean",
+            "integer",
+            "decimal",
+            "string"
+          ],
+          "nullable": true,
+          "required": true
+        }
+      ],
+      "output": {
+        "handle_id": "result",
+        "display_name": "Result",
+        "scalar_type": "boolean",
+        "nullable": false
+      }
+    },
+    {
+      "node_type": "comparison",
+      "operator": "not_equal",
+      "display_name": "Not Equal",
+      "inputs": [
+        {
+          "handle_id": "left",
+          "display_name": "Left",
+          "scalar_types": [
+            "boolean",
+            "integer",
+            "decimal",
+            "string"
+          ],
+          "nullable": true,
+          "required": true
+        },
+        {
+          "handle_id": "right",
+          "display_name": "Right",
+          "scalar_types": [
+            "boolean",
+            "integer",
+            "decimal",
+            "string"
+          ],
+          "nullable": true,
+          "required": true
+        }
+      ],
+      "output": {
+        "handle_id": "result",
+        "display_name": "Result",
+        "scalar_type": "boolean",
+        "nullable": false
+      }
+    },
+    {
+      "node_type": "comparison",
+      "operator": "less_than",
+      "display_name": "Less Than",
+      "inputs": [
+        {
+          "handle_id": "left",
+          "display_name": "Left",
+          "scalar_types": [
+            "integer",
+            "decimal"
+          ],
+          "nullable": true,
+          "required": true
+        },
+        {
+          "handle_id": "right",
+          "display_name": "Right",
+          "scalar_types": [
+            "integer",
+            "decimal"
+          ],
+          "nullable": true,
+          "required": true
+        }
+      ],
+      "output": {
+        "handle_id": "result",
+        "display_name": "Result",
+        "scalar_type": "boolean",
+        "nullable": false
+      }
+    },
+    {
+      "node_type": "comparison",
       "operator": "less_than_or_equal",
       "display_name": "Less Than Or Equal",
+      "inputs": [
+        {
+          "handle_id": "left",
+          "display_name": "Left",
+          "scalar_types": [
+            "integer",
+            "decimal"
+          ],
+          "nullable": true,
+          "required": true
+        },
+        {
+          "handle_id": "right",
+          "display_name": "Right",
+          "scalar_types": [
+            "integer",
+            "decimal"
+          ],
+          "nullable": true,
+          "required": true
+        }
+      ],
+      "output": {
+        "handle_id": "result",
+        "display_name": "Result",
+        "scalar_type": "boolean",
+        "nullable": false
+      }
+    },
+    {
+      "node_type": "comparison",
+      "operator": "greater_than",
+      "display_name": "Greater Than",
+      "inputs": [
+        {
+          "handle_id": "left",
+          "display_name": "Left",
+          "scalar_types": [
+            "integer",
+            "decimal"
+          ],
+          "nullable": true,
+          "required": true
+        },
+        {
+          "handle_id": "right",
+          "display_name": "Right",
+          "scalar_types": [
+            "integer",
+            "decimal"
+          ],
+          "nullable": true,
+          "required": true
+        }
+      ],
+      "output": {
+        "handle_id": "result",
+        "display_name": "Result",
+        "scalar_type": "boolean",
+        "nullable": false
+      }
+    },
+    {
+      "node_type": "comparison",
+      "operator": "greater_than_or_equal",
+      "display_name": "Greater Than Or Equal",
       "inputs": [
         {
           "handle_id": "left",
@@ -273,6 +470,87 @@
       "method_name": "submit",
       "display_name": "BUY order",
       "side": "BUY",
+      "inputs": [
+        {
+          "handle_id": "enabled",
+          "display_name": "Enabled",
+          "scalar_types": [
+            "boolean"
+          ],
+          "nullable": false,
+          "required": true
+        },
+        {
+          "handle_id": "token_id",
+          "display_name": "Token Id",
+          "scalar_types": [
+            "string"
+          ],
+          "nullable": false,
+          "required": true
+        },
+        {
+          "handle_id": "price",
+          "display_name": "Price",
+          "scalar_types": [
+            "decimal"
+          ],
+          "nullable": false,
+          "required": true
+        },
+        {
+          "handle_id": "size",
+          "display_name": "Size",
+          "scalar_types": [
+            "decimal"
+          ],
+          "nullable": false,
+          "required": true
+        },
+        {
+          "handle_id": "market_slug",
+          "display_name": "Market Slug",
+          "scalar_types": [
+            "string"
+          ],
+          "nullable": true,
+          "required": false
+        },
+        {
+          "handle_id": "condition_id",
+          "display_name": "Condition Id",
+          "scalar_types": [
+            "string"
+          ],
+          "nullable": true,
+          "required": false
+        },
+        {
+          "handle_id": "source_id",
+          "display_name": "Source Id",
+          "scalar_types": [
+            "string"
+          ],
+          "nullable": true,
+          "required": false
+        },
+        {
+          "handle_id": "reason",
+          "display_name": "Reason",
+          "scalar_types": [
+            "string"
+          ],
+          "nullable": true,
+          "required": false
+        }
+      ]
+    },
+    {
+      "node_type": "broker_action",
+      "action": "submit_sell",
+      "method_name": "submit",
+      "display_name": "SELL order",
+      "side": "SELL",
       "inputs": [
         {
           "handle_id": "enabled",

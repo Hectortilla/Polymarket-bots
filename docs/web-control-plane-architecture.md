@@ -219,10 +219,12 @@ inputs plus the existing optional market, condition, source, and reason fields.
 
 The frontend uses only backend catalog metadata and generated types for its
 palette, labels, always-visible scalar trigger handles, controls, and
-connections, and strips only Svelte Flow transient state. Drawn edges are the
-sole persisted record of which trigger outputs a graph uses. The starter graph
-remains non-trading. A complete supported
-graph can compare `BookSnapshot.best_ask.price` with a decimal constant and,
+connections, and strips only Svelte Flow transient state. The palette presents
+a single Comparison item; its node-level select exposes every catalog operator
+and removes an existing input edge if the selected operator no longer accepts
+its scalar type. Drawn edges are the sole persisted record of which trigger
+outputs a graph uses. The starter graph remains non-trading. A complete
+supported graph can compare `BookSnapshot.best_ask.price` with a decimal constant and,
 when true, submit a BUY using the event token and ask price plus a constant
 share size.
 

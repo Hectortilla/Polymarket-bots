@@ -10,12 +10,7 @@ from polybot_control_plane.catalog.graphs.catalog import (
     GraphNodeCatalog,
     GraphTriggerDescriptor,
 )
-from polybot_control_plane.catalog.graphs.types import (
-    GraphBrokerAction,
-    GraphComparisonOperator,
-    GraphFieldPath,
-    GraphScalarType,
-)
+from polybot_control_plane.catalog.graphs.types import GraphFieldPath
 
 
 FRONTEND_FIXTURE_PATH = (
@@ -61,22 +56,9 @@ def frontend_graph_catalog() -> dict[str, object]:
             _trigger("on_book", "bids", "asks", "token_id", "best_ask.price"),
             _trigger("on_wallet_trade", "size"),
         ),
-        constants=tuple(
-            descriptor
-            for descriptor in GRAPH_NODE_CATALOG.constants
-            if descriptor.scalar_type
-            in {GraphScalarType.BOOLEAN, GraphScalarType.DECIMAL}
-        ),
-        comparisons=tuple(
-            descriptor
-            for descriptor in GRAPH_NODE_CATALOG.comparisons
-            if descriptor.operator is GraphComparisonOperator.LESS_THAN_OR_EQUAL
-        ),
-        broker_actions=tuple(
-            descriptor
-            for descriptor in GRAPH_NODE_CATALOG.broker_actions
-            if descriptor.action is GraphBrokerAction.SUBMIT_BUY
-        ),
+        constants=GRAPH_NODE_CATALOG.constants,
+        comparisons=GRAPH_NODE_CATALOG.comparisons,
+        broker_actions=GRAPH_NODE_CATALOG.broker_actions,
     )
     return catalog.model_dump(mode="json")
 

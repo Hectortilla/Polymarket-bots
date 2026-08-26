@@ -54,6 +54,11 @@ export const LESS_THAN_OR_EQUAL: GraphComparisonDescriptor = requireDescriptor(
   (descriptor) => descriptor.operator === 'less_than_or_equal',
   'less-than-or-equal comparison'
 );
+export const EQUAL_COMPARISON: GraphComparisonDescriptor = requireDescriptor(
+  TEST_GRAPH_CATALOG.comparisons,
+  (descriptor) => descriptor.operator === 'equal',
+  'equal comparison'
+);
 export const BUY_ACTION: GraphBrokerActionDescriptor = requireDescriptor(
   TEST_GRAPH_CATALOG.broker_actions,
   (descriptor) => descriptor.action === 'submit_buy',

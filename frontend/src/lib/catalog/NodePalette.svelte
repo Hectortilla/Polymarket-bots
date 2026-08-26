@@ -1,5 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import ArrowsLeftRightIcon from 'phosphor-svelte/lib/ArrowsLeftRightIcon';
+  import HashStraightIcon from 'phosphor-svelte/lib/HashStraightIcon';
+  import LightningIcon from 'phosphor-svelte/lib/LightningIcon';
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
+  import ShoppingCartSimpleIcon from 'phosphor-svelte/lib/ShoppingCartSimpleIcon';
+  import TagIcon from 'phosphor-svelte/lib/TagIcon';
+  import TextTIcon from 'phosphor-svelte/lib/TextTIcon';
+  import ToggleLeftIcon from 'phosphor-svelte/lib/ToggleLeftIcon';
 
   import type {
     GraphBrokerActionDescriptor,
@@ -31,10 +39,19 @@
   } = $props();
 
   type NodeCategory = (typeof GRAPH_NODE_TYPE)[keyof typeof GRAPH_NODE_TYPE];
+  type PaletteIcon =
+    | 'trigger'
+    | 'boolean'
+    | 'number'
+    | 'string'
+    | 'comparison'
+    | 'buy'
+    | 'sell';
 
   type PaletteItem = {
     id: string;
     category: NodeCategory;
+    icon: PaletteIcon;
     name: string;
     description: string;
     meta: string;
@@ -74,10 +91,56 @@
   let query = $state('');
   let searchInput = $state<HTMLInputElement>();
 
+  function comparisonPaletteItems(
+    comparisons: GraphComparisonDescriptor[]
+  ): PaletteItem[] {
+    const defaultComparison = comparisons[0];
+    if (!defaultComparison) return [];
+    const operatorCount = comparisons.length;
+
+    return [
+      {
+        id: 'comparison',
+        category: GRAPH_NODE_TYPE.comparison,
+        icon: 'comparison',
+        name: 'Comparison',
+        description: 'Compare two compatible values with a selectable operator.',
+        meta: `${operatorCount} ${operatorCount === 1 ? 'operator' : 'operators'}`,
+        searchTerms: [
+          'comparison',
+          'logic',
+          ...comparisons.flatMap((comparison) => [
+            comparison.display_name,
+            comparison.operator
+          ])
+        ].join(' '),
+        disabled: false,
+        select: () => onaddcomparison(defaultComparison)
+      }
+    ];
+  }
+
+  function constantIcon(constant: GraphConstantDescriptor): PaletteIcon {
+    switch (constant.scalar_type) {
+      case 'boolean':
+        return 'boolean';
+      case 'integer':
+      case 'decimal':
+        return 'number';
+      case 'string':
+        return 'string';
+    }
+  }
+
+  function actionIcon(action: GraphBrokerActionDescriptor): PaletteIcon {
+    return action.side === 'BUY' ? 'buy' : 'sell';
+  }
+
   const paletteItems = $derived<PaletteItem[]>([
     ...catalog.triggers.map((trigger) => ({
       id: `trigger-${trigger.hook_name}`,
       category: GRAPH_NODE_TYPE.trigger,
+      icon: 'trigger' as const,
       name: trigger.hook_name,
       description: trigger.payload
         ? `Start with ${trigger.payload.type_name} data.`
@@ -90,26 +153,19 @@
     ...catalog.constants.map((constant) => ({
       id: `constant-${constant.scalar_type}`,
       category: GRAPH_NODE_TYPE.constant,
+      icon: constantIcon(constant),
       name: constant.display_name,
-      description: `Create a ${constant.scalar_type} value source.`,
+      description: `Use ${constant.scalar_type} as an input value.`,
       meta: constant.scalar_type,
       searchTerms: `${constant.display_name} ${constant.scalar_type}`,
       disabled: false,
       select: () => onaddconstant(constant)
     })),
-    ...catalog.comparisons.map((comparison) => ({
-      id: `comparison-${comparison.operator}`,
-      category: GRAPH_NODE_TYPE.comparison,
-      name: comparison.display_name,
-      description: 'Compare two compatible input values.',
-      meta: comparison.operator.replaceAll('_', ' '),
-      searchTerms: `${comparison.display_name} ${comparison.operator}`,
-      disabled: false,
-      select: () => onaddcomparison(comparison)
-    })),
+    ...comparisonPaletteItems(catalog.comparisons),
     ...catalog.broker_actions.map((action) => ({
       id: `action-${action.action}`,
       category: GRAPH_NODE_TYPE.brokerAction,
+      icon: actionIcon(action),
       name: action.display_name,
       description: `Submit a ${action.side} order through Broker.${action.method_name}.`,
       meta: action.side,
@@ -172,7 +228,8 @@
     aria-controls="node-palette-panel"
     onclick={togglePalette}
   >
-    Add node
+    <PlusIcon aria-hidden="true" size={15} weight="bold" />
+    <span>Add node</span>
   </button>
 
   {#if open}
@@ -215,6 +272,23 @@
                   disabled={item.disabled}
                   onclick={() => addItem(item)}
                 >
+                  <span class="palette-icon" aria-hidden="true">
+                    {#if item.icon === 'trigger'}
+                      <LightningIcon aria-hidden="true" size={18} />
+                    {:else if item.icon === 'boolean'}
+                      <ToggleLeftIcon aria-hidden="true" size={18} />
+                    {:else if item.icon === 'number'}
+                      <HashStraightIcon aria-hidden="true" size={18} />
+                    {:else if item.icon === 'string'}
+                      <TextTIcon aria-hidden="true" size={18} />
+                    {:else if item.icon === 'comparison'}
+                      <ArrowsLeftRightIcon aria-hidden="true" size={18} />
+                    {:else if item.icon === 'buy'}
+                      <ShoppingCartSimpleIcon aria-hidden="true" size={18} />
+                    {:else}
+                      <TagIcon aria-hidden="true" size={18} />
+                    {/if}
+                  </span>
                   <span class="item-heading">
                     <strong>{item.name}</strong>
                     <small>{item.disabled ? 'On canvas' : item.meta}</small>
@@ -244,6 +318,9 @@
     width: auto;
     min-height: 2.4rem;
     padding: 0.55rem 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     font-size: 0.8rem;
   }
 
@@ -350,9 +427,10 @@
     width: 100%;
     min-height: 4.9rem;
     border-color: var(--line);
-    padding: 0.7rem 0.75rem;
+    padding: 0.55rem 0.7rem 0.55rem 0.55rem;
     display: grid;
-    gap: 0.35rem;
+    grid-template-columns: 2.35rem minmax(0, 1fr);
+    gap: 0.3rem 0.7rem;
     align-content: start;
     justify-items: stretch;
     color: var(--text-soft);
@@ -374,7 +452,22 @@
     opacity: 0.58;
   }
 
+  .palette-icon {
+    grid-row: 1 / span 2;
+    min-height: 3.75rem;
+    border-right: 1px solid var(--line);
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    transition: color var(--transition);
+  }
+
+  .palette-item:hover .palette-icon {
+    color: var(--accent);
+  }
+
   .item-heading {
+    grid-column: 2;
     display: flex;
     justify-content: space-between;
     gap: 0.75rem;
@@ -405,6 +498,7 @@
   }
 
   .palette-item > span:last-child {
+    grid-column: 2;
     color: var(--text-muted);
     font-size: 0.69rem;
     font-weight: 430;

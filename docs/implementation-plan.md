@@ -1251,8 +1251,9 @@ Minimum deliverable:
   `less_than_or_equal`, `greater_than`, and `greater_than_or_equal`. Equality
   operators accept compatible equal scalar types; ordering operators accept
   matching integer or decimal inputs. A comparison has exactly two required
-  inputs and one boolean output. A null input makes the comparison `False`
-  rather than being coerced or guessed.
+  inputs and one boolean output. Present comparison as one frontend palette
+  item with a catalog-driven operator select on the node. A null input makes
+  the comparison `False` rather than being coerced or guessed.
 - Publish the broker action catalog from an explicit allowlist containing only
   `Broker.submit(OrderRequest) -> FillEvent`. Derive its field metadata from the
   broker signature, `OrderRequest`, `Side`, and their annotations rather than

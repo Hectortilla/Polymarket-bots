@@ -10,6 +10,7 @@
   import '@xyflow/svelte/dist/style.css';
 
   import type {
+    GraphComparisonNodeData,
     GraphConstantNodeData,
     GraphNodeCatalog,
     GraphTriggerDescriptor,
@@ -67,6 +68,7 @@
 
   const editorContext: NodeGraphEditorContext = {
     catalog: catalogSnapshot,
+    setComparisonData,
     setConstantData
   };
   setContext(NODE_GRAPH_EDITOR_CONTEXT, editorContext);
@@ -86,6 +88,23 @@
       node.id === nodeId && node.type === GRAPH_NODE_TYPE.constant
         ? { ...node, data }
         : node
+    );
+  }
+
+  function setComparisonData(
+    nodeId: string,
+    data: GraphComparisonNodeData
+  ): void {
+    const updatedNodes = nodes.map((node) =>
+      node.id === nodeId && node.type === GRAPH_NODE_TYPE.comparison
+        ? { ...node, data }
+        : node
+    );
+    nodes = updatedNodes;
+    edges = edges.filter(
+      (edge) =>
+        edge.target !== nodeId ||
+        connectionIsValid(edge, updatedNodes, [], catalogSnapshot)
     );
   }
 
