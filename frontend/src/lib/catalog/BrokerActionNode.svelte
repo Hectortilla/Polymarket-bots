@@ -21,7 +21,12 @@
   </header>
   {#each descriptor.inputs as input (input.handle_id)}
     <div class="port">
-      <Handle type="target" position={Position.Left} id={input.handle_id} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id={input.handle_id}
+        isConnectable={!editor.readOnly}
+      />
       <span>{input.display_name}{input.required ? '' : ' (optional)'}</span>
       <small>{input.scalar_types.join(' | ')}</small>
     </div>

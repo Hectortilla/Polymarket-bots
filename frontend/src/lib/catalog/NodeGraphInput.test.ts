@@ -11,7 +11,8 @@ import {
   EQUAL_COMPARISON,
   ON_BOOK_TRIGGER,
   TEST_GRAPH,
-  TEST_GRAPH_CATALOG
+  TEST_GRAPH_CATALOG,
+  THRESHOLD_BUY_GRAPH
 } from './nodeGraphTestFixtures';
 
 class FlowResizeObserver implements ResizeObserver {
@@ -37,12 +38,7 @@ afterEach(() => {
 
 describe('node graph editor', () => {
   it('constructs real Flow nodes and remounts the emitted graph', async () => {
-    vi.stubGlobal('ResizeObserver', FlowResizeObserver);
-    vi.stubGlobal('DOMMatrixReadOnly', class {
-      readonly m22 = 1;
-    });
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(100);
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(50);
+    stubFlowBrowserApis();
     const onchange = vi.fn<(graph: NodeGraph) => void>();
     const view = render(NodeGraphInput, {
       initialGraph: TEST_GRAPH,
@@ -146,4 +142,45 @@ describe('node graph editor', () => {
     expect(document.querySelector('.graph-summary')?.textContent)
       .toContain('1 connection');
   });
+
+  it('renders the same graph as a strictly non-interactive snapshot', async () => {
+    stubFlowBrowserApis();
+    const onchange = vi.fn<(graph: NodeGraph) => void>();
+
+    render(NodeGraphInput, {
+      initialGraph: THRESHOLD_BUY_GRAPH,
+      graphCatalog: TEST_GRAPH_CATALOG,
+      onchange,
+      labelledby: 'snapshot-label',
+      readOnly: true
+    });
+
+    expect(await screen.findByLabelText(`${BUY_ACTION.display_name} broker action node`))
+      .toBeTruthy();
+    expect(onchange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: ADD_NODE_LABEL })).toBeNull();
+    expect(document.querySelector('[data-testid="svelte-flow__controls"]')).toBeNull();
+    for (const input of screen.getAllByRole<HTMLInputElement>('textbox', {
+      name: 'Value'
+    })) {
+      expect(input.disabled).toBe(true);
+    }
+    expect(screen.getByRole<HTMLSelectElement>('combobox', {
+      name: 'Comparison operator'
+    }).disabled).toBe(true);
+    expect(document.querySelector('.svelte-flow__node.draggable')).toBeNull();
+    expect(document.querySelector('.svelte-flow__node.connectable')).toBeNull();
+    expect(document.querySelector('.svelte-flow__node.selectable')).toBeNull();
+    expect(document.querySelector('.svelte-flow__node[tabindex="0"]')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Svelte Flow attribution' })).toBeNull();
+  });
 });
+
+function stubFlowBrowserApis(): void {
+  vi.stubGlobal('ResizeObserver', FlowResizeObserver);
+  vi.stubGlobal('DOMMatrixReadOnly', class {
+    readonly m22 = 1;
+  });
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(100);
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(50);
+}

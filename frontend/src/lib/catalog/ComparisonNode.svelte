@@ -34,7 +34,12 @@
   </header>
   <label class="operator-control nodrag nowheel">
     <span>Operator</span>
-    <select aria-label="Comparison operator" value={data.operator} onchange={updateOperator}>
+    <select
+      aria-label="Comparison operator"
+      value={data.operator}
+      disabled={editor.readOnly}
+      onchange={updateOperator}
+    >
       {#each editor.catalog.comparisons as comparison (comparison.operator)}
         <option value={comparison.operator}>{comparison.display_name}</option>
       {/each}
@@ -42,7 +47,12 @@
   </label>
   {#each descriptor.inputs as input (input.handle_id)}
     <div class="port input-port">
-      <Handle type="target" position={Position.Left} id={input.handle_id} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id={input.handle_id}
+        isConnectable={!editor.readOnly}
+      />
       <span>{input.display_name}</span>
       <small>{input.scalar_types.join(' | ')}</small>
     </div>
@@ -50,7 +60,12 @@
   <div class="port output-port">
     <span>{descriptor.output.display_name}</span>
     <small>{descriptor.output.scalar_type}</small>
-    <Handle type="source" position={Position.Right} id={descriptor.output.handle_id} />
+    <Handle
+      type="source"
+      position={Position.Right}
+      id={descriptor.output.handle_id}
+      isConnectable={!editor.readOnly}
+    />
   </div>
 </section>
 
@@ -107,6 +122,12 @@
     outline: 0;
     background: var(--surface);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .operator-control select:disabled {
+    opacity: 1;
+    color: var(--text);
+    cursor: default;
+    -webkit-text-fill-color: var(--text);
   }
   header strong,
   .port span {

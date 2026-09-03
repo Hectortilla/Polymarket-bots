@@ -46,7 +46,7 @@
             type="source"
             position={Position.Right}
             id={field.handle_id}
-            isConnectable={field.scalar_type !== null}
+            isConnectable={!editor.readOnly && field.scalar_type !== null}
           />
         </div>
       {/each}

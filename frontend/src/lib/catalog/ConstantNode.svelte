@@ -30,12 +30,18 @@
   <label class="nodrag nowheel">
     <span>{descriptor.output.display_name}</span>
     {#if inputControl.type === 'checkbox'}
-      <input type="checkbox" checked={data.value === true} onchange={updateValue} />
+      <input
+        type="checkbox"
+        checked={data.value === true}
+        disabled={editor.readOnly}
+        onchange={updateValue}
+      />
     {:else}
       <input
         type={inputControl.type}
         value={data.value}
         step={inputControl.step}
+        disabled={editor.readOnly}
         onchange={updateValue}
       />
     {/if}
@@ -43,6 +49,7 @@
       type="source"
       position={Position.Right}
       id={descriptor.output.handle_id}
+      isConnectable={!editor.readOnly}
     />
   </label>
 </section>
@@ -83,6 +90,12 @@
   input[type='number'] {
     min-width: 0;
     width: 7rem;
+  }
+  input:disabled {
+    opacity: 1;
+    color: var(--text);
+    cursor: default;
+    -webkit-text-fill-color: var(--text);
   }
   :global(.svelte-flow__handle) {
     width: 0.55rem;

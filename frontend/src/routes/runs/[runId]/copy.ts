@@ -1,6 +1,7 @@
 export const RUN_DETAIL_COPY = {
   EXECUTED_GRAPH_REVISION: 'Executed graph revision',
-  GRAPH_REVISION: 'graph revision'
+  GRAPH_REVISION: 'graph revision',
+  GRAPH_LOAD_ERROR: 'The executed graph could not be displayed.'
 } as const;
 
 export function runGraphRevisionLabel(

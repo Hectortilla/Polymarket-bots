@@ -3,9 +3,13 @@
   import { onMount } from 'svelte';
 
   import {
+    listBotDefinitionsApiV1BotDefinitionsGet,
     stopRunApiV1RunsRunIdStopPost,
+    type GraphNodeCatalog,
     type RunRead
   } from '$lib/api/generated';
+  import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
+  import { hasGraphCapability } from '$lib/catalog/graphContracts';
   import {
     EVENT_KIND,
     type PersistedDurableEvent
@@ -26,9 +30,13 @@
   import {
     RUN_STATUS_PRESENTATION
   } from '$lib/runs/status';
-  import { eventSummary } from '$lib/runs/eventSummary';
+  import {
+    eventFailureDetail,
+    eventSummary
+  } from '$lib/runs/eventSummary';
   import { formatTime } from '$lib/time';
   import {
+    RUN_DETAIL_COPY,
     executedRunGraphRevisionLabel,
     runGraphRevisionLabel
   } from './copy';
@@ -42,6 +50,9 @@
   let loadingOlderEvents = $state(false);
   let nextBeforeEventId = $state<number | null>(null);
   let error = $state('');
+  let executedGraphCatalog = $state<GraphNodeCatalog>();
+  let executedGraphCatalogLoading = $state(false);
+  let executedGraphCatalogError = $state('');
   let closeStream = () => {};
 
   const statusPresentation = $derived(
@@ -70,6 +81,21 @@
           events = hydration.events;
           dashboard = mergeDurableEvents(emptyDashboardHistory(), hydration.events);
           nextBeforeEventId = hydration.nextBeforeEventId;
+          if (hydration.run.graph) {
+            executedGraphCatalogLoading = true;
+            void loadExecutedGraphCatalog(hydration.run.definition_id)
+              .then((catalog) => {
+                if (!disposed) executedGraphCatalog = catalog;
+              })
+              .catch(() => {
+                if (!disposed) {
+                  executedGraphCatalogError = RUN_DETAIL_COPY.GRAPH_LOAD_ERROR;
+                }
+              })
+              .finally(() => {
+                if (!disposed) executedGraphCatalogLoading = false;
+              });
+          }
         }
       },
       appendDurableEvent,
@@ -99,6 +125,21 @@
     if (run && event.kind === EVENT_KIND.runLifecycle) {
       run = { ...run, status: event.payload.status };
     }
+  }
+
+  async function loadExecutedGraphCatalog(
+    definitionId: string
+  ): Promise<GraphNodeCatalog> {
+    const response = await listBotDefinitionsApiV1BotDefinitionsGet({
+      throwOnError: true
+    });
+    const definition = response.data.find(
+      (candidate) => candidate.definition_id === definitionId
+    );
+    if (!hasGraphCapability(definition)) {
+      throw new Error('Executed graph definition is unavailable');
+    }
+    return definition.graph_catalog;
   }
 
   async function stopRun(): Promise<void> {
@@ -208,11 +249,27 @@
   {#if run.graph}
     <section class="detail-section configuration-panel historical-graph">
       <div class="section-heading">
-        <h2>{executedRunGraphRevisionLabel(run.graph_revision)}</h2>
+        <h2 id="executed-graph-heading">
+          {executedRunGraphRevisionLabel(run.graph_revision)}
+        </h2>
         <span class="section-count">immutable run snapshot</span>
       </div>
-      <p>This is the exact saved-bot graph used by this run. Later bot revisions do not change it.</p>
-      <pre>{JSON.stringify(run.graph, null, 2)}</pre>
+      <p id="executed-graph-description">
+        This is the exact saved-bot graph used by this run. Later bot revisions do not change it.
+      </p>
+      {#if executedGraphCatalog}
+        <NodeGraphInput
+          initialGraph={run.graph}
+          graphCatalog={executedGraphCatalog}
+          labelledby="executed-graph-heading"
+          describedby="executed-graph-description"
+          readOnly
+        />
+      {:else if executedGraphCatalogLoading}
+        <p class="empty-state" aria-live="polite">Loading executed graph…</p>
+      {:else}
+        <p class="notice error" role="alert">{executedGraphCatalogError}</p>
+      {/if}
     </section>
   {/if}
 
@@ -266,10 +323,24 @@
           <thead><tr><th>Time</th><th>Kind</th><th>Detail</th></tr></thead>
           <tbody>
             {#each events as event (event.id)}
-              <tr>
+              {@const failureDetail = eventFailureDetail(event, events, run.failure_detail)}
+              {@const failureDetailId = `event-failure-detail-${event.id}`}
+              <tr
+                class:event-row-with-detail={failureDetail !== null}
+                tabindex={failureDetail === null ? undefined : 0}
+                aria-describedby={failureDetail === null ? undefined : failureDetailId}
+              >
                 <td data-label="Time">{formatTime(event.occurred_at)}</td>
                 <td data-label="Kind"><span class="event-kind">{event.kind}</span></td>
-                <td data-label="Detail">{eventSummary(event)}</td>
+                <td class="event-detail-cell" data-label="Detail">
+                  {eventSummary(event)}
+                  {#if failureDetail}
+                    <span class="event-failure-tooltip" id={failureDetailId} role="tooltip">
+                      <span class="event-failure-tooltip-label">Failure details</span>
+                      <span>{failureDetail}</span>
+                    </span>
+                  {/if}
+                </td>
               </tr>
             {/each}
           </tbody>

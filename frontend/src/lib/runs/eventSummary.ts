@@ -1,8 +1,9 @@
 import {
   EVENT_KIND,
+  INITIAL_EVENT_CURSOR,
   type PersistedDurableEvent
 } from './durableEvents';
-import { runStatusLabel } from './status';
+import { RUN_STATUS, runStatusLabel } from './status';
 
 export function eventSummary(event: PersistedDurableEvent): string {
   switch (event.kind) {
@@ -33,6 +34,48 @@ export function eventSummary(event: PersistedDurableEvent): string {
         ? `Equity ${event.payload.equity.status}`
         : `Equity ${event.payload.equity.value} USDC / ${event.payload.equity.status}`;
   }
+}
+
+export function eventFailureDetail(
+  event: PersistedDurableEvent,
+  events: PersistedDurableEvent[],
+  recordedFailureDetail: string | null | undefined
+): string | null {
+  if (
+    event.kind !== EVENT_KIND.runLifecycle ||
+    event.payload.status !== RUN_STATUS.FAILED
+  ) {
+    return null;
+  }
+
+  const runtimeFailure = latestRuntimeFailureBefore(event, events);
+  if (
+    runtimeFailure &&
+    recordedFailureDetail &&
+    runtimeFailure !== recordedFailureDetail
+  ) {
+    return `${runtimeFailure}\nRecorded failure: ${recordedFailureDetail}`;
+  }
+  return runtimeFailure ?? recordedFailureDetail ?? null;
+}
+
+function latestRuntimeFailureBefore(
+  lifecycleEvent: PersistedDurableEvent,
+  events: PersistedDurableEvent[]
+): string | null {
+  let latestId = INITIAL_EVENT_CURSOR;
+  let detail: string | null = null;
+  for (const event of events) {
+    if (
+      event.id < lifecycleEvent.id &&
+      event.id > latestId &&
+      event.kind === EVENT_KIND.runFailure
+    ) {
+      latestId = event.id;
+      detail = event.payload.error;
+    }
+  }
+  return detail;
 }
 
 function fillSummary(

@@ -853,14 +853,6 @@ select {
   padding: 32px;
 }
 
-.historical-graph pre {
-  max-height: 32rem;
-  margin: 24px 0 0;
-  overflow: auto;
-  color: var(--text-soft);
-  font: 0.72rem/1.55 'Geist Mono Variable', ui-monospace, monospace;
-}
-
 input[type='checkbox'] {
   width: 20px;
   min-height: 20px;
@@ -1066,10 +1058,71 @@ dd {
   white-space: nowrap;
 }
 
+.event-table {
+  overflow: visible;
+}
+
 .event-kind {
   color: var(--accent);
   font-family: 'Geist Mono Variable', ui-monospace, monospace;
   font-size: 0.72rem;
+}
+
+.event-row-with-detail {
+  cursor: help;
+}
+
+.event-row-with-detail:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.event-detail-cell {
+  position: relative;
+}
+
+.event-failure-tooltip {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: calc(100% - 4px);
+  width: min(440px, calc(100vw - 48px));
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--error) 55%, var(--line));
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
+  color: var(--text);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity var(--transition),
+    transform var(--transition),
+    visibility var(--transition);
+  visibility: hidden;
+  white-space: pre-wrap;
+}
+
+.event-failure-tooltip-label {
+  margin-bottom: 6px;
+  display: block;
+  color: var(--error);
+  font-family: 'Geist Variable', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.event-row-with-detail:hover .event-failure-tooltip,
+.event-row-with-detail:focus .event-failure-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .loading-state {

@@ -52,14 +52,16 @@
     onchange,
     labelledby,
     describedby,
+    readOnly = false,
     validationIssues = [],
     validationSummaryId = 'graph-validation-summary'
   }: {
     initialGraph: NodeGraph;
     graphCatalog: GraphNodeCatalog;
-    onchange: (graph: NodeGraph) => void;
+    onchange?: (graph: NodeGraph) => void;
     labelledby: string;
     describedby?: string;
+    readOnly?: boolean;
     validationIssues?: GraphValidationIssue[];
     validationSummaryId?: string;
   } = $props();
@@ -73,6 +75,7 @@
     [GRAPH_NODE_TYPE.comparison]: ComparisonNode,
     [GRAPH_NODE_TYPE.brokerAction]: BrokerActionNode
   };
+  const readOnlyFlowOptions = { hideAttribution: true };
   let nodes = $state.raw<CanvasNode[]>(canvasNodes(initialGraphSnapshot));
   let edges = $state.raw<CanvasEdge[]>(canvasEdges(initialGraphSnapshot));
   let graphChangeReportingReady = false;
@@ -89,6 +92,9 @@
 
   const editorContext: NodeGraphEditorContext = {
     catalog: catalogSnapshot,
+    get readOnly() {
+      return readOnly;
+    },
     setComparisonData,
     setConstantData
   };
@@ -97,9 +103,10 @@
   // The parent already owns the initial graph; report only subsequent canvas edits.
   // Rebuilding the initial graph can reorder object keys and falsely mark it dirty.
   $effect(() => {
+    if (readOnly) return;
     const graph = toPersistedNodeGraph(nodes, edges);
     if (graphChangeReportingReady) {
-      untrack(() => onchange(graph));
+      untrack(() => onchange?.(graph));
     } else {
       graphChangeReportingReady = true;
     }
@@ -110,12 +117,14 @@
   }
 
   function addNode(node: CanvasNode): void {
+    if (readOnly) return;
     if (nodes.length < catalogContract.nodeGraph.maximumNodes) {
       nodes = [...nodes, node];
     }
   }
 
   function setConstantData(nodeId: string, data: GraphConstantNodeData): void {
+    if (readOnly) return;
     nodes = nodes.map((node) =>
       node.id === nodeId && node.type === GRAPH_NODE_TYPE.constant
         ? { ...node, data }
@@ -127,6 +136,7 @@
     nodeId: string,
     data: GraphComparisonNodeData
   ): void {
+    if (readOnly) return;
     const updatedNodes = nodes.map((node) =>
       node.id === nodeId && node.type === GRAPH_NODE_TYPE.comparison
         ? { ...node, data }
@@ -141,6 +151,7 @@
   }
 
   function connect(connection: Connection): void {
+    if (readOnly) return;
     if (edges.length >= catalogContract.nodeGraph.maximumEdges) return;
     edges = addConnection(connection, edges);
   }
@@ -152,21 +163,25 @@
       <span><strong>{nodes.length}</strong> {nodes.length === 1 ? 'node' : 'nodes'}</span>
       <span><strong>{edges.length}</strong> {edges.length === 1 ? 'connection' : 'connections'}</span>
     </div>
-    <NodePalette
-      catalog={catalogSnapshot}
-      {nodes}
-      additionDisabled={nodes.length >= catalogContract.nodeGraph.maximumNodes}
-      onaddtrigger={addTrigger}
-      onaddconstant={(constant) => addNode(createConstantNode(nodes, constant))}
-      onaddcomparison={(comparison) => addNode(createComparisonNode(nodes, comparison))}
-      onaddaction={(action) => addNode(createBrokerActionNode(nodes, action))}
-    />
+    {#if !readOnly}
+      <NodePalette
+        catalog={catalogSnapshot}
+        {nodes}
+        additionDisabled={nodes.length >= catalogContract.nodeGraph.maximumNodes}
+        onaddtrigger={addTrigger}
+        onaddconstant={(constant) => addNode(createConstantNode(nodes, constant))}
+        onaddcomparison={(comparison) => addNode(createComparisonNode(nodes, comparison))}
+        onaddaction={(action) => addNode(createBrokerActionNode(nodes, action))}
+      />
+    {/if}
   </div>
   <div
     class="graph-canvas"
-    role="application"
+    class:read-only={readOnly}
+    role={readOnly ? 'group' : 'application'}
     aria-labelledby={labelledby}
     aria-describedby={canvasDescription}
+    aria-disabled={readOnly || undefined}
   >
     <SvelteFlow
       bind:nodes
@@ -176,17 +191,36 @@
         edges.length < catalogContract.nodeGraph.maximumEdges
         && connectionIsValid(connection, nodes, edges, catalogSnapshot)}
       onconnect={connect}
-      nodesConnectable={edges.length < catalogContract.nodeGraph.maximumEdges}
+      nodesDraggable={!readOnly}
+      nodesConnectable={!readOnly && edges.length < catalogContract.nodeGraph.maximumEdges}
+      elementsSelectable={!readOnly}
+      nodesFocusable={!readOnly}
+      edgesFocusable={!readOnly}
+      autoPanOnNodeFocus={!readOnly}
+      autoPanOnConnect={!readOnly}
+      autoPanOnNodeDrag={!readOnly}
+      autoPanOnSelection={!readOnly}
+      panOnDrag={!readOnly}
+      panOnScroll={false}
+      zoomOnScroll={!readOnly}
+      zoomOnDoubleClick={!readOnly}
+      zoomOnPinch={!readOnly}
+      preventScrolling={!readOnly}
+      clickConnect={!readOnly}
+      disableKeyboardA11y={readOnly}
+      proOptions={readOnly ? readOnlyFlowOptions : undefined}
       {nodeExtent}
       fitView
       minZoom={0.25}
       maxZoom={2}
     >
-      <Controls
-        class="node-graph-controls"
-        position="bottom-right"
-        orientation="horizontal"
-      />
+      {#if !readOnly}
+        <Controls
+          class="node-graph-controls"
+          position="bottom-right"
+          orientation="horizontal"
+        />
+      {/if}
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
     </SvelteFlow>
   </div>
@@ -248,6 +282,11 @@
     border: 1px solid var(--line-strong);
     border-radius: 0.75rem;
     background: var(--surface-raised);
+  }
+
+  .graph-canvas.read-only {
+    pointer-events: none;
+    user-select: none;
   }
 
   .graph-validation-summary {
