@@ -11,7 +11,16 @@ from typing import TypedDict
 from scripts.wallet_payload_contracts import ActivityRow, ActivityType
 
 PNL_SIGNIFICANCE_THRESHOLD = 0.005
-OPEN_POSITION_SIZE_THRESHOLD = 1.0
+ACTIVITY_METRIC = "activity"
+ACTIVITY_COUNT_METRIC = "activity_count"
+TRADE_COUNT_METRIC = "trade_count"
+ACTIVITY_SPAN_HOURS_METRIC = "activity_span_hours"
+MARKET_COUNT_METRIC = "n_markets"
+NET_CASH_METRIC = "net_cash"
+VOLUME_METRIC = "volume"
+FEES_METRIC = "fees"
+GROSS_BEFORE_FEES_METRIC = "gross_before_fees"
+HEDGE_AVERAGE_METRIC = "hedge_avg"
 
 
 class WalletVerdict(StrEnum):

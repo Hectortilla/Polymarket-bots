@@ -10,6 +10,7 @@ from typing import Self
 from polymarket import PolymarketError
 
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.timestamps import require_nonnegative_timestamp
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.errors import (
     MarketDataError,
@@ -97,8 +98,7 @@ class MarketCapture(AsyncIterator[CapturedMarketEvent]):
         )
 
     def projected_books(self, observed_at_ms: int) -> tuple[BookSnapshot, ...]:
-        if observed_at_ms < 0:
-            raise ValueError("observation timestamp must not be negative")
+        require_nonnegative_timestamp(observed_at_ms, "observation timestamp")
         return self._projector.snapshots(received_at_ms=observed_at_ms)
 
     def __aiter__(self) -> Self:

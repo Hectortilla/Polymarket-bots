@@ -18,7 +18,7 @@ def signed_cash(activity_row: ActivityRow) -> float | None:
     if activity_type is ActivityType.TRADE:
         return (
             -usdc_size
-            if Side(activity_row[ACTIVITY_SIDE_FIELD]) is Side.BUY
+            if activity_row[ACTIVITY_SIDE_FIELD] is Side.BUY
             else usdc_size
         )
     if activity_type in (ActivityType.REDEEM, ActivityType.REWARD, ActivityType.MERGE):

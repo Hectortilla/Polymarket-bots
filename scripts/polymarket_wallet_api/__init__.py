@@ -2,7 +2,7 @@
 
 from polymarket import PublicClient
 
-from scripts.polymarket_wallet_api.constants import (
+from scripts.polymarket_wallet_api.position_contracts import (
     DEFAULT_MARKET_POSITION_LIMIT,
 )
 from scripts.polymarket_wallet_api.activity import (
@@ -19,6 +19,7 @@ from scripts.polymarket_wallet_api.positions import (
 from scripts.polymarket_wallet_api.normalization import (
     enrich_activity_with_market_slug as _enrich_activity_with_market_slug,
 )
+from scripts.wallet_payload_contracts import ActivityRow
 
 __all__ = [
     "enrich_activity_with_market_slug",
@@ -33,7 +34,7 @@ __all__ = [
 def fetch_all_activity(
     wallet: str,
     max_items: int | None = None,
-) -> tuple[list[dict[str, object]], bool]:
+) -> tuple[list[ActivityRow], bool]:
     return _fetch_all_activity(
         wallet,
         max_items,
@@ -66,8 +67,8 @@ def fetch_gamma_market(condition_id: str) -> dict[str, object] | None:
 
 
 def enrich_activity_with_market_slug(
-    activity: list[dict[str, object]],
-) -> list[dict[str, object]]:
+    activity: list[ActivityRow],
+) -> list[ActivityRow]:
     return _enrich_activity_with_market_slug(
         activity,
         market_fetcher=fetch_gamma_market,

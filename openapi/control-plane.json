@@ -19,47 +19,6 @@
         "title": "BootstrapPhase",
         "type": "string"
       },
-      "BotActivityDurableEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "bot.activity",
-            "default": "bot.activity",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/BotActivityPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "BotActivityDurableEvent",
-        "type": "object"
-      },
       "BotActivityPayload": {
         "additionalProperties": false,
         "properties": {
@@ -76,6 +35,37 @@
           "severity"
         ],
         "title": "BotActivityPayload",
+        "type": "object"
+      },
+      "BotCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "definition_id": {
+            "$ref": "#/components/schemas/DefinitionId"
+          },
+          "graph_template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph Template Id"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "definition_id",
+          "inputs"
+        ],
+        "title": "BotCreate",
         "type": "object"
       },
       "BotDefinitionDescriptor": {
@@ -113,6 +103,16 @@
           "market_selection": {
             "$ref": "#/components/schemas/SelectionMode"
           },
+          "starter_graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "wallet_selection": {
             "$ref": "#/components/schemas/SelectionMode"
           }
@@ -138,6 +138,54 @@
         "title": "BotDefinitionLabel",
         "type": "string"
       },
+      "BotGraphRevisionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/NodeGraph"
+          }
+        },
+        "required": [
+          "graph"
+        ],
+        "title": "BotGraphRevisionCreate",
+        "type": "object"
+      },
+      "BotGraphRevisionRead": {
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "format": "uuid",
+            "title": "Bot Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/NodeGraph"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/GraphRevisionNumber"
+          }
+        },
+        "required": [
+          "id",
+          "bot_id",
+          "revision",
+          "graph",
+          "created_at"
+        ],
+        "title": "BotGraphRevisionRead",
+        "type": "object"
+      },
       "BotMode": {
         "enum": [
           "paper",
@@ -146,45 +194,64 @@
         "title": "BotMode",
         "type": "string"
       },
-      "BrokerFailureEvent": {
+      "BotRead": {
         "additionalProperties": false,
         "properties": {
+          "config": {
+            "$ref": "#/components/schemas/PaperRunConfig"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_id": {
+            "$ref": "#/components/schemas/DefinitionId"
+          },
           "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_graph_revision": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DurableEventId"
+                "$ref": "#/components/schemas/BotGraphRevisionRead"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "kind": {
-            "const": "broker.failure",
-            "default": "broker.failure",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
+          "updated_at": {
             "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/BrokerFailurePayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
+            "title": "Updated At",
             "type": "string"
           }
         },
         "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
+          "id",
+          "definition_id",
+          "config",
+          "created_at",
+          "updated_at"
         ],
-        "title": "BrokerFailureEvent",
+        "title": "BotRead",
+        "type": "object"
+      },
+      "BotUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "inputs"
+        ],
+        "title": "BotUpdate",
         "type": "object"
       },
       "BrokerFailurePayload": {
@@ -204,47 +271,6 @@
           "error"
         ],
         "title": "BrokerFailurePayload",
-        "type": "object"
-      },
-      "BrokerFillEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "broker.fill",
-            "default": "broker.fill",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/BrokerFillPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "BrokerFillEvent",
         "type": "object"
       },
       "BrokerFillPayload": {
@@ -281,47 +307,6 @@
         "title": "BrokerFillPayload",
         "type": "object"
       },
-      "BrokerOrderEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "broker.order",
-            "default": "broker.order",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/BrokerOrderPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "BrokerOrderEvent",
-        "type": "object"
-      },
       "BrokerOrderPayload": {
         "additionalProperties": false,
         "properties": {
@@ -333,47 +318,6 @@
           "order"
         ],
         "title": "BrokerOrderPayload",
-        "type": "object"
-      },
-      "ChartSampleEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "chart.sample",
-            "default": "chart.sample",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/ChartSamplePayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "ChartSampleEvent",
         "type": "object"
       },
       "ChartSamplePayload": {
@@ -439,11 +383,13 @@
       "DispatchSkipReason": {
         "enum": [
           "market_metadata_missing",
+          "book_identity_mismatch",
           "market_not_tracked",
           "market_resolved",
           "wallet_not_tracked",
           "book_stale",
           "book_future_dated",
+          "bad_book_timestamp",
           "bad_book_level",
           "book_crossed",
           "wallet_trade_invalid",
@@ -454,65 +400,8 @@
         "title": "DispatchSkipReason",
         "type": "string"
       },
-      "DurableEvent": {
-        "discriminator": {
-          "mapping": {
-            "bot.activity": "#/components/schemas/BotActivityDurableEvent",
-            "broker.failure": "#/components/schemas/BrokerFailureEvent",
-            "broker.fill": "#/components/schemas/BrokerFillEvent",
-            "broker.order": "#/components/schemas/BrokerOrderEvent",
-            "chart.sample": "#/components/schemas/ChartSampleEvent",
-            "market.settlement": "#/components/schemas/MarketSettlementDurableEvent",
-            "portfolio.snapshot": "#/components/schemas/PortfolioSnapshotEvent",
-            "run.bootstrap": "#/components/schemas/RunBootstrapEvent",
-            "run.failure": "#/components/schemas/RunFailureEvent",
-            "run.lifecycle": "#/components/schemas/RunLifecycleEvent",
-            "stream.health": "#/components/schemas/StreamHealthEvent",
-            "wallet.timeline": "#/components/schemas/WalletTimelineDurableEvent"
-          },
-          "propertyName": "kind"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/RunLifecycleEvent"
-          },
-          {
-            "$ref": "#/components/schemas/RunBootstrapEvent"
-          },
-          {
-            "$ref": "#/components/schemas/BotActivityDurableEvent"
-          },
-          {
-            "$ref": "#/components/schemas/BrokerOrderEvent"
-          },
-          {
-            "$ref": "#/components/schemas/BrokerFillEvent"
-          },
-          {
-            "$ref": "#/components/schemas/BrokerFailureEvent"
-          },
-          {
-            "$ref": "#/components/schemas/MarketSettlementDurableEvent"
-          },
-          {
-            "$ref": "#/components/schemas/PortfolioSnapshotEvent"
-          },
-          {
-            "$ref": "#/components/schemas/WalletTimelineDurableEvent"
-          },
-          {
-            "$ref": "#/components/schemas/StreamHealthEvent"
-          },
-          {
-            "$ref": "#/components/schemas/RunFailureEvent"
-          },
-          {
-            "$ref": "#/components/schemas/ChartSampleEvent"
-          }
-        ]
-      },
       "DurableEventId": {
-        "maximum": 9.223372036854776e+18,
+        "maximum": 9007199254740991.0,
         "minimum": 1.0,
         "type": "integer"
       },
@@ -561,8 +450,22 @@
         "title": "EquityChartPointPayload",
         "type": "object"
       },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
       "EventCursorValue": {
-        "maximum": 9.223372036854776e+18,
+        "maximum": 9007199254740991.0,
         "minimum": 0.0,
         "type": "integer"
       },
@@ -657,6 +560,7 @@
           "bad_size",
           "book_unavailable",
           "book_mismatch",
+          "bad_book_timestamp",
           "book_stale",
           "book_future_dated",
           "bad_book_level",
@@ -1003,19 +907,19 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "$ref": "#/components/schemas/GraphElementId"
+            "$ref": "#/components/schemas/GraphEdgeId"
           },
           "source": {
             "$ref": "#/components/schemas/GraphElementId"
           },
           "source_handle": {
-            "$ref": "#/components/schemas/GraphElementId"
+            "$ref": "#/components/schemas/GraphHandleId"
           },
           "target": {
             "$ref": "#/components/schemas/GraphElementId"
           },
           "target_handle": {
-            "$ref": "#/components/schemas/GraphElementId"
+            "$ref": "#/components/schemas/GraphHandleId"
           }
         },
         "required": [
@@ -1027,6 +931,11 @@
         ],
         "title": "GraphEdge",
         "type": "object"
+      },
+      "GraphEdgeId": {
+        "maxLength": 320,
+        "minLength": 1,
+        "type": "string"
       },
       "GraphElementId": {
         "maxLength": 64,
@@ -1045,8 +954,7 @@
             "type": "string"
           },
           "handle_id": {
-            "title": "Handle Id",
-            "type": "string"
+            "$ref": "#/components/schemas/GraphHandleId"
           },
           "nullable": {
             "title": "Nullable",
@@ -1111,6 +1019,11 @@
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
         "type": "string"
       },
+      "GraphHandleId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string"
+      },
       "GraphHookName": {
         "maxLength": 64,
         "pattern": "^on_[a-z][a-z0-9_]*$",
@@ -1124,8 +1037,7 @@
             "type": "string"
           },
           "handle_id": {
-            "title": "Handle Id",
-            "type": "string"
+            "$ref": "#/components/schemas/GraphHandleId"
           },
           "nullable": {
             "title": "Nullable",
@@ -1139,6 +1051,7 @@
             "items": {
               "$ref": "#/components/schemas/GraphScalarType"
             },
+            "minItems": 1,
             "title": "Scalar Types",
             "type": "array"
           }
@@ -1247,8 +1160,7 @@
             "type": "string"
           },
           "handle_id": {
-            "title": "Handle Id",
-            "type": "string"
+            "$ref": "#/components/schemas/GraphHandleId"
           },
           "nullable": {
             "default": false,
@@ -1306,6 +1218,10 @@
         "title": "GraphPosition",
         "type": "object"
       },
+      "GraphRevisionNumber": {
+        "minimum": 1.0,
+        "type": "integer"
+      },
       "GraphScalarType": {
         "enum": [
           "boolean",
@@ -1334,6 +1250,90 @@
           "value"
         ],
         "title": "GraphStringConstantData",
+        "type": "object"
+      },
+      "GraphTemplateCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/NodeGraph"
+          },
+          "name": {
+            "$ref": "#/components/schemas/GraphTemplateName"
+          }
+        },
+        "required": [
+          "name",
+          "graph"
+        ],
+        "title": "GraphTemplateCreate",
+        "type": "object"
+      },
+      "GraphTemplateName": {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+      },
+      "GraphTemplateRead": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/NodeGraph"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/GraphTemplateName"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "graph",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GraphTemplateRead",
+        "type": "object"
+      },
+      "GraphTemplateUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphTemplateName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "GraphTemplateUpdate",
         "type": "object"
       },
       "GraphTriggerDescriptor": {
@@ -1441,25 +1441,6 @@
           }
         },
         "title": "HealthResponse",
-        "type": "object"
-      },
-      "LaunchRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "definition_id": {
-            "$ref": "#/components/schemas/DefinitionId"
-          },
-          "inputs": {
-            "additionalProperties": true,
-            "title": "Inputs",
-            "type": "object"
-          }
-        },
-        "required": [
-          "definition_id",
-          "inputs"
-        ],
-        "title": "LaunchRequest",
         "type": "object"
       },
       "LiveEquityChartEvent": {
@@ -1734,47 +1715,6 @@
         "title": "MarketResolutionEvent",
         "type": "object"
       },
-      "MarketSettlementDurableEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "market.settlement",
-            "default": "market.settlement",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/MarketSettlementPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "MarketSettlementDurableEvent",
-        "type": "object"
-      },
       "MarketSettlementEvent": {
         "properties": {
           "followed_wallet_positions": {
@@ -1954,16 +1894,6 @@
           "event_max_age_ms": {
             "$ref": "#/components/schemas/NonnegativeMilliseconds"
           },
-          "graph": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NodeGraph"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "max_order_size": {
             "$ref": "#/components/schemas/PositiveDecimal"
           },
@@ -2002,6 +1932,491 @@
           "paper_portfolio_usdc"
         ],
         "title": "PaperRunConfig",
+        "type": "object"
+      },
+      "PersistedBotActivityEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "bot.activity",
+            "default": "bot.activity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BotActivityPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedBotActivityEvent",
+        "type": "object"
+      },
+      "PersistedBrokerFailureEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "broker.failure",
+            "default": "broker.failure",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BrokerFailurePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedBrokerFailureEvent",
+        "type": "object"
+      },
+      "PersistedBrokerFillEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "broker.fill",
+            "default": "broker.fill",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BrokerFillPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedBrokerFillEvent",
+        "type": "object"
+      },
+      "PersistedBrokerOrderEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "broker.order",
+            "default": "broker.order",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BrokerOrderPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedBrokerOrderEvent",
+        "type": "object"
+      },
+      "PersistedChartSampleEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "chart.sample",
+            "default": "chart.sample",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ChartSamplePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedChartSampleEvent",
+        "type": "object"
+      },
+      "PersistedDurableEvent": {
+        "discriminator": {
+          "mapping": {
+            "bot.activity": "#/components/schemas/PersistedBotActivityEvent",
+            "broker.failure": "#/components/schemas/PersistedBrokerFailureEvent",
+            "broker.fill": "#/components/schemas/PersistedBrokerFillEvent",
+            "broker.order": "#/components/schemas/PersistedBrokerOrderEvent",
+            "chart.sample": "#/components/schemas/PersistedChartSampleEvent",
+            "market.settlement": "#/components/schemas/PersistedMarketSettlementEvent",
+            "portfolio.snapshot": "#/components/schemas/PersistedPortfolioSnapshotEvent",
+            "run.bootstrap": "#/components/schemas/PersistedRunBootstrapEvent",
+            "run.failure": "#/components/schemas/PersistedRunFailureEvent",
+            "run.lifecycle": "#/components/schemas/PersistedRunLifecycleEvent",
+            "stream.health": "#/components/schemas/PersistedStreamHealthEvent",
+            "wallet.timeline": "#/components/schemas/PersistedWalletTimelineEvent"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PersistedRunLifecycleEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedRunBootstrapEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedBotActivityEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedBrokerOrderEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedBrokerFillEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedBrokerFailureEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedMarketSettlementEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedPortfolioSnapshotEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedWalletTimelineEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedStreamHealthEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedRunFailureEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PersistedChartSampleEvent"
+          }
+        ]
+      },
+      "PersistedMarketSettlementEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "market.settlement",
+            "default": "market.settlement",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MarketSettlementPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedMarketSettlementEvent",
+        "type": "object"
+      },
+      "PersistedPortfolioSnapshotEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "portfolio.snapshot",
+            "default": "portfolio.snapshot",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/PortfolioSnapshotPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedPortfolioSnapshotEvent",
+        "type": "object"
+      },
+      "PersistedRunBootstrapEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "run.bootstrap",
+            "default": "run.bootstrap",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunBootstrapPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedRunBootstrapEvent",
+        "type": "object"
+      },
+      "PersistedRunFailureEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "run.failure",
+            "default": "run.failure",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunFailurePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedRunFailureEvent",
+        "type": "object"
+      },
+      "PersistedRunLifecycleEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "run.lifecycle",
+            "default": "run.lifecycle",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunStartedPayload"
+              },
+              {
+                "$ref": "#/components/schemas/RunStatusPayload"
+              }
+            ],
+            "title": "Payload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedRunLifecycleEvent",
+        "type": "object"
+      },
+      "PersistedStreamHealthEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "stream.health",
+            "default": "stream.health",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StreamHealthPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedStreamHealthEvent",
+        "type": "object"
+      },
+      "PersistedWalletTimelineEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/DurableEventId"
+          },
+          "kind": {
+            "const": "wallet.timeline",
+            "default": "wallet.timeline",
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WalletTimelinePayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "occurred_at",
+          "payload"
+        ],
+        "title": "PersistedWalletTimelineEvent",
         "type": "object"
       },
       "PortfolioPositionSnapshot": {
@@ -2064,47 +2479,6 @@
         "title": "PortfolioSnapshot",
         "type": "object"
       },
-      "PortfolioSnapshotEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "portfolio.snapshot",
-            "default": "portfolio.snapshot",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/PortfolioSnapshotPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "PortfolioSnapshotEvent",
-        "type": "object"
-      },
       "PortfolioSnapshotPayload": {
         "additionalProperties": false,
         "properties": {
@@ -2138,47 +2512,6 @@
         "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
         "type": "string"
       },
-      "RunBootstrapEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "run.bootstrap",
-            "default": "run.bootstrap",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/RunBootstrapPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "RunBootstrapEvent",
-        "type": "object"
-      },
       "RunBootstrapPayload": {
         "additionalProperties": false,
         "properties": {
@@ -2207,7 +2540,7 @@
         "properties": {
           "events": {
             "items": {
-              "$ref": "#/components/schemas/DurableEvent"
+              "$ref": "#/components/schemas/PersistedDurableEvent"
             },
             "title": "Events",
             "type": "array"
@@ -2230,47 +2563,6 @@
         "title": "RunEventPage",
         "type": "object"
       },
-      "RunFailureEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "run.failure",
-            "default": "run.failure",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/RunFailurePayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "RunFailureEvent",
-        "type": "object"
-      },
       "RunFailurePayload": {
         "additionalProperties": false,
         "properties": {
@@ -2286,55 +2578,6 @@
         "title": "RunFailurePayload",
         "type": "object"
       },
-      "RunLifecycleEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "run.lifecycle",
-            "default": "run.lifecycle",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RunStartedPayload"
-              },
-              {
-                "$ref": "#/components/schemas/RunStatusPayload"
-              }
-            ],
-            "title": "Payload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "RunLifecycleEvent",
-        "type": "object"
-      },
       "RunName": {
         "minLength": 1,
         "type": "string"
@@ -2342,6 +2585,23 @@
       "RunRead": {
         "additionalProperties": false,
         "properties": {
+          "bot_graph_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot Graph Revision Id"
+          },
+          "bot_id": {
+            "format": "uuid",
+            "title": "Bot Id",
+            "type": "string"
+          },
           "config": {
             "$ref": "#/components/schemas/PaperRunConfig"
           },
@@ -2385,6 +2645,26 @@
               }
             ],
             "title": "Failure Detail"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "graph_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphRevisionNumber"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "heartbeat_at": {
             "anyOf": [
@@ -2433,6 +2713,7 @@
         },
         "required": [
           "id",
+          "bot_id",
           "definition_id",
           "config",
           "status",
@@ -2563,47 +2844,6 @@
         ],
         "title": "Side",
         "type": "string"
-      },
-      "StreamHealthEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "stream.health",
-            "default": "stream.health",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/StreamHealthPayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "StreamHealthEvent",
-        "type": "object"
       },
       "StreamHealthPayload": {
         "additionalProperties": false,
@@ -2820,47 +3060,6 @@
         "title": "WalletChartPointPayload",
         "type": "object"
       },
-      "WalletTimelineDurableEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DurableEventId"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "wallet.timeline",
-            "default": "wallet.timeline",
-            "title": "Kind",
-            "type": "string"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/WalletTimelinePayload"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "occurred_at",
-          "payload"
-        ],
-        "title": "WalletTimelineDurableEvent",
-        "type": "object"
-      },
       "WalletTimelinePayload": {
         "additionalProperties": false,
         "properties": {
@@ -3019,6 +3218,548 @@
         "summary": "List Bot Definitions"
       }
     },
+    "/api/v1/bots": {
+      "get": {
+        "operationId": "list_bots_api_v1_bots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BotRead"
+                  },
+                  "title": "Response List Bots Api V1 Bots Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Bots"
+      },
+      "post": {
+        "operationId": "create_bot_api_v1_bots_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Bot"
+      }
+    },
+    "/api/v1/bots/{bot_id}": {
+      "get": {
+        "operationId": "read_bot_api_v1_bots__bot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Bot"
+      },
+      "patch": {
+        "operationId": "update_bot_api_v1_bots__bot_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Bot"
+      }
+    },
+    "/api/v1/bots/{bot_id}/graph-revisions": {
+      "post": {
+        "operationId": "create_bot_graph_revision_api_v1_bots__bot_id__graph_revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotGraphRevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Bot Graph Revision"
+      }
+    },
+    "/api/v1/bots/{bot_id}/graph-revisions/{revision_id}": {
+      "get": {
+        "operationId": "read_bot_graph_revision_api_v1_bots__bot_id__graph_revisions__revision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotGraphRevisionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Bot Graph Revision"
+      }
+    },
+    "/api/v1/bots/{bot_id}/runs": {
+      "post": {
+        "operationId": "launch_bot_run_api_v1_bots__bot_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Launch Bot Run"
+      }
+    },
+    "/api/v1/graph-templates": {
+      "get": {
+        "operationId": "list_graph_templates_api_v1_graph_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GraphTemplateRead"
+                  },
+                  "title": "Response List Graph Templates Api V1 Graph Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Graph Templates"
+      },
+      "post": {
+        "operationId": "create_graph_template_api_v1_graph_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphTemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphTemplateRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Graph Template"
+      }
+    },
+    "/api/v1/graph-templates/{template_id}": {
+      "get": {
+        "operationId": "read_graph_template_api_v1_graph_templates__template_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphTemplateRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Graph Template"
+      },
+      "patch": {
+        "operationId": "update_graph_template_api_v1_graph_templates__template_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphTemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphTemplateRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Graph Template"
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -3032,6 +3773,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Health"
@@ -3057,42 +3808,6 @@
           }
         },
         "summary": "List Runs"
-      },
-      "post": {
-        "operationId": "launch_run_api_v1_runs_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LaunchRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Launch Run"
       }
     },
     "/api/v1/runs/{run_id}": {
@@ -3120,6 +3835,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "content": {
@@ -3189,6 +3914,16 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3250,7 +3985,7 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/DurableEvent"
+                      "$ref": "#/components/schemas/PersistedDurableEvent"
                     },
                     {
                       "$ref": "#/components/schemas/LiveMarketChartEvent"
@@ -3269,6 +4004,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "content": {
@@ -3309,6 +4054,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "content": {

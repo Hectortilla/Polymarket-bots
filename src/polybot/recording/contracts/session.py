@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from polybot.framework.timestamps import require_nonnegative_timestamp
+
 
 class SessionIntegrityStatus(StrEnum):
     ACTIVE = "active"
@@ -30,8 +32,8 @@ class SessionState:
     def __post_init__(self) -> None:
         if not isinstance(self.integrity_status, SessionIntegrityStatus):
             raise ValueError("recording session integrity status is invalid")
-        if self.ended_at_ms is not None and self.ended_at_ms < 0:
-            raise ValueError("recording session end must be nonnegative")
+        if self.ended_at_ms is not None:
+            require_nonnegative_timestamp(self.ended_at_ms, "recording session end")
         if not isinstance(self.clean_close, bool):
             raise ValueError("recording session clean-close state is invalid")
         if self.failure_reason is not None and (

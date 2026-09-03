@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
+from polybot.framework.timestamps import require_nonnegative_timestamp
+
 
 class ObservationClock:
     """Provide nondecreasing epoch milliseconds without following wall-clock jumps."""
@@ -28,6 +30,5 @@ class ObservationClock:
 
     def advance_to(self, observed_at_ms: int) -> None:
         """Keep a resumed archive monotonic across process clock anchors."""
-        if observed_at_ms < 0:
-            raise ValueError("observation clock floor must not be negative")
+        require_nonnegative_timestamp(observed_at_ms, "observation clock floor")
         self._floor_ms = max(self._floor_ms, observed_at_ms)

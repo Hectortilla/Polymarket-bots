@@ -3,11 +3,11 @@ from types import SimpleNamespace
 from polymarket.errors import PolymarketError
 
 from scripts import polymarket_wallet_api as api
-from scripts.polymarket_wallet_api.constants import (
+from scripts.polymarket_wallet_api.activity_contracts import (
     ACTIVITY_SORT_BY,
-    MARKET_POSITION_STATUS,
     MAX_ACTIVITY_OFFSET,
 )
+from scripts.polymarket_wallet_api.position_contracts import MARKET_POSITION_STATUS
 from scripts.wallet_payload_contracts import POSITION_SIZE_FIELD
 from polybot.framework.outcomes import YES_OUTCOME
 

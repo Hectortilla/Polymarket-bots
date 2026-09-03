@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+
 from ..contracts.market import (
     FeeScheduleMetadata,
     MarketEventMetadata,
@@ -85,7 +87,7 @@ def decode_market_metadata(data: dict[str, Any]) -> MarketMetadataPayload:
         _decode_outcome(value)
         for value in require_array(data[fields.OUTCOMES_FIELD], "market outcomes")
     )
-    if len(outcomes) != 2:
+    if len(outcomes) != MARKET_RESOLUTION_TOKEN_COUNT:
         raise ValueError("recording payload market outcomes must contain two values")
     return MarketMetadataPayload(
         market_id=require_text(data[fields.MARKET_ID_FIELD], "market ID"),

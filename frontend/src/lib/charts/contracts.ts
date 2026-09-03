@@ -1,25 +1,38 @@
 import type { Side, ValuationStatus } from '$lib/api/generated';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 
-export const MAX_CHART_HISTORY_POINTS = 720;
-export const MAX_CHART_TOKENS = 20;
-export const MAX_WALLET_TIMELINE_EVENTS = 5_000;
-export const MIN_TIME_ZOOM_LEVEL = -3;
-export const MAX_TIME_ZOOM_LEVEL = 3;
-export const INITIAL_TIME_ZOOM_LEVEL = 0;
-export const OUTCOME_PRICE_FLOOR = 0;
-export const OUTCOME_PRICE_CEILING = 1;
-export const WALLET_LABEL_MAX_LENGTH = 12;
-export const WALLET_NOTIONAL_TIER_COUNT = 3;
+type SideContract = {
+  [Key in keyof typeof runtimeContract.side]: Extract<Side, Key>;
+};
+type ValuationStatusContract = {
+  [Key in keyof typeof runtimeContract.valuationStatus]: Extract<
+    ValuationStatus,
+    Lowercase<Key>
+  >;
+};
+
+const sideContract = runtimeContract.side as SideContract;
+const valuationStatusContract = runtimeContract.valuationStatus as ValuationStatusContract;
+
+export const MAX_CHART_HISTORY_POINTS = runtimeContract.dashboard.maxChartHistoryPoints;
+export const MAX_CHART_TOKENS = runtimeContract.dashboard.maxChartTokens;
+export const MAX_WALLET_TIMELINE_EVENTS = runtimeContract.dashboard.maxWalletTimelineEvents;
+export const MIN_TIME_ZOOM_LEVEL = runtimeContract.dashboard.minTimeZoomLevel;
+export const MAX_TIME_ZOOM_LEVEL = runtimeContract.dashboard.maxTimeZoomLevel;
+export const INITIAL_TIME_ZOOM_LEVEL = runtimeContract.dashboard.initialTimeZoomLevel;
+export const OUTCOME_PRICE_FLOOR = Number(runtimeContract.outcomePrice.floor);
+export const OUTCOME_PRICE_CEILING = Number(runtimeContract.outcomePrice.ceiling);
+export const WALLET_NOTIONAL_TIER_COUNT = runtimeContract.dashboard.walletNotionalTierCount;
 
 export const SIDE = {
-  buy: 'BUY',
-  sell: 'SELL'
+  buy: sideContract.BUY,
+  sell: sideContract.SELL
 } as const satisfies Record<string, Side>;
 
 export const VALUATION_STATUS = {
-  fresh: 'fresh',
-  stale: 'stale',
-  unavailable: 'unavailable'
+  fresh: valuationStatusContract.FRESH,
+  stale: valuationStatusContract.STALE,
+  unavailable: valuationStatusContract.UNAVAILABLE
 } as const satisfies Record<string, ValuationStatus>;
 
 export type AvailableValuationStatus = Exclude<
@@ -28,10 +41,10 @@ export type AvailableValuationStatus = Exclude<
 >;
 
 export const DASHBOARD_KEY = {
-  closer: 'z',
-  wider: 'x',
-  reset: 'r',
-  view: 'v',
-  nextWalletPage: 'j',
-  previousWalletPage: 'k'
+  closer: runtimeContract.dashboard.keys.CLOSER,
+  wider: runtimeContract.dashboard.keys.WIDER,
+  reset: runtimeContract.dashboard.keys.RESET,
+  view: runtimeContract.dashboard.keys.VIEW,
+  nextWalletPage: runtimeContract.dashboard.keys.NEXT_WALLET_PAGE,
+  previousWalletPage: runtimeContract.dashboard.keys.PREVIOUS_WALLET_PAGE
 } as const;

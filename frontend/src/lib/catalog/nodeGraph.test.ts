@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { NodeGraph } from '$lib/api/generated';
 
 import {
   addConnection,
@@ -9,20 +10,25 @@ import {
   createComparisonNode,
   createConstantNode,
   createTriggerNode,
+  nodeGraphsEqual,
   toPersistedNodeGraph,
   triggerAlreadyExists,
   type CanvasEdge,
   type CanvasNode
 } from './nodeGraph';
+import { GRAPH_NODE_TYPE } from './graphContracts';
 import {
   BUY_ACTION,
   DECIMAL_CONSTANT,
+  EQUAL_COMPARISON,
   LESS_THAN_OR_EQUAL,
   ON_BOOK_TRIGGER,
   ON_START_TRIGGER,
+  SELL_ACTION,
   TEST_GRAPH,
   TEST_GRAPH_CATALOG,
-  THRESHOLD_BUY_GRAPH
+  THRESHOLD_BUY_GRAPH,
+  graphFieldHandle
 } from './nodeGraphTestFixtures';
 
 describe('node graph canvas adapter', () => {
@@ -41,6 +47,76 @@ describe('node graph canvas adapter', () => {
     expect(toPersistedNodeGraph(transientNodes, transientEdges)).toEqual(
       THRESHOLD_BUY_GRAPH
     );
+  });
+
+  it('compares persisted graphs by meaning instead of JSON property or array order', () => {
+    const equivalentGraph = {
+      edges: [...(THRESHOLD_BUY_GRAPH.edges ?? [])].reverse(),
+      nodes: [...THRESHOLD_BUY_GRAPH.nodes].reverse()
+    };
+    const movedGraph = {
+      ...equivalentGraph,
+      nodes: equivalentGraph.nodes.map((node) =>
+        node.id === 'on-book-trigger'
+          ? { ...node, position: { ...node.position, x: node.position.x + 1 } }
+          : node
+      )
+    };
+    const changedNodeData = {
+      ...equivalentGraph,
+      nodes: equivalentGraph.nodes.map((node) =>
+        node.type === GRAPH_NODE_TYPE.constant
+          ? { ...node, data: { ...node.data, value: '0.75' } }
+          : node
+      )
+    } as NodeGraph;
+    const changedEdge = {
+      ...equivalentGraph,
+      edges: (equivalentGraph.edges ?? []).map((edge, index) =>
+        index === 0
+          ? { ...edge, target_handle: `${edge.target_handle}-changed` }
+          : edge
+      )
+    };
+
+    expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, equivalentGraph)).toBe(true);
+    expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, movedGraph)).toBe(false);
+    expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, changedNodeData)).toBe(false);
+    expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, changedEdge)).toBe(false);
+    expect(nodeGraphsEqual(undefined, undefined)).toBe(true);
+    expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, undefined)).toBe(false);
+  });
+
+  it('detects every persisted node discriminator and edge endpoint change', () => {
+    const changedNodeGraphs = [
+      changeNodeData(GRAPH_NODE_TYPE.trigger, {
+        hook_name: ON_START_TRIGGER.hook_name
+      }),
+      changeNodeData(GRAPH_NODE_TYPE.comparison, {
+        operator: EQUAL_COMPARISON.operator
+      }),
+      changeNodeData(GRAPH_NODE_TYPE.brokerAction, {
+        action: SELL_ACTION.action
+      })
+    ];
+    const firstEdge = THRESHOLD_BUY_GRAPH.edges?.[0];
+    if (!firstEdge) throw new Error('threshold graph fixture requires an edge');
+    const changedEdgeGraphs = [
+      { ...firstEdge, source: `${firstEdge.source}-changed` },
+      { ...firstEdge, source_handle: `${firstEdge.source_handle}-changed` },
+      { ...firstEdge, target: `${firstEdge.target}-changed` },
+      { ...firstEdge, target_handle: `${firstEdge.target_handle}-changed` }
+    ].map((changedEdge) => ({
+      ...THRESHOLD_BUY_GRAPH,
+      edges: [
+        changedEdge,
+        ...(THRESHOLD_BUY_GRAPH.edges?.slice(1) ?? [])
+      ]
+    }));
+
+    for (const changedGraph of [...changedNodeGraphs, ...changedEdgeGraphs]) {
+      expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, changedGraph)).toBe(false);
+    }
   });
 
   it('creates each catalog-described node kind', () => {
@@ -113,9 +189,9 @@ describe('node graph canvas adapter', () => {
         {
           id: 'wrong-type',
           source: 'on-book-trigger',
-          sourceHandle: 'field:token_id',
+          sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, 'token_id'),
           target: 'comparison-threshold',
-          targetHandle: 'left'
+          targetHandle: LESS_THAN_OR_EQUAL.inputs[0].handle_id
         },
         nodes,
         [],
@@ -127,7 +203,7 @@ describe('node graph canvas adapter', () => {
       connectionIsValid(
         {
           source: 'on-book-trigger',
-          sourceHandle: 'field:bids',
+          sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, 'bids'),
           target: 'comparison-threshold',
           targetHandle: LESS_THAN_OR_EQUAL.inputs[0].handle_id
         },
@@ -165,3 +241,15 @@ describe('node graph canvas adapter', () => {
     ).toBe(false);
   });
 });
+
+function changeNodeData(
+  nodeType: (typeof GRAPH_NODE_TYPE)[keyof typeof GRAPH_NODE_TYPE],
+  data: Record<string, string>
+): NodeGraph {
+  return {
+    ...THRESHOLD_BUY_GRAPH,
+    nodes: THRESHOLD_BUY_GRAPH.nodes.map((node) =>
+      node.type === nodeType ? { ...node, data } : node
+    )
+  } as NodeGraph;
+}

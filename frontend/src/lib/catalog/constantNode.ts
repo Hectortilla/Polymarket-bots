@@ -2,6 +2,7 @@ import type {
   GraphConstantDescriptor,
   GraphConstantNodeData
 } from '$lib/api/generated';
+import { GRAPH_SCALAR_TYPE } from './graphContracts';
 
 type ConstantSpec = {
   input: { type: 'checkbox' | 'number' | 'text'; step?: string };
@@ -10,34 +11,40 @@ type ConstantSpec = {
 };
 
 const CONSTANT_SPECS = {
-  boolean: {
+  [GRAPH_SCALAR_TYPE.boolean]: {
     input: { type: 'checkbox' },
     fromDefault: (value) =>
-      typeof value === 'boolean' ? { scalar_type: 'boolean', value } : null,
-    fromInput: (input) => ({ scalar_type: 'boolean', value: input.checked })
+      typeof value === 'boolean'
+        ? { scalar_type: GRAPH_SCALAR_TYPE.boolean, value }
+        : null,
+    fromInput: (input) => ({ scalar_type: GRAPH_SCALAR_TYPE.boolean, value: input.checked })
   },
-  integer: {
+  [GRAPH_SCALAR_TYPE.integer]: {
     input: { type: 'number', step: '1' },
     fromDefault: (value) =>
       typeof value === 'number' && Number.isInteger(value)
-        ? { scalar_type: 'integer', value }
+        ? { scalar_type: GRAPH_SCALAR_TYPE.integer, value }
         : null,
     fromInput: (input) =>
       Number.isInteger(input.valueAsNumber)
-        ? { scalar_type: 'integer', value: input.valueAsNumber }
+        ? { scalar_type: GRAPH_SCALAR_TYPE.integer, value: input.valueAsNumber }
         : null
   },
-  decimal: {
+  [GRAPH_SCALAR_TYPE.decimal]: {
     input: { type: 'text' },
     fromDefault: (value) =>
-      typeof value === 'string' ? { scalar_type: 'decimal', value } : null,
-    fromInput: (input) => ({ scalar_type: 'decimal', value: input.value })
+      typeof value === 'string'
+        ? { scalar_type: GRAPH_SCALAR_TYPE.decimal, value }
+        : null,
+    fromInput: (input) => ({ scalar_type: GRAPH_SCALAR_TYPE.decimal, value: input.value })
   },
-  string: {
+  [GRAPH_SCALAR_TYPE.string]: {
     input: { type: 'text' },
     fromDefault: (value) =>
-      typeof value === 'string' ? { scalar_type: 'string', value } : null,
-    fromInput: (input) => ({ scalar_type: 'string', value: input.value })
+      typeof value === 'string'
+        ? { scalar_type: GRAPH_SCALAR_TYPE.string, value }
+        : null,
+    fromInput: (input) => ({ scalar_type: GRAPH_SCALAR_TYPE.string, value: input.value })
   }
 } as const satisfies Record<
   GraphConstantNodeData['scalar_type'],

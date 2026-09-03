@@ -148,6 +148,21 @@ def test_normalize_trade_converts_public_row_and_preserves_latency() -> None:
     assert trade.observed_at_ms - trade.trade_timestamp_ms == 1_250
 
 
+def test_transaction_hash_casing_has_one_canonical_trade_identity() -> None:
+    uppercase = normalize_wallet_trade(
+        _row("0xLeader", "0xABCDEF"),
+        observed_at_ms=1_700_000_001_250,
+    )
+    lowercase = normalize_wallet_trade(
+        _row("0xLeader", "0xabcdef"),
+        observed_at_ms=1_700_000_001_250,
+    )
+
+    assert uppercase is not None and lowercase is not None
+    assert uppercase.transaction_hash == "0xabcdef"
+    assert uppercase.source_id == lowercase.source_id
+
+
 def test_normalize_trade_preserves_arbitrary_outcome_label() -> None:
     trade = normalize_wallet_trade(
         {**_row("0xLeader", "tx-1"), "outcome": "Candidate A"},
@@ -256,6 +271,22 @@ def test_typed_stream_events_reject_boolean_timestamps(timestamp: bool) -> None:
         price=Decimal("0.5"),
         source_id="source",
         trade_timestamp_ms=timestamp,
+        observed_at_ms=1_700_000_001_000,
+    )
+
+    assert normalize_stream_event(event, observed_at_ms=1_700_000_001_000) is None
+
+
+def test_typed_stream_event_without_transaction_hash_is_rejected() -> None:
+    event = WalletTradeEvent(
+        wallet="0xleader",
+        condition_id="condition",
+        token_id="token",
+        side=Side.BUY,
+        size=Decimal("1"),
+        price=Decimal("0.5"),
+        source_id="source",
+        trade_timestamp_ms=1_700_000_000_000,
         observed_at_ms=1_700_000_001_000,
     )
 
@@ -425,6 +456,7 @@ def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() ->
         size=Decimal("1"),
         price=Decimal("0.4"),
         source_id="typed",
+        transaction_hash="0xABCDEF",
         trade_timestamp_ms=1_000,
         observed_at_ms=1_100,
     )

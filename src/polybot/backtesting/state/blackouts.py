@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from polybot.execution.paper.continuity import BookContinuity
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.timestamps import require_nonnegative_timestamp
 from polybot.polymarket.markets import Market
 from polybot.recording.contracts.book import BookDeltaPayload
 from polybot.recording.contracts.records import CoverageGapRecord, RecordedEvent
@@ -106,7 +107,10 @@ class CoverageBlackouts:
         catalog: MarketCatalog,
         books: ProjectedBookReplay,
     ) -> tuple[BookSnapshot, ...]:
-        _validate_recovery_timestamp(observed_at_ms)
+        require_nonnegative_timestamp(
+            observed_at_ms,
+            "blackout recovery timestamp",
+        )
         staged = tuple(
             (condition_id, snapshots)
             for condition_id in sorted(self._blackout_conditions)
@@ -222,12 +226,3 @@ class CoverageBlackouts:
             ),
             observed_at_ms=observed_at_ms,
         )
-
-
-def _validate_recovery_timestamp(observed_at_ms: int) -> None:
-    if (
-        isinstance(observed_at_ms, bool)
-        or not isinstance(observed_at_ms, int)
-        or observed_at_ms < 0
-    ):
-        raise ValueError("blackout recovery timestamp must be nonnegative")

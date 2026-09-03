@@ -133,6 +133,10 @@ config_file = "./agents/reviewers/public-contract-discoverability-reviewer.toml"
 description = "Reports cohesive function families that should be methods on a class owning their repeated stateful dependency."
 config_file = "./agents/reviewers/repeated-dependency-class-reviewer.toml"
 
+[agents.redundant_wrapper_reviewer]
+description = "Reports functions and methods that only forward to another callable without adding a meaningful contract."
+config_file = "./agents/reviewers/redundant-wrapper-reviewer.toml"
+
 [agents.pure_domain_function_reviewer]
 description = "Reports avoidable side effects in strategy, risk, fee, P&L, or simulation logic."
 config_file = "./agents/reviewers/pure-domain-function-reviewer.toml"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from polybot.framework.wallets import normalize_wallet_address, validate_wallet_address
 
@@ -21,6 +22,12 @@ STREAM_RULE_FIELDS = frozenset(
 class StreamRelation(StrEnum):
     FILTERED = "filtered"
     INDEPENDENT = "independent"
+
+
+STREAM_RULE_MINIMUM_SELECTOR_GROUPS: Final = {
+    StreamRelation.FILTERED: 2,
+    StreamRelation.INDEPENDENT: 1,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,9 +66,10 @@ class StreamRule:
         if markets != self.market_slugs or wallets != self.wallet_addresses:
             object.__setattr__(self, "market_slugs", markets)
             object.__setattr__(self, "wallet_addresses", wallets)
-        if self.relation is StreamRelation.FILTERED and (not markets or not wallets):
-            raise ValueError("filtered stream rules require markets and wallets")
-        if self.relation is StreamRelation.INDEPENDENT and not (markets or wallets):
+        selector_group_count = sum(bool(group) for group in (markets, wallets))
+        if selector_group_count < STREAM_RULE_MINIMUM_SELECTOR_GROUPS[self.relation]:
+            if self.relation is StreamRelation.FILTERED:
+                raise ValueError("filtered stream rules require markets and wallets")
             raise ValueError("independent stream rules require markets or wallets")
 
     def accepts_trade(self, wallet: str, market_slug: str | None) -> bool:

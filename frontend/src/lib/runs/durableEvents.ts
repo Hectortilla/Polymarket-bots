@@ -1,53 +1,32 @@
 import type {
-  DurableEvent,
   EventCursorValue,
+  PersistedDurableEvent as GeneratedPersistedDurableEvent,
   RunEventPage,
   StreamRunEventsApiV1RunsRunIdEventsStreamGetData,
   RunStatus
 } from '$lib/api/generated';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 
-import {
-  isChartSamplePayload,
-  isPositiveDecimal,
-  isRecord,
-  isStreamHealthPayload,
-  isWalletTimelinePayload
-} from './dashboardPayloads';
-import { INITIAL_RUN_STATUS, isRunStatus, isTerminalRunStatus } from './status';
+import { isRecord } from '$lib/valueGuards';
+import { isDurableEventPayload } from './eventPayloads';
+import { EVENT_KIND } from './eventKinds';
+import { INITIAL_RUN_STATUS, isTerminalRunStatus } from './status';
 
-export const INITIAL_EVENT_CURSOR: EventCursorValue = 0;
-const FIRST_DURABLE_EVENT_ID = INITIAL_EVENT_CURSOR + 1;
-export const EVENT_KIND = {
-  runLifecycle: 'run.lifecycle',
-  runBootstrap: 'run.bootstrap',
-  botActivity: 'bot.activity',
-  brokerOrder: 'broker.order',
-  brokerFill: 'broker.fill',
-  brokerFailure: 'broker.failure',
-  marketSettlement: 'market.settlement',
-  portfolioSnapshot: 'portfolio.snapshot',
-  walletTimeline: 'wallet.timeline',
-  streamHealth: 'stream.health',
-  runFailure: 'run.failure',
-  chartSample: 'chart.sample'
-} as const satisfies Record<string, DurableEvent['kind']>;
+export { EVENT_KIND } from './eventKinds';
+
+export const INITIAL_EVENT_CURSOR: EventCursorValue = runtimeContract.durableEventIds.firstCursor;
 type EventCursorQuery = NonNullable<
   StreamRunEventsApiV1RunsRunIdEventsStreamGetData['query']
 >;
 
-type WithPersistedId<T> = T extends DurableEvent
-  ? Omit<T, 'id'> & { id: number }
-  : never;
-
-type PersistedGeneratedEvent = WithPersistedId<DurableEvent>;
 type PersistedLifecycleEvent = Extract<
-  PersistedGeneratedEvent,
+  GeneratedPersistedDurableEvent,
   { kind: typeof EVENT_KIND.runLifecycle }
 >;
 
 export type PersistedDurableEvent =
   | Exclude<
-      PersistedGeneratedEvent,
+      GeneratedPersistedDurableEvent,
       { kind: typeof EVENT_KIND.runLifecycle }
     >
   | (Omit<PersistedLifecycleEvent, 'payload'> & {
@@ -70,14 +49,13 @@ export function persistedDurableEvent(
   if (!isRecord(value) || !isDurableEventKind(value.kind) || !isRecord(value.payload)) {
     return null;
   }
-  const event = value as unknown as DurableEvent;
+  const event = value as unknown as GeneratedPersistedDurableEvent;
   if (
     event.run_id !== runId ||
     typeof event.occurred_at !== 'string' ||
     !Number.isFinite(Date.parse(event.occurred_at)) ||
-    !Number.isSafeInteger(event.id) ||
-    Number(event.id) < FIRST_DURABLE_EVENT_ID ||
-    !isDashboardPayloadValid(value.kind, value.payload)
+    !isPersistedEventId(event.id) ||
+    !isDurableEventPayload(value.kind, value.payload)
   ) {
     return null;
   }
@@ -96,35 +74,19 @@ export function persistedDurableEvent(
   return event as PersistedDurableEvent;
 }
 
-function isDurableEventKind(kind: unknown): kind is DurableEvent['kind'] {
+export function isPersistedEventId(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= runtimeContract.durableEventIds.firstEventId
+    && value <= runtimeContract.durableEventIds.maximumEventId;
+}
+
+function isDurableEventKind(kind: unknown): kind is GeneratedPersistedDurableEvent['kind'] {
   return Object.values(EVENT_KIND).includes(kind as never);
 }
 
-function isDashboardPayloadValid(
-  kind: DurableEvent['kind'],
-  payload: Record<string, unknown>
-): boolean {
-  if (kind === EVENT_KIND.runLifecycle) return isLifecyclePayload(payload);
-  if (kind === EVENT_KIND.chartSample) return isChartSamplePayload(payload);
-  if (kind === EVENT_KIND.walletTimeline) return isWalletTimelinePayload(payload);
-  if (kind === EVENT_KIND.streamHealth) return isStreamHealthPayload(payload);
-  return true;
-}
-
-function isLifecyclePayload(payload: Record<string, unknown>): boolean {
-  const hasStartedFields = payload.name !== undefined
-    || payload.mode !== undefined
-    || payload.initial_cash_usdc !== undefined;
-  if (!hasStartedFields) return isRunStatus(payload.status);
-  return (payload.status === undefined || payload.status === INITIAL_RUN_STATUS)
-    && typeof payload.name === 'string'
-    && payload.name.length > 0
-    && (payload.mode === 'paper' || payload.mode === 'live')
-    && isPositiveDecimal(payload.initial_cash_usdc);
-}
-
 export function requirePersistedDurableEvents(
-  events: DurableEvent[],
+  events: GeneratedPersistedDurableEvent[],
   runId: string
 ): PersistedDurableEvent[] {
   return events.map((event) => {
@@ -138,9 +100,39 @@ export function requirePersistedEventPage(
   page: RunEventPage,
   runId: string
 ): PersistedEventPage {
-  const events = requirePersistedDurableEvents(page.events, runId);
-  const nextBeforeEventId = page.next_before_event_id;
-  if (nextBeforeEventId !== null && nextBeforeEventId !== events[0]?.id) {
+  return parsePersistedEventPage(page, runId);
+}
+
+export function persistedEventPage(
+  value: unknown,
+  runId: string
+): PersistedEventPage | null {
+  try {
+    return parsePersistedEventPage(value, runId);
+  } catch {
+    return null;
+  }
+}
+
+function parsePersistedEventPage(
+  value: unknown,
+  runId: string
+): PersistedEventPage {
+  if (!isRecord(value) || !Array.isArray(value.events)) {
+    throw new Error('Invalid run event page');
+  }
+  const events = requirePersistedDurableEvents(
+    value.events as GeneratedPersistedDurableEvent[],
+    runId
+  );
+  const nextBeforeEventId = value.next_before_event_id;
+  const cursorEvent = events[
+    runtimeContract.eventPagination.nextCursorEventIndex
+  ];
+  if (nextBeforeEventId !== null && (
+    !isPersistedEventId(nextBeforeEventId)
+    || nextBeforeEventId !== cursorEvent?.id
+  )) {
     throw new Error('Invalid run event page cursor');
   }
   return { events, nextBeforeEventId };

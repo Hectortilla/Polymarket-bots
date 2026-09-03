@@ -69,7 +69,7 @@ def iter_capture_anomalies(
     session_id: int | None = None,
     condition_id: str | None = None,
     market_slug: str | None = None,
-    failure_kind: CaptureFailureKind | str | None = None,
+    failure_kind: CaptureFailureKind | None = None,
 ) -> Iterator[CaptureAnomalyRecord]:
     """Stream filtered quarantined diagnostics from one reader snapshot."""
 
@@ -94,13 +94,7 @@ def iter_capture_anomalies(
     normalized_slug = (
         None if market_slug is None else _required_text(market_slug, "market slug")
     )
-    if failure_kind is None:
-        normalized_failure = None
-    else:
-        try:
-            normalized_failure = CaptureFailureKind(failure_kind)
-        except (TypeError, ValueError) as error:
-            raise ValueError("capture anomaly failure kind is invalid") from error
+    normalized_failure = None if failure_kind is None else failure_kind.value
     selected_sessions = select_overlapping_recording_sessions(
         sessions,
         start_at_ms=start_at_ms,
@@ -118,7 +112,7 @@ def iter_capture_anomalies(
         ("market_slug", normalized_slug, "="),
         (
             "failure_kind",
-            None if normalized_failure is None else normalized_failure.value,
+            normalized_failure,
             "=",
         ),
     ):

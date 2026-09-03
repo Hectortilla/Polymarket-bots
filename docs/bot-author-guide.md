@@ -129,9 +129,10 @@ needs the event or settlement types.
 The alpha web graph catalog derives these hooks from `BaseBot` and ordinary
 event dataclass fields. Only explicitly marked computed properties are added;
 `BookSnapshot.best_bid` and `best_ask` provide nullable top-of-book price and
-size leaves. Slice 13B can store validated graphs containing typed constants,
-comparisons, and fixed-side submit actions, but the worker deliberately keeps
-using a non-trading `BaseBot` until Slice 13C adds evaluation.
+size leaves. The node-based web bot compiles validated graphs containing typed
+constants, comparisons, and fixed-side submit actions once, then evaluates the
+matching branch for every accepted hook event. Actions use `ctx.broker`, so
+paper validation, fills, and observability remain unchanged.
 
 ## Config Overrides
 
@@ -675,3 +676,22 @@ bot = ExampleMultiMarketBot(rules=(rule,))
 In this example, a cheap ask on `btc-up` can trigger a BUY on `eth-down`. The
 same bot can declare both slugs in `current_stream_rules()`, receive both markets'
 book events through the same callback, and route decisions by slug.
+
+## Web Graph Templates and Saved Bots
+
+The private control plane keeps reusable graph design separate from execution:
+
+1. Create or edit a graph in **Graph templates**.
+2. Create a graph-capable saved bot and select a template. The control plane
+   copies the template into immutable bot graph revision 1 and stores no source
+   link.
+3. Edit the saved bot's graph and explicitly save it to append revision 2, 3,
+   and so on. Template edits never propagate to bots, and bot edits never modify
+   templates.
+4. Run the saved bot only after all settings and graph changes are saved. Each
+   run copies the current `PaperRunConfig` and references the exact latest graph
+   revision.
+
+Rerunning the bot uses its latest saved revision. Earlier runs continue to show
+and execute the revision they originally referenced, even after the bot or its
+source template changes. Non-graph definitions have no graph revision.

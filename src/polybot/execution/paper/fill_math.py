@@ -7,7 +7,7 @@ from polybot.execution.paper.book import consume_levels, slippage_limit_price
 from polybot.framework.events import FillEvent, OrderRequest, OrderStatus
 from polybot.framework.events.books import BookSnapshot
 
-EMPTY_FILL_VALUE = Decimal("0")
+FILL_SUM_IDENTITY = Decimal("0")
 
 
 def simulate_fill(
@@ -32,15 +32,15 @@ def simulate_fill(
     )
     if not consumed:
         return None
-    filled_size = sum((level.size for level in consumed), EMPTY_FILL_VALUE)
+    filled_size = sum((level.size for level in consumed), FILL_SUM_IDENTITY)
     filled_notional = sum(
         (level.notional_usdc for level in consumed),
-        EMPTY_FILL_VALUE,
+        FILL_SUM_IDENTITY,
     )
     average_price = filled_notional / filled_size
     fee_usdc = sum(
         (taker_fee_usdc(level.size, fee_rate, level.price) for level in consumed),
-        EMPTY_FILL_VALUE,
+        FILL_SUM_IDENTITY,
     )
     status = OrderStatus.FILLED if filled_size == order.size else OrderStatus.PARTIAL
     return FillEvent(

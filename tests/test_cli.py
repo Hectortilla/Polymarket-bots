@@ -60,6 +60,7 @@ from polybot.cli.observability.observer import RuntimeObserver
 from polybot.framework.base import BaseBot
 from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.framework.config.mode import BotMode
+from polybot.framework.config.constants import BOT_MODE_ENV
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
@@ -173,7 +174,7 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
     results_dir = tmp_path / "results"
     captured: dict[str, object] = {}
 
-    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.PAPER.value)
     monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
     monkeypatch.setattr(
         "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
@@ -258,7 +259,7 @@ def test_main_keeps_completed_backtest_success_when_chart_rendering_fails(
     capsys,
 ) -> None:
     results_dir = tmp_path / "results"
-    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.PAPER.value)
     monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
     monkeypatch.setattr(
         "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
@@ -464,7 +465,7 @@ def test_main_routes_results_directory_to_ordinary_paper_run(
     monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
-    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.PAPER.value)
     monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
     monkeypatch.setattr(
         "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
@@ -497,7 +498,7 @@ def test_main_routes_results_directory_to_ordinary_paper_run(
 
 
 def test_main_rejects_gap_policy_without_backtest(monkeypatch) -> None:
-    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.PAPER.value)
     monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
     monkeypatch.setattr(
         "polybot.cli.entrypoint.load_bot",
@@ -521,12 +522,12 @@ def test_main_rejects_backtest_dashboard_and_live_mode(monkeypatch) -> None:
         "polybot.cli.entrypoint.load_bot",
         lambda target, config: pytest.fail("bot must not be loaded"),
     )
-    monkeypatch.setenv("BOT_MODE", "live")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
 
     with pytest.raises(SystemExit, match="2"):
         main(["--bot", "polybot.my_bot:create", "--backtest", "archive.sqlite"])
 
-    monkeypatch.setenv("BOT_MODE", "paper")
+    monkeypatch.setenv(BOT_MODE_ENV, BotMode.PAPER.value)
     with pytest.raises(SystemExit, match="2"):
         main(
             [
@@ -845,10 +846,27 @@ def test_slow_book_consumer_receives_latest_snapshot_without_stale_cascade() -> 
     async def run() -> tuple[list[bool], list[int]]:
         nonlocal now_ms
         bot = SlowBot()
+
+        class MatchingMarkets:
+            async def find_by_slug(self, slug: str) -> Market:
+                return Market(
+                    condition_id="condition",
+                    slug=slug,
+                    question=slug,
+                    minimum_tick_size=Decimal("0.01"),
+                    minimum_order_size=Decimal("1"),
+                    neg_risk=False,
+                    fee_rate=Decimal(0),
+                    outcomes=(
+                        MarketOutcome("Yes", "token"),
+                        MarketOutcome("No", "other-token"),
+                    ),
+                )
+
         ctx = BotContext(
             config=BotConfig(name="slow", event_max_age_ms=5_000),
             broker=SimpleNamespace(),
-            markets=SimpleNamespace(),
+            markets=MatchingMarkets(),
             books=SimpleNamespace(),
             wallet_activity=SimpleNamespace(),
         )

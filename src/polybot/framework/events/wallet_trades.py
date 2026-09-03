@@ -11,6 +11,7 @@ from polybot.framework.events.prices import (
     is_outcome_price,
 )
 from polybot.framework.wallets import normalize_wallet_address
+from polybot.framework.timestamps import is_nonnegative_timestamp
 
 
 WALLET_SOURCE_KEY_SEPARATOR: Final = "\0"
@@ -20,6 +21,12 @@ class WalletTradeKind(StrEnum):
     TRADE = "trade"
     BACKFILL = "backfill"
     RECONCILIATION = "reconciliation"
+
+
+class WalletTradeValidationIssue(StrEnum):
+    INVALID = "wallet_trade_invalid"
+    FUTURE_DATED = "wallet_trade_future_dated"
+    STALE = "wallet_trade_stale"
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,15 +57,35 @@ class WalletTradeEvent:
                 and is_outcome_price(self.price)
                 and bool(self.source_id)
                 and WALLET_SOURCE_KEY_SEPARATOR not in self.source_id
-                and isinstance(self.trade_timestamp_ms, int)
-                and not isinstance(self.trade_timestamp_ms, bool)
-                and isinstance(self.observed_at_ms, int)
-                and not isinstance(self.observed_at_ms, bool)
-                and self.trade_timestamp_ms >= 0
+                and is_nonnegative_timestamp(self.trade_timestamp_ms)
+                and is_nonnegative_timestamp(self.observed_at_ms)
                 and self.observed_at_ms >= self.trade_timestamp_ms
             )
         except (AttributeError, InvalidOperation, TypeError, ValueError):
             return False
+
+    def validation_issue(
+        self,
+        now_ms: int,
+        max_age_ms: int,
+    ) -> WalletTradeValidationIssue | None:
+        if not self.is_valid():
+            return WalletTradeValidationIssue.INVALID
+        return self.freshness_issue(now_ms, max_age_ms)
+
+    def freshness_issue(
+        self,
+        now_ms: int,
+        max_age_ms: int,
+    ) -> WalletTradeValidationIssue | None:
+        """Recheck time-sensitive validity after awaited decision work."""
+        if self.observed_at_ms > now_ms:
+            return WalletTradeValidationIssue.FUTURE_DATED
+        if now_ms - self.observed_at_ms > max_age_ms:
+            return WalletTradeValidationIssue.STALE
+        if self.observed_at_ms - self.trade_timestamp_ms > max_age_ms:
+            return WalletTradeValidationIssue.STALE
+        return None
 
     @property
     def source_key(self) -> str:

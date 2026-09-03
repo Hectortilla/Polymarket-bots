@@ -24,7 +24,7 @@ from polybot.cli.dashboard.render import render_dashboard, wallet_lane_capacity
 from polybot.async_io import run_blocking
 from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.observability.events import RuntimeEvent
-from polybot.dashboard.contracts import CHART_SAMPLE_INTERVAL_SECONDS
+from polybot.dashboard.contracts import CHART_SAMPLE_INTERVAL_SECONDS, DashboardKey
 from polybot.framework.config.models import BotConfig
 
 
@@ -145,19 +145,19 @@ class TerminalDashboard:
 
     def _handle_key(self, key: str) -> None:
         with self._state_lock:
-            if key.lower() == "z":
+            if key.lower() == DashboardKey.CLOSER:
                 changed = self._state.zoom_time(-1)
-            elif key.lower() == "x":
+            elif key.lower() == DashboardKey.WIDER:
                 changed = self._state.zoom_time(1)
-            elif key.lower() == "r":
+            elif key.lower() == DashboardKey.RESET:
                 changed = self._state.reset_time_zoom()
-            elif key.lower() == "v":
+            elif key.lower() == DashboardKey.VIEW:
                 self._state.toggle_view()
                 changed = True
             elif key.lower() == "m":
                 self._state.toggle_market_events()
                 changed = True
-            elif key.lower() == "j":
+            elif key.lower() == DashboardKey.NEXT_WALLET_PAGE:
                 changed = self._state.page_wallets(
                     1,
                     wallet_lane_capacity(
@@ -165,7 +165,7 @@ class TerminalDashboard:
                         self._console.size.height,
                     ),
                 )
-            elif key.lower() == "k":
+            elif key.lower() == DashboardKey.PREVIOUS_WALLET_PAGE:
                 changed = self._state.page_wallets(
                     -1,
                     wallet_lane_capacity(

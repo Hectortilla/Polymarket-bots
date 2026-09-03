@@ -18,8 +18,10 @@ from polybot.examples.meh_trading_bot import (
     OpenPosition,
     TAKE_PROFIT,
     TAKE_PROFIT_EXIT_REASON,
-    WinnerTradingBot,
+    MehTradingBot as WinnerTradingBot,
 )
+from polybot.examples.btc_five_minute_market import BTC_FIVE_MINUTE_SLUG_PREFIX
+from polybot.examples.winner_trading_bot import WinnerTradingBot as LeaderWinnerBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import FillEvent, OrderStatus, Side
@@ -267,6 +269,98 @@ def test_winner_bot_rechecks_freshness_after_market_lookup(
     assert dummy_context.broker.submitted == []
 
 
+def test_leader_winner_rechecks_freshness_after_awaited_exit_work(
+    dummy_context: BotContext,
+) -> None:
+    class AdvancingClock:
+        def __init__(self) -> None:
+            self._timestamps = iter((NOW_MS, NOW_MS + 2))
+
+        def now_ms(self) -> int:
+            return next(self._timestamps)
+
+        async def sleep(self, seconds: float) -> None:
+            return None
+
+    context = replace(
+        dummy_context,
+        config=replace(dummy_context.config, event_max_age_ms=1),
+        markets=_Markets(),
+        clock=AdvancingClock(),
+    )
+
+    result = asyncio.run(
+        LeaderWinnerBot().on_book(
+            context,
+            _book(
+                OPPOSITE_TOKEN_ID,
+                bid="0.10",
+                ask="0.16",
+                observed_at_ms=NOW_MS,
+            ),
+        )
+    )
+
+    assert result is DispatchSkipReason.BOOK_STALE
+    assert dummy_context.broker.submitted == []
+
+
+def test_meh_winner_rechecks_freshness_after_awaited_exit_work(
+    dummy_context: BotContext,
+) -> None:
+    entry_start_ms = 210_000
+
+    class AdvancingClock:
+        def __init__(self) -> None:
+            self._timestamps = iter(
+                (
+                    entry_start_ms,
+                    entry_start_ms,
+                    entry_start_ms + ENTRY_QUOTE_MAX_AGE_MS + 1,
+                )
+            )
+
+        def now_ms(self) -> int:
+            return next(self._timestamps)
+
+        async def sleep(self, seconds: float) -> None:
+            return None
+
+    context = replace(
+        dummy_context,
+        config=replace(dummy_context.config, event_max_age_ms=1),
+        markets=_Markets(),
+        clock=AdvancingClock(),
+    )
+    bot = WinnerTradingBot()
+    bot._market = _market()
+    bot._books[LEADER_TOKEN_ID] = Quote(
+        bid=MINIMUM_LEADER_BID + MINIMUM_PRICE_IMPROVEMENT,
+        ask=Decimal("0.95"),
+        observed_at_ms=entry_start_ms,
+    )
+    bot._prior_bids[OPPOSITE_TOKEN_ID] = Quote(
+        bid=Decimal("0.10"),
+        ask=Decimal("0.16"),
+        observed_at_ms=entry_start_ms - MOMENTUM_LOOKBACK_MS,
+    )
+
+    result = asyncio.run(
+        bot.on_book(
+            context,
+            _book(
+                OPPOSITE_TOKEN_ID,
+                bid="0.10",
+                ask="0.16",
+                observed_at_ms=entry_start_ms,
+            ),
+        )
+    )
+
+    assert result is DispatchSkipReason.BOOK_STALE
+    assert dummy_context.broker.submitted == []
+
+
 def test_winner_bot_gap_clears_quotes_but_preserves_an_open_position(
     dummy_context: BotContext,
 ) -> None:
@@ -360,7 +454,7 @@ def _ready_bot(
 def _market() -> Market:
     return Market(
         condition_id="condition",
-        slug="btc-updown-5m-0",
+        slug=f"{BTC_FIVE_MINUTE_SLUG_PREFIX}-0",
         question="BTC Up or Down",
         minimum_tick_size=Decimal("0.01"),
         minimum_order_size=Decimal("1"),

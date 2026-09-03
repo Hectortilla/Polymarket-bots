@@ -7,6 +7,7 @@ from typing import Any, Literal, Self
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     StrictBool,
     StrictInt,
     StrictStr,
@@ -29,7 +30,8 @@ from polybot_control_plane.catalog.graphs._validation import (
     ensure_unique_graph_trigger_hooks,
     ensure_unique_values,
 )
-from polybot_control_plane.catalog.graphs.types import (
+from polybot_control_plane.catalog.graphs.comparisons import GRAPH_COMPARISON_SPECS
+from polybot_control_plane.catalog.graphs.values import (
     GRAPH_BROKER_SUBMIT_METHOD_NAME,
     GRAPH_COMPARISON_LEFT_HANDLE_ID,
     GRAPH_COMPARISON_RESULT_HANDLE_ID,
@@ -37,12 +39,16 @@ from polybot_control_plane.catalog.graphs.types import (
     GRAPH_CONTEXT_HANDLE_ID,
     GRAPH_CONTEXT_TYPE_NAME,
     GRAPH_VALUE_HANDLE_ID,
+    MIN_GRAPH_INPUT_SCALAR_TYPES,
     GraphBrokerAction,
     GraphComparisonOperator,
-    GraphFieldPath,
-    GraphHookName,
     GraphNodeType,
     GraphScalarType,
+)
+from polybot_control_plane.catalog.graphs.types import (
+    GraphFieldPath,
+    GraphHookName,
+    GraphHandleId,
 )
 
 
@@ -50,7 +56,7 @@ class GraphFieldDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     path: GraphFieldPath
-    handle_id: str
+    handle_id: GraphHandleId
     display_name: str
     value_type: str
     scalar_type: GraphScalarType | None
@@ -123,7 +129,7 @@ class GraphTriggerDescriptor(BaseModel):
 class GraphOutputDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    handle_id: str
+    handle_id: GraphHandleId
     display_name: str
     scalar_type: GraphScalarType
     nullable: bool = False
@@ -132,9 +138,11 @@ class GraphOutputDescriptor(BaseModel):
 class GraphInputDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    handle_id: str
+    handle_id: GraphHandleId
     display_name: str
-    scalar_types: tuple[GraphScalarType, ...]
+    scalar_types: tuple[GraphScalarType, ...] = Field(
+        min_length=MIN_GRAPH_INPUT_SCALAR_TYPES
+    )
     nullable: bool
     required: bool
 
@@ -177,12 +185,7 @@ class GraphComparisonDescriptor(BaseModel):
 
     @classmethod
     def from_operator(cls, operator: GraphComparisonOperator) -> Self:
-        scalar_types = (
-            tuple(GraphScalarType)
-            if operator
-            in {GraphComparisonOperator.EQUAL, GraphComparisonOperator.NOT_EQUAL}
-            else (GraphScalarType.INTEGER, GraphScalarType.DECIMAL)
-        )
+        scalar_types = GRAPH_COMPARISON_SPECS[operator].scalar_types
         return cls(
             operator=operator,
             display_name=operator.value.replace("_", " ").title(),
@@ -220,9 +223,8 @@ class GraphBrokerActionDescriptor(BaseModel):
     @classmethod
     def from_discovered(cls, action: DiscoveredBrokerAction) -> Self:
         return cls(
-            action=GraphBrokerAction.from_method_and_side(
-                action.method_name,
-                action.side.value,
+            action=GraphBrokerAction(
+                f"{GRAPH_BROKER_SUBMIT_METHOD_NAME}_{action.side.value.lower()}"
             ),
             method_name=action.method_name,
             display_name=f"{action.side.value} order",

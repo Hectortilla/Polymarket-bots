@@ -24,7 +24,6 @@ from polybot.cli.runner.factory import RuntimeComponents
 from polybot.cli.runner.health import stream_health
 from polybot.cli.runner.streams import (
     compile_selectors,
-    refresh_runner_plan,
     wait_for_stream_plan_change,
 )
 from polybot.cli.streams.builders import build_streams
@@ -58,7 +57,7 @@ async def run_runtime_streams(
         observer=observer,
     )
     while True:
-        plan = await refresh_runner_plan(runner)
+        plan = await runner.refresh_stream_plan()
         bootstrap_progress.begin_cycle()
         bootstrap_gamma = bootstrap_progress.wrap_gamma(runtime.gamma)
         resolved = await resolve_plan_markets(plan, bootstrap_gamma)

@@ -5,18 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from polybot.framework.events.prices import (
-    OUTCOME_PRICE_CEILING,
-    OUTCOME_PRICE_FLOOR,
-)
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.polymarket.resolution_status import ResolutionStatus
 
 from .validation import (
     normalize_optional_text_fields,
     normalize_required_text_fields,
+    validate_outcome_payout,
     validate_bool,
     validate_decimal,
     validate_nonnegative_int,
+    validate_tick_size,
 )
 
 
@@ -44,12 +43,7 @@ class MarketOutcomeMetadata:
     def __post_init__(self) -> None:
         normalize_required_text_fields(self, ("label", "token_id"))
         if self.price is not None:
-            validate_decimal(
-                self.price,
-                "outcome price",
-                minimum=OUTCOME_PRICE_FLOOR,
-                maximum=OUTCOME_PRICE_CEILING,
-            )
+            validate_outcome_payout(self.price, "outcome price")
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,14 +159,14 @@ class MarketMetadataPayload:
             raise ValueError("market metadata contains duplicate event IDs")
         if (
             not isinstance(self.outcomes, tuple)
-            or len(self.outcomes) != 2
+            or len(self.outcomes) != MARKET_RESOLUTION_TOKEN_COUNT
             or not all(
                 isinstance(outcome, MarketOutcomeMetadata) for outcome in self.outcomes
             )
         ):
             raise ValueError("market metadata requires exactly two outcomes")
         token_ids = tuple(outcome.token_id for outcome in self.outcomes)
-        if len(set(token_ids)) != 2:
+        if len(set(token_ids)) != MARKET_RESOLUTION_TOKEN_COUNT:
             raise ValueError("market outcome token IDs must be distinct")
         for name in (
             "active",
@@ -194,13 +188,7 @@ class MarketMetadataPayload:
         if self.seconds_delay is not None:
             validate_nonnegative_int(self.seconds_delay, "market seconds delay")
         if self.minimum_tick_size is not None:
-            validate_decimal(
-                self.minimum_tick_size,
-                "minimum tick size",
-                minimum=OUTCOME_PRICE_FLOOR,
-                maximum=OUTCOME_PRICE_CEILING,
-                minimum_inclusive=False,
-            )
+            validate_tick_size(self.minimum_tick_size, "minimum tick size")
         if self.minimum_order_size is not None:
             validate_decimal(
                 self.minimum_order_size,

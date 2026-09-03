@@ -1,7 +1,7 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12E and Slices 13A through 13B are
-implemented. Slice 13C plans the paper graph evaluator.
+Status: planned overall; Slices 12A through 12E and Slices 13A through 13F are
+implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
@@ -53,7 +53,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F and Slices 13A-13C in `docs/implementation-plan.md`.
+  Slices 12A-12F and Slices 13A-13F in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -83,30 +83,53 @@ version according to repository policy.
 Public contracts use stable, discoverable modules. These names are required;
 supporting private modules are not prescribed:
 
-- `polybot_control_plane.catalog.contracts`: `SelectionMode`, `WidgetKind`,
-  `BotDefinitionDescriptor`, and `LaunchRequest`.
-- `polybot_control_plane.catalog.graphs.types`: dependency-light graph enums,
-  constrained identifiers, field paths, scalar types, and handle contracts.
+- `polybot_control_plane.catalog.values`: dependency-light `DefinitionId`,
+  `SelectionMode`, `WidgetKind`, label, and widget-key contracts;
+  `polybot_control_plane.catalog.contracts`: `BotDefinitionDescriptor`.
+- `polybot_control_plane.bots.contracts`: saved-bot request/read and immutable
+  graph-revision contracts.
+- `polybot_control_plane.catalog.graphs.values`: dependency-light graph enums,
+  limits, and semantic handle values;
+  `polybot_control_plane.catalog.graphs.types`: constrained identifiers, field
+  paths, and handle contracts.
 - `polybot_control_plane.catalog.graphs.catalog`: public node descriptors,
   framework-derived `GraphNodeCatalog`, and the code-owned catalog snapshot.
 - `polybot_control_plane.catalog.graphs.contracts`: validated `NodeGraph`, node,
-  and edge contracts plus their validation limits.
+  and edge contracts plus their validation limits. The browser consumes the
+  generated limits and catalog, while backend-generated valid and invalid
+  graph cases lock its runtime topology validator to the Python contract.
 - `polybot_control_plane.catalog.graphs.starter`: the starter graph snapshot.
   Focused private supporting modules discover `BaseBot` hook signatures,
   traverse dataclass and explicitly marked computed outputs, describe the
   trusted broker action, and share graph-validation primitives. The package
   initializer remains empty rather than re-exporting these owners.
-- `polybot_control_plane.runs.contracts`: `RunStatus`, `PaperRunConfig`, and
-  `RunRead`.
-- `polybot_control_plane.events.contracts`: `EventKind` and `DurableEvent` plus
+- `polybot_control_plane.catalog.node_based.bot`: concrete `NodeBasedBot` hook
+  handling.
+- `polybot_control_plane.catalog.node_based.evaluator`: orchestration for the
+  compiled graph, with focused compiler, value, action, and result owners.
+- `polybot_control_plane.runs.status`: `RunStatus` and its lifecycle policy;
+  `polybot_control_plane.runs.contracts`: `PaperRunConfig` and `RunRead`.
+- `polybot_control_plane.events.kinds`: dependency-light durable and live event
+  discriminators; `polybot_control_plane.events.contracts`: `DurableEvent` plus
   their discriminated payloads. Slice 12E adds `LiveChartEvent`,
   `LiveStreamHealthEvent`, their `LiveRunEvent` union, and the `chart.sample`
   durable variant when it first implements live observability cadence.
 - `polybot_control_plane.execution.launcher`: the `RunLauncher` protocol.
+- `polybot_control_plane.graph_templates`: editable catalog contracts, row, and
+  persistence operations.
+- `polybot_control_plane.bots`: saved-bot and immutable graph-revision
+  contracts, rows, and persistence operations.
 
 Finite wire values are `StrEnum`s. The generated frontend types come from these
 Pydantic models through FastAPI OpenAPI. Tests import the enums; they do not copy
 contract strings.
+
+Graph identifier limits are owned by
+`polybot_control_plane.catalog.graphs.values` and flow into the constrained
+types and OpenAPI schema.
+Edge IDs intentionally have a larger bound so Svelte Flow's descriptive IDs
+can include both endpoint and handle identities without weakening every
+identifier.
 
 Use non-table SQLModel bases only where a group of fields has identical database
 and API meaning. Never inherit an API model from a table model, and do not make a
@@ -116,8 +139,10 @@ plain Pydantic models.
 ## Catalog and Launch Contract
 
 `SelectionMode` has exactly `user_configured`, `bot_managed`, and `absent`.
-`WidgetKind` contains only the widgets the control plane renders: decimal,
-market slugs, node graph, wallet addresses, and stream rules.
+`WidgetKind` contains only schema-driven form widgets: decimal, market slugs,
+wallet addresses, and stream rules. Graph canvases use the separate
+`graph_catalog` and `starter_graph` descriptor fields rather than pretending a
+graph is part of `PaperRunConfig`.
 
 `BotDefinitionDescriptor` has exactly:
 
@@ -129,11 +154,23 @@ market slugs, node graph, wallet addresses, and stream rules.
 - `wallet_selection`
 - `input_schema`
 - `graph_catalog` (omitted for definitions without a node graph)
+- `starter_graph` (omitted for definitions without a node graph)
 
-`LaunchRequest` has exactly `definition_id` and `inputs`. The run name is a
-field in the definition's launch schema rather than a second top-level copy.
-External request and definition launch models reject unknown fields instead of
-silently ignoring them.
+`BotCreate` has exactly:
+
+- `definition_id`
+- `inputs`
+- `graph_template_id` (nullable)
+
+Graph-capable definitions require the template ID; other definitions forbid it.
+
+`BotUpdate` has exactly:
+
+- `inputs` (the complete non-graph launch inputs)
+
+The bot name remains a field in the definition's schema rather than a second
+top-level copy. External request and definition launch models reject unknown
+fields.
 
 Each catalog entry owns one Pydantic launch-input model and a conversion to
 `PaperRunConfig`. `model_json_schema()` is the only JSON Schema definition.
@@ -158,7 +195,9 @@ non-sensitive `BotConfig` inputs used by web runs:
 - `paper_latency_jitter_ms`
 - `event_max_age_ms`
 - `paper_portfolio_usdc`
-- `graph` (nullable; present only for the current node-based definition)
+
+Graph JSON is deliberately absent. Templates and immutable bot-owned revisions
+are the only graph persistence owners.
 
 Decimal values serialize as canonical decimal strings. Fields prohibited by the
 product specification's **Trust Boundary** are absent rather than accepted and
@@ -228,8 +267,9 @@ supported graph can compare `BookSnapshot.best_ask.price` with a decimal constan
 when true, submit a BUY using the event token and ask price plus a constant
 share size.
 
-At runtime, the catalog constructs `NodeBasedBot(BaseBot)` from the decoded
-`PaperRunConfig`. That bot owns a focused evaluator; `BaseBot` and general
+At runtime, the worker resolves the run's exact bot-owned graph revision once,
+then the catalog constructs `NodeBasedBot(BaseBot)` from that graph and the
+decoded `PaperRunConfig`. That bot owns a focused evaluator; `BaseBot` and general
 `BotConfig` do not gain graph behavior or graph fields. The graph is compiled
 once to dependency indexes and deterministic topological order. Each accepted
 hook invocation creates one ephemeral frame and evaluates the matching trigger's
@@ -245,14 +285,18 @@ Position checks, cooldowns, once/rising-edge behavior, and dedupe must be future
 explicit nodes rather than hidden action semantics. Broker results do not
 recursively dispatch `on_fill` in this MVP.
 
-The HTTP launch boundary performs the only request normalization:
+The saved-bot boundary performs the only request normalization:
 
-1. Parse `LaunchRequest`.
+1. Parse `BotCreate` or `BotUpdate`.
 2. Resolve its code-owned definition ID.
 3. Parse `inputs` with that definition's launch model.
 4. Convert once to `PaperRunConfig`.
-5. Persist the queued run and commit.
-6. Call `RunLauncher.launch(run_id)`.
+5. For a graph-capable create, copy the selected template into revision 1 in
+   the same transaction as the new bot.
+
+Starting a bot locks its row, copies the current config into a queued run,
+references its latest graph revision, commits, and only then calls
+`RunLauncher.launch(run_id)`.
 
 If delivery fails, atomically update the committed run to `failed` and append
 its terminal lifecycle event in one new PostgreSQL transaction, using a
@@ -261,13 +305,48 @@ transaction commits. Do not invent a custom error taxonomy for v0.
 
 ## Persistence Contract
 
+### Graph template row
+
+`graph_templates` has exactly:
+
+- `id` (UUID primary key)
+- `name` (unique, trimmed)
+- `graph` (validated `NodeGraph` JSON)
+- `created_at`
+- `updated_at`
+
+Templates are mutable and are never referenced by bots or runs.
+
+### Saved bot and graph revision rows
+
+`bots` has exactly:
+
+- `id` (UUID primary key)
+- `definition_id` (immutable)
+- `config` (editable resolved `PaperRunConfig` JSON)
+- `created_at`
+- `updated_at`
+
+`bot_graph_revisions` has exactly:
+
+- `id` (UUID primary key)
+- `bot_id` (owning saved-bot foreign key)
+- `revision` (positive and sequential per bot)
+- `graph` (exact validated `NodeGraph` JSON)
+- `created_at`
+
+`(bot_id, revision)` is unique. Revisions are append-only and may be referenced
+by many runs of their one owning bot. No template provenance is retained.
+
 ### Run row
 
 The final v0 run row has exactly:
 
 - `id` (UUID primary key)
+- `bot_id` (required saved-bot foreign key)
 - `definition_id`
 - `config` (`PaperRunConfig` JSON)
+- `bot_graph_revision_id` (nullable)
 - `status` (`RunStatus`)
 - `created_at`
 - `started_at` (nullable)
@@ -275,15 +354,19 @@ The final v0 run row has exactly:
 - `heartbeat_at` (nullable)
 - `failure_detail` (nullable, sanitized)
 
-Do not add separate launch-input/config copies, updated/claimed/stop timestamps,
-latest-summary columns, execution-backend fields, owner IDs, or idempotency keys.
+The composite `(bot_id, bot_graph_revision_id)` foreign key prevents a run from
+using another bot's revision. Graph-capable definitions require a revision and
+other definitions require null; this rule is owned by the catalog. Do not add
+separate launch-input/config copies, updated/claimed/stop timestamps,
+latest-summary columns, execution-backend fields, user IDs, or idempotency keys.
 Current summaries come from durable events. ECS can add its own reference when
 an ECS slice actually exists.
 
-The rewritten alpha Slice 12A migration creates only the first five fields.
-Slice 12B adds the four fields it
-first consumes (`started_at`, `ended_at`, `heartbeat_at`, `failure_detail`) and
-the event table in its own migration.
+The disposable alpha migration history is rewritten in place: `0001` creates
+the complete graph-template, saved-bot, graph-revision, and run schema,
+including Taskiq progress state; `0002` adds durable events. Later migrations
+extend the event contract. This history is not a compatibility promise until a
+future stabilization slice says otherwise.
 
 The persistence boundary decodes `config` into `PaperRunConfig` once before it
 returns a run to API or worker code. Orchestration never handles raw JSON and
@@ -300,8 +383,9 @@ The append-only event row has exactly:
 - `payload` (JSONB)
 
 There is no second persistence timestamp, schema-version field, source-key
-column, generic metadata, or speculative dedupe key in v0. Payload JSON is
-decoded into the discriminated `DurableEvent` union at the persistence boundary.
+column, generic metadata, or speculative dedupe key in v0. Pre-persistence
+writes use the optional-ID `DurableEvent` union; reads decode the committed row
+into the required, browser-safe-ID `PersistedDurableEvent` union.
 
 The canonical durable event kinds are:
 
@@ -363,12 +447,13 @@ simultaneous runs.
 
 After a successful claim, `execute_run`:
 
-1. converts the already-decoded `PaperRunConfig` to the existing `BotConfig`;
-2. resolves the code-owned factory by definition ID and creates the bot, passing
-   the decoded run config to the node-based entry;
-3. starts heartbeat and stop polling;
-4. attaches the web observer and calls `polybot.runtime.run_bot()`; and
-5. records the lifecycle outcome defined in the product specification.
+1. resolves and validates the run's exact owned graph revision once;
+2. converts the already-decoded `PaperRunConfig` to the existing `BotConfig`;
+3. resolves the code-owned factory by definition ID and creates the bot with
+   the decoded run config and resolved graph;
+4. starts heartbeat and stop polling;
+5. attaches the web observer and calls `polybot.runtime.run_bot()`; and
+6. records the lifecycle outcome defined in the product specification.
 
 These are trusted internal steps. Do not repeat request/config shape checks
 inside them.
@@ -415,7 +500,9 @@ auto-drains the complete run history.
 
 Each durable `wallet.timeline` payload stores the canonical projected chart
 point, so reload does not reconstruct labels, source keys, or decimal notionals
-in the browser. The terminal `stream.health` event is likewise the reload
+for rendering in the browser. Browser ingress verifies the stored point against
+its trade using the generated wallet-label and source-key policy, then renders
+the canonical point unchanged. The terminal `stream.health` event is likewise the reload
 fallback until a newer live health frame arrives.
 
 The one-second durable cadence is an explicit v0 storage budget: at most 86,400
@@ -446,8 +533,8 @@ identical. Render colors and glyphs remain frontend-specific.
 
 Through Slice 12D, the SSE route carries durable events only. It:
 
-1. accepts an `after_event_id` query value within the nonnegative PostgreSQL
-   bigint range for the first connection;
+1. accepts an `after_event_id` query value within the generated browser-safe
+   durable-event cursor range for the first connection;
 2. prefers the standard validated `Last-Event-ID` header on browser reconnect;
 3. rejects a missing run with the route's normal `404` before opening the
    streaming response;
@@ -468,24 +555,35 @@ disconnect. Redis is required for live continuation. Do not add a polling
 fallback for Redis outages.
 
 Slices 12B through 12D use one Redis run-channel frame: the durable event ID as
-strict unsigned base-10 ASCII within the positive PostgreSQL bigint range. It
-is a wake-up hint, not an SSE payload or source of truth; after a valid frame,
-the subscriber reads PostgreSQL after its current cursor. Malformed frames are
-logged and dropped at this Redis ingress boundary.
+strict unsigned base-10 ASCII within the generated browser-safe cursor range.
+It is a wake-up hint, not an SSE payload or source of truth; after a valid
+frame, the subscriber reads PostgreSQL after its current cursor. Malformed
+frames are logged and dropped at this Redis ingress boundary.
 
 Slice 12E extends that same channel with JSON `LiveRunEvent` frames. The
 subscriber distinguishes the existing strict decimal wake-up from a JSON frame,
 validates JSON as `LiveRunEvent` once at ingress, and logs and drops malformed
 input. Live events are sent without an SSE ID. Slice 12E also adds
 `LiveChartEvent` and `LiveStreamHealthEvent` as explicit SSE-route schemas
-alongside `DurableEvent` so OpenAPI generates every frontend payload type.
+alongside `PersistedDurableEvent` so OpenAPI generates every frontend payload
+type.
 
 ## HTTP API
 
-The route prefix `/api/v1` is defined here once. v0 has only:
+The route prefix `/api/v1` is defined here once. The current API has only:
 
 - `GET /bot-definitions` — all public descriptors in display order.
-- `POST /runs` — validate, persist, launch, and return `202` with `RunRead`.
+- `POST /graph-templates` — create a reusable graph template.
+- `GET /graph-templates` — list graph templates by name.
+- `GET /graph-templates/{template_id}` — read one template.
+- `PATCH /graph-templates/{template_id}` — update its name and/or graph.
+- `POST /bots` — validate and save a bot; graph-capable bots copy a template.
+- `GET /bots` — list saved bots, newest updated first.
+- `GET /bots/{bot_id}` — read one saved bot and its latest graph revision.
+- `PATCH /bots/{bot_id}` — replace its validated non-graph configuration.
+- `POST /bots/{bot_id}/graph-revisions` — append an immutable graph revision.
+- `GET /bots/{bot_id}/graph-revisions/{revision_id}` — read an owned revision.
+- `POST /bots/{bot_id}/runs` — snapshot and launch the latest saved bot.
 - `GET /runs` — all runs, newest first.
 - `GET /runs/{run_id}` — one run; Slice 12E adds its event-derived summary.
 - `POST /runs/{run_id}/stop` — idempotently request/complete stop.
@@ -506,11 +604,10 @@ generic pagination framework, status filtering, or links in v0. Durable events
 use only the cursor page contract above because their append-only history can be
 unbounded.
 
-Through Slice 12D, `RunRead` exposes exactly the final run-row fields above.
-Slice 12E adds nullable `latest_equity` and `equity_status`, derived from the
-latest durable `chart.sample` event and typed with the existing
-valuation-quality contract. Do not persist summary columns or add other summary
-fields in v0.
+`RunRead` exposes the row fields plus the resolved graph revision number and
+exact graph for historical display. It also carries nullable `latest_equity`
+and `equity_status`, derived from the latest durable `chart.sample`; none of
+these computed views are persisted on the run row.
 
 `GET /health` executes a PostgreSQL `SELECT 1` and Redis `PING`. It returns
 `200` with exactly `{"status": "ok"}` only when both succeed; otherwise it
@@ -524,14 +621,26 @@ dependency error.
 - Export OpenAPI deterministically and generate the Fetch client/types with
   `@hey-api/openapi-ts`. Generated files are never edited.
 - Use the generated client for ordinary HTTP. Slice 12D's sole handwritten
-  transport is a small EventSource adapter using generated `DurableEvent`
+  transport is a small EventSource adapter using generated persisted-event
   types; Slice 12E extends it with the generated `LiveRunEvent` variants.
+- Validate successful generated-client responses by operation before exposing
+  them to route state, including JSON content type, non-empty bodies, finite
+  state values, nested stream rules, and discriminated graph nodes. The
+  EventSource adapter performs the equivalent durable/live event validation.
 - Hydrate run detail from the newest bounded durable-event page, open SSE after
   that page's newest ID for race-free continuation, and request older pages only
   from the server-provided exclusive cursor. Terminal hydration does not open a
   stream, and receipt of a terminal lifecycle event closes the current stream.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
+- Present the generated FastAPI validation response without duplicating its
+  rules: field issues belong under their controls, graph issues belong beside
+  the canvas, and failed saves preserve the edited state.
+- The launch page saves a bot without running it. Graph-capable definitions
+  select a template and explain the copy boundary.
+- The template page edits reusable source graphs. The bot detail page saves
+  settings, appends graph revisions, and runs only when there are no unsaved
+  changes. Run detail always shows the exact historical revision.
 - Wrap Apache ECharts in one thin `EChart.svelte` component that owns init,
   option updates, resize, and dispose. Pages and domain components do not call
   ECharts lifecycle APIs.

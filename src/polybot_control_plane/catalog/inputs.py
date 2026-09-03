@@ -16,10 +16,11 @@ from polybot.framework.config.constants import (
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
 from polybot.framework.streams import StreamRelation, StreamRule
-from polybot.framework.wallets import validate_wallet_address
-from polybot_control_plane.catalog.contracts import WIDGET_SCHEMA_KEY, WidgetKind
-from polybot_control_plane.catalog.graphs.contracts import NodeGraph
-from polybot_control_plane.catalog.graphs.starter import STARTER_NODE_GRAPH
+from polybot.framework.wallets import (
+    WALLET_ADDRESS_SCHEMA_PATTERN,
+    validate_wallet_address,
+)
+from polybot_control_plane.catalog.values import WIDGET_SCHEMA_KEY, WidgetKind
 from polybot_control_plane.runs.contracts import (
     DataTradesBudget,
     NonnegativeDecimal,
@@ -30,7 +31,15 @@ from polybot_control_plane.runs.contracts import (
 )
 
 
-type WalletAddress = Annotated[str, AfterValidator(validate_wallet_address)]
+type WalletAddress = Annotated[
+    str,
+    StringConstraints(
+        strict=True,
+        strip_whitespace=True,
+        pattern=WALLET_ADDRESS_SCHEMA_PATTERN,
+    ),
+    AfterValidator(validate_wallet_address),
+]
 type MarketSlug = Annotated[
     str,
     StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200),
@@ -103,14 +112,6 @@ class NodeBasedLaunchInputs(PaperLaunchInputs):
         min_length=1,
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.MARKET_SLUGS.value},
     )
-    graph: NodeGraph = Field(
-        default=STARTER_NODE_GRAPH,
-        json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.NODE_GRAPH.value},
-    )
-
-    def to_run_config(self) -> PaperRunConfig:
-        return super().to_run_config().model_copy(update={"graph": self.graph})
-
     def _stream_rules(self) -> tuple[StreamRule, ...]:
         return (
             StreamRule(

@@ -7,16 +7,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from polybot.framework.events import Side
-from polybot.framework.events.prices import (
-    OUTCOME_PRICE_CEILING,
-    OUTCOME_PRICE_FLOOR,
-)
 
 from .validation import (
     normalize_optional_text_fields,
     normalize_required_text_fields,
     validate_book_price,
     validate_decimal,
+    validate_outcome_payout,
     validate_tick_size,
 )
 
@@ -93,12 +90,7 @@ class BookChange:
         for name in ("best_bid", "best_ask"):
             value = getattr(self, name)
             if value is not None:
-                validate_decimal(
-                    value,
-                    name.replace("_", " "),
-                    minimum=OUTCOME_PRICE_FLOOR,
-                    maximum=OUTCOME_PRICE_CEILING,
-                )
+                validate_outcome_payout(value, name.replace("_", " "))
 
 
 @dataclass(frozen=True, slots=True)

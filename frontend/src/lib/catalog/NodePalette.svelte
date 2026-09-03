@@ -1,3 +1,7 @@
+<script module lang="ts">
+  export const ADD_NODE_LABEL = 'Add node';
+</script>
+
 <script lang="ts">
   import { tick } from 'svelte';
   import ArrowsLeftRightIcon from 'phosphor-svelte/lib/ArrowsLeftRightIcon';
@@ -16,15 +20,18 @@
     GraphNodeCatalog,
     GraphTriggerDescriptor
   } from '$lib/api/generated';
+  import { SIDE } from '$lib/charts/contracts';
   import {
     GRAPH_NODE_TYPE,
     triggerAlreadyExists,
     type CanvasNode
   } from './nodeGraph';
+  import { GRAPH_SCALAR_TYPE } from './graphContracts';
 
   let {
     catalog,
     nodes,
+    additionDisabled = false,
     onaddtrigger,
     onaddconstant,
     onaddcomparison,
@@ -32,6 +39,7 @@
   }: {
     catalog: GraphNodeCatalog;
     nodes: CanvasNode[];
+    additionDisabled?: boolean;
     onaddtrigger: (trigger: GraphTriggerDescriptor) => void;
     onaddconstant: (constant: GraphConstantDescriptor) => void;
     onaddcomparison: (comparison: GraphComparisonDescriptor) => void;
@@ -122,18 +130,23 @@
 
   function constantIcon(constant: GraphConstantDescriptor): PaletteIcon {
     switch (constant.scalar_type) {
-      case 'boolean':
+      case GRAPH_SCALAR_TYPE.boolean:
         return 'boolean';
-      case 'integer':
-      case 'decimal':
+      case GRAPH_SCALAR_TYPE.integer:
+      case GRAPH_SCALAR_TYPE.decimal:
         return 'number';
-      case 'string':
+      case GRAPH_SCALAR_TYPE.string:
         return 'string';
     }
   }
 
   function actionIcon(action: GraphBrokerActionDescriptor): PaletteIcon {
-    return action.side === 'BUY' ? 'buy' : 'sell';
+    switch (action.side) {
+      case SIDE.buy:
+        return 'buy';
+      case SIDE.sell:
+        return 'sell';
+    }
   }
 
   const paletteItems = $derived<PaletteItem[]>([
@@ -147,7 +160,7 @@
         : 'Start from a bot lifecycle event.',
       meta: 'event',
       searchTerms: `${trigger.hook_name} ${trigger.payload?.type_name ?? ''}`,
-      disabled: triggerAlreadyExists(nodes, trigger),
+      disabled: additionDisabled || triggerAlreadyExists(nodes, trigger),
       select: () => onaddtrigger(trigger)
     })),
     ...catalog.constants.map((constant) => ({
@@ -158,10 +171,13 @@
       description: `Use ${constant.scalar_type} as an input value.`,
       meta: constant.scalar_type,
       searchTerms: `${constant.display_name} ${constant.scalar_type}`,
-      disabled: false,
+      disabled: additionDisabled,
       select: () => onaddconstant(constant)
     })),
-    ...comparisonPaletteItems(catalog.comparisons),
+    ...comparisonPaletteItems(catalog.comparisons).map((item) => ({
+      ...item,
+      disabled: additionDisabled || item.disabled
+    })),
     ...catalog.broker_actions.map((action) => ({
       id: `action-${action.action}`,
       category: GRAPH_NODE_TYPE.brokerAction,
@@ -170,7 +186,7 @@
       description: `Submit a ${action.side} order through Broker.${action.method_name}.`,
       meta: action.side,
       searchTerms: `${action.display_name} ${action.action} ${action.side} ${action.method_name}`,
-      disabled: false,
+      disabled: additionDisabled,
       select: () => onaddaction(action)
     }))
   ]);
@@ -223,13 +239,13 @@
   <button
     type="button"
     class="palette-trigger"
-    aria-label="Add node"
+    aria-label={ADD_NODE_LABEL}
     aria-expanded={open}
     aria-controls="node-palette-panel"
     onclick={togglePalette}
   >
     <PlusIcon aria-hidden="true" size={15} weight="bold" />
-    <span>Add node</span>
+    <span>{ADD_NODE_LABEL}</span>
   </button>
 
   {#if open}

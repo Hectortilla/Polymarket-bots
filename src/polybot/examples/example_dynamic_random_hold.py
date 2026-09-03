@@ -6,6 +6,10 @@ from polybot.framework.context import BotContext
 from polybot.framework.markets import market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.examples.example_random_hold import ExampleRandomHoldBot
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
 
 
 DYNAMIC_RANDOM_HOLD_ORDER_SIZE = Decimal("5")
@@ -17,7 +21,7 @@ class ExampleDynamicRandomHoldBot(ExampleRandomHoldBot):
     def __init__(
         self,
         slug_prefix: str,
-        bucket_seconds: int = 300,
+        bucket_seconds: int = BTC_FIVE_MINUTE_BUCKET_SECONDS,
         *,
         order_size: Decimal = DYNAMIC_RANDOM_HOLD_ORDER_SIZE,
         **kwargs: object,
@@ -56,4 +60,4 @@ class ExampleDynamicRandomHoldBot(ExampleRandomHoldBot):
 
 def create() -> ExampleDynamicRandomHoldBot:
     """CLI factory."""
-    return ExampleDynamicRandomHoldBot(slug_prefix="btc-updown-5m")
+    return ExampleDynamicRandomHoldBot(slug_prefix=BTC_FIVE_MINUTE_SLUG_PREFIX)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from decimal import Decimal, InvalidOperation
 from math import isfinite
 
 from polybot.framework.events import Side
+from polybot.framework.events.prices import is_outcome_price
 
 from scripts.wallet_payload_contracts import (
     ACTIVITY_OUTCOME_FIELD,
@@ -18,33 +20,19 @@ from scripts.wallet_payload_contracts import (
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
     CONDITION_ID_FIELD,
-    ENRICHED_MARKET_SLUG_FIELD,
-    POSITION_CASH_PNL_FIELD,
-    POSITION_CURRENT_VALUE_FIELD,
-    POSITION_REALIZED_PNL_FIELD,
-    POSITION_SIZE_FIELD,
     PROXY_WALLET_FIELD,
     TRADE_ACTIVITY_TYPE,
     ActivityRow,
     ActivityType,
     PositionRow,
 )
-
-
-def normalize_gamma_market(payload: object) -> dict[str, object] | None:
-    if isinstance(payload, list):
-        candidate = payload[0] if payload else None
-    elif isinstance(payload, Mapping):
-        markets = payload.get("markets")
-        candidate = markets[0] if isinstance(markets, list) and markets else payload
-    else:
-        return None
-    return dict(candidate) if isinstance(candidate, Mapping) else None
-
-
-def normalize_gamma_event(payload: object) -> dict[str, object] | None:
-    candidate = payload[0] if isinstance(payload, list) and payload else payload
-    return dict(candidate) if isinstance(candidate, Mapping) else None
+from scripts.wallet_payload_fields import (
+    ENRICHED_MARKET_SLUG_FIELD,
+    POSITION_CASH_PNL_FIELD,
+    POSITION_CURRENT_VALUE_FIELD,
+    POSITION_REALIZED_PNL_FIELD,
+    POSITION_SIZE_FIELD,
+)
 
 
 def normalize_activity_rows(payload: object) -> list[ActivityRow]:
@@ -120,7 +108,7 @@ def _normalize_activity_row(candidate: object) -> ActivityRow | None:
             or price is None
             or usdc_size is None
             or size <= 0
-            or not 0 < price <= 1
+            or not _is_outcome_price(price)
             or usdc_size < 0
         ):
             return None
@@ -185,6 +173,13 @@ def _normalized_number(value: object, *, default: float | None = None) -> float 
         return normalized if isfinite(normalized) else None
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def _is_outcome_price(value: float) -> bool:
+    try:
+        return is_outcome_price(Decimal(str(value)))
+    except (InvalidOperation, ValueError):
+        return False
 
 
 def _required_identifier(candidate: Mapping[object, object], field: str) -> str | None:

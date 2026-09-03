@@ -9,6 +9,7 @@ from polybot_control_plane.api.dependencies import (
     SessionFactoryDependency,
 )
 from polybot_control_plane.api.routes.paths import HEALTH_OPERATION_ID, HEALTH_PATH
+from polybot_control_plane.api.responses import SERVICE_UNAVAILABLE_RESPONSE
 
 
 SERVICE_UNAVAILABLE_DETAIL = "service unavailable"
@@ -20,6 +21,7 @@ router = APIRouter()
     HEALTH_PATH,
     response_model=HealthResponse,
     operation_id=HEALTH_OPERATION_ID,
+    responses=SERVICE_UNAVAILABLE_RESPONSE,
 )
 async def health(
     session_factory: SessionFactoryDependency,

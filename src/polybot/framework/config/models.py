@@ -13,6 +13,7 @@ from polybot.framework.wallets import validate_wallet_address
 from .constants import (
     DEFAULT_DATA_TRADES_BUDGET,
     MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+    MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
     DEFAULT_BOT_MODE,
     DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
@@ -176,12 +177,13 @@ class BotConfig:
         if self.paper_portfolio_usdc <= 0:
             raise ValueError("paper_portfolio_usdc must be positive")
         if (
-            not 1
+            not MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW
             <= self.data_trades_budget_per_10s
             <= MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW
         ):
             raise ValueError(
-                "data_trades_budget_per_10s must be between 1 and "
+                "data_trades_budget_per_10s must be between "
+                f"{MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW} and "
                 f"{MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW}"
             )
 

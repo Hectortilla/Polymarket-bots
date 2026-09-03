@@ -13,12 +13,13 @@ from polybot.backtesting.contracts import (
     BacktestGapPolicy,
     BacktestOptions,
 )
-from polybot.framework.config.mode import BotMode
+from polybot.backtesting.validation import backtest_config_issue
 from polybot.framework.config.models import BotConfig
 from polybot.performance.artifacts.errors import PerformanceArtifactError
 from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 
 from .backtest_command import execute_backtest
+from .arguments import positive_int
 from .config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
@@ -51,8 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(args.dotenv)
     overrides = parse_overrides(args.override)
     config = BotConfig.from_env(args.bot.rsplit(":", 1)[-1]).with_overrides(**overrides)
-    if args.backtest is not None and config.mode is BotMode.LIVE:
-        parser.error("backtesting cannot run with BOT_MODE=live")
+    if args.backtest is not None and (issue := backtest_config_issue(config)):
+        parser.error(issue)
     if args.backtest is None and any(
         value is not None
         for value in (args.session, args.start_ms, args.end_ms)
@@ -171,20 +172,11 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         REPORT_INTERVAL_OPTION,
-        type=_positive_int,
+        type=positive_int,
         default=DEFAULT_REPORT_INTERVAL_MS,
         help="equity sampling interval (default: 1000)",
     )
     return parser
-
-
-def _positive_int(value: str) -> int:
-    parsed = int(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("value must be positive")
-    return parsed
-
-
 def _dashboard_enabled(value: bool) -> bool:
     interactive = (
         sys.stdout.isatty()

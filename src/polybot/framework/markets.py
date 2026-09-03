@@ -2,6 +2,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from polybot.framework.timestamps import require_nonnegative_timestamp
+
+
+MILLISECONDS_PER_SECOND = 1_000
+
+
+def market_bucket_start_seconds(
+    now_seconds: int,
+    bucket_seconds: int,
+    bucket_offset: int = 0,
+) -> int:
+    """Return the owning Unix-second bucket after applying an offset."""
+    if bucket_seconds <= 0:
+        raise ValueError("bucket_seconds must be positive")
+    return (now_seconds // bucket_seconds + bucket_offset) * bucket_seconds
+
+
 def market_bucket_slug(
     prefix: str,
     now_ms: int,
@@ -12,14 +29,21 @@ def market_bucket_slug(
     """Build the canonical slug for a fixed-width Unix-time market bucket."""
     if not prefix.strip():
         raise ValueError("prefix must not be empty")
-    if bucket_seconds <= 0:
-        raise ValueError("bucket_seconds must be positive")
-    bucket_start = _market_bucket_start(now_ms, bucket_seconds, bucket_offset)
+    bucket_start = market_bucket_start(now_ms, bucket_seconds, bucket_offset)
     return f"{prefix}-{bucket_start}"
 
 
-def _market_bucket_start(now_ms: int, bucket_seconds: int, bucket_offset: int) -> int:
-    return (now_ms // 1000 // bucket_seconds + bucket_offset) * bucket_seconds
+def market_bucket_start(
+    now_ms: int,
+    bucket_seconds: int,
+    bucket_offset: int = 0,
+) -> int:
+    """Return the owning Unix-second bucket after applying an offset."""
+    return market_bucket_start_seconds(
+        now_ms // MILLISECONDS_PER_SECOND,
+        bucket_seconds,
+        bucket_offset,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +56,7 @@ class FixedBucketTiming:
 
     @classmethod
     def at(cls, now_ms: int, bucket_seconds: int) -> FixedBucketTiming:
-        if now_ms < 0:
-            raise ValueError("now_ms must be nonnegative")
+        require_nonnegative_timestamp(now_ms, "now_ms")
         if bucket_seconds <= 0:
             raise ValueError("bucket_seconds must be positive")
         return cls._at_valid_time(now_ms, bucket_seconds)
@@ -44,12 +67,15 @@ class FixedBucketTiming:
         now_ms: int,
         bucket_seconds: int,
     ) -> FixedBucketTiming:
-        bucket_ms = bucket_seconds * 1_000
-        elapsed_ms = now_ms % bucket_ms
+        bucket_ms = bucket_seconds * MILLISECONDS_PER_SECOND
+        bucket_start_ms = (
+            market_bucket_start(now_ms, bucket_seconds) * MILLISECONDS_PER_SECOND
+        )
+        elapsed_ms = now_ms - bucket_start_ms
         return cls(
             elapsed_ms=elapsed_ms,
             remaining_ms=bucket_ms - elapsed_ms,
-            bucket_end_ms=now_ms - elapsed_ms + bucket_ms,
+            bucket_end_ms=bucket_start_ms + bucket_ms,
         )
 
     def allows_entry(self, *, delay_ms: int, cutoff_ms: int) -> bool:

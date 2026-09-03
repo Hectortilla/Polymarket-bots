@@ -2,6 +2,10 @@
   import '@fontsource-variable/geist';
   import '@fontsource-variable/geist-mono';
   import '../app.css';
+  import { NAVIGATION_PATH } from '$lib/navigation';
+  import { configureApiResponseValidation } from '$lib/api/responseValidation';
+
+  configureApiResponseValidation();
 
   let { children } = $props();
 </script>
@@ -18,7 +22,7 @@
 
 <header class="site-header">
   <div class="site-header-inner">
-    <a class="brand" href="/" aria-label="Polybot catalog">
+    <a class="brand" href={NAVIGATION_PATH.HOME} aria-label="Polybot catalog">
       <span class="brand-mark" aria-hidden="true"></span>
       <span>Polybot</span>
     </a>

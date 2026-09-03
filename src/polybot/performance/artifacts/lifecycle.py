@@ -13,6 +13,7 @@ from polybot.framework.events import (
     OrderStatus,
 )
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.timestamps import require_nonnegative_timestamp
 from polybot.persistence.atomic_json import AtomicJsonFile
 
 from polybot.performance.contracts.files import (
@@ -366,12 +367,7 @@ class PerformanceArtifacts:
         )
 
     def _validate_timestamp(self, timestamp_ms: int) -> None:
-        if (
-            isinstance(timestamp_ms, bool)
-            or not isinstance(timestamp_ms, int)
-            or timestamp_ms < 0
-        ):
-            raise ValueError("performance timestamp must be nonnegative")
+        require_nonnegative_timestamp(timestamp_ms, "performance timestamp")
         if timestamp_ms < self.selection.start_ms:
             raise ValueError("performance timestamp precedes selected range")
         if self.selection.end_ms is not None and timestamp_ms > self.selection.end_ms:

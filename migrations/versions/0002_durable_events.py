@@ -1,4 +1,4 @@
-"""Add Taskiq lifecycle columns and durable run events."""
+"""Add durable run events to the disposable alpha schema."""
 
 from collections.abc import Sequence
 
@@ -22,19 +22,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    for column in (
-        RunColumn.STARTED_AT,
-        RunColumn.ENDED_AT,
-        RunColumn.HEARTBEAT_AT,
-    ):
-        op.add_column(
-            RUNS_TABLE_NAME,
-            sa.Column(column, sa.DateTime(timezone=True), nullable=True),
-        )
-    op.add_column(
-        RUNS_TABLE_NAME,
-        sa.Column(RunColumn.FAILURE_DETAIL, sa.String(), nullable=True),
-    )
     op.create_table(
         RUN_EVENTS_TABLE_NAME,
         sa.Column(
@@ -81,10 +68,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index(RUN_EVENTS_RUN_ID_INDEX_NAME, table_name=RUN_EVENTS_TABLE_NAME)
     op.drop_table(RUN_EVENTS_TABLE_NAME)
-    for column in (
-        RunColumn.FAILURE_DETAIL,
-        RunColumn.HEARTBEAT_AT,
-        RunColumn.ENDED_AT,
-        RunColumn.STARTED_AT,
-    ):
-        op.drop_column(RUNS_TABLE_NAME, column)

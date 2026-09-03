@@ -10,12 +10,19 @@ from typing import TYPE_CHECKING
 from polybot.framework.wallets import normalize_wallet_address
 
 from .contracts import (
+    BucketRounding,
+    FIRST_WALLET_NOTIONAL_TIER,
     MAX_WALLET_TIMELINE_EVENTS,
+    NONPOSITIVE_MAX_NOTIONAL_THRESHOLD,
+    WALLET_BUCKET_CLAMP_TO_LAST_COLUMN,
+    WALLET_BUCKET_ROUNDING,
+    WALLET_NOTIONAL_TIER_COUNT,
+    WALLET_NOTIONAL_TIER_DENOMINATOR,
+    WALLET_NOTIONAL_TIER_UPPER_NUMERATORS,
+    WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE,
     WalletChartPoint,
     format_market_label,
 )
-
-WALLET_NOTIONAL_TIER_COUNT = 3
 
 if TYPE_CHECKING:
     from polybot.framework.events import Side
@@ -115,19 +122,25 @@ def wallet_bucket_index(
     end_ms: int,
     columns: int,
 ) -> int:
-    return min(
-        columns - 1,
-        (timestamp_ms - start_ms) * columns // (end_ms - start_ms),
-    )
+    if WALLET_BUCKET_ROUNDING is not BucketRounding.FLOOR:
+        raise ValueError("unsupported wallet bucket rounding policy")
+    bucket = (timestamp_ms - start_ms) * columns // (end_ms - start_ms)
+    return min(columns - 1, bucket) if WALLET_BUCKET_CLAMP_TO_LAST_COLUMN else bucket
 
 
 def wallet_notional_tier(notional: Decimal, maximum_notional: Decimal) -> int:
-    weighted_notional = notional * WALLET_NOTIONAL_TIER_COUNT
-    if maximum_notional <= 0 or weighted_notional <= maximum_notional:
-        return 1
-    return (
-        2
-        if weighted_notional
-        <= maximum_notional * (WALLET_NOTIONAL_TIER_COUNT - 1)
-        else 3
-    )
+    if maximum_notional <= NONPOSITIVE_MAX_NOTIONAL_THRESHOLD:
+        return FIRST_WALLET_NOTIONAL_TIER
+    weighted_notional = notional * WALLET_NOTIONAL_TIER_DENOMINATOR
+    for tier, upper_numerator in enumerate(
+        WALLET_NOTIONAL_TIER_UPPER_NUMERATORS,
+        start=FIRST_WALLET_NOTIONAL_TIER,
+    ):
+        boundary = maximum_notional * upper_numerator
+        if (
+            weighted_notional <= boundary
+            if WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE
+            else weighted_notional < boundary
+        ):
+            return tier
+    return WALLET_NOTIONAL_TIER_COUNT

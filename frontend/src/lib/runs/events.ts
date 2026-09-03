@@ -1,16 +1,17 @@
 import type {
-  DurableEvent,
   LiveRunEvent,
+  PersistedDurableEvent as GeneratedPersistedDurableEvent,
   StreamRunEventsApiV1RunsRunIdEventsStreamGetData,
 } from '$lib/api/generated';
 import { client } from '$lib/api/generated/client.gen';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 import {
   isEquityChartPayload,
   isMarketChartPayload,
-  isRecord,
   isStreamHealthPayload,
   isWalletChartPayload
 } from './dashboardPayloads';
+import { isFiniteDateTime, isRecord } from '$lib/valueGuards';
 import {
   eventCursorQuery,
   isTerminalLifecycleEvent,
@@ -23,8 +24,8 @@ export { LIVE_EVENT_KIND } from './eventKinds';
 
 type StreamRequest = StreamRunEventsApiV1RunsRunIdEventsStreamGetData;
 export type { LiveRunEvent } from '$lib/api/generated';
-const RUN_EVENTS_STREAM_PATH: StreamRequest['url'] =
-  '/api/v1/runs/{run_id}/events/stream';
+const RUN_EVENTS_STREAM_PATH =
+  runtimeContract.apiPaths.runEventsStream as StreamRequest['url'];
 
 export type EventStreamOpener = (
   runId: string,
@@ -53,7 +54,7 @@ export const openRunEventStream: EventStreamOpener = (
       if (isTerminalLifecycleEvent(event)) source.close();
       return;
     }
-    const live = parseLiveEvent(payload, runId);
+    const live = liveRunEvent(payload, runId);
     if (live !== null) onLiveEvent(live);
   };
 
@@ -73,20 +74,22 @@ function parseDurableEvent(
   runId: string
 ): PersistedDurableEvent | null {
   try {
-    return persistedDurableEvent(data as DurableEvent, runId);
+    return persistedDurableEvent(data as GeneratedPersistedDurableEvent, runId);
   } catch {
     return null;
   }
 }
 
-function parseLiveEvent(data: unknown, runId: string): LiveRunEvent | null {
+export function liveRunEvent(
+  data: unknown,
+  runId: string
+): LiveRunEvent | null {
   if (!isRecord(data)) return null;
   const candidate = data;
   if (
     candidate.run_id !== runId ||
     candidate.id !== undefined ||
-    typeof candidate.occurred_at !== 'string' ||
-    !Number.isFinite(Date.parse(candidate.occurred_at)) ||
+    !isFiniteDateTime(candidate.occurred_at) ||
     !isRecord(candidate.payload)
   ) return null;
   const payload = candidate.payload;

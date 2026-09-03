@@ -1,6 +1,9 @@
 """Wallet-candidate classification rules."""
 
 from .contracts import (
+    GROSS_BEFORE_FEES_METRIC,
+    HEDGE_AVERAGE_METRIC,
+    NET_CASH_METRIC,
     WalletClassification,
     WalletClassificationReason,
     WalletMetrics,
@@ -11,9 +14,9 @@ HEDGE_SCORE_THRESHOLD = 0.80
 
 
 def classify_wallet_candidate(wallet_metrics: WalletMetrics) -> WalletClassification:
-    net_cash = wallet_metrics["net_cash"]
-    fee_eaten = wallet_metrics["gross_before_fees"] > 0 and net_cash < 0
-    hedged = wallet_metrics["hedge_avg"] >= HEDGE_SCORE_THRESHOLD
+    net_cash = wallet_metrics[NET_CASH_METRIC]
+    fee_eaten = wallet_metrics[GROSS_BEFORE_FEES_METRIC] > 0 and net_cash < 0
+    hedged = wallet_metrics[HEDGE_AVERAGE_METRIC] >= HEDGE_SCORE_THRESHOLD
     if net_cash > 0 and not hedged and not fee_eaten:
         return WalletClassification(
             WalletVerdict.GOOD,

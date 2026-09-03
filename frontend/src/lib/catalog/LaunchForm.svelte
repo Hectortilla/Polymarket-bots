@@ -1,52 +1,83 @@
 <script lang="ts">
   import type { AnySchemaObject } from 'ajv';
+  import { tick } from 'svelte';
 
-  import type {
-    BotDefinitionDescriptor,
-    GraphNodeCatalog,
-    NodeGraph
-  } from '$lib/api/generated';
-  import NodeGraphInput from './NodeGraphInput.svelte';
+  import type { BotDefinitionDescriptor } from '$lib/api/generated';
+  import { FORM_COPY } from '$lib/formCopy';
+  import { LAUNCH_FORM_COPY } from './copy';
   import {
     WIDGET_KIND,
     fieldLabel,
     initialLaunchInputs,
     launchFields,
+    launchValidationIssues,
     launchValidator,
     resolvedFieldSchema,
     selectionExplanation,
-    validationMessages,
     widgetKind,
-    type LaunchInputs
+    type LaunchInputs,
+    type LaunchValidationIssue
   } from './schema';
 
   let {
     descriptor,
     onsubmit,
-    busy = false
+    busy = false,
+    disabled = false,
+    initialInputs,
+    submitLabel = LAUNCH_FORM_COPY.SAVE_BOT,
+    busyLabel = FORM_COPY.SAVING,
+    onchange,
+    serverIssues = []
   }: {
     descriptor: BotDefinitionDescriptor;
     onsubmit: (inputs: LaunchInputs) => void | Promise<void>;
     busy?: boolean;
+    disabled?: boolean;
+    initialInputs?: LaunchInputs;
+    submitLabel?: string;
+    busyLabel?: string;
+    onchange?: (inputs: LaunchInputs) => void;
+    serverIssues?: LaunchValidationIssue[];
   } = $props();
 
   const fields = $derived(launchFields(descriptor));
   const validator = $derived(launchValidator(descriptor));
   let inputs = $state<LaunchInputs>({});
-  let activeDefinitionId = $state('');
-  let errors = $state<string[]>([]);
+  let activeInputsKey = $state('');
+  let localIssues = $state<LaunchValidationIssue[]>([]);
+  let touchedFields = $state<Set<string>>(new Set());
+  let submitted = $state(false);
+  let formElement: HTMLFormElement;
+  const visibleIssues = $derived([
+    ...localIssues.filter((issue) =>
+      issue.field ? submitted || touchedFields.has(issue.field) : submitted
+    ),
+    ...serverIssues
+  ]);
+  const formIssues = $derived(
+    visibleIssues.filter((issue) => issue.field === undefined)
+  );
 
   $effect(() => {
-    if (activeDefinitionId !== descriptor.definition_id) {
-      activeDefinitionId = descriptor.definition_id;
-      inputs = initialLaunchInputs(descriptor);
-      errors = [];
+    // Compare serialized values so parent object identity changes do not erase edits.
+    const nextInputs = initialInputs ?? initialLaunchInputs(descriptor);
+    const nextKey = `${descriptor.definition_id}:${JSON.stringify(nextInputs)}`;
+    if (activeInputsKey !== nextKey) {
+      activeInputsKey = nextKey;
+      inputs = nextInputs;
+      localIssues = [];
+      touchedFields = new Set();
+      submitted = false;
+      onchange?.(inputs);
     }
   });
 
   function update(name: string, value: unknown): void {
     inputs = { ...inputs, [name]: value };
-    errors = validationMessages(validator, inputs);
+    touchedFields = new Set([...touchedFields, name]);
+    localIssues = launchValidationIssues(validator, inputs);
+    onchange?.(inputs);
   }
 
   function updateList(name: string, value: string): void {
@@ -76,21 +107,35 @@
     return inputType(field) === 'number' && value !== '' ? Number(value) : value;
   }
 
-  function initialGraphForField(name: string, field: AnySchemaObject): NodeGraph {
-    return (inputs[name] ?? field.default) as NodeGraph;
-  }
-
-  function nodeGraphCatalog(): GraphNodeCatalog {
-    if (!descriptor.graph_catalog) {
-      throw new Error('Node graph widget requires graph catalog metadata.');
-    }
-    return descriptor.graph_catalog;
-  }
-
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    errors = validationMessages(validator, inputs);
-    if (errors.length === 0) await onsubmit(inputs);
+    submitted = true;
+    localIssues = launchValidationIssues(validator, inputs);
+    if (localIssues.length === 0) {
+      await onsubmit(inputs);
+      return;
+    }
+    await tick();
+    formElement.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }
+
+  function issuesForField(name: string): LaunchValidationIssue[] {
+    return visibleIssues.filter((issue) => issue.field === name);
+  }
+
+  function fieldDescription(
+    helperId: string,
+    hasHelper: boolean,
+    errorId: string,
+    hasError: boolean
+  ): string | undefined {
+    const descriptions = [
+      hasHelper ? helperId : undefined,
+      hasError ? errorId : undefined
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return descriptions || undefined;
   }
 </script>
 
@@ -99,16 +144,24 @@
   <p>{selectionExplanation('Wallet', descriptor.wallet_selection)}</p>
 </div>
 
-<form class="launch-form" onsubmit={submit} novalidate aria-busy={busy}>
+<form
+  bind:this={formElement}
+  class="launch-form"
+  onsubmit={submit}
+  novalidate
+  aria-busy={busy}
+>
   <div class="form-grid">
     {#each fields as [name, field] (name)}
       {@const schema = resolvedFieldSchema(descriptor, field)}
       {@const widget = widgetKind(field)}
       {@const labelId = `field-${name}-label`}
       {@const helperId = `field-${name}-helper`}
-      <svelte:element
-        this={widget === WIDGET_KIND.nodeGraph ? 'div' : 'label'}
-        class:wide={widget === WIDGET_KIND.streamRules || widget === WIDGET_KIND.nodeGraph}
+      {@const errorId = `field-${name}-error`}
+      {@const fieldIssues = issuesForField(name)}
+      {@const hasHelper = typeof schema.description === 'string'}
+      <label
+        class:wide={widget === WIDGET_KIND.STREAM_RULES}
         class:checkbox-field={schema.type === 'boolean'}
       >
         <span class="field-label" id={labelId}>{fieldLabel(name, schema)}</span>
@@ -116,34 +169,35 @@
           <span class="field-helper" id={helperId}>{schema.description}</span>
         {/if}
 
-        {#if widget === WIDGET_KIND.nodeGraph}
-          <!-- Reset canvas-owned state when the selected definition changes. -->
-          {#key descriptor.definition_id}
-            <NodeGraphInput
-              initialGraph={initialGraphForField(name, schema)}
-              graphCatalog={nodeGraphCatalog()}
-              onchange={(graph) => update(name, graph)}
-              labelledby={labelId}
-              describedby={typeof schema.description === 'string' ? helperId : undefined}
-            />
-          {/key}
-        {:else if widget === WIDGET_KIND.walletAddresses || widget === WIDGET_KIND.marketSlugs}
+        {#if widget === WIDGET_KIND.WALLET_ADDRESSES || widget === WIDGET_KIND.MARKET_SLUGS}
           <textarea
             rows="3"
             value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
             oninput={(event) => updateList(name, event.currentTarget.value)}
-            placeholder={widget === WIDGET_KIND.walletAddresses ? 'One wallet address per line' : 'One market slug per line'}
+            placeholder={widget === WIDGET_KIND.WALLET_ADDRESSES ? 'One wallet address per line' : 'One market slug per line'}
             aria-labelledby={labelId}
-            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
+            aria-describedby={fieldDescription(
+              helperId,
+              hasHelper,
+              errorId,
+              fieldIssues.length > 0
+            )}
+            aria-invalid={fieldIssues.length > 0}
           ></textarea>
-        {:else if widget === WIDGET_KIND.streamRules}
+        {:else if widget === WIDGET_KIND.STREAM_RULES}
           <textarea
             rows="6"
             value={JSON.stringify(inputs[name], null, 2)}
             oninput={(event) => updateJson(name, event.currentTarget.value)}
             spellcheck="false"
             aria-labelledby={labelId}
-            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
+            aria-describedby={fieldDescription(
+              helperId,
+              hasHelper,
+              errorId,
+              fieldIssues.length > 0
+            )}
+            aria-invalid={fieldIssues.length > 0}
           ></textarea>
         {:else if schema.type === 'boolean'}
           <input
@@ -151,34 +205,53 @@
             checked={inputs[name] === true}
             onchange={(event) => update(name, event.currentTarget.checked)}
             aria-labelledby={labelId}
-            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
+            aria-describedby={fieldDescription(
+              helperId,
+              hasHelper,
+              errorId,
+              fieldIssues.length > 0
+            )}
+            aria-invalid={fieldIssues.length > 0}
           />
         {:else}
           <input
-            type={widget === WIDGET_KIND.decimal ? 'text' : inputType(field)}
-            inputmode={widget === WIDGET_KIND.decimal ? 'decimal' : undefined}
+            type={widget === WIDGET_KIND.DECIMAL ? 'text' : inputType(field)}
+            inputmode={widget === WIDGET_KIND.DECIMAL ? 'decimal' : undefined}
             value={String(inputs[name] ?? '')}
             required={Array.isArray(descriptor.input_schema.required) && descriptor.input_schema.required.includes(name)}
             min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
             max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
             step={inputType(field) === 'number' ? '1' : undefined}
             aria-labelledby={labelId}
-            aria-describedby={typeof schema.description === 'string' ? helperId : undefined}
+            aria-describedby={fieldDescription(
+              helperId,
+              hasHelper,
+              errorId,
+              fieldIssues.length > 0
+            )}
+            aria-invalid={fieldIssues.length > 0}
             oninput={(event) =>
               update(name, parseFieldInput(field, event.currentTarget.value))}
           />
         {/if}
-      </svelte:element>
+        {#if fieldIssues.length > 0}
+          <span class="field-errors" id={errorId} aria-live="polite">
+            {#each fieldIssues as issue (issue.message)}
+              <span>{issue.message}</span>
+            {/each}
+          </span>
+        {/if}
+      </label>
     {/each}
   </div>
 
-  {#if errors.length > 0}
+  {#if formIssues.length > 0}
     <div class="form-errors" role="alert">
-      {#each errors as error}
-        <p>{error}</p>
+      {#each formIssues as issue (issue.message)}
+        <p>{issue.message}</p>
       {/each}
     </div>
   {/if}
 
-  <button type="submit" disabled={busy} aria-busy={busy}>{busy ? 'Starting…' : 'Start paper run'}</button>
+  <button type="submit" disabled={busy || disabled} aria-busy={busy}>{busy ? busyLabel : submitLabel}</button>
 </form>

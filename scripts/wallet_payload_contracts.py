@@ -18,13 +18,16 @@ from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
     CONDITION_ID_FIELD,
+    PROXY_WALLET_FIELD,
+    TRADE_ACTIVITY_TYPE,
+)
+from polybot.framework.events import Side
+from scripts.wallet_payload_fields import (
     ENRICHED_MARKET_SLUG_FIELD,
     POSITION_CASH_PNL_FIELD,
     POSITION_CURRENT_VALUE_FIELD,
     POSITION_REALIZED_PNL_FIELD,
     POSITION_SIZE_FIELD,
-    PROXY_WALLET_FIELD,
-    TRADE_ACTIVITY_TYPE,
 )
 
 
@@ -42,7 +45,7 @@ ActivityRow = TypedDict(
         PROXY_WALLET_FIELD: str,
         CONDITION_ID_FIELD: str,
         ACTIVITY_TYPE_FIELD: ActivityType,
-        ACTIVITY_SIDE_FIELD: str,
+        ACTIVITY_SIDE_FIELD: Side,
         ACTIVITY_SIZE_FIELD: float,
         ACTIVITY_PRICE_FIELD: float,
         ACTIVITY_USDC_SIZE_FIELD: float,

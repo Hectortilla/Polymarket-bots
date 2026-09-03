@@ -8,10 +8,10 @@ import pytest
 
 import polybot_control_plane.api.sse as sse_module
 from polybot_control_plane.api.sse import (
+    RunEventStreamer,
     SSE_DATA_FIELD,
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
-    stream_run_event_frames,
 )
 from polybot_control_plane.events.channels import (
     decode_durable_wake_frame,
@@ -19,12 +19,14 @@ from polybot_control_plane.events.channels import (
     encode_live_event_frame,
 )
 from polybot_control_plane.events.contracts import (
-    EVENT_DISCRIMINATOR_FIELD,
     EquityChartPayload,
     LiveEquityChartEvent,
-    LiveEventKind,
     RunLifecycleEvent,
     RunStatusPayload,
+)
+from polybot_control_plane.events.kinds import (
+    EVENT_DISCRIMINATOR_FIELD,
+    LiveEventKind,
 )
 from polybot_control_plane.events.contracts.payloads import EquityChartPointPayload
 from polybot_control_plane.events.ids import (
@@ -72,7 +74,7 @@ def test_terminal_initial_replay_does_not_subscribe(
     async def read_events(*args, **kwargs):
         return (_event(run_id, 1, RunStatus.STOPPED),)
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -96,7 +98,7 @@ def test_persisted_event_without_id_is_rejected_at_sse_boundary(
             ),
         )
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
 
     with pytest.raises(ValueError, match="missing its ID"):
         asyncio.run(_collect(run_id, redis))
@@ -122,7 +124,7 @@ def test_replay_recheck_and_wake_share_the_latest_cursor(
         cursors.append(after_event_id)
         return next(reads)
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -151,7 +153,7 @@ def test_replay_subscribe_recheck_delivers_handoff_event_and_closes(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -183,7 +185,7 @@ def test_initial_replay_reads_large_backlog_in_bounded_batches(
         ]
 
     redis = _Redis(_PubSub(()))
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -204,7 +206,7 @@ def test_malformed_wake_is_dropped_before_valid_terminal_wake(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
     caplog.set_level(logging.WARNING)
 
     frames = asyncio.run(_collect(run_id, redis))
@@ -237,7 +239,7 @@ def test_live_frame_has_no_cursor_and_durable_continuation_keeps_its_cursor(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
     frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
 
     data_prefix = f"{SSE_DATA_FIELD}{SSE_FIELD_SEPARATOR}"
@@ -274,7 +276,7 @@ def test_live_event_for_another_run_is_dropped_before_target_continues(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
     caplog.set_level(logging.WARNING)
 
     frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
@@ -293,7 +295,7 @@ def test_disconnect_releases_pubsub_resources(
     async def read_events(*args, **kwargs):
         return ()
 
-    monkeypatch.setattr(sse_module, "_read_events", read_events)
+    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
 
     frames = asyncio.run(_collect(run_id, redis, disconnected=True))
 
@@ -310,13 +312,12 @@ async def _collect(
 ) -> list[str]:
     return [
         frame
-        async for frame in stream_run_event_frames(
+        async for frame in RunEventStreamer(
             run_id,
-            after_event_id=FIRST_EVENT_CURSOR,
-            request=_Request(disconnected),
-            session_factory=object(),
-            redis=redis,
-        )
+            _Request(disconnected),
+            object(),
+            redis,
+        ).stream(FIRST_EVENT_CURSOR)
     ]
 
 

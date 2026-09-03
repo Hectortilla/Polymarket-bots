@@ -7,9 +7,9 @@ from scripts.wallet_payload_contracts import (
     ACTIVITY_SLUG_FIELD,
     ACTIVITY_TITLE_FIELD,
     CONDITION_ID_FIELD,
-    ENRICHED_MARKET_SLUG_FIELD,
     ActivityRow,
 )
+from scripts.wallet_payload_fields import ENRICHED_MARKET_SLUG_FIELD
 
 from .contracts import MarketMetrics
 

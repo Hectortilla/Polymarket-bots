@@ -11,9 +11,14 @@ from polybot.framework.events import FillEvent
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.framework.runner.validation import book_skip_reason, wallet_trade_skip_reason
+from polybot.framework.runner.validation import (
+    book_market_identity_skip_reason,
+    book_skip_reason,
+    wallet_trade_skip_reason,
+)
 from polybot.framework.streams import StreamPlan
 from polybot.framework.wallets import normalize_wallet_address
+from polybot.polymarket.errors import MarketDataTransportError
 
 
 class BotRunner:
@@ -70,6 +75,22 @@ class BotRunner:
             or book.market_slug not in self._runtime_market_slugs
         ):
             return DispatchOutcome.skipped(DispatchSkipReason.MARKET_NOT_TRACKED)
+        try:
+            market = await self.ctx.markets.find_by_slug(book.market_slug)
+        except MarketDataTransportError:
+            return DispatchOutcome.skipped(
+                DispatchSkipReason.MARKET_METADATA_MISSING
+            )
+        reason = book_market_identity_skip_reason(book, market)
+        if reason is not None:
+            return DispatchOutcome.skipped(reason)
+        reason = book_skip_reason(
+            book,
+            now_ms=self._now_ms(),
+            max_age_ms=self.ctx.config.event_max_age_ms,
+        )
+        if reason is not None:
+            return DispatchOutcome.skipped(reason)
         callback_skip_reason = await self.bot.on_book(self.ctx, book)
         if callback_skip_reason is not None:
             return DispatchOutcome.skipped(callback_skip_reason)

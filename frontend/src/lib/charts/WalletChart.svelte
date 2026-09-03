@@ -1,14 +1,12 @@
 <script module lang="ts">
   import Decimal from 'decimal.js';
   import type { WalletChartPointPayload } from '$lib/api/generated';
-  import {
-    SIDE,
-    WALLET_LABEL_MAX_LENGTH,
-    WALLET_NOTIONAL_TIER_COUNT
-  } from './contracts';
+  import { SIDE } from './contracts';
   import type { EChartsCoreOption } from './echarts';
+  import { walletBucketIndex, walletNotionalTier } from './walletBuckets';
 
   type Bucket = { timestampMs: number; laneIndex: number; notional: Decimal; sides: Set<WalletChartPointPayload['side']>; skipped: boolean };
+  const WALLET_LABEL_MAX_LENGTH = 12;
 
   export function walletChartOption(
     points: WalletChartPointPayload[],
@@ -35,7 +33,7 @@
       const column = walletBucketIndex(
         point.trade_timestamp_ms,
         startMs,
-        spanMs,
+        endMs,
         columns
       );
       const key = `${laneIndex}:${column}`;
@@ -88,23 +86,7 @@
   }
 
   function walletSymbolSize(notional: Decimal, maximumNotional: Decimal): number {
-    const weightedNotional = notional.times(WALLET_NOTIONAL_TIER_COUNT);
-    if (weightedNotional.lte(maximumNotional)) return 5;
-    return weightedNotional.lte(
-      maximumNotional.times(WALLET_NOTIONAL_TIER_COUNT - 1)
-    ) ? 9 : 13;
-  }
-
-  function walletBucketIndex(
-    timestampMs: number,
-    startMs: number,
-    spanMs: number,
-    columns: number
-  ): number {
-    return Math.min(
-      columns - 1,
-      Math.floor((timestampMs - startMs) * columns / spanMs)
-    );
+    return [5, 9, 13][walletNotionalTier(notional, maximumNotional) - 1];
   }
 
   function walletBucketColor(sides: Set<WalletChartPointPayload['side']>): string {
@@ -114,20 +96,72 @@
 </script>
 
 <script lang="ts">
+  import { onMount } from 'svelte';
   import EChart from './EChart.svelte';
+  import { DASHBOARD_KEY } from './contracts';
+  import { DASHBOARD_COPY } from './copy';
+
+  const WALLET_LANES_PER_PAGE = 6;
 
   let {
     points,
-    lanes,
+    configuredWallets = [],
     startMs,
     endMs
   }: {
     points: WalletChartPointPayload[];
-    lanes: string[];
+    configuredWallets?: string[];
     startMs: number;
     endMs: number;
   } = $props();
-  const option = $derived(walletChartOption(points, lanes, startMs, endMs));
+  let walletPage = $state(0);
+  const lanes = $derived([
+    ...new Set([...configuredWallets, ...points.map(({ wallet }) => wallet)])
+  ]);
+  const maximumWalletPage = $derived(
+    Math.max(0, Math.ceil(lanes.length / WALLET_LANES_PER_PAGE) - 1)
+  );
+  const visibleLanes = $derived(
+    lanes.slice(
+      walletPage * WALLET_LANES_PER_PAGE,
+      (walletPage + 1) * WALLET_LANES_PER_PAGE
+    )
+  );
+  const option = $derived(
+    walletChartOption(points, visibleLanes, startMs, endMs)
+  );
+
+  $effect(() => {
+    walletPage = Math.min(walletPage, maximumWalletPage);
+  });
+
+  onMount(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof HTMLInputElement
+        || event.target instanceof HTMLTextAreaElement
+      ) return;
+      changeWalletPage(event.key.toLowerCase());
+    };
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  });
+
+  function changeWalletPage(key: string): void {
+    if (key === DASHBOARD_KEY.nextWalletPage) {
+      walletPage = Math.min(maximumWalletPage, walletPage + 1);
+    } else if (key === DASHBOARD_KEY.previousWalletPage) {
+      walletPage = Math.max(0, walletPage - 1);
+    }
+  }
 </script>
 
-<EChart {option} label="Followed-wallet trade timeline" />
+{#if visibleLanes.length}
+  <div class="dashboard-controls" aria-label={DASHBOARD_COPY.WALLET_CONTROLS_ARIA_LABEL}>
+    <button onclick={() => changeWalletPage(DASHBOARD_KEY.previousWalletPage)} disabled={walletPage === 0} title={`Keyboard: ${DASHBOARD_KEY.previousWalletPage}`}>{DASHBOARD_KEY.previousWalletPage} · {DASHBOARD_COPY.WALLET_CONTROL_PREVIOUS}</button>
+    <button onclick={() => changeWalletPage(DASHBOARD_KEY.nextWalletPage)} disabled={walletPage === maximumWalletPage} title={`Keyboard: ${DASHBOARD_KEY.nextWalletPage}`}>{DASHBOARD_KEY.nextWalletPage} · {DASHBOARD_COPY.WALLET_CONTROL_NEXT}</button>
+  </div>
+  <EChart {option} label={DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL} />
+{:else}
+  <p class="chart-empty">{DASHBOARD_COPY.NO_WALLETS}</p>
+{/if}

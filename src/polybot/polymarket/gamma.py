@@ -157,25 +157,25 @@ class GammaClient:
 
 def _iter_slug_batches(slugs: Iterable[str]) -> Iterable[tuple[str, ...]]:
     # Keep batches below httpx's 65,536-character URL query-component limit.
-    current: list[str] = []
-    current_query_length = _encoded_query_length(())
+    batch_slugs: list[str] = []
+    batch_query_length = _encoded_query_length(())
     for slug in slugs:
         slug_query_length = len(
             urlencode(((GAMMA_MARKETS_SLUG_QUERY_PARAMETER, slug),))
         )
-        candidate_query_length = current_query_length + 1 + slug_query_length
-        if current and (
-            len(current) >= GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST
+        candidate_query_length = batch_query_length + 1 + slug_query_length
+        if batch_slugs and (
+            len(batch_slugs) >= GAMMA_MARKETS_MAX_SLUGS_PER_REQUEST
             or candidate_query_length > GAMMA_MARKETS_QUERY_BUDGET
         ):
-            yield tuple(current)
-            current = []
-            current_query_length = _encoded_query_length(())
-            candidate_query_length = current_query_length + 1 + slug_query_length
-        current.append(slug)
-        current_query_length = candidate_query_length
-    if current:
-        yield tuple(current)
+            yield tuple(batch_slugs)
+            batch_slugs = []
+            batch_query_length = _encoded_query_length(())
+            candidate_query_length = batch_query_length + 1 + slug_query_length
+        batch_slugs.append(slug)
+        batch_query_length = candidate_query_length
+    if batch_slugs:
+        yield tuple(batch_slugs)
 
 
 def _encoded_query_length(slugs: Iterable[str]) -> int:

@@ -5,9 +5,10 @@ from decimal import Decimal
 from enum import StrEnum
 
 from polybot.framework.events.books import BookSnapshot
-
-BTC_FIVE_MINUTE_SLUG_PREFIX = "btc-updown-5m"
-BTC_FIVE_MINUTE_BUCKET_SECONDS = 300
+from polybot.framework.events.book_freshness import paired_observations_are_current
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+)
 
 
 class MomentumDirection(StrEnum):
@@ -249,14 +250,11 @@ class ProbabilitySampleTransition:
             and sampled_at_ms - prior_sample_at_ms < settings.sample_interval_ms
         ):
             return None
-        if (
-            abs(up_book.received_at_ms - down_book.received_at_ms)
-            > settings.paired_book_max_skew_ms
-        ):
-            return None
-        if not all(
-            book.is_fresh(now_ms, settings.paired_book_max_age_ms)
-            for book in (up_book, down_book)
+        if not paired_observations_are_current(
+            (up_book.received_at_ms, down_book.received_at_ms),
+            now_ms=now_ms,
+            maximum_age_ms=settings.paired_book_max_age_ms,
+            maximum_skew_ms=settings.paired_book_max_skew_ms,
         ):
             return None
         up_quote = BookQuote.from_book(up_book)

@@ -10,6 +10,8 @@ from sqlmodel import select
 
 from polybot_control_plane.runs.contracts import PaperRunConfig, RunRead
 from polybot_control_plane.runs.models import RunRow
+from polybot_control_plane.bots.contracts import BotRead
+from polybot_control_plane.bots.store import BotStore
 from polybot_control_plane.runs.status import (
     INTERRUPTIBLE_RUN_STATUSES,
     OWNED_STOP_PREVIOUS_STATUSES,
@@ -29,24 +31,22 @@ class RunStore:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(
-        self,
-        *,
-        definition_id: str,
-        config: PaperRunConfig,
-    ) -> RunRead:
+    async def create_from_bot(self, bot: BotRead) -> RunRead:
+        revision = bot.latest_graph_revision
         row = RunRow(
-            definition_id=definition_id,
-            config=config.model_dump(mode="json"),
+            bot_id=bot.id,
+            definition_id=bot.definition_id,
+            config=bot.config.model_dump(mode="json"),
+            bot_graph_revision_id=None if revision is None else revision.id,
         )
         self._session.add(row)
         await self._session.commit()
         await self._session.refresh(row)
-        return self.read_from_row(row)
+        return self.read_from_row(row, revision)
 
     async def read(self, run_id: UUID) -> RunRead | None:
         row = await self._session.get(RunRow, run_id)
-        return None if row is None else self.read_from_row(row)
+        return None if row is None else await self._read_row(row)
 
     async def list(self) -> tuple[RunRead, ...]:
         statement = select(RunRow).order_by(
@@ -54,7 +54,7 @@ class RunStore:
             RunRow.id.desc(),
         )
         rows = (await self._session.execute(statement)).scalars()
-        return tuple(self.read_from_row(row) for row in rows)
+        return tuple([await self._read_row(row) for row in rows])
 
     async def claim(self, run_id: UUID, *, now: datetime) -> RunRead | None:
         # The status predicate makes duplicate Taskiq deliveries race on one
@@ -70,7 +70,7 @@ class RunStore:
             await self._session.commit()
             return None
         try:
-            claimed = self.read_from_row(row)
+            claimed = await self._read_row(row)
         except Exception:
             await self._session.rollback()
             raise
@@ -151,9 +151,7 @@ class RunStore:
         if status not in TERMINAL_RUN_STATUSES:
             raise ValueError("finish requires a terminal run status")
         expected_statuses = (
-            frozenset({RunStatus.STOPPING})
-            if status is RunStatus.STOPPED
-            else None
+            frozenset({RunStatus.STOPPING}) if status is RunStatus.STOPPED else None
         )
         return await self._transition(
             run_id,
@@ -188,7 +186,7 @@ class RunStore:
         status: RunStatus,
         *,
         expected_statuses: frozenset[RunStatus] | None = None,
-        **values: object,
+        **transition_updates: object,
     ) -> RunRow | None:
         allowed_previous = status.previous_statuses()
         expected = expected_statuses or allowed_previous
@@ -197,7 +195,7 @@ class RunStore:
         statement = (
             update(RunRow)
             .where(RunRow.id == run_id, RunRow.status.in_(expected))
-            .values(status=status, **values)
+            .values(status=status, **transition_updates)
             .returning(RunRow)
         )
         return (await self._session.execute(statement)).scalar_one_or_none()
@@ -208,23 +206,43 @@ class RunStore:
         status: RunStatus,
         *,
         expected_statuses: frozenset[RunStatus] | None = None,
-        **values: object,
+        **transition_updates: object,
     ) -> bool:
         row = await self.transition_row(
             run_id,
             status,
             expected_statuses=expected_statuses,
-            **values,
+            **transition_updates,
         )
         await self._session.commit()
         return row is not None
 
+    async def _read_row(self, row: RunRow) -> RunRead:
+        revision = None
+        if row.bot_graph_revision_id is not None:
+            revision = await BotStore(self._session).read_revision(
+                row.bot_id,
+                row.bot_graph_revision_id,
+            )
+            if revision is None:
+                raise ValueError(
+                    "run graph revision is missing or owned by another bot"
+                )
+        return self.read_from_row(row, revision)
+
+    async def read_row(self, row: RunRow) -> RunRead:
+        return await self._read_row(row)
+
     @staticmethod
-    def read_from_row(row: RunRow) -> RunRead:
+    def read_from_row(row: RunRow, revision=None) -> RunRead:
         return RunRead(
             id=row.id,
+            bot_id=row.bot_id,
             definition_id=row.definition_id,
             config=PaperRunConfig.model_validate(row.config),
+            bot_graph_revision_id=row.bot_graph_revision_id,
+            graph_revision=None if revision is None else revision.revision,
+            graph=None if revision is None else revision.graph,
             status=row.status,
             created_at=row.created_at,
             started_at=row.started_at,

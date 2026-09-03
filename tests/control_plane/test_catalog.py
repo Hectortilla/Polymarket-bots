@@ -1,26 +1,36 @@
-from dataclasses import dataclass, fields, replace
-from decimal import Decimal
 import json
+from dataclasses import dataclass, fields
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from control_plane.catalog_contract_fixture import (
+    FRONTEND_CATALOG_CONTRACT_PATH,
+    frontend_catalog_contract,
+)
+from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.graph_validation_contract_fixture import (
+    FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH,
+    frontend_graph_validation_contract,
+)
+from polybot.execution.broker import Broker
 from polybot.framework.base import BaseBot
-from polybot.framework.context import BotContext
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
-from polybot.execution.broker import Broker
+from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.factories import bind_bot_factory
 from polybot.framework.graph import graph_output
 from polybot.framework.streams import StreamRelation
-from polybot_control_plane.catalog.contracts import (
-    LaunchRequest,
-    SelectionMode,
+from polybot.framework.wallets import WALLET_ADDRESS_SCHEMA_PATTERN
+from polybot_control_plane.catalog.values import (
     WIDGET_SCHEMA_KEY,
+    SelectionMode,
     WidgetKind,
 )
+from polybot_control_plane.bots.contracts import BotCreate
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
     CONTRARIAN_DEFINITION_ID,
@@ -36,11 +46,13 @@ from polybot_control_plane.catalog.graphs.catalog import (
     GRAPH_NODE_CATALOG,
     GraphNodeCatalog,
 )
+from polybot_control_plane.catalog.graphs.comparisons import GRAPH_COMPARISON_SPECS
 from polybot_control_plane.catalog.graphs.contracts import (
     MAX_NODE_GRAPH_EDGES,
     MAX_NODE_GRAPH_NODES,
     GraphBooleanConstantData,
     GraphDecimalConstantData,
+    GraphEdge,
     GraphIntegerConstantData,
     GraphStringConstantData,
     NodeGraph,
@@ -50,27 +62,27 @@ from polybot_control_plane.catalog.graphs.starter import (
     STARTER_TRIGGER_HOOK_NAME,
     STARTER_TRIGGER_NODE_ID,
 )
-from polybot_control_plane.catalog.graphs.types import (
+from polybot_control_plane.catalog.graphs.values import (
     GRAPH_ACTION_ENABLED_HANDLE_ID,
     GRAPH_COMPARISON_LEFT_HANDLE_ID,
     GRAPH_COMPARISON_RESULT_HANDLE_ID,
     GRAPH_COMPARISON_RIGHT_HANDLE_ID,
     GRAPH_CONTEXT_HANDLE_ID,
+    GRAPH_FIELD_PATH_SEPARATOR,
     GRAPH_VALUE_HANDLE_ID,
+    MAX_GRAPH_EDGE_IDENTIFIER_LENGTH,
+    MAX_GRAPH_IDENTIFIER_LENGTH,
     NODE_GRAPH_COORDINATE_LIMIT,
     GraphBrokerAction,
     GraphComparisonOperator,
-    GraphFieldPath,
     GraphNodeType,
     GraphScalarType,
 )
-from polybot_control_plane.runs.contracts import PaperRunConfig
-from control_plane.graph_catalog_fixture import (
-    FRONTEND_FIXTURE_PATH,
-    frontend_graph_catalog,
+from polybot_control_plane.catalog.graphs.types import (
+    GraphFieldPath,
 )
-from control_plane.graph_fixtures import threshold_buy_graph
-
+from polybot_control_plane.catalog.node_based.bot import NodeBasedBot
+from polybot_control_plane.runs.contracts import PaperRunConfig
 
 CATALOG_DEFINITION_IDS = (
     WINNER_DEFINITION_ID,
@@ -138,13 +150,13 @@ def test_catalog_has_exact_initial_entries_and_generated_schemas() -> None:
         for descriptor in descriptors
     )
     assert all(
-        entry.factory.__module__ != "polybot.my_bot"
+        _catalog_factory(entry).__module__ != "polybot.my_bot"
         for entry in CATALOG.values()
     )
     assert _catalog_spec_rows() == tuple(
         (
             definition_id,
-            f"{entry.factory.__module__}:{entry.factory.__name__}",
+            f"{_catalog_factory(entry).__module__}:{_catalog_factory(entry).__name__}",
             entry.market_selection.value.replace("_", "-"),
             entry.wallet_selection.value.replace("_", "-"),
             entry.label.value.replace("_", "-"),
@@ -160,22 +172,6 @@ def test_bot_managed_definition_converts_without_selection_inputs() -> None:
     assert descriptor.market_selection is SelectionMode.BOT_MANAGED
     assert descriptor.wallet_selection is SelectionMode.ABSENT
     assert config.stream_rules == ()
-
-
-def test_catalog_normalizes_zero_and_one_config_factories_once() -> None:
-    config = BotConfig(name="factory")
-
-    def without_config() -> BaseBot:
-        return BaseBot()
-
-    def with_config(received: BotConfig) -> BaseBot:
-        assert received is config
-        return BaseBot()
-
-    template = CATALOG[WINNER_DEFINITION_ID]
-
-    assert isinstance(replace(template, factory=without_config).create_bot(config), BaseBot)
-    assert isinstance(replace(template, factory=with_config).create_bot(config), BaseBot)
 
 
 def test_bot_factory_contract_rejects_invalid_signature_and_return() -> None:
@@ -202,28 +198,46 @@ def test_wallet_definition_owns_normalized_wallet_widget_and_rule() -> None:
     )
 
     wallet_schema = descriptor.input_schema["properties"]["wallet_addresses"]
+    wallet_item_reference = wallet_schema["items"]["$ref"]
+    wallet_item_name = wallet_item_reference.rsplit("/", 1)[-1]
     assert descriptor.wallet_selection is SelectionMode.USER_CONFIGURED
     assert wallet_schema[WIDGET_SCHEMA_KEY] == WidgetKind.WALLET_ADDRESSES.value
+    assert descriptor.input_schema["$defs"][wallet_item_name]["pattern"] == (
+        WALLET_ADDRESS_SCHEMA_PATTERN
+    )
     assert config.stream_rules[0].relation is StreamRelation.INDEPENDENT
     assert config.stream_rules[0].wallet_addresses == (WALLET,)
 
 
-def test_node_based_definition_owns_graph_widget_snapshot_and_market_rule() -> None:
+def test_node_based_definition_owns_graph_catalog_starter_and_market_rule() -> None:
     entry = CATALOG[NODE_BASED_DEFINITION_ID]
     descriptor = entry.descriptor(NODE_BASED_DEFINITION_ID)
     config = entry.parse_config(
         {"name": "node-observer", "market_slugs": [" example-market "]}
     )
 
-    graph_schema = descriptor.input_schema["properties"]["graph"]
     assert descriptor.market_selection is SelectionMode.USER_CONFIGURED
     assert descriptor.wallet_selection is SelectionMode.ABSENT
-    assert graph_schema[WIDGET_SCHEMA_KEY] == WidgetKind.NODE_GRAPH.value
-    assert graph_schema["default"] == STARTER_NODE_GRAPH.model_dump(mode="json")
+    assert "graph" not in descriptor.input_schema["properties"]
     assert descriptor.graph_catalog == GRAPH_NODE_CATALOG
-    assert config.graph == STARTER_NODE_GRAPH
+    assert descriptor.starter_graph == STARTER_NODE_GRAPH
+    assert "graph" not in config.model_dump(mode="json")
     assert config.stream_rules[0].market_slugs == ("example-market",)
-    assert type(entry.create_bot(config.to_bot_config())) is BaseBot
+    assert isinstance(
+        entry.create_bot(config.to_bot_config(), STARTER_NODE_GRAPH),
+        NodeBasedBot,
+    )
+
+
+def test_node_based_factory_rejects_a_persisted_run_without_a_graph() -> None:
+    config_without_graph = CATALOG[WINNER_DEFINITION_ID].parse_config(
+        {"name": "not-a-node-run"}
+    )
+
+    with pytest.raises(ValueError, match="graph is required"):
+        CATALOG[NODE_BASED_DEFINITION_ID].create_bot(
+            config_without_graph.to_bot_config()
+        )
 
 
 def test_graph_catalog_derives_base_bot_lifecycle_hooks_and_payload_fields() -> None:
@@ -260,23 +274,23 @@ def test_graph_catalog_derives_base_bot_lifecycle_hooks_and_payload_fields() -> 
         segments=("bids",)
     ).handle_id
     assert book_fields["bids"].display_name == "BookSnapshot.bids"
-    assert "bids.price" not in book_fields
+    assert GRAPH_FIELD_PATH_SEPARATOR.join(("bids", "price")) not in book_fields
     assert {
         path for path in book_fields if path.startswith("best_")
     } == {
-        "best_bid.price",
-        "best_bid.size",
-        "best_ask.price",
-        "best_ask.size",
+        GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")),
+        GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "size")),
+        GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "price")),
+        GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "size")),
     }
     assert all(
         book_fields[path].scalar_type is GraphScalarType.DECIMAL
         and book_fields[path].nullable
         for path in (
-            "best_bid.price",
-            "best_bid.size",
-            "best_ask.price",
-            "best_ask.size",
+            GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")),
+            GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "size")),
+            GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "price")),
+            GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "size")),
         )
     )
     assert "midpoint" not in book_fields
@@ -301,10 +315,10 @@ def test_graph_catalog_derives_base_bot_lifecycle_hooks_and_payload_fields() -> 
                 ("market_slug", "str", True, False),
                 ("condition_id", "str", True, False),
                 ("outcome", "str", True, False),
-                ("best_bid.price", "Decimal", True, False),
-                ("best_bid.size", "Decimal", True, False),
-                ("best_ask.price", "Decimal", True, False),
-                ("best_ask.size", "Decimal", True, False),
+                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")), "Decimal", True, False),
+                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "size")), "Decimal", True, False),
+                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "price")), "Decimal", True, False),
+                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "size")), "Decimal", True, False),
             ),
         ),
         (
@@ -392,8 +406,8 @@ def test_graph_catalog_recurses_through_nested_dataclasses() -> None:
     assert trigger is not None and trigger.payload is not None
     assert tuple(field.path.dotted for field in trigger.payload.fields) == (
         "details",
-        "details.price",
-        "computed.price",
+        GRAPH_FIELD_PATH_SEPARATOR.join(("details", "price")),
+        GRAPH_FIELD_PATH_SEPARATOR.join(("computed", "price")),
     )
     computed = trigger.payload.field_for_path(
         GraphFieldPath(segments=("computed", "price"))
@@ -482,13 +496,7 @@ def test_node_graph_rejects_invalid_structure(mutate) -> None:
     mutate(graph)
 
     with pytest.raises(ValidationError):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "invalid-graph",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 def test_node_graph_enforces_the_edge_limit_before_semantic_validation() -> None:
@@ -511,6 +519,49 @@ def test_node_graph_enforces_the_edge_limit_before_semantic_validation() -> None
         detail["loc"] == ("edges",) and detail["type"] == "too_long"
         for detail in error.value.errors()
     )
+
+
+def test_graph_edge_ids_accommodate_descriptive_flow_identifiers() -> None:
+    component = "x" * MAX_GRAPH_IDENTIFIER_LENGTH
+    descriptive_id = f"xy-edge__{component}{component}-{component}{component}"
+
+    edge = GraphEdge(
+        id=descriptive_id,
+        source=component,
+        source_handle=component,
+        target=component,
+        target_handle=component,
+    )
+
+    assert len(edge.id) > MAX_GRAPH_IDENTIFIER_LENGTH
+    assert len(edge.id) <= MAX_GRAPH_EDGE_IDENTIFIER_LENGTH
+
+
+def test_graph_edge_ids_remain_bounded() -> None:
+    with pytest.raises(ValidationError):
+        GraphEdge(
+            id="e" * (MAX_GRAPH_EDGE_IDENTIFIER_LENGTH + 1),
+            source="source",
+            source_handle="output",
+            target="target",
+            target_handle="input",
+        )
+
+
+def test_graph_field_handles_enforce_the_persisted_identifier_limit() -> None:
+    prefix_length = len(GraphFieldPath(segments=("x",)).handle_id) - 1
+
+    boundary = GraphFieldPath(
+        segments=("x" * (MAX_GRAPH_IDENTIFIER_LENGTH - prefix_length),)
+    )
+    assert len(boundary.handle_id) == MAX_GRAPH_IDENTIFIER_LENGTH
+
+    with pytest.raises(ValidationError, match="identifier limit"):
+        GraphFieldPath(
+            segments=(
+                "x" * (MAX_GRAPH_IDENTIFIER_LENGTH - prefix_length + 1),
+            )
+        )
 
 
 def test_node_graph_enforces_the_node_limit_before_semantic_validation() -> None:
@@ -560,12 +611,9 @@ def test_graph_catalog_describes_constants_comparisons_and_submit_actions() -> N
         GraphComparisonOperator
     )
     for comparison in GRAPH_NODE_CATALOG.comparisons:
-        expected_scalar_types = (
-            tuple(GraphScalarType)
-            if comparison.operator
-            in {GraphComparisonOperator.EQUAL, GraphComparisonOperator.NOT_EQUAL}
-            else (GraphScalarType.INTEGER, GraphScalarType.DECIMAL)
-        )
+        expected_scalar_types = GRAPH_COMPARISON_SPECS[
+            comparison.operator
+        ].scalar_types
         assert all(
             input_.scalar_types == expected_scalar_types
             and input_.required
@@ -599,25 +647,23 @@ def test_graph_catalog_describes_constants_comparisons_and_submit_actions() -> N
     }
 
 
-def test_frontend_graph_catalog_fixture_matches_backend_contract() -> None:
-    assert json.loads(FRONTEND_FIXTURE_PATH.read_text(encoding="utf-8")) == (
-        frontend_graph_catalog()
-    )
+def test_frontend_catalog_constants_match_backend_contract() -> None:
+    assert json.loads(
+        FRONTEND_CATALOG_CONTRACT_PATH.read_text(encoding="utf-8")
+    ) == frontend_catalog_contract()
+
+
+def test_frontend_graph_validation_cases_match_backend_contract() -> None:
+    assert json.loads(
+        FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH.read_text(encoding="utf-8")
+    ) == frontend_graph_validation_contract()
 
 
 def test_threshold_buy_graph_validates_and_preserves_exact_decimals() -> None:
     graph = threshold_buy_graph()
 
-    config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-        {
-            "name": "threshold-buy",
-            "market_slugs": ["example-market"],
-            "graph": graph,
-        }
-    )
-
-    assert config.graph is not None
-    serialized = config.graph.model_dump(mode="json")
+    validated = NodeGraph.model_validate(graph)
+    serialized = validated.model_dump(mode="json")
     constants = {
         node["id"]: node["data"]["value"]
         for node in serialized["nodes"]
@@ -634,8 +680,12 @@ def test_threshold_buy_graph_validates_and_preserves_exact_decimals() -> None:
     [
         lambda graph: graph["edges"].pop(),
         lambda graph: graph["edges"].pop(0),
-        lambda graph: graph["edges"][0].update(source_handle="field:token_id"),
-        lambda graph: graph["edges"][0].update(source_handle="field:unselected"),
+        lambda graph: graph["edges"][0].update(
+            source_handle=GraphFieldPath(segments=("token_id",)).handle_id
+        ),
+        lambda graph: graph["edges"][0].update(
+            source_handle=GraphFieldPath(segments=("unselected",)).handle_id
+        ),
         lambda graph: graph["edges"][0].update(
             source="action-buy",
             source_handle=GRAPH_VALUE_HANDLE_ID,
@@ -671,13 +721,7 @@ def test_functional_graph_rejects_invalid_handles_types_cardinality_and_disconne
     mutate(graph)
 
     with pytest.raises(ValidationError):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "invalid-functional-graph",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 def test_functional_graph_rejects_cross_trigger_joins() -> None:
@@ -696,13 +740,33 @@ def test_functional_graph_rejects_cross_trigger_joins() -> None:
     )
 
     with pytest.raises(ValidationError, match="one trigger branch"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "cross-trigger",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
+
+
+def test_functional_graph_identifies_the_missing_required_input() -> None:
+    graph = threshold_buy_graph()
+    graph["edges"] = [
+        edge
+        for edge in graph["edges"]
+        if edge["target_handle"] != GRAPH_COMPARISON_LEFT_HANDLE_ID
+    ]
+    comparison = GRAPH_NODE_CATALOG.comparison(
+        GraphComparisonOperator.LESS_THAN_OR_EQUAL
+    )
+    left_input = next(
+        input_
+        for input_ in comparison.inputs
+        if input_.handle_id == GRAPH_COMPARISON_LEFT_HANDLE_ID
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            f"connect the required {left_input.display_name} input on the "
+            f"{comparison.display_name} comparison"
+        ),
+    ):
+        NodeGraph.model_validate(graph)
 
 
 def test_functional_graph_rejects_mixed_comparison_scalar_types() -> None:
@@ -713,13 +777,7 @@ def test_functional_graph_rejects_mixed_comparison_scalar_types() -> None:
     }
 
     with pytest.raises(ValidationError, match="matching scalar input types"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "mixed-comparison-types",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 def test_functional_graph_rejects_collection_sources() -> None:
@@ -729,13 +787,7 @@ def test_functional_graph_rejects_collection_sources() -> None:
     ).handle_id
 
     with pytest.raises(ValidationError, match="scalar trigger output"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "collection-source",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 def test_functional_graph_rejects_multiple_action_trigger_ancestors() -> None:
@@ -754,13 +806,7 @@ def test_functional_graph_rejects_multiple_action_trigger_ancestors() -> None:
     )
 
     with pytest.raises(ValidationError, match="one trigger branch"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "multi-trigger-action",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 def test_functional_graph_rejects_action_without_trigger_ancestry() -> None:
@@ -800,13 +846,7 @@ def test_functional_graph_rejects_action_without_trigger_ancestry() -> None:
     ]
 
     with pytest.raises(ValidationError, match="one trigger branch"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "triggerless-action",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 @pytest.mark.parametrize(
@@ -833,13 +873,7 @@ def test_functional_graph_rejects_cycles() -> None:
     graph = _cyclic_graph()
 
     with pytest.raises(ValidationError, match="acyclic"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "cycle",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 @pytest.mark.parametrize("hook_name", ["on_start", "on_book"])
@@ -851,13 +885,7 @@ def test_trigger_rejects_legacy_output_selections(hook_name: str) -> None:
     }
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {
-                "name": "invalid-lifecycle-output",
-                "market_slugs": ["example-market"],
-                "graph": graph,
-            }
-        )
+        NodeGraph.model_validate(graph)
 
 
 def test_payloadless_trigger_graph_accepts_hook_only_data() -> None:
@@ -866,16 +894,9 @@ def test_payloadless_trigger_graph_accepts_hook_only_data() -> None:
         "hook_name": "on_start",
     }
 
-    config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-        {
-            "name": "start-trigger",
-            "market_slugs": ["example-market"],
-            "graph": graph,
-        }
-    )
+    validated = NodeGraph.model_validate(graph)
 
-    assert config.graph is not None
-    assert config.graph.nodes[0].data.hook_name == "on_start"
+    assert validated.nodes[0].data.hook_name == "on_start"
 
 
 def test_node_based_definition_rejects_blank_market_slugs_at_ingress() -> None:
@@ -894,11 +915,11 @@ def test_launch_inputs_and_request_reject_unknown_fields() -> None:
 
 
 @pytest.mark.parametrize("definition_id", ["", "   ", 1])
-def test_launch_request_requires_a_strict_nonblank_definition_id(
+def test_bot_create_requires_a_strict_nonblank_definition_id(
     definition_id: object,
 ) -> None:
     with pytest.raises(ValidationError):
-        LaunchRequest.model_validate(
+        BotCreate.model_validate(
             {
                 "definition_id": definition_id,
                 "inputs": {},
@@ -906,9 +927,9 @@ def test_launch_request_requires_a_strict_nonblank_definition_id(
         )
 
 
-def test_launch_request_has_no_definition_version_or_factory_fields() -> None:
+def test_bot_create_has_no_definition_version_or_factory_fields() -> None:
     with pytest.raises(ValidationError):
-        LaunchRequest.model_validate(
+        BotCreate.model_validate(
             {
                 "definition_id": WINNER_DEFINITION_ID,
                 "definition_version": 1,
@@ -917,7 +938,7 @@ def test_launch_request_has_no_definition_version_or_factory_fields() -> None:
         )
 
     with pytest.raises(ValidationError):
-        LaunchRequest.model_validate(
+        BotCreate.model_validate(
             {
                 "definition_id": WINNER_DEFINITION_ID,
                 "inputs": {"name": "winner"},
@@ -997,6 +1018,13 @@ def _catalog_spec_rows() -> tuple[tuple[str, ...], ...]:
         tuple(cell.strip().strip("`") for cell in line.strip("|").split("|"))
         for line in table_lines
     )
+
+
+def _catalog_factory(entry):
+    if entry.factory is not None:
+        return entry.factory
+    assert entry.graph_capability is not None
+    return entry.graph_capability.factory
 
 
 def _cyclic_graph() -> dict[str, object]:

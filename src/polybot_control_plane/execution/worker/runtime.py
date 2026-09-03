@@ -12,7 +12,7 @@ async def run_claimed_bot(run: RunRead, observer: WebRuntimeObserver) -> None:
         raise RuntimeError("catalog definition is no longer available")
     bot_config = run.config.to_bot_config()
     await run_bot(
-        entry.create_bot(bot_config),
+        entry.create_bot(bot_config, run.graph),
         bot_config,
         observer=observer,
     )

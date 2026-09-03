@@ -11,6 +11,7 @@ from polybot.backtesting.contracts import BacktestError, BacktestFailureReason
 from polybot.backtesting.coverage import ReplayCoverage
 from polybot.backtesting.scheduler.cursor import ReplayCursor
 from polybot.backtesting.state import ArchiveMarketState
+from polybot.backtesting.validation import replay_rule_issue
 from polybot.execution.paper import PaperBroker
 from polybot.framework.base import BaseBot
 from polybot.framework.cadence import (
@@ -100,10 +101,10 @@ class ReplayScheduler:
                     fast_forwarded = True
                     break
                 await self._advance_idle_to(event.observed_at_ms)
-                current = await self._cursor.pop()
-                if current is None:
+                replayed_event = await self._cursor.pop()
+                if replayed_event is None:
                     break
-                await self._apply_regular_event(current)
+                await self._apply_regular_event(replayed_event)
                 await self._drain_pending()
             if not fast_forwarded:
                 await self._advance_idle_to(self._clock.end_at_ms)
@@ -146,9 +147,9 @@ class ReplayScheduler:
                 and event_time <= target_ms
                 and event_time <= self._next_plan_refresh_ms
             ):
-                current = await self._cursor.pop()
-                if current is not None:
-                    self._apply_callback_latency_event(current)
+                replayed_event = await self._cursor.pop()
+                if replayed_event is not None:
+                    self._apply_callback_latency_event(replayed_event)
                     handled = True
             if self._next_plan_refresh_ms <= target_ms and (
                 event_time is None or self._next_plan_refresh_ms < event_time
@@ -228,10 +229,10 @@ class ReplayScheduler:
             self._plan_refresh_due = False
             plan = await self._runner.refresh_stream_plan()
             rules = (*plan.current, *plan.next)
-            if any(rule.wallet_addresses for rule in rules):
+            if issue := replay_rule_issue(rules):
                 raise BacktestError(
                     BacktestFailureReason.UNSUPPORTED_INPUT,
-                    "wallet stream rules cannot be replayed from a market-only archive",
+                    issue,
                 )
             current_slugs = set(plan.current_market_slugs).difference(
                 self._terminal_slugs

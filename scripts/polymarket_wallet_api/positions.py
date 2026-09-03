@@ -8,15 +8,15 @@ from itertools import islice
 from polymarket import PublicClient
 from polymarket.errors import PolymarketError
 
-from .constants import (
+from .position_contracts import (
     DEFAULT_MARKET_POSITION_LIMIT,
-    DESCENDING_SORT,
     MARKET_POSITION_SORT_BY,
     MARKET_POSITION_STATUS,
     POSITION_SIZE_THRESHOLD,
-    SDK_PAGE_SIZE,
 )
-from .sdk_payloads import position_payload, require_condition_scope, require_wallet_scope
+from .query_contracts import DESCENDING_SORT, SDK_PAGE_SIZE
+from .position_payloads import position_payload
+from .scope_validation import require_condition_scope, require_wallet_scope
 from .sdk_pagination import page_items
 from scripts.wallet_payloads import normalize_position_rows
 

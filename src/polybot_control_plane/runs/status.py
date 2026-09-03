@@ -21,6 +21,7 @@ class RunStatus(StrEnum):
         )
 
 
+INITIAL_RUN_STATUS = RunStatus.STARTING
 RUN_STATUS_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
     RunStatus.QUEUED: frozenset(
         {RunStatus.STARTING, RunStatus.STOPPED, RunStatus.FAILED}
@@ -67,4 +68,7 @@ INTERRUPTIBLE_RUN_STATUSES = frozenset(
         RunStatus.STOP_REQUESTED,
         RunStatus.STOPPING,
     }
+)
+STOPPABLE_RUN_STATUSES = frozenset(
+    {RunStatus.QUEUED, RunStatus.STARTING, RunStatus.RUNNING}
 )

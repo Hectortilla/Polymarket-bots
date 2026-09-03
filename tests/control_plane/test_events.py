@@ -8,6 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 import polybot_control_plane.events.writer as event_writer_module
+from polybot_control_plane.events.ids import MAX_DURABLE_EVENT_ID
+from polybot_control_plane.events.store import EventStore
 from polybot.cli.observability.events import (
     BootstrapProgress,
     BrokerFailed,
@@ -69,14 +71,16 @@ from polybot_control_plane.events.contracts import (
     BrokerOrderPayload,
     DurableEvent,
     DurableEventBase,
-    EVENT_DISCRIMINATOR_FIELD,
-    EventKind,
-    LiveEventKind,
     RunLifecycleEvent,
     RunStatusPayload,
     PortfolioSnapshotPayload,
     WalletTimelineDurableEvent,
     WalletTimelinePayload,
+)
+from polybot_control_plane.events.kinds import (
+    EVENT_DISCRIMINATOR_FIELD,
+    EventKind,
+    LiveEventKind,
 )
 from polybot_control_plane.events.contracts.payloads import (
     EquityChartPointPayload,
@@ -820,6 +824,36 @@ def test_event_writer_publishes_only_after_committed_append(
         ("append", event),
         (run_event_channel(event.run_id), "7"),
     ]
+
+
+def test_event_store_rejects_an_id_outside_the_public_cursor_range() -> None:
+    event, = project_runtime_event_to_durable(
+        uuid4(),
+        RuntimeFailed("failure", 1.0),
+    )
+
+    class Session:
+        def __init__(self) -> None:
+            self.row = None
+            self.rolled_back = False
+
+        def add(self, row) -> None:
+            self.row = row
+
+        async def flush(self) -> None:
+            self.row.id = MAX_DURABLE_EVENT_ID + 1
+
+        async def rollback(self) -> None:
+            self.rolled_back = True
+
+        async def commit(self) -> None:
+            raise AssertionError("out-of-range event must not commit")
+
+    session = Session()
+    with pytest.raises(ValueError, match="public cursor range"):
+        asyncio.run(EventStore(session).append(event))  # type: ignore[arg-type]
+
+    assert session.rolled_back
 
 
 class _CollectingWriter:

@@ -7,50 +7,51 @@ import {
   constantInput
 } from './constantNode';
 import { DECIMAL_CONSTANT } from './nodeGraphTestFixtures';
+import { GRAPH_SCALAR_TYPE } from './graphContracts';
 
 describe('constant node inputs', () => {
   it('preserves boolean, integer, decimal, and string values', () => {
     const input = document.createElement('input');
 
     input.checked = true;
-    expect(constantDataFromInput('boolean', input)).toEqual({
-      scalar_type: 'boolean',
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.boolean, input)).toEqual({
+      scalar_type: GRAPH_SCALAR_TYPE.boolean,
       value: true
     });
 
     input.type = 'number';
     input.value = '12';
-    expect(constantDataFromInput('integer', input)).toEqual({
-      scalar_type: 'integer',
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.integer, input)).toEqual({
+      scalar_type: GRAPH_SCALAR_TYPE.integer,
       value: 12
     });
     input.value = '1.5';
-    expect(constantDataFromInput('integer', input)).toBeNull();
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.integer, input)).toBeNull();
 
     input.type = 'text';
     input.value = '000.5400';
-    expect(constantDataFromInput('decimal', input)).toEqual({
-      scalar_type: 'decimal',
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.decimal, input)).toEqual({
+      scalar_type: GRAPH_SCALAR_TYPE.decimal,
       value: '000.5400'
     });
-    expect(constantDataFromInput('string', input)).toEqual({
-      scalar_type: 'string',
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.string, input)).toEqual({
+      scalar_type: GRAPH_SCALAR_TYPE.string,
       value: '000.5400'
     });
   });
 
   it('owns the scalar editor controls in one exhaustive map', () => {
-    expect(constantInput('boolean')).toEqual({ type: 'checkbox' });
-    expect(constantInput('integer')).toEqual({ type: 'number', step: '1' });
-    expect(constantInput('decimal')).toEqual({ type: 'text' });
-    expect(constantInput('string')).toEqual({ type: 'text' });
+    expect(constantInput(GRAPH_SCALAR_TYPE.boolean)).toEqual({ type: 'checkbox' });
+    expect(constantInput(GRAPH_SCALAR_TYPE.integer)).toEqual({ type: 'number', step: '1' });
+    expect(constantInput(GRAPH_SCALAR_TYPE.decimal)).toEqual({ type: 'text' });
+    expect(constantInput(GRAPH_SCALAR_TYPE.string)).toEqual({ type: 'text' });
   });
 
   it.each([
-    ['boolean', true],
-    ['integer', 12],
-    ['decimal', '000.5400'],
-    ['string', 'hello']
+    [GRAPH_SCALAR_TYPE.boolean, true],
+    [GRAPH_SCALAR_TYPE.integer, 12],
+    [GRAPH_SCALAR_TYPE.decimal, '000.5400'],
+    [GRAPH_SCALAR_TYPE.string, 'hello']
   ] as const)('normalizes the %s catalog default', (scalarType, value) => {
     expect(
       constantDataFromDescriptor(descriptor(scalarType, value))
@@ -59,7 +60,7 @@ describe('constant node inputs', () => {
 
   it('rejects a catalog default that disagrees with its scalar type', () => {
     expect(() =>
-      constantDataFromDescriptor(descriptor('boolean', 'true'))
+      constantDataFromDescriptor(descriptor(GRAPH_SCALAR_TYPE.boolean, 'true'))
     ).toThrow('Invalid boolean constant default');
   });
 });

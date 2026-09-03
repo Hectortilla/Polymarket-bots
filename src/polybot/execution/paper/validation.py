@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
+from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.prices import (
     is_decimal_in_unit_interval,
@@ -10,6 +11,16 @@ from polybot.framework.events.prices import (
 )
 
 ORDER_SIZE_FLOOR = Decimal("0")
+
+BOOK_VALIDATION_REJECT_REASON = {
+    BookValidationIssue.MISSING_MARKET_IDENTITY: FillRejectReason.BOOK_MISMATCH,
+    BookValidationIssue.IDENTITY_MISMATCH: FillRejectReason.BOOK_MISMATCH,
+    BookValidationIssue.BAD_TIMESTAMP: FillRejectReason.BAD_BOOK_TIMESTAMP,
+    BookValidationIssue.FUTURE_DATED: FillRejectReason.BOOK_FUTURE_DATED,
+    BookValidationIssue.STALE: FillRejectReason.BOOK_STALE,
+    BookValidationIssue.BAD_LEVEL: FillRejectReason.BAD_BOOK_LEVEL,
+    BookValidationIssue.CROSSED: FillRejectReason.BOOK_CROSSED,
+}
 
 
 def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
@@ -56,7 +67,7 @@ def classify_book(
     if order.condition_id is not None and book.condition_id != order.condition_id:
         return FillRejectReason.BOOK_MISMATCH
     issue = book.validation_issue(fill_time_ms, max_age_ms)
-    return None if issue is None else FillRejectReason(issue.value)
+    return None if issue is None else BOOK_VALIDATION_REJECT_REASON[issue]
 
 
 def valid_fee_rate(value: object) -> Decimal | None:

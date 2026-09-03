@@ -12,7 +12,7 @@ from polybot_control_plane.catalog.graphs._annotations import (
     scalar_type_for_annotation,
     without_none,
 )
-from polybot_control_plane.catalog.graphs.types import (
+from polybot_control_plane.catalog.graphs.values import (
     GRAPH_ACTION_ENABLED_HANDLE_ID,
     GRAPH_BROKER_SUBMIT_METHOD_NAME,
     GraphScalarType,

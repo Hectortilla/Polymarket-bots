@@ -4,7 +4,10 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from polybot_control_plane.events.contracts import DurableEvent, DurableEventId
+from polybot_control_plane.events.contracts import (
+    DurableEventId,
+    PersistedDurableEvent,
+)
 from polybot_control_plane.events.ids import (
     FIRST_EVENT_CURSOR,
     MAX_DURABLE_EVENT_ID,
@@ -29,7 +32,7 @@ type EventPageLimitValue = Annotated[
 class RunEventPage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    events: tuple[DurableEvent, ...]
+    events: tuple[PersistedDurableEvent, ...]
     next_before_event_id: DurableEventId | None
 
 
@@ -37,3 +40,9 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok"] = "ok"
+
+
+class ErrorResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    detail: str

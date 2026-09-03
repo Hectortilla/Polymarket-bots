@@ -60,7 +60,6 @@ def resolve_backtest_selection(
     available_slugs = tuple(
         sorted({market.market_slug for market in available_markets})
     )
-    uses_default_market_selection = not options.market_slugs
     if options.market_slugs:
         selected_slugs = options.market_slugs
     elif options.start_at_ms is not None:
@@ -85,20 +84,6 @@ def resolve_backtest_selection(
             BacktestFailureReason.EMPTY_SELECTION,
             "selected recording session contains no market data",
         )
-    if uses_default_market_selection and options.end_at_ms is None:
-        selected_bounds = reader.event_bounds(
-            start_at_ms=requested_start,
-            end_at_ms=requested_end,
-            session_id=session.session_id,
-            market_slugs=selected_slugs,
-            allow_gaps=allow_gaps,
-        )
-        if selected_bounds is None:
-            raise BacktestError(
-                BacktestFailureReason.EMPTY_SELECTION,
-                "selected recording range contains no replayable market events",
-            )
-        requested_end = selected_bounds.end_at_ms
     bounds = reader.event_bounds(
         start_at_ms=requested_start,
         end_at_ms=requested_end,

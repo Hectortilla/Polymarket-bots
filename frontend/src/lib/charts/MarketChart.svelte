@@ -71,21 +71,16 @@
   ) {
     const { token_id: tokenId, label } = market;
     const color = MARKET_SERIES_PALETTE[index % MARKET_SERIES_PALETTE.length];
-    const values = samples.map((sample, sampleIndex) => {
+    const marketPricePoints = samples.map((sample, sampleIndex) => {
       const point = points[sampleIndex];
       return [
         sample.sampled_at_ms,
         point?.value == null ? null : Number(point.value)
       ];
     });
-    const markers = points.flatMap((point, sampleIndex) =>
-      (point?.markers ?? []).map((side) => ({
-        value: [samples[sampleIndex].sampled_at_ms, point?.value == null ? null : Number(point.value)],
-        itemStyle: { color: side === SIDE.buy ? '#72df98' : '#ff847c' }
-      }))
-    );
+    const markers = marketFillMarkers(samples, points);
     const data = (status: typeof VALUATION_STATUS.fresh | typeof VALUATION_STATUS.stale) =>
-      values.map(([time, value], sampleIndex) => [
+      marketPricePoints.map(([time, value], sampleIndex) => [
         time,
         points[sampleIndex]?.status === status ? value : null
       ]);
@@ -116,6 +111,18 @@
         data: markers
       }
     ];
+  }
+
+  function marketFillMarkers(
+    samples: ChartSamplePayload[],
+    points: Array<MarketChartPointPayload | undefined>
+  ) {
+    return points.flatMap((point, sampleIndex) =>
+      (point?.markers ?? []).map((side) => ({
+        value: [samples[sampleIndex].sampled_at_ms, point?.value == null ? null : Number(point.value)],
+        itemStyle: { color: side === SIDE.buy ? '#72df98' : '#ff847c' }
+      }))
+    );
   }
 </script>
 

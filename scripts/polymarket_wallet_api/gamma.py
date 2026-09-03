@@ -6,9 +6,15 @@ from collections.abc import Callable
 
 from polymarket import PublicClient
 from polymarket.errors import PolymarketError
+from polybot.polymarket.wallet_activity.fields import (
+    CONDITION_ID_FIELD,
+    SDK_CONDITION_ID_ATTRIBUTE,
+    SDK_SLUG_ATTRIBUTE,
+)
 
-from .constants import SINGLE_RESULT_PAGE_SIZE
-from .sdk_payloads import market_payload
+from .market_contracts import SDK_CLOSED_ATTRIBUTE
+from .market_payloads import market_payload
+from .query_contracts import SINGLE_RESULT_PAGE_SIZE
 from .sdk_pagination import page_items
 
 
@@ -29,11 +35,14 @@ def gamma_condition_id(
     if not events:
         return None, None
     event = events[0]
-    if getattr(event, "slug", None) != slug:
+    if getattr(event, SDK_SLUG_ATTRIBUTE, None) != slug:
         return None, None
     market = event.markets[0] if event.markets else None
-    closed = getattr(event.state, "closed", None)
-    return str(market.condition_id) if market and market.condition_id else None, closed
+    closed = getattr(event.state, SDK_CLOSED_ATTRIBUTE, None)
+    condition_id = (
+        getattr(market, SDK_CONDITION_ID_ATTRIBUTE, None) if market else None
+    )
+    return str(condition_id) if condition_id else None, closed
 
 
 def fetch_gamma_market(
@@ -53,4 +62,4 @@ def fetch_gamma_market(
     if not markets:
         return None
     payload = market_payload(markets[0])
-    return payload if payload.get("conditionId") == condition_id else None
+    return payload if payload.get(CONDITION_ID_FIELD) == condition_id else None

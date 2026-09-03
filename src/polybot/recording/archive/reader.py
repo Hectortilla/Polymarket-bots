@@ -653,7 +653,7 @@ class RecordingReader:
         session_id: int | None = None,
         condition_id: str | None = None,
         market_slug: str | None = None,
-        failure_kind: CaptureFailureKind | str | None = None,
+        failure_kind: CaptureFailureKind | None = None,
     ) -> tuple[CaptureAnomalyRecord, ...]:
         """Read quarantined diagnostics, never canonical replay events."""
 
@@ -676,7 +676,7 @@ class RecordingReader:
         session_id: int | None = None,
         condition_id: str | None = None,
         market_slug: str | None = None,
-        failure_kind: CaptureFailureKind | str | None = None,
+        failure_kind: CaptureFailureKind | None = None,
     ) -> Iterator[CaptureAnomalyRecord]:
         """Stream quarantined diagnostics from an immutable reader snapshot."""
 

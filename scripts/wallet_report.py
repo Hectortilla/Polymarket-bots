@@ -8,7 +8,14 @@ from scripts.wallet_analysis.classification import (
     classify_wallet_candidate,
 )
 from scripts.wallet_analysis.contracts import (
+    ACTIVITY_COUNT_METRIC,
+    ACTIVITY_METRIC,
+    FEES_METRIC,
+    HEDGE_AVERAGE_METRIC,
+    MARKET_COUNT_METRIC,
+    NET_CASH_METRIC,
     PNL_SIGNIFICANCE_THRESHOLD,
+    TRADE_COUNT_METRIC,
     WalletMetrics,
 )
 from scripts.wallet_analysis.market_metrics import market_trade_share
@@ -17,7 +24,7 @@ GOOD_VERDICT = "Good for the trader"
 BAD_VERDICT = "Bad"
 
 
-def signed(value: float) -> str:
+def format_signed_net_cash(value: float) -> str:
     rendered = f"{value:+,.2f}"
     return (
         good(rendered)
@@ -39,22 +46,28 @@ def print_wallet_report(
     target_slug: str | None = None,
     target_condition_id: str | None = None,
 ) -> None:
-    if int(metrics["activity_count"]) == 0:
+    if int(metrics[ACTIVITY_COUNT_METRIC]) == 0:
         print(warn(f"{wallet}: no activity found."))
         return
     classification = classify_wallet_candidate(metrics)
     market_share = market_trade_share(
-        metrics["activity"],
+        metrics[ACTIVITY_METRIC],
         target_slug=target_slug,
         target_condition_id=target_condition_id,
     )
     print(heading(f"\nWALLET {wallet}"))
-    print(f"activity items : {metrics['activity_count']} ({metrics['trade_count']} trades)")
-    print(f"markets touched: {metrics['n_markets']}")
-    print(f"net cash       : {signed(float(metrics['net_cash']))} USDC")
-    print(f"fees           : {float(metrics['fees']):,.2f} USDC")
     print(
-        f"hedge score    : {float(metrics['hedge_avg']):.2f} "
+        f"activity items : {metrics[ACTIVITY_COUNT_METRIC]} "
+        f"({metrics[TRADE_COUNT_METRIC]} trades)"
+    )
+    print(f"markets touched: {metrics[MARKET_COUNT_METRIC]}")
+    print(
+        "net cash       : "
+        f"{format_signed_net_cash(float(metrics[NET_CASH_METRIC]))} USDC"
+    )
+    print(f"fees           : {float(metrics[FEES_METRIC]):,.2f} USDC")
+    print(
+        f"hedge score    : {float(metrics[HEDGE_AVERAGE_METRIC]):.2f} "
         f"(mirage >= {HEDGE_SCORE_THRESHOLD:.2f})"
     )
     if target_slug or target_condition_id:

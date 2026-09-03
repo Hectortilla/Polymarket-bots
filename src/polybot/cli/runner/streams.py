@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from polybot.framework.cadence import STREAM_PLAN_REFRESH_INTERVAL_SECONDS
 from polybot.framework.runner import BotRunner
 from polybot.framework.streams import StreamPlan
-from polybot.polymarket.markets import Market
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSelector
+
+if TYPE_CHECKING:
+    from polybot.polymarket.markets import Market
 
 async def wait_for_stream_plan_change(
     runner: BotRunner, current_stream_plan: StreamPlan
@@ -38,8 +41,3 @@ def compile_selectors(
     return tuple(
         sorted(selectors, key=lambda item: (item.wallet or "", item.condition_ids))
     )
-
-
-async def refresh_runner_plan(runner: BotRunner) -> StreamPlan:
-    """Refresh the sole stream-rule topology owned by the bot runner."""
-    return await runner.refresh_stream_plan()

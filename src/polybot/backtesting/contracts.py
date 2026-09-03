@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from polybot.framework.timestamps import require_nonnegative_timestamp
 from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
@@ -63,18 +64,10 @@ class BacktestOptions:
             or self.session_id <= 0
         ):
             raise ValueError("backtest session ID must be positive")
-        if self.start_at_ms is not None and (
-            isinstance(self.start_at_ms, bool)
-            or not isinstance(self.start_at_ms, int)
-            or self.start_at_ms < 0
-        ):
-            raise ValueError("backtest start must be nonnegative")
-        if self.end_at_ms is not None and (
-            isinstance(self.end_at_ms, bool)
-            or not isinstance(self.end_at_ms, int)
-            or self.end_at_ms < 0
-        ):
-            raise ValueError("backtest end must be nonnegative")
+        if self.start_at_ms is not None:
+            require_nonnegative_timestamp(self.start_at_ms, "backtest start")
+        if self.end_at_ms is not None:
+            require_nonnegative_timestamp(self.end_at_ms, "backtest end")
         if (
             self.start_at_ms is not None
             and self.end_at_ms is not None

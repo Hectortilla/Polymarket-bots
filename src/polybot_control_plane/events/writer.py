@@ -10,7 +10,11 @@ from polybot_control_plane.events.channels import (
     encode_live_event_frame,
     run_event_channel,
 )
-from polybot_control_plane.events.contracts import DurableEvent, LiveRunEvent
+from polybot_control_plane.events.contracts import (
+    DurableEvent,
+    LiveRunEvent,
+    PersistedDurableEvent,
+)
 from polybot_control_plane.events.ids import require_persisted_event_id
 from polybot_control_plane.events.store import EventStore
 
@@ -35,7 +39,7 @@ class RunEventWriter:
         self._session_factory = session_factory
         self._redis = redis
 
-    async def append(self, event: DurableEvent) -> DurableEvent:
+    async def append(self, event: DurableEvent) -> PersistedDurableEvent:
         async with self._session_factory() as session:
             stored = await EventStore(session).append(event)
         event_id = require_persisted_event_id(stored.id)

@@ -15,19 +15,22 @@ from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
 
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.framework.events.book_freshness import paired_observations_are_current
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
 
-
-BTC_FIVE_MINUTE_SLUG_PREFIX = "btc-updown-5m"
-BUCKET_SECONDS = 300
 
 # The signal and trade window are intentionally late: the leader must have
 # repriced materially before capital is committed.  The final 45 seconds are
@@ -104,7 +107,7 @@ class WinnerTradingBot(BaseBot):
     def __init__(
         self,
         slug_prefix: str = BTC_FIVE_MINUTE_SLUG_PREFIX,
-        bucket_seconds: int = BUCKET_SECONDS,
+        bucket_seconds: int = BTC_FIVE_MINUTE_BUCKET_SECONDS,
     ) -> None:
         self.slug_prefix = slug_prefix
         self.bucket_seconds = bucket_seconds
@@ -139,6 +142,8 @@ class WinnerTradingBot(BaseBot):
             return DispatchSkipReason.BOOK_STALE
 
         market = await self._market_for(ctx, book.market_slug)
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
         if market is None or book.token_id not in market.token_ids:
             return
         quote = Quote.from_book(book)
@@ -160,10 +165,9 @@ class WinnerTradingBot(BaseBot):
         current_slug = self._slug_for(ctx.clock.now_ms(), bucket_offset=0)
         if market.slug != current_slug or book.token_id not in market.token_ids:
             return
-        now_ms = ctx.clock.now_ms()
         await self._maybe_exit(ctx, market, book.token_id, quote)
         if self._position is None:
-            await self._maybe_enter(ctx, market, now_ms)
+            return await self._maybe_enter(ctx, market, ctx.clock.now_ms())
 
     async def on_market_resolved(
         self,
@@ -198,7 +202,7 @@ class WinnerTradingBot(BaseBot):
         if market is not None:
             return market
         market = await ctx.markets.find_by_slug(slug)
-        if market is None or len(market.token_ids) != 2:
+        if market is None or len(market.token_ids) != MARKET_RESOLUTION_TOKEN_COUNT:
             return None
         self._markets[slug] = market
         return market
@@ -208,7 +212,7 @@ class WinnerTradingBot(BaseBot):
         ctx: BotContext,
         market: Market,
         now_ms: int,
-    ) -> None:
+    ) -> DispatchSkipReason | None:
         if (
             self._position is not None
             or market.condition_id in self._entered_conditions
@@ -221,10 +225,10 @@ class WinnerTradingBot(BaseBot):
         ):
             return
         quotes = self._quotes.get(market.condition_id)
-        if quotes is None or len(quotes) != 2:
+        if quotes is None or len(quotes) != MARKET_RESOLUTION_TOKEN_COUNT:
             return
         if not self._quotes_are_current(market, quotes, now_ms):
-            return
+            return DispatchSkipReason.BOOK_STALE
 
         leader_token_id = max(
             market.token_ids,
@@ -246,55 +250,15 @@ class WinnerTradingBot(BaseBot):
             and leader.bid < Decimal("0.98")
             and recovery_age_ms is not None
         )
-        minimum_leader_bid = (
-            LATE_LEADER_BID_THRESHOLD
-            if late_confirmation
-            else LEADER_BID_THRESHOLD
-        )
-        minimum_stable_leader_bid = (
-            LATE_MINIMUM_STABLE_LEADER_BID
-            if late_confirmation
-            else MINIMUM_STABLE_LEADER_BID
-        )
-        if (
-            (leader.bid < minimum_leader_bid and not late_recovery)
-            or leader.ask - leader.bid > MAXIMUM_ENTRY_SPREAD
-            or opposite.ask > MAXIMUM_OPPOSITE_ASK
-            or not self._leader_was_stable(
-                market.condition_id,
-                leader_token_id,
-                now_ms,
-                minimum_bid=minimum_stable_leader_bid,
-            )
-            or (
-                late_confirmation
-                and not self._leader_is_at_recent_high(
-                    market.condition_id,
-                    leader_token_id,
-                    now_ms,
-                    current_bid=leader.bid,
-                )
-            )
-            or (
-                late_confirmation
-                and not self._late_entry_has_clear_repricing(
-                    market.condition_id,
-                    leader_token_id,
-                    now_ms,
-                )
-            )
-            or (not late_confirmation and leader.ask > EARLY_MAXIMUM_LEADER_ASK)
-            or (
-                not late_confirmation
-                and leader.ask_size < EARLY_MINIMUM_LEADER_ASK_SIZE
-            )
-            or (
-                not late_confirmation
-                and (
-                    timing.elapsed_ms < EARLY_ENTRY_MIN_ELAPSED_MS
-                    or timing.elapsed_ms >= EARLY_ENTRY_MAX_ELAPSED_MS
-                )
-            )
+        if self._entry_is_rejected(
+            market,
+            leader_token_id,
+            leader,
+            opposite,
+            timing=timing,
+            now_ms=now_ms,
+            late_confirmation=late_confirmation,
+            late_recovery=late_recovery,
         ):
             return
 
@@ -334,6 +298,59 @@ class WinnerTradingBot(BaseBot):
             average_price=fill.execution_price,
         )
 
+    def _entry_is_rejected(
+        self,
+        market: Market,
+        leader_token_id: str,
+        leader: Quote,
+        opposite: Quote,
+        *,
+        timing: FixedBucketTiming,
+        now_ms: int,
+        late_confirmation: bool,
+        late_recovery: bool,
+    ) -> bool:
+        minimum_leader_bid = (
+            LATE_LEADER_BID_THRESHOLD
+            if late_confirmation
+            else LEADER_BID_THRESHOLD
+        )
+        minimum_stable_leader_bid = (
+            LATE_MINIMUM_STABLE_LEADER_BID
+            if late_confirmation
+            else MINIMUM_STABLE_LEADER_BID
+        )
+        if leader.bid < minimum_leader_bid and not late_recovery:
+            return True
+        if (
+            leader.ask - leader.bid > MAXIMUM_ENTRY_SPREAD
+            or opposite.ask > MAXIMUM_OPPOSITE_ASK
+        ):
+            return True
+        if not self._leader_was_stable(
+            market.condition_id,
+            leader_token_id,
+            now_ms,
+            minimum_bid=minimum_stable_leader_bid,
+        ):
+            return True
+        if late_confirmation:
+            return not self._leader_is_at_recent_high(
+                market.condition_id,
+                leader_token_id,
+                now_ms,
+                current_bid=leader.bid,
+            ) or not self._late_entry_has_clear_repricing(
+                market.condition_id,
+                leader_token_id,
+                now_ms,
+            )
+        return (
+            leader.ask > EARLY_MAXIMUM_LEADER_ASK
+            or leader.ask_size < EARLY_MINIMUM_LEADER_ASK_SIZE
+            or timing.elapsed_ms < EARLY_ENTRY_MIN_ELAPSED_MS
+            or timing.elapsed_ms >= EARLY_ENTRY_MAX_ELAPSED_MS
+        )
     def _leader_was_stable(
         self,
         condition_id: str,
@@ -470,12 +487,11 @@ class WinnerTradingBot(BaseBot):
         observed = tuple(
             quotes[token_id].observed_at_ms for token_id in market.token_ids
         )
-        return (
-            all(
-                0 <= now_ms - timestamp <= ENTRY_QUOTE_MAX_AGE_MS
-                for timestamp in observed
-            )
-            and max(observed) - min(observed) <= ENTRY_QUOTE_MAX_SKEW_MS
+        return paired_observations_are_current(
+            observed,
+            now_ms=now_ms,
+            maximum_age_ms=ENTRY_QUOTE_MAX_AGE_MS,
+            maximum_skew_ms=ENTRY_QUOTE_MAX_SKEW_MS,
         )
 
     def _stream_rule(self, now_ms: int, *, bucket_offset: int) -> StreamRule:

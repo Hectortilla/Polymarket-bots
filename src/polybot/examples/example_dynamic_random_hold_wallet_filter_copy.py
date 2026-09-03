@@ -15,8 +15,12 @@ from polybot.framework.markets import market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.framework.wallets import normalize_wallet_address
 from polybot.examples.wallet_copy import (
-    COPY_TRADE_NOTIONAL_USDC,
     fixed_dollar_copy_order,
+    fixed_dollar_copy_size,
+)
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
 )
 
 
@@ -48,18 +52,25 @@ def copy_trade_decision(
         trade.token_id,
     )
     open_size = open_positions.get(position_key, Decimal("0"))
-    if trade.side is Side.SELL:
-        if open_size <= 0:
-            return None
-        requested_size = min(COPY_TRADE_NOTIONAL_USDC / trade.price, open_size)
-    else:
-        requested_size = COPY_TRADE_NOTIONAL_USDC / trade.price
+    maximum_size = _sellable_position_size(trade.side, open_size)
+    if trade.side is Side.SELL and maximum_size is None:
+        return None
+    requested_size = fixed_dollar_copy_size(
+        trade,
+        maximum_size=maximum_size,
+    )
     return CopyTradeDecision(
         source_key=trade.source_key,
         position_key=position_key,
         open_size=open_size,
         order=fixed_dollar_copy_order(trade, size=requested_size),
     )
+
+
+def _sellable_position_size(side: Side, open_size: Decimal) -> Decimal | None:
+    if side is Side.BUY:
+        return None
+    return open_size if open_size > 0 else None
 
 
 def positions_after_copy_fill(
@@ -89,7 +100,7 @@ class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
         self,
         slug_prefix: str,
         wallet_addresses: Iterable[str],
-        bucket_seconds: int = 300,
+        bucket_seconds: int = BTC_FIVE_MINUTE_BUCKET_SECONDS,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -163,7 +174,7 @@ class ExampleDynamicRandomHoldWalletFilterBot(BaseBot):
 def create(config: BotConfig) -> ExampleDynamicRandomHoldWalletFilterBot:
     """CLI factory; wallets come from the standard BOT_STREAM_RULES env value."""
     return ExampleDynamicRandomHoldWalletFilterBot(
-        slug_prefix="btc-updown-5m",
+        slug_prefix=BTC_FIVE_MINUTE_SLUG_PREFIX,
         wallet_addresses=tuple(
             dict.fromkeys(
                 wallet

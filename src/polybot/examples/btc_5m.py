@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from polybot.examples.btc_five_minute_strategy import (
+from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
 )

@@ -7,7 +7,7 @@ from enum import Enum
 from types import NoneType, UnionType
 from typing import Union, get_args, get_origin
 
-from polybot_control_plane.catalog.graphs.types import GraphScalarType
+from polybot_control_plane.catalog.graphs.values import GraphScalarType
 
 
 def without_none(annotation: object) -> tuple[object, bool]:

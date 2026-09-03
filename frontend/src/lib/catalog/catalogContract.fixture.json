@@ -1,0 +1,1580 @@
+{
+  "graphTemplate": {
+    "maximumNameLength": 200
+  },
+  "widgetSchemaKey": "x-widget",
+  "graphFieldPathSeparator": ".",
+  "graphFieldPathSegmentPattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+  "graphBrokerSubmitMethodName": "submit",
+  "nodeGraph": {
+    "coordinateLimit": 10000,
+    "hookNamePattern": "^on_[a-z][a-z0-9_]*$",
+    "maximumEdgeIdentifierLength": 320,
+    "maximumEdges": 200,
+    "maximumIdentifierLength": 64,
+    "maximumInputConnectionsPerHandle": 1,
+    "maximumNodes": 50,
+    "minimumNodes": 1,
+    "minimumIdentifierLength": 1,
+    "minimumFieldPathSegments": 1,
+    "minimumInputScalarTypes": 1,
+    "noInputConnections": 0,
+    "requiredTriggerBranchCount": 1
+  },
+  "graphNodeCatalog": {
+    "triggers": [
+      {
+        "node_type": "trigger",
+        "hook_name": "on_start",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": null
+      },
+      {
+        "node_type": "trigger",
+        "hook_name": "on_book",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": {
+          "type_name": "BookSnapshot",
+          "fields": [
+            {
+              "path": {
+                "segments": [
+                  "token_id"
+                ]
+              },
+              "handle_id": "field:token_id",
+              "display_name": "BookSnapshot.token_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "bids"
+                ]
+              },
+              "handle_id": "field:bids",
+              "display_name": "BookSnapshot.bids",
+              "value_type": "BookLevel",
+              "scalar_type": null,
+              "nullable": false,
+              "collection": true,
+              "value_schema": {
+                "$defs": {
+                  "BookLevel": {
+                    "properties": {
+                      "price": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                            "type": "string"
+                          }
+                        ],
+                        "title": "Price"
+                      },
+                      "size": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                            "type": "string"
+                          }
+                        ],
+                        "title": "Size"
+                      }
+                    },
+                    "required": [
+                      "price",
+                      "size"
+                    ],
+                    "title": "BookLevel",
+                    "type": "object"
+                  }
+                },
+                "items": {
+                  "$ref": "#/$defs/BookLevel"
+                },
+                "type": "array"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "asks"
+                ]
+              },
+              "handle_id": "field:asks",
+              "display_name": "BookSnapshot.asks",
+              "value_type": "BookLevel",
+              "scalar_type": null,
+              "nullable": false,
+              "collection": true,
+              "value_schema": {
+                "$defs": {
+                  "BookLevel": {
+                    "properties": {
+                      "price": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                            "type": "string"
+                          }
+                        ],
+                        "title": "Price"
+                      },
+                      "size": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                            "type": "string"
+                          }
+                        ],
+                        "title": "Size"
+                      }
+                    },
+                    "required": [
+                      "price",
+                      "size"
+                    ],
+                    "title": "BookLevel",
+                    "type": "object"
+                  }
+                },
+                "items": {
+                  "$ref": "#/$defs/BookLevel"
+                },
+                "type": "array"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "received_at_ms"
+                ]
+              },
+              "handle_id": "field:received_at_ms",
+              "display_name": "BookSnapshot.received_at_ms",
+              "value_type": "int",
+              "scalar_type": "integer",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "market_slug"
+                ]
+              },
+              "handle_id": "field:market_slug",
+              "display_name": "BookSnapshot.market_slug",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "condition_id"
+                ]
+              },
+              "handle_id": "field:condition_id",
+              "display_name": "BookSnapshot.condition_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "outcome"
+                ]
+              },
+              "handle_id": "field:outcome",
+              "display_name": "BookSnapshot.outcome",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "best_bid",
+                  "price"
+                ]
+              },
+              "handle_id": "field:best_bid.price",
+              "display_name": "BookSnapshot.best_bid.price",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "best_bid",
+                  "size"
+                ]
+              },
+              "handle_id": "field:best_bid.size",
+              "display_name": "BookSnapshot.best_bid.size",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "best_ask",
+                  "price"
+                ]
+              },
+              "handle_id": "field:best_ask.price",
+              "display_name": "BookSnapshot.best_ask.price",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "best_ask",
+                  "size"
+                ]
+              },
+              "handle_id": "field:best_ask.size",
+              "display_name": "BookSnapshot.best_ask.size",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node_type": "trigger",
+        "hook_name": "on_book_gap",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": {
+          "type_name": "BookGapEvent",
+          "fields": [
+            {
+              "path": {
+                "segments": [
+                  "condition_id"
+                ]
+              },
+              "handle_id": "field:condition_id",
+              "display_name": "BookGapEvent.condition_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "observed_at_ms"
+                ]
+              },
+              "handle_id": "field:observed_at_ms",
+              "display_name": "BookGapEvent.observed_at_ms",
+              "value_type": "int",
+              "scalar_type": "integer",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "reason"
+                ]
+              },
+              "handle_id": "field:reason",
+              "display_name": "BookGapEvent.reason",
+              "value_type": "BookGapReason",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "description": "Stable reasons that invalidate one or more projected order books.",
+                "enum": [
+                  "invalid_market_parameters",
+                  "invalid_book_level",
+                  "invalid_book_side",
+                  "missing_book_baseline",
+                  "book_identity_mismatch",
+                  "book_stream_gap",
+                  "crossed_book"
+                ],
+                "title": "BookGapReason",
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node_type": "trigger",
+        "hook_name": "on_wallet_trade",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": {
+          "type_name": "WalletTradeEvent",
+          "fields": [
+            {
+              "path": {
+                "segments": [
+                  "wallet"
+                ]
+              },
+              "handle_id": "field:wallet",
+              "display_name": "WalletTradeEvent.wallet",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "condition_id"
+                ]
+              },
+              "handle_id": "field:condition_id",
+              "display_name": "WalletTradeEvent.condition_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "token_id"
+                ]
+              },
+              "handle_id": "field:token_id",
+              "display_name": "WalletTradeEvent.token_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "side"
+                ]
+              },
+              "handle_id": "field:side",
+              "display_name": "WalletTradeEvent.side",
+              "value_type": "Side",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "enum": [
+                  "BUY",
+                  "SELL"
+                ],
+                "title": "Side",
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "size"
+                ]
+              },
+              "handle_id": "field:size",
+              "display_name": "WalletTradeEvent.size",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "price"
+                ]
+              },
+              "handle_id": "field:price",
+              "display_name": "WalletTradeEvent.price",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "source_id"
+                ]
+              },
+              "handle_id": "field:source_id",
+              "display_name": "WalletTradeEvent.source_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "trade_timestamp_ms"
+                ]
+              },
+              "handle_id": "field:trade_timestamp_ms",
+              "display_name": "WalletTradeEvent.trade_timestamp_ms",
+              "value_type": "int",
+              "scalar_type": "integer",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "observed_at_ms"
+                ]
+              },
+              "handle_id": "field:observed_at_ms",
+              "display_name": "WalletTradeEvent.observed_at_ms",
+              "value_type": "int",
+              "scalar_type": "integer",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "kind"
+                ]
+              },
+              "handle_id": "field:kind",
+              "display_name": "WalletTradeEvent.kind",
+              "value_type": "WalletTradeKind",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "enum": [
+                  "trade",
+                  "backfill",
+                  "reconciliation"
+                ],
+                "title": "WalletTradeKind",
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "market_slug"
+                ]
+              },
+              "handle_id": "field:market_slug",
+              "display_name": "WalletTradeEvent.market_slug",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "transaction_hash"
+                ]
+              },
+              "handle_id": "field:transaction_hash",
+              "display_name": "WalletTradeEvent.transaction_hash",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "outcome"
+                ]
+              },
+              "handle_id": "field:outcome",
+              "display_name": "WalletTradeEvent.outcome",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node_type": "trigger",
+        "hook_name": "on_fill",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": {
+          "type_name": "FillEvent",
+          "fields": [
+            {
+              "path": {
+                "segments": [
+                  "order_id"
+                ]
+              },
+              "handle_id": "field:order_id",
+              "display_name": "FillEvent.order_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "token_id"
+                ]
+              },
+              "handle_id": "field:token_id",
+              "display_name": "FillEvent.token_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "side"
+                ]
+              },
+              "handle_id": "field:side",
+              "display_name": "FillEvent.side",
+              "value_type": "Side",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "enum": [
+                  "BUY",
+                  "SELL"
+                ],
+                "title": "Side",
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "status"
+                ]
+              },
+              "handle_id": "field:status",
+              "display_name": "FillEvent.status",
+              "value_type": "OrderStatus",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "enum": [
+                  "accepted",
+                  "filled",
+                  "partial",
+                  "rejected",
+                  "canceled"
+                ],
+                "title": "OrderStatus",
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "requested_size"
+                ]
+              },
+              "handle_id": "field:requested_size",
+              "display_name": "FillEvent.requested_size",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "filled_size"
+                ]
+              },
+              "handle_id": "field:filled_size",
+              "display_name": "FillEvent.filled_size",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "average_price"
+                ]
+              },
+              "handle_id": "field:average_price",
+              "display_name": "FillEvent.average_price",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "fee_usdc"
+                ]
+              },
+              "handle_id": "field:fee_usdc",
+              "display_name": "FillEvent.fee_usdc",
+              "value_type": "Decimal",
+              "scalar_type": "decimal",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "received_at_ms"
+                ]
+              },
+              "handle_id": "field:received_at_ms",
+              "display_name": "FillEvent.received_at_ms",
+              "value_type": "int",
+              "scalar_type": "integer",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "reject_reason"
+                ]
+              },
+              "handle_id": "field:reject_reason",
+              "display_name": "FillEvent.reject_reason",
+              "value_type": "FillRejectReason",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "$defs": {
+                  "FillRejectReason": {
+                    "enum": [
+                      "missing_token_id",
+                      "bad_side",
+                      "bad_price",
+                      "bad_size",
+                      "book_unavailable",
+                      "book_mismatch",
+                      "bad_book_timestamp",
+                      "book_stale",
+                      "book_future_dated",
+                      "bad_book_level",
+                      "book_crossed",
+                      "market_unavailable",
+                      "market_fee_invalid",
+                      "market_metadata_mismatch",
+                      "market_resolved",
+                      "no_depth_within_slippage",
+                      "duplicate_source_id",
+                      "invalid_source_id",
+                      "backtest_data_exhausted",
+                      "backtest_coverage_gap"
+                    ],
+                    "title": "FillRejectReason",
+                    "type": "string"
+                  }
+                },
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/FillRejectReason"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "reject_message"
+                ]
+              },
+              "handle_id": "field:reject_message",
+              "display_name": "FillEvent.reject_message",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": true,
+              "collection": false,
+              "value_schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node_type": "trigger",
+        "hook_name": "on_market_resolved",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": {
+          "type_name": "MarketResolutionEvent",
+          "fields": [
+            {
+              "path": {
+                "segments": [
+                  "condition_id"
+                ]
+              },
+              "handle_id": "field:condition_id",
+              "display_name": "MarketResolutionEvent.condition_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "market_slug"
+                ]
+              },
+              "handle_id": "field:market_slug",
+              "display_name": "MarketResolutionEvent.market_slug",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "token_ids"
+                ]
+              },
+              "handle_id": "field:token_ids",
+              "display_name": "MarketResolutionEvent.token_ids",
+              "value_type": "str",
+              "scalar_type": null,
+              "nullable": false,
+              "collection": true,
+              "value_schema": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "winning_token_id"
+                ]
+              },
+              "handle_id": "field:winning_token_id",
+              "display_name": "MarketResolutionEvent.winning_token_id",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "winning_outcome"
+                ]
+              },
+              "handle_id": "field:winning_outcome",
+              "display_name": "MarketResolutionEvent.winning_outcome",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "resolved_at_ms"
+                ]
+              },
+              "handle_id": "field:resolved_at_ms",
+              "display_name": "MarketResolutionEvent.resolved_at_ms",
+              "value_type": "int",
+              "scalar_type": "integer",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "path": {
+                "segments": [
+                  "source"
+                ]
+              },
+              "handle_id": "field:source",
+              "display_name": "MarketResolutionEvent.source",
+              "value_type": "str",
+              "scalar_type": "string",
+              "nullable": false,
+              "collection": false,
+              "value_schema": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node_type": "trigger",
+        "hook_name": "on_stop",
+        "context_handle_id": "context",
+        "context_type_name": "BotContext",
+        "payload": null
+      }
+    ],
+    "constants": [
+      {
+        "node_type": "constant",
+        "scalar_type": "boolean",
+        "display_name": "Boolean constant",
+        "default_value": false,
+        "output": {
+          "handle_id": "value",
+          "display_name": "Value",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "constant",
+        "scalar_type": "integer",
+        "display_name": "Integer constant",
+        "default_value": 0,
+        "output": {
+          "handle_id": "value",
+          "display_name": "Value",
+          "scalar_type": "integer",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "constant",
+        "scalar_type": "decimal",
+        "display_name": "Decimal constant",
+        "default_value": "0",
+        "output": {
+          "handle_id": "value",
+          "display_name": "Value",
+          "scalar_type": "decimal",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "constant",
+        "scalar_type": "string",
+        "display_name": "String constant",
+        "default_value": "",
+        "output": {
+          "handle_id": "value",
+          "display_name": "Value",
+          "scalar_type": "string",
+          "nullable": false
+        }
+      }
+    ],
+    "comparisons": [
+      {
+        "node_type": "comparison",
+        "operator": "equal",
+        "display_name": "Equal",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "boolean",
+              "integer",
+              "decimal",
+              "string"
+            ],
+            "nullable": true,
+            "required": true
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "boolean",
+              "integer",
+              "decimal",
+              "string"
+            ],
+            "nullable": true,
+            "required": true
+          }
+        ],
+        "output": {
+          "handle_id": "result",
+          "display_name": "Result",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "comparison",
+        "operator": "not_equal",
+        "display_name": "Not Equal",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "boolean",
+              "integer",
+              "decimal",
+              "string"
+            ],
+            "nullable": true,
+            "required": true
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "boolean",
+              "integer",
+              "decimal",
+              "string"
+            ],
+            "nullable": true,
+            "required": true
+          }
+        ],
+        "output": {
+          "handle_id": "result",
+          "display_name": "Result",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "comparison",
+        "operator": "less_than",
+        "display_name": "Less Than",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          }
+        ],
+        "output": {
+          "handle_id": "result",
+          "display_name": "Result",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "comparison",
+        "operator": "less_than_or_equal",
+        "display_name": "Less Than Or Equal",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          }
+        ],
+        "output": {
+          "handle_id": "result",
+          "display_name": "Result",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "comparison",
+        "operator": "greater_than",
+        "display_name": "Greater Than",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          }
+        ],
+        "output": {
+          "handle_id": "result",
+          "display_name": "Result",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      },
+      {
+        "node_type": "comparison",
+        "operator": "greater_than_or_equal",
+        "display_name": "Greater Than Or Equal",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "integer",
+              "decimal"
+            ],
+            "nullable": true,
+            "required": true
+          }
+        ],
+        "output": {
+          "handle_id": "result",
+          "display_name": "Result",
+          "scalar_type": "boolean",
+          "nullable": false
+        }
+      }
+    ],
+    "broker_actions": [
+      {
+        "node_type": "broker_action",
+        "action": "submit_buy",
+        "method_name": "submit",
+        "display_name": "BUY order",
+        "side": "BUY",
+        "inputs": [
+          {
+            "handle_id": "enabled",
+            "display_name": "Enabled",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "token_id",
+            "display_name": "Token Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "price",
+            "display_name": "Price",
+            "scalar_types": [
+              "decimal"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "size",
+            "display_name": "Size",
+            "scalar_types": [
+              "decimal"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "market_slug",
+            "display_name": "Market Slug",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          },
+          {
+            "handle_id": "condition_id",
+            "display_name": "Condition Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          },
+          {
+            "handle_id": "source_id",
+            "display_name": "Source Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          },
+          {
+            "handle_id": "reason",
+            "display_name": "Reason",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          }
+        ]
+      },
+      {
+        "node_type": "broker_action",
+        "action": "submit_sell",
+        "method_name": "submit",
+        "display_name": "SELL order",
+        "side": "SELL",
+        "inputs": [
+          {
+            "handle_id": "enabled",
+            "display_name": "Enabled",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "token_id",
+            "display_name": "Token Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "price",
+            "display_name": "Price",
+            "scalar_types": [
+              "decimal"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "size",
+            "display_name": "Size",
+            "scalar_types": [
+              "decimal"
+            ],
+            "nullable": false,
+            "required": true
+          },
+          {
+            "handle_id": "market_slug",
+            "display_name": "Market Slug",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          },
+          {
+            "handle_id": "condition_id",
+            "display_name": "Condition Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          },
+          {
+            "handle_id": "source_id",
+            "display_name": "Source Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          },
+          {
+            "handle_id": "reason",
+            "display_name": "Reason",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": false
+          }
+        ]
+      }
+    ]
+  },
+  "graphNodeType": {
+    "TRIGGER": "trigger",
+    "CONSTANT": "constant",
+    "COMPARISON": "comparison",
+    "BROKER_ACTION": "broker_action"
+  },
+  "graphBrokerAction": {
+    "SUBMIT_BUY": "submit_buy",
+    "SUBMIT_SELL": "submit_sell"
+  },
+  "graphComparisonOperator": {
+    "EQUAL": "equal",
+    "NOT_EQUAL": "not_equal",
+    "LESS_THAN": "less_than",
+    "LESS_THAN_OR_EQUAL": "less_than_or_equal",
+    "GREATER_THAN": "greater_than",
+    "GREATER_THAN_OR_EQUAL": "greater_than_or_equal"
+  },
+  "graphScalarType": {
+    "BOOLEAN": "boolean",
+    "INTEGER": "integer",
+    "DECIMAL": "decimal",
+    "STRING": "string"
+  },
+  "botDefinitionLabel": {
+    "STANDARD": "standard",
+    "EXAMPLE": "example",
+    "NON_TRADING": "non_trading"
+  },
+  "selectionMode": {
+    "USER_CONFIGURED": "user_configured",
+    "BOT_MANAGED": "bot_managed",
+    "ABSENT": "absent"
+  },
+  "widgetKind": {
+    "DECIMAL": "decimal",
+    "MARKET_SLUGS": "market_slugs",
+    "WALLET_ADDRESSES": "wallet_addresses",
+    "STREAM_RULES": "stream_rules"
+  }
+}

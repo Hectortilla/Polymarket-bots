@@ -9,6 +9,7 @@ from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     SettledPosition,
 )
+from polybot.framework.position_transition import ZERO_POSITION_SIZE
 
 from .position_contracts import (
     FollowBaseline,
@@ -36,21 +37,50 @@ class WalletFollowState:
         return any(settlement.condition_id == condition_id for settlement in self.settlements)
 
     def gross_pnl(self, marks: dict[str, Decimal]) -> Decimal | None:
-        archived_values = [settlement.gross_realized_pnl_usdc for settlement in self.settlements]
-        if any(value is None for value in archived_values):
+        accounting_inputs = self._complete_accounting_inputs(marks)
+        if accounting_inputs is None:
             return None
-        total = sum((value for value in archived_values if value is not None), Decimal("0"))
+        archived_pnl, open_position_values = accounting_inputs
+        return sum(archived_pnl, Decimal("0")) + sum(
+            (
+                realized_pnl + size * (mark - average_basis)
+                for realized_pnl, size, average_basis, mark in open_position_values
+            ),
+            Decimal("0"),
+        )
+
+    def _complete_accounting_inputs(
+        self,
+        marks: dict[str, Decimal],
+    ) -> tuple[
+        tuple[Decimal, ...],
+        tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
+    ] | None:
+        archived_pnl = tuple(
+            settlement.gross_realized_pnl_usdc for settlement in self.settlements
+        )
+        if any(value is None for value in archived_pnl):
+            return None
+
+        open_position_values: list[tuple[Decimal, Decimal, Decimal, Decimal]] = []
         for position in self.replay_positions().values():
-            if position.realized_pnl_usdc is None or position.average_basis is None:
+            realized_pnl = position.realized_pnl_usdc
+            average_basis = position.average_basis
+            if realized_pnl is None or average_basis is None:
                 return None
-            total += position.realized_pnl_usdc
-            mark = marks.get(position.token_id)
-            if position.size != 0 and mark is None:
-                return None
-            if position.size != 0:
-                assert mark is not None
-                total += position.size * (mark - position.average_basis)
-        return total
+            if position.size == ZERO_POSITION_SIZE:
+                mark = average_basis
+            else:
+                mark = marks.get(position.token_id)
+                if mark is None:
+                    return None
+            open_position_values.append(
+                (realized_pnl, position.size, average_basis, mark)
+            )
+        return (
+            tuple(value for value in archived_pnl if value is not None),
+            tuple(open_position_values),
+        )
 
     def snapshot_epoch(self) -> WalletFollowState:
         return WalletFollowState(
@@ -82,7 +112,7 @@ class WalletFollowState:
             self.movements.values(),
             key=lambda movement: (movement.trade_timestamp_ms, movement.source_key),
         ):
-            current = positions.get(
+            position_before_movement = positions.get(
                 movement.token_id,
                 FollowPosition(
                     condition_id=movement.condition_id,
@@ -93,7 +123,9 @@ class WalletFollowState:
                     realized_pnl_usdc=Decimal("0"),
                 ),
             )
-            positions[movement.token_id] = current.apply_movement(movement)
+            positions[movement.token_id] = position_before_movement.apply_movement(
+                movement
+            )
         return positions
 
     def positions(self) -> tuple[FollowPosition, ...]:
@@ -133,7 +165,7 @@ class WalletFollowState:
                 gross_realized = None
             elif gross_realized is not None:
                 gross_realized += position.realized_pnl_usdc
-            if position.size == 0:
+            if position.size == ZERO_POSITION_SIZE:
                 continue
             payout = event.payout_for(position.token_id)
             realized = position.resolution_pnl(payout)

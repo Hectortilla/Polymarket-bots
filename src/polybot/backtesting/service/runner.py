@@ -10,8 +10,8 @@ from polybot.backtesting.contracts import (
     BacktestResult,
 )
 from polybot.framework.base import BaseBot
-from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
+from polybot.backtesting.validation import backtest_config_issue
 from polybot.recording.archive.errors import (
     ArchiveCoverageError,
     ArchiveFormatError,
@@ -33,10 +33,10 @@ async def run_backtest(
     bot_spec: str,
     options: BacktestOptions,
 ) -> BacktestResult:
-    if config.mode is BotMode.LIVE:
+    if issue := backtest_config_issue(config):
         raise BacktestError(
             BacktestFailureReason.UNSUPPORTED_INPUT,
-            "backtesting cannot run with BOT_MODE=live",
+            issue,
         )
     try:
         reader = await run_blocking(RecordingReader.for_replay, options.archive_path)

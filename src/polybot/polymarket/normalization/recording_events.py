@@ -13,6 +13,7 @@ from polymarket.models.clob.market_events import (
 from polymarket.models.clob.order_book import OrderBookLevel
 
 from polybot.framework.events import Side
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.book import normalize_price_change_level
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
@@ -169,7 +170,10 @@ def _resolution_event(
     payload = event.payload
     _condition_id(payload.market, market)
     token_ids = _token_ids(payload.token_ids)
-    if len(token_ids) != 2 or set(token_ids) != set(market.token_ids):
+    if (
+        len(token_ids) != MARKET_RESOLUTION_TOKEN_COUNT
+        or set(token_ids) != set(market.token_ids)
+    ):
         raise MarketDataError(
             MarketDataIssue.INVALID_RESOLUTION,
             "resolved token IDs do not match market metadata",

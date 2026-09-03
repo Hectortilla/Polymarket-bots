@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
-from polybot.examples.btc_five_minute_strategy import (
+from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
+from polybot.examples.btc_five_minute_strategy import (
     DOWN_OUTCOME,
     MOMENTUM_ENTRY_REASON,
     UP_OUTCOME,

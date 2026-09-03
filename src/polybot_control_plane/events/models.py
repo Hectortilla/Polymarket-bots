@@ -7,7 +7,8 @@ from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
-from polybot_control_plane.events.contracts import DurableEvent, EventKind
+from polybot_control_plane.events.contracts import DurableEvent
+from polybot_control_plane.events.kinds import EventKind
 from polybot_control_plane.events.schema import (
     EventColumn,
     RUN_EVENTS_CURSOR_INDEX_NAME,

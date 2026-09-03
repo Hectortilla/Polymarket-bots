@@ -11,14 +11,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from polybot.examples.btc_five_minute_strategy import (
+from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
 )
+from polybot.framework.events.book_freshness import paired_observations_are_current
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
@@ -118,9 +120,10 @@ class MehTradingBot(BaseBot):
             self._prior_bids[book.token_id] = quote
             return
         await self._maybe_take_profit(ctx, market, book.token_id, quote)
-        await self._maybe_enter(ctx, book.received_at_ms)
+        entry_skip_reason = await self._maybe_enter(ctx, ctx.clock.now_ms())
         if quote.observed_at_ms - prior.observed_at_ms >= MOMENTUM_LOOKBACK_MS:
             self._prior_bids[book.token_id] = quote
+        return entry_skip_reason
 
     async def on_market_resolved(
         self, ctx: BotContext, event: MarketResolutionEvent
@@ -144,7 +147,7 @@ class MehTradingBot(BaseBot):
         if self._market is not None and self._market.slug == slug:
             return True
         market = await ctx.markets.find_by_slug(slug)
-        if market is None or len(market.token_ids) != 2:
+        if market is None or len(market.token_ids) != MARKET_RESOLUTION_TOKEN_COUNT:
             return False
         self._market = market
         self._books = {}
@@ -153,7 +156,11 @@ class MehTradingBot(BaseBot):
         self._position = None
         return True
 
-    async def _maybe_enter(self, ctx: BotContext, now_ms: int) -> None:
+    async def _maybe_enter(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> DispatchSkipReason | None:
         market = self._market
         if (
             market is None
@@ -168,6 +175,11 @@ class MehTradingBot(BaseBot):
             cutoff_ms=ENTRY_CUTOFF_MS,
         ):
             return
+        if len(self._books) == len(market.token_ids) and not self._quotes_are_current(
+            market,
+            now_ms,
+        ):
+            return DispatchSkipReason.BOOK_STALE
         candidate = self._entry_candidate(market, now_ms)
         if candidate is None:
             return
@@ -259,12 +271,11 @@ class MehTradingBot(BaseBot):
     def _quotes_are_current(self, market: Market, now_ms: int) -> bool:
         quotes = tuple(self._books[token_id] for token_id in market.token_ids)
         observed_at_ms = tuple(quote.observed_at_ms for quote in quotes)
-        return (
-            all(
-                0 <= now_ms - timestamp <= ENTRY_QUOTE_MAX_AGE_MS
-                for timestamp in observed_at_ms
-            )
-            and max(observed_at_ms) - min(observed_at_ms) <= ENTRY_QUOTE_MAX_SKEW_MS
+        return paired_observations_are_current(
+            observed_at_ms,
+            now_ms=now_ms,
+            maximum_age_ms=ENTRY_QUOTE_MAX_AGE_MS,
+            maximum_skew_ms=ENTRY_QUOTE_MAX_SKEW_MS,
         )
 
     def _stream_rule(self, now_ms: int, *, bucket_offset: int) -> StreamRule:

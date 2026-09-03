@@ -1,0 +1,20 @@
+export const DASHBOARD_COPY = {
+  ARIA_LABEL: 'Run dashboard',
+  CONTROLS_ARIA_LABEL: 'Dashboard controls',
+  CONTROL_CLOSER: 'closer',
+  CONTROL_RESET: 'reset',
+  CONTROL_VIEW: 'view',
+  CONTROL_WIDER: 'wider',
+  EQUITY: 'Executable equity',
+  LIVE: 'Live dashboard',
+  MARKET_PRICES: 'Market prices',
+  NO_SAMPLES: 'No dashboard samples were recorded for this run.',
+  NO_WALLETS: 'No followed wallets configured or detected.',
+  RUN_HISTORY: 'Run history',
+  WAITING_FOR_SAMPLE: 'Waiting for the first dashboard sample.',
+  WALLET_ACTIVITY: 'Followed-wallet activity',
+  WALLET_TIMELINE_ARIA_LABEL: 'Followed-wallet trade timeline',
+  WALLET_CONTROLS_ARIA_LABEL: 'Wallet timeline controls',
+  WALLET_CONTROL_NEXT: 'next',
+  WALLET_CONTROL_PREVIOUS: 'previous'
+} as const;

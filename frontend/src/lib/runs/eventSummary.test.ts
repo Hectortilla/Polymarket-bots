@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { SIDE } from '$lib/charts/contracts';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
+import type { FillRejectReason, OrderStatus } from '$lib/api/generated';
 import {
   EVENT_KIND,
   type PersistedDurableEvent
@@ -7,6 +10,10 @@ import {
 import { eventSummary } from './eventSummary';
 
 const RUN_ID = '00000000-0000-0000-0000-000000000001';
+type BrokerFillEvent = Extract<
+  PersistedDurableEvent,
+  { kind: typeof EVENT_KIND.brokerFill }
+>;
 
 describe('event summary', () => {
   it('includes a fill rejection reason and message when provided', () => {
@@ -19,7 +26,7 @@ describe('event summary', () => {
     const fill = rejectedFill();
     fill.payload.fill = {
       ...fill.payload.fill,
-      status: 'filled',
+      status: runtimeContract.orderStatus.FILLED as OrderStatus,
       filled_size: '5',
       average_price: '0.5',
       reject_reason: null,
@@ -30,7 +37,7 @@ describe('event summary', () => {
   });
 });
 
-function rejectedFill(): Extract<PersistedDurableEvent, { kind: 'broker.fill' }> {
+function rejectedFill(): BrokerFillEvent {
   return {
     id: 1,
     kind: EVENT_KIND.brokerFill,
@@ -39,21 +46,21 @@ function rejectedFill(): Extract<PersistedDurableEvent, { kind: 'broker.fill' }>
     payload: {
       order: {
         token_id: 'token',
-        side: 'BUY',
+        side: SIDE.buy,
         price: '0.5',
         size: '5'
       },
       fill: {
         order_id: 'order',
         token_id: 'token',
-        side: 'BUY',
-        status: 'rejected',
+        side: SIDE.buy,
+        status: runtimeContract.orderStatus.REJECTED as OrderStatus,
         requested_size: '5',
         filled_size: '0',
         average_price: null,
         fee_usdc: '0',
         received_at_ms: 1,
-        reject_reason: 'bad_size',
+        reject_reason: runtimeContract.fillRejectReason.BAD_SIZE as FillRejectReason,
         reject_message: 'order size is below the market minimum'
       },
       latency_ms: 0,

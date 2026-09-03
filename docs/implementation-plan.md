@@ -966,8 +966,9 @@ Minimum deliverable:
   durable Redis wake-up. Idempotent stop must not append a second terminal event.
 - Implement the canonical durable-only replay/subscription/recheck SSE sequence.
   Decode the strict decimal durable-wake frame at the Redis adapter boundary and
-  expose `DurableEvent` on the SSE route in OpenAPI. Live chart frames remain
-  Slice 12E scope.
+  expose required-ID `PersistedDurableEvent` on the SSE route in OpenAPI. Keep
+  optional-ID `DurableEvent` at the pre-persistence write boundary. Live chart
+  frames remain Slice 12E scope.
 - Return durable history as newest-first cursor pages with strict default and
   maximum limits, and read SSE replay backlogs in bounded batches. Add the
   composite per-run event cursor index in one migration.
@@ -1069,11 +1070,14 @@ Minimum deliverable:
 - Implement the terminal-equivalent visible and keyboard controls and responsive
   layout.
 
-Do not create a generic chart-policy/service hierarchy, copy terminal formulas
-into TypeScript, move rendering code into shared modules, add alternative chart
-libraries, auto-drain all event pages for chart hydration, or build history
-compaction/retention. The accepted v0 durable-chart budget is at most 86,400
-scheduled sample rows per continuously active run-day; retention is post-v0.
+Do not create a generic chart-policy/service hierarchy, independently copy
+terminal formulas into TypeScript, move rendering code into shared modules, add
+alternative chart libraries, auto-drain all event pages for chart hydration, or
+build history compaction/retention. When Python and TypeScript must execute the
+same renderer-neutral arithmetic, both implementations consume the generated
+machine-readable policy and a shared boundary fixture locks their parity. The
+accepted v0 durable-chart budget is at most 86,400 scheduled sample rows per
+continuously active run-day; retention is post-v0.
 
 Acceptance:
 
@@ -1188,7 +1192,10 @@ Acceptance:
   `bids.price`.
 - Graph validation covers the starter graph, unique node and hook identities,
   valid and invalid paths, duplicate selections, payload-less hooks, forbidden
-  edges, transient fields, bounded positions, and graph-size limits.
+  edges, transient fields, bounded positions, and graph-size limits. Generated
+  parity cases keep the browser's save/response validator aligned with the
+  Python topology owner for valid branches, input cardinality, scalar
+  compatibility, and terminal-action reachability.
 - Catalog, API, and PostgreSQL tests prove graph metadata appears only on the
   node-based definition, exact snapshots survive launch and JSONB round trips,
   invalid hooks or paths enqueue no work, and worker behavior remains
@@ -1307,7 +1314,7 @@ Acceptance:
 
 ## Slice 13C: Event-Driven Graph Evaluation and Paper Actions
 
-Status: planned; depends on Slice 13B.
+Status: implemented; depends on Slice 13B.
 
 Minimum deliverable:
 
@@ -1382,3 +1389,62 @@ Acceptance:
   unchanged.
 - `uv run pytest`, `npm run generate:check`, `npm run check`, `npm test`, and
   `npm run build` pass.
+
+## Slice 13D: Graph Templates, Saved Bots, and Revision Persistence
+
+Status: implemented; depends on Slice 13C.
+
+- Add editable `graph_templates`, reusable `bots`, and immutable
+  `bot_graph_revisions` rows.
+- Remove graph JSON from `PaperRunConfig`. A graph-capable bot copies a
+  template into revision 1; later graph saves append one sequential revision.
+- Add required `bot_id` and nullable `bot_graph_revision_id` to runs. Enforce
+  revision ownership with a composite foreign key while retaining the run's
+  complete paper-config snapshot.
+- Rewrite the disposable alpha migration rather than adding compatibility or
+  backfill behavior.
+
+Acceptance covers exact graph JSON restoration, unique template names,
+positive sequential revisions, one-bot revision ownership, multiple runs per
+revision, isolation in both edit directions, and database recreation.
+
+## Slice 13E: Saved-Bot APIs and Runtime Resolution
+
+Status: implemented; depends on Slice 13D.
+
+- Add graph-template CRUD, saved-bot create/list/read/update, graph-revision
+  append/read, and `POST /bots/{bot_id}/runs`.
+- Remove direct `POST /runs`; existing run list/detail/stop/event/SSE routes
+  remain.
+- Lock the bot row for configuration edits, revision appends, and run creation.
+  Commit the exact config/revision snapshot before enqueueing work.
+- Resolve the run's owned graph revision once before bot construction. Missing,
+  malformed, cross-bot, required, or forbidden graph state fails closed before
+  broker submission.
+- Regenerate OpenAPI and the generated frontend client.
+
+Acceptance covers invalid references and definition/graph combinations,
+transactional template copying, launch-delivery failure, concurrent edit/run
+serialization, worker fail-closed behavior, and historical snapshots.
+
+## Slice 13F: Template and Saved-Bot Browser Workflows
+
+Status: implemented; depends on Slice 13E.
+
+- Add the graph-template catalog/editor.
+- Change definition configuration into saved-bot creation with template
+  selection for graph-capable definitions.
+- Add saved-bot detail with non-graph settings, latest graph editing, explicit
+  revision saving, and a Run action disabled by unsaved changes.
+- Explain that templates and bot graphs are independent copies.
+- Show the bot link and exact executed graph revision on run detail.
+
+Acceptance covers template create/edit, bot creation, graph revision saving,
+unsaved-change protection, rerunning the latest saved revision, and historical
+run display.
+
+Documentation-drift audit: complete. The README, architecture, web
+architecture/specification, and bot-author guide describe template copying,
+saved-bot launches, and immutable historical revisions consistently. Earlier
+Slice 13A–13C text remains as historical slice scope and is superseded by
+Slices 13D–13F where their persistence or launch contracts differ.

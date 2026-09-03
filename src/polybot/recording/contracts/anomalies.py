@@ -6,11 +6,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
-from polybot.framework.events.prices import (
-    OUTCOME_PRICE_CEILING,
-    OUTCOME_PRICE_FLOOR,
-)
-
 from .market import MarketIdentity
 from .payloads import (
     RECORDED_PAYLOAD_TYPES,
@@ -20,6 +15,7 @@ from .payloads import (
 from .validation import (
     normalize_optional_text_fields,
     normalize_required_text_fields,
+    validate_outcome_payout,
     validate_decimal,
     validate_nonnegative_int,
 )
@@ -133,12 +129,7 @@ class CaptureBookDiagnostics:
         ):
             value = getattr(self, name)
             if value is not None:
-                validate_decimal(
-                    value,
-                    name.replace("_", " "),
-                    minimum=OUTCOME_PRICE_FLOOR,
-                    maximum=OUTCOME_PRICE_CEILING,
-                )
+                validate_outcome_payout(value, name.replace("_", " "))
 
 
 @dataclass(frozen=True, slots=True)

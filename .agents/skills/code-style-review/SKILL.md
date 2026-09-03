@@ -59,6 +59,7 @@ maximum-concurrency waves possible and do not omit reviewers.
 - `init_barrel_export_reviewer`
 - `package_root_ownership_reviewer`
 - `small_explicit_function_reviewer`
+- `redundant_wrapper_reviewer`
 - `object_method_placement_reviewer`
 - `repeated_dependency_class_reviewer`
 - `dependency_light_foundation_reviewer`

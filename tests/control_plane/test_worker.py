@@ -9,23 +9,42 @@ import pytest
 
 import polybot_control_plane.execution.worker.lifecycle as worker_lifecycle
 import polybot_control_plane.execution.worker.runtime as worker_runtime
-from polybot.cli.observability.events import StreamHealth
+from control_plane.graph_fixtures import threshold_buy_graph
+from polybot.cli.observability.broker import ObservableBroker
+from polybot.cli.observability.events import PortfolioSnapshot, StreamHealth
 from polybot.execution.broker import Broker
+from polybot.execution.paper import PaperBroker
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchOutcome
+from polybot.framework.events import FillRejectReason, OrderStatus
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.runner import BotRunner
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot_control_plane.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
     NODE_BASED_DEFINITION_ID,
     WINNER_DEFINITION_ID,
 )
-from polybot_control_plane.catalog.graphs.types import GraphNodeType
-from polybot_control_plane.events.contracts import DurableEvent, EventKind
+from polybot_control_plane.catalog.graphs.contracts import NodeGraph
+from polybot_control_plane.catalog.graphs.values import GraphNodeType
+from polybot_control_plane.catalog.node_based.bot import NodeBasedBot
+from polybot_control_plane.events.contracts import DurableEvent
+from polybot_control_plane.events.kinds import EventKind
+from polybot_control_plane.events.observer import WebRuntimeObserver
 from polybot_control_plane.execution.config import REDIS_URL_ENV, configured_redis_url
 from polybot_control_plane.execution.worker.lifecycle import PAPER_RUN_FAILURE_REASON
 from polybot_control_plane.runs.contracts import RunRead
 from polybot_control_plane.runs.status import RunStatus
-from control_plane.graph_fixtures import threshold_buy_graph
+
+
+def _coordinator(store, writer, session_factory=object()):
+    return worker_lifecycle.RunLifecycleCoordinator(
+        store,
+        session_factory,
+        writer,
+    )
 
 
 def test_worker_completes_normally_and_writes_terminal_event(
@@ -38,14 +57,16 @@ def test_worker_completes_normally_and_writes_terminal_event(
         await asyncio.Future()
 
     monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
-    monkeypatch.setattr(worker_lifecycle, "poll_stop_request_and_heartbeat", poll)
+    monkeypatch.setattr(
+        worker_lifecycle.RunLifecycleCoordinator,
+        "_poll_stop_request_and_heartbeat",
+        poll,
+    )
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(), store, object(), writer
-        )
+        _coordinator(store, writer).execute(uuid4())
     )
 
     assert store.transitions == [RunStatus.RUNNING, RunStatus.STOPPING]
@@ -65,14 +86,16 @@ def test_worker_writes_final_stream_health_before_terminal_lifecycle(
         await asyncio.Future()
 
     monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
-    monkeypatch.setattr(worker_lifecycle, "poll_stop_request_and_heartbeat", poll)
+    monkeypatch.setattr(
+        worker_lifecycle.RunLifecycleCoordinator,
+        "_poll_stop_request_and_heartbeat",
+        poll,
+    )
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(), store, object(), writer
-        )
+        _coordinator(store, writer).execute(uuid4())
     )
 
     assert [event.kind for event in writer.events] == [
@@ -92,20 +115,22 @@ def test_worker_cooperative_stop_finishes_stopped(
         started.set()
         await asyncio.Future()
 
-    async def poll(run_id, bot_task, cooperative_stop, session_factory) -> None:
+    async def poll(self, run_id, bot_task, cooperative_stop) -> None:
         await started.wait()
         cooperative_stop.set()
         bot_task.cancel()
 
     monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
-    monkeypatch.setattr(worker_lifecycle, "poll_stop_request_and_heartbeat", poll)
+    monkeypatch.setattr(
+        worker_lifecycle.RunLifecycleCoordinator,
+        "_poll_stop_request_and_heartbeat",
+        poll,
+    )
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(), store, object(), writer
-        )
+        _coordinator(store, writer).execute(uuid4())
     )
 
     assert store.finished == [(RunStatus.STOPPED, None)]
@@ -127,16 +152,14 @@ def test_worker_cancellation_finishes_interrupted_and_propagates(
 
         monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
         monkeypatch.setattr(
-            worker_lifecycle,
-            "poll_stop_request_and_heartbeat",
+            worker_lifecycle.RunLifecycleCoordinator,
+            "_poll_stop_request_and_heartbeat",
             poll,
         )
         store = _FakeRunStore(_run())
         writer = _CollectingEventWriter()
         task = asyncio.create_task(
-            worker_lifecycle.execute_claimed_run_lifecycle(
-                uuid4(), store, object(), writer
-            )
+            _coordinator(store, writer).execute(uuid4())
         )
         await started.wait()
         task.cancel()
@@ -162,14 +185,16 @@ def test_worker_failure_detail_is_sanitized(
         await asyncio.Future()
 
     monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
-    monkeypatch.setattr(worker_lifecycle, "poll_stop_request_and_heartbeat", poll)
+    monkeypatch.setattr(
+        worker_lifecycle.RunLifecycleCoordinator,
+        "_poll_stop_request_and_heartbeat",
+        poll,
+    )
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(), store, object(), writer
-        )
+        _coordinator(store, writer).execute(uuid4())
     )
 
     status, detail = store.finished[-1]
@@ -192,12 +217,7 @@ def test_worker_redelivery_does_not_restart_nonqueued_run(
     store = _FakeRunStore(None)
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(),
-            store,
-            object(),
-            _CollectingEventWriter(),
-        )
+        _coordinator(store, _CollectingEventWriter()).execute(uuid4())
     )
 
     assert called is False
@@ -209,9 +229,7 @@ def test_worker_claim_failure_records_sanitized_failure() -> None:
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(), store, object(), writer
-        )
+        _coordinator(store, writer).execute(uuid4())
     )
 
     assert store.finished == [
@@ -225,9 +243,7 @@ def test_worker_completes_stop_that_wins_before_runtime_start() -> None:
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle.execute_claimed_run_lifecycle(
-            uuid4(), store, object(), writer
-        )
+        _coordinator(store, writer).execute(uuid4())
     )
 
     assert store.transitions == [RunStatus.STOPPING]
@@ -240,10 +256,8 @@ def test_terminal_event_failure_does_not_change_run_outcome() -> None:
     writer = _CollectingEventWriter(fail=True)
 
     asyncio.run(
-        worker_lifecycle._finish_run(
+        _coordinator(store, writer)._finish_run(
             uuid4(),
-            store,
-            writer,
             RunStatus.FAILED,
             failure_detail=PAPER_RUN_FAILURE_REASON,
         )
@@ -257,10 +271,8 @@ def test_terminal_event_is_not_written_when_finish_loses_transition() -> None:
     writer = _CollectingEventWriter()
 
     asyncio.run(
-        worker_lifecycle._finish_run(
+        _coordinator(store, writer)._finish_run(
             uuid4(),
-            store,
-            writer,
             RunStatus.FAILED,
         )
     )
@@ -291,9 +303,38 @@ def test_claimed_runtime_uses_exact_catalog_factory_and_observer(
     _, factory_config, _ = received[0]
     bot, runtime_config, runtime_observer = received[1]
     assert isinstance(bot, BaseBot)
-    assert factory_config is runtime_config
+    assert factory_config == run.config.to_bot_config()
     assert runtime_config.name == run.config.name
     assert runtime_observer is observer
+
+
+def test_claimed_runtime_executes_an_actual_non_node_catalog_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _run()
+    executed: list[BaseBot] = []
+
+    async def run_bot(bot, config, *, observer) -> None:
+        executed.append(bot)
+        context = BotContext(
+            config=config,
+            broker=AsyncMock(spec=Broker),
+            markets=AsyncMock(),
+            books=AsyncMock(),
+            wallet_activity=AsyncMock(),
+            clock=_FixedClock(1_000),
+        )
+        await bot.on_start(context)
+        await bot.on_stop(context)
+
+    monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
+
+    asyncio.run(worker_runtime.run_claimed_bot(run, object()))
+
+    assert len(executed) == 1
+    assert type(executed[0]) is type(
+        CATALOG[WINNER_DEFINITION_ID].create_bot(run.config.to_bot_config(), None)
+    )
 
 
 def test_claimed_runtime_rejects_an_unknown_catalog_definition(
@@ -309,7 +350,39 @@ def test_claimed_runtime_rejects_an_unknown_catalog_definition(
     run_bot.assert_not_awaited()
 
 
-def test_node_based_action_graph_does_not_submit_orders(
+@pytest.mark.parametrize(
+    ("definition_id", "graph"),
+    (
+        (WINNER_DEFINITION_ID, NodeGraph.model_validate(threshold_buy_graph())),
+        (NODE_BASED_DEFINITION_ID, None),
+    ),
+    ids=("ordinary-definition-with-graph", "graph-definition-without-graph"),
+)
+def test_claimed_runtime_rejects_inconsistent_graph_contract_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    definition_id: str,
+    graph: NodeGraph | None,
+) -> None:
+    run_bot = AsyncMock()
+    monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
+    config = (
+        CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+            {"name": "missing-graph", "market_slugs": ["market"]}
+        )
+        if definition_id == NODE_BASED_DEFINITION_ID
+        else CATALOG[WINNER_DEFINITION_ID].parse_config({"name": "forbidden-graph"})
+    )
+    run = _run().model_copy(
+        update={"definition_id": definition_id, "config": config, "graph": graph}
+    )
+
+    with pytest.raises(ValueError, match="graph is (forbidden|required)"):
+        asyncio.run(worker_runtime.run_claimed_bot(run, object()))
+
+    run_bot.assert_not_awaited()
+
+
+def test_node_based_action_graph_submits_each_matching_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = CATALOG[NODE_BASED_DEFINITION_ID]
@@ -317,11 +390,17 @@ def test_node_based_action_graph_does_not_submit_orders(
         {
             "name": "node-observer",
             "market_slugs": ["example-market"],
-            "graph": threshold_buy_graph(),
         }
     )
+    graph = NodeGraph.model_validate(threshold_buy_graph())
     run = _run().model_copy(
-        update={"definition_id": NODE_BASED_DEFINITION_ID, "config": config}
+        update={
+            "definition_id": NODE_BASED_DEFINITION_ID,
+            "config": config,
+            "bot_graph_revision_id": uuid4(),
+            "graph_revision": FIRST_GRAPH_REVISION_NUMBER,
+            "graph": graph,
+        }
     )
     broker = AsyncMock(spec=Broker)
     received: list[tuple[BaseBot, object]] = []
@@ -334,14 +413,15 @@ def test_node_based_action_graph_does_not_submit_orders(
             markets=AsyncMock(),
             books=AsyncMock(),
             wallet_activity=AsyncMock(),
+            clock=_FixedClock(1_000),
         )
         await bot.on_start(context)
         await bot.on_book(
             context,
             BookSnapshot(
                 token_id="token",
-                bids=(BookLevel(Decimal("0.49"), Decimal("10")),),
-                asks=(BookLevel(Decimal("0.50"), Decimal("10")),),
+                bids=(BookLevel(Decimal("0.49"), Decimal(10)),),
+                asks=(BookLevel(Decimal("0.50"), Decimal(10)),),
                 received_at_ms=1_000,
             ),
         )
@@ -352,14 +432,137 @@ def test_node_based_action_graph_does_not_submit_orders(
     asyncio.run(worker_runtime.run_claimed_bot(run, object()))
 
     bot, runtime_config = received[0]
-    assert type(bot) is BaseBot
+    assert isinstance(bot, NodeBasedBot)
     assert runtime_config.stream_rules == config.stream_rules
     assert not hasattr(runtime_config, "graph")
-    assert config.graph is not None
     assert any(
-        node.type == GraphNodeType.BROKER_ACTION for node in config.graph.nodes
+        node.type == GraphNodeType.BROKER_ACTION for node in graph.nodes
     )
-    broker.submit.assert_not_awaited()
+    assert broker.submit.await_count == 1
+    assert broker.submit.await_args.args[0].token_id == "token"
+
+
+def test_node_based_runtime_uses_paper_broker_and_durable_event_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = CATALOG[NODE_BASED_DEFINITION_ID]
+    config = entry.parse_config(
+        {
+            "name": "node-events",
+            "market_slugs": ["example-market"],
+        }
+    )
+    graph = NodeGraph.model_validate(threshold_buy_graph())
+    run = _run().model_copy(
+        update={
+            "definition_id": NODE_BASED_DEFINITION_ID,
+            "config": config,
+            "bot_graph_revision_id": uuid4(),
+            "graph_revision": FIRST_GRAPH_REVISION_NUMBER,
+            "graph": graph,
+        }
+    )
+    writer = _CollectingEventWriter()
+    observer = WebRuntimeObserver(run.id, writer)
+
+    outcomes: list[DispatchOutcome] = []
+    paper_brokers: list[PaperBroker] = []
+
+    class MutableBooks:
+        def __init__(self, snapshot: BookSnapshot) -> None:
+            self.snapshot = snapshot
+
+        async def latest(self, token_id: str) -> BookSnapshot:
+            return self.snapshot
+
+    class StaticMarkets:
+        async def find_by_slug(self, slug: str) -> Market:
+            return Market(
+                condition_id="condition",
+                slug="example-market",
+                question="Test market",
+                minimum_tick_size=Decimal("0.01"),
+                minimum_order_size=Decimal(1),
+                neg_risk=False,
+                fee_rate=Decimal(0),
+                outcomes=(
+                    MarketOutcome("Yes", "token"),
+                    MarketOutcome("No", "other-token"),
+                ),
+                active=True,
+                closed=False,
+                order_book_enabled=True,
+                accepting_orders=True,
+            )
+
+    async def run_bot(bot, runtime_config, *, observer) -> None:
+        valid_book = BookSnapshot(
+            token_id="token",
+            bids=(BookLevel(Decimal("0.49"), Decimal(10)),),
+            asks=(BookLevel(Decimal("0.50"), Decimal(10)),),
+            received_at_ms=10_000,
+            market_slug="example-market",
+            condition_id="condition",
+        )
+        books = MutableBooks(valid_book)
+        paper_broker = PaperBroker(
+            runtime_config,
+            books,
+            StaticMarkets(),
+            sleep_fn=lambda _: asyncio.sleep(0),
+            now_ms_fn=lambda: 10_000,
+        )
+        paper_brokers.append(paper_broker)
+        await observer.start(runtime_config)
+        try:
+            context = BotContext(
+                config=runtime_config,
+                broker=ObservableBroker(
+                    paper_broker,
+                    observer,
+                    lambda: PortfolioSnapshot.from_paper(paper_broker.portfolio),
+                ),
+                markets=StaticMarkets(),
+                books=books,
+                wallet_activity=AsyncMock(),
+                clock=_FixedClock(10_000),
+            )
+            runner = BotRunner(bot, context, now_ms_fn=lambda: 10_000)
+            outcomes.append(await runner.dispatch_book(valid_book))
+            books.snapshot = replace(valid_book, received_at_ms=0)
+            outcomes.append(await runner.dispatch_book(valid_book))
+        finally:
+            await observer.stop()
+
+    monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
+
+    asyncio.run(worker_runtime.run_claimed_bot(run, observer))
+
+    broker_events = [
+        event
+        for event in writer.events
+        if event.kind in {EventKind.BROKER_ORDER, EventKind.BROKER_FILL}
+    ]
+    fills = [
+        event.payload
+        for event in broker_events
+        if event.kind is EventKind.BROKER_FILL
+    ]
+
+    assert outcomes == [DispatchOutcome.accepted_event()] * 2
+    assert [event.kind for event in broker_events] == [
+        EventKind.BROKER_ORDER,
+        EventKind.BROKER_FILL,
+        EventKind.BROKER_ORDER,
+        EventKind.BROKER_FILL,
+    ]
+    assert fills[0].fill.status is OrderStatus.FILLED
+    assert fills[0].portfolio is not None
+    assert fills[0].portfolio.positions[0].size == Decimal("1.250")
+    assert fills[1].fill.status is OrderStatus.REJECTED
+    assert fills[1].fill.reject_reason is FillRejectReason.BOOK_STALE
+    assert fills[1].portfolio == fills[0].portfolio
+    assert paper_brokers[0].portfolio.position("token").size == Decimal("1.250")
 
 
 def test_redis_configuration_validates_environment_ingress(
@@ -398,11 +601,14 @@ def test_worker_poll_transitions_stop_before_cancelling_bot(
         monkeypatch.setattr(worker_lifecycle, "RunStore", lambda session: store)
         bot_task = asyncio.create_task(_wait_forever())
         cooperative_stop = asyncio.Event()
-        await worker_lifecycle.poll_stop_request_and_heartbeat(
+        await _coordinator(
+            _FakeRunStore(None),
+            _CollectingEventWriter(),
+            _SessionFactory(),
+        )._poll_stop_request_and_heartbeat(
             uuid4(),
             bot_task,
             cooperative_stop,
-            _SessionFactory(),
         )
         await asyncio.gather(bot_task, return_exceptions=True)
         return cooperative_stop.is_set(), store.stopping
@@ -421,11 +627,14 @@ def test_worker_poll_heartbeats_while_run_is_owned(
         monkeypatch.setattr(worker_lifecycle.asyncio, "sleep", no_delay)
         monkeypatch.setattr(worker_lifecycle, "RunStore", lambda session: store)
         bot_task = asyncio.create_task(_wait_forever())
-        await worker_lifecycle.poll_stop_request_and_heartbeat(
+        await _coordinator(
+            _FakeRunStore(None),
+            _CollectingEventWriter(),
+            _SessionFactory(),
+        )._poll_stop_request_and_heartbeat(
             uuid4(),
             bot_task,
             asyncio.Event(),
-            _SessionFactory(),
         )
         bot_task.cancel()
         await asyncio.gather(bot_task, return_exceptions=True)
@@ -466,6 +675,17 @@ class _CollectingEventWriter:
         if self._fail:
             raise RuntimeError("writer unavailable")
         return event
+
+
+class _FixedClock:
+    def __init__(self, now_ms: int) -> None:
+        self._now_ms = now_ms
+
+    def now_ms(self) -> int:
+        return self._now_ms
+
+    async def sleep(self, seconds: float) -> None:
+        pass
 
 
 class _ClaimFailureStore(_FakeRunStore):
@@ -525,6 +745,7 @@ class _MonitorStore:
 def _run() -> RunRead:
     return RunRead(
         id=uuid4(),
+        bot_id=uuid4(),
         definition_id=WINNER_DEFINITION_ID,
         config=CATALOG[WINNER_DEFINITION_ID].parse_config({"name": "worker"}),
         status=RunStatus.STARTING,

@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Mapping
 
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketMetadataPayload
 from .primitives import _nonnegative_int, _nonnegative_timestamp, _positive_int
@@ -58,6 +60,7 @@ def first_complete_baseline_pair_at_or_after(
         None if session_id is None else _positive_int(session_id, "session ID")
     )
     token_ids = tuple(outcome.token_id for outcome in market.outcomes)
+    token_placeholders = ", ".join("?" for _ in token_ids)
     unknown_tokens = set(after_sequence_by_token or ()).difference(token_ids)
     if unknown_tokens:
         raise ValueError("baseline sequence cutoffs contain an unknown token")
@@ -85,6 +88,7 @@ def first_complete_baseline_pair_at_or_after(
     ]
     if normalized_session is not None:
         parameters.append(normalized_session)
+    parameters.append(MARKET_RESOLUTION_TOKEN_COUNT)
     row = connection.execute(
         f"""
         WITH first_token_baseline AS (
@@ -98,7 +102,7 @@ def first_complete_baseline_pair_at_or_after(
               AND event.observed_at_ms >= ?
               AND event.observed_at_ms <= ?
               AND event.sequence <= ?
-              AND selected_token.token_id IN (?, ?)
+              AND selected_token.token_id IN ({token_placeholders})
               AND (
                   (selected_token.token_id = ? AND event.sequence > ?)
                   OR
@@ -111,7 +115,7 @@ def first_complete_baseline_pair_at_or_after(
         SELECT MAX(first_observed_at_ms) AS complete_at_ms
         FROM first_token_baseline
         GROUP BY subscription_generation
-        HAVING COUNT(DISTINCT token_id) = 2
+        HAVING COUNT(DISTINCT token_id) = ?
         ORDER BY complete_at_ms
         LIMIT 1
         """,

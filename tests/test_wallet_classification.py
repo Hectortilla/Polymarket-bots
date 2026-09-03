@@ -7,6 +7,9 @@ from scripts.wallet_analysis.classification import (
     classify_wallet_candidate,
 )
 from scripts.wallet_analysis.contracts import (
+    HEDGE_AVERAGE_METRIC,
+    GROSS_BEFORE_FEES_METRIC,
+    NET_CASH_METRIC,
     WalletClassificationReason,
     WalletMetrics,
     WalletVerdict,
@@ -31,7 +34,11 @@ def test_wallet_classification_branches(
 ) -> None:
     metrics = cast(
         WalletMetrics,
-        {"net_cash": net, "gross_before_fees": gross, "hedge_avg": hedge},
+        {
+            NET_CASH_METRIC: net,
+            GROSS_BEFORE_FEES_METRIC: gross,
+            HEDGE_AVERAGE_METRIC: hedge,
+        },
     )
     classification = classify_wallet_candidate(metrics)
     assert classification.verdict is verdict

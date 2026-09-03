@@ -1,0 +1,271 @@
+{
+  "activitySeverity": {
+    "INFO": "info",
+    "SUCCESS": "success",
+    "WARNING": "warning",
+    "ERROR": "error"
+  },
+  "apiPaths": {
+    "botDefinitions": "/api/v1/bot-definitions",
+    "botGraphRevision": "/api/v1/bots/{bot_id}/graph-revisions/{revision_id}",
+    "botGraphRevisions": "/api/v1/bots/{bot_id}/graph-revisions",
+    "bot": "/api/v1/bots/{bot_id}",
+    "botRuns": "/api/v1/bots/{bot_id}/runs",
+    "bots": "/api/v1/bots",
+    "graphTemplate": "/api/v1/graph-templates/{template_id}",
+    "graphTemplates": "/api/v1/graph-templates",
+    "health": "/api/v1/health",
+    "runEvents": "/api/v1/runs/{run_id}/events",
+    "runEventsStream": "/api/v1/runs/{run_id}/events/stream",
+    "run": "/api/v1/runs/{run_id}",
+    "runStop": "/api/v1/runs/{run_id}/stop",
+    "runs": "/api/v1/runs"
+  },
+  "botMode": {
+    "PAPER": "paper",
+    "LIVE": "live"
+  },
+  "config": {
+    "maximumDataTradesBudget": 180,
+    "minimumDataTradesBudget": 1
+  },
+  "bootstrapPhase": {
+    "MARKETS": "markets",
+    "WALLETS": "wallets"
+  },
+  "bootstrapProgress": {
+    "completedMayExceedTotal": false,
+    "minimum": 0
+  },
+  "dashboard": {
+    "initialTimeZoomLevel": 0,
+    "keys": {
+      "CLOSER": "z",
+      "WIDER": "x",
+      "RESET": "r",
+      "VIEW": "v",
+      "NEXT_WALLET_PAGE": "j",
+      "PREVIOUS_WALLET_PAGE": "k"
+    },
+    "maxChartHistoryPoints": 720,
+    "maxChartTokens": 20,
+    "maxTimeZoomLevel": 3,
+    "maxWalletTimelineEvents": 5000,
+    "minTimeZoomLevel": -3,
+    "timeZoomFactor": 2,
+    "chartWindowPolicy": {
+      "clampMaximum": true,
+      "clampMinimum": true,
+      "rounding": "floor"
+    },
+    "walletNotionalTierCount": 3,
+    "firstWalletNotionalTier": 1,
+    "nonpositiveMaxNotionalThreshold": "0",
+    "walletNotionalTierDenominator": 3,
+    "walletNotionalTierUpperNumerators": [
+      1,
+      2
+    ],
+    "walletBucketPolicy": {
+      "clampToLastColumn": true,
+      "rounding": "floor"
+    },
+    "walletBucketRounding": {
+      "FLOOR": "floor"
+    },
+    "walletNotionalTierUpperBoundInclusive": true,
+    "walletMarketLabelPolicy": {
+      "ellipsis": "\u2026",
+      "maximumTokenLength": 12,
+      "partSeparator": " \u00b7 ",
+      "prefixLength": 7,
+      "suffixLength": 4
+    }
+  },
+  "dispatchSkipReason": {
+    "MARKET_METADATA_MISSING": "market_metadata_missing",
+    "BOOK_IDENTITY_MISMATCH": "book_identity_mismatch",
+    "MARKET_NOT_TRACKED": "market_not_tracked",
+    "MARKET_RESOLVED": "market_resolved",
+    "WALLET_NOT_TRACKED": "wallet_not_tracked",
+    "BOOK_STALE": "book_stale",
+    "BOOK_FUTURE_DATED": "book_future_dated",
+    "BAD_BOOK_TIMESTAMP": "bad_book_timestamp",
+    "BAD_BOOK_LEVEL": "bad_book_level",
+    "BOOK_CROSSED": "book_crossed",
+    "WALLET_TRADE_INVALID": "wallet_trade_invalid",
+    "WALLET_TRADE_FUTURE_DATED": "wallet_trade_future_dated",
+    "WALLET_TRADE_STALE": "wallet_trade_stale",
+    "DUPLICATE_SOURCE_EVENT": "duplicate_source_event"
+  },
+  "dispatchOutcome": {
+    "acceptedAllowsSkipReason": false,
+    "skippedRequiresSkipReason": true
+  },
+  "durableEventIds": {
+    "firstCursor": 0,
+    "firstEventId": 1,
+    "maximumEventId": 9007199254740991
+  },
+  "eventPagination": {
+    "nextCursorEventIndex": 0
+  },
+  "eventKind": {
+    "RUN_LIFECYCLE": "run.lifecycle",
+    "RUN_BOOTSTRAP": "run.bootstrap",
+    "BOT_ACTIVITY": "bot.activity",
+    "BROKER_ORDER": "broker.order",
+    "BROKER_FILL": "broker.fill",
+    "BROKER_FAILURE": "broker.failure",
+    "MARKET_SETTLEMENT": "market.settlement",
+    "PORTFOLIO_SNAPSHOT": "portfolio.snapshot",
+    "WALLET_TIMELINE": "wallet.timeline",
+    "STREAM_HEALTH": "stream.health",
+    "RUN_FAILURE": "run.failure",
+    "CHART_SAMPLE": "chart.sample"
+  },
+  "fillRejectReason": {
+    "MISSING_TOKEN_ID": "missing_token_id",
+    "BAD_SIDE": "bad_side",
+    "BAD_PRICE": "bad_price",
+    "BAD_SIZE": "bad_size",
+    "BOOK_UNAVAILABLE": "book_unavailable",
+    "BOOK_MISMATCH": "book_mismatch",
+    "BAD_BOOK_TIMESTAMP": "bad_book_timestamp",
+    "BOOK_STALE": "book_stale",
+    "BOOK_FUTURE_DATED": "book_future_dated",
+    "BAD_BOOK_LEVEL": "bad_book_level",
+    "BOOK_CROSSED": "book_crossed",
+    "MARKET_UNAVAILABLE": "market_unavailable",
+    "MARKET_FEE_INVALID": "market_fee_invalid",
+    "MARKET_METADATA_MISMATCH": "market_metadata_mismatch",
+    "MARKET_RESOLVED": "market_resolved",
+    "NO_DEPTH_WITHIN_SLIPPAGE": "no_depth_within_slippage",
+    "DUPLICATE_SOURCE_ID": "duplicate_source_id",
+    "INVALID_SOURCE_ID": "invalid_source_id",
+    "BACKTEST_DATA_EXHAUSTED": "backtest_data_exhausted",
+    "BACKTEST_COVERAGE_GAP": "backtest_coverage_gap"
+  },
+  "fillExecutionConstraint": {
+    "NONE": "none",
+    "EXACT_REQUEST": "exact_request",
+    "BELOW_REQUEST": "below_request"
+  },
+  "fillExecution": {
+    "minimumExclusiveSize": "0"
+  },
+  "fillStatusPolicy": {
+    "accepted": {
+      "execution": "none",
+      "requiresRejectDetails": false
+    },
+    "filled": {
+      "execution": "exact_request",
+      "requiresRejectDetails": false
+    },
+    "partial": {
+      "execution": "below_request",
+      "requiresRejectDetails": false
+    },
+    "rejected": {
+      "execution": "none",
+      "requiresRejectDetails": true
+    },
+    "canceled": {
+      "execution": "none",
+      "requiresRejectDetails": false
+    }
+  },
+  "healthStatus": "ok",
+  "minimumGraphRevisionNumber": 1,
+  "marketResolution": {
+    "tokenCount": 2
+  },
+  "chartValueStatus": {
+    "nullValue": [
+      "unavailable"
+    ],
+    "valueRequired": [
+      "fresh",
+      "stale"
+    ]
+  },
+  "portfolio": {
+    "emptyPositionRequiresNullPrice": true,
+    "minimumCumulativeFees": "0",
+    "minimumPositionSize": "0",
+    "tokenIdsMustBeUnique": true
+  },
+  "liveEventKind": {
+    "CHART_MARKET": "chart.market",
+    "CHART_EQUITY": "chart.equity",
+    "CHART_WALLET": "chart.wallet",
+    "STREAM_HEALTH": "stream.health.live"
+  },
+  "orderStatus": {
+    "ACCEPTED": "accepted",
+    "FILLED": "filled",
+    "PARTIAL": "partial",
+    "REJECTED": "rejected",
+    "CANCELED": "canceled"
+  },
+  "outcomePrice": {
+    "ceiling": "1",
+    "floor": "0",
+    "includeFloor": false
+  },
+  "outcomePayout": {
+    "ceiling": "1",
+    "floor": "0",
+    "includeFloor": true
+  },
+  "runStatus": {
+    "initial": "starting",
+    "stoppable": [
+      "queued",
+      "running",
+      "starting"
+    ],
+    "terminal": [
+      "failed",
+      "interrupted",
+      "stopped"
+    ],
+    "values": {
+      "QUEUED": "queued",
+      "STARTING": "starting",
+      "RUNNING": "running",
+      "STOP_REQUESTED": "stop_requested",
+      "STOPPING": "stopping",
+      "STOPPED": "stopped",
+      "FAILED": "failed",
+      "INTERRUPTED": "interrupted"
+    }
+  },
+  "side": {
+    "BUY": "BUY",
+    "SELL": "SELL"
+  },
+  "streamRelation": {
+    "FILTERED": "filtered",
+    "INDEPENDENT": "independent"
+  },
+  "streamRule": {
+    "minimumSelectorGroups": {
+      "filtered": 2,
+      "independent": 1
+    }
+  },
+  "valuationStatus": {
+    "FRESH": "fresh",
+    "STALE": "stale",
+    "UNAVAILABLE": "unavailable"
+  },
+  "walletTradeKind": {
+    "TRADE": "trade",
+    "BACKFILL": "backfill",
+    "RECONCILIATION": "reconciliation"
+  },
+  "walletSourceKeySeparator": "\u0000",
+  "walletAddressPattern": "^(?:0x[a-fA-F0-9]{40})$"
+}

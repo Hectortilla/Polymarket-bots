@@ -5,7 +5,11 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from polybot_control_plane.api.dependencies import application_lifespan
+from polybot_control_plane.api.routes.bots import router as bots_router
 from polybot_control_plane.api.routes.catalog import router as catalog_router
+from polybot_control_plane.api.routes.graph_templates import (
+    router as graph_templates_router,
+)
 from polybot_control_plane.api.routes.events import router as events_router
 from polybot_control_plane.api.routes.health import router as health_router
 from polybot_control_plane.api.routes.paths import API_PREFIX
@@ -35,6 +39,8 @@ def create_app(
         application.state.launcher = launcher
     for router in (
         catalog_router,
+        graph_templates_router,
+        bots_router,
         runs_router,
         events_router,
         health_router,

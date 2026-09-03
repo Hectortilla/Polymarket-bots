@@ -27,3 +27,16 @@ def fixed_dollar_copy_order(
         source_id=trade.source_key,
         reason=FIXED_DOLLAR_COPY_REASON,
     )
+
+
+def fixed_dollar_copy_size(
+    trade: WalletTradeEvent,
+    *,
+    maximum_size: Decimal | None = None,
+) -> Decimal:
+    requested_size = COPY_TRADE_NOTIONAL_USDC / trade.price
+    return (
+        requested_size
+        if maximum_size is None
+        else min(requested_size, maximum_size)
+    )

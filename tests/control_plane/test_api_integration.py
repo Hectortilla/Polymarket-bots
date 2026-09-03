@@ -13,16 +13,20 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from polybot_control_plane.api.sse import (
+    RunEventStreamer,
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
-    stream_run_event_frames,
 )
 from polybot_control_plane.api.lifecycle import ApiRunLifecycle
-from polybot_control_plane.api.routes.runs import RUN_LAUNCH_FAILURE_REASON
+from polybot_control_plane.api.routes.bots.run_launch import RUN_LAUNCH_FAILURE_REASON
+from polybot_control_plane.bots.store import BotStore
 from polybot_control_plane.catalog.definitions import (
     CATALOG,
+    NODE_BASED_DEFINITION_ID,
     WINNER_DEFINITION_ID,
 )
+from polybot_control_plane.catalog.graphs.contracts import NodeGraph
+from polybot_control_plane.catalog.graphs.starter import STARTER_NODE_GRAPH
 from polybot_control_plane.database import async_database_url
 from polybot_control_plane.events.channels import (
     encode_durable_wake_frame,
@@ -61,12 +65,16 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
         engine = create_async_engine(database_url)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         config = CATALOG[WINNER_DEFINITION_ID].parse_config({"name": "stop"})
+        graph_config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+            {"name": "graph-lifecycle", "market_slugs": ["market"]}
+        )
         launch_failure_detail = f"RuntimeError: {RUN_LAUNCH_FAILURE_REASON}"
         try:
             async with session_factory() as session:
-                queued = await RunStore(session).create(
-                    definition_id=WINNER_DEFINITION_ID,
-                    config=config,
+                queued = await _create_run(session,
+                    definition_id=NODE_BASED_DEFINITION_ID,
+                    config=graph_config,
+                    graph=STARTER_NODE_GRAPH,
                 )
 
             async def stop_queued_run():
@@ -85,20 +93,26 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
 
             assert first is not None and first[0].status is RunStatus.STOPPED
             assert second is not None and second[0].status is RunStatus.STOPPED
+            assert first[0].graph_revision == queued.graph_revision
+            assert first[0].graph == queued.graph
+            assert second[0].graph_revision == queued.graph_revision
+            assert second[0].graph == queued.graph
             assert sum(result[1] is not None for result in (first, second)) == 1
             assert len(events) == 1
             assert events[0].payload.status is RunStatus.STOPPED
 
             async with session_factory() as session:
-                failed = await RunStore(session).create(
-                    definition_id=WINNER_DEFINITION_ID,
-                    config=config,
+                failed = await _create_run(session,
+                    definition_id=NODE_BASED_DEFINITION_ID,
+                    config=graph_config,
+                    graph=STARTER_NODE_GRAPH,
                 )
-                running = await RunStore(session).create(
-                    definition_id=WINNER_DEFINITION_ID,
-                    config=config,
+                running = await _create_run(session,
+                    definition_id=NODE_BASED_DEFINITION_ID,
+                    config=graph_config,
+                    graph=STARTER_NODE_GRAPH,
                 )
-                rollback = await RunStore(session).create(
+                rollback = await _create_run(session,
                     definition_id=WINNER_DEFINITION_ID,
                     config=config,
                 )
@@ -126,10 +140,14 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
 
             assert stopped_running is not None
             assert stopped_running[0].status is RunStatus.STOP_REQUESTED
+            assert stopped_running[0].graph_revision == running.graph_revision
+            assert stopped_running[0].graph == running.graph
             assert stopped_running[1] is None
             assert running_events == ()
             assert failed_run.status is RunStatus.FAILED
             assert failed_run.failure_detail == launch_failure_detail
+            assert failed_run.graph_revision == failed.graph_revision
+            assert failed_run.graph == failed.graph
             assert len(failed_events) == 1
             assert failed_events[0].payload.status is RunStatus.FAILED
 
@@ -210,7 +228,7 @@ def test_sse_handoff_rechecks_postgres_after_real_redis_subscribe() -> None:
         config = CATALOG[WINNER_DEFINITION_ID].parse_config({"name": "sse"})
         try:
             async with session_factory() as session:
-                run = await RunStore(session).create(
+                run = await _create_run(session,
                     definition_id=WINNER_DEFINITION_ID,
                     config=config,
                 )
@@ -229,15 +247,15 @@ def test_sse_handoff_rechecks_postgres_after_real_redis_subscribe() -> None:
                 )
 
             wrapped_redis = _InjectingRedis(redis, inject_terminal_event)
+            streamer = RunEventStreamer(
+                run.id,
+                _ConnectedRequest(),
+                session_factory,
+                wrapped_redis,
+            )
             frames = [
                 frame
-                async for frame in stream_run_event_frames(
-                    run.id,
-                    after_event_id=FIRST_EVENT_CURSOR,
-                    request=_ConnectedRequest(),
-                    session_factory=session_factory,
-                    redis=wrapped_redis,
-                )
+                async for frame in streamer.stream(FIRST_EVENT_CURSOR)
             ]
             assert first.id is not None
             return tuple(_frame_id(frame) for frame in frames)
@@ -257,6 +275,21 @@ def _lifecycle_event(run_id, status: RunStatus) -> RunLifecycleEvent:
         occurred_at=datetime.now(UTC),
         payload=RunStatusPayload(status=status),
     )
+
+
+async def _create_run(
+    session,
+    *,
+    definition_id,
+    config,
+    graph: NodeGraph | None = None,
+):
+    bot = await BotStore(session).create(
+        definition_id=definition_id,
+        config=config,
+        graph=graph,
+    )
+    return await RunStore(session).create_from_bot(bot)
 
 
 def _frame_id(frame: str) -> int:

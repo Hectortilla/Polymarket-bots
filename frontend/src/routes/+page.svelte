@@ -3,16 +3,27 @@
 
   import {
     listBotDefinitionsApiV1BotDefinitionsGet,
+    listBotsApiV1BotsGet,
     listRunsApiV1RunsGet,
+    type BotRead,
     type BotDefinitionDescriptor,
     type RunRead
   } from '$lib/api/generated';
   import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
   import { isTerminalRunStatus } from '$lib/runs/status';
   import { formatTime } from '$lib/time';
+  import {
+    NAVIGATION_LABEL,
+    NAVIGATION_PATH,
+    botPath,
+    launchPath,
+    runPath
+  } from '$lib/navigation';
+  import { HOME_COLUMN_LABEL, HOME_COPY, graphRevisionLabel } from './homeCopy';
 
   let definitions = $state<BotDefinitionDescriptor[]>([]);
   let runs = $state<RunRead[]>([]);
+  let bots = $state<BotRead[]>([]);
   let loading = $state(true);
   let error = $state('');
 
@@ -34,14 +45,16 @@
     loading = true;
     error = '';
     try {
-      const [catalogResponse, runsResponse] = await Promise.all([
+      const [catalogResponse, botsResponse, runsResponse] = await Promise.all([
         listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true }),
+        listBotsApiV1BotsGet({ throwOnError: true }),
         listRunsApiV1RunsGet({ throwOnError: true })
       ]);
       definitions = catalogResponse.data;
+      bots = botsResponse.data;
       runs = runsResponse.data;
     } catch {
-      error = 'The control plane could not be loaded.';
+      error = HOME_COPY.LOAD_ERROR;
     } finally {
       loading = false;
     }
@@ -49,16 +62,19 @@
 </script>
 
 <svelte:head>
-  <title>Paper operations | Polybot</title>
+  <title>{HOME_COPY.OPERATIONS} | Polybot</title>
 </svelte:head>
 
 <section class="page-heading home-heading">
   <div>
-    <p class="page-kicker">Paper operations</p>
+    <p class="page-kicker">{HOME_COPY.OPERATIONS}</p>
     <h1>Run bots with a clear view of risk.</h1>
     <p>Configure trusted strategies, start paper runs, and inspect durable progress from one place.</p>
   </div>
-  <button class="secondary" onclick={loadHome} disabled={loading} aria-busy={loading}>Refresh</button>
+  <div class="section-actions">
+    <a class="catalog-link" href={NAVIGATION_PATH.GRAPH_TEMPLATES}>{NAVIGATION_LABEL.GRAPH_TEMPLATES}</a>
+    <button class="secondary" onclick={loadHome} disabled={loading} aria-busy={loading}>Refresh</button>
+  </div>
 </section>
 
 {#if error}
@@ -86,12 +102,38 @@
           <p>{definition.description}</p>
           <a
             class="catalog-link"
-            href={`/launch/${definition.definition_id}`}
+            href={launchPath(definition.definition_id)}
             aria-label={`Configure ${definition.display_name}`}
-          >Configure run</a>
+          >Create saved bot</a>
         </article>
       {/each}
     </div>
+  </section>
+
+  <section>
+    <div class="section-heading">
+      <h2>{HOME_COPY.SAVED_BOTS}</h2>
+      <span class="section-count">{bots.length} bots</span>
+    </div>
+    {#if bots.length === 0}
+      <p class="empty-state">{HOME_COPY.NO_SAVED_BOTS}</p>
+    {:else}
+      <div class="table-wrap">
+        <table aria-label={HOME_COPY.SAVED_BOTS}>
+          <thead><tr><th>{HOME_COLUMN_LABEL.BOT}</th><th>{HOME_COLUMN_LABEL.DEFINITION}</th><th>{HOME_COLUMN_LABEL.GRAPH}</th><th>{HOME_COLUMN_LABEL.UPDATED}</th></tr></thead>
+          <tbody>
+            {#each bots as bot (bot.id)}
+              <tr>
+                <td data-label={HOME_COLUMN_LABEL.BOT}><a href={botPath(bot.id)}>{bot.config.name}</a></td>
+                <td data-label={HOME_COLUMN_LABEL.DEFINITION}>{definitionNames.get(bot.definition_id) ?? bot.definition_id}</td>
+                <td data-label={HOME_COLUMN_LABEL.GRAPH}>{bot.latest_graph_revision ? graphRevisionLabel(bot.latest_graph_revision.revision) : 'not used'}</td>
+                <td data-label={HOME_COLUMN_LABEL.UPDATED}>{formatTime(bot.updated_at)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   </section>
 
   <section>
@@ -104,15 +146,15 @@
     {:else}
       <div class="table-wrap">
         <table aria-label="Active and queued runs">
-          <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Equity</th><th>Created</th></tr></thead>
+          <thead><tr><th>{HOME_COLUMN_LABEL.RUN}</th><th>{HOME_COLUMN_LABEL.DEFINITION}</th><th>{HOME_COLUMN_LABEL.STATUS}</th><th>{HOME_COLUMN_LABEL.EQUITY}</th><th>{HOME_COLUMN_LABEL.CREATED}</th></tr></thead>
           <tbody>
             {#each activeRuns as run (run.id)}
               <tr>
-                <td data-label="Run"><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
-                <td data-label="Definition">{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
-                <td data-label="Status"><RunStatusBadge status={run.status} /></td>
-                <td data-label="Equity">{run.latest_equity ?? '—'}{run.equity_status ? ` / ${run.equity_status}` : ''}</td>
-                <td data-label="Created">{formatTime(run.created_at)}</td>
+                <td data-label={HOME_COLUMN_LABEL.RUN}><a href={runPath(run.id)}>{run.config.name}</a></td>
+                <td data-label={HOME_COLUMN_LABEL.DEFINITION}>{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
+                <td data-label={HOME_COLUMN_LABEL.STATUS}><RunStatusBadge status={run.status} /></td>
+                <td data-label={HOME_COLUMN_LABEL.EQUITY}>{run.latest_equity ?? '—'}{run.equity_status ? ` / ${run.equity_status}` : ''}</td>
+                <td data-label={HOME_COLUMN_LABEL.CREATED}>{formatTime(run.created_at)}</td>
               </tr>
             {/each}
           </tbody>
@@ -123,23 +165,23 @@
 
   <section>
     <div class="section-heading">
-      <h2>Recent terminal runs</h2>
+      <h2>{HOME_COPY.RECENT_TERMINAL_RUNS}</h2>
       <span class="section-count">{terminalRuns.length} shown</span>
     </div>
     {#if terminalRuns.length === 0}
       <p class="empty-state">No terminal runs yet.</p>
     {:else}
       <div class="table-wrap">
-        <table aria-label="Recent terminal runs">
-          <thead><tr><th>Run</th><th>Definition</th><th>Status</th><th>Equity</th><th>Ended</th></tr></thead>
+        <table aria-label={HOME_COPY.RECENT_TERMINAL_RUNS}>
+          <thead><tr><th>{HOME_COLUMN_LABEL.RUN}</th><th>{HOME_COLUMN_LABEL.DEFINITION}</th><th>{HOME_COLUMN_LABEL.STATUS}</th><th>{HOME_COLUMN_LABEL.EQUITY}</th><th>{HOME_COLUMN_LABEL.ENDED}</th></tr></thead>
           <tbody>
             {#each terminalRuns as run (run.id)}
               <tr>
-                <td data-label="Run"><a href={`/runs/${run.id}`}>{run.config.name}</a></td>
-                <td data-label="Definition">{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
-                <td data-label="Status"><RunStatusBadge status={run.status} /></td>
-                <td data-label="Equity">{run.latest_equity ?? '—'}{run.equity_status ? ` / ${run.equity_status}` : ''}</td>
-                <td data-label="Ended">{formatTime(run.ended_at)}</td>
+                <td data-label={HOME_COLUMN_LABEL.RUN}><a href={runPath(run.id)}>{run.config.name}</a></td>
+                <td data-label={HOME_COLUMN_LABEL.DEFINITION}>{definitionNames.get(run.definition_id) ?? run.definition_id}</td>
+                <td data-label={HOME_COLUMN_LABEL.STATUS}><RunStatusBadge status={run.status} /></td>
+                <td data-label={HOME_COLUMN_LABEL.EQUITY}>{run.latest_equity ?? '—'}{run.equity_status ? ` / ${run.equity_status}` : ''}</td>
+                <td data-label={HOME_COLUMN_LABEL.ENDED}>{formatTime(run.ended_at)}</td>
               </tr>
             {/each}
           </tbody>

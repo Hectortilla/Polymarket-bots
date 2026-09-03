@@ -6,6 +6,10 @@ from enum import StrEnum
 
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
+from polybot.framework.timestamps import (
+    NONNEGATIVE_TIMESTAMP_FLOOR,
+    require_nonnegative_timestamp,
+)
 
 
 class Side(StrEnum):
@@ -28,6 +32,33 @@ class OrderStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class FillExecutionConstraint(StrEnum):
+    NONE = "none"
+    EXACT_REQUEST = "exact_request"
+    BELOW_REQUEST = "below_request"
+
+
+FILL_EXECUTION_SIZE_FLOOR = Decimal("0")
+
+
+@dataclass(frozen=True, slots=True)
+class FillStatusPolicy:
+    execution: FillExecutionConstraint
+    requires_reject_details: bool = False
+
+
+FILL_STATUS_POLICIES = {
+    OrderStatus.ACCEPTED: FillStatusPolicy(FillExecutionConstraint.NONE),
+    OrderStatus.FILLED: FillStatusPolicy(FillExecutionConstraint.EXACT_REQUEST),
+    OrderStatus.PARTIAL: FillStatusPolicy(FillExecutionConstraint.BELOW_REQUEST),
+    OrderStatus.REJECTED: FillStatusPolicy(
+        FillExecutionConstraint.NONE,
+        requires_reject_details=True,
+    ),
+    OrderStatus.CANCELED: FillStatusPolicy(FillExecutionConstraint.NONE),
+}
+
+
 class FillRejectReason(StrEnum):
     MISSING_TOKEN_ID = "missing_token_id"
     BAD_SIDE = "bad_side"
@@ -35,6 +66,7 @@ class FillRejectReason(StrEnum):
     BAD_SIZE = "bad_size"
     BOOK_UNAVAILABLE = "book_unavailable"
     BOOK_MISMATCH = "book_mismatch"
+    BAD_BOOK_TIMESTAMP = BookValidationIssue.BAD_TIMESTAMP.value
     BOOK_STALE = BookValidationIssue.STALE.value
     BOOK_FUTURE_DATED = BookValidationIssue.FUTURE_DATED.value
     BAD_BOOK_LEVEL = BookValidationIssue.BAD_LEVEL.value
@@ -79,9 +111,9 @@ class FillEvent:
     def __post_init__(self) -> None:
         if not isinstance(self.status, OrderStatus):
             raise ValueError("fill status must be an OrderStatus")
-        if self.received_at_ms < 0:
-            raise ValueError("fill timestamp must not be negative")
-        if self.status is OrderStatus.REJECTED:
+        require_nonnegative_timestamp(self.received_at_ms, "fill timestamp")
+        policy = FILL_STATUS_POLICIES[self.status]
+        if policy.requires_reject_details:
             self._validate_order_id()
             self._validate_nonnegative_execution_amounts()
             if self.reject_reason is None:
@@ -101,22 +133,31 @@ class FillEvent:
         self._validate_amounts()
         if self.reject_reason is not None or self.reject_message is not None:
             raise ValueError("Only rejected fill events may include reject details.")
-        if self.status in {OrderStatus.ACCEPTED, OrderStatus.CANCELED}:
+        if policy.execution is FillExecutionConstraint.NONE:
             if self.filled_size != 0 or self.average_price is not None:
                 raise ValueError(
                     "accepted and canceled fills cannot contain execution values"
                 )
             return
-        if self.filled_size <= 0 or self.average_price is None:
+        if (
+            self.filled_size <= FILL_EXECUTION_SIZE_FLOOR
+            or self.average_price is None
+        ):
             raise ValueError("filled and partial fills require execution values")
-        if self.status is OrderStatus.FILLED and self.filled_size != self.requested_size:
+        if (
+            policy.execution is FillExecutionConstraint.EXACT_REQUEST
+            and self.filled_size != self.requested_size
+        ):
             raise ValueError("filled size must equal requested size")
-        if self.status is OrderStatus.PARTIAL and self.filled_size >= self.requested_size:
+        if (
+            policy.execution is FillExecutionConstraint.BELOW_REQUEST
+            and self.filled_size >= self.requested_size
+        ):
             raise ValueError("partial fill size must be below requested size")
 
     @property
     def has_execution(self) -> bool:
-        return self.status in {OrderStatus.FILLED, OrderStatus.PARTIAL}
+        return FILL_STATUS_POLICIES[self.status].execution is not FillExecutionConstraint.NONE
 
     @property
     def execution_price(self) -> Decimal:
@@ -148,7 +189,7 @@ class FillEvent:
         ):
             raise ValueError("fill requested size must be a finite Decimal")
         self._validate_nonnegative_execution_amounts()
-        if self.requested_size <= 0:
+        if self.requested_size <= FILL_EXECUTION_SIZE_FLOOR:
             raise ValueError("fill requested size must be positive")
         if self.filled_size > self.requested_size:
             raise ValueError("fill size cannot exceed requested size")

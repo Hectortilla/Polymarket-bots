@@ -33,6 +33,7 @@ from polybot.cli.dashboard.render import (
 from polybot.cli.dashboard.controller import TerminalDashboard
 from polybot.cli.dashboard.status import filled_progress_width, optional_money
 from polybot.dashboard.contracts import (
+    DashboardKey,
     MAX_CHART_HISTORY_POINTS,
     MAX_CHART_TOKENS,
 )
@@ -1212,11 +1213,11 @@ def test_dashboard_shows_visible_epoch_seconds_range_endpoints() -> None:
 def test_dashboard_keyboard_time_zoom_controls_change_only_chart_window() -> None:
     dashboard = TerminalDashboard(Console(width=80, height=24))
 
-    dashboard._handle_key("z")
+    dashboard._handle_key(DashboardKey.CLOSER)
     assert dashboard._state.time_zoom_level == -1
-    dashboard._handle_key("x")
+    dashboard._handle_key(DashboardKey.WIDER)
     assert dashboard._state.time_zoom_level == 0
-    dashboard._handle_key("r")
+    dashboard._handle_key(DashboardKey.RESET)
     assert dashboard._state.time_zoom_level == 0
 
 
@@ -1224,13 +1225,13 @@ def test_dashboard_keyboard_switches_views_and_pages_wallets() -> None:
     dashboard = TerminalDashboard(Console(width=80, height=24))
     dashboard._state.set_wallet_lanes(tuple(f"0x{index:040x}" for index in range(20)))
 
-    dashboard._handle_key("v")
+    dashboard._handle_key(DashboardKey.VIEW)
     assert dashboard._state.view is DashboardView.WALLET
-    dashboard._handle_key("j")
+    dashboard._handle_key(DashboardKey.NEXT_WALLET_PAGE)
     assert dashboard._state.wallet_page == 1
-    dashboard._handle_key("k")
+    dashboard._handle_key(DashboardKey.PREVIOUS_WALLET_PAGE)
     assert dashboard._state.wallet_page == 0
-    dashboard._handle_key("v")
+    dashboard._handle_key(DashboardKey.VIEW)
     assert dashboard._state.view is DashboardView.MARKET
 
 

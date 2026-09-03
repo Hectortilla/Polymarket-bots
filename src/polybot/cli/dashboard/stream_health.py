@@ -133,8 +133,10 @@ class DashboardStreamHealth:
             self.book_stale_samples.append(book_stale)
 
     def event_rate(self, now_monotonic_seconds: float | None = None) -> float:
-        current = monotonic() if now_monotonic_seconds is None else now_monotonic_seconds
-        self._trim_event_times(current)
+        now_monotonic_seconds = (
+            monotonic() if now_monotonic_seconds is None else now_monotonic_seconds
+        )
+        self._trim_event_times(now_monotonic_seconds)
         return len(self.event_monotonic_seconds) / EVENT_RATE_WINDOW_SECONDS
 
     def stream_rate(self, kind: StreamKind, *, received: bool) -> float:
@@ -145,8 +147,8 @@ class DashboardStreamHealth:
         ).get(kind)
         if not samples:
             return 0.0
-        current = monotonic()
-        self._trim_times(samples, current)
+        now_monotonic_seconds = monotonic()
+        self._trim_times(samples, now_monotonic_seconds)
         return len(samples) / EVENT_RATE_WINDOW_SECONDS
 
     def average_wallet_lag_ms(self) -> int | None:
@@ -196,11 +198,11 @@ class DashboardStreamHealth:
 
     def _record_rate(
         self,
-        target: dict[StreamKind, deque[float]],
+        samples_by_kind: dict[StreamKind, deque[float]],
         kind: StreamKind,
         occurred_at_monotonic_seconds: float,
     ) -> None:
-        samples = target.setdefault(kind, deque())
+        samples = samples_by_kind.setdefault(kind, deque())
         samples.append(occurred_at_monotonic_seconds)
         self._trim_times(samples, occurred_at_monotonic_seconds)
 

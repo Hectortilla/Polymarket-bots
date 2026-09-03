@@ -5,6 +5,7 @@
     type AvailableValuationStatus
   } from './contracts';
   import type { EChartsCoreOption } from './echarts';
+  import { DASHBOARD_COPY } from './copy';
 
   export function equityChartOption(samples: ChartSamplePayload[]): EChartsCoreOption {
     const data = (status: AvailableValuationStatus) => samples.map((sample) => [
@@ -20,7 +21,7 @@
       xAxis: { type: 'time', axisLabel: { color: '#7e8781' } },
       yAxis: { type: 'value', scale: true, axisLabel: { color: '#7e8781' } },
       series: [
-        { id: 'equity:fresh', name: 'Executable equity', type: 'line', showSymbol: false, lineStyle: { color: '#72df98' }, data: data(VALUATION_STATUS.fresh) },
+        { id: 'equity:fresh', name: DASHBOARD_COPY.EQUITY, type: 'line', showSymbol: false, lineStyle: { color: '#72df98' }, data: data(VALUATION_STATUS.fresh) },
         { id: 'equity:stale', name: 'Stale estimate', type: 'line', showSymbol: false, lineStyle: { color: '#72df98', opacity: 0.3 }, data: data(VALUATION_STATUS.stale) }
       ]
     };

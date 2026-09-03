@@ -9,16 +9,16 @@ from math import isfinite, nan
 import asciichartpy
 from rich.text import Text
 
+from polybot.cli.dashboard.chart_contracts import (
+    MAX_TERMINAL_CHART_POINTS,
+    MIN_TERMINAL_CHART_POINTS,
+)
 
 VALUE_CHART_MARGIN_RATIO = 0.15
 VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
 MIN_VALUE_CHART_MARGIN = 0.01
 CHART_Y_AXIS_WIDTH = 10
 DIMMED_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
-MIN_TERMINAL_CHART_POINTS = 12
-MAX_TERMINAL_CHART_POINTS = 120
-
-
 def render_chart(
     series: list[list[float]],
     colors: tuple[str, ...],
@@ -87,7 +87,7 @@ def split_stale_samples(
 ) -> list[list[float]]:
     stale = [*stale_samples]
     stale.extend(False for _ in range(len(values) - len(stale)))
-    current = [
+    fresh_series = [
         _finite_chart_value(value) if not is_stale else nan
         for value, is_stale in zip(values, stale)
     ]
@@ -95,7 +95,7 @@ def split_stale_samples(
         _finite_chart_value(value) if is_stale else nan
         for value, is_stale in zip(values, stale)
     ]
-    return [current, dimmed]
+    return [fresh_series, dimmed]
 
 
 def chart_time_range(

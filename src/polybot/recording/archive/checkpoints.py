@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+
 from ..contracts.records import BookCheckpoint
 from .checkpoint_rows import (
     checkpoint_from_row,
@@ -182,6 +184,7 @@ def checkpoint_pair_at_or_after(
     if market is None:
         return None
     token_ids = tuple(outcome.token_id for outcome in market.outcomes)
+    token_placeholders = ", ".join("?" for _ in token_ids)
     session_clause = "" if normalized_session is None else "AND session_id = ?"
     parameters: list[object] = [
         normalized_condition,
@@ -192,17 +195,18 @@ def checkpoint_pair_at_or_after(
     ]
     if normalized_session is not None:
         parameters.append(normalized_session)
+    parameters.append(MARKET_RESOLUTION_TOKEN_COUNT)
     row = connection.execute(
         f"""
         SELECT observed_at_ms, sequence, session_id,
                subscription_generation
         FROM book_checkpoints
-        WHERE condition_id = ? AND token_id IN (?, ?)
+        WHERE condition_id = ? AND token_id IN ({token_placeholders})
           AND observed_at_ms >= ? AND observed_at_ms <= ?
           AND sequence <= ? {session_clause}
         GROUP BY observed_at_ms, sequence, session_id,
                  subscription_generation
-        HAVING COUNT(DISTINCT token_id) = 2
+        HAVING COUNT(DISTINCT token_id) = ?
         ORDER BY observed_at_ms, sequence
         LIMIT 1
         """,
@@ -249,6 +253,7 @@ def _checkpoint_pair_before(
     if market is None:
         return None
     token_ids = tuple(outcome.token_id for outcome in market.outcomes)
+    token_placeholders = ", ".join("?" for _ in token_ids)
     session_clause = "" if session_id is None else "AND session_id = ?"
     parameters: list[object] = [
         condition_id,
@@ -258,17 +263,18 @@ def _checkpoint_pair_before(
     ]
     if session_id is not None:
         parameters.append(session_id)
+    parameters.append(MARKET_RESOLUTION_TOKEN_COUNT)
     boundary = connection.execute(
         f"""
         SELECT observed_at_ms, sequence, session_id,
                subscription_generation
         FROM book_checkpoints
-        WHERE condition_id = ? AND token_id IN (?, ?)
+        WHERE condition_id = ? AND token_id IN ({token_placeholders})
           AND observed_at_ms <= ? AND sequence <= ?
           {session_clause}
         GROUP BY observed_at_ms, sequence, session_id,
                  subscription_generation
-        HAVING COUNT(DISTINCT token_id) = 2
+        HAVING COUNT(DISTINCT token_id) = ?
         ORDER BY observed_at_ms DESC, sequence DESC
         LIMIT 1
         """,
@@ -305,10 +311,11 @@ def _checkpoint_pair_from_boundary(
     *,
     replay_cutoff_sequence: int,
 ) -> tuple[BookCheckpoint, BookCheckpoint]:
+    token_placeholders = ", ".join("?" for _ in token_ids)
     rows = connection.execute(
-        """
+        f"""
         SELECT * FROM book_checkpoints
-        WHERE condition_id = ? AND token_id IN (?, ?)
+        WHERE condition_id = ? AND token_id IN ({token_placeholders})
           AND observed_at_ms = ? AND sequence = ? AND session_id = ?
           AND subscription_generation = ?
         """,

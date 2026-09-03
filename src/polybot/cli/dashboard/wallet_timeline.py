@@ -26,8 +26,7 @@ def wallet_lane_capacity(width: int, height: int) -> int:
 
 def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
     capacity = wallet_lane_capacity(width, height)
-    lane_count = len(state.wallet_lanes)
-    maximum_page = max(0, (lane_count - 1) // capacity)
+    maximum_page = state.wallets.maximum_page(capacity)
     page = min(state.wallet_page, maximum_page)
     lanes = list(state.wallet_lanes)[page * capacity : (page + 1) * capacity]
     columns = wallet_timeline_columns(state, width)
@@ -43,9 +42,13 @@ def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
         )
     if visible_range is None:
         return Group(header, Text("Waiting for a dashboard time window", style="dim"))
-    start, end = visible_range
+    start_epoch_seconds, end_epoch_seconds = visible_range
     events_by_lane = wallet_timeline_buckets(
-        state.wallet_timeline, lanes, start, end, columns
+        state.wallet_timeline,
+        lanes,
+        start_epoch_seconds,
+        end_epoch_seconds,
+        columns,
     )
     bucket_notionals = [
         sum(event.notional for event in events)

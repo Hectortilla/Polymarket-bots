@@ -107,15 +107,15 @@ class BookDepthProjector:
         candidates: dict[str, _DepthSides] = {}
         for change in payload.changes:
             self._market_for(change.token_id, condition_id)
-            current = self._depth.get(change.token_id)
-            if current is None:
+            existing_depth = self._depth.get(change.token_id)
+            if existing_depth is None:
                 raise MarketDataError(
                     MarketDataIssue.MISSING_BOOK_BASELINE,
                     f"price change arrived before a baseline for {change.token_id}",
                 )
             candidate = candidates.setdefault(
                 change.token_id,
-                (current[0].copy(), current[1].copy()),
+                (existing_depth[0].copy(), existing_depth[1].copy()),
             )
             levels = candidate[0] if change.side is Side.BUY else candidate[1]
             if change.size == 0:

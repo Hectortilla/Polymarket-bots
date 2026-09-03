@@ -67,7 +67,7 @@ class CapturePump:
         capture_read: asyncio.Task[CapturedMarketEvent] | None = asyncio.create_task(
             anext(capture)
         )
-        stopped: CaptureStopped | None = None
+        capture_stop_message: CaptureStopped | None = None
         resolution_queued = False
         capture_retired = False
         try:
@@ -90,7 +90,7 @@ class CapturePump:
                     try:
                         captured = completed_read.result()
                     except StopAsyncIteration:
-                        stopped = CaptureStopped(
+                        capture_stop_message = CaptureStopped(
                             condition_id,
                             generation,
                             CoverageGapReason.CAPTURE_ENDED,
@@ -98,7 +98,7 @@ class CapturePump:
                     except asyncio.CancelledError:
                         raise
                     except BaseException as error:
-                        stopped = CaptureStopped(
+                        capture_stop_message = CaptureStopped(
                             condition_id,
                             generation,
                             CoverageGapReason.CAPTURE_FAILURE,
@@ -111,7 +111,7 @@ class CapturePump:
                         )
                         if dropped_count > tracked.dropped_count:
                             tracked.dropped_count = dropped_count
-                            stopped = CaptureStopped(
+                            capture_stop_message = CaptureStopped(
                                 condition_id,
                                 generation,
                                 CoverageGapReason.SDK_HANDLE_DROP,
@@ -124,7 +124,7 @@ class CapturePump:
                                     captured,
                                 )
                             except BaseException as error:
-                                stopped = CaptureStopped(
+                                capture_stop_message = CaptureStopped(
                                     condition_id,
                                     generation,
                                     CoverageGapReason.RECORDING_WRITE_FAILURE,
@@ -149,7 +149,7 @@ class CapturePump:
                     except asyncio.CancelledError:
                         raise
                     except BaseException as error:
-                        stopped = CaptureStopped(
+                        capture_stop_message = CaptureStopped(
                             condition_id,
                             generation,
                             CoverageGapReason.RECORDING_WRITE_FAILURE,
@@ -158,28 +158,32 @@ class CapturePump:
                         )
                         break
 
-                if stopped is not None and stopped.fatal:
+                if capture_stop_message is not None and capture_stop_message.fatal:
                     await _cancel_task(capture_read)
                     capture_read = None
                     await _settle_pending_events(pending)
                     pending.clear()
-                    await self._control.put(stopped)
+                    await self._control.put(capture_stop_message)
                     return
 
-                if stopped is None and not resolution_queued:
+                if capture_stop_message is None and not resolution_queued:
                     dropped_count = require_monotonic_dropped_count(
                         tracked.dropped_count,
                         capture.dropped_count,
                     )
                     if dropped_count > tracked.dropped_count:
                         tracked.dropped_count = dropped_count
-                        stopped = CaptureStopped(
+                        capture_stop_message = CaptureStopped(
                             condition_id,
                             generation,
                             CoverageGapReason.SDK_HANDLE_DROP,
                         )
 
-                if stopped is not None or resolution_queued or capture_retired:
+                if (
+                    capture_stop_message is not None
+                    or resolution_queued
+                    or capture_retired
+                ):
                     await _cancel_task(capture_read)
                     capture_read = None
                 elif (
@@ -197,8 +201,8 @@ class CapturePump:
                     return
                 if capture_retired:
                     return
-                if stopped is not None:
-                    await self._control.put(stopped)
+                if capture_stop_message is not None:
+                    await self._control.put(capture_stop_message)
                     return
         except asyncio.CancelledError:
             await _cancel_task(capture_read)

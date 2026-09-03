@@ -7,7 +7,7 @@ from polybot.framework.events import Side, require_side
 from polybot.framework.events.books import BookLevel
 from polybot.framework.events.prices import OUTCOME_PRICE_CEILING
 
-EMPTY_BOOK_SIZE = Decimal("0")
+NO_REMAINING_ORDER_SIZE = Decimal("0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +41,7 @@ def consume_levels(
     consumed: list[ConsumedLevel] = []
 
     for level in levels:
-        if remaining <= EMPTY_BOOK_SIZE:
+        if remaining <= NO_REMAINING_ORDER_SIZE:
             break
         if not _within_slippage(side, level.price, slippage_limit_price):
             break

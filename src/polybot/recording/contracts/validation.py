@@ -7,6 +7,8 @@ from decimal import Decimal, InvalidOperation
 from polybot.framework.events.prices import (
     OUTCOME_PRICE_CEILING,
     OUTCOME_PRICE_FLOOR,
+    is_outcome_payout,
+    is_outcome_price,
 )
 
 
@@ -41,14 +43,14 @@ def normalize_text_tuple(value: object, name: str) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def validate_book_price(value: Decimal) -> None:
-    validate_decimal(
-        value,
-        "book price",
-        minimum=OUTCOME_PRICE_FLOOR,
-        maximum=OUTCOME_PRICE_CEILING,
-        minimum_inclusive=False,
-    )
+def validate_book_price(value: Decimal, name: str = "book price") -> None:
+    if not is_outcome_price(value):
+        raise ValueError(f"{name} must be a finite Decimal greater than 0 and at most 1")
+
+
+def validate_outcome_payout(value: Decimal, name: str) -> None:
+    if not is_outcome_payout(value):
+        raise ValueError(f"{name} must be a finite Decimal from 0 through 1")
 
 
 def validate_tick_size(value: Decimal, name: str) -> None:

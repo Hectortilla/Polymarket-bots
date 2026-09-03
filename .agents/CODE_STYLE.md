@@ -121,6 +121,9 @@ easy to read, easy to change, and boring to debug.
   submodule and re-exporting it. Keep supporting concepts in focused submodules
   when those submodule names add useful meaning.
 - Prefer small, explicit functions over clever inline logic.
+- Remove pass-through wrappers that only rename or forward another callable
+  without adding a meaningful contract, domain boundary, compatibility layer,
+  or behavior.
 - Avoid circular dependencies by keeping constants and pure helpers dependency
   light.
 

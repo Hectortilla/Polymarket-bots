@@ -7,15 +7,16 @@ from collections.abc import Callable
 from polymarket import PublicClient
 from polymarket.errors import PolymarketError
 
-from .constants import (
+from .activity_contracts import (
     ACTIVITY_SORT_BY,
-    DESCENDING_SORT,
     MAX_ACTIVITY_ITEMS,
     MAX_ACTIVITY_OFFSET,
-    SDK_PAGE_SIZE,
 )
+from .query_contracts import DESCENDING_SORT, SDK_PAGE_SIZE
 from .normalization import enrich_activity_with_market_slug
-from .sdk_payloads import activity_payload, require_wallet_scope
+from .activity_payloads import activity_payload
+from .scope_validation import require_wallet_scope
+from scripts.wallet_payload_contracts import ActivityRow
 from scripts.wallet_payloads import normalize_activity_rows
 
 
@@ -25,9 +26,9 @@ def fetch_all_activity(
     *,
     client_factory: Callable[[], PublicClient] = PublicClient,
     enrich: Callable[
-        [list[dict[str, object]]], list[dict[str, object]]
+        [list[ActivityRow]], list[ActivityRow]
     ] = enrich_activity_with_market_slug,
-) -> tuple[list[dict[str, object]], bool]:
+) -> tuple[list[ActivityRow], bool]:
     item_limit = MAX_ACTIVITY_ITEMS if max_items is None else max_items
     with client_factory() as client:
         paginator = client.list_activity(
@@ -58,7 +59,7 @@ def fetch_all_activity(
     payloads = [activity_payload(model) for model in activity_models]
     require_wallet_scope(payloads, wallet)
     rows = normalize_activity_rows(payloads)
-    return enrich([dict(row) for row in rows]), truncated
+    return enrich(rows), truncated
 
 
 def _is_activity_offset_limit_error(error: PolymarketError) -> bool:

@@ -28,6 +28,11 @@
   } from '$lib/runs/status';
   import { eventSummary } from '$lib/runs/eventSummary';
   import { formatTime } from '$lib/time';
+  import {
+    executedRunGraphRevisionLabel,
+    runGraphRevisionLabel
+  } from './copy';
+  import { NAVIGATION_PATH, botPath } from '$lib/navigation';
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
@@ -139,7 +144,7 @@
   <title>{run ? `${run.config.name} | Polybot` : 'Run detail | Polybot'}</title>
 </svelte:head>
 
-<a class="back-link" href="/">Back to runs</a>
+<a class="back-link" href={NAVIGATION_PATH.HOME}>Back to runs</a>
 
 {#if loading}
   <div class="loading-state" aria-live="polite">
@@ -153,7 +158,7 @@
 {:else}
   <section class="page-heading run-heading">
     <div>
-      <p class="route-meta">{run.definition_id}</p>
+      <p class="route-meta"><a href={botPath(run.bot_id)}>{run.definition_id}</a>{run.graph_revision ? ` / ${runGraphRevisionLabel(run.graph_revision)}` : ''}</p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
         <RunStatusBadge status={run.status} />
@@ -199,6 +204,17 @@
       </dl>
     </article>
   </section>
+
+  {#if run.graph}
+    <section class="detail-section configuration-panel historical-graph">
+      <div class="section-heading">
+        <h2>{executedRunGraphRevisionLabel(run.graph_revision)}</h2>
+        <span class="section-count">immutable run snapshot</span>
+      </div>
+      <p>This is the exact saved-bot graph used by this run. Later bot revisions do not change it.</p>
+      <pre>{JSON.stringify(run.graph, null, 2)}</pre>
+    </section>
+  {/if}
 
   <DashboardCharts
     samples={dashboard.samples}

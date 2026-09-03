@@ -12,13 +12,14 @@
     INITIAL_TIME_ZOOM_LEVEL,
     DASHBOARD_KEY
   } from './contracts';
+  import { DASHBOARD_COPY } from './copy';
   import EquityChart from './EquityChart.svelte';
   import MarketChart from './MarketChart.svelte';
   import WalletChart from './WalletChart.svelte';
+  import { chartWindowPoints } from './chartWindow';
 
   const BASE_WINDOW_POINTS = 180;
   const MIN_WINDOW_POINTS = 12;
-  const WALLET_LANES_PER_PAGE = 6;
 
   let {
     samples,
@@ -33,47 +34,28 @@
   } = $props();
   let view = $state<'market' | 'wallet'>('market');
   let zoom = $state(INITIAL_TIME_ZOOM_LEVEL);
-  let walletPage = $state(0);
   let panel: HTMLElement;
-  let visible = $state(false);
-  let activated = $state(false);
+  let panelInObservationRange = $state(false);
+  let chartsActivated = $state(false);
   let renderedSamples = $state<ChartSamplePayload[]>([]);
   let renderedWalletTimelinePoints = $state<WalletChartPointPayload[]>([]);
 
   const windowPoints = $derived(
-    Math.min(
-      MAX_CHART_HISTORY_POINTS,
-      Math.max(MIN_WINDOW_POINTS, BASE_WINDOW_POINTS * 2 ** zoom)
+    chartWindowPoints(
+      BASE_WINDOW_POINTS,
+      zoom,
+      MIN_WINDOW_POINTS,
+      MAX_CHART_HISTORY_POINTS
     )
   );
   const chartSamples = $derived(renderedSamples.slice(-windowPoints));
-  const range = $derived.by(() => {
-    const start = chartSamples[0]?.sampled_at_ms ?? renderedWalletTimelinePoints[0]?.trade_timestamp_ms ?? 0;
-    const end = chartSamples.at(-1)?.sampled_at_ms ?? renderedWalletTimelinePoints.at(-1)?.trade_timestamp_ms ?? start + 1;
-    return [start, Math.max(start + 1, end)] as const;
+  const chartTimeRangeMs = $derived.by(() => {
+    const chartStartMs = chartSamples[0]?.sampled_at_ms ?? renderedWalletTimelinePoints[0]?.trade_timestamp_ms ?? 0;
+    const chartEndMs = chartSamples.at(-1)?.sampled_at_ms ?? renderedWalletTimelinePoints.at(-1)?.trade_timestamp_ms ?? chartStartMs + 1;
+    return [chartStartMs, Math.max(chartStartMs + 1, chartEndMs)] as const;
   });
-  const lanes = $derived([
-    ...new Set([
-      ...configuredWallets,
-      ...renderedWalletTimelinePoints.map(({ wallet }) => wallet)
-    ])
-  ]);
-  const maximumWalletPage = $derived(
-    Math.max(0, Math.ceil(lanes.length / WALLET_LANES_PER_PAGE) - 1)
-  );
-  const visibleLanes = $derived(
-    lanes.slice(
-      walletPage * WALLET_LANES_PER_PAGE,
-      (walletPage + 1) * WALLET_LANES_PER_PAGE
-    )
-  );
-
   $effect(() => {
-    walletPage = Math.min(walletPage, maximumWalletPage);
-  });
-
-  $effect(() => {
-    if (!visible) return;
+    if (!panelInObservationRange) return;
     renderedSamples = samples;
     renderedWalletTimelinePoints = walletTimelinePoints;
   });
@@ -85,8 +67,8 @@
     };
     window.addEventListener('keydown', keydown);
     const visibility = new IntersectionObserver(([entry]) => {
-      visible = entry?.isIntersecting ?? false;
-      activated ||= visible;
+      panelInObservationRange = entry?.isIntersecting ?? false;
+      chartsActivated ||= panelInObservationRange;
     }, { rootMargin: '200px 0px' });
     visibility.observe(panel);
     return () => {
@@ -101,59 +83,48 @@
     else if (key === DASHBOARD_KEY.reset) zoom = INITIAL_TIME_ZOOM_LEVEL;
     else if (key === DASHBOARD_KEY.view) {
       view = view === 'market' ? 'wallet' : 'market';
-      walletPage = 0;
-    } else if (key === DASHBOARD_KEY.nextWalletPage && view === 'wallet') {
-      walletPage = Math.min(maximumWalletPage, walletPage + 1);
-    } else if (key === DASHBOARD_KEY.previousWalletPage && view === 'wallet') {
-      walletPage = Math.max(0, walletPage - 1);
     }
   }
 </script>
 
-<section bind:this={panel} class="dashboard-panel" aria-label="Run dashboard">
+<section bind:this={panel} class="dashboard-panel" aria-label={DASHBOARD_COPY.ARIA_LABEL}>
   <div class="dashboard-toolbar">
     <div>
-      <p class="page-kicker">{terminal ? 'Run history' : 'Live dashboard'}</p>
-      <h2>{view === 'market' ? 'Market prices' : 'Followed-wallet activity'}</h2>
+      <p class="page-kicker">{terminal ? DASHBOARD_COPY.RUN_HISTORY : DASHBOARD_COPY.LIVE}</p>
+      <h2>{view === 'market' ? DASHBOARD_COPY.MARKET_PRICES : DASHBOARD_COPY.WALLET_ACTIVITY}</h2>
     </div>
-    <div class="dashboard-controls" aria-label="Dashboard controls">
-      <button class:active={view === 'wallet'} onclick={() => handleControl(DASHBOARD_KEY.view)} title={`Keyboard: ${DASHBOARD_KEY.view}`}>{DASHBOARD_KEY.view} · view</button>
-      <button onclick={() => handleControl(DASHBOARD_KEY.closer)} disabled={zoom === MIN_TIME_ZOOM_LEVEL} title={`Keyboard: ${DASHBOARD_KEY.closer}`}>{DASHBOARD_KEY.closer} · closer</button>
-      <button onclick={() => handleControl(DASHBOARD_KEY.wider)} disabled={zoom === MAX_TIME_ZOOM_LEVEL} title={`Keyboard: ${DASHBOARD_KEY.wider}`}>{DASHBOARD_KEY.wider} · wider</button>
-      <button onclick={() => handleControl(DASHBOARD_KEY.reset)} disabled={zoom === INITIAL_TIME_ZOOM_LEVEL} title={`Keyboard: ${DASHBOARD_KEY.reset}`}>{DASHBOARD_KEY.reset} · reset</button>
-      {#if view === 'wallet'}
-        <button onclick={() => handleControl(DASHBOARD_KEY.previousWalletPage)} disabled={walletPage === 0} title={`Keyboard: ${DASHBOARD_KEY.previousWalletPage}`}>{DASHBOARD_KEY.previousWalletPage} · previous</button>
-        <button onclick={() => handleControl(DASHBOARD_KEY.nextWalletPage)} disabled={walletPage === maximumWalletPage} title={`Keyboard: ${DASHBOARD_KEY.nextWalletPage}`}>{DASHBOARD_KEY.nextWalletPage} · next</button>
-      {/if}
+    <div class="dashboard-controls" aria-label={DASHBOARD_COPY.CONTROLS_ARIA_LABEL}>
+      <button class:active={view === 'wallet'} onclick={() => handleControl(DASHBOARD_KEY.view)} title={`Keyboard: ${DASHBOARD_KEY.view}`}>{DASHBOARD_KEY.view} · {DASHBOARD_COPY.CONTROL_VIEW}</button>
+      <button onclick={() => handleControl(DASHBOARD_KEY.closer)} disabled={zoom === MIN_TIME_ZOOM_LEVEL} title={`Keyboard: ${DASHBOARD_KEY.closer}`}>{DASHBOARD_KEY.closer} · {DASHBOARD_COPY.CONTROL_CLOSER}</button>
+      <button onclick={() => handleControl(DASHBOARD_KEY.wider)} disabled={zoom === MAX_TIME_ZOOM_LEVEL} title={`Keyboard: ${DASHBOARD_KEY.wider}`}>{DASHBOARD_KEY.wider} · {DASHBOARD_COPY.CONTROL_WIDER}</button>
+      <button onclick={() => handleControl(DASHBOARD_KEY.reset)} disabled={zoom === INITIAL_TIME_ZOOM_LEVEL} title={`Keyboard: ${DASHBOARD_KEY.reset}`}>{DASHBOARD_KEY.reset} · {DASHBOARD_COPY.CONTROL_RESET}</button>
     </div>
   </div>
 
-  {#if !activated}
+  {#if !chartsActivated}
     <div class="dashboard-viewport-placeholder" aria-hidden="true"></div>
   {:else if chartSamples.length === 0 && renderedWalletTimelinePoints.length === 0 && configuredWallets.length === 0}
     <p class="chart-empty">
       {terminal
-        ? 'No dashboard samples were recorded for this run.'
-        : 'Waiting for the first dashboard sample.'}
+        ? DASHBOARD_COPY.NO_SAMPLES
+        : DASHBOARD_COPY.WAITING_FOR_SAMPLE}
     </p>
   {:else}
     <div class="dashboard-grid" data-layout="stacked">
       <div class="primary-chart">
         {#if view === 'market'}
           <MarketChart samples={chartSamples} />
-        {:else if visibleLanes.length}
+        {:else}
           <WalletChart
             points={renderedWalletTimelinePoints}
-            lanes={visibleLanes}
-            startMs={range[0]}
-            endMs={range[1]}
+            {configuredWallets}
+            startMs={chartTimeRangeMs[0]}
+            endMs={chartTimeRangeMs[1]}
           />
-        {:else}
-          <p class="chart-empty">No followed wallets configured or detected.</p>
         {/if}
       </div>
       <div class="equity-chart">
-        <div class="chart-label">Executable equity</div>
+        <div class="chart-label">{DASHBOARD_COPY.EQUITY}</div>
         <EquityChart samples={chartSamples} />
       </div>
     </div>

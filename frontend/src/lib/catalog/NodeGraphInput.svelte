@@ -4,10 +4,12 @@
     Background,
     BackgroundVariant,
     type Connection,
+    type CoordinateExtent,
     Controls,
     SvelteFlow
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
+  import catalogContract from './catalogContract.fixture.json';
 
   import type {
     GraphComparisonNodeData,
@@ -39,19 +41,27 @@
     NODE_GRAPH_EDITOR_CONTEXT,
     type NodeGraphEditorContext
   } from './nodeGraphContext';
+  import {
+    GRAPH_VALIDATION_COPY,
+    type GraphValidationIssue
+  } from './graphValidation';
 
   let {
     initialGraph,
     graphCatalog,
     onchange,
     labelledby,
-    describedby
+    describedby,
+    validationIssues = [],
+    validationSummaryId = 'graph-validation-summary'
   }: {
     initialGraph: NodeGraph;
     graphCatalog: GraphNodeCatalog;
     onchange: (graph: NodeGraph) => void;
     labelledby: string;
     describedby?: string;
+    validationIssues?: GraphValidationIssue[];
+    validationSummaryId?: string;
   } = $props();
 
   // Snapshot the keyed graph once; keep Flow-owned arrays out of Svelte's deep proxies.
@@ -65,6 +75,17 @@
   };
   let nodes = $state.raw<CanvasNode[]>(canvasNodes(initialGraphSnapshot));
   let edges = $state.raw<CanvasEdge[]>(canvasEdges(initialGraphSnapshot));
+  let graphChangeReportingReady = false;
+  const coordinateLimit = catalogContract.nodeGraph.coordinateLimit;
+  const nodeExtent: CoordinateExtent = [
+    [-coordinateLimit, -coordinateLimit],
+    [coordinateLimit, coordinateLimit]
+  ];
+  const canvasDescription = $derived(
+    [describedby, validationIssues.length > 0 ? validationSummaryId : undefined]
+      .filter(Boolean)
+      .join(' ') || undefined
+  );
 
   const editorContext: NodeGraphEditorContext = {
     catalog: catalogSnapshot,
@@ -73,14 +94,25 @@
   };
   setContext(NODE_GRAPH_EDITOR_CONTEXT, editorContext);
 
-  // Canvas state is owned here; keep the parent callback out of this effect's dependencies.
+  // The parent already owns the initial graph; report only subsequent canvas edits.
+  // Rebuilding the initial graph can reorder object keys and falsely mark it dirty.
   $effect(() => {
     const graph = toPersistedNodeGraph(nodes, edges);
-    untrack(() => onchange(graph));
+    if (graphChangeReportingReady) {
+      untrack(() => onchange(graph));
+    } else {
+      graphChangeReportingReady = true;
+    }
   });
 
   function addTrigger(trigger: GraphTriggerDescriptor): void {
-    nodes = [...nodes, createTriggerNode(nodes, trigger)];
+    addNode(createTriggerNode(nodes, trigger));
+  }
+
+  function addNode(node: CanvasNode): void {
+    if (nodes.length < catalogContract.nodeGraph.maximumNodes) {
+      nodes = [...nodes, node];
+    }
   }
 
   function setConstantData(nodeId: string, data: GraphConstantNodeData): void {
@@ -109,6 +141,7 @@
   }
 
   function connect(connection: Connection): void {
+    if (edges.length >= catalogContract.nodeGraph.maximumEdges) return;
     edges = addConnection(connection, edges);
   }
 </script>
@@ -122,26 +155,29 @@
     <NodePalette
       catalog={catalogSnapshot}
       {nodes}
+      additionDisabled={nodes.length >= catalogContract.nodeGraph.maximumNodes}
       onaddtrigger={addTrigger}
-      onaddconstant={(constant) => (nodes = [...nodes, createConstantNode(nodes, constant)])}
-      onaddcomparison={(comparison) => (nodes = [...nodes, createComparisonNode(nodes, comparison)])}
-      onaddaction={(action) => (nodes = [...nodes, createBrokerActionNode(nodes, action)])}
+      onaddconstant={(constant) => addNode(createConstantNode(nodes, constant))}
+      onaddcomparison={(comparison) => addNode(createComparisonNode(nodes, comparison))}
+      onaddaction={(action) => addNode(createBrokerActionNode(nodes, action))}
     />
   </div>
   <div
     class="graph-canvas"
     role="application"
     aria-labelledby={labelledby}
-    aria-describedby={describedby}
+    aria-describedby={canvasDescription}
   >
     <SvelteFlow
       bind:nodes
       bind:edges
       {nodeTypes}
       isValidConnection={(connection) =>
-        connectionIsValid(connection, nodes, edges, catalogSnapshot)}
+        edges.length < catalogContract.nodeGraph.maximumEdges
+        && connectionIsValid(connection, nodes, edges, catalogSnapshot)}
       onconnect={connect}
-      nodesConnectable={true}
+      nodesConnectable={edges.length < catalogContract.nodeGraph.maximumEdges}
+      {nodeExtent}
       fitView
       minZoom={0.25}
       maxZoom={2}
@@ -154,6 +190,29 @@
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
     </SvelteFlow>
   </div>
+  {#if validationIssues.length > 0}
+    <section
+      class="graph-validation-summary"
+      id={validationSummaryId}
+      role="alert"
+      aria-labelledby={`${validationSummaryId}-title`}
+      tabindex="-1"
+    >
+      <div class="graph-validation-heading">
+        <h3 id={`${validationSummaryId}-title`}>{GRAPH_VALIDATION_COPY.TITLE}</h3>
+        <span>{validationIssues.length} {validationIssues.length === 1 ? 'issue' : 'issues'}</span>
+      </div>
+      <p>{GRAPH_VALIDATION_COPY.INTRO}</p>
+      <ol>
+        {#each validationIssues as issue (`${issue.location}:${issue.message}`)}
+          <li>
+            <strong>{issue.location}</strong>
+            <span>{issue.message}</span>
+          </li>
+        {/each}
+      </ol>
+    </section>
+  {/if}
 </div>
 
 <style>
@@ -189,6 +248,78 @@
     border: 1px solid var(--line-strong);
     border-radius: 0.75rem;
     background: var(--surface-raised);
+  }
+
+  .graph-validation-summary {
+    border: 1px solid rgb(223 164 158 / 0.34);
+    border-left: 3px solid var(--danger);
+    border-radius: var(--radius-surface);
+    padding: 1rem;
+    color: #f0c2bd;
+    background: var(--danger-surface);
+  }
+
+  .graph-validation-summary:focus-visible {
+    outline: 2px solid var(--danger);
+    outline-offset: 3px;
+  }
+
+  .graph-validation-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .graph-validation-heading h3,
+  .graph-validation-summary p {
+    margin: 0;
+  }
+
+  .graph-validation-heading h3 {
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+
+  .graph-validation-heading span {
+    flex: none;
+    color: #e9b7b2;
+    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-size: 0.68rem;
+  }
+
+  .graph-validation-summary > p {
+    margin-top: 0.35rem;
+    color: #e9b7b2;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .graph-validation-summary ol {
+    margin: 0.9rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+    list-style: none;
+  }
+
+  .graph-validation-summary li {
+    border-top: 1px solid rgb(223 164 158 / 0.2);
+    padding-top: 0.6rem;
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .graph-validation-summary li strong {
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 620;
+  }
+
+  .graph-validation-summary li span {
+    color: #e9b7b2;
+    font-size: 0.82rem;
+    line-height: 1.45;
   }
 
   :global(.svelte-flow__node) {
@@ -269,6 +400,12 @@
 
     .graph-canvas {
       height: 28rem;
+    }
+
+    .graph-validation-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.25rem;
     }
   }
 </style>

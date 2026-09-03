@@ -16,8 +16,12 @@ class BootstrapPhase(StrEnum):
     WALLETS = "wallets"
 
 
+BOOTSTRAP_PROGRESS_MINIMUM = 0
+BOOTSTRAP_COMPLETED_MAY_EXCEED_TOTAL = False
+
+
 def validate_bootstrap_progress(completed: int, total: int) -> None:
-    if completed < 0 or total < 0:
+    if completed < BOOTSTRAP_PROGRESS_MINIMUM or total < BOOTSTRAP_PROGRESS_MINIMUM:
         raise ValueError("bootstrap progress values must not be negative")
-    if completed > total:
+    if not BOOTSTRAP_COMPLETED_MAY_EXCEED_TOTAL and completed > total:
         raise ValueError("bootstrap progress cannot exceed its total")

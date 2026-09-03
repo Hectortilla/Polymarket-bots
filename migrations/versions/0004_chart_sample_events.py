@@ -25,6 +25,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    removed_kinds = tuple(
+        kind
+        for kind in MIGRATION_0004_EVENT_KINDS
+        if kind not in MIGRATION_0002_EVENT_KINDS
+    )
+    op.execute(
+        sa.delete(sa.table(RUN_EVENTS_TABLE_NAME, sa.column(EventColumn.KIND))).where(
+            sa.column(EventColumn.KIND).in_(removed_kinds)
+        )
+    )
     _replace_kind_constraint(MIGRATION_0002_EVENT_KINDS)
 
 

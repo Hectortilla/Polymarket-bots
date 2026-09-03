@@ -12,7 +12,7 @@
 ## Current Status
 
 Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slices 13A
-through 13B are
+through 13F are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -22,8 +22,9 @@ dashboard, dynamic market tracking and resolution settlement, and the isolated
 control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, mixed durable/live
 SSE path, deterministic OpenAPI artifact, browser dashboard, and the
-non-executing alpha graph contract with framework-derived triggers, typed
-constants, comparisons, and fixed-side broker actions.
+alpha graph contract with framework-derived triggers, typed constants,
+comparisons, event-driven fixed-side paper broker actions, editable reusable
+templates, saved bots, and immutable bot-owned graph revisions.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -176,13 +177,16 @@ polyfollow-polybot/
     api/             # Thin FastAPI assembly plus HTTP contracts and lifecycle.
       dependencies.py # Database, Redis, launcher injection, and cleanup.
       routes/         # Catalog, run, event/SSE, and health endpoint owners.
-    catalog/         # Public catalog contracts, launch models, definitions.
-      graphs/        # Graph types, catalog metadata, validated contracts, starter.
+    catalog/         # Public catalog contracts, input models, definitions.
+      graphs/        # Graph types, catalog metadata, validation, and starter.
+      node_based/    # Compiled DAG evaluator and concrete paper bot.
+    graph_templates/ # Editable reusable graph-template persistence.
+    bots/            # Saved bots and immutable graph revisions.
     runs/            # Paper-run contracts, SQLModel row, and async store.
     events/          # Typed durable progress projection, persistence, Redis wake-up.
     execution/       # RunLauncher, Taskiq adapter, and worker lifecycle.
   migrations/       # Alembic-owned PostgreSQL schema history.
-  frontend/         # Static client-rendered SvelteKit launch and run UI.
+  frontend/         # Static template, saved-bot, and run UI.
   tests/
 ```
 
@@ -731,8 +735,10 @@ derived from annotated event dataclasses plus explicitly marked computed
 properties. `BookSnapshot.best_bid` and `best_ask` expose nullable price and
 size leaves without duplicating stored depth. The same backend catalog owns
 typed constants, binary comparisons, and the allowlisted fixed-side
-`Broker.submit` actions. Slice 13B validates and stores these acyclic graphs but
-does not dispatch hooks or execute any node.
+`Broker.submit` actions. `NodeBasedBot` compiles each validated graph once and
+evaluates only the matching trigger branch for every accepted hook invocation.
+Enabled actions with complete required inputs submit through `ctx.broker`; a
+nullable missing value skips with a stable graph reason.
 
 Framework-aware strategy code should also obtain time and randomness from
 `ctx.clock` and `ctx.rng`. Their normal defaults use the system clock and a

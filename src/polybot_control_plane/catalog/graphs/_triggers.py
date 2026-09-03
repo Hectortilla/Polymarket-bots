@@ -11,7 +11,7 @@ from polybot_control_plane.catalog.graphs._fields import (
     DiscoveredGraphField,
     discover_graph_fields,
 )
-from polybot_control_plane.catalog.graphs.types import GRAPH_TRIGGER_HOOK_PREFIX
+from polybot_control_plane.catalog.graphs.values import GRAPH_TRIGGER_HOOK_PREFIX
 
 
 @dataclass(frozen=True, slots=True)

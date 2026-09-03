@@ -2,8 +2,11 @@ import asyncio
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from polybot.examples.btc_five_minute_strategy import (
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
+from polybot.examples.btc_five_minute_strategy import (
     EXPIRY_EXIT_REASON,
     MOMENTUM_ENTRY_REASON,
     STOP_EXIT_REASON,
@@ -366,7 +369,12 @@ def _book(
 
 
 def _slug(timestamp_ms: int) -> str:
-    bucket_start = timestamp_ms // 1_000 // 300 * 300
+    bucket_start = (
+        timestamp_ms
+        // 1_000
+        // BTC_FIVE_MINUTE_BUCKET_SECONDS
+        * BTC_FIVE_MINUTE_BUCKET_SECONDS
+    )
     return f"{BTC_FIVE_MINUTE_SLUG_PREFIX}-{bucket_start}"
 
 

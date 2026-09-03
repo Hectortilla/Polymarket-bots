@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 
 from polymarket.models.data.activity import TradeActivity
 from polymarket.models.data.portfolio import Position
@@ -18,16 +19,20 @@ from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_TRANSACTION_HASH_FIELD,
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
+    PROXY_WALLET_FIELD,
+)
+from scripts.polymarket_wallet_api.activity_payloads import activity_payload
+from scripts.polymarket_wallet_api.gamma import (
+    fetch_gamma_market,
+    gamma_condition_id,
+)
+from scripts.polymarket_wallet_api.market_payloads import market_payload
+from scripts.polymarket_wallet_api.position_payloads import position_payload
+from scripts.wallet_payload_fields import (
     POSITION_CASH_PNL_FIELD,
     POSITION_CURRENT_VALUE_FIELD,
     POSITION_REALIZED_PNL_FIELD,
     POSITION_SIZE_FIELD,
-    PROXY_WALLET_FIELD,
-)
-from scripts.polymarket_wallet_api.sdk_payloads import (
-    activity_payload,
-    market_payload,
-    position_payload,
 )
 from scripts.wallet_payloads import (
     ACTIVITY_SIDE_FIELD,
@@ -102,3 +107,56 @@ def test_sdk_market_model_normalizes_condition_identifier() -> None:
         outcomes=None,
     )
     assert market_payload(model)[CONDITION_ID_FIELD] == "condition"
+
+
+def test_gamma_lookup_uses_the_shared_condition_identifier_contract() -> None:
+    market = Market.model_construct(
+        condition_id="condition",
+        slug="market",
+        question="Question?",
+        state=None,
+        schedule=None,
+        resolution=None,
+        outcomes=None,
+    )
+    event = SimpleNamespace(
+        slug="market",
+        markets=[market],
+        state=SimpleNamespace(closed=False),
+    )
+    client = _GammaClient(event, market)
+
+    assert gamma_condition_id("market", client_factory=lambda: client) == (
+        "condition",
+        False,
+    )
+    assert fetch_gamma_market(
+        "condition",
+        client_factory=lambda: client,
+    ) == market_payload(market)
+
+
+class _GammaClient:
+    def __init__(self, event: object, market: object) -> None:
+        self.event = event
+        self.market = market
+
+    def __enter__(self) -> "_GammaClient":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def list_events(self, **_: object) -> "_FirstPage":
+        return _FirstPage(self.event)
+
+    def list_markets(self, **_: object) -> "_FirstPage":
+        return _FirstPage(self.market)
+
+
+class _FirstPage:
+    def __init__(self, item: object) -> None:
+        self.item = item
+
+    def first_page(self) -> object:
+        return SimpleNamespace(items=[self.item])

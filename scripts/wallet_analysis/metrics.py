@@ -16,22 +16,36 @@ from scripts.wallet_payload_contracts import (
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
     CONDITION_ID_FIELD,
-    POSITION_CASH_PNL_FIELD,
-    POSITION_CURRENT_VALUE_FIELD,
-    POSITION_REALIZED_PNL_FIELD,
     ActivityRow,
     ActivityType,
     PositionRow,
 )
+from scripts.wallet_payload_fields import (
+    POSITION_CASH_PNL_FIELD,
+    POSITION_CURRENT_VALUE_FIELD,
+    POSITION_REALIZED_PNL_FIELD,
+)
 
 from .cash_metrics import fee_paid, signed_cash
 from .contracts import (
-    OPEN_POSITION_SIZE_THRESHOLD,
+    ACTIVITY_COUNT_METRIC,
+    ACTIVITY_METRIC,
+    ACTIVITY_SPAN_HOURS_METRIC,
+    FEES_METRIC,
+    GROSS_BEFORE_FEES_METRIC,
+    HEDGE_AVERAGE_METRIC,
+    MARKET_COUNT_METRIC,
     MarketMetrics,
+    NET_CASH_METRIC,
     PNL_SIGNIFICANCE_THRESHOLD,
+    TRADE_COUNT_METRIC,
+    VOLUME_METRIC,
     WalletMetrics,
 )
 from .market_metrics import weighted_hedge_score
+
+
+OPEN_POSITION_SIZE_THRESHOLD = 1.0
 
 
 @dataclass(slots=True)
@@ -61,22 +75,24 @@ def compute_metrics(
         1e-9,
     )
     return {
-        "activity_count": len(activity),
-        "trade_count": len(aggregate.trades),
+        ACTIVITY_COUNT_METRIC: len(activity),
+        TRADE_COUNT_METRIC: len(aggregate.trades),
         "first_activity_at": _timestamp_as_datetime(aggregate.timestamps, min),
         "last_activity_at": _timestamp_as_datetime(aggregate.timestamps, max),
-        "activity_span_hours": span_hours,
-        "n_markets": len(aggregate.metrics_by_market),
+        ACTIVITY_SPAN_HOURS_METRIC: span_hours,
+        MARKET_COUNT_METRIC: len(aggregate.metrics_by_market),
         "n_resolved": len(resolved),
         "n_open": len(open_markets),
         "cash_by_activity_type": dict(aggregate.cash_by_type),
         "count_by_activity_type": dict(aggregate.count_by_type),
-        "net_cash": aggregate.net_cash,
-        "volume": volume,
-        "fees": fees,
-        "gross_before_fees": aggregate.net_cash + fees,
+        NET_CASH_METRIC: aggregate.net_cash,
+        VOLUME_METRIC: volume,
+        FEES_METRIC: fees,
+        GROSS_BEFORE_FEES_METRIC: aggregate.net_cash + fees,
         "rewards": aggregate.cash_by_type.get(ActivityType.REWARD, 0.0),
-        "hedge_avg": weighted_hedge_score(aggregate.metrics_by_market.values()),
+        HEDGE_AVERAGE_METRIC: weighted_hedge_score(
+            aggregate.metrics_by_market.values()
+        ),
         "wins": sum(
             1 for market in resolved if market.cash > PNL_SIGNIFICANCE_THRESHOLD
         ),
@@ -94,7 +110,7 @@ def compute_metrics(
         "net_cash_plus_open_value": aggregate.net_cash
         + (open_value if positions else 0),
         "truncated": truncated,
-        "activity": activity,
+        ACTIVITY_METRIC: activity,
     }
 
 
@@ -132,7 +148,7 @@ def _record_position_delta(
     size = row.get(ACTIVITY_SIZE_FIELD, 0.0)
     if activity_type is ActivityType.TRADE:
         market.signed_position_sizes_by_outcome[outcome] += (
-            size if Side(row[ACTIVITY_SIDE_FIELD]) is Side.BUY else -size
+            size if row[ACTIVITY_SIDE_FIELD] is Side.BUY else -size
         )
     elif activity_type in (ActivityType.REDEEM, ActivityType.MERGE):
         market.signed_position_sizes_by_outcome[outcome] -= size

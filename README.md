@@ -29,12 +29,14 @@ validation, safety, and test budgets for each implementation slice. A task that
 names one Slice 12 sub-slice must not scaffold later slices.
 
 That plan adds a private, paper-only SvelteKit/FastAPI control plane around this
-standalone package. Slices 12A through 12E and Slices 13A through 13B provide its strict
-launch/run contracts, code-owned bot catalog, PostgreSQL run row, Taskiq worker, durable
-progress events, migrations, async stores, FastAPI runs API, durable SSE path,
+standalone package. Slices 12A through 12E and Slices 13A through 13F provide its strict
+catalog/bot/run contracts, code-owned bot catalog, PostgreSQL persistence,
+Taskiq worker, durable progress events, migrations, async stores, FastAPI runs
+API, durable SSE path,
 deterministic OpenAPI artifact, static client-rendered dashboard UI, and a
-validated non-executing alpha graph contract with framework-derived triggers,
-typed constants, comparisons, and fixed-side broker actions.
+validated alpha graph contract with framework-derived triggers, typed constants,
+comparisons, event-driven fixed-side paper broker actions, editable graph
+templates, reusable saved bots, and immutable bot-owned graph revisions.
 
 Install and verify the frontend from `frontend/`:
 
@@ -69,14 +71,16 @@ paper runner CLI, Slice 9A historical market recorder and local trim
 maintenance, Slice 9B deterministic archive backtester and performance
 artifacts, Slice 9B.1 opt-in coverage-gap blackout replay, Slice 10 terminal
 dashboard, Slice 11 dynamic market tracking and resolution processing, and the
-isolated Slices 12A through 12E and Slices 13A through 13B control-plane foundation, worker,
-durable progress path, runs API, mixed durable/live SSE stream, and browser
-dashboard. The dashboard has market-price and followed-wallet timeline views,
-plus a Svelte Flow launch widget whose trigger outputs, typed constants,
-comparisons, and fixed-side submit actions come from one backend catalog. It
-persists a validated, non-executable graph snapshot for the non-trading
-node-based market observer; Slice 13C first evaluates those graphs. Press `v` to
-switch between them. Gamma
+isolated Slices 12A through 12E and Slices 13A through 13F control-plane
+foundation, worker, durable progress path, runs API, mixed durable/live SSE
+stream, and browser dashboard. The dashboard has market-price and
+followed-wallet timeline views, plus Svelte Flow template and saved-bot editors
+whose trigger outputs, typed constants, comparisons, and fixed-side submit
+actions come from one backend catalog. It
+copies a selected template into a bot-owned revision, snapshots that revision
+for each run, and executes it as an event-driven paper-trading `NodeBasedBot`;
+enabled actions submit through the existing paper
+broker and observability path. Press `v` to switch between chart views. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads
 use the pinned unified Polymarket SDK and normalize SDK models at the
 `polybot.polymarket` boundary. Authenticated runtime adapters remain intentionally

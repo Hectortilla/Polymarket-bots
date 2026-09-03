@@ -39,5 +39,7 @@ class DashboardRuntime:
     def uptime_seconds(self, now_monotonic_seconds: float | None = None) -> int:
         if self.started_at_monotonic_seconds is None:
             return 0
-        current = monotonic() if now_monotonic_seconds is None else now_monotonic_seconds
-        return max(0, int(current - self.started_at_monotonic_seconds))
+        now_monotonic_seconds = (
+            monotonic() if now_monotonic_seconds is None else now_monotonic_seconds
+        )
+        return max(0, int(now_monotonic_seconds - self.started_at_monotonic_seconds))

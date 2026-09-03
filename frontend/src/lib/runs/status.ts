@@ -1,4 +1,5 @@
 import type { RunStatus } from '$lib/api/generated';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 type StatusPresentation = {
   label: string;
@@ -8,68 +9,82 @@ type StatusPresentation = {
   terminal: boolean;
 };
 
-export const INITIAL_RUN_STATUS: RunStatus = 'starting';
+export const INITIAL_RUN_STATUS = runtimeContract.runStatus.initial as RunStatus;
+type RunStatusContract = {
+  [Key in keyof typeof runtimeContract.runStatus.values]: Extract<
+    RunStatus,
+    Lowercase<Key>
+  >;
+};
+export const RUN_STATUS = runtimeContract.runStatus.values as RunStatusContract;
+const TERMINAL_RUN_STATUSES = new Set<RunStatus>(
+  runtimeContract.runStatus.terminal as RunStatus[]
+);
+const STOPPABLE_RUN_STATUSES = new Set<RunStatus>(
+  runtimeContract.runStatus.stoppable as RunStatus[]
+);
+const ALL_RUN_STATUSES = new Set<RunStatus>(Object.values(RUN_STATUS));
 
 const STOP_RUN_LABEL = 'Stop run';
 const STOP_REQUESTED_LABEL = 'Stop requested';
 const STOPPING_LABEL = 'Stopping';
 
 export const RUN_STATUS_PRESENTATION: Record<RunStatus, StatusPresentation> = {
-  queued: {
+  [RUN_STATUS.QUEUED]: {
     label: 'Queued',
     tone: 'waiting',
     stopLabel: 'Cancel queued run',
-    canStop: true,
-    terminal: false
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.QUEUED),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.QUEUED)
   },
-  starting: {
+  [RUN_STATUS.STARTING]: {
     label: 'Starting',
     tone: 'waiting',
     stopLabel: STOP_RUN_LABEL,
-    canStop: true,
-    terminal: false
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.STARTING),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.STARTING)
   },
-  running: {
+  [RUN_STATUS.RUNNING]: {
     label: 'Running',
     tone: 'active',
     stopLabel: STOP_RUN_LABEL,
-    canStop: true,
-    terminal: false
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.RUNNING),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.RUNNING)
   },
-  stop_requested: {
+  [RUN_STATUS.STOP_REQUESTED]: {
     label: STOP_REQUESTED_LABEL,
     tone: 'waiting',
     stopLabel: STOP_REQUESTED_LABEL,
-    canStop: false,
-    terminal: false
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.STOP_REQUESTED),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.STOP_REQUESTED)
   },
-  stopping: {
+  [RUN_STATUS.STOPPING]: {
     label: STOPPING_LABEL,
     tone: 'waiting',
     stopLabel: STOPPING_LABEL,
-    canStop: false,
-    terminal: false
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.STOPPING),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.STOPPING)
   },
-  stopped: {
+  [RUN_STATUS.STOPPED]: {
     label: 'Stopped',
     tone: 'neutral',
     stopLabel: null,
-    canStop: false,
-    terminal: true
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.STOPPED),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.STOPPED)
   },
-  failed: {
+  [RUN_STATUS.FAILED]: {
     label: 'Failed',
     tone: 'danger',
     stopLabel: null,
-    canStop: false,
-    terminal: true
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.FAILED),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.FAILED)
   },
-  interrupted: {
+  [RUN_STATUS.INTERRUPTED]: {
     label: 'Interrupted',
     tone: 'danger',
     stopLabel: null,
-    canStop: false,
-    terminal: true
+    canStop: STOPPABLE_RUN_STATUSES.has(RUN_STATUS.INTERRUPTED),
+    terminal: TERMINAL_RUN_STATUSES.has(RUN_STATUS.INTERRUPTED)
   }
 };
 
@@ -78,9 +93,9 @@ export function runStatusLabel(status: RunStatus): string {
 }
 
 export function isRunStatus(value: unknown): value is RunStatus {
-  return typeof value === 'string' && value in RUN_STATUS_PRESENTATION;
+  return typeof value === 'string' && ALL_RUN_STATUSES.has(value as RunStatus);
 }
 
 export function isTerminalRunStatus(status: RunStatus): boolean {
-  return RUN_STATUS_PRESENTATION[status].terminal;
+  return TERMINAL_RUN_STATUSES.has(status);
 }

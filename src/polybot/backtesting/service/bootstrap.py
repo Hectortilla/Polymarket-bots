@@ -10,6 +10,7 @@ from polybot.backtesting.contracts import (
     BacktestSelection,
 )
 from polybot.backtesting.coverage import ReplayCoverage
+from polybot.backtesting.validation import replay_rule_issue
 from polybot.backtesting.scheduler.cursor import ReplayCursor
 from polybot.backtesting.selection import (
     replay_start_checkpoint_pair,
@@ -197,11 +198,11 @@ async def advance_to_replayable_start(
                 and same_boundary.observed_at_ms == event.observed_at_ms
                 and _is_priming_state_event(same_boundary)
             ):
-                current = await cursor.pop()
-                if current is None:
+                priming_event = await cursor.pop()
+                if priming_event is None:
                     break
-                state.apply(current)
-                prime_sequence = current.sequence
+                state.apply(priming_event)
+                prime_sequence = priming_event.sequence
             if await _plan_is_replayable(
                 bot,
                 ctx,
@@ -239,10 +240,10 @@ async def _plan_is_replayable(
     now_ms = ctx.clock.now_ms()
     current = await bot.current_stream_rules(ctx, now_ms)
     next_rules = await bot.next_stream_rules(ctx, now_ms)
-    if any(rule.wallet_addresses for rule in (*current, *next_rules)):
+    if issue := replay_rule_issue((*current, *next_rules)):
         raise BacktestError(
             BacktestFailureReason.UNSUPPORTED_INPUT,
-            "wallet stream rules cannot be replayed from a market-only archive",
+            issue,
         )
     current_slugs = {slug for rule in current for slug in rule.market_slugs}
     if current_slugs:

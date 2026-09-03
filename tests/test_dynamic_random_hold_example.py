@@ -7,6 +7,11 @@ from polybot.examples.example_dynamic_random_hold import (
     ExampleDynamicRandomHoldBot,
     create,
 )
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
+from polybot.framework.markets import market_bucket_slug
 
 
 def test_dynamic_random_hold_factory_uses_its_fixed_order_size() -> None:
@@ -18,8 +23,8 @@ def test_dynamic_random_hold_bot_declares_current_and_next_buckets(
 ) -> None:
     async def run() -> tuple[tuple[str, ...], tuple[str, ...]]:
         bot = ExampleDynamicRandomHoldBot(
-            "btc-updown-5m",
-            bucket_seconds=300,
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
+            bucket_seconds=BTC_FIVE_MINUTE_BUCKET_SECONDS,
             hold_seconds=5,
             order_size=Decimal("1"),
         )
@@ -29,5 +34,18 @@ def test_dynamic_random_hold_bot_declares_current_and_next_buckets(
 
     current, following = asyncio.run(run())
 
-    assert current == ("btc-updown-5m-0",)
-    assert following == ("btc-updown-5m-300",)
+    assert current == (
+        market_bucket_slug(
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
+            0,
+            BTC_FIVE_MINUTE_BUCKET_SECONDS,
+        ),
+    )
+    assert following == (
+        market_bucket_slug(
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
+            0,
+            BTC_FIVE_MINUTE_BUCKET_SECONDS,
+            bucket_offset=1,
+        ),
+    )

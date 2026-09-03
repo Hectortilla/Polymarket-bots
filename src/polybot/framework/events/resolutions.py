@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from polybot.framework.timestamps import require_nonnegative_timestamp
+
 from .prices import (
     OUTCOME_PRICE_CEILING,
     OUTCOME_PRICE_FLOOR,
@@ -51,7 +53,8 @@ class MarketResolutionEvent:
         )
         object.__setattr__(self, "token_ids", token_ids)
         object.__setattr__(self, "winning_token_id", winning_token_id)
-        if self.resolved_at_ms < 0 or not self.source:
+        require_nonnegative_timestamp(self.resolved_at_ms, "market resolution timestamp")
+        if not self.source:
             raise ValueError("market resolution payload is incomplete")
 
     @property

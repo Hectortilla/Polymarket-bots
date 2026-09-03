@@ -15,26 +15,6 @@ export type ActivitySeverity = 'info' | 'success' | 'warning' | 'error';
 export type BootstrapPhase = 'markets' | 'wallets';
 
 /**
- * BotActivityDurableEvent
- */
-export type BotActivityDurableEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'bot.activity';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: BotActivityPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-/**
  * BotActivityPayload
  */
 export type BotActivityPayload = {
@@ -43,6 +23,23 @@ export type BotActivityPayload = {
      */
     message: string;
     severity: ActivitySeverity;
+};
+
+/**
+ * BotCreate
+ */
+export type BotCreate = {
+    definition_id: DefinitionId;
+    /**
+     * Graph Template Id
+     */
+    graph_template_id?: string | null;
+    /**
+     * Inputs
+     */
+    inputs: {
+        [key: string]: unknown;
+    };
 };
 
 /**
@@ -67,6 +64,7 @@ export type BotDefinitionDescriptor = {
     };
     label: BotDefinitionLabel;
     market_selection: SelectionMode;
+    starter_graph?: NodeGraph | null;
     wallet_selection: SelectionMode;
 };
 
@@ -76,28 +74,68 @@ export type BotDefinitionDescriptor = {
 export type BotDefinitionLabel = 'standard' | 'example' | 'non_trading';
 
 /**
+ * BotGraphRevisionCreate
+ */
+export type BotGraphRevisionCreate = {
+    graph: NodeGraph;
+};
+
+/**
+ * BotGraphRevisionRead
+ */
+export type BotGraphRevisionRead = {
+    /**
+     * Bot Id
+     */
+    bot_id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    graph: NodeGraph;
+    /**
+     * Id
+     */
+    id: string;
+    revision: GraphRevisionNumber;
+};
+
+/**
  * BotMode
  */
 export type BotMode = 'paper' | 'live';
 
 /**
- * BrokerFailureEvent
+ * BotRead
  */
-export type BrokerFailureEvent = {
-    id?: DurableEventId | null;
+export type BotRead = {
+    config: PaperRunConfig;
     /**
-     * Kind
+     * Created At
      */
-    kind?: 'broker.failure';
+    created_at: string;
+    definition_id: DefinitionId;
     /**
-     * Occurred At
+     * Id
      */
-    occurred_at: string;
-    payload: BrokerFailurePayload;
+    id: string;
+    latest_graph_revision?: BotGraphRevisionRead | null;
     /**
-     * Run Id
+     * Updated At
      */
-    run_id: string;
+    updated_at: string;
+};
+
+/**
+ * BotUpdate
+ */
+export type BotUpdate = {
+    /**
+     * Inputs
+     */
+    inputs: {
+        [key: string]: unknown;
+    };
 };
 
 /**
@@ -109,26 +147,6 @@ export type BrokerFailurePayload = {
      */
     error: string;
     order: OrderRequest;
-};
-
-/**
- * BrokerFillEvent
- */
-export type BrokerFillEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'broker.fill';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: BrokerFillPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
 };
 
 /**
@@ -145,50 +163,10 @@ export type BrokerFillPayload = {
 };
 
 /**
- * BrokerOrderEvent
- */
-export type BrokerOrderEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'broker.order';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: BrokerOrderPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-/**
  * BrokerOrderPayload
  */
 export type BrokerOrderPayload = {
     order: OrderRequest;
-};
-
-/**
- * ChartSampleEvent
- */
-export type ChartSampleEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'chart.sample';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: ChartSamplePayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
 };
 
 /**
@@ -224,33 +202,7 @@ export type DispatchOutcome = {
 /**
  * DispatchSkipReason
  */
-export type DispatchSkipReason = 'market_metadata_missing' | 'market_not_tracked' | 'market_resolved' | 'wallet_not_tracked' | 'book_stale' | 'book_future_dated' | 'bad_book_level' | 'book_crossed' | 'wallet_trade_invalid' | 'wallet_trade_future_dated' | 'wallet_trade_stale' | 'duplicate_source_event';
-
-export type DurableEvent = ({
-    kind: 'run.lifecycle';
-} & RunLifecycleEvent) | ({
-    kind: 'run.bootstrap';
-} & RunBootstrapEvent) | ({
-    kind: 'bot.activity';
-} & BotActivityDurableEvent) | ({
-    kind: 'broker.order';
-} & BrokerOrderEvent) | ({
-    kind: 'broker.fill';
-} & BrokerFillEvent) | ({
-    kind: 'broker.failure';
-} & BrokerFailureEvent) | ({
-    kind: 'market.settlement';
-} & MarketSettlementDurableEvent) | ({
-    kind: 'portfolio.snapshot';
-} & PortfolioSnapshotEvent) | ({
-    kind: 'wallet.timeline';
-} & WalletTimelineDurableEvent) | ({
-    kind: 'stream.health';
-} & StreamHealthEvent) | ({
-    kind: 'run.failure';
-} & RunFailureEvent) | ({
-    kind: 'chart.sample';
-} & ChartSampleEvent);
+export type DispatchSkipReason = 'market_metadata_missing' | 'book_identity_mismatch' | 'market_not_tracked' | 'market_resolved' | 'wallet_not_tracked' | 'book_stale' | 'book_future_dated' | 'bad_book_timestamp' | 'bad_book_level' | 'book_crossed' | 'wallet_trade_invalid' | 'wallet_trade_future_dated' | 'wallet_trade_stale' | 'duplicate_source_event';
 
 export type DurableEventId = number;
 
@@ -274,6 +226,16 @@ export type EquityChartPointPayload = {
      * Value
      */
     value: string | null;
+};
+
+/**
+ * ErrorResponse
+ */
+export type ErrorResponse = {
+    /**
+     * Detail
+     */
+    detail: string;
 };
 
 export type EventCursorValue = number;
@@ -322,7 +284,7 @@ export type FillEvent = {
 /**
  * FillRejectReason
  */
-export type FillRejectReason = 'missing_token_id' | 'bad_side' | 'bad_price' | 'bad_size' | 'book_unavailable' | 'book_mismatch' | 'book_stale' | 'book_future_dated' | 'bad_book_level' | 'book_crossed' | 'market_unavailable' | 'market_fee_invalid' | 'market_metadata_mismatch' | 'market_resolved' | 'no_depth_within_slippage' | 'duplicate_source_id' | 'invalid_source_id' | 'backtest_data_exhausted' | 'backtest_coverage_gap';
+export type FillRejectReason = 'missing_token_id' | 'bad_side' | 'bad_price' | 'bad_size' | 'book_unavailable' | 'book_mismatch' | 'bad_book_timestamp' | 'book_stale' | 'book_future_dated' | 'bad_book_level' | 'book_crossed' | 'market_unavailable' | 'market_fee_invalid' | 'market_metadata_mismatch' | 'market_resolved' | 'no_depth_within_slippage' | 'duplicate_source_id' | 'invalid_source_id' | 'backtest_data_exhausted' | 'backtest_coverage_gap';
 
 /**
  * GraphBooleanConstantData
@@ -498,12 +460,14 @@ export type GraphDecimalConstantData = {
  * GraphEdge
  */
 export type GraphEdge = {
-    id: GraphElementId;
+    id: GraphEdgeId;
     source: GraphElementId;
-    source_handle: GraphElementId;
+    source_handle: GraphHandleId;
     target: GraphElementId;
-    target_handle: GraphElementId;
+    target_handle: GraphHandleId;
 };
+
+export type GraphEdgeId = string;
 
 export type GraphElementId = string;
 
@@ -519,10 +483,7 @@ export type GraphFieldDescriptor = {
      * Display Name
      */
     display_name: string;
-    /**
-     * Handle Id
-     */
-    handle_id: string;
+    handle_id: GraphHandleId;
     /**
      * Nullable
      */
@@ -553,6 +514,8 @@ export type GraphFieldPath = {
 
 export type GraphFieldPathSegment = string;
 
+export type GraphHandleId = string;
+
 export type GraphHookName = string;
 
 /**
@@ -563,10 +526,7 @@ export type GraphInputDescriptor = {
      * Display Name
      */
     display_name: string;
-    /**
-     * Handle Id
-     */
-    handle_id: string;
+    handle_id: GraphHandleId;
     /**
      * Nullable
      */
@@ -635,10 +595,7 @@ export type GraphOutputDescriptor = {
      * Display Name
      */
     display_name: string;
-    /**
-     * Handle Id
-     */
-    handle_id: string;
+    handle_id: GraphHandleId;
     /**
      * Nullable
      */
@@ -668,6 +625,8 @@ export type GraphPosition = {
     y: GraphCoordinate;
 };
 
+export type GraphRevisionNumber = number;
+
 /**
  * GraphScalarType
  */
@@ -685,6 +644,44 @@ export type GraphStringConstantData = {
      * Value
      */
     value: string;
+};
+
+/**
+ * GraphTemplateCreate
+ */
+export type GraphTemplateCreate = {
+    graph: NodeGraph;
+    name: GraphTemplateName;
+};
+
+export type GraphTemplateName = string;
+
+/**
+ * GraphTemplateRead
+ */
+export type GraphTemplateRead = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    graph: NodeGraph;
+    /**
+     * Id
+     */
+    id: string;
+    name: GraphTemplateName;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * GraphTemplateUpdate
+ */
+export type GraphTemplateUpdate = {
+    graph?: NodeGraph | null;
+    name?: GraphTemplateName | null;
 };
 
 /**
@@ -745,19 +742,6 @@ export type HealthResponse = {
      * Status
      */
     status?: 'ok';
-};
-
-/**
- * LaunchRequest
- */
-export type LaunchRequest = {
-    definition_id: DefinitionId;
-    /**
-     * Inputs
-     */
-    inputs: {
-        [key: string]: unknown;
-    };
 };
 
 /**
@@ -921,26 +905,6 @@ export type MarketResolutionEvent = {
 };
 
 /**
- * MarketSettlementDurableEvent
- */
-export type MarketSettlementDurableEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'market.settlement';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: MarketSettlementPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-/**
  * MarketSettlementEvent
  */
 export type MarketSettlementEvent = {
@@ -1031,7 +995,6 @@ export type OrderStatus = 'accepted' | 'filled' | 'partial' | 'rejected' | 'canc
 export type PaperRunConfig = {
     data_trades_budget_per_10s: DataTradesBudget;
     event_max_age_ms: NonnegativeMilliseconds;
-    graph?: NodeGraph | null;
     max_order_size: PositiveDecimal;
     max_slippage_pct: NonnegativeDecimal;
     name: RunName;
@@ -1042,6 +1005,275 @@ export type PaperRunConfig = {
      * Stream Rules
      */
     stream_rules: Array<StreamRule>;
+};
+
+/**
+ * PersistedBotActivityEvent
+ */
+export type PersistedBotActivityEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'bot.activity';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: BotActivityPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedBrokerFailureEvent
+ */
+export type PersistedBrokerFailureEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'broker.failure';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: BrokerFailurePayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedBrokerFillEvent
+ */
+export type PersistedBrokerFillEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'broker.fill';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: BrokerFillPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedBrokerOrderEvent
+ */
+export type PersistedBrokerOrderEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'broker.order';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: BrokerOrderPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedChartSampleEvent
+ */
+export type PersistedChartSampleEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'chart.sample';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: ChartSamplePayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+export type PersistedDurableEvent = ({
+    kind: 'run.lifecycle';
+} & PersistedRunLifecycleEvent) | ({
+    kind: 'run.bootstrap';
+} & PersistedRunBootstrapEvent) | ({
+    kind: 'bot.activity';
+} & PersistedBotActivityEvent) | ({
+    kind: 'broker.order';
+} & PersistedBrokerOrderEvent) | ({
+    kind: 'broker.fill';
+} & PersistedBrokerFillEvent) | ({
+    kind: 'broker.failure';
+} & PersistedBrokerFailureEvent) | ({
+    kind: 'market.settlement';
+} & PersistedMarketSettlementEvent) | ({
+    kind: 'portfolio.snapshot';
+} & PersistedPortfolioSnapshotEvent) | ({
+    kind: 'wallet.timeline';
+} & PersistedWalletTimelineEvent) | ({
+    kind: 'stream.health';
+} & PersistedStreamHealthEvent) | ({
+    kind: 'run.failure';
+} & PersistedRunFailureEvent) | ({
+    kind: 'chart.sample';
+} & PersistedChartSampleEvent);
+
+/**
+ * PersistedMarketSettlementEvent
+ */
+export type PersistedMarketSettlementEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'market.settlement';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: MarketSettlementPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedPortfolioSnapshotEvent
+ */
+export type PersistedPortfolioSnapshotEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'portfolio.snapshot';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: PortfolioSnapshotPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedRunBootstrapEvent
+ */
+export type PersistedRunBootstrapEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'run.bootstrap';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: RunBootstrapPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedRunFailureEvent
+ */
+export type PersistedRunFailureEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'run.failure';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: RunFailurePayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedRunLifecycleEvent
+ */
+export type PersistedRunLifecycleEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'run.lifecycle';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    /**
+     * Payload
+     */
+    payload: RunStartedPayload | RunStatusPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedStreamHealthEvent
+ */
+export type PersistedStreamHealthEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'stream.health';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: StreamHealthPayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * PersistedWalletTimelineEvent
+ */
+export type PersistedWalletTimelineEvent = {
+    id: DurableEventId;
+    /**
+     * Kind
+     */
+    kind?: 'wallet.timeline';
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    payload: WalletTimelinePayload;
+    /**
+     * Run Id
+     */
+    run_id: string;
 };
 
 /**
@@ -1081,26 +1313,6 @@ export type PortfolioSnapshot = {
 };
 
 /**
- * PortfolioSnapshotEvent
- */
-export type PortfolioSnapshotEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'portfolio.snapshot';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: PortfolioSnapshotPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-/**
  * PortfolioSnapshotPayload
  */
 export type PortfolioSnapshotPayload = {
@@ -1119,26 +1331,6 @@ export type PortfolioSnapshotPayload = {
 };
 
 export type PositiveDecimal = string;
-
-/**
- * RunBootstrapEvent
- */
-export type RunBootstrapEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'run.bootstrap';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: RunBootstrapPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
 
 /**
  * RunBootstrapPayload
@@ -1162,28 +1354,8 @@ export type RunEventPage = {
     /**
      * Events
      */
-    events: Array<DurableEvent>;
+    events: Array<PersistedDurableEvent>;
     next_before_event_id: DurableEventId | null;
-};
-
-/**
- * RunFailureEvent
- */
-export type RunFailureEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'run.failure';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: RunFailurePayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
 };
 
 /**
@@ -1196,35 +1368,20 @@ export type RunFailurePayload = {
     error: string;
 };
 
-/**
- * RunLifecycleEvent
- */
-export type RunLifecycleEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'run.lifecycle';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    /**
-     * Payload
-     */
-    payload: RunStartedPayload | RunStatusPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
 export type RunName = string;
 
 /**
  * RunRead
  */
 export type RunRead = {
+    /**
+     * Bot Graph Revision Id
+     */
+    bot_graph_revision_id?: string | null;
+    /**
+     * Bot Id
+     */
+    bot_id: string;
     config: PaperRunConfig;
     /**
      * Created At
@@ -1240,6 +1397,8 @@ export type RunRead = {
      * Failure Detail
      */
     failure_detail?: string | null;
+    graph?: NodeGraph | null;
+    graph_revision?: GraphRevisionNumber | null;
     /**
      * Heartbeat At
      */
@@ -1329,26 +1488,6 @@ export type SettledPosition = {
  * Side
  */
 export type Side = 'BUY' | 'SELL';
-
-/**
- * StreamHealthEvent
- */
-export type StreamHealthEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'stream.health';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: StreamHealthPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
 
 /**
  * StreamHealthPayload
@@ -1479,26 +1618,6 @@ export type WalletChartPointPayload = {
 };
 
 /**
- * WalletTimelineDurableEvent
- */
-export type WalletTimelineDurableEvent = {
-    id?: DurableEventId | null;
-    /**
-     * Kind
-     */
-    kind?: 'wallet.timeline';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: WalletTimelinePayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-/**
  * WalletTimelinePayload
  */
 export type WalletTimelinePayload = {
@@ -1582,12 +1701,365 @@ export type ListBotDefinitionsApiV1BotDefinitionsGetResponses = {
 
 export type ListBotDefinitionsApiV1BotDefinitionsGetResponse = ListBotDefinitionsApiV1BotDefinitionsGetResponses[keyof ListBotDefinitionsApiV1BotDefinitionsGetResponses];
 
+export type ListBotsApiV1BotsGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/bots';
+};
+
+export type ListBotsApiV1BotsGetResponses = {
+    /**
+     * Response List Bots Api V1 Bots Get
+     *
+     * Successful Response
+     */
+    200: Array<BotRead>;
+};
+
+export type ListBotsApiV1BotsGetResponse = ListBotsApiV1BotsGetResponses[keyof ListBotsApiV1BotsGetResponses];
+
+export type CreateBotApiV1BotsPostData = {
+    body: BotCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/bots';
+};
+
+export type CreateBotApiV1BotsPostErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateBotApiV1BotsPostError = CreateBotApiV1BotsPostErrors[keyof CreateBotApiV1BotsPostErrors];
+
+export type CreateBotApiV1BotsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: BotRead;
+};
+
+export type CreateBotApiV1BotsPostResponse = CreateBotApiV1BotsPostResponses[keyof CreateBotApiV1BotsPostResponses];
+
+export type ReadBotApiV1BotsBotIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Bot Id
+         */
+        bot_id: string;
+    };
+    query?: never;
+    url: '/api/v1/bots/{bot_id}';
+};
+
+export type ReadBotApiV1BotsBotIdGetErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadBotApiV1BotsBotIdGetError = ReadBotApiV1BotsBotIdGetErrors[keyof ReadBotApiV1BotsBotIdGetErrors];
+
+export type ReadBotApiV1BotsBotIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BotRead;
+};
+
+export type ReadBotApiV1BotsBotIdGetResponse = ReadBotApiV1BotsBotIdGetResponses[keyof ReadBotApiV1BotsBotIdGetResponses];
+
+export type UpdateBotApiV1BotsBotIdPatchData = {
+    body: BotUpdate;
+    path: {
+        /**
+         * Bot Id
+         */
+        bot_id: string;
+    };
+    query?: never;
+    url: '/api/v1/bots/{bot_id}';
+};
+
+export type UpdateBotApiV1BotsBotIdPatchErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateBotApiV1BotsBotIdPatchError = UpdateBotApiV1BotsBotIdPatchErrors[keyof UpdateBotApiV1BotsBotIdPatchErrors];
+
+export type UpdateBotApiV1BotsBotIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: BotRead;
+};
+
+export type UpdateBotApiV1BotsBotIdPatchResponse = UpdateBotApiV1BotsBotIdPatchResponses[keyof UpdateBotApiV1BotsBotIdPatchResponses];
+
+export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData = {
+    body: BotGraphRevisionCreate;
+    path: {
+        /**
+         * Bot Id
+         */
+        bot_id: string;
+    };
+    query?: never;
+    url: '/api/v1/bots/{bot_id}/graph-revisions';
+};
+
+export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostError = CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors[keyof CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors];
+
+export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: BotRead;
+};
+
+export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponse = CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses[keyof CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses];
+
+export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Bot Id
+         */
+        bot_id: string;
+        /**
+         * Revision Id
+         */
+        revision_id: string;
+    };
+    query?: never;
+    url: '/api/v1/bots/{bot_id}/graph-revisions/{revision_id}';
+};
+
+export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetError = ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors[keyof ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors];
+
+export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BotGraphRevisionRead;
+};
+
+export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponse = ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses[keyof ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses];
+
+export type LaunchBotRunApiV1BotsBotIdRunsPostData = {
+    body?: never;
+    path: {
+        /**
+         * Bot Id
+         */
+        bot_id: string;
+    };
+    query?: never;
+    url: '/api/v1/bots/{bot_id}/runs';
+};
+
+export type LaunchBotRunApiV1BotsBotIdRunsPostErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LaunchBotRunApiV1BotsBotIdRunsPostError = LaunchBotRunApiV1BotsBotIdRunsPostErrors[keyof LaunchBotRunApiV1BotsBotIdRunsPostErrors];
+
+export type LaunchBotRunApiV1BotsBotIdRunsPostResponses = {
+    /**
+     * Successful Response
+     */
+    202: RunRead;
+};
+
+export type LaunchBotRunApiV1BotsBotIdRunsPostResponse = LaunchBotRunApiV1BotsBotIdRunsPostResponses[keyof LaunchBotRunApiV1BotsBotIdRunsPostResponses];
+
+export type ListGraphTemplatesApiV1GraphTemplatesGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/graph-templates';
+};
+
+export type ListGraphTemplatesApiV1GraphTemplatesGetResponses = {
+    /**
+     * Response List Graph Templates Api V1 Graph Templates Get
+     *
+     * Successful Response
+     */
+    200: Array<GraphTemplateRead>;
+};
+
+export type ListGraphTemplatesApiV1GraphTemplatesGetResponse = ListGraphTemplatesApiV1GraphTemplatesGetResponses[keyof ListGraphTemplatesApiV1GraphTemplatesGetResponses];
+
+export type CreateGraphTemplateApiV1GraphTemplatesPostData = {
+    body: GraphTemplateCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/graph-templates';
+};
+
+export type CreateGraphTemplateApiV1GraphTemplatesPostErrors = {
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateGraphTemplateApiV1GraphTemplatesPostError = CreateGraphTemplateApiV1GraphTemplatesPostErrors[keyof CreateGraphTemplateApiV1GraphTemplatesPostErrors];
+
+export type CreateGraphTemplateApiV1GraphTemplatesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: GraphTemplateRead;
+};
+
+export type CreateGraphTemplateApiV1GraphTemplatesPostResponse = CreateGraphTemplateApiV1GraphTemplatesPostResponses[keyof CreateGraphTemplateApiV1GraphTemplatesPostResponses];
+
+export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Template Id
+         */
+        template_id: string;
+    };
+    query?: never;
+    url: '/api/v1/graph-templates/{template_id}';
+};
+
+export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetError = ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors[keyof ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors];
+
+export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: GraphTemplateRead;
+};
+
+export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponse = ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses[keyof ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses];
+
+export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData = {
+    body: GraphTemplateUpdate;
+    path: {
+        /**
+         * Template Id
+         */
+        template_id: string;
+    };
+    query?: never;
+    url: '/api/v1/graph-templates/{template_id}';
+};
+
+export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchError = UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors[keyof UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors];
+
+export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: GraphTemplateRead;
+};
+
+export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponse = UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses[keyof UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses];
+
 export type HealthApiV1HealthGetData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/v1/health';
 };
+
+export type HealthApiV1HealthGetErrors = {
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type HealthApiV1HealthGetError = HealthApiV1HealthGetErrors[keyof HealthApiV1HealthGetErrors];
 
 export type HealthApiV1HealthGetResponses = {
     /**
@@ -1616,31 +2088,6 @@ export type ListRunsApiV1RunsGetResponses = {
 
 export type ListRunsApiV1RunsGetResponse = ListRunsApiV1RunsGetResponses[keyof ListRunsApiV1RunsGetResponses];
 
-export type LaunchRunApiV1RunsPostData = {
-    body: LaunchRequest;
-    path?: never;
-    query?: never;
-    url: '/api/v1/runs';
-};
-
-export type LaunchRunApiV1RunsPostErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type LaunchRunApiV1RunsPostError = LaunchRunApiV1RunsPostErrors[keyof LaunchRunApiV1RunsPostErrors];
-
-export type LaunchRunApiV1RunsPostResponses = {
-    /**
-     * Successful Response
-     */
-    202: RunRead;
-};
-
-export type LaunchRunApiV1RunsPostResponse = LaunchRunApiV1RunsPostResponses[keyof LaunchRunApiV1RunsPostResponses];
-
 export type ReadRunApiV1RunsRunIdGetData = {
     body?: never;
     path: {
@@ -1654,6 +2101,10 @@ export type ReadRunApiV1RunsRunIdGetData = {
 };
 
 export type ReadRunApiV1RunsRunIdGetErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
     /**
      * Validation Error
      */
@@ -1694,6 +2145,10 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetData = {
 
 export type ReadRunEventsApiV1RunsRunIdEventsGetErrors = {
     /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
      * Validation Error
      */
     422: HttpValidationError;
@@ -1732,6 +2187,10 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetData = {
 
 export type StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors = {
     /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
      * Validation Error
      */
     422: HttpValidationError;
@@ -1743,7 +2202,7 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses = {
     /**
      * Successful Response
      */
-    200: DurableEvent | LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent | LiveStreamHealthEvent;
+    200: PersistedDurableEvent | LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent | LiveStreamHealthEvent;
 };
 
 export type StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse = StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses[keyof StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses];
@@ -1761,6 +2220,10 @@ export type StopRunApiV1RunsRunIdStopPostData = {
 };
 
 export type StopRunApiV1RunsRunIdStopPostErrors = {
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
     /**
      * Validation Error
      */

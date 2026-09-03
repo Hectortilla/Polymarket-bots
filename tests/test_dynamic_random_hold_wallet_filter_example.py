@@ -3,6 +3,10 @@ from decimal import Decimal
 
 import pytest
 
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
 from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
     ExampleDynamicRandomHoldWalletFilterBot,
     copy_trade_decision,
@@ -12,6 +16,7 @@ from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.framework.markets import market_bucket_slug
 
 WALLETS = (
     "0x0000000000000000000000000000000000000001",
@@ -24,7 +29,7 @@ def test_wallet_filter_bot_declares_filtered_current_and_next_buckets(
 ) -> None:
     async def run() -> tuple[tuple[StreamRule, ...], tuple[StreamRule, ...]]:
         bot = ExampleDynamicRandomHoldWalletFilterBot(
-            "btc-updown-5m",
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
             wallet_addresses=WALLETS,
         )
         return (
@@ -36,15 +41,28 @@ def test_wallet_filter_bot_declares_filtered_current_and_next_buckets(
 
     assert current[0].relation is StreamRelation.FILTERED
     assert following[0].relation is StreamRelation.FILTERED
-    assert current[0].market_slugs == ("btc-updown-5m-0",)
+    assert current[0].market_slugs == (
+        market_bucket_slug(
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
+            0,
+            BTC_FIVE_MINUTE_BUCKET_SECONDS,
+        ),
+    )
     assert current[0].wallet_addresses == WALLETS
-    assert following[0].market_slugs == ("btc-updown-5m-300",)
+    assert following[0].market_slugs == (
+        market_bucket_slug(
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
+            0,
+            BTC_FIVE_MINUTE_BUCKET_SECONDS,
+            bucket_offset=1,
+        ),
+    )
     assert following[0].wallet_addresses == WALLETS
 
 
 def test_wallet_filter_bot_requires_wallets() -> None:
     with pytest.raises(ValueError, match="wallet_addresses must contain at least one wallet"):
-        ExampleDynamicRandomHoldWalletFilterBot("btc-updown-5m", ())
+        ExampleDynamicRandomHoldWalletFilterBot(BTC_FIVE_MINUTE_SLUG_PREFIX, ())
 
 
 def test_wallet_filter_bot_tracks_positions_per_wallet_and_caps_sells(
@@ -52,7 +70,7 @@ def test_wallet_filter_bot_tracks_positions_per_wallet_and_caps_sells(
 ) -> None:
     async def run() -> tuple[list[OrderRequest], dict[tuple[str, str, str], Decimal]]:
         bot = ExampleDynamicRandomHoldWalletFilterBot(
-            "btc-updown-5m",
+            BTC_FIVE_MINUTE_SLUG_PREFIX,
             wallet_addresses=WALLETS,
         )
         await bot.on_wallet_trade(dummy_context, _wallet_trade(wallet=WALLETS[0]))

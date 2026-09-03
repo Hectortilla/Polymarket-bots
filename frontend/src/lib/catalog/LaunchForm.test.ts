@@ -1,38 +1,16 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within
-} from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { BotDefinitionDescriptor, NodeGraph } from '$lib/api/generated';
+import type { BotDefinitionDescriptor } from '$lib/api/generated';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 import LaunchForm from './LaunchForm.svelte';
+import { LAUNCH_FORM_COPY } from './copy';
 import {
+  BOT_DEFINITION_LABEL,
   SELECTION_MODE,
   WIDGET_KIND,
   WIDGET_SCHEMA_KEY
 } from './schema';
-import {
-  canvasNodes,
-  createComparisonNode,
-  createConstantNode,
-  createTriggerNode
-} from './nodeGraph';
-import {
-  BOOLEAN_CONSTANT,
-  BUY_ACTION,
-  DECIMAL_CONSTANT,
-  EQUAL_COMPARISON,
-  LESS_THAN_OR_EQUAL,
-  ON_START_TRIGGER,
-  ON_WALLET_TRADE_TRIGGER,
-  TEST_GRAPH,
-  TEST_GRAPH_CATALOG,
-  THRESHOLD_BUY_GRAPH,
-  graphDescriptor
-} from './nodeGraphTestFixtures';
 
 const WALLET = '0x0000000000000000000000000000000000000001';
 
@@ -45,9 +23,9 @@ function descriptor(
     definition_id: 'schema-driven-test',
     display_name: 'Schema driven test',
     description: 'Test definition',
-    label: 'example',
-    market_selection: SELECTION_MODE.botManaged,
-    wallet_selection: SELECTION_MODE.userConfigured,
+    label: BOT_DEFINITION_LABEL.EXAMPLE,
+    market_selection: SELECTION_MODE.BOT_MANAGED,
+    wallet_selection: SELECTION_MODE.USER_CONFIGURED,
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -56,18 +34,18 @@ function descriptor(
         name: { type: 'string', minLength: 1 },
         max_order_size: {
           anyOf: [{ type: 'number' }, { type: 'string' }],
-          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.decimal
+          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.DECIMAL
         },
         market_slugs: {
           type: 'array',
           items: { type: 'string' },
-          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.marketSlugs
+          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.MARKET_SLUGS
         },
         wallet_addresses: {
           type: 'array',
           minItems: 1,
-          items: { type: 'string' },
-          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.walletAddresses
+          items: { type: 'string', pattern: runtimeContract.walletAddressPattern },
+          [WIDGET_SCHEMA_KEY]: WIDGET_KIND.WALLET_ADDRESSES
         }
       }
     },
@@ -91,7 +69,9 @@ describe('LaunchForm', () => {
     });
     expect(screen.queryByLabelText('Market slugs')).toBeNull();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+    await fireEvent.click(
+      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
+    );
 
     expect(submit).toHaveBeenCalledWith({
       name: 'Exact decimal run',
@@ -100,11 +80,33 @@ describe('LaunchForm', () => {
     });
   });
 
+  it('rejects wallet addresses that violate the generated selector contract', async () => {
+    const submit = vi.fn();
+    render(LaunchForm, { descriptor: descriptor(), onsubmit: submit });
+
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Invalid wallet run' }
+    });
+    await fireEvent.input(screen.getByLabelText('Max order size'), {
+      target: { value: '1' }
+    });
+    await fireEvent.input(screen.getByLabelText('Wallet addresses'), {
+      target: { value: 'not-a-wallet' }
+    });
+    await fireEvent.click(
+      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
+    );
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Wallet addresses').getAttribute('aria-invalid'))
+      .toBe('true');
+  });
+
   it('renders another supported catalog schema without definition-specific code', async () => {
     const submit = vi.fn();
     const extraDefinition = descriptor({
       definition_id: 'new-supported-definition',
-      market_selection: SELECTION_MODE.userConfigured,
+      market_selection: SELECTION_MODE.USER_CONFIGURED,
       input_schema: {
         type: 'object',
         additionalProperties: false,
@@ -114,17 +116,17 @@ describe('LaunchForm', () => {
           market_slugs: {
             type: 'array',
             items: { type: 'string' },
-            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.marketSlugs
+            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.MARKET_SLUGS
           },
           wallet_addresses: {
             type: 'array',
             items: { type: 'string' },
-            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.walletAddresses
+            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.WALLET_ADDRESSES
           },
           stream_rules: {
             type: 'array',
             items: { type: 'object' },
-            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.streamRules
+            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.STREAM_RULES
           }
         }
       }
@@ -141,329 +143,21 @@ describe('LaunchForm', () => {
       target: { value: WALLET }
     });
     await fireEvent.input(screen.getByLabelText('Stream rules'), {
-      target: { value: '[{"relation":"independent"}]' }
+      target: {
+        value: JSON.stringify([{
+          relation: runtimeContract.streamRelation.INDEPENDENT
+        }])
+      }
     });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+    await fireEvent.click(
+      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
+    );
 
     expect(submit).toHaveBeenCalledWith({
       name: 'New definition run',
       market_slugs: ['btc-updown-5m-test'],
       wallet_addresses: [WALLET],
-      stream_rules: [{ relation: 'independent' }]
-    });
-  });
-
-  it('binds a metadata-driven node graph into the submitted inputs', async () => {
-    const submit = vi.fn();
-    const nodeDefinition = graphDescriptor(TEST_GRAPH);
-    render(LaunchForm, { descriptor: nodeDefinition, onsubmit: submit });
-
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Visual observer' }
-    });
-    await fireEvent.input(screen.getByLabelText('Market slugs'), {
-      target: { value: 'example-market' }
-    });
-    await fireEvent.click(screen.getByRole('button', { name: 'Add node' }));
-    expect(screen.getByRole('dialog', { name: 'Add graph node' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Triggers' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Values' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Logic' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Actions' })).toBeTruthy();
-    const palette = screen.getByRole('dialog', { name: 'Add graph node' });
-    const paletteNodeButtons = within(palette).getAllByRole('button');
-    expect(paletteNodeButtons).toHaveLength(
-      TEST_GRAPH_CATALOG.triggers.length +
-        TEST_GRAPH_CATALOG.constants.length +
-        1 +
-        TEST_GRAPH_CATALOG.broker_actions.length
-    );
-    for (const button of paletteNodeButtons) {
-      expect(button.querySelector('.palette-icon svg')).not.toBeNull();
-    }
-    expect(
-      within(palette).getAllByRole('button', { name: 'Add Comparison' })
-    ).toHaveLength(1);
-    expect(
-      within(palette).queryByRole('button', {
-        name: `Add ${EQUAL_COMPARISON.display_name}`
-      })
-    ).toBeNull();
-    const nodeSearch = screen.getByLabelText('Find a node');
-    await fireEvent.input(nodeSearch, { target: { value: 'comparison' } });
-    expect(
-      screen.getByRole('button', { name: 'Add Comparison' })
-    ).toBeTruthy();
-    await fireEvent.input(nodeSearch, { target: { value: 'decimal' } });
-    expect(
-      screen.getByRole('button', { name: `Add ${DECIMAL_CONSTANT.display_name}` })
-    ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Add on_book' })).toBeNull();
-    await fireEvent.input(nodeSearch, { target: { value: '' } });
-    expect(
-      screen.getByRole('button', { name: 'Add on_book' }).hasAttribute('disabled')
-    ).toBe(true);
-    const contextHandle = document.querySelector('[data-handleid="context"]');
-    expect(contextHandle).not.toBeNull();
-    expect(contextHandle?.classList.contains('connectable')).toBe(false);
-    const bidsHandle = document.querySelector('[data-handleid="field:bids"]');
-    expect(bidsHandle?.classList.contains('connectable')).toBe(false);
-    expect(document.querySelector('[data-handleid="field:asks"]')).not.toBeNull();
-    const askPriceHandle = document.querySelector(
-      '[data-handleid="field:best_ask.price"]'
-    );
-    expect(askPriceHandle?.classList.contains('connectable')).toBe(true);
-    expect(document.querySelector('.outputs.nowheel')).not.toBeNull();
-    expect(
-      document.querySelector('.node-graph-controls.horizontal')
-    ).not.toBeNull();
-    await fireEvent.click(
-      screen.getByRole('button', { name: 'Add on_wallet_trade' })
-    );
-    expect(screen.queryByRole('dialog', { name: 'Add graph node' })).toBeNull();
-    expect(screen.getByLabelText('on_wallet_trade trigger node')).toBeTruthy();
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
-
-    expect(submit).toHaveBeenCalledWith({
-      name: 'Visual observer',
-      market_slugs: ['example-market'],
-      graph: {
-        ...TEST_GRAPH,
-        nodes: [
-          TEST_GRAPH.nodes[0],
-          createTriggerNode(
-            canvasNodes(TEST_GRAPH),
-            ON_WALLET_TRADE_TRIGGER
-          )
-        ]
-      }
-    });
-  });
-
-  it('adds one comparison node and edits its catalog-driven operator', async () => {
-    const submit = vi.fn();
-    render(LaunchForm, {
-      descriptor: graphDescriptor(TEST_GRAPH),
-      onsubmit: submit
-    });
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Add node' }));
-    await fireEvent.click(screen.getByRole('button', { name: 'Add Comparison' }));
-    const operator = screen.getByLabelText(
-      'Comparison operator'
-    ) as HTMLSelectElement;
-    expect(operator.value).toBe(EQUAL_COMPARISON.operator);
-    expect(Array.from(operator.options, (option) => option.text)).toEqual(
-      TEST_GRAPH_CATALOG.comparisons.map((comparison) => comparison.display_name)
-    );
-    await fireEvent.change(operator, {
-      target: { value: LESS_THAN_OR_EQUAL.operator }
-    });
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Comparison editor' }
-    });
-    await fireEvent.input(screen.getByLabelText('Market slugs'), {
-      target: { value: 'example-market' }
-    });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
-
-    const createdComparison = createComparisonNode(
-      canvasNodes(TEST_GRAPH),
-      EQUAL_COMPARISON
-    );
-    expect(submit).toHaveBeenCalledWith({
-      name: 'Comparison editor',
-      market_slugs: ['example-market'],
-      graph: {
-        ...TEST_GRAPH,
-        nodes: [
-          ...TEST_GRAPH.nodes,
-          {
-            ...createdComparison,
-            data: { operator: LESS_THAN_OR_EQUAL.operator }
-          }
-        ]
-      }
-    });
-  });
-
-  it('removes inputs that become incompatible with a comparison operator', async () => {
-    const submit = vi.fn();
-    const booleanNode = createConstantNode([], BOOLEAN_CONSTANT);
-    const comparisonNode = createComparisonNode(
-      [booleanNode],
-      EQUAL_COMPARISON
-    );
-    const graph: NodeGraph = {
-      nodes: [
-        booleanNode as NodeGraph['nodes'][number],
-        comparisonNode as NodeGraph['nodes'][number]
-      ],
-      edges: [
-        {
-          id: 'boolean-to-comparison',
-          source: booleanNode.id,
-          source_handle: BOOLEAN_CONSTANT.output.handle_id,
-          target: comparisonNode.id,
-          target_handle: EQUAL_COMPARISON.inputs[0].handle_id
-        }
-      ]
-    };
-    render(LaunchForm, { descriptor: graphDescriptor(graph), onsubmit: submit });
-
-    await fireEvent.change(screen.getByLabelText('Comparison operator'), {
-      target: { value: LESS_THAN_OR_EQUAL.operator }
-    });
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Type-safe comparison' }
-    });
-    await fireEvent.input(screen.getByLabelText('Market slugs'), {
-      target: { value: 'example-market' }
-    });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
-
-    expect(submit).toHaveBeenCalledWith({
-      name: 'Type-safe comparison',
-      market_slugs: ['example-market'],
-      graph: {
-        nodes: graph.nodes.map((node) =>
-          node.id === comparisonNode.id
-            ? { ...node, data: { operator: LESS_THAN_OR_EQUAL.operator } }
-            : node
-        ),
-        edges: []
-      }
-    });
-  });
-
-  it('resets canvas-owned graph state when the definition changes', async () => {
-    const submit = vi.fn();
-    const nextGraph: NodeGraph = {
-      ...TEST_GRAPH,
-      nodes: [createTriggerNode([], ON_START_TRIGGER) as NodeGraph['nodes'][number]]
-    };
-    const view = render(LaunchForm, {
-      descriptor: graphDescriptor(TEST_GRAPH),
-      onsubmit: submit
-    });
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Add node' }));
-    await fireEvent.click(
-      screen.getByRole('button', { name: 'Add on_wallet_trade' })
-    );
-    await view.rerender({
-      descriptor: graphDescriptor(nextGraph, 'next-node-based-test'),
-      onsubmit: submit
-    });
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Next observer' }
-    });
-    await fireEvent.input(screen.getByLabelText('Market slugs'), {
-      target: { value: 'next-market' }
-    });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
-
-    expect(submit).toHaveBeenCalledWith({
-      name: 'Next observer',
-      market_slugs: ['next-market'],
-      graph: nextGraph
-    });
-  });
-
-  it('reloads and submits the complete metadata-built threshold BUY graph', async () => {
-    const submit = vi.fn();
-    render(LaunchForm, {
-      descriptor: graphDescriptor(THRESHOLD_BUY_GRAPH),
-      onsubmit: submit
-    });
-
-    expect(
-      screen.getAllByLabelText(`${DECIMAL_CONSTANT.display_name} node`)
-    ).toHaveLength(2);
-    expect(
-      screen.getByLabelText(
-        `${LESS_THAN_OR_EQUAL.display_name} comparison node`
-      )
-    ).toBeTruthy();
-    expect(
-      screen.getByLabelText(`${BUY_ACTION.display_name} broker action node`)
-    ).toBeTruthy();
-    expect(
-      document.querySelector(
-        `[data-handleid="${BUY_ACTION.inputs[0].handle_id}"]`
-      )
-    ).not.toBeNull();
-    await fireEvent.change(
-      screen.getAllByLabelText(DECIMAL_CONSTANT.output.display_name)[0],
-      {
-        target: { value: '000.5400' }
-      }
-    );
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Threshold BUY' }
-    });
-    await fireEvent.input(screen.getByLabelText('Market slugs'), {
-      target: { value: 'example-market' }
-    });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
-
-    expect(submit).toHaveBeenCalledWith({
-      name: 'Threshold BUY',
-      market_slugs: ['example-market'],
-      graph: {
-        ...THRESHOLD_BUY_GRAPH,
-        nodes: THRESHOLD_BUY_GRAPH.nodes.map((node) =>
-          node.id === 'constant-threshold'
-            ? { ...node, data: { scalar_type: 'decimal', value: '000.5400' } }
-            : node
-        )
-      }
-    });
-  });
-
-  it('renders and edits the catalog-described boolean constant control', async () => {
-    const submit = vi.fn();
-    const constantNode = createConstantNode(
-      canvasNodes(TEST_GRAPH),
-      BOOLEAN_CONSTANT
-    );
-    const graph: NodeGraph = {
-      ...TEST_GRAPH,
-      nodes: [
-        ...TEST_GRAPH.nodes,
-        constantNode as NodeGraph['nodes'][number]
-      ]
-    };
-    render(LaunchForm, { descriptor: graphDescriptor(graph), onsubmit: submit });
-
-    const input = screen.getByLabelText(
-      BOOLEAN_CONSTANT.output.display_name
-    ) as HTMLInputElement;
-    expect(input.type).toBe('checkbox');
-    expect(input.checked).toBe(false);
-    await fireEvent.click(input);
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Boolean constant' }
-    });
-    await fireEvent.input(screen.getByLabelText('Market slugs'), {
-      target: { value: 'example-market' }
-    });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
-
-    expect(submit).toHaveBeenCalledWith({
-      name: 'Boolean constant',
-      market_slugs: ['example-market'],
-      graph: {
-        ...graph,
-        nodes: graph.nodes.map((node) =>
-          node.id === constantNode.id
-            ? {
-                ...node,
-                data: { scalar_type: BOOLEAN_CONSTANT.scalar_type, value: true }
-              }
-            : node
-        )
-      }
+      stream_rules: [{ relation: runtimeContract.streamRelation.INDEPENDENT }]
     });
   });
 
@@ -492,7 +186,9 @@ describe('LaunchForm', () => {
     expect((screen.getByLabelText('Attempts') as HTMLInputElement).value).toBe(
       '3'
     );
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+    await fireEvent.click(
+      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
+    );
 
     expect(submit).toHaveBeenCalledWith({ name: 'Referenced run', attempts: 3 });
   });
@@ -500,7 +196,7 @@ describe('LaunchForm', () => {
   it('shows schema feedback and does not submit malformed JSON', async () => {
     const submit = vi.fn();
     const streamDefinition = descriptor({
-      market_selection: SELECTION_MODE.userConfigured,
+      market_selection: SELECTION_MODE.USER_CONFIGURED,
       input_schema: {
         type: 'object',
         additionalProperties: false,
@@ -509,7 +205,7 @@ describe('LaunchForm', () => {
           stream_rules: {
             type: 'array',
             items: { type: 'object' },
-            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.streamRules
+            [WIDGET_SCHEMA_KEY]: WIDGET_KIND.STREAM_RULES
           }
         }
       }
@@ -519,17 +215,39 @@ describe('LaunchForm', () => {
     await fireEvent.input(screen.getByLabelText('Stream rules'), {
       target: { value: '{broken' }
     });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+    await fireEvent.click(
+      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
+    );
 
-    expect(screen.getByRole('alert').textContent).toContain('must be array');
+    const streamRules = screen.getByLabelText('Stream rules');
+    expect(screen.getByText('Enter a valid list.')).toBeTruthy();
+    expect(streamRules.getAttribute('aria-invalid')).toBe('true');
+    expect(streamRules.getAttribute('aria-describedby')).toBe(
+      'field-stream_rules-error'
+    );
+    expect(document.activeElement).toBe(streamRules);
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('places authoritative server feedback under its field', () => {
+    render(LaunchForm, {
+      descriptor: descriptor({ wallet_selection: SELECTION_MODE.ABSENT }),
+      initialInputs: { name: 'Reserved', max_order_size: '1.0' },
+      onsubmit: vi.fn(),
+      serverIssues: [{ field: 'name', message: 'This name is already in use.' }]
+    });
+
+    const name = screen.getByLabelText('Name');
+    expect(screen.getByText('This name is already in use.')).toBeTruthy();
+    expect(name.getAttribute('aria-invalid')).toBe('true');
+    expect(name.getAttribute('aria-describedby')).toBe('field-name-error');
   });
 
   it('explains and omits absent selectors', async () => {
     const submit = vi.fn();
     const absentSelectors = descriptor({
-      market_selection: SELECTION_MODE.absent,
-      wallet_selection: SELECTION_MODE.absent
+      market_selection: SELECTION_MODE.ABSENT,
+      wallet_selection: SELECTION_MODE.ABSENT
     });
     render(LaunchForm, { descriptor: absentSelectors, onsubmit: submit });
 
@@ -544,11 +262,46 @@ describe('LaunchForm', () => {
     await fireEvent.input(screen.getByLabelText('Max order size'), {
       target: { value: '1.25' }
     });
-    await fireEvent.click(screen.getByRole('button', { name: 'Start paper run' }));
+    await fireEvent.click(
+      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
+    );
 
     expect(submit).toHaveBeenCalledWith({
       name: 'No selectors',
       max_order_size: '1.25'
     });
+  });
+
+  it('hydrates saved inputs, reports edits, and can block running while dirty', async () => {
+    const submit = vi.fn();
+    const change = vi.fn();
+    render(LaunchForm, {
+      descriptor: descriptor({ wallet_selection: SELECTION_MODE.ABSENT }),
+      initialInputs: { name: 'Saved bot', max_order_size: '2.500' },
+      onsubmit: submit,
+      onchange: change,
+      submitLabel: 'Run bot',
+      disabled: true
+    });
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'Saved bot'
+    );
+    expect(
+      (screen.getByLabelText('Max order size') as HTMLInputElement).value
+    ).toBe('2.500');
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Run bot' }).disabled
+    ).toBe(true);
+
+    await fireEvent.input(screen.getByLabelText('Name'), {
+      target: { value: 'Edited bot' }
+    });
+
+    expect(change).toHaveBeenLastCalledWith({
+      name: 'Edited bot',
+      max_order_size: '2.500'
+    });
+    expect(submit).not.toHaveBeenCalled();
   });
 });

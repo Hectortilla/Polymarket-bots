@@ -52,7 +52,8 @@ a {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -64,7 +65,8 @@ a {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -733,7 +735,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   min-height: 48px;
   border: 1px solid var(--control-line);
@@ -762,16 +765,100 @@ textarea::placeholder {
 }
 
 input:hover,
-textarea:hover {
+textarea:hover,
+select:hover {
   border-color: var(--control-line-hover);
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--accent);
   outline: 0;
   background: var(--surface);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-surface) 56%, var(--surface-input));
+}
+
+input[aria-invalid='true']:focus,
+textarea[aria-invalid='true']:focus,
+select[aria-invalid='true']:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.field-errors {
+  display: grid;
+  gap: 4px;
+  color: #e9b7b2;
+  font-size: 0.78rem;
+  font-weight: 520;
+  line-height: 1.45;
+}
+
+select {
+  appearance: none;
+}
+
+.template-selector {
+  margin-bottom: 32px;
+}
+
+.template-workspace {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.25fr) minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.template-list {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 8px;
+}
+
+.template-list button {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+}
+
+.template-list button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.template-editor,
+.bot-editor-section {
+  display: grid;
+  gap: 24px;
+}
+
+.bot-editor-section {
+  border-top: 1px solid var(--line);
+  padding-top: 32px;
+}
+
+.historical-graph {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+  padding: 32px;
+}
+
+.historical-graph pre {
+  max-height: 32rem;
+  margin: 24px 0 0;
+  overflow: auto;
+  color: var(--text-soft);
+  font: 0.72rem/1.55 'Geist Mono Variable', ui-monospace, monospace;
 }
 
 input[type='checkbox'] {
@@ -1173,6 +1260,28 @@ dd {
   .form-grid,
   .selection-notes {
     grid-template-columns: 1fr;
+  }
+
+  .template-workspace {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .template-list {
+    position: static;
+    overflow-x: auto;
+    display: flex;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .template-list button {
+    flex: 0 0 min(16rem, 80vw);
+    scroll-snap-align: start;
+  }
+
+  .template-editor {
+    min-width: 0;
   }
 
   .catalog-item {

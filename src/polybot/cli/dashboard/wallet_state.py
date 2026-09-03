@@ -18,10 +18,15 @@ class DashboardWalletTimeline(DashboardWallets):
     def reset_page(self) -> None:
         self.wallet_page = 0
 
+    def maximum_page(self, lanes_per_page: int) -> int:
+        if lanes_per_page <= 0:
+            return 0
+        return max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
+
     def page(self, direction: int, lanes_per_page: int) -> bool:
         if lanes_per_page <= 0:
             return False
-        maximum = max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
+        maximum = self.maximum_page(lanes_per_page)
         updated = min(maximum, max(0, self.wallet_page + direction))
         if updated == self.wallet_page:
             return False
@@ -31,7 +36,7 @@ class DashboardWalletTimeline(DashboardWallets):
     def revalidate_page(self, lanes_per_page: int) -> bool:
         if lanes_per_page <= 0:
             return False
-        maximum = max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
+        maximum = self.maximum_page(lanes_per_page)
         if self.wallet_page <= maximum:
             return False
         self.wallet_page = maximum

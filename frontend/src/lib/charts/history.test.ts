@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DurableEvent } from '$lib/api/generated';
+import type { PersistedDurableEvent } from '$lib/api/generated';
 import { EVENT_KIND, requirePersistedDurableEvents } from '$lib/runs/durableEvents';
 import { LIVE_EVENT_KIND, type LiveRunEvent } from '$lib/runs/events';
+import runContract from '$lib/runtimeContract.fixture.json';
 import { SIDE, VALUATION_STATUS } from './contracts';
 import {
   MAX_CHART_HISTORY_POINTS,
@@ -44,6 +45,7 @@ describe('dashboard history', () => {
 
   it('hydrates canonical wallet points and terminal health from durable events', () => {
     const wallet = '0x0000000000000000000000000000000000000001';
+    const marketLabel = `Market${runContract.dashboard.walletMarketLabelPolicy.partSeparator}Up`;
     const events = requirePersistedDurableEvents([
       {
         id: 1,
@@ -60,16 +62,18 @@ describe('dashboard history', () => {
             price: '0.2',
             source_id: 'source',
             trade_timestamp_ms: 1,
-            observed_at_ms: 1
+            observed_at_ms: 1,
+            market_slug: 'Market',
+            outcome: 'Up'
           },
           outcome: { accepted: true, skip_reason: null },
           point: {
-            source_key: `${wallet}\0source`,
+            source_key: `${wallet}${runContract.walletSourceKeySeparator}source`,
             wallet,
             trade_timestamp_ms: 1,
             side: SIDE.buy,
             notional: '0.6',
-            market_label: 'Market · Up',
+            market_label: marketLabel,
             accepted: true
           }
         }
@@ -93,12 +97,12 @@ describe('dashboard history', () => {
     const history = mergeDurableEvents(emptyDashboardHistory(), events);
 
     expect(history.walletTimelinePoints).toEqual([{
-      source_key: `${wallet}\0source`,
+      source_key: `${wallet}${runContract.walletSourceKeySeparator}source`,
       wallet,
       trade_timestamp_ms: 1,
       side: SIDE.buy,
       notional: '0.6',
-      market_label: 'Market · Up',
+      market_label: marketLabel,
       accepted: true
     }]);
     expect(history.streamHealth).toEqual(events[1].payload);
@@ -135,7 +139,8 @@ describe('dashboard history', () => {
         payload: {
           sampled_at_ms: 1,
           points: [{
-            source_key: 'wallet\0source', wallet: 'wallet',
+            source_key: `wallet${runContract.walletSourceKeySeparator}source`,
+            wallet: 'wallet',
             trade_timestamp_ms: 1, side: SIDE.buy, notional,
             market_label: 'Market', accepted: true
           }]
@@ -191,7 +196,8 @@ describe('dashboard history', () => {
         payload: {
           sampled_at_ms: 1,
           points: [{
-            source_key: 'wallet\0source', wallet: 'wallet',
+            source_key: `wallet${runContract.walletSourceKeySeparator}source`,
+            wallet: 'wallet',
             trade_timestamp_ms: 1, side: SIDE.buy, notional: '2',
             market_label: 'Market', accepted: true
           }]
@@ -239,7 +245,7 @@ describe('dashboard history', () => {
   });
 });
 
-function chartEvent(index: number): DurableEvent {
+function chartEvent(index: number): PersistedDurableEvent {
   return {
     id: index,
     kind: EVENT_KIND.chartSample,

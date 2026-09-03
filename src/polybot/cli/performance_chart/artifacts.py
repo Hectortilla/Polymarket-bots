@@ -68,8 +68,8 @@ def _read_equity(
                 raise PerformanceChartError(
                     f"performance equity header does not match schema: {path}"
                 )
-            timestamps = array("q")
-            values = array("d")
+            timestamps_ms = array("q")
+            pnl_values = array("d")
             stale_samples = bytearray()
             last_value: float | None = None
             for line_number, row in enumerate(reader, start=2):
@@ -78,7 +78,7 @@ def _read_equity(
                         f"performance equity row {line_number} is incomplete"
                     )
                 timestamp = _timestamp(row[EquityField.TIMESTAMP_MS], line_number)
-                if timestamps and timestamp < timestamps[-1]:
+                if timestamps_ms and timestamp < timestamps_ms[-1]:
                     raise PerformanceChartError(
                         "performance equity timestamp moves backward at row "
                         f"{line_number}"
@@ -89,22 +89,22 @@ def _read_equity(
                 )
                 value = _pnl_value(row[EquityField.PNL_USDC], status, line_number)
                 if value is None:
-                    values.append(nan if last_value is None else last_value)
+                    pnl_values.append(nan if last_value is None else last_value)
                     stale_samples.append(last_value is not None)
                 else:
                     last_value = value
-                    values.append(value)
+                    pnl_values.append(value)
                     stale_samples.append(status is not ValuationStatus.FRESH)
-                timestamps.append(timestamp)
+                timestamps_ms.append(timestamp)
     except PerformanceChartError:
         raise
     except (OSError, UnicodeError, csv.Error) as error:
         raise PerformanceChartError(
             f"could not read performance equity {path}: {error}"
         ) from error
-    if not timestamps:
+    if not timestamps_ms:
         raise PerformanceChartError(f"performance equity has no samples: {path}")
-    return timestamps, values, stale_samples
+    return timestamps_ms, pnl_values, stale_samples
 
 
 def _timestamp(value: str, line_number: int) -> int:

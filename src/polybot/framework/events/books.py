@@ -8,6 +8,10 @@ from polybot.framework.events import Side, require_side
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.graph import graph_output
+from polybot.framework.timestamps import (
+    NONNEGATIVE_TIMESTAMP_FLOOR,
+    require_nonnegative_timestamp,
+)
 
 BOOK_LEVEL_SIZE_FLOOR = Decimal("0")
 
@@ -35,8 +39,7 @@ class BookGapEvent:
     def __post_init__(self) -> None:
         if self.condition_id is not None and not self.condition_id:
             raise ValueError("book-gap condition ID must be non-empty")
-        if self.observed_at_ms < 0:
-            raise ValueError("book-gap timestamp must not be negative")
+        require_nonnegative_timestamp(self.observed_at_ms, "book-gap timestamp")
         if not isinstance(self.reason, BookGapReason):
             raise ValueError("book-gap reason must be a BookGapReason")
 
@@ -147,6 +150,12 @@ class BookSnapshot:
         now_ms: int,
         max_age_ms: int,
     ) -> BookValidationIssue | None:
+        if (
+            not isinstance(self.received_at_ms, int)
+            or isinstance(self.received_at_ms, bool)
+            or self.received_at_ms < NONNEGATIVE_TIMESTAMP_FLOOR
+        ):
+            return BookValidationIssue.BAD_TIMESTAMP
         if self.received_at_ms > now_ms:
             return BookValidationIssue.FUTURE_DATED
         if not self.is_fresh(now_ms, max_age_ms):

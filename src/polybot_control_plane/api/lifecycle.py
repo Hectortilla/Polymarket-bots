@@ -36,7 +36,7 @@ class ApiRunLifecycle:
         if transition.applied_status is RunStatus.STOPPED:
             return await self._commit_terminal(transition.row, occurred_at=now)
 
-        run = RunStore.read_from_row(transition.row)
+        run = await RunStore(self._session).read_row(transition.row)
         await self._session.commit()
         return run, None
 
@@ -65,7 +65,7 @@ class ApiRunLifecycle:
         occurred_at: datetime,
     ) -> tuple[RunRead, int]:
         try:
-            run = RunStore.read_from_row(row)
+            run = await RunStore(self._session).read_row(row)
             event = RunLifecycleEvent.from_terminal_status(
                 row.id,
                 row.status,

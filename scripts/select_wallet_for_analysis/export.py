@@ -6,7 +6,7 @@ from pathlib import Path
 
 from polybot.framework.wallets import normalize_wallet_address
 from scripts.polymarket_wallet_api import fetch_all_activity, fetch_gamma_market
-from scripts.polymarket_wallet_api.constants import (
+from scripts.polymarket_wallet_api.market_contracts import (
     MARKET_ACTIVE_FIELD,
     MARKET_CLOSED_FIELD,
     MARKET_END_DATE_FIELD,

@@ -21,6 +21,7 @@ from polybot.framework.events.resolutions import MarketResolutionEvent, SettledP
 from .fill_math import simulate_fill
 from .portfolio import PaperPortfolioSnapshot
 from .contracts import (
+    BAD_BOOK_TIMESTAMP_MESSAGE,
     BAD_BOOK_LEVEL_MESSAGE,
     BACKTEST_COVERAGE_GAP_MESSAGE,
     BACKTEST_DATA_EXHAUSTED_MESSAGE,
@@ -391,6 +392,7 @@ class PaperBroker(Broker):
     def _book_reject_message(reason: FillRejectReason) -> str:
         messages = {
             FillRejectReason.BOOK_MISMATCH: BOOK_MISMATCH_MESSAGE,
+            FillRejectReason.BAD_BOOK_TIMESTAMP: BAD_BOOK_TIMESTAMP_MESSAGE,
             FillRejectReason.BOOK_STALE: BOOK_STALE_MESSAGE,
             FillRejectReason.BOOK_FUTURE_DATED: BOOK_FUTURE_DATED_MESSAGE,
             FillRejectReason.BAD_BOOK_LEVEL: BAD_BOOK_LEVEL_MESSAGE,

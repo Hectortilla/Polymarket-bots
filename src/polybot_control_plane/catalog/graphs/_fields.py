@@ -14,7 +14,7 @@ from polybot_control_plane.catalog.graphs._annotations import (
     scalar_type_for_annotation,
     without_none,
 )
-from polybot_control_plane.catalog.graphs.types import GraphScalarType
+from polybot_control_plane.catalog.graphs.values import GraphScalarType
 
 
 COLLECTION_ORIGINS = frozenset({list, tuple})
@@ -56,7 +56,7 @@ def _discover_dataclass_fields(
             DiscoveredGraphField(
                 path=path,
                 value_type=value_type,
-                scalar_type=_scalar_type(annotation),
+                scalar_type=scalar_type_for_annotation(annotation),
                 nullable=nullable,
                 collection=collection,
                 value_schema=TypeAdapter(annotation).json_schema(),
@@ -146,7 +146,3 @@ def _type_name(annotation: object) -> str:
     if isinstance(name, str):
         return name
     return str(annotation).replace("typing.", "")
-
-
-def _scalar_type(annotation: object) -> GraphScalarType | None:
-    return scalar_type_for_annotation(annotation)

@@ -9,7 +9,7 @@ from polybot_control_plane.execution.config import configured_redis_url
 from polybot_control_plane.runs.store import RunStore
 
 from .database import create_worker_database
-from .lifecycle import execute_claimed_run_lifecycle
+from .lifecycle import RunLifecycleCoordinator
 
 
 async def run_with_worker_resources(run_id: UUID) -> None:
@@ -18,12 +18,11 @@ async def run_with_worker_resources(run_id: UUID) -> None:
     event_writer = RunEventWriter(session_factory, redis)
     try:
         async with session_factory() as session:
-            await execute_claimed_run_lifecycle(
-                run_id,
+            await RunLifecycleCoordinator(
                 RunStore(session),
                 session_factory,
                 event_writer,
-            )
+            ).execute(run_id)
     finally:
         await redis.aclose()
         await engine.dispose()

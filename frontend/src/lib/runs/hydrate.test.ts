@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { DurableEvent, RunRead } from '$lib/api/generated';
+import type { PersistedDurableEvent, RunRead } from '$lib/api/generated';
 import {
   readRunApiV1RunsRunIdGet,
   readRunEventsApiV1RunsRunIdEventsGet
 } from '$lib/api/generated';
+import { GRAPH_NODE_TYPE } from '$lib/catalog/nodeGraph';
+import { ON_START_TRIGGER } from '$lib/catalog/nodeGraphTestFixtures';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 import { EVENT_KIND } from './durableEvents';
 import { loadAndContinueRunDetail, loadOlderRunEvents } from './hydrate';
+import { RUN_STATUS } from './status';
 
 vi.mock('$lib/api/generated', async (importOriginal) => {
   const original = await importOriginal<typeof import('$lib/api/generated')>();
@@ -19,11 +23,25 @@ vi.mock('$lib/api/generated', async (importOriginal) => {
 
 const RUN: RunRead = {
   id: 'aaaaaaaa-0000-0000-0000-000000000001',
+  bot_id: 'bbbbbbbb-0000-0000-0000-000000000001',
   definition_id: 'test-definition',
+  bot_graph_revision_id: 'cccccccc-0000-0000-0000-000000000001',
+  graph_revision: 3,
+  graph: {
+    nodes: [
+      {
+        id: 'on-start',
+        type: GRAPH_NODE_TYPE.trigger,
+        position: { x: 0, y: 0 },
+        data: { hook_name: ON_START_TRIGGER.hook_name }
+      }
+    ],
+    edges: []
+  },
   config: {
     name: 'Hydrated run',
     stream_rules: [],
-    data_trades_budget_per_10s: 180,
+    data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget,
     max_order_size: '10',
     max_slippage_pct: '0.02',
     paper_latency_ms: 250,
@@ -31,16 +49,16 @@ const RUN: RunRead = {
     event_max_age_ms: 5000,
     paper_portfolio_usdc: '1000'
   },
-  status: 'running',
+  status: RUN_STATUS.RUNNING,
   created_at: '2026-08-23T00:00:00Z'
 };
 
-const EVENT: DurableEvent = {
+const EVENT: PersistedDurableEvent = {
   id: 7,
   kind: EVENT_KIND.runLifecycle,
   run_id: RUN.id,
   occurred_at: '2026-08-23T00:00:01Z',
-  payload: { status: 'running' }
+  payload: { status: RUN_STATUS.RUNNING }
 };
 
 describe('run reload', () => {
@@ -85,7 +103,7 @@ describe('run reload', () => {
 
   it('does not open SSE when the hydrated run is terminal', async () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({
-      data: { ...RUN, status: 'stopped' }
+      data: { ...RUN, status: RUN_STATUS.STOPPED }
     } as never);
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: { events: [EVENT], next_before_event_id: null }
@@ -108,7 +126,7 @@ describe('run reload', () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: {
-        events: [{ ...EVENT, payload: { status: 'stopped' } }],
+        events: [{ ...EVENT, payload: { status: RUN_STATUS.STOPPED } }],
         next_before_event_id: null
       }
     } as never);

@@ -2,20 +2,16 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
-from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from polybot.framework.clock import system_now_utc
 from polybot_control_plane.api.dependencies import (
-    LauncherDependency,
     RedisDependency,
     SessionFactoryDependency,
 )
 from polybot_control_plane.api.lifecycle import ApiRunLifecycle
 from polybot_control_plane.api.routes.paths import (
-    LAUNCH_RUN_OPERATION_ID,
     LIST_RUNS_OPERATION_ID,
     READ_RUN_OPERATION_ID,
     RUN_PATH,
@@ -27,65 +23,15 @@ from polybot_control_plane.api.routes.run_lookup import (
     raise_run_not_found,
     require_run,
 )
-from polybot_control_plane.catalog.contracts import LaunchRequest
-from polybot_control_plane.catalog.definitions import CATALOG
+from polybot_control_plane.api.responses import NOT_FOUND_RESPONSE
 from polybot_control_plane.events.contracts import ChartSampleEvent
 from polybot_control_plane.events.store import EventStore
 from polybot_control_plane.events.writer import publish_durable_wake
 from polybot_control_plane.runs.contracts import RunRead
-from polybot_control_plane.runs.failures import sanitized_failure_detail
 from polybot_control_plane.runs.store import RunStore
 
 
-DEFINITION_NOT_FOUND_DETAIL = "bot definition not found"
-RUN_LAUNCH_FAILURE_REASON = "run launch failed"
-
 router = APIRouter()
-
-
-@router.post(
-    RUNS_PATH,
-    response_model=RunRead,
-    status_code=status.HTTP_202_ACCEPTED,
-    operation_id=LAUNCH_RUN_OPERATION_ID,
-)
-async def launch_run(
-    request: LaunchRequest,
-    session_factory: SessionFactoryDependency,
-    redis: RedisDependency,
-    launcher: LauncherDependency,
-) -> RunRead:
-    definition = CATALOG.get(request.definition_id)
-    if definition is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, DEFINITION_NOT_FOUND_DETAIL)
-    try:
-        config = definition.parse_config(request.inputs)
-    except ValidationError as error:
-        raise RequestValidationError(
-            _input_validation_errors(error),
-            body=request.model_dump(),
-        ) from error
-
-    async with session_factory() as session:
-        run = await RunStore(session).create(
-            definition_id=request.definition_id,
-            config=config,
-        )
-    try:
-        await launcher.launch(run.id)
-    except Exception as error:
-        now = system_now_utc()
-        async with session_factory() as session:
-            run, event_id = await ApiRunLifecycle(session).fail_launch(
-                run.id,
-                now=now,
-                failure_detail=sanitized_failure_detail(
-                    error,
-                    RUN_LAUNCH_FAILURE_REASON,
-                ),
-            )
-        await publish_durable_wake(redis, run.id, event_id)
-    return run
 
 
 @router.get(
@@ -105,6 +51,7 @@ async def list_runs(
     RUN_PATH,
     response_model=RunRead,
     operation_id=READ_RUN_OPERATION_ID,
+    responses=NOT_FOUND_RESPONSE,
 )
 async def read_run(
     run_id: UUID,
@@ -119,6 +66,7 @@ async def read_run(
     RUN_STOP_PATH,
     response_model=RunRead,
     operation_id=STOP_RUN_OPERATION_ID,
+    responses=NOT_FOUND_RESPONSE,
 )
 async def stop_run(
     run_id: UUID,
@@ -135,13 +83,6 @@ async def stop_run(
     if terminal_event_id is not None:
         await publish_durable_wake(redis, run_id, terminal_event_id)
     return run
-
-
-def _input_validation_errors(error: ValidationError) -> list[dict[str, object]]:
-    return [
-        {**issue, "loc": ("body", "inputs", *issue["loc"])}
-        for issue in error.errors()
-    ]
 
 
 async def _with_equity_summaries(

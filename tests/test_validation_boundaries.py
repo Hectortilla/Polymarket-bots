@@ -4,9 +4,11 @@ from decimal import Decimal
 
 import pytest
 
-from polybot.execution.paper import PaperBroker
+from polybot.execution.paper import BAD_BOOK_TIMESTAMP_MESSAGE, PaperBroker
+from polybot.execution.paper.validation import BOOK_VALIDATION_REJECT_REASON
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import FillRejectReason, OrderRequest, Side
+from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.polymarket.markets import Market, MarketOutcome
@@ -91,6 +93,25 @@ def test_unsafe_books_reject(
     fill = asyncio.run(broker.submit(_order()))
     assert fill.reject_reason is reason
     assert broker.portfolio.positions == {}
+
+
+@pytest.mark.parametrize("received_at_ms", (True, -1, "not-a-timestamp"))
+def test_malformed_book_timestamp_rejects_without_mutation(
+    received_at_ms: object,
+) -> None:
+    broker = _broker(
+        CountingBooks(snapshot=_book(received_at_ms=received_at_ms))  # type: ignore[arg-type]
+    )
+
+    fill = asyncio.run(broker.submit(_order()))
+
+    assert fill.reject_reason is FillRejectReason.BAD_BOOK_TIMESTAMP
+    assert fill.reject_message == BAD_BOOK_TIMESTAMP_MESSAGE
+    assert broker.portfolio.positions == {}
+
+
+def test_every_book_validation_issue_has_a_paper_rejection_reason() -> None:
+    assert set(BOOK_VALIDATION_REJECT_REASON) == set(BookValidationIssue)
 
 
 def test_book_freshness_uses_actual_post_lookup_clock() -> None:

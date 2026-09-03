@@ -16,15 +16,18 @@ from pydantic import (
     field_validator,
 )
 
-from polybot.framework.config.constants import MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW
+from polybot.framework.config.constants import (
+    MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+    MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+)
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRule
 from polybot.performance.contracts.valuation_status import ValuationStatus
-from polybot_control_plane.catalog.contracts import DefinitionId
+from polybot_control_plane.catalog.values import DefinitionId
 from polybot_control_plane.catalog.graphs.contracts import NodeGraph
-from polybot_control_plane.runs.status import RunStatus
-
+from polybot_control_plane.bots.revisions import GraphRevisionNumber
+from polybot_control_plane.runs import status as run_status
 
 type RunName = Annotated[
     str,
@@ -32,7 +35,10 @@ type RunName = Annotated[
 ]
 type DataTradesBudget = Annotated[
     StrictInt,
-    Field(ge=1, le=MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW),
+    Field(
+        ge=MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+        le=MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+    ),
 ]
 type PositiveDecimal = Annotated[Decimal, Field(gt=0)]
 type NonnegativeDecimal = Annotated[Decimal, Field(ge=0)]
@@ -51,11 +57,6 @@ class PaperRunConfig(BaseModel):
     paper_latency_jitter_ms: NonnegativeMilliseconds
     event_max_age_ms: NonnegativeMilliseconds
     paper_portfolio_usdc: PositiveDecimal
-    graph: NodeGraph | None = Field(
-        default=None,
-        # Keep non-node run snapshots unchanged while retaining node graphs exactly.
-        exclude_if=lambda graph: graph is None,
-    )
 
     @field_validator("stream_rules", mode="before")
     @classmethod
@@ -69,8 +70,7 @@ class PaperRunConfig(BaseModel):
 
     def to_bot_config(self) -> BotConfig:
         # The web boundary is paper-only: persisted input cannot select live
-        # mode or smuggle credentials into the existing runtime contract. MVP
-        # graphs are storage-only and cannot influence runtime decisions or orders.
+        # mode or smuggle credentials into the existing runtime contract.
         return BotConfig(
             name=self.name,
             mode=BotMode.PAPER,
@@ -95,9 +95,13 @@ class RunRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
+    bot_id: UUID
     definition_id: DefinitionId
     config: PaperRunConfig
-    status: RunStatus
+    bot_graph_revision_id: UUID | None = None
+    graph_revision: GraphRevisionNumber | None = None
+    graph: NodeGraph | None = None
+    status: run_status.RunStatus
     created_at: datetime
     started_at: datetime | None = None
     ended_at: datetime | None = None

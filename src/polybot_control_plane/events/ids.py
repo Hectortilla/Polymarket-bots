@@ -3,7 +3,9 @@
 
 FIRST_EVENT_CURSOR = 0
 FIRST_DURABLE_EVENT_ID = 1
-MAX_DURABLE_EVENT_ID = 2**63 - 1
+# Browser consumers compare cursors as JavaScript numbers. Keep the public
+# contract within the exact integer range shared by Python and JavaScript.
+MAX_DURABLE_EVENT_ID = 2**53 - 1
 MAX_DURABLE_EVENT_ID_DIGITS = len(str(MAX_DURABLE_EVENT_ID))
 
 

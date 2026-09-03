@@ -158,66 +158,71 @@ class RecordingCoordinator:
         next_plan = loop.time() + self._plan_refresh_seconds
         next_checkpoint = loop.time() + self._checkpoint_seconds
         next_resolution = loop.time() + self._resolution_reconciliation_seconds
-        control = asyncio.create_task(self._control.get())
-        stopped = asyncio.create_task(shutdown.wait())
+        control_message_task = asyncio.create_task(self._control.get())
+        shutdown_wait_task = asyncio.create_task(shutdown.wait())
         try:
             while True:
                 self._raise_writer_failure()
-                now = loop.time()
+                now_monotonic_seconds = loop.time()
                 timeout = max(
                     0.0,
-                    min(next_plan, next_checkpoint, next_resolution) - now,
+                    min(next_plan, next_checkpoint, next_resolution)
+                    - now_monotonic_seconds,
                 )
                 done, _ = await asyncio.wait(
-                    (control, stopped),
+                    (control_message_task, shutdown_wait_task),
                     timeout=timeout,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 self._raise_writer_failure()
-                if control in done:
-                    message = control.result()
-                    control = asyncio.create_task(self._control.get())
+                if control_message_task in done:
+                    message = control_message_task.result()
+                    control_message_task = asyncio.create_task(self._control.get())
                     await self._handle_control(message)
                     if self.terminal:
                         return
-                if stopped in done:
+                if shutdown_wait_task in done:
                     return
 
-                now = loop.time()
-                if now >= next_plan:
+                now_monotonic_seconds = loop.time()
+                if now_monotonic_seconds >= next_plan:
                     await self._refresh_plan()
                     await self._detect_drops()
                     await self._ensure_captures()
                     next_plan = advance_deadline_past(
                         next_plan,
                         self._plan_refresh_seconds,
-                        now,
+                        now_monotonic_seconds,
                     )
                     if self.terminal:
                         return
-                if now >= next_checkpoint:
+                if now_monotonic_seconds >= next_checkpoint:
                     await self._detect_drops()
                     await self._ensure_captures()
                     await self._write_checkpoints()
                     next_checkpoint = advance_deadline_past(
                         next_checkpoint,
                         self._checkpoint_seconds,
-                        now,
+                        now_monotonic_seconds,
                     )
-                if now >= next_resolution:
+                if now_monotonic_seconds >= next_resolution:
                     await self._reconcile_resolutions()
                     next_resolution = advance_deadline_past(
                         next_resolution,
                         self._resolution_reconciliation_seconds,
-                        now,
+                        now_monotonic_seconds,
                     )
                     if self.terminal:
                         return
         finally:
             self._stopping = True
-            control.cancel()
-            stopped.cancel()
-            await asyncio.gather(control, stopped, return_exceptions=True)
+            control_message_task.cancel()
+            shutdown_wait_task.cancel()
+            await asyncio.gather(
+                control_message_task,
+                shutdown_wait_task,
+                return_exceptions=True,
+            )
             await self._close_all_captures()
 
     async def close(self) -> None:
@@ -280,7 +285,7 @@ class RecordingCoordinator:
                 recording.metadata != existing.recording.metadata
                 and (not existing.terminal_claimed or recording.metadata.resolved)
             ):
-                await self._record_metadata(existing, recording)
+                await self._persistence.record_metadata(existing, recording)
             return
 
         tracked = TrackedMarket(recording=recording)
@@ -419,39 +424,46 @@ class RecordingCoordinator:
         )
 
     async def _reconcile_resolutions(self) -> None:
-        tracked = tuple(
-            market
-            for market in self._tracked.values()
+        tracked_markets = tuple(
+            tracked_market
+            for tracked_market in self._tracked.values()
             if (
-                not market.terminal_claimed
-                or market.condition_id in self._terminal_metadata_pending
+                not tracked_market.terminal_claimed
+                or tracked_market.condition_id in self._terminal_metadata_pending
             )
         )
-        if not tracked:
+        if not tracked_markets:
             return
         try:
             refreshed = await self._resolver.find_many(
-                market.recording.market.slug for market in tracked
+                tracked_market.recording.market.slug
+                for tracked_market in tracked_markets
             )
         except asyncio.CancelledError:
             raise
         except MarketDataTransportError:
             return
-        for current, recording in zip(tracked, refreshed, strict=True):
+        for tracked_market, recording in zip(
+            tracked_markets,
+            refreshed,
+            strict=True,
+        ):
             if recording is None:
                 continue
-            current.recording.assert_compatible_revision(recording)
-            if current.terminal_claimed:
-                if recording.metadata != current.recording.metadata:
-                    await self._record_metadata(current, recording)
+            tracked_market.recording.assert_compatible_revision(recording)
+            if tracked_market.terminal_claimed:
+                if recording.metadata != tracked_market.recording.metadata:
+                    await self._persistence.record_metadata(tracked_market, recording)
                 if recording.metadata.resolved:
-                    self._terminal_metadata_pending.discard(current.condition_id)
+                    self._terminal_metadata_pending.discard(
+                        tracked_market.condition_id
+                    )
                 continue
             if recording.metadata.resolved:
-                await self._record_gamma_resolution(current, recording)
-                await self._close_capture(current)
-            elif recording.metadata != current.recording.metadata:
-                await self._record_metadata(current, recording)
+                await self._record_gamma_resolution(tracked_market, recording)
+                await self._close_capture(tracked_market)
+            elif recording.metadata != tracked_market.recording.metadata:
+                await self._persistence.record_metadata(tracked_market, recording)
 
     async def _reconcile_terminal_metadata(
         self,
@@ -472,18 +484,11 @@ class RecordingCoordinator:
             return
         tracked.recording.assert_compatible_revision(recording)
         if recording.metadata != tracked.recording.metadata:
-            await self._record_metadata(tracked, recording)
+            await self._persistence.record_metadata(tracked, recording)
         if recording.metadata.resolved:
             self._terminal_metadata_pending.discard(condition_id)
         else:
             self._terminal_metadata_pending.add(condition_id)
-
-    async def _record_metadata(
-        self,
-        tracked: TrackedMarket,
-        recording: RecordingMarket,
-    ) -> None:
-        await self._persistence.record_metadata(tracked, recording)
 
     async def _record_gamma_resolution(
         self,

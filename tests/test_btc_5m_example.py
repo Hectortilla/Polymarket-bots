@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from polybot.examples.btc_5m import BtcFiveMinuteMarketBot, create
-from polybot.examples.btc_five_minute_strategy import BTC_FIVE_MINUTE_SLUG_PREFIX
+from polybot.examples.btc_five_minute_market import BTC_FIVE_MINUTE_SLUG_PREFIX
 from polybot.framework.context import BotContext
 
 

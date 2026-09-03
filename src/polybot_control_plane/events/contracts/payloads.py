@@ -37,15 +37,23 @@ from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.events.resolutions import MarketSettlementEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.performance.contracts.valuation_status import ValuationStatus
-from polybot_control_plane.runs.status import RunStatus
+from polybot_control_plane.runs.status import INITIAL_RUN_STATUS, RunStatus
 
 
 class EventPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+CHART_NULL_VALUE_STATUSES = frozenset({ValuationStatus.UNAVAILABLE})
+CHART_VALUE_REQUIRED_STATUSES = frozenset(ValuationStatus) - CHART_NULL_VALUE_STATUSES
+PORTFOLIO_MINIMUM_POSITION_SIZE = Decimal("0")
+PORTFOLIO_MINIMUM_CUMULATIVE_FEES = Decimal("0")
+PORTFOLIO_EMPTY_POSITION_REQUIRES_NULL_PRICE = True
+PORTFOLIO_TOKEN_IDS_MUST_BE_UNIQUE = True
+
+
 class RunStartedPayload(EventPayload):
-    status: Literal[RunStatus.STARTING] = RunStatus.STARTING
+    status: Literal[INITIAL_RUN_STATUS] = INITIAL_RUN_STATUS
     name: str = Field(min_length=1)
     mode: BotMode
     initial_cash_usdc: Decimal = Field(gt=0)
@@ -121,7 +129,7 @@ class MarketSettlementPayload(EventPayload):
 
 class PortfolioSnapshotPayload(EventPayload):
     cash_usdc: Decimal
-    cumulative_fees_usdc: Decimal = Field(ge=0)
+    cumulative_fees_usdc: Decimal = Field(ge=PORTFOLIO_MINIMUM_CUMULATIVE_FEES)
     positions: tuple[PortfolioPositionSnapshot, ...]
 
     @model_validator(mode="after")
@@ -276,9 +284,9 @@ def _validate_chart_value_status(
 ) -> None:
     if value is not None and not value.is_finite():
         raise ValueError("chart value must be finite")
-    if status is ValuationStatus.UNAVAILABLE and value is not None:
+    if status in CHART_NULL_VALUE_STATUSES and value is not None:
         raise ValueError("unavailable chart value must be null")
-    if status is not ValuationStatus.UNAVAILABLE and value is None:
+    if status in CHART_VALUE_REQUIRED_STATUSES and value is None:
         raise ValueError("chart value and valuation status disagree")
 
 
@@ -297,17 +305,29 @@ def _validate_portfolio_values(
 ) -> None:
     if not cash_usdc.is_finite():
         raise ValueError("portfolio cash must be finite")
-    if not cumulative_fees_usdc.is_finite() or cumulative_fees_usdc < 0:
+    if (
+        not cumulative_fees_usdc.is_finite()
+        or cumulative_fees_usdc < PORTFOLIO_MINIMUM_CUMULATIVE_FEES
+    ):
         raise ValueError("portfolio fees must be finite and nonnegative")
     token_ids: set[str] = set()
     for position in positions:
-        if not position.token_id or position.token_id in token_ids:
+        duplicate_token_id = position.token_id in token_ids
+        if not position.token_id or (
+            PORTFOLIO_TOKEN_IDS_MUST_BE_UNIQUE and duplicate_token_id
+        ):
             raise ValueError("portfolio position token IDs must be non-empty and unique")
         token_ids.add(position.token_id)
-        if not position.size.is_finite() or position.size < 0:
+        if (
+            not position.size.is_finite()
+            or position.size < PORTFOLIO_MINIMUM_POSITION_SIZE
+        ):
             raise ValueError("portfolio position size must be finite and nonnegative")
         if position.size == 0:
-            if position.average_entry_price is not None:
+            if (
+                PORTFOLIO_EMPTY_POSITION_REQUIRES_NULL_PRICE
+                and position.average_entry_price is not None
+            ):
                 raise ValueError("empty portfolio positions cannot have an average price")
         elif position.average_entry_price is None or not is_outcome_price(
             position.average_entry_price

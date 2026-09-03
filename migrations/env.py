@@ -8,8 +8,10 @@ from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
-# Importing the row registers its table in the shared SQLModel metadata.
-from polybot_control_plane.runs.models import RunRow
+# Importing rows registers every control-plane table in shared SQLModel metadata.
+from polybot_control_plane.bots.models import BotGraphRevisionRow, BotRow  # noqa: F401
+from polybot_control_plane.graph_templates.models import GraphTemplateRow  # noqa: F401
+from polybot_control_plane.runs.models import RunRow  # noqa: F401
 
 
 config = context.config

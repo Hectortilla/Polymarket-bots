@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from polybot.examples.btc_five_minute_market import BTC_FIVE_MINUTE_BUCKET_SECONDS
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.markets import market_bucket_slug
@@ -7,7 +8,11 @@ from polybot.framework.streams import StreamRelation, StreamRule
 
 
 class ExampleFiveMinuteBucketBot(BaseBot):
-    def __init__(self, slug_prefix: str, bucket_seconds: int = 300) -> None:
+    def __init__(
+        self,
+        slug_prefix: str,
+        bucket_seconds: int = BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    ) -> None:
         self.slug_prefix = slug_prefix
         self.bucket_seconds = bucket_seconds
 

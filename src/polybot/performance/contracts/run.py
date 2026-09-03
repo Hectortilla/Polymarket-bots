@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from polybot.backtesting.contracts import BacktestGapPolicy
+from polybot.framework.timestamps import require_nonnegative_timestamp
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
@@ -104,18 +105,11 @@ class RunSelection:
             or self.session_id <= 0
         ):
             raise ValueError("performance session ID must be positive")
-        if (
-            isinstance(self.start_ms, bool)
-            or not isinstance(self.start_ms, int)
-            or self.start_ms < 0
-        ):
-            raise ValueError("performance start timestamp must be nonnegative")
-        if self.end_ms is not None and (
-            isinstance(self.end_ms, bool)
-            or not isinstance(self.end_ms, int)
-            or self.end_ms < self.start_ms
-        ):
-            raise ValueError("performance end timestamp must not precede start")
+        require_nonnegative_timestamp(self.start_ms, "performance start timestamp")
+        if self.end_ms is not None:
+            require_nonnegative_timestamp(self.end_ms, "performance end timestamp")
+            if self.end_ms < self.start_ms:
+                raise ValueError("performance end timestamp must not precede start")
         if any(not slug.strip() for slug in self.market_slugs):
             raise ValueError("performance market slugs must not be empty")
         if len(self.market_slugs) != len(set(self.market_slugs)):

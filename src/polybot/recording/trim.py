@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from polybot.backtesting.contracts import BacktestError
+from polybot.cli.arguments import positive_int
 
 from .archive.errors import RecordingArchiveError
 from .trim_contracts import (
@@ -54,7 +55,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("archive", type=Path, metavar="ARCHIVE")
     parser.add_argument(
         "--session",
-        type=_positive_int,
+        type=positive_int,
         help="source recording session ID; required when multiple sessions exist",
     )
     parser.add_argument(
@@ -68,15 +69,6 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="replace the archive without retaining the default backup",
     )
     return parser
-
-
-def _positive_int(value: str) -> int:
-    parsed = int(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("value must be positive")
-    return parsed
-
-
 def _print_result(result: RecordingTrimResult) -> None:
     plan = result.plan
     console = recording_console()

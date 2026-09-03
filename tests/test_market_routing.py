@@ -4,6 +4,10 @@ from decimal import Decimal
 
 import pytest
 
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
@@ -20,6 +24,8 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import market_bucket_slug
 from polybot.framework.runner import BotRunner
 from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.polymarket.errors import MarketDataTransportError
+from polybot.polymarket.markets import Market, MarketOutcome
 
 
 @dataclass(slots=True)
@@ -43,7 +49,13 @@ class BucketBot(RecordingMarketBot):
         return (
             StreamRule(
                 StreamRelation.INDEPENDENT,
-                (market_bucket_slug("btc-updown-5m", now_ms, 300),),
+                (
+                    market_bucket_slug(
+                        BTC_FIVE_MINUTE_SLUG_PREFIX,
+                        now_ms,
+                        BTC_FIVE_MINUTE_BUCKET_SECONDS,
+                    ),
+                ),
             ),
         )
 
@@ -57,9 +69,9 @@ class BucketBot(RecordingMarketBot):
                 StreamRelation.INDEPENDENT,
                 (
                     market_bucket_slug(
-                        "btc-updown-5m",
+                        BTC_FIVE_MINUTE_SLUG_PREFIX,
                         now_ms,
-                        300,
+                        BTC_FIVE_MINUTE_BUCKET_SECONDS,
                         bucket_offset=1,
                     ),
                 ),
@@ -140,15 +152,63 @@ def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotConte
     assert book_count == 0
 
 
-def test_runner_rejects_book_without_condition_id(dummy_context: BotContext) -> None:
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    (
+        ("token_id", None),
+        ("token_id", ""),
+        ("token_id", "   "),
+        ("market_slug", None),
+        ("market_slug", ""),
+        ("market_slug", "   "),
+        ("condition_id", None),
+        ("condition_id", ""),
+        ("condition_id", "   "),
+    ),
+)
+def test_runner_rejects_book_without_complete_market_identity(
+    dummy_context: BotContext,
+    field_name: str,
+    value: str | None,
+) -> None:
     async def run() -> DispatchOutcome:
         ctx = _with_config(dummy_context, _bot_config("multi", markets=("btc",)))
-        runner = BotRunner(RecordingMarketBot(books=[], wallet_trades=[]), ctx)
-        return await runner.dispatch_book(replace(_book("btc"), condition_id=None))
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        runner = BotRunner(bot, ctx)
+        outcome = await runner.dispatch_book(
+            replace(_book("btc"), **{field_name: value})
+        )
+        assert bot.books == []
+        return outcome
 
     outcome = asyncio.run(run())
 
     assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+
+
+def test_runner_rejects_book_when_market_lookup_is_unavailable(
+    dummy_context: BotContext,
+) -> None:
+    class UnavailableMarkets:
+        async def find_by_slug(self, slug: str) -> Market | None:
+            raise MarketDataTransportError("market lookup unavailable")
+
+    async def run() -> tuple[DispatchOutcome, list[str]]:
+        configured = _with_config(
+            dummy_context,
+            _bot_config("multi", markets=("btc",)),
+        )
+        ctx = replace(configured, markets=UnavailableMarkets())
+        bot = RecordingMarketBot(books=[], wallet_trades=[])
+        outcome = await BotRunner(bot, ctx, now_ms_fn=lambda: 1_000).dispatch_book(
+            _book("btc")
+        )
+        return outcome, bot.books
+
+    outcome, books = asyncio.run(run())
+
+    assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+    assert books == []
 
 
 def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:
@@ -371,8 +431,17 @@ def test_dynamic_market_hooks_expose_current_and_next(
 
     current_slug, next_slug = asyncio.run(run())
 
-    assert current_slug == "btc-updown-5m-1783549200"
-    assert next_slug == "btc-updown-5m-1783549500"
+    assert current_slug == market_bucket_slug(
+        BTC_FIVE_MINUTE_SLUG_PREFIX,
+        1_783_549_250_000,
+        BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    )
+    assert next_slug == market_bucket_slug(
+        BTC_FIVE_MINUTE_SLUG_PREFIX,
+        1_783_549_250_000,
+        BTC_FIVE_MINUTE_BUCKET_SECONDS,
+        bucket_offset=1,
+    )
 
 
 def test_dispatch_outcome_enforces_reason_invariant() -> None:
@@ -435,8 +504,26 @@ def _with_config(ctx: BotContext, config: BotConfig) -> BotContext:
     return BotContext(
         config=config,
         broker=ctx.broker,
-        markets=ctx.markets,
+        markets=RoutingMarkets(),
         books=ctx.books,
         wallet_activity=ctx.wallet_activity,
         positions=ctx.positions,
     )
+
+
+@dataclass(slots=True)
+class RoutingMarkets:
+    async def find_by_slug(self, slug: str) -> Market:
+        return Market(
+            condition_id="condition",
+            slug=slug,
+            question="Routing test",
+            minimum_tick_size=Decimal("0.01"),
+            minimum_order_size=Decimal("1"),
+            neg_risk=False,
+            fee_rate=Decimal(0),
+            outcomes=(
+                MarketOutcome("Yes", "123"),
+                MarketOutcome("No", "456"),
+            ),
+        )

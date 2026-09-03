@@ -18,6 +18,10 @@ import type {
 } from '$lib/api/generated';
 import { addEdge, type Connection, type Edge, type Node } from '@xyflow/svelte';
 import { constantDataFromDescriptor } from './constantNode';
+import { GRAPH_NODE_TYPE } from './graphContracts';
+
+export { GRAPH_NODE_TYPE } from './graphContracts';
+export { nodeGraphsEqual } from './nodeGraphEquality';
 
 export type GraphNodeData = GraphNode['data'];
 export type CanvasNode =
@@ -26,13 +30,6 @@ export type CanvasNode =
   | Node<GraphComparisonNodeData, GraphComparisonNode['type']>
   | Node<GraphBrokerActionNodeData, GraphBrokerActionNode['type']>;
 export type CanvasEdge = Edge;
-
-export const GRAPH_NODE_TYPE = {
-  trigger: 'trigger',
-  constant: 'constant',
-  comparison: 'comparison',
-  brokerAction: 'broker_action'
-} as const satisfies Record<string, GraphNode['type']>;
 
 export function canvasNodes(graph: NodeGraph): CanvasNode[] {
   return graph.nodes.map(toCanvasNode);
@@ -246,7 +243,7 @@ export function connectionIsValid(
   const source = nodes.find((node) => node.id === connection.source);
   const target = nodes.find((node) => node.id === connection.target);
   if (!source || !target || source.id === target.id) return false;
-  const sourceScalarType = outputScalarType(
+  const sourceScalarType = graphOutputScalarType(
     source,
     connection.sourceHandle,
     catalog
@@ -256,6 +253,17 @@ export function connectionIsValid(
     connection.targetHandle,
     catalog
   );
+  if (target.type === GRAPH_NODE_TYPE.comparison) {
+    const connectedScalarTypes = edges
+      .filter((edge) => edge.target === target.id)
+      .map((edge) => {
+        const connectedSource = nodes.find((node) => node.id === edge.source);
+        return connectedSource && edge.sourceHandle
+          ? graphOutputScalarType(connectedSource, edge.sourceHandle, catalog)
+          : null;
+      });
+    if (connectedScalarTypes.some((type) => type !== sourceScalarType)) return false;
+  }
   return (
     sourceScalarType !== null && acceptedScalarTypes.includes(sourceScalarType)
   );
@@ -268,7 +276,7 @@ export function addConnection(
   return addEdge(connection, edges);
 }
 
-function outputScalarType(
+export function graphOutputScalarType(
   node: CanvasNode,
   handleId: string,
   catalog: GraphNodeCatalog

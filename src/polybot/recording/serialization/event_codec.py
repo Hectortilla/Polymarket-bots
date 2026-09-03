@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+
 from ..contracts.gaps import CoverageGapPayload, CoverageGapReason
 from ..contracts.payloads import PublicTradePayload, ResolutionPayload
 from . import fields
@@ -74,7 +76,7 @@ def decode_resolution(data: dict[str, Any]) -> ResolutionPayload:
         require_exact_keys(data, fields.RESOLUTION_FIELDS)
         source_field = fields.RESOLUTION_PAYLOAD_SOURCE_FIELD
     token_ids = require_text_tuple(data[fields.TOKEN_IDS_FIELD], "resolution token IDs")
-    if len(token_ids) != 2:
+    if len(token_ids) != MARKET_RESOLUTION_TOKEN_COUNT:
         raise ValueError("recording payload resolution requires two token IDs")
     return ResolutionPayload(
         token_ids=(token_ids[0], token_ids[1]),

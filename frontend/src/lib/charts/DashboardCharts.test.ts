@@ -28,6 +28,7 @@ vi.mock('./echarts', () => ({ init: echartsMocks.init }));
 
 import DashboardCharts from './DashboardCharts.svelte';
 import { DASHBOARD_KEY, SIDE, VALUATION_STATUS } from './contracts';
+import { DASHBOARD_COPY } from './copy';
 
 class FakeResizeObserver {
   static instances: FakeResizeObserver[] = [];
@@ -80,7 +81,9 @@ describe('dashboard controls and layout', () => {
       walletTimelinePoints: []
     });
 
-    expect(screen.getByRole('button', { name: /v · view/i })).toBeTruthy();
+    expect(screen.getByRole('button', {
+      name: `${DASHBOARD_KEY.view} · ${DASHBOARD_COPY.CONTROL_VIEW}`
+    })).toBeTruthy();
     const closer = view.container.querySelector<HTMLButtonElement>(
       `button[title="Keyboard: ${DASHBOARD_KEY.closer}"]`
     );
@@ -94,9 +97,14 @@ describe('dashboard controls and layout', () => {
     for (let index = 0; index < 6; index += 1) await fireEvent.click(wider);
     expect(wider.disabled).toBe(true);
     await fireEvent.keyDown(window, { key: DASHBOARD_KEY.view });
-    expect(screen.getByRole('heading', { name: 'Followed-wallet activity' })).toBeTruthy();
-    await fireEvent.click(screen.getByRole('button', { name: /r · reset/i }));
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /r · reset/i }).disabled).toBe(true);
+    expect(screen.getByRole('heading', { name: DASHBOARD_COPY.WALLET_ACTIVITY })).toBeTruthy();
+    const resetControlName =
+      `${DASHBOARD_KEY.reset} · ${DASHBOARD_COPY.CONTROL_RESET}`;
+    await fireEvent.click(screen.getByRole('button', { name: resetControlName }));
+    expect(screen.getByRole<HTMLButtonElement>(
+      'button',
+      { name: resetControlName }
+    ).disabled).toBe(true);
   });
 
   it('stacks the market and executable-equity charts', async () => {
@@ -130,8 +138,8 @@ describe('dashboard controls and layout', () => {
     FakeIntersectionObserver.current.trigger(true);
     await tick();
 
-    expect(view.container.textContent).toContain('Run history');
-    expect(view.container.textContent).not.toContain('Live dashboard');
+    expect(view.container.textContent).toContain(DASHBOARD_COPY.RUN_HISTORY);
+    expect(view.container.textContent).not.toContain(DASHBOARD_COPY.LIVE);
     expect(echartsMocks.instances).toHaveLength(2);
   });
 
@@ -166,10 +174,12 @@ describe('dashboard controls and layout', () => {
     expect(previousButton.disabled).toBe(true);
 
     expect(
-      view.container.querySelector('[aria-label="Followed-wallet trade timeline"]')
+      view.container.querySelector(
+        `[aria-label="${DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL}"]`
+      )
     ).toBeTruthy();
     expect(view.container.textContent).not.toContain(
-      'No followed wallets configured or detected.'
+      DASHBOARD_COPY.NO_WALLETS
     );
   });
 

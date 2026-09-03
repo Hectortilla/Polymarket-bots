@@ -123,10 +123,10 @@ def normalize_wallet_trade(
         _get_trade_field(source, SDK_TIMESTAMP_ATTRIBUTE)
     )
     raw_outcome = _get_trade_field(source, ACTIVITY_OUTCOME_FIELD)
-    outcome = _normalized_text(raw_outcome)
+    outcome = normalize_text_or_none(raw_outcome)
     raw_activity_type = _get_trade_field(source, ACTIVITY_TYPE_FIELD)
-    activity_type = _normalized_text(raw_activity_type)
-    transaction_hash = _normalized_text(
+    activity_type = normalize_text_or_none(raw_activity_type)
+    transaction_hash = _normalized_transaction_hash(
         _get_trade_field(source, SDK_TRANSACTION_HASH_ATTRIBUTE)
     )
     upstream_source_id = transaction_hash
@@ -169,7 +169,7 @@ def normalize_wallet_trade(
             trade_timestamp_ms=timestamp,
             observed_at_ms=observed_at_ms,
             kind=kind,
-            market_slug=_normalized_text(
+            market_slug=normalize_text_or_none(
                 _get_trade_field(source, ACTIVITY_SLUG_FIELD)
             ),
             transaction_hash=transaction_hash,
@@ -191,25 +191,25 @@ def normalize_stream_event(
             observed_at_ms=observed_at_ms,
             kind=WalletTradeKind.TRADE,
         )
-    wallet = _normalized_text(source.wallet)
-    condition_id = _normalized_text(source.condition_id)
-    token_id = _normalized_text(source.token_id)
-    source_id = _normalized_text(source.source_id)
-    if None in (wallet, condition_id, token_id, source_id):
+    wallet = normalize_text_or_none(source.wallet)
+    condition_id = normalize_text_or_none(source.condition_id)
+    token_id = normalize_text_or_none(source.token_id)
+    source_id = normalize_text_or_none(source.source_id)
+    transaction_hash = _normalized_transaction_hash(source.transaction_hash)
+    if None in (wallet, condition_id, token_id, source_id, transaction_hash):
         return None
-    normalized_outcome = _normalized_text(source.outcome)
+    normalized_outcome = normalize_text_or_none(source.outcome)
     if source.outcome is not None and normalized_outcome is None:
         return None
     if not source.is_valid() or not isinstance(source.side, Side):
         return None
-    upstream_source_id = _normalized_text(source.transaction_hash) or source_id
     event = replace(
         source,
         wallet=normalize_wallet_address(wallet),
         condition_id=condition_id,
         token_id=token_id,
-        market_slug=_normalized_text(source.market_slug),
-        transaction_hash=_normalized_text(source.transaction_hash),
+        market_slug=normalize_text_or_none(source.market_slug),
+        transaction_hash=transaction_hash,
         outcome=normalized_outcome,
         observed_at_ms=observed_at_ms,
         source_id=_canonical_source_id(
@@ -220,19 +220,20 @@ def normalize_stream_event(
             size=source.size,
             price=source.price,
             timestamp=source.trade_timestamp_ms,
-            upstream_source_id=upstream_source_id,
+            upstream_source_id=transaction_hash,
         ),
     )
     return event if event.is_valid() else None
 
 
-def _normalized_text(value: object) -> str | None:
-    return normalize_text_or_none(value)
+def _normalized_transaction_hash(value: object) -> str | None:
+    normalized = normalize_text_or_none(value)
+    return None if normalized is None else normalized.casefold()
 
 
 def _aliases_agree(name: str, primary: object, secondary: object) -> bool:
-    first = _normalized_text(primary)
-    second = _normalized_text(secondary)
+    first = normalize_text_or_none(primary)
+    second = normalize_text_or_none(secondary)
     if name == SDK_WALLET_ATTRIBUTE:
         return (
             first is not None

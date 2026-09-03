@@ -21,7 +21,7 @@ from polybot_control_plane.events.ids import (
 )
 from polybot_control_plane.runs.status import TERMINAL_RUN_STATUSES, RunStatus
 
-from ..kinds import EVENT_DISCRIMINATOR_FIELD, EventKind, LiveEventKind
+from .. import kinds
 from .payloads import (
     BotActivityPayload,
     BrokerFailurePayload,
@@ -57,7 +57,7 @@ class DurableEventBase(BaseModel):
 
 
 class RunLifecycleEvent(DurableEventBase):
-    kind: Literal[EventKind.RUN_LIFECYCLE] = EventKind.RUN_LIFECYCLE
+    kind: Literal[kinds.EventKind.RUN_LIFECYCLE] = kinds.EventKind.RUN_LIFECYCLE
     payload: RunStartedPayload | RunStatusPayload
 
     def is_terminal(self) -> bool:
@@ -81,37 +81,37 @@ class RunLifecycleEvent(DurableEventBase):
 
 
 class RunBootstrapEvent(DurableEventBase):
-    kind: Literal[EventKind.RUN_BOOTSTRAP] = EventKind.RUN_BOOTSTRAP
+    kind: Literal[kinds.EventKind.RUN_BOOTSTRAP] = kinds.EventKind.RUN_BOOTSTRAP
     payload: RunBootstrapPayload
 
 
 class BotActivityDurableEvent(DurableEventBase):
-    kind: Literal[EventKind.BOT_ACTIVITY] = EventKind.BOT_ACTIVITY
+    kind: Literal[kinds.EventKind.BOT_ACTIVITY] = kinds.EventKind.BOT_ACTIVITY
     payload: BotActivityPayload
 
 
 class BrokerOrderEvent(DurableEventBase):
-    kind: Literal[EventKind.BROKER_ORDER] = EventKind.BROKER_ORDER
+    kind: Literal[kinds.EventKind.BROKER_ORDER] = kinds.EventKind.BROKER_ORDER
     payload: BrokerOrderPayload
 
 
 class BrokerFillEvent(DurableEventBase):
-    kind: Literal[EventKind.BROKER_FILL] = EventKind.BROKER_FILL
+    kind: Literal[kinds.EventKind.BROKER_FILL] = kinds.EventKind.BROKER_FILL
     payload: BrokerFillPayload
 
 
 class BrokerFailureEvent(DurableEventBase):
-    kind: Literal[EventKind.BROKER_FAILURE] = EventKind.BROKER_FAILURE
+    kind: Literal[kinds.EventKind.BROKER_FAILURE] = kinds.EventKind.BROKER_FAILURE
     payload: BrokerFailurePayload
 
 
 class MarketSettlementDurableEvent(DurableEventBase):
-    kind: Literal[EventKind.MARKET_SETTLEMENT] = EventKind.MARKET_SETTLEMENT
+    kind: Literal[kinds.EventKind.MARKET_SETTLEMENT] = kinds.EventKind.MARKET_SETTLEMENT
     payload: MarketSettlementPayload
 
 
 class PortfolioSnapshotEvent(DurableEventBase):
-    kind: Literal[EventKind.PORTFOLIO_SNAPSHOT] = EventKind.PORTFOLIO_SNAPSHOT
+    kind: Literal[kinds.EventKind.PORTFOLIO_SNAPSHOT] = kinds.EventKind.PORTFOLIO_SNAPSHOT
     payload: PortfolioSnapshotPayload
 
     @classmethod
@@ -133,22 +133,22 @@ class PortfolioSnapshotEvent(DurableEventBase):
 
 
 class WalletTimelineDurableEvent(DurableEventBase):
-    kind: Literal[EventKind.WALLET_TIMELINE] = EventKind.WALLET_TIMELINE
+    kind: Literal[kinds.EventKind.WALLET_TIMELINE] = kinds.EventKind.WALLET_TIMELINE
     payload: WalletTimelinePayload
 
 
 class StreamHealthEvent(DurableEventBase):
-    kind: Literal[EventKind.STREAM_HEALTH] = EventKind.STREAM_HEALTH
+    kind: Literal[kinds.EventKind.STREAM_HEALTH] = kinds.EventKind.STREAM_HEALTH
     payload: StreamHealthPayload
 
 
 class RunFailureEvent(DurableEventBase):
-    kind: Literal[EventKind.RUN_FAILURE] = EventKind.RUN_FAILURE
+    kind: Literal[kinds.EventKind.RUN_FAILURE] = kinds.EventKind.RUN_FAILURE
     payload: RunFailurePayload
 
 
 class ChartSampleEvent(DurableEventBase):
-    kind: Literal[EventKind.CHART_SAMPLE] = EventKind.CHART_SAMPLE
+    kind: Literal[kinds.EventKind.CHART_SAMPLE] = kinds.EventKind.CHART_SAMPLE
     payload: ChartSamplePayload
 
 
@@ -165,11 +165,95 @@ type DurableEvent = Annotated[
     | StreamHealthEvent
     | RunFailureEvent
     | ChartSampleEvent,
-    Field(discriminator=EVENT_DISCRIMINATOR_FIELD),
+    Field(discriminator=kinds.EVENT_DISCRIMINATOR_FIELD),
 ]
 
 
 DURABLE_EVENT_ADAPTER = TypeAdapter(DurableEvent)
+
+
+class PersistedRunLifecycleEvent(RunLifecycleEvent):
+    id: DurableEventId
+
+
+class PersistedRunBootstrapEvent(RunBootstrapEvent):
+    id: DurableEventId
+
+
+class PersistedBotActivityEvent(BotActivityDurableEvent):
+    id: DurableEventId
+
+
+class PersistedBrokerOrderEvent(BrokerOrderEvent):
+    id: DurableEventId
+
+
+class PersistedBrokerFillEvent(BrokerFillEvent):
+    id: DurableEventId
+
+
+class PersistedBrokerFailureEvent(BrokerFailureEvent):
+    id: DurableEventId
+
+
+class PersistedMarketSettlementEvent(MarketSettlementDurableEvent):
+    id: DurableEventId
+
+
+class PersistedPortfolioSnapshotEvent(PortfolioSnapshotEvent):
+    id: DurableEventId
+
+
+class PersistedWalletTimelineEvent(WalletTimelineDurableEvent):
+    id: DurableEventId
+
+
+class PersistedStreamHealthEvent(StreamHealthEvent):
+    id: DurableEventId
+
+
+class PersistedRunFailureEvent(RunFailureEvent):
+    id: DurableEventId
+
+
+class PersistedChartSampleEvent(ChartSampleEvent):
+    id: DurableEventId
+
+
+PERSISTED_DURABLE_EVENT_MODELS = (
+    PersistedRunLifecycleEvent,
+    PersistedRunBootstrapEvent,
+    PersistedBotActivityEvent,
+    PersistedBrokerOrderEvent,
+    PersistedBrokerFillEvent,
+    PersistedBrokerFailureEvent,
+    PersistedMarketSettlementEvent,
+    PersistedPortfolioSnapshotEvent,
+    PersistedWalletTimelineEvent,
+    PersistedStreamHealthEvent,
+    PersistedRunFailureEvent,
+    PersistedChartSampleEvent,
+)
+
+
+type PersistedDurableEvent = Annotated[
+    PersistedRunLifecycleEvent
+    | PersistedRunBootstrapEvent
+    | PersistedBotActivityEvent
+    | PersistedBrokerOrderEvent
+    | PersistedBrokerFillEvent
+    | PersistedBrokerFailureEvent
+    | PersistedMarketSettlementEvent
+    | PersistedPortfolioSnapshotEvent
+    | PersistedWalletTimelineEvent
+    | PersistedStreamHealthEvent
+    | PersistedRunFailureEvent
+    | PersistedChartSampleEvent,
+    Field(discriminator=kinds.EVENT_DISCRIMINATOR_FIELD),
+]
+
+
+PERSISTED_DURABLE_EVENT_ADAPTER = TypeAdapter(PersistedDurableEvent)
 
 
 class LiveEventBase(BaseModel):
@@ -180,22 +264,22 @@ class LiveEventBase(BaseModel):
 
 
 class LiveMarketChartEvent(LiveEventBase):
-    kind: Literal[LiveEventKind.CHART_MARKET] = LiveEventKind.CHART_MARKET
+    kind: Literal[kinds.LiveEventKind.CHART_MARKET] = kinds.LiveEventKind.CHART_MARKET
     payload: MarketChartPayload
 
 
 class LiveEquityChartEvent(LiveEventBase):
-    kind: Literal[LiveEventKind.CHART_EQUITY] = LiveEventKind.CHART_EQUITY
+    kind: Literal[kinds.LiveEventKind.CHART_EQUITY] = kinds.LiveEventKind.CHART_EQUITY
     payload: EquityChartPayload
 
 
 class LiveWalletChartEvent(LiveEventBase):
-    kind: Literal[LiveEventKind.CHART_WALLET] = LiveEventKind.CHART_WALLET
+    kind: Literal[kinds.LiveEventKind.CHART_WALLET] = kinds.LiveEventKind.CHART_WALLET
     payload: WalletChartPayload
 
 
 class LiveStreamHealthEvent(LiveEventBase):
-    kind: Literal[LiveEventKind.STREAM_HEALTH] = LiveEventKind.STREAM_HEALTH
+    kind: Literal[kinds.LiveEventKind.STREAM_HEALTH] = kinds.LiveEventKind.STREAM_HEALTH
     payload: StreamHealthPayload
 
 
@@ -209,14 +293,14 @@ LIVE_EVENT_MODELS = (
 
 type LiveChartEvent = Annotated[
     LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent,
-    Field(discriminator=EVENT_DISCRIMINATOR_FIELD),
+    Field(discriminator=kinds.EVENT_DISCRIMINATOR_FIELD),
 ]
 type LiveRunEvent = Annotated[
     LiveMarketChartEvent
     | LiveEquityChartEvent
     | LiveWalletChartEvent
     | LiveStreamHealthEvent,
-    Field(discriminator=EVENT_DISCRIMINATOR_FIELD),
+    Field(discriminator=kinds.EVENT_DISCRIMINATOR_FIELD),
 ]
 
 

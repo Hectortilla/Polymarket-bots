@@ -4,7 +4,9 @@ import re
 from typing import Final
 
 
-WALLET_ADDRESS_PATTERN: Final = re.compile(r"0x[a-fA-F0-9]{40}\Z")
+WALLET_ADDRESS_PATTERN_TEXT: Final = r"0x[a-fA-F0-9]{40}"
+WALLET_ADDRESS_SCHEMA_PATTERN: Final = f"^(?:{WALLET_ADDRESS_PATTERN_TEXT})$"
+WALLET_ADDRESS_PATTERN: Final = re.compile(WALLET_ADDRESS_PATTERN_TEXT)
 
 
 def normalize_wallet_address(address: str) -> str:

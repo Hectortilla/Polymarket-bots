@@ -8,19 +8,22 @@ from sqlmodel import select
 
 from polybot_control_plane.events.contracts import (
     ChartSampleEvent,
-    DURABLE_EVENT_ADAPTER,
     DurableEvent,
-    EVENT_DISCRIMINATOR_FIELD,
-    EventKind,
+    PERSISTED_DURABLE_EVENT_ADAPTER,
+    PersistedDurableEvent,
 )
-from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR
+from polybot_control_plane.events.kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
+from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR, is_durable_event_id
 from polybot_control_plane.events.models import EventRow
-from polybot_control_plane.events.pagination import MAX_EVENT_PAGE_LIMIT
+from polybot_control_plane.events.pagination import (
+    MAX_EVENT_PAGE_LIMIT,
+    next_event_page_cursor,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class StoredEventPage:
-    events: tuple[DurableEvent, ...]
+    events: tuple[PersistedDurableEvent, ...]
     next_before_event_id: int | None
 
 
@@ -28,12 +31,18 @@ class EventStore:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def append(self, event: DurableEvent) -> DurableEvent:
+    async def append(self, event: DurableEvent) -> PersistedDurableEvent:
         row = EventRow.from_event(event)
         self._session.add(row)
+        await self._session.flush()
+        if not is_durable_event_id(row.id):
+            await self._session.rollback()
+            raise ValueError("persisted durable event ID exceeds the public cursor range")
         await self._session.commit()
         await self._session.refresh(row)
-        return event.model_copy(update={"id": row.id})
+        return PERSISTED_DURABLE_EVENT_ADAPTER.validate_python(
+            event.model_copy(update={"id": row.id})
+        )
 
     async def read(
         self,
@@ -41,7 +50,7 @@ class EventStore:
         *,
         after_event_id: int = FIRST_EVENT_CURSOR,
         limit: int = MAX_EVENT_PAGE_LIMIT,
-    ) -> tuple[DurableEvent, ...]:
+    ) -> tuple[PersistedDurableEvent, ...]:
         rows = tuple(
             (
                 await self._session.execute(
@@ -73,9 +82,13 @@ class EventStore:
         )
         has_more = len(rows) > limit
         page_rows = rows[:limit]
+        events = tuple(self._event_from_row(row) for row in reversed(page_rows))
         return StoredEventPage(
-            events=tuple(self._event_from_row(row) for row in reversed(page_rows)),
-            next_before_event_id=page_rows[-1].id if has_more else None,
+            events=events,
+            next_before_event_id=next_event_page_cursor(
+                tuple(event.id for event in events),
+                has_more=has_more,
+            ),
         )
 
     async def latest_chart_samples(
@@ -105,8 +118,8 @@ class EventStore:
         return latest_chart_samples_by_run
 
     @staticmethod
-    def _event_from_row(row: EventRow) -> DurableEvent:
-        return DURABLE_EVENT_ADAPTER.validate_python(
+    def _event_from_row(row: EventRow) -> PersistedDurableEvent:
+        return PERSISTED_DURABLE_EVENT_ADAPTER.validate_python(
             {
                 "id": row.id,
                 "run_id": row.run_id,
