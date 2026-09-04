@@ -101,10 +101,6 @@
         <span aria-hidden="true">{HOME_COLUMN_LABEL.GRAPH}</span>
         <span aria-hidden="true">{HOME_COLUMN_LABEL.LATEST_RUN}</span>
         <span aria-hidden="true">{HOME_COLUMN_LABEL.UPDATED}</span>
-        <a class="bot-list-create" href={NAVIGATION_PATH.NEW_BOT}>
-          <PlusIcon aria-hidden="true" size={15} />
-          {NAVIGATION_LABEL.NEW_BOT}
-        </a>
       </div>
       {#if visibleBots.length === 0}
         <p class="empty-state">{HOME_COPY.CREATE_FIRST_BOT}</p>
@@ -141,6 +137,10 @@
           </div>
         {/each}
       {/if}
+      <a class="bot-list-create-row" href={NAVIGATION_PATH.NEW_BOT}>
+        <PlusIcon aria-hidden="true" size={15} />
+        {NAVIGATION_LABEL.NEW_BOT}
+      </a>
     </div>
   </section>
 
