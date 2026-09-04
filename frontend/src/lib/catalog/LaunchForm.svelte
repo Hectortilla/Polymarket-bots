@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnySchemaObject } from 'ajv';
-  import { tick } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
 
   import type { BotDefinitionDescriptor } from '$lib/api/generated';
   import { FORM_COPY } from '$lib/formCopy';
@@ -28,7 +28,11 @@
     submitLabel = LAUNCH_FORM_COPY.SAVE_BOT,
     busyLabel = FORM_COPY.SAVING,
     onchange,
-    serverIssues = []
+    serverIssues = [],
+    showSelectionNotes = true,
+    sectionTitle,
+    sectionDescription,
+    children
   }: {
     descriptor: BotDefinitionDescriptor;
     onsubmit: (inputs: LaunchInputs) => void | Promise<void>;
@@ -39,6 +43,10 @@
     busyLabel?: string;
     onchange?: (inputs: LaunchInputs) => void;
     serverIssues?: LaunchValidationIssue[];
+    showSelectionNotes?: boolean;
+    sectionTitle?: string;
+    sectionDescription?: string;
+    children?: Snippet;
   } = $props();
 
   const fields = $derived(launchFields(descriptor));
@@ -139,10 +147,12 @@
   }
 </script>
 
-<div class="selection-notes" aria-label="Selection behavior">
-  <p>{selectionExplanation('Market', descriptor.market_selection)}</p>
-  <p>{selectionExplanation('Wallet', descriptor.wallet_selection)}</p>
-</div>
+{#if showSelectionNotes}
+  <div class="selection-notes" aria-label="Selection behavior">
+    <p>{selectionExplanation('Market', descriptor.market_selection)}</p>
+    <p>{selectionExplanation('Wallet', descriptor.wallet_selection)}</p>
+  </div>
+{/if}
 
 <form
   bind:this={formElement}
@@ -151,99 +161,111 @@
   novalidate
   aria-busy={busy}
 >
-  <div class="form-grid">
-    {#each fields as [name, field] (name)}
-      {@const schema = resolvedFieldSchema(descriptor, field)}
-      {@const widget = widgetKind(field)}
-      {@const labelId = `field-${name}-label`}
-      {@const helperId = `field-${name}-helper`}
-      {@const errorId = `field-${name}-error`}
-      {@const fieldIssues = issuesForField(name)}
-      {@const hasHelper = typeof schema.description === 'string'}
-      <label
-        class:wide={widget === WIDGET_KIND.STREAM_RULES}
-        class:checkbox-field={schema.type === 'boolean'}
-      >
-        <span class="field-label" id={labelId}>{fieldLabel(name, schema)}</span>
-        {#if typeof schema.description === 'string'}
-          <span class="field-helper" id={helperId}>{schema.description}</span>
-        {/if}
+  <section class="builder-section configuration-section">
+    {#if sectionTitle}
+      <header class="builder-section-heading">
+        <div>
+          <h2>{sectionTitle}</h2>
+          {#if sectionDescription}<p>{sectionDescription}</p>{/if}
+        </div>
+      </header>
+    {/if}
+    <div class="form-grid">
+      {#each fields as [name, field] (name)}
+        {@const schema = resolvedFieldSchema(descriptor, field)}
+        {@const widget = widgetKind(field)}
+        {@const labelId = `field-${name}-label`}
+        {@const helperId = `field-${name}-helper`}
+        {@const errorId = `field-${name}-error`}
+        {@const fieldIssues = issuesForField(name)}
+        {@const hasHelper = typeof schema.description === 'string'}
+        <label
+          class:wide={widget === WIDGET_KIND.STREAM_RULES}
+          class:checkbox-field={schema.type === 'boolean'}
+        >
+          <span class="field-label" id={labelId}>{fieldLabel(name, schema)}</span>
+          {#if typeof schema.description === 'string'}
+            <span class="field-helper" id={helperId}>{schema.description}</span>
+          {/if}
 
-        {#if widget === WIDGET_KIND.WALLET_ADDRESSES || widget === WIDGET_KIND.MARKET_SLUGS}
-          <textarea
-            rows="3"
-            value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
-            oninput={(event) => updateList(name, event.currentTarget.value)}
-            placeholder={widget === WIDGET_KIND.WALLET_ADDRESSES ? 'One wallet address per line' : 'One market slug per line'}
-            aria-labelledby={labelId}
-            aria-describedby={fieldDescription(
-              helperId,
-              hasHelper,
-              errorId,
-              fieldIssues.length > 0
-            )}
-            aria-invalid={fieldIssues.length > 0}
-          ></textarea>
-        {:else if widget === WIDGET_KIND.STREAM_RULES}
-          <textarea
-            rows="6"
-            value={JSON.stringify(inputs[name], null, 2)}
-            oninput={(event) => updateJson(name, event.currentTarget.value)}
-            spellcheck="false"
-            aria-labelledby={labelId}
-            aria-describedby={fieldDescription(
-              helperId,
-              hasHelper,
-              errorId,
-              fieldIssues.length > 0
-            )}
-            aria-invalid={fieldIssues.length > 0}
-          ></textarea>
-        {:else if schema.type === 'boolean'}
-          <input
-            type="checkbox"
-            checked={inputs[name] === true}
-            onchange={(event) => update(name, event.currentTarget.checked)}
-            aria-labelledby={labelId}
-            aria-describedby={fieldDescription(
-              helperId,
-              hasHelper,
-              errorId,
-              fieldIssues.length > 0
-            )}
-            aria-invalid={fieldIssues.length > 0}
-          />
-        {:else}
-          <input
-            type={widget === WIDGET_KIND.DECIMAL ? 'text' : inputType(field)}
-            inputmode={widget === WIDGET_KIND.DECIMAL ? 'decimal' : undefined}
-            value={String(inputs[name] ?? '')}
-            required={Array.isArray(descriptor.input_schema.required) && descriptor.input_schema.required.includes(name)}
-            min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
-            max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
-            step={inputType(field) === 'number' ? '1' : undefined}
-            aria-labelledby={labelId}
-            aria-describedby={fieldDescription(
-              helperId,
-              hasHelper,
-              errorId,
-              fieldIssues.length > 0
-            )}
-            aria-invalid={fieldIssues.length > 0}
-            oninput={(event) =>
-              update(name, parseFieldInput(field, event.currentTarget.value))}
-          />
-        {/if}
-        {#if fieldIssues.length > 0}
-          <span class="field-errors" id={errorId} aria-live="polite">
-            {#each fieldIssues as issue (issue.message)}
-              <span>{issue.message}</span>
-            {/each}
-          </span>
-        {/if}
-      </label>
-    {/each}
-  </div>
+          {#if widget === WIDGET_KIND.WALLET_ADDRESSES || widget === WIDGET_KIND.MARKET_SLUGS}
+            <textarea
+              rows="3"
+              value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
+              oninput={(event) => updateList(name, event.currentTarget.value)}
+              placeholder={widget === WIDGET_KIND.WALLET_ADDRESSES ? 'One wallet address per line' : 'One market slug per line'}
+              aria-labelledby={labelId}
+              aria-describedby={fieldDescription(
+                helperId,
+                hasHelper,
+                errorId,
+                fieldIssues.length > 0
+              )}
+              aria-invalid={fieldIssues.length > 0}
+            ></textarea>
+          {:else if widget === WIDGET_KIND.STREAM_RULES}
+            <textarea
+              rows="6"
+              value={JSON.stringify(inputs[name], null, 2)}
+              oninput={(event) => updateJson(name, event.currentTarget.value)}
+              spellcheck="false"
+              aria-labelledby={labelId}
+              aria-describedby={fieldDescription(
+                helperId,
+                hasHelper,
+                errorId,
+                fieldIssues.length > 0
+              )}
+              aria-invalid={fieldIssues.length > 0}
+            ></textarea>
+          {:else if schema.type === 'boolean'}
+            <input
+              type="checkbox"
+              checked={inputs[name] === true}
+              onchange={(event) => update(name, event.currentTarget.checked)}
+              aria-labelledby={labelId}
+              aria-describedby={fieldDescription(
+                helperId,
+                hasHelper,
+                errorId,
+                fieldIssues.length > 0
+              )}
+              aria-invalid={fieldIssues.length > 0}
+            />
+          {:else}
+            <input
+              type={widget === WIDGET_KIND.DECIMAL ? 'text' : inputType(field)}
+              inputmode={widget === WIDGET_KIND.DECIMAL ? 'decimal' : undefined}
+              value={String(inputs[name] ?? '')}
+              required={Array.isArray(descriptor.input_schema.required) && descriptor.input_schema.required.includes(name)}
+              min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
+              max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
+              step={inputType(field) === 'number' ? '1' : undefined}
+              aria-labelledby={labelId}
+              aria-describedby={fieldDescription(
+                helperId,
+                hasHelper,
+                errorId,
+                fieldIssues.length > 0
+              )}
+              aria-invalid={fieldIssues.length > 0}
+              oninput={(event) =>
+                update(name, parseFieldInput(field, event.currentTarget.value))}
+            />
+          {/if}
+          {#if fieldIssues.length > 0}
+            <span class="field-errors" id={errorId} aria-live="polite">
+              {#each fieldIssues as issue (issue.message)}
+                <span>{issue.message}</span>
+              {/each}
+            </span>
+          {/if}
+        </label>
+      {/each}
+    </div>
+  </section>
+
+  {#if children}{@render children()}{/if}
 
   {#if formIssues.length > 0}
     <div class="form-errors" role="alert">
@@ -253,5 +275,7 @@
     </div>
   {/if}
 
-  <button type="submit" disabled={busy || disabled} aria-busy={busy}>{busy ? busyLabel : submitLabel}</button>
+  <footer class="builder-actions">
+    <button type="submit" disabled={busy || disabled} aria-busy={busy}>{busy ? busyLabel : submitLabel}</button>
+  </footer>
 </form>

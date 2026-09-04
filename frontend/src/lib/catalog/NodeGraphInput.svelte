@@ -252,7 +252,7 @@
 <style>
   .graph-editor {
     display: grid;
-    gap: 0.65rem;
+    gap: 0.85rem;
   }
 
   .graph-toolbar {
@@ -277,11 +277,11 @@
   }
 
   .graph-canvas {
-    height: 32rem;
+    height: 38rem;
     overflow: hidden;
     border: 1px solid var(--line-strong);
-    border-radius: 0.75rem;
-    background: var(--surface-raised);
+    border-radius: var(--radius-surface);
+    background: var(--surface-input);
   }
 
   .graph-canvas.read-only {
@@ -371,7 +371,7 @@
     border: 1px solid var(--line-strong);
     border-radius: 0.65rem;
     padding: 0.3rem;
-    background: rgb(14 17 15 / 0.9);
+    background: rgb(16 20 17 / 0.92);
     box-shadow: 0 0.75rem 2rem rgb(4 8 6 / 0.32);
     backdrop-filter: blur(14px) saturate(120%);
     -webkit-backdrop-filter: blur(14px) saturate(120%);
@@ -445,6 +445,17 @@
       align-items: flex-start;
       flex-direction: column;
       gap: 0.25rem;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .graph-toolbar {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .graph-canvas {
+      height: 32rem;
     }
   }
 </style>

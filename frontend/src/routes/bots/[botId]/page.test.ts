@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   BotDefinitionDescriptor,
@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   createRevision: vi.fn(),
   goto: vi.fn(),
   launchRun: vi.fn(),
+  listBots: vi.fn(),
   listDefinitions: vi.fn(),
   readBot: vi.fn(),
   updateBot: vi.fn()
@@ -35,6 +36,7 @@ vi.mock('$lib/api/generated', () => ({
   createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost:
     mocks.createRevision,
   launchBotRunApiV1BotsBotIdRunsPost: mocks.launchRun,
+  listBotsApiV1BotsGet: mocks.listBots,
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
   readBotApiV1BotsBotIdGet: mocks.readBot,
   updateBotApiV1BotsBotIdPatch: mocks.updateBot
@@ -80,6 +82,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+beforeEach(() => {
+  mocks.listBots.mockResolvedValue({ data: [BOT] });
+});
+
 describe('saved-bot detail page', () => {
   it('blocks runs while dirty, saves settings, then reruns the saved bot', async () => {
     mocks.readBot.mockResolvedValue({ data: BOT });
@@ -103,7 +109,7 @@ describe('saved-bot detail page', () => {
     expect(screen.getByText(BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK)).toBeTruthy();
 
     await fireEvent.click(
-      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CONFIGURATION })
+      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CHANGES })
     );
     await waitFor(() => expect(runButton.disabled).toBe(false));
     await fireEvent.click(runButton);
@@ -159,7 +165,7 @@ describe('saved-bot detail page', () => {
       name: BOT_DETAIL_COPY.RUN
     });
     const saveGraphButton = screen.getByRole<HTMLButtonElement>('button', {
-      name: BOT_DETAIL_COPY.SAVE_GRAPH_REVISION
+      name: BOT_DETAIL_COPY.SAVE_CHANGES
     });
     await waitFor(() => expect(runButton.disabled).toBe(false));
     expect(saveGraphButton.disabled).toBe(true);
@@ -186,9 +192,7 @@ describe('saved-bot detail page', () => {
       });
       expect(runButton.disabled).toBe(false);
     });
-    expect(
-      screen.getByRole('heading', { name: botGraphRevisionLabel(2) })
-    ).toBeTruthy();
+    expect(screen.getByText(botGraphRevisionLabel(2))).toBeTruthy();
   });
 
   it('keeps a failed graph revision dirty and blocks running', async () => {
@@ -218,7 +222,7 @@ describe('saved-bot detail page', () => {
     await fireEvent.click(await screen.findByRole('button', { name: ADD_NODE_LABEL }));
     await fireEvent.click(screen.getByRole('button', { name: 'Add on_start' }));
     const saveGraphButton = screen.getByRole<HTMLButtonElement>('button', {
-      name: BOT_DETAIL_COPY.SAVE_GRAPH_REVISION
+      name: BOT_DETAIL_COPY.SAVE_CHANGES
     });
     const runButton = screen.getByRole<HTMLButtonElement>('button', {
       name: BOT_DETAIL_COPY.RUN
@@ -267,7 +271,7 @@ describe('saved-bot detail page', () => {
     await fireEvent.click(await screen.findByRole('button', { name: ADD_NODE_LABEL }));
     await fireEvent.click(screen.getByRole('button', { name: 'Add on_start' }));
     await fireEvent.click(
-      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_GRAPH_REVISION })
+      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CHANGES })
     );
 
     const summary = await screen.findByRole('alert');
@@ -313,7 +317,7 @@ describe('saved-bot detail page', () => {
     const name = await screen.findByLabelText('Name');
     await fireEvent.input(name, { target: { value: 'Unsaved setup' } });
     await fireEvent.click(
-      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CONFIGURATION })
+      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CHANGES })
     );
 
     expect((await screen.findByRole('alert')).textContent).toContain(
@@ -344,7 +348,7 @@ describe('saved-bot detail page', () => {
     const name = await screen.findByLabelText('Name');
     await fireEvent.input(name, { target: { value: 'Reserved name' } });
     await fireEvent.click(
-      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CONFIGURATION })
+      screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CHANGES })
     );
 
     expect(await screen.findByText('This bot name is reserved.')).toBeTruthy();

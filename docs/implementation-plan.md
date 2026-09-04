@@ -1427,24 +1427,26 @@ Acceptance covers invalid references and definition/graph combinations,
 transactional template copying, launch-delivery failure, concurrent edit/run
 serialization, worker fail-closed behavior, and historical snapshots.
 
-## Slice 13F: Template and Saved-Bot Browser Workflows
+## Slice 13F: Node-Bot Browser Workflows
 
 Status: implemented; depends on Slice 13E.
 
-- Add the graph-template catalog/editor.
-- Change definition configuration into saved-bot creation with template
-  selection for graph-capable definitions.
-- Add saved-bot detail with non-graph settings, latest graph editing, explicit
-  revision saving, and a Run action disabled by unsaved changes.
-- Explain that templates and bot graphs are independent copies.
+- Present configured node-based bots as the only user-facing bot concept.
+- Combine configuration and graph editing into one new-bot form. Start with the
+  catalog graph or a copy of another bot's latest graph.
+- Keep the existing graph-template endpoint as an internal creation
+  compatibility step; do not expose template selection or management.
+- Add saved-bot detail with configuration, latest graph editing, unified save,
+  and a Run action disabled by unsaved changes.
 - Show the bot link and exact executed graph revision on run detail.
 
-Acceptance covers template create/edit, bot creation, graph revision saving,
-unsaved-change protection, rerunning the latest saved revision, and historical
-run display.
+Acceptance covers one-form bot creation, copying an existing bot graph, graph
+revision saving, unsaved-change protection, rerunning the latest saved revision,
+and historical run display.
 
 Documentation-drift audit: complete. The README, architecture, web
-architecture/specification, and bot-author guide describe template copying,
-saved-bot launches, and immutable historical revisions consistently. Earlier
+architecture/specification, and bot-author guide describe the unified node-bot
+workspace, internal creation copy, saved-bot launches, and immutable historical
+revisions consistently. Earlier
 Slice 13A–13C text remains as historical slice scope and is superseded by
 Slices 13D–13F where their persistence or launch contracts differ.

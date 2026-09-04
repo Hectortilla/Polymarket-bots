@@ -1,6 +1,6 @@
 # Web Control Plane v0 Product Specification
 
-Status: planned. This document owns product scope and user-visible outcomes.
+Status: implemented. This document owns product scope and user-visible outcomes.
 `web-control-plane-architecture.md` owns technical contracts. The implementation
 plan references those contracts instead of restating them.
 
@@ -12,8 +12,10 @@ implementation of authentication, billing, tenancy, or live trading.
 
 ## Goals
 
-- Show a trusted server-owned catalog of bot definitions.
-- Maintain editable reusable graph templates.
+- Present one user-facing node-based bot concept backed by the trusted
+  server-owned definition and node catalogs.
+- Configure each bot and edit its strategy graph in one workspace.
+- Start a new graph fresh or copy it from another configured bot.
 - Save reusable bot configurations before running them.
 - Render bot forms from backend-provided metadata.
 - Let the trusted operator compose and run a validated paper-trading graph from
@@ -34,6 +36,7 @@ implementation of authentication, billing, tenancy, or live trading.
 - Live trading or web collection of wallet/CLOB credentials.
 - Pause, resume, automatic restart, or restoration of bot-local paper state.
 - Scheduling, deletion, retention management, or bulk actions.
+- A user-facing bot catalog or isolated graph-template management workflow.
 - Template revision history, template-to-bot propagation, graph deduplication,
   or retained template provenance.
 - Recorder or backtest controls.
@@ -87,11 +90,12 @@ catalog entry.
 
 ## Saved Bot and Run
 
-A saved bot has an immutable definition ID and editable paper configuration. A
-graph-capable bot is created from a selected graph template, but receives an
-independent immutable revision 1 copy and retains no template reference. Saving
-later graph edits appends a new bot-owned revision; earlier revisions never
-change and may be shared by multiple runs of that same bot.
+A saved bot has an immutable definition ID, editable paper configuration, and
+an immutable sequence of graph revisions. The current frontend creates revision
+1 through the existing template-copy API, but treats that source template as an
+internal persistence detail and retains no template reference on the bot.
+Saving later graph edits appends a new bot-owned revision; earlier revisions
+never change and may be shared by multiple runs of that same bot.
 
 Each Run action creates a new UUID-backed run with an immutable definition ID,
 resolved paper configuration snapshot, saved-bot ID, and exact graph revision
@@ -118,21 +122,24 @@ starting | running | stop_requested | stopping -> interrupted
 
 ## User Experience
 
-### Home, templates, and saved-bot creation
+### Home and bot creation
 
-The home page shows the catalog, saved bots, active/queued runs, and recent
-terminal runs. Run rows show the run name, definition, lifecycle, timing, and
-latest equity when available. The graph-template page creates, selects, edits,
-and saves reusable source graphs. The definition configuration UI renders typed
-fields, selects a template when required, gives immediate client feedback,
-saves the bot without running it, and opens bot detail. Decimal inputs remain
-decimal strings across the API boundary.
+The home page is an operator workspace with one primary **New bot** action, a
+structured list of configured node-based bots, and recent runs. Bot rows expose
+the information needed for comparison: name, market scope, max order size,
+latest graph revision, run status, and last update. The frontend does not expose
+other definition types or a graph-template page.
+
+The bot builder renders typed configuration fields and the Svelte Flow graph in
+one form. A graph starts from the server-provided starter graph or a copy of
+another bot's latest graph. Saving creates the bot without running it and opens
+bot detail. Decimal inputs remain decimal strings across the API boundary.
 Frontend validation is only feedback; backend ingress is authoritative.
 Failed saves preserve the operator's edits. Backend field violations appear
 under their owning controls, while graph violations appear in a focused summary
 beside the canvas with the server message and any available node or connection
 location. Transport failures remain page-level notices.
-The graph-template and saved-bot detail pages render a Svelte Flow canvas. Its
+The new-bot and saved-bot detail pages render a Svelte Flow canvas. Its
 trigger palette is derived from `BaseBot` lifecycle hooks, and each trigger exposes the
 outputs derived from that hook's annotated event dataclass and explicitly
 marked computed outputs. Drawn edges determine which outputs the graph uses.
@@ -142,8 +149,9 @@ backend catalog describes typed constants, binary comparisons, and fixed-side
 BUY/SELL actions derived from `Broker.submit(OrderRequest)`; the frontend
 contains no parallel hook, event-field, or broker-action registry.
 
-The template canvas stores the editable catalog graph. Selecting it for a bot
-copies its exact validated graph into an immutable bot-owned revision.
+The builder draft stores the editable catalog graph. Copying another bot takes
+its latest graph as an independent draft and saves it into a new immutable
+bot-owned revision.
 For each accepted event, the node bot evaluates the matching acyclic branch once
 and submits each reachable enabled action at most once through the existing
 paper broker. Evaluation has no implicit cross-event state: while a condition
@@ -154,11 +162,10 @@ invent them.
 
 ### Bot and run detail
 
-Bot detail edits non-graph settings, loads the latest graph revision into the
-canvas, appends a revision on explicit graph save, and runs the latest fully
-saved state. Run is disabled while either editor has unsaved changes. The UI
-states clearly that template and bot edits never propagate across the copy
-boundary.
+Bot detail edits configuration and the latest graph revision in one form,
+appends a revision when graph changes are saved, and runs the latest fully saved
+state. Run is disabled while the form has unsaved changes. The graph can also
+be reset or copied from another bot without creating an ongoing relationship.
 
 The detail page shows lifecycle/timing, immutable configuration, bootstrap and
 activity progress, portfolio/equity, orders/fills/failures/settlements, stream
@@ -207,10 +214,10 @@ v0 is complete when one trusted operator can:
   older committed pages on demand;
 - use market, equity, and followed-wallet views with terminal-equivalent
   semantics and controls;
-- add a trusted definition using an already-supported field/widget kind without
-  editing the launch page; and
-- create a template, copy it into a saved node-based bot, append a bot graph
-  revision, and launch a paper bot that compares a computed best bid/ask value with
+- add a trusted configuration field using an already-supported field/widget
+  kind without editing the builder page; and
+- create a node-based bot in one form, optionally copy another bot's graph,
+  append a bot graph revision, and launch a paper bot that compares a computed best bid/ask value with
   a constant, submits the configured BUY or SELL through the existing broker,
   reports its order/fill through the existing progress path, reloads its exact
   graph snapshot, and stops cooperatively.

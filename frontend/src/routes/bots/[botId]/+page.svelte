@@ -2,19 +2,25 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount, tick } from 'svelte';
+  import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
+  import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
 
   import {
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
     launchBotRunApiV1BotsBotIdRunsPost,
     listBotDefinitionsApiV1BotDefinitionsGet,
+    listBotsApiV1BotsGet,
     readBotApiV1BotsBotIdGet,
     updateBotApiV1BotsBotIdPatch,
     type BotDefinitionDescriptor,
     type BotRead,
     type NodeGraph
   } from '$lib/api/generated';
+  import GraphSourcePicker from '$lib/bots/GraphSourcePicker.svelte';
+  import { GRAPH_SOURCE_COPY } from '$lib/bots/graphSource';
   import LaunchForm from '$lib/catalog/LaunchForm.svelte';
   import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
+  import { hasGraphCapability } from '$lib/catalog/graphContracts';
   import { nodeGraphsEqual } from '$lib/catalog/nodeGraphEquality';
   import {
     graphValidationIssues,
@@ -26,22 +32,21 @@
     type LaunchInputs,
     type LaunchValidationIssue
   } from '$lib/catalog/schema';
-  import { hasGraphCapability } from '$lib/catalog/graphContracts';
-  import { formatTime } from '$lib/time';
-  import { FORM_COPY } from '$lib/formCopy';
   import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from '$lib/navigation';
+  import { formatTime } from '$lib/time';
   import { BOT_DETAIL_COPY, botGraphRevisionLabel } from './copy';
 
   let bot = $state<BotRead>();
+  let bots = $state<BotRead[]>([]);
   let descriptor = $state<BotDefinitionDescriptor>();
   let savedInputs = $state<LaunchInputs>({});
   let editedInputs = $state<LaunchInputs>({});
   let savedGraph = $state<NodeGraph>();
   let editedGraph = $state<NodeGraph>();
   let graphEditorResetKey = $state('');
+  let graphSourceName = $state<string>(GRAPH_SOURCE_COPY.CURRENT);
   let loading = $state(true);
-  let savingConfig = $state(false);
-  let savingGraph = $state(false);
+  let saving = $state(false);
   let running = $state(false);
   let error = $state('');
   let configServerIssues = $state<LaunchValidationIssue[]>([]);
@@ -63,11 +68,13 @@
       return;
     }
     try {
-      const [botResponse, definitionsResponse] = await Promise.all([
+      const [botResponse, definitionsResponse, botsResponse] = await Promise.all([
         readBotApiV1BotsBotIdGet({ path: { bot_id: botId }, throwOnError: true }),
-        listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true })
+        listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true }),
+        listBotsApiV1BotsGet({ throwOnError: true })
       ]);
       bot = botResponse.data;
+      bots = botsResponse.data;
       descriptor = definitionsResponse.data.find(
         (definition) => definition.definition_id === bot?.definition_id
       );
@@ -84,56 +91,65 @@
     }
   }
 
-  async function saveConfig(inputs: LaunchInputs): Promise<void> {
-    if (!bot) return;
-    savingConfig = true;
-    error = '';
-    configServerIssues = [];
-    try {
-      const response = await updateBotApiV1BotsBotIdPatch({
-        path: { bot_id: bot.id },
-        body: { inputs },
-        throwOnError: true
-      });
-      bot = response.data;
-      savedInputs = inputs;
-      editedInputs = inputs;
-    } catch (caught) {
-      configServerIssues = launchRequestValidationIssues(caught);
-      if (configServerIssues.length === 0) {
-        error = BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
-      }
-    } finally {
-      savingConfig = false;
-    }
+  function selectGraph(nextGraph: NodeGraph, sourceName: string): void {
+    editedGraph = nextGraph;
+    graphSourceName = sourceName;
+    graphServerIssues = [];
+    graphEditorResetKey = `${sourceName}:${Date.now()}`;
   }
 
-  async function saveGraph(): Promise<void> {
-    if (!bot || !editedGraph) return;
+  async function saveChanges(inputs: LaunchInputs): Promise<void> {
+    if (!bot) return;
     const graphToSave = editedGraph;
-    savingGraph = true;
+    const shouldSaveConfig = JSON.stringify(savedInputs) !== JSON.stringify(inputs);
+    const shouldSaveGraph = !nodeGraphsEqual(savedGraph, graphToSave);
+    if (!shouldSaveConfig && !shouldSaveGraph) return;
+
+    saving = true;
     error = '';
+    configServerIssues = [];
     graphServerIssues = [];
+    let phase: 'config' | 'graph' = 'config';
     try {
-      const response = await createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
-        path: { bot_id: bot.id },
-        body: { graph: graphToSave },
-        throwOnError: true
-      });
-      bot = response.data;
-      savedGraph = response.data.latest_graph_revision?.graph;
-      editedGraph = savedGraph;
-      graphEditorResetKey = response.data.latest_graph_revision?.id ?? '';
+      if (shouldSaveConfig) {
+        const response = await updateBotApiV1BotsBotIdPatch({
+          path: { bot_id: bot.id },
+          body: { inputs },
+          throwOnError: true
+        });
+        bot = response.data;
+        savedInputs = inputs;
+        editedInputs = inputs;
+      }
+
+      if (shouldSaveGraph && graphToSave) {
+        phase = 'graph';
+        const response = await createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
+          path: { bot_id: bot.id },
+          body: { graph: graphToSave },
+          throwOnError: true
+        });
+        bot = response.data;
+        savedGraph = response.data.latest_graph_revision?.graph;
+        editedGraph = savedGraph;
+        graphSourceName = GRAPH_SOURCE_COPY.CURRENT;
+        graphEditorResetKey = response.data.latest_graph_revision?.id ?? '';
+      }
     } catch (caught) {
-      graphServerIssues = graphValidationIssues(caught, graphToSave);
-      if (graphServerIssues.length > 0) {
-        await tick();
-        document.getElementById('bot-graph-validation')?.focus();
-      } else {
-        error = BOT_DETAIL_COPY.GRAPH_SAVE_ERROR;
+      if (phase === 'config') {
+        configServerIssues = launchRequestValidationIssues(caught);
+        if (configServerIssues.length === 0) error = BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
+      } else if (graphToSave) {
+        graphServerIssues = graphValidationIssues(caught, graphToSave);
+        if (graphServerIssues.length > 0) {
+          await tick();
+          document.getElementById('bot-graph-validation')?.focus();
+        } else {
+          error = BOT_DETAIL_COPY.GRAPH_SAVE_ERROR;
+        }
       }
     } finally {
-      savingGraph = false;
+      saving = false;
     }
   }
 
@@ -155,78 +171,91 @@
   }
 </script>
 
-<svelte:head><title>{bot ? `${bot.config.name} | Polybot` : 'Saved bot | Polybot'}</title></svelte:head>
+<svelte:head>
+  <title>{bot ? `${bot.config.name} | Polybot` : 'Bot | Polybot'}</title>
+</svelte:head>
 
-<a class="back-link" href={NAVIGATION_PATH.HOME}>{NAVIGATION_LABEL.BACK_TO_OPERATIONS}</a>
+<a class="back-link" href={NAVIGATION_PATH.HOME}>
+  <ArrowLeftIcon aria-hidden="true" size={16} />
+  {NAVIGATION_LABEL.BACK_TO_BOTS}
+</a>
 
 {#if loading}
-  <p class="empty-state">Loading saved bot…</p>
+  <div class="loading-state" aria-live="polite">
+    <span class="sr-only">Loading bot</span>
+    <div class="skeleton skeleton-heading" aria-hidden="true"></div>
+    <div class="skeleton skeleton-line" aria-hidden="true"></div>
+    <div class="skeleton skeleton-panel" aria-hidden="true"></div>
+  </div>
 {:else if !bot || !descriptor}
   <p class="notice error" role="alert">{error}</p>
 {:else}
-  <section class="page-heading run-heading">
+  <header class="bot-detail-heading page-heading">
     <div>
-      <p class="route-meta">{descriptor.display_name} / saved {formatTime(bot.updated_at)}</p>
+      <p class="route-meta">Updated {formatTime(bot.updated_at)}</p>
       <h1>{bot.config.name}</h1>
-      <p>Runs copy the latest saved settings and graph revision. Unsaved changes are never executed.</p>
+      <p>Configuration and strategy are saved together before a run can start.</p>
     </div>
     <button onclick={runBot} disabled={running || hasUnsavedChanges} aria-busy={running}>
+      <PlayIcon aria-hidden="true" size={17} weight="fill" />
       {running ? BOT_DETAIL_COPY.STARTING : BOT_DETAIL_COPY.RUN}
     </button>
-  </section>
+  </header>
 
   {#if error}<p class="notice error" role="alert">{error}</p>{/if}
   {#if hasUnsavedChanges}
-    <p class="notice">{BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK}</p>
+    <p class="notice unsaved-notice">{BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK}</p>
   {/if}
 
-  <section class="bot-editor-section">
-    <div class="section-heading">
-      <h2>Bot configuration</h2>
-      <span class="section-count">{configDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span>
-    </div>
-    <LaunchForm
-      {descriptor}
-      initialInputs={savedInputs}
-      onsubmit={saveConfig}
-      onchange={(inputs) => {
-        editedInputs = inputs;
-        configServerIssues = [];
-      }}
-      busy={savingConfig}
-      submitLabel={BOT_DETAIL_COPY.SAVE_CONFIGURATION}
-      busyLabel={FORM_COPY.SAVING}
-      serverIssues={configServerIssues}
-    />
-  </section>
-
-  {#if hasGraphCapability(descriptor) && savedGraph}
-    <section class="bot-editor-section">
-      <div class="section-heading">
-        <div>
-          <h2>{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</h2>
-          <p>Saving creates a new immutable revision. The source template and earlier runs stay unchanged.</p>
-        </div>
-        <span class="section-count">{graphDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span>
-      </div>
-      <!-- Remount canvas-owned state after accepting a new immutable revision. -->
-      {#key graphEditorResetKey}
-        <NodeGraphInput
-          initialGraph={savedGraph}
-          graphCatalog={descriptor.graph_catalog}
-          onchange={(graph) => {
-            editedGraph = graph;
-            graphServerIssues = [];
-          }}
-          labelledby="bot-graph-editor-label"
-          validationIssues={graphServerIssues}
-          validationSummaryId="bot-graph-validation"
+  <LaunchForm
+    {descriptor}
+    initialInputs={savedInputs}
+    onsubmit={saveChanges}
+    onchange={(inputs) => {
+      editedInputs = inputs;
+      configServerIssues = [];
+    }}
+    busy={saving}
+    disabled={!hasUnsavedChanges}
+    submitLabel={BOT_DETAIL_COPY.SAVE_CHANGES}
+    busyLabel={BOT_DETAIL_COPY.SAVING_CHANGES}
+    serverIssues={configServerIssues}
+    showSelectionNotes={false}
+    sectionTitle="Configuration"
+    sectionDescription="Adjust the market scope, risk limits, and paper execution behavior."
+  >
+    {#if hasGraphCapability(descriptor) && savedGraph && editedGraph}
+      <section class="builder-section graph-builder-section">
+        <header class="builder-section-heading">
+          <div>
+            <h2 id="bot-graph-editor-label">
+              Strategy graph
+              <span class="revision-label">{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</span>
+            </h2>
+            <p>Edit the current graph or replace it with the latest graph from another bot. Current source: {graphSourceName}.</p>
+          </div>
+          <span class="save-state">{graphDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span>
+        </header>
+        <GraphSourcePicker
+          {bots}
+          starterGraph={descriptor.starter_graph}
+          excludeBotId={bot.id}
+          onselect={selectGraph}
         />
-      {/key}
-      <span class="sr-only" id="bot-graph-editor-label">Bot graph editor</span>
-      <button onclick={saveGraph} disabled={savingGraph || !graphDirty} aria-busy={savingGraph}>
-        {savingGraph ? FORM_COPY.SAVING : BOT_DETAIL_COPY.SAVE_GRAPH_REVISION}
-      </button>
-    </section>
-  {/if}
+        {#key graphEditorResetKey}
+          <NodeGraphInput
+            initialGraph={editedGraph}
+            graphCatalog={descriptor.graph_catalog}
+            onchange={(nextGraph) => {
+              editedGraph = nextGraph;
+              graphServerIssues = [];
+            }}
+            labelledby="bot-graph-editor-label"
+            validationIssues={graphServerIssues}
+            validationSummaryId="bot-graph-validation"
+          />
+        {/key}
+      </section>
+    {/if}
+  </LaunchForm>
 {/if}

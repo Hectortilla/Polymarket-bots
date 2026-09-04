@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { onMount } from 'svelte';
+  import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
 
   import {
     listBotDefinitionsApiV1BotDefinitionsGet,
@@ -40,7 +41,7 @@
     executedRunGraphRevisionLabel,
     runGraphRevisionLabel
   } from './copy';
-  import { NAVIGATION_PATH, botPath } from '$lib/navigation';
+  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
@@ -185,7 +186,10 @@
   <title>{run ? `${run.config.name} | Polybot` : 'Run detail | Polybot'}</title>
 </svelte:head>
 
-<a class="back-link" href={NAVIGATION_PATH.HOME}>Back to runs</a>
+<a class="back-link" href={NAVIGATION_PATH.HOME}>
+  <ArrowLeftIcon aria-hidden="true" size={16} />
+  {NAVIGATION_LABEL.BACK_TO_BOTS}
+</a>
 
 {#if loading}
   <div class="loading-state" aria-live="polite">
@@ -199,7 +203,7 @@
 {:else}
   <section class="page-heading run-heading">
     <div>
-      <p class="route-meta"><a href={botPath(run.bot_id)}>{run.definition_id}</a>{run.graph_revision ? ` / ${runGraphRevisionLabel(run.graph_revision)}` : ''}</p>
+      <p class="route-meta"><a href={botPath(run.bot_id)}>Bot configuration</a>{run.graph_revision ? ` / ${runGraphRevisionLabel(run.graph_revision)}` : ''}</p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
         <RunStatusBadge status={run.status} />
@@ -255,7 +259,7 @@
         <span class="section-count">immutable run snapshot</span>
       </div>
       <p id="executed-graph-description">
-        This is the exact saved-bot graph used by this run. Later bot revisions do not change it.
+        This is the exact bot graph used by this run. Later revisions do not change it.
       </p>
       {#if executedGraphCatalog}
         <NodeGraphInput
@@ -291,7 +295,14 @@
       <dl class="health-metrics">
         <div><dt>Queue</dt><dd>{dashboard.streamHealth.queue_depth}</dd></div>
         <div><dt>Peak</dt><dd>{dashboard.streamHealth.peak_queue_depth}</dd></div>
-        <div><dt>Book lag</dt><dd>{dashboard.streamHealth.book_dispatch_lag_ms ?? '—'} ms</dd></div>
+        <div>
+          <dt>Book lag</dt>
+          <dd>
+            {dashboard.streamHealth.book_dispatch_lag_ms === null
+              ? 'Not available'
+              : `${dashboard.streamHealth.book_dispatch_lag_ms} ms`}
+          </dd>
+        </div>
         <div><dt>Books</dt><dd>{dashboard.streamHealth.book_received_count}</dd></div>
         <div><dt>Coalesced</dt><dd>{dashboard.streamHealth.book_coalesced_count}</dd></div>
       </dl>

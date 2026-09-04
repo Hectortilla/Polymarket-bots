@@ -677,21 +677,23 @@ In this example, a cheap ask on `btc-up` can trigger a BUY on `eth-down`. The
 same bot can declare both slugs in `current_stream_rules()`, receive both markets'
 book events through the same callback, and route decisions by slug.
 
-## Web Graph Templates and Saved Bots
+## Web Node-Based Bots
 
-The private control plane keeps reusable graph design separate from execution:
+The private control plane presents configuration and graph design as one bot:
 
-1. Create or edit a graph in **Graph templates**.
-2. Create a graph-capable saved bot and select a template. The control plane
-   copies the template into immutable bot graph revision 1 and stores no source
-   link.
-3. Edit the saved bot's graph and explicitly save it to append revision 2, 3,
-   and so on. Template edits never propagate to bots, and bot edits never modify
-   templates.
-4. Run the saved bot only after all settings and graph changes are saved. Each
+1. Select **New bot**, fill in the bot name, markets, and paper limits, then
+   edit the strategy graph in the same form.
+2. Start from the catalog-provided graph or copy the latest graph from another
+   configured bot. Copying creates an independent draft; later edits never
+   propagate between bots.
+3. Save the form to create immutable bot graph revision 1. The frontend uses
+   the existing graph-template copy endpoint internally, but templates are not
+   a user-facing resource or workflow.
+4. Edit an existing bot's configuration and graph in one workspace. Saving
+   graph changes appends revision 2, 3, and so on.
+5. Run the bot only after all configuration and graph changes are saved. Each
    run copies the current `PaperRunConfig` and references the exact latest graph
    revision.
 
 Rerunning the bot uses its latest saved revision. Earlier runs continue to show
-and execute the revision they originally referenced, even after the bot or its
-source template changes. Non-graph definitions have no graph revision.
+and execute the revision they originally referenced after the bot changes.

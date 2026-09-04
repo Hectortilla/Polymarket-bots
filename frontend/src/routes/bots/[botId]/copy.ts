@@ -5,12 +5,12 @@ export const BOT_DETAIL_COPY = {
   NOT_FOUND: 'Bot not found.',
   RUN: 'Run bot',
   RUN_ERROR: 'The bot run could not be started.',
-  SAVE_CONFIGURATION: 'Save configuration',
-  SAVE_GRAPH_REVISION: 'Save new graph revision',
+  SAVE_CHANGES: 'Save changes',
   SAVED: 'saved',
-  STARTING: 'Starting…',
+  SAVING_CHANGES: 'Saving changes',
+  STARTING: 'Starting...',
   UNSAVED: 'unsaved changes',
-  UNSAVED_RUN_BLOCK: 'Save all changes before running this bot.'
+  UNSAVED_RUN_BLOCK: 'Save your changes before starting a run.'
 } as const;
 
 export function botGraphRevisionLabel(

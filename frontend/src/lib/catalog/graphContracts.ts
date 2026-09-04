@@ -52,3 +52,7 @@ export function hasGraphCapability(
 ): descriptor is GraphCapableDefinition {
   return Boolean(descriptor?.graph_catalog && descriptor.starter_graph);
 }
+
+export function cloneNodeGraph(graph: NodeGraph): NodeGraph {
+  return JSON.parse(JSON.stringify(graph)) as NodeGraph;
+}

@@ -1,10 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  BotDefinitionDescriptor,
-  GraphTemplateRead
-} from '$lib/api/generated';
+import type { BotDefinitionDescriptor, BotRead } from '$lib/api/generated';
 import {
   TEST_GRAPH,
   TEST_GRAPH_CATALOG
@@ -13,36 +10,35 @@ import {
   BOT_DEFINITION_LABEL,
   SELECTION_MODE
 } from '$lib/catalog/schema';
-import { NAVIGATION_PATH } from '$lib/navigation';
+import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 const mocks = vi.hoisted(() => ({
   createBot: vi.fn(),
+  createTemplate: vi.fn(),
   goto: vi.fn(),
-  listDefinitions: vi.fn(),
-  listTemplates: vi.fn()
+  listBots: vi.fn(),
+  listDefinitions: vi.fn()
 }));
 
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
-vi.mock('$app/state', () => ({
-  page: { params: { definitionId: 'plain-definition' } }
-}));
 vi.mock('$lib/api/generated', () => ({
   createBotApiV1BotsPost: mocks.createBot,
+  createGraphTemplateApiV1GraphTemplatesPost: mocks.createTemplate,
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
-  listGraphTemplatesApiV1GraphTemplatesGet: mocks.listTemplates
+  listBotsApiV1BotsGet: mocks.listBots
 }));
 
 import Page from './+page.svelte';
-import { BOT_CREATION_COPY } from './copy';
-import { LAUNCH_FORM_COPY } from '$lib/catalog/copy';
 
 const DEFINITION = {
-  definition_id: 'plain-definition',
-  display_name: 'Plain bot',
-  description: 'A saved bot test definition.',
+  definition_id: 'node-based-bot',
+  display_name: 'Node-Based Bot',
+  description: 'Visually compose and run a paper-trading event graph.',
   label: BOT_DEFINITION_LABEL.STANDARD,
-  market_selection: SELECTION_MODE.ABSENT,
+  market_selection: SELECTION_MODE.USER_CONFIGURED,
   wallet_selection: SELECTION_MODE.ABSENT,
+  graph_catalog: TEST_GRAPH_CATALOG,
+  starter_graph: TEST_GRAPH,
   input_schema: {
     type: 'object',
     additionalProperties: false,
@@ -51,151 +47,114 @@ const DEFINITION = {
   }
 } satisfies BotDefinitionDescriptor;
 
-const GRAPH_CAPABLE_DEFINITION = {
-  ...DEFINITION,
-  graph_catalog: TEST_GRAPH_CATALOG,
-  starter_graph: TEST_GRAPH
-} satisfies BotDefinitionDescriptor;
-
-const TEMPLATE = {
-  id: 'cccccccc-0000-0000-0000-000000000001',
-  name: 'Reusable graph',
-  graph: TEST_GRAPH,
+const SOURCE_BOT = {
+  id: 'aaaaaaaa-0000-0000-0000-000000000001',
+  definition_id: DEFINITION.definition_id,
+  config: {
+    name: 'Source bot',
+    stream_rules: [],
+    data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget,
+    max_order_size: '10',
+    max_slippage_pct: '0.02',
+    paper_latency_ms: 250,
+    paper_latency_jitter_ms: 100,
+    event_max_age_ms: 5000,
+    paper_portfolio_usdc: '1000'
+  },
+  latest_graph_revision: {
+    id: 'cccccccc-0000-0000-0000-000000000001',
+    bot_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+    revision: 2,
+    graph: TEST_GRAPH,
+    created_at: '2026-08-30T00:00:00Z'
+  },
   created_at: '2026-08-30T00:00:00Z',
   updated_at: '2026-08-30T00:00:00Z'
-} satisfies GraphTemplateRead;
+} satisfies BotRead;
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
-describe('saved-bot creation page', () => {
-  it('saves a configured bot without launching it and opens bot detail', async () => {
-    mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
-    mocks.listTemplates.mockResolvedValue({ data: [] });
-    mocks.createBot.mockResolvedValue({
-      data: { id: 'aaaaaaaa-0000-0000-0000-000000000001' }
-    });
+function loadBuilder(bots: BotRead[] = []): void {
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  mocks.listBots.mockResolvedValue({ data: bots });
+  mocks.createTemplate.mockResolvedValue({
+    data: { id: 'dddddddd-0000-0000-0000-000000000001' }
+  });
+  mocks.createBot.mockResolvedValue({
+    data: { id: 'eeeeeeee-0000-0000-0000-000000000001' }
+  });
+}
+
+describe('unified bot creation page', () => {
+  it('creates the graph copy and configured bot from one form', async () => {
+    loadBuilder();
     render(Page);
 
     await fireEvent.input(await screen.findByLabelText('Name'), {
-      target: { value: 'Reusable setup' }
+      target: { value: 'Threshold buyer' }
     });
-    await fireEvent.click(
-      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
-    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Create bot' }));
 
     await waitFor(() => {
+      expect(mocks.createTemplate).toHaveBeenCalledWith({
+        body: {
+          name: expect.stringMatching(/^bot-draft-/),
+          graph: TEST_GRAPH
+        },
+        throwOnError: true
+      });
       expect(mocks.createBot).toHaveBeenCalledWith({
         body: {
           definition_id: DEFINITION.definition_id,
-          inputs: { name: 'Reusable setup' }
+          inputs: { name: 'Threshold buyer' },
+          graph_template_id: 'dddddddd-0000-0000-0000-000000000001'
         },
         throwOnError: true
       });
     });
     expect(mocks.goto).toHaveBeenCalledWith(
-      '/bots/aaaaaaaa-0000-0000-0000-000000000001'
+      '/bots/eeeeeeee-0000-0000-0000-000000000001'
     );
   });
 
-  it('copies the selected graph template into a new saved bot', async () => {
-    const secondTemplate = {
-      ...TEMPLATE,
-      id: 'dddddddd-0000-0000-0000-000000000001',
-      name: 'Second graph'
-    } satisfies GraphTemplateRead;
-    mocks.listDefinitions.mockResolvedValue({ data: [GRAPH_CAPABLE_DEFINITION] });
-    mocks.listTemplates.mockResolvedValue({ data: [TEMPLATE, secondTemplate] });
-    mocks.createBot.mockResolvedValue({
-      data: { id: 'aaaaaaaa-0000-0000-0000-000000000002' }
-    });
+  it('offers existing bots as graph starting points without exposing templates', async () => {
+    loadBuilder([SOURCE_BOT]);
     render(Page);
 
-    await fireEvent.change(await screen.findByRole('combobox'), {
-      target: { value: secondTemplate.id }
-    });
-    await fireEvent.input(screen.getByLabelText('Name'), {
-      target: { value: 'Graph setup' }
-    });
-    await fireEvent.click(
-      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
-    );
+    const source = await screen.findByLabelText('Starting point');
+    await fireEvent.change(source, { target: { value: SOURCE_BOT.id } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Copy graph' }));
 
-    await waitFor(() => {
-      expect(mocks.createBot).toHaveBeenCalledWith({
-        body: {
-          definition_id: GRAPH_CAPABLE_DEFINITION.definition_id,
-          inputs: { name: 'Graph setup' },
-          graph_template_id: secondTemplate.id
-        },
-        throwOnError: true
-      });
-    });
+    expect(screen.getByText(/Current source: Source bot/)).toBeTruthy();
+    expect(screen.queryByText('Graph template')).toBeNull();
   });
 
-  it('requires a template before saving a graph-capable bot', async () => {
-    mocks.listDefinitions.mockResolvedValue({ data: [GRAPH_CAPABLE_DEFINITION] });
-    mocks.listTemplates.mockResolvedValue({ data: [] });
+  it('reports a missing graph-capable definition instead of offering bot types', async () => {
+    mocks.listDefinitions.mockResolvedValue({ data: [] });
+    mocks.listBots.mockResolvedValue({ data: [] });
     render(Page);
-
-    expect(
-      (await screen.findByText((_, element) =>
-        Boolean(
-          element?.classList.contains('notice') &&
-          element.textContent?.includes(BOT_CREATION_COPY.TEMPLATE_REQUIRED)
-        )
-      )).textContent
-    ).toContain(BOT_CREATION_COPY.TEMPLATE_REQUIRED);
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: LAUNCH_FORM_COPY.SAVE_BOT
-      }).disabled
-    ).toBe(true);
-    expect(
-      screen.getByRole('link', {
-        name: BOT_CREATION_COPY.OPEN_GRAPH_TEMPLATES
-      }).getAttribute('href')
-    ).toBe(NAVIGATION_PATH.GRAPH_TEMPLATES);
-  });
-
-  it('reports catalog and save failures', async () => {
-    mocks.listDefinitions.mockRejectedValueOnce(new Error('offline'));
-    mocks.listTemplates.mockResolvedValue({ data: [] });
-    const failedLoad = render(Page);
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      BOT_CREATION_COPY.CATALOG_LOAD_ERROR
+      'The node-based bot definition is unavailable.'
     );
-    failedLoad.unmount();
+    expect(screen.queryByLabelText('Name')).toBeNull();
+  });
 
-    mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
-    mocks.listTemplates.mockResolvedValue({ data: [] });
+  it('preserves the entered configuration when creation fails', async () => {
+    loadBuilder();
     mocks.createBot.mockRejectedValue(new Error('write failed'));
     render(Page);
-    await fireEvent.input(await screen.findByLabelText('Name'), {
-      target: { value: 'Rejected setup' }
-    });
-    await fireEvent.click(
-      screen.getByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
-    );
+
+    const name = await screen.findByLabelText('Name');
+    await fireEvent.input(name, { target: { value: 'Keep my draft' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Create bot' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      BOT_CREATION_COPY.SAVE_ERROR
+      'The bot could not be saved.'
     );
-  });
-
-  it('reports a missing requested definition without rendering the form', async () => {
-    mocks.listDefinitions.mockResolvedValue({ data: [] });
-    mocks.listTemplates.mockResolvedValue({ data: [] });
-    render(Page);
-
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      BOT_CREATION_COPY.DEFINITION_NOT_FOUND
-    );
-    expect(
-      screen.queryByRole('button', { name: LAUNCH_FORM_COPY.SAVE_BOT })
-    ).toBeNull();
+    expect((name as HTMLInputElement).value).toBe('Keep my draft');
   });
 });

@@ -186,7 +186,7 @@ polyfollow-polybot/
     events/          # Typed durable progress projection, persistence, Redis wake-up.
     execution/       # RunLauncher, Taskiq adapter, and worker lifecycle.
   migrations/       # Alembic-owned PostgreSQL schema history.
-  frontend/         # Static template, saved-bot, and run UI.
+  frontend/         # Static node-bot builder, saved-bot, and run UI.
   tests/
 ```
 

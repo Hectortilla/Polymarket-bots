@@ -36,7 +36,9 @@ API, durable SSE path,
 deterministic OpenAPI artifact, static client-rendered dashboard UI, and a
 validated alpha graph contract with framework-derived triggers, typed constants,
 comparisons, event-driven fixed-side paper broker actions, editable graph
-templates, reusable saved bots, and immutable bot-owned graph revisions.
+storage, reusable saved bots, and immutable bot-owned graph revisions. The
+browser presents one node-based bot workspace: configuration and graph editing
+live in the same form, and a new graph can start fresh or copy another bot.
 
 Install and verify the frontend from `frontend/`:
 
@@ -74,11 +76,13 @@ dashboard, Slice 11 dynamic market tracking and resolution processing, and the
 isolated Slices 12A through 12E and Slices 13A through 13F control-plane
 foundation, worker, durable progress path, runs API, mixed durable/live SSE
 stream, and browser dashboard. The dashboard has market-price and
-followed-wallet timeline views, plus Svelte Flow template and saved-bot editors
-whose trigger outputs, typed constants, comparisons, and fixed-side submit
-actions come from one backend catalog. It
-copies a selected template into a bot-owned revision, snapshots that revision
-for each run, and executes it as an event-driven paper-trading `NodeBasedBot`;
+followed-wallet timeline views, plus one Svelte Flow bot editor that combines
+paper configuration and graph editing. Its trigger outputs, typed constants,
+comparisons, and fixed-side submit actions come from one backend catalog. New
+bots start from the catalog graph or a copy of another bot's latest graph. The
+frontend uses the existing template-copy API as an internal persistence detail,
+then snapshots the bot-owned revision for each run and executes it as an
+event-driven paper-trading `NodeBasedBot`;
 enabled actions submit through the existing paper
 broker and observability path. Press `v` to switch between chart views. Gamma
 discovery, CLOB snapshots, market WebSocket books, and Data API wallet reads

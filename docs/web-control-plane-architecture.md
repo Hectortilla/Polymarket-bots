@@ -636,10 +636,15 @@ dependency error.
 - Present the generated FastAPI validation response without duplicating its
   rules: field issues belong under their controls, graph issues belong beside
   the canvas, and failed saves preserve the edited state.
-- The launch page saves a bot without running it. Graph-capable definitions
-  select a template and explain the copy boundary.
-- The template page edits reusable source graphs. The bot detail page saves
-  settings, appends graph revisions, and runs only when there are no unsaved
+- The new-bot page selects the graph-capable server definition internally and
+  presents configuration plus graph editing as one form. It starts from the
+  descriptor's starter graph or another bot's latest graph.
+- Bot creation uses the existing graph-template endpoint as an internal
+  compatibility step before `POST /bots` copies revision 1. The frontend does
+  not expose template selection or management, and the legacy template route
+  redirects to the new-bot page.
+- The bot detail page saves settings and graph changes from one workspace,
+  appends graph revisions when needed, and runs only when there are no unsaved
   changes. Run detail always shows the exact historical revision.
 - Wrap Apache ECharts in one thin `EChart.svelte` component that owns init,
   option updates, resize, and dispose. Pages and domain components do not call

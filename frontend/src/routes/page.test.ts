@@ -1,25 +1,16 @@
 import { cleanup, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  BotDefinitionDescriptor,
-  BotRead
-} from '$lib/api/generated';
+import type { BotRead, RunRead, StreamRelation } from '$lib/api/generated';
 import { TEST_GRAPH } from '$lib/catalog/nodeGraphTestFixtures';
-import {
-  BOT_DEFINITION_LABEL,
-  SELECTION_MODE
-} from '$lib/catalog/schema';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 const mocks = vi.hoisted(() => ({
   listBots: vi.fn(),
-  listDefinitions: vi.fn(),
   listRuns: vi.fn()
 }));
 
 vi.mock('$lib/api/generated', () => ({
-  listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
   listBotsApiV1BotsGet: mocks.listBots,
   listRunsApiV1RunsGet: mocks.listRuns
 }));
@@ -27,22 +18,17 @@ vi.mock('$lib/api/generated', () => ({
 import Page from './+page.svelte';
 import { HOME_COPY, graphRevisionLabel } from './homeCopy';
 
-const DEFINITION = {
-  definition_id: 'plain-definition',
-  display_name: 'Plain bot',
-  description: 'A test bot.',
-  label: BOT_DEFINITION_LABEL.STANDARD,
-  market_selection: SELECTION_MODE.ABSENT,
-  wallet_selection: SELECTION_MODE.ABSENT,
-  input_schema: {}
-} satisfies BotDefinitionDescriptor;
-
 const BOT = {
   id: 'aaaaaaaa-0000-0000-0000-000000000001',
-  definition_id: DEFINITION.definition_id,
+  definition_id: 'node-based-bot',
   config: {
-    name: 'Saved setup',
-    stream_rules: [],
+    name: 'BTC threshold buyer',
+    stream_rules: [
+      {
+        relation: runtimeContract.streamRelation.INDEPENDENT as StreamRelation,
+        market_slugs: ['btc-updown-5m-test']
+      }
+    ],
     data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget,
     max_order_size: '10',
     max_slippage_pct: '0.02',
@@ -51,66 +37,84 @@ const BOT = {
     event_max_age_ms: 5000,
     paper_portfolio_usdc: '1000'
   },
+  latest_graph_revision: {
+    id: 'cccccccc-0000-0000-0000-000000000001',
+    bot_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+    revision: 4,
+    graph: TEST_GRAPH,
+    created_at: '2026-08-30T00:00:00Z'
+  },
   created_at: '2026-08-30T00:00:00Z',
   updated_at: '2026-08-30T00:00:00Z'
 } satisfies BotRead;
+
+const RUN = {
+  id: 'bbbbbbbb-0000-0000-0000-000000000001',
+  bot_id: BOT.id,
+  definition_id: BOT.definition_id,
+  config: BOT.config,
+  status: 'running',
+  created_at: BOT.created_at,
+  started_at: BOT.created_at,
+  ended_at: null,
+  heartbeat_at: BOT.created_at,
+  failure_detail: null,
+  bot_graph_revision_id: BOT.latest_graph_revision.id,
+  graph_revision: BOT.latest_graph_revision.revision,
+  graph: TEST_GRAPH,
+  latest_equity: '1004.25',
+  equity_status: 'fresh'
+} satisfies RunRead;
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
-function loadHome({ bots = [] }: { bots?: BotRead[] } = {}): void {
-  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+function loadHome({ bots = [], runs = [] }: { bots?: BotRead[]; runs?: RunRead[] } = {}): void {
   mocks.listBots.mockResolvedValue({ data: bots });
-  mocks.listRuns.mockResolvedValue({ data: [] });
+  mocks.listRuns.mockResolvedValue({ data: runs });
 }
 
-describe('operations home', () => {
-  it('shows an explicit empty saved-bot state', async () => {
+describe('bots home', () => {
+  it('shows one direct creation action and no bot catalog', async () => {
     loadHome();
     render(Page);
 
-    expect(
-      await screen.findByText(HOME_COPY.NO_SAVED_BOTS)
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Create your first bot' })).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: 'New bot' })[0]?.getAttribute('href'))
+      .toBe('/bots/new');
+    expect(screen.queryByText('Bot catalog')).toBeNull();
   });
 
-  it('links each saved bot to its detail page', async () => {
-    loadHome({ bots: [BOT] });
+  it('shows configured bots as scannable rows with their operational context', async () => {
+    loadHome({ bots: [BOT], runs: [RUN] });
     render(Page);
 
-    const link = await screen.findByRole('link', { name: BOT.config.name });
+    const link = await screen.findByRole('link', { name: `Open ${BOT.config.name}` });
     expect(link.getAttribute('href')).toBe(`/bots/${BOT.id}`);
+    expect(screen.getByText('btc-updown-5m-test')).toBeTruthy();
+    expect(screen.getByText(graphRevisionLabel(4))).toBeTruthy();
+    expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
   });
 
-  it('shows the latest immutable graph revision for a saved bot', async () => {
-    const graphBot = {
-      ...BOT,
-      latest_graph_revision: {
-        id: 'cccccccc-0000-0000-0000-000000000001',
-        bot_id: BOT.id,
-        revision: 4,
-        graph: TEST_GRAPH,
-        created_at: BOT.created_at
-      }
-    } satisfies BotRead;
-    loadHome({ bots: [graphBot] });
-
+  it('does not expose non-graph catalog bots in the operator workspace', async () => {
+    const legacyBot = { ...BOT, id: 'legacy', latest_graph_revision: null } satisfies BotRead;
+    loadHome({ bots: [legacyBot] });
     render(Page);
 
-    expect(await screen.findByText(graphRevisionLabel(4))).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Create your first bot' })).toBeTruthy();
+    expect(screen.queryByText(legacyBot.config.name)).toBeNull();
   });
 
   it('reports a failed home load without rendering partial data', async () => {
-    mocks.listDefinitions.mockRejectedValue(new Error('catalog unavailable'));
-    mocks.listBots.mockResolvedValue({ data: [BOT] });
-    mocks.listRuns.mockResolvedValue({ data: [] });
+    mocks.listBots.mockRejectedValue(new Error('offline'));
+    mocks.listRuns.mockResolvedValue({ data: [RUN] });
     render(Page);
 
     expect((await screen.findByRole('alert')).textContent).toContain(
       HOME_COPY.LOAD_ERROR
     );
-    expect(screen.queryByRole('link', { name: BOT.config.name })).toBeNull();
+    expect(screen.queryByText(RUN.config.name)).toBeNull();
   });
 });

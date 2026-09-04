@@ -124,7 +124,7 @@ describe('run detail page', () => {
     render(Page);
 
     const botLink = await screen.findByRole('link', {
-      name: RUN.definition_id
+      name: 'Bot configuration'
     });
     expect(botLink.getAttribute('href')).toBe(botPath(RUN.bot_id));
     expect(

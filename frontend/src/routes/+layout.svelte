@@ -22,13 +22,13 @@
 
 <header class="site-header">
   <div class="site-header-inner">
-    <a class="brand" href={NAVIGATION_PATH.HOME} aria-label="Polybot catalog">
+    <a class="brand" href={NAVIGATION_PATH.HOME} aria-label="Polybot bots">
       <span class="brand-mark" aria-hidden="true"></span>
       <span>Polybot</span>
     </a>
     <div class="header-context">
-      <span>Private control plane</span>
-      <span class="environment-label">paper only</span>
+      <span>Operator workspace</span>
+      <span class="environment-label">paper trading</span>
     </div>
   </div>
 </header>
