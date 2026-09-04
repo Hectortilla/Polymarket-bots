@@ -1,9 +1,13 @@
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BotRead, RunRead, StreamRelation } from '$lib/api/generated';
 import { TEST_GRAPH } from '$lib/catalog/nodeGraphTestFixtures';
+import { VALUATION_STATUS } from '$lib/charts/contracts';
+import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath, runPath } from '$lib/navigation';
+import { runStatusLabel } from '$lib/runs/status';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
+import { formatTime } from '$lib/time';
 
 const mocks = vi.hoisted(() => ({
   listBots: vi.fn(),
@@ -16,7 +20,7 @@ vi.mock('$lib/api/generated', () => ({
 }));
 
 import Page from './+page.svelte';
-import { HOME_COPY, graphRevisionLabel } from './homeCopy';
+import { HOME_COPY, botRowLabel, graphRevisionLabel, runRowLabel } from './homeCopy';
 
 const BOT = {
   id: 'aaaaaaaa-0000-0000-0000-000000000001',
@@ -81,21 +85,51 @@ describe('bots home', () => {
     loadHome();
     render(Page);
 
-    expect(await screen.findByRole('heading', { name: 'Create your first bot' })).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: 'New bot' })[0]?.getAttribute('href'))
-      .toBe('/bots/new');
+    expect(screen.getByRole('heading', { name: NAVIGATION_LABEL.BOTS, level: 1 })).toBeTruthy();
+    expect(await screen.findByText(HOME_COPY.CREATE_FIRST_BOT)).toBeTruthy();
+    expect(screen.getByRole('link', { name: NAVIGATION_LABEL.NEW_BOT }).getAttribute('href')).toBe(
+      NAVIGATION_PATH.NEW_BOT
+    );
     expect(screen.queryByText('Bot catalog')).toBeNull();
+    expect(screen.queryByText('Bot workspace')).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: HOME_COPY.CONFIGURED_BOTS, level: 2 })
+    ).toBeTruthy();
   });
 
   it('shows configured bots as scannable rows with their operational context', async () => {
     loadHome({ bots: [BOT], runs: [RUN] });
     render(Page);
 
-    const link = await screen.findByRole('link', { name: `Open ${BOT.config.name}` });
-    expect(link.getAttribute('href')).toBe(`/bots/${BOT.id}`);
-    expect(screen.getByText('btc-updown-5m-test')).toBeTruthy();
-    expect(screen.getByText(graphRevisionLabel(4))).toBeTruthy();
-    expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
+    const botLink = await screen.findByRole('link', { name: botRowLabel(BOT.config.name) });
+    expect(botLink.getAttribute('href')).toBe(botPath(BOT.id));
+    expect(within(botLink).getByText(BOT.config.name)).toBeTruthy();
+    expect(within(botLink).getByText('btc-updown-5m-test')).toBeTruthy();
+    expect(within(botLink).getByText(graphRevisionLabel(4))).toBeTruthy();
+    expect(within(botLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
+
+    const runLink = screen.getByRole('link', {
+      name: runRowLabel(RUN.config.name, formatTime(RUN.created_at))
+    });
+    expect(runLink.getAttribute('href')).toBe(runPath(RUN.id));
+    expect(within(runLink).getByText(RUN.config.name)).toBeTruthy();
+    expect(within(runLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
+    expect(
+      within(runLink).getByText(`${RUN.latest_equity} / ${VALUATION_STATUS.fresh}`)
+    ).toBeTruthy();
+    const runTimes = runLink.querySelectorAll('time');
+    expect(runTimes).toHaveLength(2);
+    expect(runTimes[0]?.textContent).toBe(formatTime(RUN.created_at));
+    expect(runTimes[1]?.textContent).toBe(formatTime(RUN.ended_at));
+  });
+
+  it('keeps a never-run bot navigable and labels its state', async () => {
+    loadHome({ bots: [BOT] });
+    render(Page);
+
+    const botLink = await screen.findByRole('link', { name: botRowLabel(BOT.config.name) });
+    expect(botLink.getAttribute('href')).toBe(botPath(BOT.id));
+    expect(within(botLink).getByText(HOME_COPY.NOT_RUN_YET)).toBeTruthy();
   });
 
   it('does not expose non-graph catalog bots in the operator workspace', async () => {
@@ -103,7 +137,7 @@ describe('bots home', () => {
     loadHome({ bots: [legacyBot] });
     render(Page);
 
-    expect(await screen.findByRole('heading', { name: 'Create your first bot' })).toBeTruthy();
+    expect(await screen.findByText(HOME_COPY.CREATE_FIRST_BOT)).toBeTruthy();
     expect(screen.queryByText(legacyBot.config.name)).toBeNull();
   });
 

@@ -26,10 +26,7 @@
       <span class="brand-mark" aria-hidden="true"></span>
       <span>Polybot</span>
     </a>
-    <div class="header-context">
-      <span>Operator workspace</span>
-      <span class="environment-label">paper trading</span>
-    </div>
+    <span class="environment-label">paper trading</span>
   </div>
 </header>
 

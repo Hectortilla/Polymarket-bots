@@ -160,17 +160,7 @@ select:focus-visible {
   height: 8px;
 }
 
-.header-context {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-}
-
 .environment-label {
-  border-left: 1px solid var(--line-strong);
-  padding-left: 12px;
   color: var(--text-soft);
   font-family: 'Geist Mono Variable', ui-monospace, monospace;
   font-size: 0.7rem;
@@ -265,10 +255,6 @@ td,
   margin-bottom: 0;
   color: var(--text-soft);
   font-size: 1.06rem;
-}
-
-.home-heading h1 {
-  max-width: 660px;
 }
 
 .page-kicker,
@@ -600,16 +586,6 @@ tbody tr:hover {
   margin-top: 6px;
 }
 
-.empty-state-action {
-  min-height: 168px;
-  padding: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  text-align: left;
-}
-
 .notice-with-action {
   display: flex;
   align-items: flex-start;
@@ -630,19 +606,28 @@ tbody tr:hover {
   font-size: 0.86rem;
 }
 
-.bot-list {
+.data-list {
   border-bottom: 1px solid var(--line);
 }
 
-.bot-list-header,
-.bot-list-row {
+.data-list-header,
+.data-list-row {
   display: grid;
-  grid-template-columns: minmax(240px, 2fr) minmax(84px, 0.64fr) minmax(84px, 0.68fr) minmax(112px, 0.9fr) minmax(148px, 1fr) 24px;
   gap: 20px;
   align-items: center;
 }
 
-.bot-list-header {
+.bot-list-header,
+.bot-list-row {
+  grid-template-columns: minmax(240px, 2fr) minmax(84px, 0.64fr) minmax(84px, 0.68fr) minmax(112px, 0.9fr) minmax(148px, 1fr) minmax(96px, 0.68fr);
+}
+
+.run-list-header,
+.run-list-row {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(110px, 0.7fr) minmax(140px, 0.85fr) minmax(180px, 1fr) minmax(180px, 1fr);
+}
+
+.data-list-header {
   min-height: 40px;
   border-top: 1px solid var(--line);
   color: var(--text-muted);
@@ -653,7 +638,46 @@ tbody tr:hover {
   text-transform: uppercase;
 }
 
-.bot-list-row {
+.bot-list-create {
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  text-decoration: none;
+  text-transform: none;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition),
+    transform var(--transition);
+}
+
+.bot-list-create:hover {
+  border-color: var(--control-line);
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.bot-list-create:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.data-list > .empty-state {
+  border-bottom: 0;
+}
+
+.data-list-row {
   min-height: 88px;
   border-top: 1px solid var(--line);
   color: var(--text-soft);
@@ -664,21 +688,16 @@ tbody tr:hover {
     transform var(--transition);
 }
 
-.bot-list-row:hover {
+.data-list-row:hover {
   background: color-mix(in srgb, var(--accent) 3.5%, transparent);
 }
 
-.bot-list-row:active {
+.data-list-row:active {
   transform: translateY(1px);
 }
 
-.bot-identity {
+.data-list-title {
   min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.bot-identity strong {
   overflow: hidden;
   color: var(--text);
   font-size: 1rem;
@@ -686,6 +705,17 @@ tbody tr:hover {
   letter-spacing: -0.018em;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition);
+}
+
+.data-list-row:hover .data-list-title {
+  color: var(--accent);
+}
+
+.bot-identity {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .bot-identity small {
@@ -698,25 +728,13 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
-.bot-value,
+.data-list-value,
 .muted-value {
   min-width: 0;
   color: var(--text-muted);
   font-family: 'Geist Mono Variable', ui-monospace, monospace;
   font-size: 0.74rem;
   overflow-wrap: anywhere;
-}
-
-.row-arrow {
-  color: var(--text-muted);
-  transition:
-    color var(--transition),
-    transform var(--transition);
-}
-
-.bot-list-row:hover .row-arrow {
-  color: var(--accent);
-  transform: translateX(3px);
 }
 
 .bots-section + .runs-section {
@@ -1314,7 +1332,7 @@ dd {
 @media (max-width: 960px) {
   .bot-list-header,
   .bot-list-row {
-    grid-template-columns: minmax(220px, 1.65fr) minmax(80px, 0.55fr) minmax(92px, 0.65fr) minmax(112px, 0.8fr) 24px;
+    grid-template-columns: minmax(220px, 1.65fr) minmax(80px, 0.55fr) minmax(92px, 0.65fr) minmax(112px, 0.8fr) minmax(96px, 0.68fr);
   }
 
   .bot-list-header > span:nth-child(5),
@@ -1369,13 +1387,8 @@ dd {
     min-height: 60px;
   }
 
-  .header-context > span:not(.environment-label) {
-    display: none;
-  }
-
   .environment-label {
-    border-left: 0;
-    padding-left: 0;
+    font-size: 0.66rem;
   }
 
   main {
@@ -1428,56 +1441,58 @@ dd {
     gap: 8px;
   }
 
-  .empty-state-action {
-    padding: 28px 0;
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .empty-state-action .primary-link {
-    width: 100%;
-  }
-
   .bot-list-header {
+    min-height: 52px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .bot-list-header > span {
     display: none;
   }
 
-  .bot-list-row {
+  .bot-list-header > span:first-child {
+    display: block;
+  }
+
+  .bot-list-create {
+    min-height: 44px;
+  }
+
+  .run-list-header {
+    display: none;
+  }
+
+  .data-list-row {
     position: relative;
     min-height: 0;
-    padding: 20px 36px 20px 0;
+    padding: 20px 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px 24px;
     align-items: start;
   }
 
-  .bot-list-row > :nth-child(5) {
-    display: grid;
+  .bot-identity,
+  .run-list-row > :first-child {
+    grid-column: 1 / -1;
   }
 
   .bot-identity {
-    grid-column: 1 / -1;
     gap: 5px;
   }
 
-  .bot-list-row > [data-label]:not(.bot-identity) {
+  .data-list-row > [data-label]:not(.bot-identity) {
     display: grid;
     gap: 6px;
   }
 
-  .bot-list-row > [data-label]:not(.bot-identity)::before {
+  .data-list-row > [data-label]:not(.bot-identity)::before {
     color: var(--text-muted);
     content: attr(data-label);
     font-family: 'Geist Mono Variable', ui-monospace, monospace;
     font-size: 0.62rem;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-  }
-
-  .row-arrow {
-    position: absolute;
-    top: 24px;
-    right: 0;
   }
 
   .form-grid,
@@ -1626,11 +1641,12 @@ dd {
     padding-top: 4px;
   }
 
-  .bot-list-row {
+  .data-list-row {
     grid-template-columns: 1fr;
   }
 
-  .bot-identity {
+  .bot-identity,
+  .run-list-row > :first-child {
     grid-column: auto;
   }
 

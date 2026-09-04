@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import ArrowRightIcon from 'phosphor-svelte/lib/ArrowRightIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
 
   import {
@@ -11,9 +10,14 @@
   } from '$lib/api/generated';
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath, runPath } from '$lib/navigation';
   import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
-  import { isTerminalRunStatus } from '$lib/runs/status';
   import { formatTime } from '$lib/time';
-  import { HOME_COLUMN_LABEL, HOME_COPY, graphRevisionLabel } from './homeCopy';
+  import {
+    HOME_COLUMN_LABEL,
+    HOME_COPY,
+    botRowLabel,
+    graphRevisionLabel,
+    runRowLabel
+  } from './homeCopy';
 
   let runs = $state<RunRead[]>([]);
   let bots = $state<BotRead[]>([]);
@@ -26,11 +30,6 @@
   const visibleBotIds = $derived(new Set(visibleBots.map((bot) => bot.id)));
   const visibleRuns = $derived(
     runs.filter((run) => visibleBotIds.has(run.bot_id)).slice(0, 10)
-  );
-  const activeRunCount = $derived(
-    runs.filter(
-      (run) => visibleBotIds.has(run.bot_id) && !isTerminalRunStatus(run.status)
-    ).length
   );
 
   onMount(() => {
@@ -76,17 +75,7 @@
   />
 </svelte:head>
 
-<header class="home-heading page-heading">
-  <div>
-    <p class="page-kicker">Bot workspace</p>
-    <h1>Your trading bots.</h1>
-    <p>Configure strategy graphs, control paper-trading limits, and review every run.</p>
-  </div>
-  <a class="primary-link" href={NAVIGATION_PATH.NEW_BOT}>
-    <PlusIcon aria-hidden="true" size={18} weight="bold" />
-    {NAVIGATION_LABEL.NEW_BOT}
-  </a>
-</header>
+<h1 class="sr-only">{NAVIGATION_LABEL.BOTS}</h1>
 
 {#if error}
   <div class="notice-with-action">
@@ -103,114 +92,97 @@
 {:else}
   <section class="bots-section" aria-labelledby="configured-bots-heading">
     <div class="section-heading">
-      <div>
-        <h2 id="configured-bots-heading">Configured bots</h2>
-        <p>Open a bot to change its configuration, edit its graph, or start a run.</p>
-      </div>
-      <span class="section-count">
-        {visibleBots.length} {visibleBots.length === 1 ? 'bot' : 'bots'}
-        {activeRunCount > 0 ? `, ${activeRunCount} active` : ''}
-      </span>
+      <h2 id="configured-bots-heading">{HOME_COPY.CONFIGURED_BOTS}</h2>
     </div>
-
-    {#if visibleBots.length === 0}
-      <div class="empty-state empty-state-action">
-        <div>
-          <h3>Create your first bot</h3>
-          <p>Set the limits and build the strategy graph in one workspace.</p>
-        </div>
-        <a class="primary-link" href={NAVIGATION_PATH.NEW_BOT}>
-          <PlusIcon aria-hidden="true" size={18} weight="bold" />
+    <div class="data-list bot-list">
+      <div class="data-list-header bot-list-header">
+        <span aria-hidden="true">{HOME_COLUMN_LABEL.BOT_AND_MARKETS}</span>
+        <span aria-hidden="true">{HOME_COLUMN_LABEL.MAX_ORDER}</span>
+        <span aria-hidden="true">{HOME_COLUMN_LABEL.GRAPH}</span>
+        <span aria-hidden="true">{HOME_COLUMN_LABEL.LATEST_RUN}</span>
+        <span aria-hidden="true">{HOME_COLUMN_LABEL.UPDATED}</span>
+        <a class="bot-list-create" href={NAVIGATION_PATH.NEW_BOT}>
+          <PlusIcon aria-hidden="true" size={15} />
           {NAVIGATION_LABEL.NEW_BOT}
         </a>
       </div>
-    {:else}
-      <div class="bot-list">
-        <div class="bot-list-header" aria-hidden="true">
-          <span>Bot and markets</span>
-          <span>Max order</span>
-          <span>Graph</span>
-          <span>Latest run</span>
-          <span>Updated</span>
-          <span></span>
-        </div>
+      {#if visibleBots.length === 0}
+        <p class="empty-state">{HOME_COPY.CREATE_FIRST_BOT}</p>
+      {:else}
         {#each visibleBots as bot (bot.id)}
           {@const recentRun = latestRun(bot.id)}
           <div class="bot-list-item">
             <a
-              class="bot-list-row"
+              class="data-list-row bot-list-row"
               href={botPath(bot.id)}
-              aria-label={`Open ${bot.config.name}`}
+              aria-label={botRowLabel(bot.config.name)}
             >
-              <span class="bot-identity" data-label="Bot and markets">
-                <strong>{bot.config.name}</strong>
+              <span class="bot-identity" data-label={HOME_COLUMN_LABEL.BOT_AND_MARKETS}>
+                <strong class="data-list-title">{bot.config.name}</strong>
                 <small>{marketScope(bot)}</small>
               </span>
-              <span class="bot-value" data-label="Max order">{bot.config.max_order_size}</span>
-              <span class="bot-value" data-label="Graph">
+              <span class="data-list-value" data-label={HOME_COLUMN_LABEL.MAX_ORDER}>
+                {bot.config.max_order_size}
+              </span>
+              <span class="data-list-value" data-label={HOME_COLUMN_LABEL.GRAPH}>
                 {graphRevisionLabel(bot.latest_graph_revision?.revision ?? 1)}
               </span>
-              <span class="bot-status" data-label="Latest run">
+              <span class="bot-status" data-label={HOME_COLUMN_LABEL.LATEST_RUN}>
                 {#if recentRun}
                   <RunStatusBadge status={recentRun.status} />
                 {:else}
-                  <span class="muted-value">Not run yet</span>
+                  <span class="muted-value">{HOME_COPY.NOT_RUN_YET}</span>
                 {/if}
               </span>
-              <time class="bot-value" data-label="Updated" datetime={bot.updated_at}>
+              <time class="data-list-value" data-label={HOME_COLUMN_LABEL.UPDATED} datetime={bot.updated_at}>
                 {formatTime(bot.updated_at)}
               </time>
-              <span class="row-arrow" aria-hidden="true">
-                <ArrowRightIcon size={18} />
-              </span>
             </a>
           </div>
         {/each}
-      </div>
-    {/if}
+      {/if}
+    </div>
   </section>
 
   <section class="runs-section" aria-labelledby="recent-runs-heading">
     <div class="section-heading">
-      <div>
-        <h2 id="recent-runs-heading">Recent runs</h2>
-        <p>The latest paper runs across your configured bots.</p>
-      </div>
-      <span class="section-count">{visibleRuns.length} shown</span>
+      <h2 id="recent-runs-heading">{HOME_COPY.RECENT_RUNS}</h2>
     </div>
     {#if visibleRuns.length === 0}
       <p class="empty-state">Run a configured bot to see its history here.</p>
     {:else}
-      <div class="table-wrap">
-        <table aria-label="Recent runs">
-          <thead>
-            <tr>
-              <th>{HOME_COLUMN_LABEL.RUN}</th>
-              <th>{HOME_COLUMN_LABEL.STATUS}</th>
-              <th>{HOME_COLUMN_LABEL.EQUITY}</th>
-              <th>{HOME_COLUMN_LABEL.CREATED}</th>
-              <th>{HOME_COLUMN_LABEL.ENDED}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each visibleRuns as run (run.id)}
-              <tr>
-                <td data-label={HOME_COLUMN_LABEL.RUN}>
-                  <a href={runPath(run.id)}>{run.config.name}</a>
-                </td>
-                <td data-label={HOME_COLUMN_LABEL.STATUS}>
-                  <RunStatusBadge status={run.status} />
-                </td>
-                <td data-label={HOME_COLUMN_LABEL.EQUITY}>
-                  {run.latest_equity ?? 'Not available'}
-                  {run.equity_status ? ` / ${run.equity_status}` : ''}
-                </td>
-                <td data-label={HOME_COLUMN_LABEL.CREATED}>{formatTime(run.created_at)}</td>
-                <td data-label={HOME_COLUMN_LABEL.ENDED}>{formatTime(run.ended_at)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+      <div class="data-list run-list">
+        <div class="data-list-header run-list-header" aria-hidden="true">
+          <span>{HOME_COLUMN_LABEL.RUN}</span>
+          <span>{HOME_COLUMN_LABEL.STATUS}</span>
+          <span>{HOME_COLUMN_LABEL.EQUITY}</span>
+          <span>{HOME_COLUMN_LABEL.CREATED}</span>
+          <span>{HOME_COLUMN_LABEL.ENDED}</span>
+        </div>
+        {#each visibleRuns as run (run.id)}
+          <a
+            class="data-list-row run-list-row"
+            href={runPath(run.id)}
+            aria-label={runRowLabel(run.config.name, formatTime(run.created_at))}
+          >
+            <strong class="data-list-title" data-label={HOME_COLUMN_LABEL.RUN}>
+              {run.config.name}
+            </strong>
+            <span data-label={HOME_COLUMN_LABEL.STATUS}>
+              <RunStatusBadge status={run.status} />
+            </span>
+            <span class="data-list-value" data-label={HOME_COLUMN_LABEL.EQUITY}>
+              {run.latest_equity ?? 'Not available'}
+              {run.equity_status ? ` / ${run.equity_status}` : ''}
+            </span>
+            <time class="data-list-value" data-label={HOME_COLUMN_LABEL.CREATED} datetime={run.created_at}>
+              {formatTime(run.created_at)}
+            </time>
+            <time class="data-list-value" data-label={HOME_COLUMN_LABEL.ENDED} datetime={run.ended_at ?? undefined}>
+              {formatTime(run.ended_at)}
+            </time>
+          </a>
+        {/each}
       </div>
     {/if}
   </section>
