@@ -107,5 +107,6 @@ class RunRead(BaseModel):
     ended_at: datetime | None = None
     heartbeat_at: datetime | None = None
     failure_detail: str | None = None
+    latest_runtime_failure: str | None = None
     latest_equity: Decimal | None = None
     equity_status: ValuationStatus | None = None

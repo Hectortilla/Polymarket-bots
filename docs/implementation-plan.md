@@ -1052,6 +1052,10 @@ Minimum deliverable:
   EventSource adapter, and send live frames without an SSE cursor.
 - Extend `RunRead` with nullable `latest_equity` and `equity_status` derived
   from the latest durable `chart.sample`; do not persist summary columns.
+- Expose nullable `latest_runtime_failure` from the latest durable
+  `run.failure` so bounded run summaries can present the same failure evidence
+  without fetching each run's event history; do not persist a run summary
+  column.
 - Extract only pure constants/functions/models that now have both terminal and
   web consumers into dependency-light `polybot` owners. Keep equity valuation
   in `polybot.performance`; keep Rich and ECharts out of shared code.
@@ -1087,8 +1091,8 @@ Acceptance:
 - A controlled-clock test proves chart/live-health cadence, the
   architecture-owned persistence classification, terminal-only durable health,
   bounded reload history, and live continuation.
-- The run-contract test keeps the nine row-backed fields aligned with the table
-  while proving the two computed summary fields are not database columns.
+- The run-contract test keeps the row-backed fields aligned with the table
+  while proving the computed summary fields are not database columns.
 - Component tests cover the thin ECharts lifecycle, toggle/navigation controls,
   and narrow/wide layout.
 - Web rendering or delivery failure cannot affect the paper bot.

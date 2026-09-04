@@ -24,7 +24,7 @@ from polybot_control_plane.api.routes.run_lookup import (
     require_run,
 )
 from polybot_control_plane.api.responses import NOT_FOUND_RESPONSE
-from polybot_control_plane.events.contracts import ChartSampleEvent
+from polybot_control_plane.events.contracts import ChartSampleEvent, RunFailureEvent
 from polybot_control_plane.events.store import EventStore
 from polybot_control_plane.events.writer import publish_durable_wake
 from polybot_control_plane.runs.contracts import RunRead
@@ -44,7 +44,7 @@ async def list_runs(
 ) -> tuple[RunRead, ...]:
     async with session_factory() as session:
         runs = await RunStore(session).list()
-        return await _with_equity_summaries(session, runs)
+        return await _with_event_summaries(session, runs)
 
 
 @router.get(
@@ -59,7 +59,7 @@ async def read_run(
 ) -> RunRead:
     async with session_factory() as session:
         run = require_run(await RunStore(session).read(run_id))
-        return (await _with_equity_summaries(session, (run,)))[0]
+        return (await _with_event_summaries(session, (run,)))[0]
 
 
 @router.post(
@@ -79,34 +79,45 @@ async def stop_run(
         if transition is None:
             raise_run_not_found()
         run, terminal_event_id = transition
-        run = (await _with_equity_summaries(session, (run,)))[0]
+        run = (await _with_event_summaries(session, (run,)))[0]
     if terminal_event_id is not None:
         await publish_durable_wake(redis, run_id, terminal_event_id)
     return run
 
 
-async def _with_equity_summaries(
+async def _with_event_summaries(
     session: AsyncSession,
     runs: tuple[RunRead, ...],
 ) -> tuple[RunRead, ...]:
-    latest_chart_samples_by_run = await EventStore(session).latest_chart_samples(
-        tuple(run.id for run in runs)
-    )
+    run_ids = tuple(run.id for run in runs)
+    event_store = EventStore(session)
+    latest_chart_samples_by_run = await event_store.latest_chart_samples(run_ids)
+    latest_run_failures_by_run = await event_store.latest_run_failures(run_ids)
     return tuple(
-        _with_equity_summary(run, latest_chart_samples_by_run.get(run.id))
+        _with_event_summary(
+            run,
+            latest_chart_samples_by_run.get(run.id),
+            latest_run_failures_by_run.get(run.id),
+        )
         for run in runs
     )
 
 
-def _with_equity_summary(
+def _with_event_summary(
     run: RunRead,
     sample: ChartSampleEvent | None,
+    runtime_failure: RunFailureEvent | None,
 ) -> RunRead:
-    if sample is None:
+    if sample is None and runtime_failure is None:
         return run
-    return run.model_copy(
-        update={
-            "latest_equity": sample.payload.equity.value,
-            "equity_status": sample.payload.equity.status,
-        }
-    )
+    updates: dict[str, object] = {}
+    if sample is not None:
+        updates.update(
+            {
+                "latest_equity": sample.payload.equity.value,
+                "equity_status": sample.payload.equity.status,
+            }
+        )
+    if runtime_failure is not None:
+        updates["latest_runtime_failure"] = runtime_failure.payload.error
+    return run.model_copy(update=updates)

@@ -9,7 +9,10 @@
     type RunRead
   } from '$lib/api/generated';
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath, runPath } from '$lib/navigation';
+  import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
+  import { combinedFailureDetail } from '$lib/runs/eventSummary';
   import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
+  import { RUN_STATUS } from '$lib/runs/status';
   import { formatTime } from '$lib/time';
   import {
     HOME_COLUMN_LABEL,
@@ -160,16 +163,28 @@
           <span>{HOME_COLUMN_LABEL.ENDED}</span>
         </div>
         {#each visibleRuns as run (run.id)}
+          {@const failureDetail = run.status === RUN_STATUS.FAILED
+            ? combinedFailureDetail(run.latest_runtime_failure, run.failure_detail)
+            : null}
+          {@const failureDetailId = `recent-run-failure-detail-${run.id}`}
           <a
             class="data-list-row run-list-row"
+            class:failure-detail-trigger={failureDetail !== null}
             href={runPath(run.id)}
             aria-label={runRowLabel(run.config.name, formatTime(run.created_at))}
+            aria-describedby={failureDetail === null ? undefined : failureDetailId}
           >
             <strong class="data-list-title" data-label={HOME_COLUMN_LABEL.RUN}>
               {run.config.name}
             </strong>
-            <span data-label={HOME_COLUMN_LABEL.STATUS}>
+            <span
+              class:failure-detail-host={failureDetail !== null}
+              data-label={HOME_COLUMN_LABEL.STATUS}
+            >
               <RunStatusBadge status={run.status} />
+              {#if failureDetail}
+                <FailureDetailTooltip id={failureDetailId} detail={failureDetail} />
+              {/if}
             </span>
             <span class="data-list-value" data-label={HOME_COLUMN_LABEL.EQUITY}>
               {run.latest_equity ?? 'Not available'}

@@ -7,7 +7,11 @@ import {
   EVENT_KIND,
   type PersistedDurableEvent
 } from './durableEvents';
-import { eventFailureDetail, eventSummary } from './eventSummary';
+import {
+  combinedFailureDetail,
+  eventFailureDetail,
+  eventSummary
+} from './eventSummary';
 import { RUN_STATUS } from './status';
 
 const RUN_ID = '00000000-0000-0000-0000-000000000001';
@@ -59,6 +63,17 @@ describe('event summary', () => {
     expect(
       eventFailureDetail(lifecycle, [lifecycle], 'RuntimeError: run launch failed')
     ).toBe('RuntimeError: run launch failed');
+  });
+
+  it('composes a list-projected runtime error with its recorded outcome', () => {
+    expect(
+      combinedFailureDetail(
+        'ConnectionError: stream closed',
+        'ConnectionError: paper run failed'
+      )
+    ).toBe(
+      'ConnectionError: stream closed\nRecorded failure: ConnectionError: paper run failed'
+    );
   });
 });
 

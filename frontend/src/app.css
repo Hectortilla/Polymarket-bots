@@ -1210,20 +1210,20 @@ dd {
   font-size: 0.72rem;
 }
 
-.event-row-with-detail {
+.failure-detail-trigger {
   cursor: help;
 }
 
-.event-row-with-detail:focus-visible {
+.failure-detail-trigger:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -2px;
 }
 
-.event-detail-cell {
+.failure-detail-host {
   position: relative;
 }
 
-.event-failure-tooltip {
+.failure-detail-tooltip {
   position: absolute;
   z-index: 10;
   right: 0;
@@ -1249,7 +1249,7 @@ dd {
   white-space: pre-wrap;
 }
 
-.event-failure-tooltip-label {
+.failure-detail-tooltip-label {
   margin-bottom: 6px;
   display: block;
   color: var(--error);
@@ -1260,8 +1260,8 @@ dd {
   text-transform: uppercase;
 }
 
-.event-row-with-detail:hover .event-failure-tooltip,
-.event-row-with-detail:focus .event-failure-tooltip {
+.failure-detail-trigger:hover .failure-detail-tooltip,
+.failure-detail-trigger:focus .failure-detail-tooltip {
   opacity: 1;
   transform: translateY(0);
   visibility: visible;

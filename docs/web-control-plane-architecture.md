@@ -606,8 +606,9 @@ unbounded.
 
 `RunRead` exposes the row fields plus the resolved graph revision number and
 exact graph for historical display. It also carries nullable `latest_equity`
-and `equity_status`, derived from the latest durable `chart.sample`; none of
-these computed views are persisted on the run row.
+and `equity_status`, derived from the latest durable `chart.sample`, plus
+nullable `latest_runtime_failure`, derived from the latest durable
+`run.failure`. None of these computed views are persisted on the run row.
 
 `GET /health` executes a PostgreSQL `SELECT 1` and Redis `PING`. It returns
 `200` with exactly `{"status": "ok"}` only when both succeed; otherwise it

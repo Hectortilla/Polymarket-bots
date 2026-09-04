@@ -697,3 +697,5 @@ The private control plane presents configuration and graph design as one bot:
 
 Rerunning the bot uses its latest saved revision. Earlier runs continue to show
 and execute the revision they originally referenced after the bot changes.
+On the home page, failed Recent Runs rows expose the latest durable runtime
+error and the recorded failure outcome on hover or keyboard focus.

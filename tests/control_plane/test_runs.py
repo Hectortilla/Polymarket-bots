@@ -12,12 +12,14 @@ def test_run_contract_matches_the_run_row() -> None:
     assert set(RunRead.model_fields) - row_fields == {
         "graph_revision",
         "graph",
+        "latest_runtime_failure",
         "latest_equity",
         "equity_status",
     }
     assert len(row_fields) == 11
     assert "latest_equity" not in RunRow.__table__.columns
     assert "equity_status" not in RunRow.__table__.columns
+    assert "latest_runtime_failure" not in RunRow.__table__.columns
     assert RunRow.__table__.columns.status.type.enums == [
         status.value for status in RunStatus
     ]

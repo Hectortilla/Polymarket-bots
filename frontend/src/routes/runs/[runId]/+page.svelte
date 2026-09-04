@@ -11,6 +11,7 @@
   } from '$lib/api/generated';
   import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
   import { hasGraphCapability } from '$lib/catalog/graphContracts';
+  import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
   import {
     EVENT_KIND,
     type PersistedDurableEvent
@@ -337,19 +338,20 @@
               {@const failureDetail = eventFailureDetail(event, events, run.failure_detail)}
               {@const failureDetailId = `event-failure-detail-${event.id}`}
               <tr
-                class:event-row-with-detail={failureDetail !== null}
+                class:failure-detail-trigger={failureDetail !== null}
                 tabindex={failureDetail === null ? undefined : 0}
                 aria-describedby={failureDetail === null ? undefined : failureDetailId}
               >
                 <td data-label="Time">{formatTime(event.occurred_at)}</td>
                 <td data-label="Kind"><span class="event-kind">{event.kind}</span></td>
-                <td class="event-detail-cell" data-label="Detail">
+                <td
+                  class="event-detail-cell"
+                  class:failure-detail-host={failureDetail !== null}
+                  data-label="Detail"
+                >
                   {eventSummary(event)}
                   {#if failureDetail}
-                    <span class="event-failure-tooltip" id={failureDetailId} role="tooltip">
-                      <span class="event-failure-tooltip-label">Failure details</span>
-                      <span>{failureDetail}</span>
-                    </span>
+                    <FailureDetailTooltip id={failureDetailId} detail={failureDetail} />
                   {/if}
                 </td>
               </tr>

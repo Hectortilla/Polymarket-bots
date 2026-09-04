@@ -55,6 +55,8 @@ run `npm run dev` from `frontend/`; Vite proxies same-origin `/api` requests to
 that API. Run detail combines bounded durable reload history with live market,
 executable-equity, followed-wallet, and stream-health updates. Its visible
 controls mirror the terminal dashboard's `z`/`x`/`r`/`v`/`j`/`k` keys.
+Failed rows in Recent Runs show the latest durable runtime error together with
+the recorded failure outcome on hover or keyboard focus.
 
 For local migration work, add the exact disposable PostgreSQL target to `.env`:
 

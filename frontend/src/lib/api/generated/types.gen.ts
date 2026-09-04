@@ -1412,6 +1412,10 @@ export type RunRead = {
      */
     latest_equity?: string | null;
     /**
+     * Latest Runtime Failure
+     */
+    latest_runtime_failure?: string | null;
+    /**
      * Started At
      */
     started_at?: string | null;

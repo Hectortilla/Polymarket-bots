@@ -315,6 +315,7 @@ describe('control-plane response validation', () => {
       { ended_at: 42 },
       { heartbeat_at: 'not-a-date' },
       { failure_detail: 42 },
+      { latest_runtime_failure: 42 },
       { latest_equity: 'not-a-decimal' }
     ]) {
       await expect(validateControlPlaneResponse({

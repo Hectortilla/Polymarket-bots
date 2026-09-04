@@ -128,7 +128,9 @@ The home page is an operator workspace with one primary **New bot** action, a
 structured list of configured node-based bots, and recent runs. Bot rows expose
 the information needed for comparison: name, market scope, max order size,
 latest graph revision, run status, and last update. The frontend does not expose
-other definition types or a graph-template page.
+other definition types or a graph-template page. A failed Recent Runs row
+exposes the same latest runtime error and recorded failure outcome shown on its
+failed lifecycle event, on hover or keyboard focus.
 
 The bot builder renders typed configuration fields and the Svelte Flow graph in
 one form. A graph starts from the server-provided starter graph or a copy of

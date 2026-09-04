@@ -82,6 +82,8 @@ from polybot_control_plane.events.contracts import (
     BrokerOrderEvent,
     ChartSampleEvent,
     ChartSamplePayload,
+    RunFailureEvent,
+    RunFailurePayload,
     RunLifecycleEvent,
     RunStatusPayload,
 )
@@ -1464,6 +1466,21 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
             latest_samples = await event_store.latest_chart_samples(
                 (queued.id, other_run_id)
             )
+            for run_id, error in (
+                (queued.id, "ValueError: first failure"),
+                (other_run_id, "RuntimeError: other failure"),
+                (queued.id, "ConnectionError: latest failure"),
+            ):
+                await event_store.append(
+                    RunFailureEvent(
+                        run_id=run_id,
+                        occurred_at=now,
+                        payload=RunFailurePayload(error=error),
+                    )
+                )
+            latest_failures = await event_store.latest_run_failures(
+                (queued.id, other_run_id)
+            )
 
         assert [event.id for event in restored] == [
             stored_first.id,
@@ -1477,6 +1494,12 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         assert older_page.next_before_event_id is None
         assert latest_samples[queued.id].payload.equity.value == Decimal("102")
         assert latest_samples[other_run_id].payload.equity.value == Decimal("201")
+        assert latest_failures[queued.id].payload.error == (
+            "ConnectionError: latest failure"
+        )
+        assert latest_failures[other_run_id].payload.error == (
+            "RuntimeError: other failure"
+        )
         assert all(event.kind is EventKind.RUN_LIFECYCLE for event in restored)
         await engine.dispose()
 

@@ -2695,6 +2695,17 @@
             ],
             "title": "Latest Equity"
           },
+          "latest_runtime_failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Runtime Failure"
+          },
           "started_at": {
             "anyOf": [
               {

@@ -49,6 +49,13 @@ export function eventFailureDetail(
   }
 
   const runtimeFailure = latestRuntimeFailureBefore(event, events);
+  return combinedFailureDetail(runtimeFailure, recordedFailureDetail);
+}
+
+export function combinedFailureDetail(
+  runtimeFailure: string | null | undefined,
+  recordedFailureDetail: string | null | undefined
+): string | null {
   if (
     runtimeFailure &&
     recordedFailureDetail &&

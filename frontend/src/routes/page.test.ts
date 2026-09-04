@@ -5,7 +5,7 @@ import type { BotRead, RunRead, StreamRelation } from '$lib/api/generated';
 import { TEST_GRAPH } from '$lib/catalog/nodeGraphTestFixtures';
 import { VALUATION_STATUS } from '$lib/charts/contracts';
 import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath, runPath } from '$lib/navigation';
-import { runStatusLabel } from '$lib/runs/status';
+import { RUN_STATUS, runStatusLabel } from '$lib/runs/status';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 import { formatTime } from '$lib/time';
 
@@ -130,6 +130,32 @@ describe('bots home', () => {
     const botLink = await screen.findByRole('link', { name: botRowLabel(BOT.config.name) });
     expect(botLink.getAttribute('href')).toBe(botPath(BOT.id));
     expect(within(botLink).getByText(HOME_COPY.NOT_RUN_YET)).toBeTruthy();
+  });
+
+  it('shows recorded failure detail on a failed recent run row', async () => {
+    const runtimeFailure = 'ConnectionError: market stream closed';
+    const recordedFailureDetail = 'ConnectionError: paper run failed';
+    const failedRun = {
+      ...RUN,
+      status: RUN_STATUS.FAILED,
+      ended_at: '2026-08-30T00:00:05Z',
+      failure_detail: recordedFailureDetail,
+      latest_runtime_failure: runtimeFailure
+    } satisfies RunRead;
+    loadHome({ bots: [BOT], runs: [failedRun] });
+    render(Page);
+
+    const runLink = await screen.findByRole('link', {
+      name: runRowLabel(failedRun.config.name, formatTime(failedRun.created_at))
+    });
+    const failureDetailId = `recent-run-failure-detail-${failedRun.id}`;
+    expect(runLink.getAttribute('aria-describedby')).toBe(failureDetailId);
+    expect(runLink.classList.contains('failure-detail-trigger')).toBe(true);
+    expect(within(runLink).getByRole('tooltip').getAttribute('id')).toBe(failureDetailId);
+    expect(within(runLink).getByRole('tooltip').textContent).toContain(runtimeFailure);
+    expect(within(runLink).getByRole('tooltip').textContent).toContain(
+      `Recorded failure: ${recordedFailureDetail}`
+    );
   });
 
   it('does not expose non-graph catalog bots in the operator workspace', async () => {

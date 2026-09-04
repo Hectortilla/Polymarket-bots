@@ -64,6 +64,8 @@ from polybot_control_plane.events.contracts import (
     ChartSampleEvent,
     ChartSamplePayload,
     DurableEvent,
+    RunFailureEvent,
+    RunFailurePayload,
     RunLifecycleEvent,
     RunStatusPayload,
 )
@@ -461,7 +463,7 @@ def test_run_launch_rejects_inconsistent_persisted_graph_contracts(
     assert launcher.run_ids == []
 
 
-def test_list_and_detail_derive_latest_equity_without_run_columns(
+def test_list_and_detail_derive_latest_event_summaries_without_run_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _State()
@@ -472,6 +474,12 @@ def test_list_and_detail_derive_latest_equity_without_run_columns(
         _chart_sample(run_id, index, equity)
         for index, equity in ((1, "101.25"), (2, "102.50"))
     )
+    state.events.extend(
+        (
+            _run_failure(run_id, 3, "ValueError: first failure"),
+            _run_failure(run_id, 4, "ConnectionError: stream closed"),
+        )
+    )
 
     listed = client.get(api_route_path(RUNS_PATH)).json()[0]
     detailed = client.get(api_route_path(RUN_PATH, run_id=run_id)).json()
@@ -479,6 +487,7 @@ def test_list_and_detail_derive_latest_equity_without_run_columns(
     for response in (listed, detailed):
         assert response["latest_equity"] == "102.50"
         assert response["equity_status"] == ValuationStatus.FRESH.value
+        assert response["latest_runtime_failure"] == "ConnectionError: stream closed"
 
 
 def test_queued_and_running_stop_are_idempotent(
@@ -950,6 +959,15 @@ def _chart_sample(run_id: str, event_id: int, equity: str) -> ChartSampleEvent:
     )
 
 
+def _run_failure(run_id: str, event_id: int, error: str) -> RunFailureEvent:
+    return RunFailureEvent(
+        id=event_id,
+        run_id=run_id,
+        occurred_at=datetime.now(UTC),
+        payload=RunFailurePayload(error=error),
+    )
+
+
 class _State:
     def __init__(self, *, database_ready: bool = True) -> None:
         self.database_ready = database_ready
@@ -1181,6 +1199,13 @@ class _EventStore:
         result = {}
         for event in self.state.events:
             if isinstance(event, ChartSampleEvent) and event.run_id in run_ids:
+                result[event.run_id] = event
+        return result
+
+    async def latest_run_failures(self, run_ids):
+        result = {}
+        for event in self.state.events:
+            if isinstance(event, RunFailureEvent) and event.run_id in run_ids:
                 result[event.run_id] = event
         return result
 

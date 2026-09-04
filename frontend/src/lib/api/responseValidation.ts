@@ -114,6 +114,7 @@ function isRun(value: Record<string, unknown>): boolean {
     && isOptionalNullable(value.ended_at, isFiniteDateTime)
     && isOptionalNullable(value.heartbeat_at, isFiniteDateTime)
     && isOptionalNullable(value.failure_detail, (detail) => typeof detail === 'string')
+    && isOptionalNullable(value.latest_runtime_failure, (detail) => typeof detail === 'string')
     && isOptionalNullable(value.latest_equity, isDecimal)
     && (value.equity_status === null
       || value.equity_status === undefined

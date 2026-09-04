@@ -11,6 +11,7 @@ from polybot_control_plane.events.contracts import (
     DurableEvent,
     PERSISTED_DURABLE_EVENT_ADAPTER,
     PersistedDurableEvent,
+    RunFailureEvent,
 )
 from polybot_control_plane.events.kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
 from polybot_control_plane.events.ids import FIRST_EVENT_CURSOR, is_durable_event_id
@@ -95,27 +96,43 @@ class EventStore:
         self,
         run_ids: tuple[UUID, ...],
     ) -> dict[UUID, ChartSampleEvent]:
+        return {
+            event.run_id: event
+            for event in await self._latest_events(run_ids, EventKind.CHART_SAMPLE)
+            if isinstance(event, ChartSampleEvent)
+        }
+
+    async def latest_run_failures(
+        self,
+        run_ids: tuple[UUID, ...],
+    ) -> dict[UUID, RunFailureEvent]:
+        return {
+            event.run_id: event
+            for event in await self._latest_events(run_ids, EventKind.RUN_FAILURE)
+            if isinstance(event, RunFailureEvent)
+        }
+
+    async def _latest_events(
+        self,
+        run_ids: tuple[UUID, ...],
+        kind: EventKind,
+    ) -> tuple[PersistedDurableEvent, ...]:
         if not run_ids:
-            return {}
+            return ()
         rows = tuple(
             (
                 await self._session.execute(
                     select(EventRow)
                     .where(
                         EventRow.run_id.in_(run_ids),
-                        EventRow.kind == EventKind.CHART_SAMPLE,
+                        EventRow.kind == kind,
                     )
                     .distinct(EventRow.run_id)
                     .order_by(EventRow.run_id, EventRow.id.desc())
                 )
             ).scalars()
         )
-        latest_chart_samples_by_run: dict[UUID, ChartSampleEvent] = {}
-        for row in rows:
-            event = self._event_from_row(row)
-            if isinstance(event, ChartSampleEvent):
-                latest_chart_samples_by_run[row.run_id] = event
-        return latest_chart_samples_by_run
+        return tuple(self._event_from_row(row) for row in rows)
 
     @staticmethod
     def _event_from_row(row: EventRow) -> PersistedDurableEvent:
