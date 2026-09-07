@@ -1,6 +1,10 @@
 """Canonical control-plane HTTP paths and operation identifiers."""
 
 API_PREFIX = "/api/v1"
+MARKET_SEARCH_PATH = "/markets/search"
+MARKET_LOOKUP_PATH = "/markets/lookup"
+SEARCH_MARKETS_OPERATION_ID = "search_markets"
+LOOKUP_MARKETS_OPERATION_ID = "lookup_markets"
 BOT_DEFINITIONS_PATH = "/bot-definitions"
 GRAPH_TEMPLATES_PATH = "/graph-templates"
 GRAPH_TEMPLATE_PATH = "/graph-templates/{template_id}"

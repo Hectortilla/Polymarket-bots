@@ -1454,3 +1454,29 @@ workspace, internal creation copy, saved-bot launches, and immutable historical
 revisions consistently. Earlier
 Slice 13A–13C text remains as historical slice scope and is superseded by
 Slices 13D–13F where their persistence or launch contracts differ.
+
+## Market Search and Multi-Selection Follow-Up
+
+Status: implemented; extends the existing saved-bot creation/edit workflows.
+
+- Add typed, bounded market search and exact selected-slug lookup endpoints,
+  backed by a lifespan-owned official async SDK adapter and internal dataclasses.
+- Normalize SDK metadata at the adapter boundary, preserve search relevance,
+  exclude unavailable suggestions, and fail closed on conflicting metadata.
+- Validate newly selected markets before saving without requiring unchanged
+  historical selections to remain available. No database migration or runtime
+  trading behavior changes.
+- Replace market-slug free text with the accessible multi-select in both forms,
+  including debouncing, request cancellation, selection hydration, keyboard
+  controls, clear recovery states, and generated frontend contracts.
+- Verify adapter, endpoint, save-validation, response-validation, and component
+  contracts, plus the existing backend/frontend regression suites and build.
+
+Documentation verification exception: the user explicitly authorized official
+web docs and pinned SDK source instead of the unavailable PolymarketDocs MCP.
+See `docs/api-notes.md` for evidence and the live-request TLS limitation.
+
+Documentation-drift audit: README, package architecture, API notes, bot-author
+guide, web architecture/specification, endpoint inventory, and generated
+OpenAPI/client fixtures describe the selector consistently. Earlier numbered
+slice scopes remain historical; this follow-up does not alter them.

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from polybot.polymarket.discovery import MarketDiscovery
 from polybot_control_plane.database import configured_database_url
 from polybot_control_plane.execution.config import configured_redis_url
 from polybot_control_plane.execution.launcher import RunLauncher
@@ -22,6 +23,7 @@ from polybot_control_plane.execution.launcher import RunLauncher
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     owned_engine: AsyncEngine | None = None
     owned_redis: Redis | None = None
+    owned_discovery: MarketDiscovery | None = None
     if not hasattr(app.state, "session_factory"):
         owned_engine = create_async_engine(configured_database_url())
         app.state.session_factory = async_sessionmaker(
@@ -33,13 +35,20 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.redis = owned_redis
     if not hasattr(app.state, "launcher"):
         app.state.launcher = _default_launcher()
+    if not hasattr(app.state, "market_discovery"):
+        owned_discovery = MarketDiscovery()
+        app.state.market_discovery = owned_discovery
     try:
         yield
     finally:
-        if owned_redis is not None:
-            await owned_redis.aclose()
-        if owned_engine is not None:
-            await owned_engine.dispose()
+        try:
+            if owned_discovery is not None:
+                await owned_discovery.close()
+        finally:
+            if owned_redis is not None:
+                await owned_redis.aclose()
+            if owned_engine is not None:
+                await owned_engine.dispose()
 
 
 def _default_launcher() -> RunLauncher:
@@ -60,9 +69,14 @@ def _launcher(request: Request) -> RunLauncher:
     return request.app.state.launcher
 
 
+def _market_discovery(request: Request) -> MarketDiscovery:
+    return request.app.state.market_discovery
+
+
 SessionFactoryDependency = Annotated[
     async_sessionmaker[AsyncSession],
     Depends(_session_factory),
 ]
 RedisDependency = Annotated[Redis, Depends(_redis)]
 LauncherDependency = Annotated[RunLauncher, Depends(_launcher)]
+MarketDiscoveryDependency = Annotated[MarketDiscovery, Depends(_market_discovery)]

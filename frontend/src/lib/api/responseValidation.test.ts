@@ -13,6 +13,8 @@ import {
 import { client } from './generated/client.gen';
 import {
   createBotApiV1BotsPost,
+  searchMarkets,
+  lookupMarkets,
   readRunEventsApiV1RunsRunIdEventsGet
 } from './generated/sdk.gen';
 import {
@@ -45,6 +47,37 @@ const DEFINITION = {
 };
 
 describe('control-plane response validation', () => {
+  it('validates market suggestions for the exact discovery operation', async () => {
+    configureApiResponseValidation();
+    const market = {
+      slug: 'market', condition_id: 'condition', question: 'A question?',
+      event_title: null, end_date: null, is_open_for_trading: true
+    };
+    const transport = (data: unknown) => ({
+      baseUrl: 'http://control-plane.test', throwOnError: true as const,
+      fetch: async () => new Response(JSON.stringify(data), {
+        headers: { 'Content-Type': 'application/json' }
+      })
+    });
+    await expect(searchMarkets({
+      query: { q: 'market' }, ...transport({ markets: [market], has_more: false })
+    })).resolves.toHaveProperty('data.markets', [market]);
+    await expect(lookupMarkets({
+      body: { slugs: [market.slug] }, ...transport([{ ...market, is_open_for_trading: false }])
+    })).resolves.toHaveProperty('data');
+    for (const malformed of [
+      { ...market, end_date: 'not a date' }, { ...market, question: '' },
+      { ...market, is_open_for_trading: 'true' }, { ...market, is_open_for_trading: false }
+    ]) {
+      await expect(searchMarkets({
+        query: { q: 'market' }, ...transport({ markets: [malformed], has_more: false })
+      })).rejects.toThrow('failed operation validation');
+    }
+    await expect(lookupMarkets({
+      body: { slugs: [market.slug] }, ...transport({ markets: [market], has_more: false })
+    })).rejects.toThrow('failed operation validation');
+  });
+
   it('accepts a valid run response', async () => {
     await expect(validateControlPlaneResponse({
       id: RUN_ID,

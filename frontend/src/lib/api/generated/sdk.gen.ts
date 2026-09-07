@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateBotApiV1BotsPostData, CreateBotApiV1BotsPostErrors, CreateBotApiV1BotsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostData, CreateGraphTemplateApiV1GraphTemplatesPostErrors, CreateGraphTemplateApiV1GraphTemplatesPostResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetErrors, HealthApiV1HealthGetResponses, LaunchBotRunApiV1BotsBotIdRunsPostData, LaunchBotRunApiV1BotsBotIdRunsPostErrors, LaunchBotRunApiV1BotsBotIdRunsPostResponses, ListBotDefinitionsApiV1BotDefinitionsGetData, ListBotDefinitionsApiV1BotDefinitionsGetResponses, ListBotsApiV1BotsGetData, ListBotsApiV1BotsGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetData, ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListRunsApiV1RunsGetData, ListRunsApiV1RunsGetResponses, ReadBotApiV1BotsBotIdGetData, ReadBotApiV1BotsBotIdGetErrors, ReadBotApiV1BotsBotIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadRunApiV1RunsRunIdGetData, ReadRunApiV1RunsRunIdGetErrors, ReadRunApiV1RunsRunIdGetResponses, ReadRunEventsApiV1RunsRunIdEventsGetData, ReadRunEventsApiV1RunsRunIdEventsGetErrors, ReadRunEventsApiV1RunsRunIdEventsGetResponses, StopRunApiV1RunsRunIdStopPostData, StopRunApiV1RunsRunIdStopPostErrors, StopRunApiV1RunsRunIdStopPostResponses, StreamRunEventsApiV1RunsRunIdEventsStreamGetData, StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses, UpdateBotApiV1BotsBotIdPatchData, UpdateBotApiV1BotsBotIdPatchErrors, UpdateBotApiV1BotsBotIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses } from './types.gen';
+import type { CreateBotApiV1BotsPostData, CreateBotApiV1BotsPostErrors, CreateBotApiV1BotsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostData, CreateGraphTemplateApiV1GraphTemplatesPostErrors, CreateGraphTemplateApiV1GraphTemplatesPostResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetErrors, HealthApiV1HealthGetResponses, LaunchBotRunApiV1BotsBotIdRunsPostData, LaunchBotRunApiV1BotsBotIdRunsPostErrors, LaunchBotRunApiV1BotsBotIdRunsPostResponses, ListBotDefinitionsApiV1BotDefinitionsGetData, ListBotDefinitionsApiV1BotDefinitionsGetResponses, ListBotsApiV1BotsGetData, ListBotsApiV1BotsGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetData, ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListRunsApiV1RunsGetData, ListRunsApiV1RunsGetResponses, LookupMarketsData, LookupMarketsErrors, LookupMarketsResponses, ReadBotApiV1BotsBotIdGetData, ReadBotApiV1BotsBotIdGetErrors, ReadBotApiV1BotsBotIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadRunApiV1RunsRunIdGetData, ReadRunApiV1RunsRunIdGetErrors, ReadRunApiV1RunsRunIdGetResponses, ReadRunEventsApiV1RunsRunIdEventsGetData, ReadRunEventsApiV1RunsRunIdEventsGetErrors, ReadRunEventsApiV1RunsRunIdEventsGetResponses, SearchMarketsData, SearchMarketsErrors, SearchMarketsResponses, StopRunApiV1RunsRunIdStopPostData, StopRunApiV1RunsRunIdStopPostErrors, StopRunApiV1RunsRunIdStopPostResponses, StreamRunEventsApiV1RunsRunIdEventsStreamGetData, StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses, UpdateBotApiV1BotsBotIdPatchData, UpdateBotApiV1BotsBotIdPatchErrors, UpdateBotApiV1BotsBotIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -117,6 +117,23 @@ export const updateGraphTemplateApiV1GraphTemplatesTemplateIdPatch = <ThrowOnErr
  * Health
  */
 export const healthApiV1HealthGet = <ThrowOnError extends boolean = false>(options?: Options<HealthApiV1HealthGetData, ThrowOnError>): RequestResult<HealthApiV1HealthGetResponses, HealthApiV1HealthGetErrors, ThrowOnError> => (options?.client ?? client).get<HealthApiV1HealthGetResponses, HealthApiV1HealthGetErrors, ThrowOnError>({ url: '/api/v1/health', ...options });
+
+/**
+ * Lookup Markets
+ */
+export const lookupMarkets = <ThrowOnError extends boolean = false>(options: Options<LookupMarketsData, ThrowOnError>): RequestResult<LookupMarketsResponses, LookupMarketsErrors, ThrowOnError> => (options.client ?? client).post<LookupMarketsResponses, LookupMarketsErrors, ThrowOnError>({
+    url: '/api/v1/markets/lookup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Search Markets
+ */
+export const searchMarkets = <ThrowOnError extends boolean = false>(options: Options<SearchMarketsData, ThrowOnError>): RequestResult<SearchMarketsResponses, SearchMarketsErrors, ThrowOnError> => (options.client ?? client).get<SearchMarketsResponses, SearchMarketsErrors, ThrowOnError>({ url: '/api/v1/markets/search', ...options });
 
 /**
  * List Runs

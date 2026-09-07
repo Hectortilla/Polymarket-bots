@@ -573,6 +573,8 @@ type.
 The route prefix `/api/v1` is defined here once. The current API has only:
 
 - `GET /bot-definitions` — all public descriptors in display order.
+- `GET /markets/search?q=&limit=` — bounded active market suggestions via the official SDK.
+- `POST /markets/lookup` — read-only exact metadata lookup for selected slugs.
 - `POST /graph-templates` — create a reusable graph template.
 - `GET /graph-templates` — list graph templates by name.
 - `GET /graph-templates/{template_id}` — read one template.
@@ -596,6 +598,18 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 
 Both event routes require the run to exist and return the normal small `404`
 when it does not.
+
+Market discovery uses a lifespan-owned async SDK adapter. Search accepts a
+trimmed 2–200 character query and 1–20 results (default 12), fetches one upstream
+page with a five-second timeout, and returns `{markets, has_more}`. Each market
+contains `slug`, `condition_id`, `question`, nullable `event_title` and
+`end_date`, and `is_open_for_trading`. Lookup accepts `{slugs: [...]}` (1–100),
+deduplicates trimmed slugs, omits missing markets, and retains unavailable
+markets for saved-selection display. Malformed requests return 422; upstream
+failures return a safe 503. Newly selected slugs are resolved again on create
+or configuration update; missing/unavailable additions return a field-level
+422. Unchanged saved selections do not need to remain open to edit other
+settings. Runtime market validation and live-trading gates are unchanged.
 
 UUIDs, enums, cursors, headers, and bodies are typed at FastAPI ingress. Use
 FastAPI's normal validation response and small `HTTPException` details for 404
@@ -634,6 +648,12 @@ dependency error.
   stream, and receipt of a terminal lifecycle event closes the current stream.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
+- Render the market-slug widget as a multi-market combobox in create and edit
+  forms: 300ms debounce, cancellation and stale-result protection, keyboard
+  navigation, event/question/slug/date metadata, removable selected rows,
+  loading/empty/error/retry states, and a 100-selection cap. Query and selection
+  limits come from generated backend fixtures. Existing selections hydrate by
+  exact lookup and remain removable if closed, missing, or temporarily offline.
 - Present the generated FastAPI validation response without duplicating its
   rules: field issues belong under their controls, graph issues belong beside
   the canvas, and failed saves preserve the edited state.

@@ -5,6 +5,7 @@
   import type { BotDefinitionDescriptor } from '$lib/api/generated';
   import { FORM_COPY } from '$lib/formCopy';
   import { LAUNCH_FORM_COPY } from './copy';
+  import MarketSelector from './MarketSelector.svelte';
   import {
     WIDGET_KIND,
     fieldLabel,
@@ -179,21 +180,32 @@
         {@const errorId = `field-${name}-error`}
         {@const fieldIssues = issuesForField(name)}
         {@const hasHelper = typeof schema.description === 'string'}
-        <label
-          class:wide={widget === WIDGET_KIND.STREAM_RULES}
+        <div
+          class="form-field"
+          class:wide={widget === WIDGET_KIND.STREAM_RULES || widget === WIDGET_KIND.MARKET_SLUGS}
           class:checkbox-field={schema.type === 'boolean'}
         >
-          <span class="field-label" id={labelId}>{fieldLabel(name, schema)}</span>
+          <label class="field-label" id={labelId} for={`${labelId}-input`}>{fieldLabel(name, schema)}</label>
           {#if typeof schema.description === 'string'}
             <span class="field-helper" id={helperId}>{schema.description}</span>
           {/if}
 
-          {#if widget === WIDGET_KIND.WALLET_ADDRESSES || widget === WIDGET_KIND.MARKET_SLUGS}
+          {#if widget === WIDGET_KIND.MARKET_SLUGS}
+            <MarketSelector
+              value={Array.isArray(inputs[name]) ? inputs[name].filter((value: unknown): value is string => typeof value === 'string') : []}
+              onchange={(slugs) => update(name, slugs)}
+              {labelId}
+              descriptionId={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
+              invalid={fieldIssues.length > 0}
+              disabled={busy}
+            />
+          {:else if widget === WIDGET_KIND.WALLET_ADDRESSES}
             <textarea
+              id={`${labelId}-input`}
               rows="3"
               value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
               oninput={(event) => updateList(name, event.currentTarget.value)}
-              placeholder={widget === WIDGET_KIND.WALLET_ADDRESSES ? 'One wallet address per line' : 'One market slug per line'}
+              placeholder="One wallet address per line"
               aria-labelledby={labelId}
               aria-describedby={fieldDescription(
                 helperId,
@@ -205,6 +217,7 @@
             ></textarea>
           {:else if widget === WIDGET_KIND.STREAM_RULES}
             <textarea
+              id={`${labelId}-input`}
               rows="6"
               value={JSON.stringify(inputs[name], null, 2)}
               oninput={(event) => updateJson(name, event.currentTarget.value)}
@@ -220,6 +233,7 @@
             ></textarea>
           {:else if schema.type === 'boolean'}
             <input
+              id={`${labelId}-input`}
               type="checkbox"
               checked={inputs[name] === true}
               onchange={(event) => update(name, event.currentTarget.checked)}
@@ -234,6 +248,7 @@
             />
           {:else}
             <input
+              id={`${labelId}-input`}
               type={widget === WIDGET_KIND.DECIMAL ? 'text' : inputType(field)}
               inputmode={widget === WIDGET_KIND.DECIMAL ? 'decimal' : undefined}
               value={String(inputs[name] ?? '')}
@@ -260,7 +275,7 @@
               {/each}
             </span>
           {/if}
-        </label>
+        </div>
       {/each}
     </div>
   </section>
@@ -279,3 +294,7 @@
     <button type="submit" disabled={busy || disabled} aria-busy={busy}>{busy ? busyLabel : submitLabel}</button>
   </footer>
 </form>
+
+<style>
+  .form-field { display: grid; gap: 8px; min-width: 0; }
+</style>

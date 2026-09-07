@@ -36,10 +36,9 @@ Pin the chosen dependency version and cover the adapter with contract tests.
 The unified SDK's beta status requires version and compatibility discipline; it
 does not by itself justify bypassing the SDK.
 
-This package pins the `polymarket-client` version declared in `pyproject.toml`. Its internal adapter source
-directory is named `polymarket_adapter/` but installs as `polybot.polymarket`; this
-prevents it from shadowing the official SDK's top-level `polymarket` import at
-the repository root. Wallet-analysis scripts use synchronous `PublicClient`
+This package pins the `polymarket-client` version declared in `pyproject.toml`.
+Its adapters live in `src/polybot/polymarket/`, distinct from the official SDK's
+top-level `polymarket` import. Wallet-analysis scripts use synchronous `PublicClient`
 methods and normalize SDK models before analysis code sees them.
 
 Slice 3 uses the pinned SDK's `AsyncPublicClient.get_market(slug=...)`,
@@ -88,6 +87,38 @@ are not included in the CLI book-drop ratio. The CLI policy requires no direct
 network integration and introduces no exception to the official-library rule.
 
 ## API Surfaces
+
+### Control-plane market selector verification (2026-09-07)
+
+The user authorized official web documentation and the installed pinned SDK
+source as a fallback because PolymarketDocs MCP was unavailable. Verified the
+official [search endpoint documentation](https://docs.polymarket.com/api-reference/search/search-markets-events-and-profiles)
+and `polymarket-client==0.1.0b17`'s `clients/async_public.py`, Gamma search action,
+search/event/market models, and pagination implementation before integration.
+No direct-transport exception is required.
+
+`AsyncPublicClient.search(q=...).first_page()` calls Gamma `/public-search`.
+Unlike the runtime's exact `get_market(slug=...)` / `list_markets(slug=...)`
+lookup, it accepts a text query and returns search results grouped under events.
+The adapter requests active events, excludes closed markets, profiles and tags,
+preserves upstream relevance order, and flattens event markets into internal
+`MarketSuggestion` dataclasses. Existing market normalization supplies identity
+and safety checks; only explicitly open, order-book-enabled, accepting-order,
+non-archived markets appear in search. Invalid hits are skipped; contradictory
+duplicate suggestions fail closed. Search quality follows Gamma; no local
+substring matching or typo-tolerance guarantee is added.
+
+The API bounds the trimmed query to 2–200 characters and result limit to 1–20
+(default 12). One SDK page is fetched with a five-second operation timeout;
+`has_more` signals upstream or flattened-result truncation and the UI asks for
+a more specific query instead of scanning further pages. Exact saved-selection
+lookup reuses batched Gamma resolution, including its closed-market fallback,
+and accepts at most 100 slugs. Upstream errors/timeouts produce a safe HTTP 503.
+The frontend uses same-origin generated API calls, never a Polymarket JS client.
+
+A live SDK request could not be verified from this environment due to a TLS
+hostname mismatch for `gamma-api.polymarket.com`. TLS verification was not
+disabled. Adapter and endpoint tests use deterministic SDK-shaped fixtures.
 
 Gamma API: `https://gamma-api.polymarket.com`
 

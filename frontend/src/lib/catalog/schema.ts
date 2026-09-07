@@ -96,7 +96,7 @@ export function launchInputsFromConfig(
     launchFields(descriptor).map(([name, field]) => {
       const widget = widgetKind(field);
       if (widget === WIDGET_KIND.MARKET_SLUGS) {
-        return [name, config.stream_rules.flatMap((rule) => rule.market_slugs ?? [])];
+        return [name, [...new Set(config.stream_rules.flatMap((rule) => rule.market_slugs ?? []))]];
       }
       if (widget === WIDGET_KIND.WALLET_ADDRESSES) {
         return [name, config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? [])];

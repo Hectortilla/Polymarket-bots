@@ -1662,6 +1662,25 @@
         "title": "MarketChartPointPayload",
         "type": "object"
       },
+      "MarketLookupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "slugs": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSlug"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Slugs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "slugs"
+        ],
+        "title": "MarketLookupRequest",
+        "type": "object"
+      },
       "MarketResolutionEvent": {
         "properties": {
           "condition_id": {
@@ -1715,6 +1734,27 @@
         "title": "MarketResolutionEvent",
         "type": "object"
       },
+      "MarketSearchResults": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSuggestion"
+            },
+            "title": "Markets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "markets",
+          "has_more"
+        ],
+        "title": "MarketSearchResults",
+        "type": "object"
+      },
       "MarketSettlementEvent": {
         "properties": {
           "followed_wallet_positions": {
@@ -1763,6 +1803,64 @@
           "portfolio"
         ],
         "title": "MarketSettlementPayload",
+        "type": "object"
+      },
+      "MarketSlug": {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+      },
+      "MarketSuggestion": {
+        "properties": {
+          "condition_id": {
+            "title": "Condition Id",
+            "type": "string"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "event_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Title"
+          },
+          "is_open_for_trading": {
+            "title": "Is Open For Trading",
+            "type": "boolean"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "condition_id",
+          "question",
+          "event_title",
+          "end_date",
+          "is_open_for_trading"
+        ],
+        "title": "MarketSuggestion",
         "type": "object"
       },
       "NodeGraph": {
@@ -3292,6 +3390,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Create Bot"
@@ -3400,6 +3508,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Update Bot"
@@ -3797,6 +3915,121 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/v1/markets/lookup": {
+      "post": {
+        "operationId": "lookup_markets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketLookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MarketSuggestion"
+                  },
+                  "title": "Response Lookup Markets",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Lookup Markets"
+      }
+    },
+    "/api/v1/markets/search": {
+      "get": {
+        "operationId": "search_markets",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSearchResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Search Markets"
       }
     },
     "/api/v1/runs": {

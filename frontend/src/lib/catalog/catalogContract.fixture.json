@@ -1,4 +1,11 @@
 {
+  "marketSearch": {
+    "minimumQueryLength": 2,
+    "maximumQueryLength": 200,
+    "defaultLimit": 12,
+    "maximumLimit": 20,
+    "maximumSelections": 100
+  },
   "graphTemplate": {
     "maximumNameLength": 200
   },

@@ -54,6 +54,7 @@ function isListItem(value: unknown): boolean {
     || isBot(value)
     || isRun(value)
     || isGraphTemplate(value)
+    || isMarketSuggestion(value)
   );
 }
 
@@ -65,7 +66,25 @@ function isObjectResponse(value: Record<string, unknown>): boolean {
     || isGraphRevision(value)
     || isEventPage(value)
     || isRunEvent(value)
-    || isHealthResponse(value);
+    || isHealthResponse(value)
+    || isMarketSearchResults(value);
+}
+
+function isMarketSuggestion(value: Record<string, unknown>): boolean {
+  return isNonemptyString(value.slug)
+    && isNonemptyString(value.condition_id)
+    && isNonemptyString(value.question)
+    && (value.event_title === null || isNonemptyString(value.event_title))
+    && (value.end_date === null || isFiniteDateTime(value.end_date))
+    && typeof value.is_open_for_trading === 'boolean';
+}
+
+function isMarketSearchResults(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.markets)
+    && isArrayOf(value.markets, isMarketSuggestion)
+    && value.markets.length <= catalogContract.marketSearch.maximumLimit
+    && value.markets.every((market) => market.is_open_for_trading === true)
+    && typeof value.has_more === 'boolean';
 }
 
 function isDefinition(value: Record<string, unknown>): boolean {
@@ -462,6 +481,8 @@ function isExpectedOperationResponse(
   data: unknown
 ): boolean {
   const paths = runtimeContract.apiPaths;
+  if (url === paths.marketSearch) return isRecord(data) && isMarketSearchResults(data);
+  if (url === paths.marketLookup) return isArrayOf(data, isMarketSuggestion);
   if (url === paths.botDefinitions) return isArrayOf(data, isDefinition);
   if (url === paths.bots) {
     return method === 'GET' ? isArrayOf(data, isBot) : isRecord(data) && isBot(data);

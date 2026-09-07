@@ -4,7 +4,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from polybot_control_plane.api.dependencies import SessionFactoryDependency
+from polybot_control_plane.api.dependencies import (
+    MarketDiscoveryDependency,
+    SessionFactoryDependency,
+)
+from polybot_control_plane.api.routes.bots.market_validation import (
+    validate_new_market_selections,
+)
 from polybot_control_plane.api.routes.bots.validation import (
     GRAPH_REVISION_FORBIDDEN_DETAIL,
     GRAPH_REVISION_REQUIRED_DETAIL,
@@ -14,7 +20,10 @@ from polybot_control_plane.api.routes.bots.validation import (
     require_graph_contract,
     resolve_bot_graph,
 )
-from polybot_control_plane.api.responses import NOT_FOUND_RESPONSE
+from polybot_control_plane.api.responses import (
+    NOT_FOUND_RESPONSE,
+    SERVICE_UNAVAILABLE_RESPONSE,
+)
 from polybot_control_plane.api.routes.paths import (
     BOTS_PATH,
     BOT_GRAPH_REVISION_PATH,
@@ -47,14 +56,16 @@ router = APIRouter()
     response_model=BotRead,
     status_code=status.HTTP_201_CREATED,
     operation_id=CREATE_BOT_OPERATION_ID,
-    responses=NOT_FOUND_RESPONSE,
+    responses={**NOT_FOUND_RESPONSE, **SERVICE_UNAVAILABLE_RESPONSE},
 )
 async def create_bot(
     request: BotCreate,
     session_factory: SessionFactoryDependency,
+    discovery: MarketDiscoveryDependency,
 ) -> BotRead:
     definition = require_catalog_entry(request.definition_id)
     config = parse_config(definition, request.inputs, request.model_dump())
+    await validate_new_market_selections(config, discovery)
     async with session_factory() as session:
         graph = await resolve_bot_graph(
             session,
@@ -99,18 +110,20 @@ async def read_bot(
     BOT_PATH,
     response_model=BotRead,
     operation_id=UPDATE_BOT_OPERATION_ID,
-    responses=NOT_FOUND_RESPONSE,
+    responses={**NOT_FOUND_RESPONSE, **SERVICE_UNAVAILABLE_RESPONSE},
 )
 async def update_bot(
     bot_id: UUID,
     request: BotUpdate,
     session_factory: SessionFactoryDependency,
+    discovery: MarketDiscoveryDependency,
 ) -> BotRead:
     async with session_factory() as session:
         store = BotStore(session)
         bot = require_bot(await store.read(bot_id, lock=True))
         definition = require_catalog_entry(bot.definition_id)
         config = parse_config(definition, request.inputs, request.model_dump())
+        await validate_new_market_selections(config, discovery, previous=bot.config)
         updated = await store.update_config(bot_id, config)
     return require_bot(updated)
 

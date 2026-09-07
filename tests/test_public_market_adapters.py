@@ -10,9 +10,13 @@ from importlib.metadata import version
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import urlencode
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from polymarket import PolymarketError, RequestRejectedError
+from polymarket.models.gamma.event import Event
+from polymarket.models.gamma.search import SearchResults
+from polymarket.pagination import Page
 from polymarket.models.clob.market_events import (
     MarketBookEvent,
     MarketBookPayload,
@@ -36,6 +40,8 @@ from polybot.framework.events.books import (
     BookSnapshot,
 )
 from polybot.polymarket.clob import ClobClient
+from polybot.polymarket.discovery import ACTIVE_SEARCH_EVENTS, MarketDiscovery
+from polybot.polymarket.normalization.discovery import normalize_suggestion
 from polybot.polymarket.errors import (
     MarketDataError,
     MarketDataIssue,
@@ -57,6 +63,103 @@ from polybot.polymarket.public_data.recording import RecordingPublicData
 from polybot.polymarket.public_data.runtime import RuntimePublicData
 from polybot.polymarket.ws_market import MarketStream
 from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
+
+
+def _search_client(markets: tuple[SdkMarket, ...], *, has_more: bool = False):
+    client = FakePublicClient()
+    event = Event.model_construct(title="Event title", markets=markets)
+    results = SearchResults.model_construct(events=(event,))
+    page = Page(items=(results,), has_more=has_more)
+    client.search = Mock(return_value=Mock(first_page=AsyncMock(return_value=page)))
+    return client
+
+
+def test_search_flattens_deduplicates_limits_and_preserves_relevance() -> None:
+    alpha, beta = _sdk_market("alpha"), _sdk_market("beta")
+    client = _search_client((beta, beta, alpha))
+    result = asyncio.run(MarketDiscovery(client).search("typed topic", 1))
+    assert [market.slug for market in result.markets] == ["beta"]
+    assert result.markets[0].event_title == "Event title"
+    assert result.has_more is True
+    client.search.assert_called_once_with(
+        q="typed topic", events_status=ACTIVE_SEARCH_EVENTS, search_profiles=False,
+        search_tags=False, keep_closed_markets=0, page_size=1,
+    )
+    client.search.return_value.first_page.assert_awaited_once()
+
+
+def test_pinned_sdk_parses_documented_search_payload_for_the_selector() -> None:
+    page = SearchResults.parse_page_response({
+        "events": [{
+            "id": "100", "title": "Election", "markets": [{
+                "id": "200", "slug": "election-winner", "question": "Who wins?",
+                "conditionId": "0x" + "ab" * 32,
+                "active": True, "closed": False, "archived": False,
+                "acceptingOrders": True, "enableOrderBook": True, "negRisk": False,
+                "feesEnabled": False,
+                "outcomes": '["Yes", "No"]', "clobTokenIds": '["101", "102"]',
+                "endDate": "2026-10-01T00:00:00Z",
+            }],
+        }],
+        "pagination": {"hasMore": True, "totalResults": 5},
+    })
+    event = page.items.events[0]
+    suggestion = normalize_suggestion(event.markets[0], event_title=event.title)
+    assert suggestion.slug == "election-winner"
+    assert suggestion.event_title == "Election"
+    assert suggestion.is_open_for_trading is True
+    assert suggestion.end_date is not None
+    assert page.has_more is True
+
+
+@pytest.mark.parametrize("state", [
+    {"active": False}, {"closed": True}, {"accepting_orders": False},
+    {"enable_order_book": False}, {"archived": True}, {"active": None},
+])
+def test_search_excludes_unavailable_markets(state) -> None:
+    source = _sdk_market("closed")
+    source = source.model_copy(update={"state": source.state.model_copy(update=state)})
+    client = _search_client((source, _sdk_market("open")))
+    result = asyncio.run(MarketDiscovery(client).search("topic", 10))
+    assert [market.slug for market in result.markets] == ["open"]
+
+
+def test_search_skips_malformed_hits_but_rejects_conflicting_metadata() -> None:
+    source = _sdk_market("alpha")
+    malformed = _sdk_market("bad", no_token_id=None)
+    result = asyncio.run(MarketDiscovery(_search_client((malformed, source))).search("topic", 10))
+    assert len(result.markets) == 1
+    conflict = source.model_copy(update={"condition_id": "different"})
+    with pytest.raises(MarketDataError) as failure:
+        asyncio.run(MarketDiscovery(_search_client((source, conflict))).search("topic", 10))
+    assert failure.value.issue == MarketDataIssue.AMBIGUOUS_MARKET_METADATA
+
+
+@pytest.mark.parametrize("failure", [PolymarketError("upstream failure"), TimeoutError()])
+def test_search_wraps_upstream_errors(failure) -> None:
+    client = _search_client(())
+    client.search.return_value.first_page.side_effect = failure
+    with pytest.raises(MarketDataTransportError):
+        asyncio.run(MarketDiscovery(client).search("topic", 10))
+
+
+def test_search_preserves_upstream_pagination_hint() -> None:
+    result = asyncio.run(MarketDiscovery(_search_client((), has_more=True)).search("topic", 10))
+    assert result.markets == ()
+    assert result.has_more is True
+
+
+def test_discovery_lookup_preserves_closed_and_omits_missing_markets() -> None:
+    source = _sdk_market("closed")
+    source = source.model_copy(update={"state": source.state.model_copy(update={"closed": True})})
+    client = FakePublicClient(markets={"closed": [source]}, closed_markets=frozenset({"closed"}))
+    discovery = MarketDiscovery(client)
+    client.close = AsyncMock()
+    result = asyncio.run(discovery.resolve(("closed", "missing")))
+    assert [market.slug for market in result] == ["closed"]
+    assert result[0].is_open_for_trading is False
+    asyncio.run(discovery.close())
+    client.close.assert_not_awaited()
 
 
 def test_selected_polymarket_sdk_version_matches_project_pin() -> None:
@@ -1431,6 +1534,7 @@ def _sdk_market(
         slug=slug,
         condition_id=f"condition-{slug}",
         question=f"Question {slug}?",
+        events=(),
         state=MarketState(
             active=True,
             closed=False,

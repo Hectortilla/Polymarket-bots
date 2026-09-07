@@ -45,6 +45,8 @@ type MarketSlug = Annotated[
     StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200),
 ]
 
+MAX_SELECTED_MARKETS = 100
+
 
 class PaperLaunchInputs(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -109,9 +111,12 @@ class WalletPaperLaunchInputs(PaperLaunchInputs):
 
 class NodeBasedLaunchInputs(PaperLaunchInputs):
     market_slugs: tuple[MarketSlug, ...] = Field(
+        title="Markets",
         min_length=1,
+        max_length=MAX_SELECTED_MARKETS,
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.MARKET_SLUGS.value},
     )
+
     def _stream_rules(self) -> tuple[StreamRule, ...]:
         return (
             StreamRule(

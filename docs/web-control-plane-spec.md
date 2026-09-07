@@ -137,6 +137,11 @@ one form. A graph starts from the server-provided starter graph or a copy of
 another bot's latest graph. Saving creates the bot without running it and opens
 bot detail. Decimal inputs remain decimal strings across the API boundary.
 Frontend validation is only feedback; backend ingress is authoritative.
+The Markets control is a searchable multi-select backed by the control-plane
+API, not a direct browser-to-Polymarket integration. Suggestions show individual
+market questions and event context; selected rows retain exact slugs and can be
+removed or extended with more searches. New selections must resolve to available
+markets on save. Existing unavailable selections stay visible and removable.
 Failed saves preserve the operator's edits. Backend field violations appear
 under their owning controls, while graph violations appear in a focused summary
 beside the canvas with the server message and any available node or connection

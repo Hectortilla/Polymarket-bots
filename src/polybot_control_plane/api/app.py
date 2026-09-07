@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from polybot.polymarket.discovery import MarketDiscovery
 from polybot_control_plane.api.dependencies import application_lifespan
 from polybot_control_plane.api.routes.bots import router as bots_router
 from polybot_control_plane.api.routes.catalog import router as catalog_router
@@ -12,6 +13,7 @@ from polybot_control_plane.api.routes.graph_templates import (
 )
 from polybot_control_plane.api.routes.events import router as events_router
 from polybot_control_plane.api.routes.health import router as health_router
+from polybot_control_plane.api.routes.markets import router as markets_router
 from polybot_control_plane.api.routes.paths import API_PREFIX
 from polybot_control_plane.api.routes.runs import router as runs_router
 from polybot_control_plane.execution.launcher import RunLauncher
@@ -22,6 +24,7 @@ def create_app(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     redis: Redis | None = None,
     launcher: RunLauncher | None = None,
+    market_discovery: MarketDiscovery | None = None,
 ) -> FastAPI:
     application = FastAPI(
         title="Polybot Control Plane",
@@ -37,8 +40,11 @@ def create_app(
         application.state.redis = redis
     if launcher is not None:
         application.state.launcher = launcher
+    if market_discovery is not None:
+        application.state.market_discovery = market_discovery
     for router in (
         catalog_router,
+        markets_router,
         graph_templates_router,
         bots_router,
         runs_router,

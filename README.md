@@ -39,6 +39,8 @@ comparisons, event-driven fixed-side paper broker actions, editable graph
 storage, reusable saved bots, and immutable bot-owned graph revisions. The
 browser presents one node-based bot workspace: configuration and graph editing
 live in the same form, and a new graph can start fresh or copy another bot.
+Its Markets field searches through the backend and supports multiple removable
+selections; bot configuration still stores exact market slugs.
 
 Install and verify the frontend from `frontend/`:
 

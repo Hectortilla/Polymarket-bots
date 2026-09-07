@@ -39,6 +39,13 @@ from polybot_control_plane.catalog.graphs.contracts import (
     EXPECTED_TRIGGER_BRANCH_COUNT,
 )
 from polybot_control_plane.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from polybot_control_plane.api.market_contracts import (
+    DEFAULT_MARKET_SEARCH_LIMIT,
+    MAX_MARKET_SEARCH_LENGTH,
+    MAX_MARKET_SEARCH_LIMIT,
+    MIN_MARKET_SEARCH_LENGTH,
+)
+from polybot_control_plane.catalog.inputs import MAX_SELECTED_MARKETS
 
 
 FRONTEND_CATALOG_CONTRACT_PATH = (
@@ -53,6 +60,13 @@ FRONTEND_CATALOG_CONTRACT_PATH = (
 
 def frontend_catalog_contract() -> dict[str, object]:
     return {
+        "marketSearch": {
+            "minimumQueryLength": MIN_MARKET_SEARCH_LENGTH,
+            "maximumQueryLength": MAX_MARKET_SEARCH_LENGTH,
+            "defaultLimit": DEFAULT_MARKET_SEARCH_LIMIT,
+            "maximumLimit": MAX_MARKET_SEARCH_LIMIT,
+            "maximumSelections": MAX_SELECTED_MARKETS,
+        },
         "graphTemplate": {
             "maximumNameLength": GRAPH_TEMPLATE_NAME_MAX_LENGTH,
         },

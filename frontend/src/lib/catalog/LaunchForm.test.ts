@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { BotDefinitionDescriptor } from '$lib/api/generated';
+import { searchMarkets, type BotDefinitionDescriptor } from '$lib/api/generated';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 import LaunchForm from './LaunchForm.svelte';
 import { LAUNCH_FORM_COPY } from './copy';
@@ -13,6 +13,8 @@ import {
 } from './schema';
 
 const WALLET = '0x0000000000000000000000000000000000000001';
+
+vi.mock('$lib/api/generated', () => ({ searchMarkets: vi.fn(), lookupMarkets: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -103,6 +105,10 @@ describe('LaunchForm', () => {
   });
 
   it('renders another supported catalog schema without definition-specific code', async () => {
+    vi.mocked(searchMarkets).mockResolvedValue({ data: { markets: [{
+      slug: 'btc-updown-5m-test', question: 'Bitcoin up or down?', condition_id: 'btc',
+      event_title: null, end_date: null, is_open_for_trading: true
+    }], has_more: false } } as Awaited<ReturnType<typeof searchMarkets>>);
     const submit = vi.fn();
     const extraDefinition = descriptor({
       definition_id: 'new-supported-definition',
@@ -139,6 +145,7 @@ describe('LaunchForm', () => {
     await fireEvent.input(screen.getByLabelText('Market slugs'), {
       target: { value: 'btc-updown-5m-test' }
     });
+    await fireEvent.click(await screen.findByRole('option', { name: /Bitcoin up or down/ }));
     await fireEvent.input(screen.getByLabelText('Wallet addresses'), {
       target: { value: WALLET }
     });

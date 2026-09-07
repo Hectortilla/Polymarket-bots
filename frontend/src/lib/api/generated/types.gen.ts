@@ -868,6 +868,16 @@ export type MarketChartPointPayload = {
 };
 
 /**
+ * MarketLookupRequest
+ */
+export type MarketLookupRequest = {
+    /**
+     * Slugs
+     */
+    slugs: Array<MarketSlug>;
+};
+
+/**
  * MarketResolutionEvent
  */
 export type MarketResolutionEvent = {
@@ -905,6 +915,20 @@ export type MarketResolutionEvent = {
 };
 
 /**
+ * MarketSearchResults
+ */
+export type MarketSearchResults = {
+    /**
+     * Has More
+     */
+    has_more: boolean;
+    /**
+     * Markets
+     */
+    markets: Array<MarketSuggestion>;
+};
+
+/**
  * MarketSettlementEvent
  */
 export type MarketSettlementEvent = {
@@ -929,6 +953,38 @@ export type MarketSettlementEvent = {
 export type MarketSettlementPayload = {
     portfolio: PortfolioSnapshot;
     settlement: MarketSettlementEvent;
+};
+
+export type MarketSlug = string;
+
+/**
+ * MarketSuggestion
+ */
+export type MarketSuggestion = {
+    /**
+     * Condition Id
+     */
+    condition_id: string;
+    /**
+     * End Date
+     */
+    end_date: string | null;
+    /**
+     * Event Title
+     */
+    event_title: string | null;
+    /**
+     * Is Open For Trading
+     */
+    is_open_for_trading: boolean;
+    /**
+     * Question
+     */
+    question: string;
+    /**
+     * Slug
+     */
+    slug: string;
 };
 
 /**
@@ -1739,6 +1795,10 @@ export type CreateBotApiV1BotsPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type CreateBotApiV1BotsPostError = CreateBotApiV1BotsPostErrors[keyof CreateBotApiV1BotsPostErrors];
@@ -1807,6 +1867,10 @@ export type UpdateBotApiV1BotsBotIdPatchErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type UpdateBotApiV1BotsBotIdPatchError = UpdateBotApiV1BotsBotIdPatchErrors[keyof UpdateBotApiV1BotsBotIdPatchErrors];
@@ -2073,6 +2137,75 @@ export type HealthApiV1HealthGetResponses = {
 };
 
 export type HealthApiV1HealthGetResponse = HealthApiV1HealthGetResponses[keyof HealthApiV1HealthGetResponses];
+
+export type LookupMarketsData = {
+    body: MarketLookupRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/markets/lookup';
+};
+
+export type LookupMarketsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type LookupMarketsError = LookupMarketsErrors[keyof LookupMarketsErrors];
+
+export type LookupMarketsResponses = {
+    /**
+     * Response Lookup Markets
+     *
+     * Successful Response
+     */
+    200: Array<MarketSuggestion>;
+};
+
+export type LookupMarketsResponse = LookupMarketsResponses[keyof LookupMarketsResponses];
+
+export type SearchMarketsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Q
+         */
+        q: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/markets/search';
+};
+
+export type SearchMarketsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type SearchMarketsError = SearchMarketsErrors[keyof SearchMarketsErrors];
+
+export type SearchMarketsResponses = {
+    /**
+     * Successful Response
+     */
+    200: MarketSearchResults;
+};
+
+export type SearchMarketsResponse = SearchMarketsResponses[keyof SearchMarketsResponses];
 
 export type ListRunsApiV1RunsGetData = {
     body?: never;

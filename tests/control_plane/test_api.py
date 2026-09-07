@@ -18,6 +18,10 @@ import polybot_control_plane.api.routes.graph_templates as graph_template_routes
 import polybot_control_plane.api.routes.run_lookup as run_lookup
 import polybot_control_plane.api.routes.runs as runs_routes
 from polybot_control_plane.api.app import app, create_app
+from control_plane.market_fixtures import market_discovery
+from polybot_control_plane.api.routes.bots.market_validation import (
+    MARKET_SELECTION_UNAVAILABLE_DETAIL,
+)
 from polybot_control_plane.api.contracts import HealthResponse
 from polybot_control_plane.api.routes.events import (
     DURABLE_EVENT_SCHEMA_REFERENCE,
@@ -218,6 +222,37 @@ def test_node_graph_saved_bot_persists_exact_snapshot_and_rejects_invalid_graph(
     assert forbidden_template.status_code == 422
     assert len(state.runs) == 1
     assert launcher.run_ids == [launched.json()["id"]]
+
+
+def test_saved_bot_rejects_unavailable_additions_without_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _State()
+    client = _client(monkeypatch, state)
+    discovery = client.app.state.market_discovery
+    template = client.post(
+        api_route_path(GRAPH_TEMPLATES_PATH),
+        json={"name": "Selection test", "graph": threshold_buy_graph()},
+    )
+    body = {
+        "definition_id": NODE_BASED_DEFINITION_ID,
+        "inputs": {"name": "selection test", "market_slugs": ["original"]},
+        "graph_template_id": template.json()["id"],
+    }
+    bot = client.post(api_route_path(BOTS_PATH), json=body).json()
+    discovery.resolve.side_effect = None
+    discovery.resolve.return_value = ()
+
+    rejected_create = client.post(api_route_path(BOTS_PATH), json=body)
+    rejected_update = client.patch(
+        api_route_path(BOT_PATH, bot_id=bot["id"]),
+        json={"inputs": {"name": "changed", "market_slugs": ["original", "missing"]}},
+    )
+    for response in (rejected_create, rejected_update):
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["msg"] == MARKET_SELECTION_UNAVAILABLE_DETAIL
+    assert len(state.bots) == 1
+    assert client.get(api_route_path(BOT_PATH, bot_id=bot["id"])).json()["config"] == bot["config"]
 
 
 def test_template_and_bot_graph_edits_are_isolated_revisions(
@@ -843,6 +878,8 @@ def test_application_lifespan_owns_default_resources(
     redis = _Redis()
     session_factory = object()
     launcher = _Launcher()
+    discovery = market_discovery()
+    monkeypatch.setattr(dependencies_module, "MarketDiscovery", lambda: discovery)
     monkeypatch.setattr(dependencies_module, "configured_database_url", lambda: "db")
     monkeypatch.setattr(dependencies_module, "configured_redis_url", lambda: "redis")
     monkeypatch.setattr(dependencies_module, "create_async_engine", lambda url: engine)
@@ -863,20 +900,25 @@ def test_application_lifespan_owns_default_resources(
         assert application.state.session_factory is session_factory
         assert application.state.redis is redis
         assert application.state.launcher is launcher
+        assert application.state.market_discovery is discovery
 
     assert engine.disposed is True
     assert redis.closed is True
+    discovery.close.assert_awaited_once()
 
     injected_redis = _Redis()
+    injected_discovery = market_discovery()
     with TestClient(
         create_app(
             session_factory=object(),
             redis=injected_redis,
             launcher=_Launcher(),
+            market_discovery=injected_discovery,
         )
     ):
         pass
     assert injected_redis.closed is False
+    injected_discovery.close.assert_not_awaited()
 
 
 def _client(
@@ -906,6 +948,7 @@ def _client(
             session_factory=_SessionFactory(state),
             redis=redis or _Redis(),
             launcher=launcher or _Launcher(),
+            market_discovery=market_discovery(),
         )
     )
 

@@ -138,6 +138,7 @@ polyfollow-polybot/
   persistence/      # Strict JSON decoding and atomic JSON file writes.
   polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
     gamma.py      # SDK-backed market discovery and future-slug retry.
+    discovery.py  # Bounded SDK-backed browser search and saved-selection lookup.
     markets.py    # Normalized market and outcome contracts.
     market_hints.py # Normalized market-trade wake hints.
     public_data/ # Runtime/recording adapter assemblies and SDK lifecycle.
