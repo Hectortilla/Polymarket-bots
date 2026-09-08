@@ -152,10 +152,11 @@ templates, revisions, runs, and event streams. Registration signs in immediately
 without verification mail. Social login, password recovery and a marketplace are
 not included; the application still requires a local/private access boundary.
 
-[Slice 16: marketplace MVP](docs/marketplace-mvp-plan.md) is planned next: signed-in
-users publish visual-node strategy snapshots, browse shared listings, and create
-independent private copies for paper runs. It is a proposal, not implemented
-functionality; its delivery units are in the main implementation plan.
+[Public paper-beta readiness](docs/implementation-plan.md#public-paper-trading-beta-roadmap)
+is planned next. After Slice 12F, Slices 16–23 cover production deployment,
+resource limits, run reliability, account recovery, operations, data lifecycle,
+onboarding and launch/support information. All are planned work; open signup
+remains gated on their acceptance. Marketplace work is deferred.
 
 
 The architecture document also defines strict field, abstraction, module,

@@ -5,11 +5,12 @@ Slice 12F deployment remains separate planned work.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
-Slice 16 is a proposal in [the marketplace MVP plan](marketplace-mvp-plan.md),
-with delivery units in [the implementation plan](implementation-plan.md#slice-16-bot-marketplace-mvp).
-That proposal owns only future marketplace design until its contracts are adopted
-here during implementation. Existing private ownership and execution contracts
-remain unchanged; no marketplace tables or routes are implemented yet.
+The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
+plans Slices 16–23 after the Slice 12F deployment foundation. It covers production
+operation, resource limits, reliability, recovery, data lifecycle and launch
+workflows. Adopt each slice's technical contracts here during implementation;
+current private access, ownership and paper execution remain unchanged until the
+specified readiness gates pass. Marketplace work is deferred.
 
 ## How to Implement This Plan
 

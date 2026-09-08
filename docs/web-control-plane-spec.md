@@ -290,16 +290,15 @@ designed account-linking flow. Matching an email supplied during unverified
 registration is not sufficient proof to link accounts. Existing email/password
 accounts must not become implicitly verified when those features arrive.
 
-## Planned Slice 16: Bot Marketplace
+## Planned Public Paper-Trading Beta
 
-The [marketplace MVP proposal](marketplace-mvp-plan.md) describes the next product
-extension: signed-in users publish visual-node bot snapshots, inspect shared
-strategies and copy them into independently owned private bots. Those two scope
-choices are user-confirmed; the remaining proposal records recommended choices
-for implementation review. Delivery units live in
-[Slice 16](implementation-plan.md#slice-16-bot-marketplace-mvp).
+The user-approved next direction is a public paper-only service. The
+[readiness roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
+assigns production deployment, resource limits, run reliability, account recovery,
+operational controls, backups/data lifecycle, onboarding and launch/support
+information to Slices 16–23 after the Slice 12F foundation.
 
-This is planned behavior, not an implemented exception to Slice 15 ownership.
-Adopt the relevant proposed product rules here during implementation. Public
-run access, automatic trading on copy, Python uploads and public deployment are
-outside this MVP.
+These are planned extensions, not delivered behavior. Adopt the relevant product
+policies here during each slice; keep the current private boundary until the
+complete open-signup gate passes. Private bot/run ownership remains in force
+after public launch. Marketplace and live trading are outside this beta roadmap.

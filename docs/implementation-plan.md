@@ -1703,89 +1703,321 @@ The identity change adds no Polymarket protocol or transport behavior and requir
 no PolymarketDocs verification. No marketplace, live mode, recovery mail, account
 editing, public deployment or organization features were added.
 
-## Slice 16: Bot Marketplace MVP
+## Public Paper-Trading Beta Roadmap
 
-Status: planned; depends on Slices 13–15. The user confirmed visual node bots
-only and browsing by signed-in users. The
-[marketplace MVP proposal](marketplace-mvp-plan.md) owns the proposed workflows,
-data model, API and consistency rules; resolve any changes to its recommended
-choices before the affected implementation work. No marketplace runtime behavior
-is implemented by this planning change.
+Status: planned. The user approved the eight readiness areas below as the next
+direction, replacing the marketplace proposal. These slices deliver a public
+paper-only service; they do not authorize deploying it or changing production
+state as part of this planning task. Marketplace work is deferred.
 
-Implement 16A → 16B → 16C → 16D → 16E. A task naming one sub-slice authorizes only
-that sub-slice and its necessary contract/tests/docs changes. Keep the current
-private deployment and paper-only execution boundaries throughout.
+Complete Slice 12F, then Slices 16–23 in order. Each slice names its dependencies;
+independent work may proceed once those prerequisites are met, but open signup
+requires acceptance for all eight. Keep incomplete deployments behind the existing
+private access boundary. Live trading, billing and the later product ideas at the
+end are not launch prerequisites and must not be scaffolded by these slices.
 
-### Slice 16A: Publication Snapshots and Ownership
+This plan owns scope, minimum deliverables and acceptance. During each slice,
+record adopted user behavior in `web-control-plane-spec.md` and technical
+contracts in `web-control-plane-architecture.md` before code depends on them.
+Earlier slice exclusions describe historical scope; they do not prohibit the
+explicitly planned extensions below. Preserve standalone `polybot` isolation,
+private per-user resources and paper-only execution.
 
-Minimum deliverable:
+Exact hosting/provider choices, resource limits, retention periods, recovery
+targets and account policies remain implementation checkpoints. Resolve only the
+choices needed by the active slice; do not interpret approval of this roadmap as
+approval of a particular paid service, destructive migration or public deployment.
+Use forward migrations that preserve existing accounts and history.
 
-- Adopt the proposal's publication/privacy rules in the product specification
-  and technical architecture, settling its bounded policy choices, including
-  mutation body-size limits, before code depends on them.
-- Add forward migrations for listings and immutable releases, their narrowly
-  owned typed contracts, graph/config projection, ownership and locking rules.
-  Preserve existing accounts/resources. Copy receipt storage belongs to 16C.
-- Add publication preview, publish/update and owner visibility/list/detail APIs.
-  Generate the API contracts; do not build marketplace UI in this unit.
+## Slice 16: Production Deployment
 
-Acceptance: only an owner can publish a saved supported graph; preview drift is
-rejected; concurrent publishing cannot duplicate listing/version rows; private
-edits cannot mutate releases; unpublishing and republishing preserve releases;
-populated-database migration and owner-denial tests pass.
-
-### Slice 16B: Authenticated Discovery and Safe Detail
-
-Minimum deliverable: published-list/detail APIs, search, bounded pagination and
-explicit shared projections, using the contracts from the proposal. Keep all
-private resource queries and the public auth allowlist unchanged.
-
-Acceptance: another account can inspect a published graph/config but no private
-resource IDs, account details or run data; unpublished and unknown IDs match;
-search/pagination are bounded and deterministic for unchanged data; unavailable
-historical graph payloads fail explicitly. No performance/ranking endpoints.
-
-### Slice 16C: Atomic Independent Copies
+Status: planned; depends on Slice 12F and Slice 15.
 
 Minimum deliverable:
 
-- Add copy receipt/provenance migration and the exact-release copy API.
-- Reuse node input, graph and market validation. Adjust bot-creation transaction
-  ownership only as needed to commit bot, own revision 1 and receipt together.
-- Add safe attribution to private bot reads; handle retries, conflicts and
-  unpublish races as specified in the proposal. No copy automatically starts work.
+- Build on 12F's Compose, same-origin entrypoint, private infrastructure and
+  migration foundation. Add the production configuration needed for HTTPS,
+  trusted proxy handling, secure cookies and server-side secret injection.
+- Establish a repeatable release process with immutable build identifiers,
+  migration ordering, health checks and a documented rollback procedure. Keep
+  existing test CI and add deployment checks rather than replacing it.
+- Separate development/test and production configuration. Reject unsafe public
+  settings and keep PostgreSQL, Redis and workers inaccessible from the Internet.
+- Document the selected hosting topology and capacity assumptions. Gate public
+  access until all readiness slices pass; deployment infrastructure alone does
+  not make the product ready for open signup.
 
-Acceptance: two accounts get independently owned graphs/configs; all-or-nothing
-rollback and concurrent retry tests pass; wrong-listing release references fail;
-unavailable markets/SDK outages create no partial copy; source edits/unpublishing
-cannot mutate or revoke an existing copy. Private launch and SSE isolation hold.
+Acceptance:
 
-### Slice 16D: Marketplace Browser Workflows
+- A staging smoke test covers HTTPS login, resource isolation, launch, Stop,
+  refresh and SSE reconnect through the real reverse proxy.
+- Startup fails clearly on missing/invalid required configuration; secrets do
+  not enter frontend builds, images, exported contracts or logs.
+- A release and rollback rehearsal verifies application/schema compatibility;
+  rollback never assumes a destructive database downgrade is safe.
+- Only the intended entrypoint is reachable, and database migration failure
+  prevents activation of an incompatible release.
 
-Minimum deliverable: navigation, marketplace search/list/detail, read-only graph,
-publication preview/update/unpublish controls, My publications, configuration
-review before copying, and private source attribution. Reuse existing form/graph
-components, generated APIs and account-boundary behavior.
+Explicit exclusions: Kubernetes, autoscaling and multi-region deployment unless
+a demonstrated requirement is approved. Backups belong to Slice 21; operational
+alerts to Slice 20. This slice extends 12F's intentionally private deployment
+scope without rewriting its original deliverable.
 
-Acceptance: loading/empty/error states and keyboard navigation work; literal text
-is rendered safely; stale publication previews and unavailable listings explain
-the corrective action; retries preserve the copy request ID; account switching
-clears forms/results; copy opens an owned bot without launching it.
+## Slice 17: Per-User Resource Limits
 
-### Slice 16E: Complete Acceptance and Private Pilot
+Status: planned; depends on Slice 15 and the capacity settings from Slice 16.
 
-Minimum deliverable: the proposal's two-account end-to-end scenario and complete
-failure/race regression suite; documented local usage; the listed backend,
-generated-contract, frontend and browser checks against disposable services.
+Minimum deliverable:
 
-Acceptance: publish → discover → inspect → copy → edit → explicit paper run passes
-with real identity/persistence; update/unpublish preserves existing copies and
-private-run isolation. Complete the final documentation-drift audit across README,
-product spec, architecture, both plans and generated contracts. Mark sub-slices
-implemented only after their acceptance passes; the pilot stays private.
+- Define a small paper-beta allowance policy: concurrent runs, queued runs,
+  maximum run duration, markets/subscriptions per run and saved-resource limits.
+  Add a global run/queue capacity ceiling. Choose initial values from a bounded
+  load test and document them in one owning policy contract.
+- Enforce admission and capacity reservations atomically across API/worker
+  instances. Derive the account from authenticated ownership, never request data.
+  Apply shared infrastructure limits to expensive requests and open streams too.
+- Provide bounded queueing with a documented fair admission rule. Explain
+  allowance/capacity failures in the browser, and show users their own usage.
+- Enforce run-duration expiry server-side and release reservations on terminal
+  transitions through one accounting boundary. Slice 18 adds worker-loss recovery.
+- Define the per-account retained-history allowance for Slice 21 to enforce;
+  do not build a second retention/deletion mechanism here.
 
-Exclusions: arbitrary Python, payments, social features, public performance,
-automatic upstream updates, live execution and public deployment. Slice 12F and
-any future public-launch work remain separately scoped. No new Polymarket
-integration is planned; any discovered protocol change invokes the existing MCP
-checkpoint before implementation.
+Acceptance:
+
+- Concurrent requests and multiple API processes cannot exceed per-user or
+  global reservations; one account cannot occupy unbounded queue/worker capacity.
+- Stop, launch failure and normal completion release capacity exactly once.
+  Duration limits work without an open browser.
+- Missing shared admission infrastructure fails closed. Responses distinguish
+  invalid configuration, user allowance and temporary global capacity outcomes.
+- Tests prove ownership, bounded requests/streams and correct browser feedback;
+  worker-loss recovery is completed with Slice 18.
+
+Explicit exclusions: subscriptions, billing, enterprise plans and a generic
+entitlements framework. Resource controls are required even for a free beta.
+
+## Slice 18: Reliable Run Lifecycle
+
+Status: planned; depends on Slices 16–17 and the existing run/worker lifecycle.
+
+Minimum deliverable:
+
+- Make user launch retries idempotent: one logical launch creates at most one
+  run and capacity reservation, even after a lost response or concurrent retry.
+  A deliberate new run remains possible.
+- Close the gap between persisted queued runs and worker delivery. Define
+  bounded recovery of stranded queue entries and safe handling of duplicate
+  delivery using the existing execution claim.
+- Schedule reconciliation of expired worker leases; the existing helper alone
+  is not a production scheduler. Terminal state, durable lifecycle events and
+  capacity release must remain consistent under retries.
+- Handle worker termination, graceful deployment shutdown and dependency outages
+  with explicit bounded outcomes. A dead worker cannot leave a run permanently
+  displayed as running.
+- End lost paper runs as interrupted. Preserve their committed history and
+  explain the interruption; restarting creates an explicit new run.
+
+Acceptance:
+
+- Failure-injection scenarios cover API death around enqueue, lost launch
+  responses, duplicate jobs, worker kill, Redis/database outages and deployment
+  shutdown. Verify states/events/reservations after recovery.
+- A stale worker cannot continue making accepted progress after losing execution
+  ownership; recovery never creates two active executors for one run.
+- Queued Stop, duration expiry and reconciliation races converge on one terminal
+  outcome. Other users cannot trigger or observe private lifecycle operations.
+- Browser reload and SSE reconnect show the authoritative recovered outcome.
+
+Explicit exclusions: transparent portfolio/graph-state restoration, automatic
+strategy restarts and live-trading recovery. The beta promises accurate
+interruption reporting, not uninterrupted execution.
+
+## Slice 19: Account Recovery and Management
+
+Status: planned; depends on Slice 15 and Slice 16's HTTPS/email-link origin.
+
+Minimum deliverable:
+
+- Add password-reset request/completion, authenticated password change and
+  revocation of other/all sessions with explicit reauthentication semantics.
+  Keep account secrets and identity in `api.auth`.
+- Select a transactional email delivery path and define the verification policy
+  for unrestricted signup. Record when verification is required, resend behavior,
+  and treatment of existing unverified accounts; never silently mark them verified.
+- Use expiring single-use tokens stored as digests, bounded reset/resend attempts,
+  safe same-origin links and generic account-discovery responses. Keep tokens
+  out of logs and browser persistence.
+- Define credential-change/reset effects on sessions and active streams.
+  Preserve the distinction between revoking browser access and stopping an
+  already-authorized paper run; explicit Stop and operator suspension are separate.
+- Add browser flows with clear pending, expired, invalid and delivery-failure
+  states. Document account ownership/recovery limits and the email dependency.
+
+Acceptance:
+
+- Reset/change flows work end to end; token replay, expiry, concurrent redemption
+  and invalid credentials cannot change another account.
+- Reset requests do not disclose account existence; email failure is handled
+  without revealing account-specific results or falsely completing recovery.
+- Revoked sessions and open streams lose access within the documented bound;
+  passwords/tokens never appear in responses, logs or generated fixtures.
+- Existing accounts survive the forward migration, and the selected verification
+  transition cannot lock users out without a recovery path.
+
+Explicit exclusions: social login, account linking, organizations and MFA.
+Account deletion belongs to Slice 21. Follow the current
+[OWASP recovery guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
+when selecting the exact token and delivery policies.
+
+## Slice 20: Operational Visibility and Controls
+
+Status: planned; depends on Slices 16–19.
+
+Minimum deliverable:
+
+- Add structured, redacted operational logs and measurements for API errors,
+  worker availability, queue depth/age, stuck runs, admission rejections,
+  storage growth and existing market-feed health signals.
+- Configure actionable alerts with an owner, thresholds and short response
+  instructions. Monitor worker/job progress separately from API/database health.
+- Provide a narrowly authorized operator command or protected endpoint to
+  suspend an account, revoke its sessions, reject new work and stop its queued
+  or active jobs. Make the effect on running jobs explicit and bounded.
+- Record operator mutations with actor, target, action and outcome. Keep operator
+  credentials/authorization separate from ordinary self-registered accounts.
+- Add a service-wide stop/admission control for incidents and a runbook for
+  dependency outages, failed deployments and resuming admissions.
+
+Acceptance:
+
+- Injected worker, queue, storage and feed failures produce useful alerts with
+  no private payload/credential leakage; infrastructure failure cannot report
+  a misleading healthy/empty result.
+- Ordinary accounts cannot invoke operator actions or read operational account
+  data. Suspension races with launch/login cannot grant fresh execution/access.
+- Account suspension and global incident controls reach the documented outcome,
+  are retry-safe, and preserve committed history.
+- An operator can diagnose and stop a failing run using the runbook without
+  editing production database rows manually.
+
+Explicit exclusions: a full administration dashboard, generalized RBAC and
+monitoring every internal function. Reuse existing runtime health observations;
+changes to Polymarket adapters require the normal MCP checkpoint.
+
+## Slice 21: Backups and Data Lifecycle
+
+Status: planned; depends on Slices 16–20 and Slice 17's history allowance.
+
+Minimum deliverable:
+
+- Configure automated protected database backups and document recovery-point,
+  recovery-time and backup-retention targets. Define separate handling for any
+  non-database files actually needed by the hosted service.
+- Implement bounded, retry-safe cleanup of retained events/history using the
+  approved per-account and global storage policy. Preserve active runs and
+  required bot/revision/run references; disclose expired history in the browser.
+- Add an authenticated account/data deletion request and an explicit lifecycle:
+  block new work, revoke access, stop/quiesce jobs, then remove eligible data in
+  dependency order. Set the policy for minimal retained operational records and
+  backup expiry before implementing deletion.
+- Document export/support handling, deletion timing and what remains in backups.
+  Prevent restoring deleted/suspended access or restarting old jobs accidentally
+  when restoring a database snapshot.
+
+Acceptance:
+
+- Restore a real backup into an isolated environment and verify accounts,
+  ownership, bots/revisions and retained history with no accidental job launch.
+- Cleanup respects retention boundaries, active jobs and foreign keys; repeated
+  runs and interruption/retry do not corrupt data or bypass account isolation.
+- Deletion races with queued/running jobs cannot recreate removed data or permit
+  new execution. Users cannot delete another account's resources.
+- Browser history-expiry and deletion states match the documented policy, and
+  measured restoration meets the selected recovery targets.
+
+Explicit exclusions: indefinite history, transparent archival search and a
+general-purpose data warehouse. Never apply destructive verification to the
+production database.
+
+## Slice 22: First-Use Experience
+
+Status: planned; depends on Slices 17–19 and the existing node editor/catalog.
+
+Minimum deliverable:
+
+- Add a guided path from signup through choosing an existing example, selecting
+  available markets, reviewing paper settings and saving a private bot.
+- Explain the example's conditions and expected behavior, then require an explicit
+  Run action. Reuse catalog-owned examples, graph validation and market selection.
+- Guide users through reading run status, simulated balances, orders/fills and
+  existing skipped/rejected-action information. Make waiting for a condition
+  distinguishable from failure or unavailable data.
+- Provide useful empty/loading/error states, allowance feedback and recovery
+  links. Keep the basic path usable with keyboard navigation and on smaller screens.
+
+Acceptance:
+
+- A new account can complete its first saved bot and paper run through the UI,
+  inspect results and Stop without CLI use or knowledge of graph internals.
+- Deterministic browser fixtures demonstrate both an action and a legitimate
+  no-action case; real-service smoke tests do not assume a market must trade.
+- Expired sessions, unavailable markets and capacity rejection explain the next
+  action without losing another account's isolation.
+- Onboarding never launches automatically, promises returns or bypasses normal
+  input/market validation and paper-only gates.
+
+Explicit exclusions: new strategy engines, a marketplace, a tutorial CMS and a
+full graph execution debugger. Rich diagnostics remain a later product feature.
+
+## Slice 23: Launch Information, Support and Public-Beta Acceptance
+
+Status: planned; final open-signup gate depends on Slice 12F and Slices 16–22.
+
+Minimum deliverable:
+
+- Add a public landing/help surface explaining visual strategy building, paper
+  execution, current features, beta limits and the difference between simulated
+  results and actual execution. Keep authenticated bot/run pages private.
+- Publish service-appropriate privacy/terms information and a visible support or
+  feedback channel. Align descriptions of data collection, retention, deletion,
+  email and account recovery with the actual implemented policies.
+- Make any new anonymous page/API allowlist explicit and minimal. Public
+  navigation must never preload private resources.
+- Run the complete production-like acceptance scenario: signup/verification as
+  configured, recovery, onboarding, launch/limits, Stop, failure recovery,
+  account isolation, operator controls and retention/deletion. Include the
+  deployment, alert and backup-restore rehearsals owned by earlier slices.
+- Record capacity results, known beta limits, support ownership and the release
+  checklist. Opening public signup is a deliberate operational action after
+  acceptance; completion of a documentation or coding task does not publish it.
+
+Acceptance:
+
+- Landing/help claims match delivered functionality, and all support/recovery
+  links work. No marketplace, live-trading or performance guarantee is advertised.
+- Multi-account API/browser acceptance uses real disposable PostgreSQL/Redis
+  services and rejects skipped service-dependent tests.
+- Run `uv run pytest`, `npm --prefix frontend run generate:check`,
+  `npm --prefix frontend run check`, `npm --prefix frontend test`,
+  `npm --prefix frontend run build` and `npm --prefix frontend run test:e2e`.
+  Use README's disposable service settings, plus the staging/load/failure checks
+  specified by the active slices.
+- Complete the final documentation-drift audit across README, product spec,
+  architecture, this plan, operator runbooks and generated contracts. Regenerate
+  changed API artifacts before checking them. Mark each slice delivered only
+  after its own acceptance passes.
+
+Explicit exclusions: billing, paid acquisition, marketplace features and live
+execution. These eight slices add no planned Polymarket protocol behavior; any
+implementation that needs to change it must first verify with PolymarketDocs
+and stop that protocol-sensitive work if the MCP is unavailable.
+
+## Later Product Features
+
+After the public paper beta, consider browser backtesting over available
+recordings; strategy-version comparison on matching data/settings; deeper
+performance analysis; explanations of blocked/skipped graph actions; run
+notifications; and reusable market selection for recurring markets. Live trading
+remains a separate expansion requiring per-user wallet authorization, execution
+risk controls and order/fill reconciliation; it is not a paper-beta prerequisite.
