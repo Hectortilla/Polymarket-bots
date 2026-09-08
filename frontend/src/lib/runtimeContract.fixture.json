@@ -111,6 +111,7 @@
     "maximumEventId": 9007199254740991
   },
   "eventPagination": {
+    "defaultLimit": 100,
     "nextCursorEventIndex": 0
   },
   "eventKind": {

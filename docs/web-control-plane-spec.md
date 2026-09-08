@@ -200,10 +200,12 @@ The technical chart cadence, persistence, and stream contract is owned by
 
 Committed progress survives reload and reconnect; ephemeral frames are not
 recoverable. Reload immediately restores only the newest bounded event page,
-and the operator explicitly requests older progress. Chart rendering retains a
-bounded terminal-equivalent history rather than automatically loading the
-complete run. `web-control-plane-architecture.md` owns the storage and delivery
-mechanism.
+and the operator explicitly requests older progress. While streaming, the
+browser keeps a rolling window sized to the loaded event pages, forgetting the
+oldest overflow locally; the operator can fetch those stored events again.
+Chart rendering retains a bounded terminal-equivalent history rather than
+automatically loading the complete run. `web-control-plane-architecture.md`
+owns the storage and delivery mechanism.
 
 Web observability failure must not change paper-bot execution. The technical
 invariant and mechanism are owned by `web-control-plane-architecture.md`

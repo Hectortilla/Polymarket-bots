@@ -1,4 +1,5 @@
 import { ADD_NODE_LABEL } from '$lib/catalog/NodePalette.svelte';
+import { VALUATION_STATUS } from '$lib/charts/contracts';
 import { eventSummary } from '$lib/runs/eventSummary';
 import { RUN_STATUS_PRESENTATION } from '$lib/runs/status';
 import { LIVE_EVENT_KIND, type LiveRunEvent } from '$lib/runs/events';
@@ -10,6 +11,7 @@ import { TEST_GRAPH, TEST_GRAPH_CATALOG } from '$lib/catalog/nodeGraphTestFixtur
 import { BOT_DEFINITION_LABEL, SELECTION_MODE } from '$lib/catalog/schema';
 import { botPath } from '$lib/navigation';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
+import { formatTime } from '$lib/time';
 import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
 import { RUN_STATUS } from '$lib/runs/status';
 
@@ -232,9 +234,23 @@ function lifecycleEvent(id: number, status: RunRead['status']): PersistedDurable
   return {
     id,
     run_id: RUN.id,
-    occurred_at: `2026-08-30T00:00:0${id}Z`,
+    occurred_at: new Date(Date.parse(RUN.created_at) + id * 1_000).toISOString(),
     kind: EVENT_KIND.runLifecycle,
     payload: { status },
+  };
+}
+
+function chartSampleEvent(id: number): PersistedDurableEvent {
+  return {
+    id,
+    run_id: RUN.id,
+    occurred_at: RUN.created_at,
+    kind: EVENT_KIND.chartSample,
+    payload: {
+      sampled_at_ms: id * 1_000,
+      markets: [],
+      equity: { value: '1000', status: VALUATION_STATUS.fresh },
+    },
   };
 }
 
@@ -245,7 +261,112 @@ function hydrateActive(events: PersistedDurableEvent[] = [], cursor: number | nu
   });
 }
 
+const EVENT_PAGE_SIZE = runtimeContract.eventPagination.defaultLimit;
+
+function progressPage(firstId: number, count = EVENT_PAGE_SIZE): PersistedDurableEvent[] {
+  return Array.from({ length: count }, (_, index) =>
+    lifecycleEvent(firstId + index, RUN_STATUS.RUNNING),
+  );
+}
+
+function expectProgressWindow(firstId: number, count: number): void {
+  const rows = [...document.querySelectorAll('.event-table tbody tr')];
+  expect(rows).toHaveLength(count);
+  expect(rows.map((row) => row.querySelector('td')?.textContent)).toEqual(
+    progressPage(firstId, count).map((event) => formatTime(event.occurred_at)),
+  );
+}
+
 describe('run detail interactions', () => {
+  it('bounds streaming to one page, including hidden samples, and reloads evicted history', async () => {
+    hydrateActive(progressPage(1));
+    render(Page);
+    await screen.findByText(loadedEventsLabel(EVENT_PAGE_SIZE));
+    const durable = mocks.loadRun.mock.calls[0][2];
+
+    durable(chartSampleEvent(EVENT_PAGE_SIZE + 1));
+    await waitFor(() => expectProgressWindow(2, EVENT_PAGE_SIZE - 1));
+
+    mocks.loadOlderEvents.mockResolvedValue({
+      events: progressPage(1, 1),
+      nextBeforeEventId: null,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
+    expect(mocks.loadOlderEvents).toHaveBeenCalledWith(RUN.id, 2);
+    await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
+    expect(screen.queryByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
+  });
+
+  it('lets an initially empty window fill before evicting events', async () => {
+    hydrateActive();
+    render(Page);
+    await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS);
+    const durable = mocks.loadRun.mock.calls[0][2];
+
+    progressPage(1).forEach(durable);
+    await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
+    expect(screen.queryByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
+
+    durable(lifecycleEvent(EVENT_PAGE_SIZE + 1, RUN_STATUS.RUNNING));
+    await waitFor(() => expectProgressWindow(2, EVENT_PAGE_SIZE));
+    expect(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
+  });
+
+  it.each([1, EVENT_PAGE_SIZE * 3])(
+    'keeps two contiguous pages when %i events stream during an older-page request',
+    async (streamedCount) => {
+      const firstId = EVENT_PAGE_SIZE + 1;
+      hydrateActive(progressPage(firstId), firstId);
+      const request = deferred<{ events: PersistedDurableEvent[]; nextBeforeEventId: null }>();
+      mocks.loadOlderEvents.mockReturnValue(request.promise);
+      render(Page);
+      const button = await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+      const durable = mocks.loadRun.mock.calls[0][2];
+      await fireEvent.click(button);
+
+      progressPage(EVENT_PAGE_SIZE * 2 + 1, streamedCount).forEach(durable);
+      request.resolve({ events: progressPage(1), nextBeforeEventId: null });
+      await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+      await waitFor(() => expectProgressWindow(streamedCount + 1, EVENT_PAGE_SIZE * 2));
+
+      mocks.loadOlderEvents.mockResolvedValue({ events: [], nextBeforeEventId: null });
+      await fireEvent.click(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
+      expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, streamedCount + 1);
+    },
+  );
+
+  it('releases reserved page capacity and preserves the advanced cursor after a failed fetch', async () => {
+    const firstId = EVENT_PAGE_SIZE + 1;
+    hydrateActive(progressPage(firstId), firstId);
+    const request = deferred<never>();
+    mocks.loadOlderEvents.mockReturnValue(request.promise);
+    render(Page);
+    const button = await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+    const durable = mocks.loadRun.mock.calls[0][2];
+    await fireEvent.click(button);
+    progressPage(EVENT_PAGE_SIZE * 2 + 1).forEach(durable);
+    request.reject(new Error('unavailable'));
+
+    await screen.findByText(RUN_DETAIL_COPY.LOAD_ERROR);
+    expectProgressWindow(EVENT_PAGE_SIZE * 2 + 1, EVENT_PAGE_SIZE);
+    durable(lifecycleEvent(EVENT_PAGE_SIZE * 3 + 1, RUN_STATUS.RUNNING));
+    await waitFor(() => expectProgressWindow(EVENT_PAGE_SIZE * 2 + 2, EVENT_PAGE_SIZE));
+
+    mocks.loadOlderEvents.mockResolvedValue({ events: [], nextBeforeEventId: null });
+    await fireEvent.click(button);
+    expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, EVENT_PAGE_SIZE * 2 + 2);
+  });
+
+  it('shows an empty progress state for a page containing only chart samples', async () => {
+    hydrateActive([chartSampleEvent(2)], 2);
+    render(Page);
+
+    expect(await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS)).toBeTruthy();
+    expect(screen.getByText(loadedEventsLabel(0))).toBeTruthy();
+    expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
+    expect(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
+  });
+
   it('shows a pending stop request and applies the returned status', async () => {
     hydrateActive();
     const request = deferred<{ data: RunRead }>();
@@ -317,10 +438,13 @@ describe('run detail interactions', () => {
     });
     expect(await screen.findByText(RUN_DETAIL_COPY.STALE_BOOK_INPUT)).toBeTruthy();
     expect(screen.getByText('17')).toBeTruthy();
+    durable(chartSampleEvent(2));
     durable(lifecycleEvent(1, RUN_STATUS.STOPPED));
     expect(
       await screen.findByText(eventSummary(lifecycleEvent(1, RUN_STATUS.STOPPED))),
     ).toBeTruthy();
+    expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
+    expect(screen.getByText(loadedEventsLabel(1))).toBeTruthy();
     expect(
       screen.queryByRole('button', {
         name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
@@ -331,7 +455,7 @@ describe('run detail interactions', () => {
   });
 
   it('keeps the older-event cursor for retries and merges a successful page', async () => {
-    hydrateActive([lifecycleEvent(2, RUN_STATUS.RUNNING)], 7);
+    hydrateActive([lifecycleEvent(2, RUN_STATUS.RUNNING), chartSampleEvent(3)], 7);
     mocks.loadOlderEvents.mockRejectedValueOnce(new Error('unavailable'));
     render(Page);
     const button = await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
@@ -350,12 +474,17 @@ describe('run detail interactions', () => {
     expect(button.textContent).toContain(RUN_DETAIL_COPY.LOADING);
     await fireEvent.click(button);
     expect(mocks.loadOlderEvents).toHaveBeenCalledTimes(2);
-    request.resolve({ events: [lifecycleEvent(1, RUN_STATUS.QUEUED)], nextBeforeEventId: null });
+    request.resolve({
+      events: [chartSampleEvent(4), lifecycleEvent(1, RUN_STATUS.QUEUED)],
+      nextBeforeEventId: null,
+    });
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull(),
     );
     expect(await screen.findByText(loadedEventsLabel(2))).toBeTruthy();
     const rows = [...document.querySelectorAll('.event-table tbody tr')];
+    expect(rows).toHaveLength(2);
+    expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
     expect(rows[0].textContent).toContain(eventSummary(lifecycleEvent(1, RUN_STATUS.QUEUED)));
     expect(rows[1].textContent).toContain(eventSummary(lifecycleEvent(2, RUN_STATUS.RUNNING)));
   });

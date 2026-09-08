@@ -22,7 +22,10 @@ from api.events.ids import (
     MAX_DURABLE_EVENT_ID,
 )
 from api.events.kinds import EventKind, LiveEventKind
-from api.events.pagination import NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX
+from api.events.pagination import (
+    DEFAULT_EVENT_PAGE_LIMIT,
+    NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX,
+)
 from api.http.contracts import HealthResponse
 from api.http.routes.paths import (
     BOT_DEFINITIONS_PATH,
@@ -212,6 +215,7 @@ def frontend_run_contract() -> dict[str, object]:
             "maximumEventId": MAX_DURABLE_EVENT_ID,
         },
         "eventPagination": {
+            "defaultLimit": DEFAULT_EVENT_PAGE_LIMIT,
             "nextCursorEventIndex": NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX,
         },
         "eventKind": _enum_values(EventKind),

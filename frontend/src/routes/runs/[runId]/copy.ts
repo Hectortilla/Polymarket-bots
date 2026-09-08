@@ -5,6 +5,7 @@ export const RUN_DETAIL_COPY = {
   LOAD_EARLIER: 'Load earlier events',
   LOAD_ERROR: 'Older durable events could not be loaded.',
   LOADING: 'Loading…',
+  NO_PROGRESS_EVENTS: 'No progress events in the loaded history.',
 
   BOT_CONFIGURATION: 'Bot configuration',
   EXECUTED_GRAPH_REVISION: 'Executed graph revision',

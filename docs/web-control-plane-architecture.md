@@ -588,8 +588,14 @@ dependency error.
   EventSource adapter performs the equivalent durable/live event validation.
 - Hydrate run detail from the newest bounded durable-event page, open SSE after
   that page's newest ID for race-free continuation, and request older pages only
-  from the server-provided exclusive cursor. Terminal hydration does not open a
-  stream, and receipt of a terminal lifecycle event closes the current stream.
+  from the exclusive cursor. Retain at most the loaded page count times the
+  API default event-page limit, including hidden chart samples. Streaming evicts
+  the oldest overflow and sets that cursor to the oldest retained event so
+  evicted history remains accessible. Reserve a page during an older-page fetch,
+  rolling back that capacity on failure; a response overtaken by streaming must
+  not reset the advanced cursor or introduce a history gap. Terminal hydration
+  does not open a stream, and receipt of a terminal lifecycle event closes the
+  current stream.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
 - Render the market-slug widget as a multi-market combobox in create and edit

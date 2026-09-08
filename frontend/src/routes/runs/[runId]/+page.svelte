@@ -22,6 +22,7 @@
   } from '$lib/charts/history';
   import { createLiveDashboardBatcher } from '$lib/charts/liveBatch';
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
+  import runtimeContract from '$lib/runtimeContract.fixture.json';
   import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
   import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
   import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
@@ -42,6 +43,7 @@
   let loading = $state(true);
   let stopping = $state(false);
   let loadingOlderEvents = $state(false);
+  let loadedEventPages = 1;
   let nextBeforeEventId = $state<number | null>(null);
   let error = $state('');
   let executedGraphCatalog = $state<GraphNodeCatalog>();
@@ -49,6 +51,7 @@
   let executedGraphCatalogError = $state('');
   let closeStream = () => {};
 
+  const progressEvents = $derived(events.filter((event) => event.kind !== EVENT_KIND.chartSample));
   const statusPresentation = $derived(run ? RUN_STATUS_PRESENTATION[run.status] : undefined);
   const configuredWallets = $derived(
     run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? [],
@@ -113,10 +116,18 @@
 
   function appendDurableEvent(event: PersistedDurableEvent): void {
     events = [...events, event];
+    trimEventWindow();
     dashboard = mergeDurableEvents(dashboard, [event]);
     if (run && event.kind === EVENT_KIND.runLifecycle) {
       run = { ...run, status: event.payload.status };
     }
+  }
+
+  function trimEventWindow(): void {
+    const capacity = loadedEventPages * runtimeContract.eventPagination.defaultLimit;
+    if (events.length <= capacity) return;
+    events = events.slice(-capacity);
+    nextBeforeEventId = events[0].id;
   }
 
   async function loadExecutedGraphCatalog(definitionId: string): Promise<GraphNodeCatalog> {
@@ -151,14 +162,23 @@
     if (!run || nextBeforeEventId === null || loadingOlderEvents) return;
     loadingOlderEvents = true;
     error = '';
+    // Reserve the next page while fetching so streamed events cannot leave a gap
+    // between the requested history and the retained window.
+    loadedEventPages += 1;
+    const beforeEventId = nextBeforeEventId;
     try {
-      const older = await loadOlderRunEvents(run.id, nextBeforeEventId);
-      events = [...older.events, ...events];
+      const older = await loadOlderRunEvents(run.id, beforeEventId);
+      // If streaming filled the expanded window already, this page is outside it.
+      if (nextBeforeEventId === beforeEventId) {
+        events = [...older.events, ...events];
+        nextBeforeEventId = older.nextBeforeEventId;
+      }
       dashboard = mergeDurableEvents(dashboard, older.events);
-      nextBeforeEventId = older.nextBeforeEventId;
     } catch {
+      loadedEventPages -= 1;
       error = RUN_DETAIL_COPY.LOAD_ERROR;
     } finally {
+      trimEventWindow();
       loadingOlderEvents = false;
     }
   }
@@ -334,7 +354,7 @@
     <div class="section-heading">
       <h2>Durable progress</h2>
       <div class="section-actions">
-        <span class="section-count">{loadedEventsLabel(events.length)}</span>
+        <span class="section-count">{loadedEventsLabel(progressEvents.length)}</span>
         {#if nextBeforeEventId !== null}
           <button
             class="secondary compact"
@@ -347,14 +367,14 @@
         {/if}
       </div>
     </div>
-    {#if events.length === 0}
-      <p class="empty-state">No durable events yet.</p>
+    {#if progressEvents.length === 0}
+      <p class="empty-state">{RUN_DETAIL_COPY.NO_PROGRESS_EVENTS}</p>
     {:else}
       <div class="table-wrap event-table">
         <table aria-label="Durable progress events">
           <thead><tr><th>Time</th><th>Kind</th><th>Detail</th></tr></thead>
           <tbody>
-            {#each events as event (event.id)}
+            {#each progressEvents as event (event.id)}
               {@const failureDetail = eventFailureDetail(event, events, run.failure_detail)}
               {@const failureDetailId = `event-failure-detail-${event.id}`}
               <tr

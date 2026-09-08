@@ -1078,6 +1078,14 @@ Minimum deliverable:
   the browser has loaded. Older-page requests may expand history, but retain at
   most the shared `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable
   samples and never auto-fetch the complete run.
+- Exclude `chart.sample` from the Durable progress table and its loaded-event
+  count, while retaining those samples for chart history and event pagination.
+- Bound the browser's retained durable events to the loaded page count times
+  the API's default page size (including hidden chart samples). Streaming drops
+  the oldest overflow and moves the older-page cursor to the oldest retained
+  event, allowing dropped events to be fetched again. An older-page request
+  reserves another page while pending and releases it on failure; chart history
+  keeps its independent bounds and persisted events are unaffected.
 - Add one thin `EChart.svelte` lifecycle wrapper and focused market, equity,
   and wallet option builders. The combined component only composes layout and
   the market/wallet toggle.
