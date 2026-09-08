@@ -1,3 +1,4 @@
+import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from '$lib/api/http';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
@@ -66,7 +67,7 @@ describe('control-plane response validation', () => {
       throwOnError: true as const,
       fetch: async () =>
         new Response(JSON.stringify(data), {
-          headers: { 'Content-Type': 'application/json' },
+          headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
         }),
     });
     await expect(
@@ -197,7 +198,7 @@ describe('control-plane response validation', () => {
         fetch: async () =>
           new Response(JSON.stringify({ status: 'ok' }), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
           }),
       }),
     ).rejects.toThrow('failed operation validation');
@@ -207,17 +208,17 @@ describe('control-plane response validation', () => {
         fetch: async () =>
           new Response('not json', {
             status: 200,
-            headers: { 'Content-Type': 'text/plain' },
+            headers: { [CONTENT_TYPE_HEADER]: 'text/plain' },
           }),
       }),
-    ).rejects.toThrow('must use application/json');
+    ).rejects.toThrow(`must use ${JSON_CONTENT_TYPE}`);
     await expect(
       createBotApiV1BotsPost({
         ...request,
         fetch: async () =>
           new Response('', {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
           }),
       }),
     ).rejects.toThrow('must not be empty');
@@ -242,7 +243,7 @@ describe('control-plane response validation', () => {
         fetch: async () =>
           new Response(JSON.stringify(wrongRunPage), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
           }),
       }),
     ).rejects.toThrow('failed operation validation');
@@ -573,7 +574,7 @@ it('validates graph revision save as an updated bot and detail as a revision', a
     baseUrl: 'http://control-plane.test',
     throwOnError: true as const,
     fetch: async () =>
-      new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(data), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
   });
   await expect(
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({

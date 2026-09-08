@@ -4,11 +4,7 @@ import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 import { isNonemptyString, isOneOf, isRecord } from '$lib/valueGuards';
 
-import {
-  isChartSamplePayload,
-  isStreamHealthPayload,
-  isWalletTimelinePayload,
-} from '$lib/runs/dashboardPayloads';
+import { isChartSamplePayload, isStreamHealthPayload, isWalletTimelinePayload } from '$lib/runs/dashboardPayloads';
 
 import { EVENT_KIND } from '$lib/runs/eventKinds';
 

@@ -4,7 +4,7 @@ import {
   persistedEventPage,
 } from '$lib/runs/durableEvents';
 
-import { liveRunEvent } from '$lib/runs/events';
+import { liveRunEvent } from '$lib/runs/events/live';
 
 import { isNonemptyString, isRecord } from '$lib/valueGuards';
 

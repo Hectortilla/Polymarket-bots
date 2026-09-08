@@ -1,6 +1,7 @@
 import {
   readRunApiV1RunsRunIdGet,
   readRunEventsApiV1RunsRunIdEventsGet,
+  type LiveRunEvent,
   type RunRead
 } from '$lib/api/generated';
 import {
@@ -13,9 +14,12 @@ import {
 import {
   openRunEventStream,
   type EventStreamOpener,
-  type LiveRunEvent
+  type StreamConnectionState
 } from './events';
 import { isTerminalRunStatus } from './status';
+import { HTTP_STATUS } from '$lib/api/http';
+
+export class RunNotFoundError extends Error {}
 
 export type RunHydration = PersistedEventPage & {
   run: RunRead;
@@ -25,8 +29,11 @@ export type RunHydration = PersistedEventPage & {
 export async function hydrateRunDetail(runId: string): Promise<RunHydration> {
   const runResponse = await readRunApiV1RunsRunIdGet({
     path: { run_id: runId },
-    throwOnError: true
   });
+  if (!runResponse.data) {
+    if (runResponse.response?.status === HTTP_STATUS.NOT_FOUND) throw new RunNotFoundError();
+    throw new Error('Run unavailable');
+  }
   const run = runResponse.data;
   const eventsResponse = await readRunEventsApiV1RunsRunIdEventsGet({
     path: { run_id: run.id },
@@ -60,7 +67,8 @@ export async function loadAndContinueRunDetail(
   onHydrated: (hydration: RunHydration) => void,
   onDurableEvent: (event: PersistedDurableEvent) => void,
   onLiveEvent: (event: LiveRunEvent) => void,
-  openStream: EventStreamOpener = openRunEventStream
+  openStream: EventStreamOpener = openRunEventStream,
+  onConnectionState?: (state: StreamConnectionState) => void
 ): Promise<() => void> {
   const hydration = await hydrateRunDetail(runId);
   onHydrated(hydration);
@@ -74,6 +82,7 @@ export async function loadAndContinueRunDetail(
     hydration.run.id,
     hydration.cursor,
     onDurableEvent,
-    onLiveEvent
+    onLiveEvent,
+    onConnectionState
   );
 }

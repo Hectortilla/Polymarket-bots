@@ -1,5 +1,5 @@
 import type { RunStatus } from '$lib/api/generated';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import runtimeContract from '../runtimeContract.fixture.json' with { type: 'json' };
 
 type StatusPresentation = {
   label: string;

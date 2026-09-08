@@ -193,6 +193,30 @@ export type ChartSamplePayload = {
     sampled_at_ms: number;
 };
 
+/**
+ * Credentials
+ */
+export type Credentials = {
+    /**
+     * Email
+     */
+    email: string;
+};
+
+/**
+ * CurrentUser
+ */
+export type CurrentUser = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Id
+     */
+    id: string;
+};
+
 export type DataTradesBudget = number;
 
 export type DefinitionId = string;
@@ -1078,6 +1102,16 @@ export type LiveWalletChartEvent = {
      * Run Id
      */
     run_id: string;
+};
+
+/**
+ * LogoutResponse
+ */
+export type LogoutResponse = {
+    /**
+     * Logged Out
+     */
+    logged_out: true;
 };
 
 /**
@@ -2052,12 +2086,205 @@ export type WalletTradeKind = 'trade' | 'backfill' | 'reconciliation';
  */
 export type WalletTradeValidationIssue = 'wallet_trade_invalid' | 'wallet_trade_future_dated' | 'wallet_trade_stale';
 
+/**
+ * Credentials
+ */
+export type CredentialsWritable = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Password
+     */
+    password: string;
+};
+
+export type GraphEvaluationReasonWritable = GraphReason | GraphActionSkipReason | BookValidationIssue | WalletTradeValidationIssue | FillRejectReason;
+
+export type LoginData = {
+    body: CredentialsWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/login';
+};
+
+export type LoginErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type LoginError = LoginErrors[keyof LoginErrors];
+
+export type LoginResponses = {
+    /**
+     * Successful Response
+     */
+    200: CurrentUser;
+};
+
+export type LoginResponse = LoginResponses[keyof LoginResponses];
+
+export type LogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/logout';
+};
+
+export type LogoutErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type LogoutError = LogoutErrors[keyof LogoutErrors];
+
+export type LogoutResponses = {
+    /**
+     * Successful Response
+     */
+    200: LogoutResponse;
+};
+
+export type LogoutResponse2 = LogoutResponses[keyof LogoutResponses];
+
+export type CurrentUserData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/me';
+};
+
+export type CurrentUserErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CurrentUserError = CurrentUserErrors[keyof CurrentUserErrors];
+
+export type CurrentUserResponses = {
+    /**
+     * Successful Response
+     */
+    200: CurrentUser;
+};
+
+export type CurrentUserResponse = CurrentUserResponses[keyof CurrentUserResponses];
+
+export type RegisterData = {
+    body: CredentialsWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/register';
+};
+
+export type RegisterErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type RegisterError = RegisterErrors[keyof RegisterErrors];
+
+export type RegisterResponses = {
+    /**
+     * Successful Response
+     */
+    201: CurrentUser;
+};
+
+export type RegisterResponse = RegisterResponses[keyof RegisterResponses];
+
 export type ListBotDefinitionsApiV1BotDefinitionsGetData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/v1/bot-definitions';
 };
+
+export type ListBotDefinitionsApiV1BotDefinitionsGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListBotDefinitionsApiV1BotDefinitionsGetError = ListBotDefinitionsApiV1BotDefinitionsGetErrors[keyof ListBotDefinitionsApiV1BotDefinitionsGetErrors];
 
 export type ListBotDefinitionsApiV1BotDefinitionsGetResponses = {
     /**
@@ -2076,6 +2303,23 @@ export type ListBotsApiV1BotsGetData = {
     query?: never;
     url: '/api/v1/bots';
 };
+
+export type ListBotsApiV1BotsGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListBotsApiV1BotsGetError = ListBotsApiV1BotsGetErrors[keyof ListBotsApiV1BotsGetErrors];
 
 export type ListBotsApiV1BotsGetResponses = {
     /**
@@ -2096,6 +2340,14 @@ export type CreateBotApiV1BotsPostData = {
 };
 
 export type CreateBotApiV1BotsPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
     /**
      * Not Found
      */
@@ -2135,6 +2387,14 @@ export type ReadBotApiV1BotsBotIdGetData = {
 
 export type ReadBotApiV1BotsBotIdGetErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2142,6 +2402,10 @@ export type ReadBotApiV1BotsBotIdGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type ReadBotApiV1BotsBotIdGetError = ReadBotApiV1BotsBotIdGetErrors[keyof ReadBotApiV1BotsBotIdGetErrors];
@@ -2168,6 +2432,14 @@ export type UpdateBotApiV1BotsBotIdPatchData = {
 };
 
 export type UpdateBotApiV1BotsBotIdPatchErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
     /**
      * Not Found
      */
@@ -2207,6 +2479,14 @@ export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData = {
 
 export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2214,6 +2494,10 @@ export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostError = CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors[keyof CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors];
@@ -2245,6 +2529,14 @@ export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData = 
 
 export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2252,6 +2544,10 @@ export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors 
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetError = ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors[keyof ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors];
@@ -2279,6 +2575,14 @@ export type LaunchBotRunApiV1BotsBotIdRunsPostData = {
 
 export type LaunchBotRunApiV1BotsBotIdRunsPostErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2290,6 +2594,10 @@ export type LaunchBotRunApiV1BotsBotIdRunsPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type LaunchBotRunApiV1BotsBotIdRunsPostError = LaunchBotRunApiV1BotsBotIdRunsPostErrors[keyof LaunchBotRunApiV1BotsBotIdRunsPostErrors];
@@ -2309,6 +2617,23 @@ export type ListGraphTemplatesApiV1GraphTemplatesGetData = {
     query?: never;
     url: '/api/v1/graph-templates';
 };
+
+export type ListGraphTemplatesApiV1GraphTemplatesGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListGraphTemplatesApiV1GraphTemplatesGetError = ListGraphTemplatesApiV1GraphTemplatesGetErrors[keyof ListGraphTemplatesApiV1GraphTemplatesGetErrors];
 
 export type ListGraphTemplatesApiV1GraphTemplatesGetResponses = {
     /**
@@ -2330,6 +2655,14 @@ export type CreateGraphTemplateApiV1GraphTemplatesPostData = {
 
 export type CreateGraphTemplateApiV1GraphTemplatesPostErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Conflict
      */
     409: ErrorResponse;
@@ -2337,6 +2670,10 @@ export type CreateGraphTemplateApiV1GraphTemplatesPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type CreateGraphTemplateApiV1GraphTemplatesPostError = CreateGraphTemplateApiV1GraphTemplatesPostErrors[keyof CreateGraphTemplateApiV1GraphTemplatesPostErrors];
@@ -2364,6 +2701,14 @@ export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData = {
 
 export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2371,6 +2716,10 @@ export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetError = ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors[keyof ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors];
@@ -2398,6 +2747,14 @@ export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData = {
 
 export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2409,6 +2766,10 @@ export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchError = UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors[keyof UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors];
@@ -2431,9 +2792,21 @@ export type PreviewGraphData = {
 
 export type PreviewGraphErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type PreviewGraphError = PreviewGraphErrors[keyof PreviewGraphErrors];
@@ -2455,6 +2828,14 @@ export type HealthApiV1HealthGetData = {
 };
 
 export type HealthApiV1HealthGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2480,6 +2861,14 @@ export type LookupMarketsData = {
 };
 
 export type LookupMarketsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
     /**
      * Validation Error
      */
@@ -2521,6 +2910,14 @@ export type SearchMarketsData = {
 
 export type SearchMarketsErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Validation Error
      */
     422: HttpValidationError;
@@ -2548,6 +2945,23 @@ export type ListRunsApiV1RunsGetData = {
     url: '/api/v1/runs';
 };
 
+export type ListRunsApiV1RunsGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListRunsApiV1RunsGetError = ListRunsApiV1RunsGetErrors[keyof ListRunsApiV1RunsGetErrors];
+
 export type ListRunsApiV1RunsGetResponses = {
     /**
      * Response List Runs Api V1 Runs Get
@@ -2573,6 +2987,14 @@ export type ReadRunApiV1RunsRunIdGetData = {
 
 export type ReadRunApiV1RunsRunIdGetErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2580,6 +3002,10 @@ export type ReadRunApiV1RunsRunIdGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type ReadRunApiV1RunsRunIdGetError = ReadRunApiV1RunsRunIdGetErrors[keyof ReadRunApiV1RunsRunIdGetErrors];
@@ -2616,6 +3042,14 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetData = {
 
 export type ReadRunEventsApiV1RunsRunIdEventsGetErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2623,6 +3057,10 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type ReadRunEventsApiV1RunsRunIdEventsGetError = ReadRunEventsApiV1RunsRunIdEventsGetErrors[keyof ReadRunEventsApiV1RunsRunIdEventsGetErrors];
@@ -2658,6 +3096,14 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetData = {
 
 export type StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2665,6 +3111,10 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type StreamRunEventsApiV1RunsRunIdEventsStreamGetError = StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors[keyof StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors];
@@ -2692,6 +3142,14 @@ export type StopRunApiV1RunsRunIdStopPostData = {
 
 export type StopRunApiV1RunsRunIdStopPostErrors = {
     /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
      * Not Found
      */
     404: ErrorResponse;
@@ -2699,6 +3157,10 @@ export type StopRunApiV1RunsRunIdStopPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type StopRunApiV1RunsRunIdStopPostError = StopRunApiV1RunsRunIdStopPostErrors[keyof StopRunApiV1RunsRunIdStopPostErrors];

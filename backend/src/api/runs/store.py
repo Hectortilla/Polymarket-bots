@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from api.bots.contracts import BotRead
+from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.store import BotStore
 from api.runs.contracts import PaperRunConfig, RunRead
 from api.runs.models import RunRow
@@ -47,6 +48,23 @@ class RunStore:
     async def read(self, run_id: UUID) -> RunRead | None:
         row = await self._session.get(RunRow, run_id)
         return None if row is None else await self._read_row(row)
+
+    async def read_owned(self, run_id: UUID, owner_user_id: UUID) -> RunRead | None:
+        row = (
+            await self._session.execute(
+                self._owned_runs_statement(owner_user_id).where(RunRow.id == run_id)
+            )
+        ).scalar_one_or_none()
+        return None if row is None else await self._read_row(row)
+
+    async def list_owned(self, owner_user_id: UUID) -> tuple[RunRead, ...]:
+        rows = (
+            await self._session.execute(
+                self._owned_runs_statement(owner_user_id)
+                .order_by(RunRow.created_at.desc(), RunRow.id.desc())
+            )
+        ).scalars()
+        return tuple([await self._read_row(row) for row in rows])
 
     async def list(self) -> tuple[RunRead, ...]:
         statement = select(RunRow).order_by(
@@ -238,12 +256,31 @@ class RunStore:
         await self._session.commit()
         return row is not None
 
+    @staticmethod
+    def _owned_runs_statement(owner_user_id: UUID):
+        return (
+            select(RunRow)
+            .join(BotRow, BotRow.id == RunRow.bot_id)
+            .where(BotRow.owner_user_id == owner_user_id)
+        )
+
     async def _read_row(self, row: RunRow) -> RunRead:
         revision = None
         if row.bot_graph_revision_id is not None:
-            revision = await BotStore(self._session).read_revision(
-                row.bot_id,
-                row.bot_graph_revision_id,
+            # Workers read authorized run snapshots independently of browser sessions.
+            revision_row = (
+                await self._session.execute(
+                    select(BotGraphRevisionRow).where(
+                        BotGraphRevisionRow.matches_bot_revision(
+                            row.bot_id, row.bot_graph_revision_id
+                        )
+                    )
+                )
+            ).scalar_one_or_none()
+            revision = (
+                None
+                if revision_row is None
+                else BotStore.revision_from_row(revision_row)
             )
             if revision is None:
                 raise ValueError(

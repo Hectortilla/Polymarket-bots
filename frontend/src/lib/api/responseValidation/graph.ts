@@ -1,6 +1,7 @@
 import { isOutcomePrice } from '$lib/outcomePrices';
 
-import { isOptionalNullable, isPositiveDecimal } from '$lib/valueGuards';
+import { isOptionalNullable } from '$lib/valueGuards';
+import { isPositiveDecimal } from '$lib/decimalGuards';
 
 import { isArrayOf, isFiniteNumber } from '$lib/valueGuards';
 

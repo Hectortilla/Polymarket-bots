@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from polybot.framework.clock import system_now_utc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth.dependencies import CurrentUserDependency
 from api.events.store import EventStore
 from api.events.writer import publish_durable_wake
 from api.http.dependencies import (
@@ -24,7 +25,7 @@ from api.http.routes.paths import (
 )
 from api.http.routes.run_lookup import (
     raise_run_not_found,
-    require_run,
+    require_stored_run,
 )
 from api.runs.contracts import RunRead
 from api.runs.store import RunStore
@@ -39,9 +40,10 @@ router = APIRouter()
 )
 async def list_runs(
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> tuple[RunRead, ...]:
     async with session_factory() as session:
-        runs = await RunStore(session).list()
+        runs = await RunStore(session).list_owned(user.id)
         return await _with_event_summaries(session, runs)
 
 
@@ -54,9 +56,10 @@ async def list_runs(
 async def read_run(
     run_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> RunRead:
     async with session_factory() as session:
-        run = require_run(await RunStore(session).read(run_id))
+        run = await require_stored_run(session, run_id, user.id)
         return (await _with_event_summaries(session, (run,)))[0]
 
 
@@ -69,10 +72,12 @@ async def read_run(
 async def stop_run(
     run_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
     redis: RedisDependency,
 ) -> RunRead:
     now = system_now_utc()
     async with session_factory() as session:
+        await require_stored_run(session, run_id, user.id)
         transition = await ApiRunLifecycle(session).request_stop(run_id, now=now)
         if transition is None:
             raise_run_not_found()

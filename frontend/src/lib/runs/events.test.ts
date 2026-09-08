@@ -1,11 +1,16 @@
+import { ACCOUNT_SESSION_STATUS } from '$lib/auth/session/state';
+import { runPath } from '$lib/navigation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { accountSession } from '$lib/auth/session';
+import { get } from 'svelte/store';
 
 import type { BotMode, PersistedDurableEvent } from '$lib/api/generated';
 import { VALUATION_STATUS } from '$lib/charts/contracts';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 import { SIDE } from '$lib/sides';
 import { EVENT_KIND, INITIAL_EVENT_CURSOR, persistedDurableEvent } from './durableEvents';
-import { LIVE_EVENT_KIND, openRunEventStream, runEventStreamUrl } from './events';
+import { openRunEventStream, STREAM_CONNECTION_STATE, runEventStreamUrl } from './events';
+import { LIVE_EVENT_KIND } from './eventKinds';
 import { INITIAL_RUN_STATUS, RUN_STATUS } from './status';
 
 const RUN_ID = '00000000-0000-0000-0000-000000000001';
@@ -13,6 +18,8 @@ const RUN_ID = '00000000-0000-0000-0000-000000000001';
 class FakeEventSource {
   static current: FakeEventSource;
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onopen: (() => void) | null = null;
   close = vi.fn();
 
   constructor(readonly url: string) {
@@ -20,7 +27,7 @@ class FakeEventSource {
   }
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { accountSession.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('run EventSource adapter', () => {
   it('continues from the cursor, filters invalid events, and closes at terminal', () => {
@@ -106,7 +113,7 @@ describe('run EventSource adapter', () => {
     );
     expect(source.close).toHaveBeenCalledOnce();
     close();
-    expect(source.close).toHaveBeenCalledTimes(2);
+    expect(source.close).toHaveBeenCalledOnce();
   });
 
   it('normalizes the generated starting lifecycle default at ingress', () => {
@@ -520,6 +527,35 @@ describe('run EventSource adapter', () => {
       ).toBeNull();
     });
   });
+});
+
+it('shows transport degradation while independently checking authentication', async () => {
+  vi.stubGlobal('EventSource', FakeEventSource);
+  const restore = vi.spyOn(accountSession, 'restore').mockResolvedValue();
+  const connection = vi.fn();
+  openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, vi.fn(), vi.fn(), connection);
+  const source = FakeEventSource.current;
+  source.onerror?.();
+  expect(connection).toHaveBeenLastCalledWith(STREAM_CONNECTION_STATE.RECONNECTING);
+  expect(restore).toHaveBeenCalledOnce();
+  expect(source.close).not.toHaveBeenCalled();
+  source.onopen?.();
+  expect(connection).toHaveBeenLastCalledWith(STREAM_CONNECTION_STATE.CONNECTED);
+});
+
+it('closes the real stream adapter when restoration confirms session expiry', async () => {
+  vi.stubGlobal('EventSource', FakeEventSource);
+  vi.stubGlobal('window', { location: { pathname: runPath('example'), search: '', replace: vi.fn() } });
+  accountSession.state.set({ status: ACCOUNT_SESSION_STATUS.AUTHENTICATED, user: { id: RUN_ID, email: 'first@example.com' } });
+  const restore = vi.spyOn(accountSession, 'restore').mockImplementation(async () => {
+    accountSession.expire();
+  });
+  openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, vi.fn(), vi.fn());
+  const source = FakeEventSource.current;
+  source.onerror?.();
+  await restore.mock.results[0].value;
+  expect(get(accountSession.account)).toBeNull();
+  expect(source.close).toHaveBeenCalledOnce();
 });
 
 function emit(event: object): void {

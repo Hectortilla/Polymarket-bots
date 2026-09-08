@@ -12,7 +12,7 @@
 ## Current Status
 
 Slices 1 through 5, Slices 9A through 11, Slices 12A through 12E, and Slices 13A
-through 13F are
+through 13F, Slice 14, and Slice 15 are
 implemented: framework
 contracts, the paper fill engine, public Polymarket market-data adapters, wallet
 activity Data API inputs, the paper runner CLI, the standalone historical
@@ -24,7 +24,8 @@ progress events, migrations, async stores, FastAPI runs API, mixed durable/live
 SSE path, deterministic OpenAPI artifact, browser dashboard, and the
 alpha graph contract with framework-derived triggers, typed constants,
 comparisons, event-driven fixed-side paper broker actions, editable reusable
-templates, saved bots, and immutable bot-owned graph revisions.
+templates, saved bots, immutable bot-owned graph revisions, email/password
+accounts, server-side sessions, and private resource ownership.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -1017,3 +1018,15 @@ execution payload models. The response reason union joins graph and execution
 reasons at the API boundary. Integral count validation is a dependency-free
 primitive; replay and performance selections share recording coverage-selection
 normalization while retaining their own optional-policy requirements.
+
+## Application identity (Slice 15)
+
+The `api.auth` package owns local email/password accounts, PostgreSQL sessions,
+CSRF protection, Redis attempt limits and bounded stream authorization. Identity
+never enters `polybot`, bot configuration, graph evaluation or CLI flows. Bots and
+mutable graph templates have required user owners; graph revisions, runs and events
+inherit ownership. Trusted workers execute already-authorized persisted run IDs
+independently of browser session lifetime. See the
+[control-plane identity contract](web-control-plane-architecture.md#slice-15-identity-and-authorization)
+for approved policy, reset history and two-account acceptance tests. The change
+introduces no Polymarket protocol behavior or live-execution capability.

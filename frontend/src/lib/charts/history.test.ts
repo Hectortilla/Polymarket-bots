@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { PersistedDurableEvent } from '$lib/api/generated';
 import { EVENT_KIND, requirePersistedDurableEvents } from '$lib/runs/durableEvents';
-import { LIVE_EVENT_KIND, type LiveRunEvent } from '$lib/runs/events';
+import type { LiveRunEvent } from '$lib/api/generated';
+import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
 import runContract from '$lib/runtimeContract.fixture.json';
 import { SIDE } from '$lib/sides';
 import { VALUATION_STATUS } from './contracts';

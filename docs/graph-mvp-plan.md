@@ -1,6 +1,6 @@
 # MVP graph nodes — implementation checklist
 
-The backend owns node contracts and metadata. The graph exposes Number (exact decimal strings), Boolean and Text. Python framework types remain precise. Existing alpha data is disposable. This work remains paper-only.
+The backend owns node contracts and metadata. The graph exposes Number (exact decimal strings), Boolean and Text. Python framework types remain precise. The pre-account alpha used disposable data; Slice 15 now requires preserving accounts and owned resources through forward migrations. This work remains paper-only.
 
 ## Phase 1 — Frontend representation and shared contracts
 

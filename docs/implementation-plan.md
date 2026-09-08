@@ -1545,16 +1545,15 @@ See the repository tests and generated contract checks for executable evidence.
 
 ## Slice 15: Users, Authentication, and Resource Ownership
 
-Status: planned; no authentication or ownership implementation is included in
-this planning change. Depends on the existing saved-bot/run workflows in
+Status: implemented. Uses the existing saved-bot/run workflows in
 Slices 13D-13F and preserves the current Slice 14 graph behavior.
 
 This slice adds a simple, application-wide user boundary to the paper control
 plane. Email/password registration without email verification is agreed scope.
-The [product extension](web-control-plane-spec.md#planned-slice-15-users-and-private-ownership)
+The [product extension](web-control-plane-spec.md#slice-15-users-and-private-ownership)
 owns user-visible behavior; the
-[architecture extension](web-control-plane-architecture.md#planned-slice-15-identity-and-authorization)
-owns proposed technical contracts and the remaining implementation checkpoints.
+[architecture extension](web-control-plane-architecture.md#slice-15-identity-and-authorization)
+owns the implemented technical contracts and approved policy decisions.
 This slice supersedes the earlier control-plane exclusions of users and auth;
 historical slice descriptions remain historical scope.
 
@@ -1565,7 +1564,7 @@ features in any unit.
 
 ### Slice 15A: Email/Password Accounts and Sessions
 
-Status: planned.
+Status: implemented.
 
 Minimum deliverable:
 
@@ -1600,7 +1599,7 @@ Acceptance:
 
 ### Slice 15B: Private Bot, Template, and Run Access
 
-Status: planned; depends on 15A.
+Status: implemented; depends on 15A.
 
 Minimum deliverable:
 
@@ -1637,7 +1636,7 @@ Acceptance:
 
 ### Slice 15C: Browser Account Flow and Complete Verification
 
-Status: planned; depends on 15B.
+Status: implemented; depends on 15B.
 
 Minimum deliverable:
 
@@ -1673,10 +1672,120 @@ billing, quotas, ownership transfer/deletion, marketplace tables/UI, new live
 capabilities, and public deployment. A later marketplace slice may publish and
 copy snapshots; it must not widen this slice's private-run access policy.
 
-Planning documentation-drift audit: README, control-plane product specification,
-technical architecture, and this plan consistently label Slice 15 as planned.
-Earlier no-auth statements describe implemented v0; this extension states when
-they are superseded. No runtime, schema, generated client, or Polymarket
-integration behavior changed. The PolymarketDocs MCP is not required for this
-application-identity planning work. Technical policy choices and existing-data
-treatment remain explicit implementation checkpoints, not implicit approvals.
+Implementation: `api.auth` owns identity, secrets, sessions, ingress protection
+and bounded SSE rechecks. Mandatory bot/template owner keys scope private resources;
+run/revision/event ownership remains inherited. The static browser restores users
+before loading private pages and clears views/streams on logout, expiry or account
+switch. Auth settings and the one-time local database reset were explicitly approved.
+Migration 0005 refuses implicit backfills or deletion of populated pre-auth data.
+
+Verification: real PostgreSQL/Redis acceptance covers two accounts, every private
+resource route, guessed/nested foreign IDs, concurrency, session rotation/revocation,
+CSRF, throttling, infrastructure failures and the migration policy. Chromium covers
+registration without verification, login failures, reload, create/edit/copy/launch/
+stop/history, account switching, session expiry and safe return paths. Its only
+service fixtures are market discovery and execution delivery; identity/persistence/
+SSE/stop behavior use application code. Existing worker and snapshot regressions
+remain part of the full suite. The style-review follow-up gives tokens, cookies,
+auth ingress, persistence, SSE replay/subscription and browser session lifecycle
+explicit owners. Generated contracts include auth error responses and shared
+runtime HTTP policy. Added regressions cover config rejection, stale restoration,
+malformed stored hashes, active-stream revocation and schema parity; acceptance
+CI uses real services and rejects skipped tests. The final review also centralizes
+typed browser session state, HTTP outcome adapters, owned revision predicates and
+terminal stream completion, and validates aware SSE timestamps. Disposable harnesses validate
+local targets and clear only authentication throttle keys.
+
+Final documentation-drift audit: README, product specification, both architecture
+references, this plan, OpenAPI and generated frontend/runtime contracts describe
+implemented Slice 15 behavior. Earlier numbered slice exclusions remain historical.
+The identity change adds no Polymarket protocol or transport behavior and requires
+no PolymarketDocs verification. No marketplace, live mode, recovery mail, account
+editing, public deployment or organization features were added.
+
+## Slice 16: Bot Marketplace MVP
+
+Status: planned; depends on Slices 13–15. The user confirmed visual node bots
+only and browsing by signed-in users. The
+[marketplace MVP proposal](marketplace-mvp-plan.md) owns the proposed workflows,
+data model, API and consistency rules; resolve any changes to its recommended
+choices before the affected implementation work. No marketplace runtime behavior
+is implemented by this planning change.
+
+Implement 16A → 16B → 16C → 16D → 16E. A task naming one sub-slice authorizes only
+that sub-slice and its necessary contract/tests/docs changes. Keep the current
+private deployment and paper-only execution boundaries throughout.
+
+### Slice 16A: Publication Snapshots and Ownership
+
+Minimum deliverable:
+
+- Adopt the proposal's publication/privacy rules in the product specification
+  and technical architecture, settling its bounded policy choices, including
+  mutation body-size limits, before code depends on them.
+- Add forward migrations for listings and immutable releases, their narrowly
+  owned typed contracts, graph/config projection, ownership and locking rules.
+  Preserve existing accounts/resources. Copy receipt storage belongs to 16C.
+- Add publication preview, publish/update and owner visibility/list/detail APIs.
+  Generate the API contracts; do not build marketplace UI in this unit.
+
+Acceptance: only an owner can publish a saved supported graph; preview drift is
+rejected; concurrent publishing cannot duplicate listing/version rows; private
+edits cannot mutate releases; unpublishing and republishing preserve releases;
+populated-database migration and owner-denial tests pass.
+
+### Slice 16B: Authenticated Discovery and Safe Detail
+
+Minimum deliverable: published-list/detail APIs, search, bounded pagination and
+explicit shared projections, using the contracts from the proposal. Keep all
+private resource queries and the public auth allowlist unchanged.
+
+Acceptance: another account can inspect a published graph/config but no private
+resource IDs, account details or run data; unpublished and unknown IDs match;
+search/pagination are bounded and deterministic for unchanged data; unavailable
+historical graph payloads fail explicitly. No performance/ranking endpoints.
+
+### Slice 16C: Atomic Independent Copies
+
+Minimum deliverable:
+
+- Add copy receipt/provenance migration and the exact-release copy API.
+- Reuse node input, graph and market validation. Adjust bot-creation transaction
+  ownership only as needed to commit bot, own revision 1 and receipt together.
+- Add safe attribution to private bot reads; handle retries, conflicts and
+  unpublish races as specified in the proposal. No copy automatically starts work.
+
+Acceptance: two accounts get independently owned graphs/configs; all-or-nothing
+rollback and concurrent retry tests pass; wrong-listing release references fail;
+unavailable markets/SDK outages create no partial copy; source edits/unpublishing
+cannot mutate or revoke an existing copy. Private launch and SSE isolation hold.
+
+### Slice 16D: Marketplace Browser Workflows
+
+Minimum deliverable: navigation, marketplace search/list/detail, read-only graph,
+publication preview/update/unpublish controls, My publications, configuration
+review before copying, and private source attribution. Reuse existing form/graph
+components, generated APIs and account-boundary behavior.
+
+Acceptance: loading/empty/error states and keyboard navigation work; literal text
+is rendered safely; stale publication previews and unavailable listings explain
+the corrective action; retries preserve the copy request ID; account switching
+clears forms/results; copy opens an owned bot without launching it.
+
+### Slice 16E: Complete Acceptance and Private Pilot
+
+Minimum deliverable: the proposal's two-account end-to-end scenario and complete
+failure/race regression suite; documented local usage; the listed backend,
+generated-contract, frontend and browser checks against disposable services.
+
+Acceptance: publish → discover → inspect → copy → edit → explicit paper run passes
+with real identity/persistence; update/unpublish preserves existing copies and
+private-run isolation. Complete the final documentation-drift audit across README,
+product spec, architecture, both plans and generated contracts. Mark sub-slices
+implemented only after their acceptance passes; the pilot stays private.
+
+Exclusions: arbitrary Python, payments, social features, public performance,
+automatic upstream updates, live execution and public deployment. Slice 12F and
+any future public-launch work remain separately scoped. No new Polymarket
+integration is planned; any discovered protocol change invokes the existing MCP
+checkpoint before implementation.

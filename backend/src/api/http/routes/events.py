@@ -6,6 +6,8 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 
+from api.auth.dependencies import CurrentUserDependency
+from api.auth.streams import StreamAuthorization
 from api.events.contracts import (
     LIVE_EVENT_MODELS,
     PERSISTED_DURABLE_EVENT_ADAPTER,
@@ -53,11 +55,12 @@ router = APIRouter()
 async def read_run_events(
     run_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
     before_event_id: EventCursorValue | None = None,
     limit: EventPageLimitValue = DEFAULT_EVENT_PAGE_LIMIT,
 ) -> RunEventPage:
     async with session_factory() as session:
-        await require_stored_run(session, run_id)
+        await require_stored_run(session, run_id, user.id)
         page = await EventStore(session).read_page(
             run_id,
             before_event_id=before_event_id,
@@ -100,6 +103,7 @@ async def stream_run_events(
     run_id: UUID,
     request: Request,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
     redis: RedisDependency,
     after_event_id: Annotated[EventCursorValue, Query()] = FIRST_EVENT_CURSOR,
     last_event_id: Annotated[
@@ -108,9 +112,17 @@ async def stream_run_events(
     ] = None,
 ) -> StreamingResponse:
     async with session_factory() as session:
-        await require_stored_run(session, run_id)
+        await require_stored_run(session, run_id, user.id)
     cursor = last_event_id if last_event_id is not None else after_event_id
-    streamer = RunEventStreamer(run_id, request, session_factory, redis)
+    streamer = RunEventStreamer(
+        run_id,
+        request,
+        session_factory,
+        redis,
+        StreamAuthorization(
+            session_factory, request.state.session_token, user.id
+        ),
+    )
     return StreamingResponse(
         streamer.stream(cursor),
         media_type=SSE_MEDIA_TYPE,

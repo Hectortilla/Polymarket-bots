@@ -3,7 +3,6 @@ from dataclasses import asdict
 
 import pytest
 from api.catalog.inputs import NodeBasedLaunchInputs
-from api.http.app import create_app
 from api.http.market_contracts import (
     DEFAULT_MARKET_SEARCH_LIMIT,
     MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
@@ -21,10 +20,11 @@ from api.http.routes.paths import (
 from api.market_selection import MAX_SELECTED_MARKETS
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.testclient import TestClient
 from polybot.polymarket.discovery_contracts import MarketSearchResults
 from polybot.polymarket.errors import MarketDataTransportError
 
+from control_plane.auth_fixtures import authenticated_test_client as TestClient
+from control_plane.auth_fixtures import create_authenticated_app as create_app
 from control_plane.market_fixtures import market_discovery, market_suggestion
 
 

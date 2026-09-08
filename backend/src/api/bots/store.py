@@ -19,8 +19,15 @@ from api.runs.contracts import PaperRunConfig
 
 
 class BotStore:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, owner_user_id: UUID) -> None:
         self._session = session
+        self._owner_user_id = owner_user_id
+        self._owned_bots_statement = select(BotRow).where(BotRow.owner_user_id == owner_user_id)
+        self._owned_revisions_statement = (
+            select(BotGraphRevisionRow)
+            .join(BotRow, BotRow.id == BotGraphRevisionRow.bot_id)
+            .where(BotRow.owner_user_id == owner_user_id)
+        )
 
     async def create(
         self,
@@ -30,6 +37,7 @@ class BotStore:
         graph: NodeGraph | None,
     ) -> BotRead:
         row = BotRow(
+            owner_user_id=self._owner_user_id,
             definition_id=definition_id,
             config=config.model_dump(mode="json"),
         )
@@ -50,7 +58,7 @@ class BotStore:
         return self.read_from_row(row, revision)
 
     async def read(self, bot_id: UUID, *, lock: bool = False) -> BotRead | None:
-        statement = select(BotRow).where(BotRow.id == bot_id)
+        statement = self._owned_bots_statement.where(BotRow.id == bot_id)
         if lock:
             statement = statement.with_for_update()
         row = (await self._session.execute(statement)).scalar_one_or_none()
@@ -61,7 +69,7 @@ class BotStore:
     async def list(self) -> tuple[BotRead, ...]:
         rows = (
             await self._session.execute(
-                select(BotRow).order_by(BotRow.updated_at.desc(), BotRow.id.desc())
+                self._owned_bots_statement.order_by(BotRow.updated_at.desc(), BotRow.id.desc())
             )
         ).scalars()
         return tuple(
@@ -76,7 +84,7 @@ class BotStore:
         bot_id: UUID,
         config: PaperRunConfig,
     ) -> BotRead | None:
-        statement = select(BotRow).where(BotRow.id == bot_id).with_for_update()
+        statement = self._owned_bots_statement.where(BotRow.id == bot_id).with_for_update()
         row = (await self._session.execute(statement)).scalar_one_or_none()
         if row is None:
             await self._session.commit()
@@ -96,7 +104,7 @@ class BotStore:
     ) -> BotRead | None:
         # The row lock serializes revision numbering with config edits and run
         # snapshots, so every committed revision is one unique next version.
-        bot_statement = select(BotRow).where(BotRow.id == bot_id).with_for_update()
+        bot_statement = self._owned_bots_statement.where(BotRow.id == bot_id).with_for_update()
         bot = (await self._session.execute(bot_statement)).scalar_one_or_none()
         if bot is None:
             await self._session.commit()
@@ -126,9 +134,8 @@ class BotStore:
     ) -> BotGraphRevisionRead | None:
         row = (
             await self._session.execute(
-                select(BotGraphRevisionRow).where(
-                    BotGraphRevisionRow.bot_id == bot_id,
-                    BotGraphRevisionRow.id == revision_id,
+                self._owned_revisions_statement.where(
+                    BotGraphRevisionRow.matches_bot_revision(bot_id, revision_id)
                 )
             )
         ).scalar_one_or_none()
@@ -137,8 +144,7 @@ class BotStore:
     async def latest_revision(self, bot_id: UUID) -> BotGraphRevisionRead | None:
         row = (
             await self._session.execute(
-                select(BotGraphRevisionRow)
-                .where(BotGraphRevisionRow.bot_id == bot_id)
+                self._owned_revisions_statement.where(BotGraphRevisionRow.bot_id == bot_id)
                 .order_by(BotGraphRevisionRow.revision.desc())
                 .limit(1)
             )

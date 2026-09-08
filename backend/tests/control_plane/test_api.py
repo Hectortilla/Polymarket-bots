@@ -49,8 +49,9 @@ from api.events.pagination import (
 from api.events.store import StoredEventPage
 from api.graph_templates.contracts import GraphTemplateRead
 from api.graph_templates.models import GraphTemplateRow
-from api.http.app import app, create_app
+from api.http.app import app
 from api.http.contracts import HealthResponse
+from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
 from api.http.openapi import OPENAPI_OUTPUT_PATH
 from api.http.routes.bots.market_validation import (
     MARKET_SELECTION_UNAVAILABLE_DETAIL,
@@ -61,7 +62,6 @@ from api.http.routes.events import (
     LAST_EVENT_ID_HEADER,
     SSE_MEDIA_TYPE,
 )
-from api.http.routes.health import SERVICE_UNAVAILABLE_DETAIL
 from api.http.routes.paths import (
     API_PREFIX,
     BOT_DEFINITIONS_PATH,
@@ -83,10 +83,12 @@ from api.http.routes.paths import (
 from api.runs.contracts import PaperRunConfig, RunRead
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
-from fastapi.testclient import TestClient
 from polybot.performance.contracts.valuation_status import ValuationStatus
 from sqlalchemy.exc import IntegrityError
 
+from control_plane.auth_fixtures import TEST_USER_ID
+from control_plane.auth_fixtures import authenticated_test_client as TestClient
+from control_plane.auth_fixtures import create_authenticated_app as create_app
 from control_plane.graph_fixtures import threshold_buy_graph
 from control_plane.market_fixtures import market_discovery
 from control_plane.run_contract_fixture import (
@@ -887,7 +889,9 @@ def test_application_lifespan_owns_default_resources(
     monkeypatch.setattr(dependencies_module, "MarketDiscovery", lambda: discovery)
     monkeypatch.setattr(dependencies_module, "configured_database_url", lambda: "db")
     monkeypatch.setattr(dependencies_module, "configured_redis_url", lambda: "redis")
-    monkeypatch.setattr(dependencies_module, "create_async_engine", lambda url: engine)
+    monkeypatch.setattr(
+        dependencies_module, "create_async_engine", lambda url, **kwargs: engine
+    )
     monkeypatch.setattr(
         dependencies_module,
         "async_sessionmaker",
@@ -1055,7 +1059,8 @@ class _Session:
 
 
 class _GraphTemplateStore:
-    def __init__(self, session: _Session) -> None:
+    def __init__(self, session: _Session, owner_user_id) -> None:
+        assert owner_user_id == TEST_USER_ID
         self.state = session.state
 
     async def create(self, request) -> GraphTemplateRead:
@@ -1107,7 +1112,8 @@ class _GraphTemplateStore:
 
 
 class _BotStore:
-    def __init__(self, session: _Session) -> None:
+    def __init__(self, session: _Session, owner_user_id) -> None:
+        assert owner_user_id == TEST_USER_ID
         self.state = session.state
 
     async def create(self, *, definition_id, config, graph) -> BotRead:
@@ -1187,7 +1193,7 @@ class _BotStore:
 
 
 class _RunStore:
-    def __init__(self, session: _Session) -> None:
+    def __init__(self, session: _Session, owner_user_id=None) -> None:
         self.state = session.state
 
     async def create_from_bot(self, bot: BotRead) -> RunRead:
@@ -1206,6 +1212,14 @@ class _RunStore:
         self.state.runs[str(run.id)] = run
         return run
 
+    async def read_owned(self, run_id, owner_user_id):
+        assert owner_user_id == TEST_USER_ID
+        return await self.read(run_id)
+
+    async def list_owned(self, owner_user_id):
+        assert owner_user_id == TEST_USER_ID
+        return await self.list()
+
     async def read(self, run_id) -> RunRead | None:
         return self.state.runs.get(str(run_id))
 
@@ -1220,7 +1234,7 @@ class _RunStore:
 
 
 class _EventStore:
-    def __init__(self, session: _Session) -> None:
+    def __init__(self, session: _Session, owner_user_id=None) -> None:
         self.state = session.state
 
     async def read_page(self, run_id, *, before_event_id, limit):
@@ -1259,7 +1273,7 @@ class _EventStore:
 
 
 class _ApiRunLifecycle:
-    def __init__(self, session: _Session) -> None:
+    def __init__(self, session: _Session, owner_user_id=None) -> None:
         self.state = session.state
 
     async def request_stop(self, run_id, *, now):

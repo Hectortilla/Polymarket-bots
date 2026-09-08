@@ -1,0 +1,58 @@
+name: Account and ownership acceptance
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: polybot
+          POSTGRES_PASSWORD: polybot
+          POSTGRES_DB: polybot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U polybot"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POLYBOT_TEST_POSTGRES_URL: postgresql://polybot:polybot@127.0.0.1:5432/polybot_test
+      POLYBOT_TEST_REDIS_URL: redis://127.0.0.1:6379/14
+      POLYBOT_BROWSER_POSTGRES_URL: postgresql://polybot:polybot@127.0.0.1:5432/polybot_browser_test
+      POLYBOT_BROWSER_REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --extra dev
+      - run: uv run pytest --junitxml=data/acceptance.xml
+      - name: Require every acceptance test to run
+        run: |
+          uv run python - <<'PY'
+          from xml.etree import ElementTree
+          report = ElementTree.parse('data/acceptance.xml')
+          assert not report.findall('.//skipped'), 'Acceptance tests must not skip'
+          PY
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend exec -- playwright install --with-deps chromium
+      - run: npm --prefix frontend run test:e2e

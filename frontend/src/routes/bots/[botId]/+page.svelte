@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import '$lib/bots/builder.css';
   import { BOT_BUILDER_COPY } from '$lib/bots/copy';
+  import { readSavedBot, BotNotFoundError } from '$lib/bots/read';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
   import { onMount, tick } from 'svelte';
@@ -12,7 +13,6 @@
     launchBotRunApiV1BotsBotIdRunsPost,
     listBotDefinitionsApiV1BotDefinitionsGet,
     listBotsApiV1BotsGet,
-    readBotApiV1BotsBotIdGet,
     updateBotApiV1BotsBotIdPatch,
     type BotDefinitionDescriptor,
     type BotRead,
@@ -67,12 +67,12 @@
       return;
     }
     try {
-      const [botResponse, definitionsResponse, botsResponse] = await Promise.all([
-        readBotApiV1BotsBotIdGet({ path: { bot_id: botId }, throwOnError: true }),
+      const [savedBot, definitionsResponse, botsResponse] = await Promise.all([
+        readSavedBot(botId),
         listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true }),
         listBotsApiV1BotsGet({ throwOnError: true }),
       ]);
-      bot = botResponse.data;
+      bot = savedBot;
       bots = botsResponse.data;
       descriptor = definitionsResponse.data.find(
         (definition) => definition.definition_id === bot?.definition_id,
@@ -83,8 +83,8 @@
       savedGraph = bot.latest_graph_revision?.graph;
       editedGraph = savedGraph;
       graphEditorResetKey = bot.latest_graph_revision?.id ?? '';
-    } catch {
-      error = BOT_DETAIL_COPY.LOAD_ERROR;
+    } catch (caught) {
+      error = caught instanceof BotNotFoundError ? BOT_DETAIL_COPY.NOT_FOUND : BOT_DETAIL_COPY.LOAD_ERROR;
     } finally {
       loading = false;
     }

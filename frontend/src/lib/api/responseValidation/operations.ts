@@ -1,3 +1,5 @@
+import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from '$lib/api/http';
+import { isCurrentUser, isLogoutResponse } from '$lib/auth/validation';
 import { isArrayOf } from '$lib/valueGuards';
 
 import runtimeContract from '$lib/runtimeContract.fixture.json';
@@ -31,9 +33,9 @@ export async function validateOperationResponse(
   if (!response.ok || options.url === runtimeContract.apiPaths.runEventsStream) {
     return response;
   }
-  const contentType = response.headers.get('Content-Type') ?? '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    throw new Error('Control-plane response must use application/json');
+  const contentType = response.headers.get(CONTENT_TYPE_HEADER) ?? '';
+  if (!contentType.toLowerCase().includes(JSON_CONTENT_TYPE)) {
+    throw new Error(`Control-plane response must use ${JSON_CONTENT_TYPE}`);
   }
   const body = await response.clone().text();
   if (!body) throw new Error('Control-plane response body must not be empty');
@@ -51,6 +53,8 @@ function isExpectedOperationResponse(
   data: unknown,
 ): boolean {
   const paths = runtimeContract.apiPaths;
+  if (url === paths.logout) return isLogoutResponse(data);
+  if ([paths.currentUser, paths.login, paths.register].includes(url)) return isCurrentUser(data);
   if (url === paths.graphPreview) return isRecord(data) && isGraphPreviewResponse(data);
   if (url === paths.marketSearch) return isRecord(data) && isMarketSearchResults(data);
   if (url === paths.marketLookup) return isArrayOf(data, isMarketSuggestion);

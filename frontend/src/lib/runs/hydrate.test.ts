@@ -6,7 +6,8 @@ import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
 import { ON_START_TRIGGER } from '$lib/catalog/nodeGraphTestFixtures';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 import { EVENT_KIND } from './durableEvents';
-import { loadAndContinueRunDetail, loadOlderRunEvents } from './hydrate';
+import { hydrateRunDetail, RunNotFoundError, loadAndContinueRunDetail, loadOlderRunEvents } from './hydrate';
+import { HTTP_STATUS } from '$lib/api/http';
 import { RUN_STATUS } from './status';
 
 vi.mock('$lib/api/generated', async (importOriginal) => {
@@ -86,7 +87,7 @@ describe('run reload', () => {
     );
 
     expect(calls).toEqual(['hydrated', 'stream']);
-    expect(openStream).toHaveBeenCalledWith(RUN.id, 7, expect.any(Function), expect.any(Function));
+    expect(openStream).toHaveBeenCalledWith(RUN.id, 7, expect.any(Function), expect.any(Function), undefined);
     expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
       path: { run_id: RUN.id },
       throwOnError: true,
@@ -143,4 +144,12 @@ describe('run reload', () => {
     } as never);
     await expect(loadOlderRunEvents(RUN.id, 7)).rejects.toThrow('Invalid run event page cursor');
   });
+});
+
+
+it('keeps run denial distinct from infrastructure failure', async () => {
+  vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ response: { status: HTTP_STATUS.NOT_FOUND } } as never);
+  await expect(hydrateRunDetail(RUN.id)).rejects.toBeInstanceOf(RunNotFoundError);
+  vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ response: { status: HTTP_STATUS.SERVICE_UNAVAILABLE } } as never);
+  await expect(hydrateRunDetail(RUN.id)).rejects.toThrow('Run unavailable');
 });

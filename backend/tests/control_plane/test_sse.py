@@ -2,9 +2,9 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
-import api.http.sse as sse_module
 import pytest
 from api.events.channels import (
     decode_durable_wake_frame,
@@ -29,14 +29,18 @@ from api.events.kinds import (
     LiveEventKind,
 )
 from api.events.pagination import MAX_EVENT_PAGE_LIMIT
-from api.http.sse import (
+from api.http.sse import RunEventStreamer
+from api.http.sse.frames import (
     SSE_DATA_FIELD,
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
-    RunEventStreamer,
+    SSE_IDLE_COMMENT,
 )
+from api.http.sse.replay import RunEventReplay
 from api.runs.status import RunStatus
 from polybot.performance.contracts.valuation_status import ValuationStatus
+from redis.exceptions import RedisError
+from sqlalchemy.exc import OperationalError
 
 
 def test_durable_wake_frame_is_strict_positive_bigint_ascii() -> None:
@@ -71,7 +75,7 @@ def test_terminal_initial_replay_does_not_subscribe(
     async def read_events(*args, **kwargs):
         return (_event(run_id, 1, RunStatus.STOPPED),)
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -95,7 +99,7 @@ def test_persisted_event_without_id_is_rejected_at_sse_boundary(
             ),
         )
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
 
     with pytest.raises(ValueError, match="missing its ID"):
         asyncio.run(_collect(run_id, redis))
@@ -121,7 +125,7 @@ def test_replay_recheck_and_wake_share_the_latest_cursor(
         cursors.append(after_event_id)
         return next(reads)
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -130,7 +134,7 @@ def test_replay_recheck_and_wake_share_the_latest_cursor(
         2,
         3,
     )
-    assert sse_module.SSE_IDLE_COMMENT in frames
+    assert SSE_IDLE_COMMENT in frames
     assert cursors == [0, 1, 2]
 
 
@@ -150,7 +154,7 @@ def test_replay_subscribe_recheck_delivers_handoff_event_and_closes(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -180,7 +184,7 @@ def test_initial_replay_reads_large_backlog_in_bounded_batches(
         return events[after_event_id : after_event_id + MAX_EVENT_PAGE_LIMIT]
 
     redis = _Redis(_PubSub(()))
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
 
     frames = asyncio.run(_collect(run_id, redis))
 
@@ -201,7 +205,7 @@ def test_malformed_wake_is_dropped_before_valid_terminal_wake(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
     caplog.set_level(logging.WARNING)
 
     frames = asyncio.run(_collect(run_id, redis))
@@ -232,7 +236,7 @@ def test_live_frame_has_no_cursor_and_durable_continuation_keeps_its_cursor(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
     frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
 
     data_prefix = f"{SSE_DATA_FIELD}{SSE_FIELD_SEPARATOR}"
@@ -270,7 +274,7 @@ def test_live_event_for_another_run_is_dropped_before_target_continues(
     async def read_events(*args, **kwargs):
         return next(reads)
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
     caplog.set_level(logging.WARNING)
 
     frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
@@ -289,13 +293,41 @@ def test_disconnect_releases_pubsub_resources(
     async def read_events(*args, **kwargs):
         return ()
 
-    monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
+    monkeypatch.setattr(RunEventReplay, "read", read_events)
 
     frames = asyncio.run(_collect(run_id, redis, disconnected=True))
 
     assert frames == []
     assert pubsub.unsubscribed is True
     assert pubsub.closed is True
+
+
+def test_redis_failure_ends_stream_and_releases_subscription(monkeypatch, caplog):
+    pubsub = _PubSub([])
+    monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=()))
+    monkeypatch.setattr(
+        pubsub,
+        "get_message",
+        AsyncMock(side_effect=RedisError("private infrastructure detail")),
+    )
+    with caplog.at_level(logging.ERROR):
+        assert asyncio.run(_collect(uuid4(), _Redis(pubsub))) == []
+    assert pubsub.unsubscribed and pubsub.closed
+    assert "required service is unavailable" in caplog.text
+    assert "private infrastructure detail" not in caplog.text
+
+
+
+def test_database_replay_failure_is_sanitized_before_subscribing(monkeypatch, caplog):
+    pubsub = _PubSub([])
+    redis = _Redis(pubsub)
+    failure = OperationalError("private SQL", {}, Exception("private database detail"))
+    monkeypatch.setattr(RunEventReplay, "read", AsyncMock(side_effect=failure))
+    with caplog.at_level(logging.ERROR):
+        assert asyncio.run(_collect(uuid4(), redis)) == []
+    assert not redis.pubsub_requested
+    assert "required service is unavailable" in caplog.text
+    assert "private" not in caplog.text
 
 
 async def _collect(
@@ -311,6 +343,7 @@ async def _collect(
             _Request(disconnected),
             object(),
             redis,
+            AsyncMock(allowed=AsyncMock(return_value=True)),
         ).stream(FIRST_EVENT_CURSOR)
     ]
 

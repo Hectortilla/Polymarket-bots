@@ -16,11 +16,16 @@ from api.graph_templates.models import GraphTemplateRow
 
 
 class GraphTemplateStore:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, owner_user_id: UUID) -> None:
         self._session = session
+        self._owner_user_id = owner_user_id
+        self._owned_templates_statement = select(GraphTemplateRow).where(
+            GraphTemplateRow.owner_user_id == owner_user_id
+        )
 
     async def create(self, request: GraphTemplateCreate) -> GraphTemplateRead:
         row = GraphTemplateRow(
+            owner_user_id=self._owner_user_id,
             name=request.name,
             graph=request.graph.model_dump(mode="json"),
         )
@@ -30,13 +35,17 @@ class GraphTemplateStore:
         return self.read_from_row(row)
 
     async def read(self, template_id: UUID) -> GraphTemplateRead | None:
-        row = await self._session.get(GraphTemplateRow, template_id)
+        row = (
+            await self._session.execute(
+                self._owned_templates_statement.where(GraphTemplateRow.id == template_id)
+            )
+        ).scalar_one_or_none()
         return None if row is None else self.read_from_row(row)
 
     async def list(self) -> tuple[GraphTemplateRead, ...]:
         rows = (
             await self._session.execute(
-                select(GraphTemplateRow).order_by(
+                self._owned_templates_statement.order_by(
                     GraphTemplateRow.name,
                     GraphTemplateRow.id,
                 )
@@ -49,7 +58,11 @@ class GraphTemplateStore:
         template_id: UUID,
         request: GraphTemplateUpdate,
     ) -> GraphTemplateRead | None:
-        row = await self._session.get(GraphTemplateRow, template_id)
+        row = (
+            await self._session.execute(
+                self._owned_templates_statement.where(GraphTemplateRow.id == template_id)
+            )
+        ).scalar_one_or_none()
         if row is None:
             return None
         if request.name is not None:

@@ -1,11 +1,15 @@
 # Web Control Plane v0 Architecture and API
 
-Status: planned overall; Slices 12A through 12E and Slices 13A through 13F are
-implemented.
-Slice 15 below is a planned extension; its proposed technical defaults are not
-implemented behavior.
+Status: Slices 12A–12E, 13A–13F, 14 and 15 are implemented.
+Slice 12F deployment remains separate planned work.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
+
+Slice 16 is a proposal in [the marketplace MVP plan](marketplace-mvp-plan.md),
+with delivery units in [the implementation plan](implementation-plan.md#slice-16-bot-marketplace-mvp).
+That proposal owns only future marketplace design until its contracts are adopted
+here during implementation. Existing private ownership and execution contracts
+remain unchanged; no marketplace tables or routes are implemented yet.
 
 ## How to Implement This Plan
 
@@ -208,10 +212,10 @@ then rejected. Conversion to the existing `BotConfig` supplies paper mode and
 credential-free values itself.
 
 During alpha, bot definitions and node graphs have no public version field. The
-code-owned catalog, generated client, and disposable control-plane database move
-together. Contract changes rewrite the alpha migration history and require a
-database recreation instead of compatibility migrations, legacy graph decoders,
-or simultaneous schema variants. A future stabilization slice may deliberately
+code-owned catalog and generated client move together. Slice 15 ends the implicit
+disposable-database policy: databases containing accounts require explicit forward
+migrations and preservation of owned resource snapshots. The approved pre-auth
+reset is a one-time transition, not a standing authorization to delete account data. A future stabilization slice may deliberately
 introduce versioning when persisted compatibility becomes a product requirement.
 
 The current graph MVP contract and execution semantics are specified in
@@ -252,8 +256,9 @@ transaction commits. Do not invent a custom error taxonomy for v0.
 
 `graph_templates` has exactly:
 
+- `owner_user_id` (required, indexed user foreign key)
 - `id` (UUID primary key)
-- `name` (unique, trimmed)
+- `name` (unique per owner, trimmed)
 - `graph` (validated `NodeGraph` JSON)
 - `created_at`
 - `updated_at`
@@ -264,6 +269,7 @@ Templates are mutable and are never referenced by bots or runs.
 
 `bots` has exactly:
 
+- `owner_user_id` (required, indexed user foreign key)
 - `id` (UUID primary key)
 - `definition_id` (immutable)
 - `config` (editable resolved `PaperRunConfig` JSON)
@@ -305,11 +311,11 @@ latest-summary columns, execution-backend fields, user IDs, or idempotency keys.
 Current summaries come from durable events. ECS can add its own reference when
 an ECS slice actually exists.
 
-The disposable alpha migration history is rewritten in place: `0001` creates
+Before Slice 15, the disposable alpha migration history was rewritten in place: `0001` creates
 the complete graph-template, saved-bot, graph-revision, and run schema,
 including Taskiq progress state; `0002` adds durable events. Later migrations
-extend the event contract. This history is not a compatibility promise until a
-future stabilization slice says otherwise.
+extend the event contract. Slice 15 supersedes that reset policy: preserve accounts and owned resources
+through explicit forward migrations and backups; do not rewrite applied history.
 
 The persistence boundary decodes `config` into `PaperRunConfig` once before it
 returns a run to API or worker code. Orchestration never handles raw JSON and
@@ -514,6 +520,15 @@ type.
 
 ## HTTP API
 
+- `POST /auth/register` — create an account and sign in, without email verification.
+- `POST /auth/login` — sign in with email and password.
+- `POST /auth/logout` — revoke the current session and clear its cookie.
+- `GET /auth/me` — restore the current user's safe account view.
+
+All remaining routes require a session except minimal health readiness.
+Resource IDs are scoped to the current owner and return 404 when inaccessible.
+
+
 - `POST /graphs/preview`: validate a draft graph and synthetic event, then return node results and intended orders without any broker submission, persistence, or network reads.
 
 The route prefix `/api/v1` is defined here once. The current API has only:
@@ -649,22 +664,63 @@ to exercise framework/library behavior.
 
 ## Deferred Without Scaffolding
 
-Authentication, tenancy, payments, ECS, EventBridge, retention/deletion,
+Organization tenancy, payments, ECS, EventBridge, retention/deletion,
 scheduling, executable node programming, and live trading are later products. v0 creates
 no fields, tables, interfaces, routes, feature flags, or placeholder modules for
 them, except the explicitly required `RunLauncher` seam.
 
-Slice 15 supersedes the authentication and individual-user ownership exclusions
-above only when implemented. Its contract is specified below; organization
-tenancy and the other deferred products remain outside that slice.
+Slice 15 supplies authentication and individual-user ownership. Organization
+tenancy and the other deferred products remain outside this slice.
 
-## Planned Slice 15: Identity and Authorization
+## Slice 15: Identity and Authorization
 
 Product decisions are recorded in the specification's
-[users extension](web-control-plane-spec.md#planned-slice-15-users-and-private-ownership).
-The technical design below is the proposed MVP default for implementation
-review, not a claim that authentication exists today. Resolve the implementation
-checkpoints below before changing runtime code.
+[users extension](web-control-plane-spec.md#slice-15-users-and-private-ownership).
+The implemented technical contract follows. Its bounded policy and local data
+reset were explicitly approved before runtime implementation.
+
+### Approved implementation policy (September 8, 2026)
+
+The user approved these values and an explicit local pre-auth database reset.
+`api.auth.policy` owns the numeric policy below; a regression test checks this
+inventory against the runtime constants. Passwords preserve exact input. The
+pinned `argon2-cffi==25.1.0` library supplies Argon2id; `email-validator==2.3.0`
+normalizes email without DNS or delivery, followed by case folding (dots/plus-tags
+retained). Sessions store SHA-256 digests and use host-only HttpOnly SameSite=Lax
+cookies. HTTPS is required unless `POLYBOT_AUTH_ALLOW_HTTP=true` explicitly permits
+local HTTP. `POLYBOT_AUTH_ORIGIN` is validated and canonicalized at startup;
+mutations require that browser Origin and JSON content type. Shared Redis limits
+apply per client IP and return Retry-After on exhaustion.
+
+<!-- auth-policy:start -->
+
+| Policy | Value |
+| --- | --- |
+| Password length (Unicode characters) | 15–128 |
+| Email maximum length | 254 |
+| Argon2id memory (KiB) | 19456 |
+| Argon2id iterations | 2 |
+| Argon2id parallelism | 1 |
+| Session entropy (bytes) | 32 |
+| Absolute session lifetime (seconds) | 604800 |
+| Maximum session recheck interval (seconds) | 15 |
+| Authentication request maximum (bytes) | 4096 |
+| Rate-limit window (seconds) | 900 |
+| Login attempts per window | 10 |
+| Registration attempts per window | 5 |
+
+<!-- auth-policy:end -->
+
+The application uses only
+ASGI client addresses; deploy Uvicorn with proxy headers disabled by default, or
+explicitly trust only a controlled reverse proxy that overwrites forwarded headers.
+Never configure wildcard forwarded-address trust. Duplicate signup returns a
+generic 409; wrong/unknown login shares a generic 401 and Argon2 work pattern.
+
+Migration 0005 refuses populated pre-auth bot/template tables. The approved alpha
+reset uses the existing explicit database recreation script before upgrade; it
+never silently deletes data or assigns it to the first registration. Once users
+exist, resets are destructive account operations requiring new authorization.
 
 ### Identity and credentials
 
@@ -700,7 +756,7 @@ checkpoints below before changing runtime code.
   fallback access. Auth responses and private API responses are not shared-cacheable.
 - Keep the existing same-origin frontend/API deployment. Apply CSRF protection
   to all state-changing browser requests, including login and registration.
-  Proposed mechanism: enforce the configured application Origin and JSON content
+  The mechanism enforces the configured application Origin and JSON content
   type, rejecting missing/foreign origins for mutations; do not treat SameSite
   alone as sufficient. Do not enable permissive credentialed CORS.
 - Add routes under the existing API prefix: `POST /auth/register`,
@@ -715,16 +771,16 @@ checkpoints below before changing runtime code.
   IDs. Do not expose password hashes, session digests, other users' emails, or
   credentials in response schemas, validation errors, or logs.
 - Bound login/registration attempts using the existing shared infrastructure,
-  not process-local counters; use `429` for throttling. Specify limits and the
-  trusted-proxy/client-address policy before implementation. Registration must
-  handle duplicate emails without a database error leak.
+  not process-local counters; use `429` for throttling. Limits and proxy trust
+  follow the approved policy above. Registration handles duplicate emails
+  without a database error leak.
 
 The password and session recommendations follow current
 [OWASP password-storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 and [session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 The same-origin request policy follows
 [OWASP CSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
-Sources checked September 8, 2026; verify library APIs when implementing.
+Sources and the pinned password/email library APIs were checked September 8, 2026.
 
 ### Resource ownership and execution
 
@@ -754,7 +810,7 @@ Sources checked September 8, 2026; verify library APIs when implementing.
   to authenticated users. Do not convert user-created templates into shared
   catalog entries or add public access paths yet.
 
-### Frontend and implementation checkpoints
+### Frontend and completed implementation checkpoints
 
 Keep static SvelteKit and the generated API client. Add registration/login,
 current-user loading, and logout to the existing shell. Wait for authentication
@@ -763,20 +819,51 @@ returns to login; a `404` remains an unavailable-resource outcome. Switching
 accounts must not reuse the previous user's bot/run data or copy options. Any
 post-login return path must stay within the application origin.
 
-Before implementation, settle the proposed session/CSRF mechanism and concrete
-password bounds/hash settings, session lifetime, stream recheck interval, auth
-rate limits, and duplicate-registration response. These are the bounded
-security/performance decisions subject to the repository's implementation
-checkpoint; document the selected values here once, then reference their owning
-constants in code and tests.
+The policy checkpoint and local alpha reset were explicitly approved September 8,
+2026. `api.auth` owns password hashing, credential ingress, PostgreSQL sessions,
+Redis attempt limits, CSRF checks and stream authorization. `BotStore` and
+`GraphTemplateStore` require an explicit current-user ID; `RunStore.read_owned`
+and `list_owned` join through the bot, while trusted worker operations continue
+using persisted run IDs. HTTP authorization happens before event reads, summaries,
+stop transitions and launch delivery. No session token enters Taskiq payloads.
 
-Existing development data is currently disposable, but this plan does not
-authorize deleting it. Confirm whether to recreate the alpha database or
-backfill all existing bots/templates to one explicitly selected user before
-applying a migration. Never assign old data to the first person who registers,
-leave ownerless resources accessible, or introduce an implicit shared user.
-After delivery, account data requires an explicit migration policy; do not
-carry the disposable pre-auth schema assumption forward silently.
+The shell restores `/auth/me` before mounting private pages. Account changes unmount
+private components and close registered streams; cross-tab account changes trigger
+fresh restoration. A bounded current-user refresh detects expiry even on idle or
+historical pages. Redirect targets accept only local paths. Generated contracts
+and the generated runtime fixture supply account response shapes and form limits.
+
+Migration 0005 refuses populated pre-auth bot/template tables instead of guessing
+an owner. The approved local database was explicitly recreated. Existing accounts
+must subsequently be preserved through deliberate migrations/backups; downgrades
+remove identity and cannot express per-owner duplicate names in the old schema.
+
+Verification lives in `backend/tests/control_plane/test_auth.py` and
+`frontend/e2e/accounts.spec.ts`, plus the existing PostgreSQL snapshot/worker suite.
+`api.auth.store` owns identity persistence and its token boundary; cookie
+attributes have one owner. Auth ingress, private cache headers and service-failure translation have
+independently registered middleware boundaries in `api.http.middleware.private_cache`
+and `service_failures`; generated errors remain no-store. `api.http.sse` separates subscription, replay,
+framing and authorized stream lifetime. Session rechecks are mandatory, including
+during replay; infrastructure disconnects produce a visible reconnecting state.
+The browser `AccountSession` owns one typed lifecycle state and derives account,
+readiness and error views from it. Session request adapters normalize HTTP outcomes
+before state transitions. It delegates private stream cleanup, cross-tab signals
+and generated-client interception. Concurrent restoration
+is coalesced and stale responses cannot undo logout or account switching. New
+restoration cannot begin while revocation is pending. SSE response ingress rejects
+naive, malformed and impossible calendar timestamps; structural guards are
+independent of decimal arithmetic dependencies.
+
+Account CI runs the complete Python suite and Chromium acceptance against real
+PostgreSQL/Redis and rejects skipped tests. Test harnesses require explicit local
+`*_test` databases and nonzero Redis databases with explicit ports; cleanup deletes
+only authentication throttle keys. Active browser streams are checked across
+logout, external session revocation and cross-tab switching.
+
+The browser harness uses real PostgreSQL, Redis and auth/resource routes; only
+market discovery and execution delivery use test fixtures. No Polymarket protocol
+behavior changed, so a PolymarketDocs check is not required for this slice.
 
 ## Review follow-up — September 2026
 

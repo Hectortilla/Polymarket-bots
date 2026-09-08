@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 
 import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { isDecimal } from '$lib/valueGuards';
+import { isDecimal } from '$lib/decimalGuards';
 
 type UnitIntervalContract = {
   floor: string;

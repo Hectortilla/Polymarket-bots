@@ -1,8 +1,10 @@
+import { STREAM_CONNECTION_STATE, type StreamConnectionState } from '$lib/runs/events';
 import { ADD_NODE_LABEL } from '$lib/catalog/NodePalette.svelte';
 import { VALUATION_STATUS } from '$lib/charts/contracts';
 import { eventSummary } from '$lib/runs/eventSummary';
 import { RUN_STATUS_PRESENTATION } from '$lib/runs/status';
-import { LIVE_EVENT_KIND, type LiveRunEvent } from '$lib/runs/events';
+import type { LiveRunEvent } from '$lib/api/generated';
+import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -128,6 +130,21 @@ afterEach(() => {
 });
 
 describe('run detail page', () => {
+  it('shows stream reconnection until transport is connected again', async () => {
+    let connectionState: (state: StreamConnectionState) => void = () => {};
+    mocks.loadRun.mockImplementation(async (_runId, hydrate, _durable, _live, _open, onConnectionState) => {
+      connectionState = onConnectionState;
+      hydrate({ run: GRAPHLESS_RUN, events: [], nextBeforeEventId: null });
+      return () => {};
+    });
+    render(Page);
+    await screen.findByRole('heading', { name: GRAPHLESS_RUN.config.name });
+    connectionState(STREAM_CONNECTION_STATE.RECONNECTING);
+    expect(await screen.findByText(RUN_DETAIL_COPY.STREAM_RECONNECTING)).toBeTruthy();
+    connectionState(STREAM_CONNECTION_STATE.CONNECTED);
+    await waitFor(() => expect(screen.queryByText(RUN_DETAIL_COPY.STREAM_RECONNECTING)).toBeNull());
+  });
+
   it('renders the saved-bot link and immutable historical graph snapshot', async () => {
     render(Page);
 

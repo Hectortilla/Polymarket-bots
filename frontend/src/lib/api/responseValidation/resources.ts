@@ -4,16 +4,8 @@ import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 import catalogContract from '$lib/catalog/catalogContract.fixture.json';
 
-import {
-  isDecimal,
-  isFiniteDateTime,
-  isNonemptyString,
-  isNonnegativeDecimal,
-  isNonnegativeInteger,
-  isOneOf,
-  isPositiveDecimal,
-  isRecord,
-} from '$lib/valueGuards';
+import { isFiniteDateTime, isNonemptyString, isNonnegativeInteger, isOneOf, isRecord } from '$lib/valueGuards';
+import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from '$lib/decimalGuards';
 
 import { isWalletAddress } from '$lib/wallets';
 

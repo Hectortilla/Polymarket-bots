@@ -22,5 +22,7 @@ def raise_run_not_found() -> Never:
     raise HTTPException(status.HTTP_404_NOT_FOUND, RUN_NOT_FOUND_DETAIL)
 
 
-async def require_stored_run(session: AsyncSession, run_id: UUID) -> RunRead:
-    return require_run(await RunStore(session).read(run_id))
+async def require_stored_run(
+    session: AsyncSession, run_id: UUID, owner_user_id: UUID
+) -> RunRead:
+    return require_run(await RunStore(session).read_owned(run_id, owner_user_id))

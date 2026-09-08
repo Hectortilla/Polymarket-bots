@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { LiveRunEvent } from '$lib/runs/events';
+import type { LiveRunEvent } from '$lib/api/generated';
 import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
 import { VALUATION_STATUS } from './contracts';
 import { createLiveDashboardBatcher } from './liveBatch';

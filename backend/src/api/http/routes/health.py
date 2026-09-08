@@ -8,10 +8,9 @@ from api.http.dependencies import (
     RedisDependency,
     SessionFactoryDependency,
 )
+from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
 from api.http.responses import SERVICE_UNAVAILABLE_RESPONSE
 from api.http.routes.paths import HEALTH_OPERATION_ID, HEALTH_PATH
-
-SERVICE_UNAVAILABLE_DETAIL = "service unavailable"
 
 router = APIRouter()
 

@@ -4,7 +4,8 @@ import { isOutcomePayout, isOutcomePrice } from '$lib/outcomePrices';
 
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
-import { isDecimal, isNonemptyString, isNonnegativeInteger, isRecord } from '$lib/valueGuards';
+import { isNonemptyString, isNonnegativeInteger, isRecord } from '$lib/valueGuards';
+import { isDecimal } from '$lib/decimalGuards';
 
 export function isPortfolioSnapshot(snapshot: Record<string, unknown>): boolean {
   const policy = runtimeContract.portfolio;

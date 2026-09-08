@@ -31,16 +31,17 @@ from api.events.ids import FIRST_EVENT_CURSOR
 from api.events.store import EventStore
 from api.http.lifecycle import ApiRunLifecycle
 from api.http.routes.bots.run_launch import RUN_LAUNCH_FAILURE_REASON
-from api.http.sse import (
+from api.http.sse import RunEventStreamer
+from api.http.sse.frames import (
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
-    RunEventStreamer,
 )
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from control_plane.auth_fixtures import ensure_test_user
 from control_plane.service_config import (
     POSTGRES_AND_REDIS_NOT_CONFIGURED_SKIP_REASON,
     POSTGRES_NOT_CONFIGURED_SKIP_REASON,
@@ -258,6 +259,7 @@ def test_sse_handoff_rechecks_postgres_after_real_redis_subscribe() -> None:
                 _ConnectedRequest(),
                 session_factory,
                 wrapped_redis,
+                AsyncMock(allowed=AsyncMock(return_value=True)),
             )
             frames = [frame async for frame in streamer.stream(FIRST_EVENT_CURSOR)]
             assert first.id is not None
@@ -287,7 +289,7 @@ async def _create_run(
     config,
     graph: NodeGraph | None = None,
 ):
-    bot = await BotStore(session).create(
+    bot = await BotStore(session, await ensure_test_user(session)).create(
         definition_id=definition_id,
         config=config,
         graph=graph,

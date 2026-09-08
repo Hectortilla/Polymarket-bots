@@ -5,7 +5,7 @@ import type {
 } from '$lib/api/generated';
 
 import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
-import type { LiveRunEvent } from '$lib/runs/events';
+import type { LiveRunEvent } from '$lib/api/generated';
 import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
 
 import {

@@ -95,7 +95,8 @@
         "127.0.0.1",
         "--port",
         "8000",
-        "--reload"
+        "--reload",
+        "--no-proxy-headers"
       ],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",

@@ -71,6 +71,7 @@ async def resolve_bot_graph(
     session: AsyncSession,
     definition: CatalogEntry,
     template_id: UUID | None,
+    owner_user_id: UUID,
 ) -> NodeGraph | None:
     require_graph_contract(
         definition,
@@ -81,7 +82,7 @@ async def resolve_bot_graph(
     )
     if template_id is None:
         return None
-    template = await GraphTemplateStore(session).read(template_id)
+    template = await GraphTemplateStore(session, owner_user_id).read(template_id)
     return require_graph_template(template).graph
 
 

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from api.auth.config import AuthSettings
 from api.database import configured_database_url
 from api.execution.config import configured_redis_url
 from api.execution.launcher import RunLauncher
@@ -21,11 +22,14 @@ from api.execution.launcher import RunLauncher
 
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
+    AuthSettings.for_app(app)
     owned_engine: AsyncEngine | None = None
     owned_redis: Redis | None = None
     owned_discovery: MarketDiscovery | None = None
     if not hasattr(app.state, "session_factory"):
-        owned_engine = create_async_engine(configured_database_url())
+        owned_engine = create_async_engine(
+            configured_database_url(), hide_parameters=True
+        )
         app.state.session_factory = async_sessionmaker(
             owned_engine,
             expire_on_commit=False,

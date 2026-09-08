@@ -1,6 +1,7 @@
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
-import { isInteger, isNonemptyString, isOneOf, isPositiveDecimal } from '$lib/valueGuards';
+import { isInteger, isNonemptyString, isOneOf } from '$lib/valueGuards';
+import { isPositiveDecimal } from '$lib/decimalGuards';
 
 import { INITIAL_RUN_STATUS, isRunStatus } from '$lib/runs/status';
 

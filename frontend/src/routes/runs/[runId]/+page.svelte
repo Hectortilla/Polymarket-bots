@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { STREAM_CONNECTION_STATE } from '$lib/runs/events';
+  import { RunNotFoundError } from '$lib/runs/hydrate';
   import { page } from '$app/state';
   import { PRESENTATION_COPY } from '$lib/presentation';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
@@ -46,6 +48,7 @@
   let loadedEventPages = 1;
   let nextBeforeEventId = $state<number | null>(null);
   let error = $state('');
+  let streamReconnecting = $state(false);
   let executedGraphCatalog = $state<GraphNodeCatalog>();
   let executedGraphCatalogLoading = $state(false);
   let executedGraphCatalogError = $state('');
@@ -64,7 +67,7 @@
     });
     const runId = page.params.runId;
     if (!runId) {
-      error = 'Run not found.';
+      error = RUN_DETAIL_COPY.NOT_FOUND;
       loading = false;
       return liveBatcher.dispose;
     }
@@ -95,13 +98,15 @@
       },
       appendDurableEvent,
       liveBatcher.push,
+      undefined,
+      (state) => { if (!disposed) streamReconnecting = state === STREAM_CONNECTION_STATE.RECONNECTING; },
     )
       .then((close) => {
         if (disposed) close();
         else closeStream = close;
       })
-      .catch(() => {
-        error = 'The run could not be loaded.';
+      .catch((caught) => {
+        error = caught instanceof RunNotFoundError ? RUN_DETAIL_COPY.NOT_FOUND : RUN_DETAIL_COPY.RUN_LOAD_ERROR;
       })
       .finally(() => {
         loading = false;
@@ -191,6 +196,8 @@
 <svelte:head>
   <title>{run ? `${run.config.name} | Polybot` : 'Run detail | Polybot'}</title>
 </svelte:head>
+{#if streamReconnecting}<p role="status" class="notice error">{RUN_DETAIL_COPY.STREAM_RECONNECTING}</p>{/if}
+
 
 <a class="back-link" href={NAVIGATION_PATH.HOME}>
   <ArrowLeftIcon aria-hidden="true" size={16} />

@@ -12,7 +12,7 @@ the browsing state. Strategy parameters and event preview use spaced disclosure
 panels with labelled fields that stack on narrow screens.
 
 Implementation is tracked in [the two-phase checklist](graph-mvp-plan.md).
-The current contract replaces the disposable alpha format without legacy decoders.
+This graph contract originally replaced the pre-account alpha format without legacy decoders. Slice 15 now requires preserving accounts and owned resources through forward migrations.
 
 ## Values and calculations
 

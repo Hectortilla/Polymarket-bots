@@ -1,0 +1,11 @@
+.account-panel { width: min(100%, 440px); margin: 64px auto; }
+.account-panel h1 { margin: 12px 0 20px; }
+.account-panel > p { line-height: 1.65; }
+.account-panel form { display: grid; gap: 12px; margin: 32px 0; }
+.account-panel label { font-weight: 600; }
+.account-panel input { width: 100%; }
+.account-panel .field-help { font-size: .8rem; margin: 0 0 12px; }
+.account-panel button { min-height: 44px; }
+.account-controls { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.account-controls span { max-width: 240px; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; }
+@media (max-width: 600px) { .account-panel { margin: 32px auto; } .account-controls span { max-width: 130px; } }

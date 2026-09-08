@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
+from api.auth.dependencies import CurrentUserDependency
 from api.bots.contracts import (
     BotCreate,
     BotGraphRevisionCreate,
@@ -60,18 +61,20 @@ router = APIRouter()
 async def create_bot(
     request: BotCreate,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
     discovery: MarketDiscoveryDependency,
 ) -> BotRead:
     definition = require_catalog_entry(request.definition_id)
     config = parse_config(definition, request.inputs, request.model_dump())
-    await validate_new_market_selections(config, discovery)
     async with session_factory() as session:
         graph = await resolve_bot_graph(
             session,
             definition,
             request.graph_template_id,
+            user.id,
         )
-        return await BotStore(session).create(
+        await validate_new_market_selections(config, discovery)
+        return await BotStore(session, user.id).create(
             definition_id=request.definition_id,
             config=config,
             graph=graph,
@@ -85,9 +88,10 @@ async def create_bot(
 )
 async def list_bots(
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> tuple[BotRead, ...]:
     async with session_factory() as session:
-        return await BotStore(session).list()
+        return await BotStore(session, user.id).list()
 
 
 @router.get(
@@ -99,9 +103,10 @@ async def list_bots(
 async def read_bot(
     bot_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> BotRead:
     async with session_factory() as session:
-        bot = await BotStore(session).read(bot_id)
+        bot = await BotStore(session, user.id).read(bot_id)
     return require_bot(bot)
 
 
@@ -115,10 +120,11 @@ async def update_bot(
     bot_id: UUID,
     request: BotUpdate,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
     discovery: MarketDiscoveryDependency,
 ) -> BotRead:
     async with session_factory() as session:
-        store = BotStore(session)
+        store = BotStore(session, user.id)
         bot = require_bot(await store.read(bot_id, lock=True))
         definition = require_catalog_entry(bot.definition_id)
         config = parse_config(definition, request.inputs, request.model_dump())
@@ -138,9 +144,10 @@ async def create_bot_graph_revision(
     bot_id: UUID,
     request: BotGraphRevisionCreate,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> BotRead:
     async with session_factory() as session:
-        store = BotStore(session)
+        store = BotStore(session, user.id)
         bot = require_bot(await store.read(bot_id))
         definition = require_catalog_entry(bot.definition_id)
         require_graph_contract(
@@ -164,9 +171,10 @@ async def read_bot_graph_revision(
     bot_id: UUID,
     revision_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> BotGraphRevisionRead:
     async with session_factory() as session:
-        revision = await BotStore(session).read_revision(bot_id, revision_id)
+        revision = await BotStore(session, user.id).read_revision(bot_id, revision_id)
     if revision is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,

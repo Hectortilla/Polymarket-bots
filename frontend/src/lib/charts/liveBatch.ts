@@ -1,4 +1,4 @@
-import type { LiveRunEvent } from '$lib/runs/events';
+import type { LiveRunEvent } from '$lib/api/generated';
 
 type ScheduleFrame = (callback: FrameRequestCallback) => number;
 type CancelFrame = (frameId: number) => void;

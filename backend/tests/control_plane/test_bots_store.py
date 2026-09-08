@@ -8,6 +8,8 @@ from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from control_plane.auth_fixtures import TEST_USER_ID
+
 
 def test_list_materializes_bots_after_loading_latest_revisions() -> None:
     first_config = CATALOG[WINNER_DEFINITION_ID].parse_config(
@@ -18,10 +20,12 @@ def test_list_materializes_bots_after_loading_latest_revisions() -> None:
     )
     rows = (
         BotRow(
+            owner_user_id=TEST_USER_ID,
             definition_id=WINNER_DEFINITION_ID,
             config=first_config.model_dump(mode="json"),
         ),
         BotRow(
+            owner_user_id=TEST_USER_ID,
             definition_id=WINNER_DEFINITION_ID,
             config=second_config.model_dump(mode="json"),
         ),
@@ -30,7 +34,7 @@ def test_list_materializes_bots_after_loading_latest_revisions() -> None:
     result.scalars.return_value = rows
     session = AsyncMock(spec=AsyncSession)
     session.execute.return_value = result
-    store = BotStore(session)
+    store = BotStore(session, TEST_USER_ID)
     store.latest_revision = AsyncMock(return_value=None)
 
     bots = asyncio.run(store.list())

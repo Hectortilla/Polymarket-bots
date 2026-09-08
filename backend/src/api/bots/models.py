@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
+from api.auth.ownership import UserOwnedRow
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.bots.schema import (
     BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
@@ -29,7 +30,7 @@ from api.bots.schema import (
 )
 
 
-class BotRow(SQLModel, table=True):
+class BotRow(UserOwnedRow, table=True):
     __tablename__ = BOTS_TABLE_NAME
 
     id: UUID = Field(
@@ -55,6 +56,8 @@ class BotRow(SQLModel, table=True):
         default_factory=system_now_utc,
         sa_column=Column(BotColumn.UPDATED_AT, DateTime(timezone=True), nullable=False),
     )
+
+
 
 
 class BotGraphRevisionRow(SQLModel, table=True):
@@ -107,3 +110,7 @@ class BotGraphRevisionRow(SQLModel, table=True):
             nullable=False,
         ),
     )
+
+    @classmethod
+    def matches_bot_revision(cls, bot_id: UUID, revision_id: UUID):
+        return (cls.bot_id == bot_id) & (cls.id == revision_id)

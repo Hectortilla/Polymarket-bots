@@ -1,6 +1,4 @@
-import Decimal from 'decimal.js';
-
-const DECIMAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const AWARE_DATETIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -14,19 +12,6 @@ export function isNullableString(value: unknown): value is string | null | undef
   return value === null || value === undefined || typeof value === 'string';
 }
 
-export function isDecimal(value: unknown): value is string {
-  if (typeof value !== 'string' || !DECIMAL_PATTERN.test(value)) return false;
-  return new Decimal(value).isFinite();
-}
-
-export function isNonnegativeDecimal(value: unknown): value is string {
-  return isDecimal(value) && new Decimal(value).gte(0);
-}
-
-export function isPositiveDecimal(value: unknown): value is string {
-  return isDecimal(value) && new Decimal(value).gt(0);
-}
-
 export function isNonnegativeInteger(value: unknown): value is number {
   return isInteger(value) && value >= 0;
 }
@@ -36,7 +21,16 @@ export function isInteger(value: unknown): value is number {
 }
 
 export function isFiniteDateTime(value: unknown): value is string {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+  if (typeof value !== 'string') return false;
+  const components = AWARE_DATETIME_PATTERN.exec(value);
+  if (components === null || !Number.isFinite(Date.parse(value))) return false;
+  // Date.parse rolls impossible days into the next month; reject that normalization.
+  const year = Number(components[1]);
+  const month = Number(components[2]);
+  const day = Number(components[3]);
+  if (year === 0 || month < 1 || month > 12 || day < 1) return false;
+  // Day zero of the following month gives this month's last valid day.
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 export function isOneOf<Value extends string>(

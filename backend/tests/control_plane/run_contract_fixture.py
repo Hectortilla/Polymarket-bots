@@ -5,6 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from api.auth.policy import (
+    CSRF_SAFE_METHODS,
+    EMAIL_MAX_LENGTH,
+    LOGIN_PATH,
+    LOGOUT_PATH,
+    ME_PATH,
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    REGISTER_PATH,
+    SESSION_RECHECK_SECONDS,
+)
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.events.contracts.payloads.chart import (
     CHART_NULL_VALUE_STATUSES,
@@ -27,6 +38,7 @@ from api.events.pagination import (
     NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX,
 )
 from api.http.contracts import HealthResponse
+from api.http.protocol import CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE
 from api.http.routes.paths import (
     BOT_DEFINITIONS_PATH,
     BOT_GRAPH_REVISION_PATH,
@@ -53,6 +65,7 @@ from api.runs.status import (
     TERMINAL_RUN_STATUSES,
     RunStatus,
 )
+from fastapi import status
 from polybot.cli.observability.states import (
     BOOTSTRAP_COMPLETED_MAY_EXCEED_TOTAL,
     BOOTSTRAP_PROGRESS_MINIMUM,
@@ -133,8 +146,30 @@ FRONTEND_RUN_CONTRACT_PATH = (
 
 def frontend_run_contract() -> dict[str, object]:
     return {
+        "httpStatus": {
+            "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,
+            "FORBIDDEN": status.HTTP_403_FORBIDDEN,
+            "NOT_FOUND": status.HTTP_404_NOT_FOUND,
+            "CONFLICT": status.HTTP_409_CONFLICT,
+            "TOO_MANY_REQUESTS": status.HTTP_429_TOO_MANY_REQUESTS,
+            "INTERNAL_SERVER_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
+        },
+        "auth": {
+            "csrfSafeMethods": list(CSRF_SAFE_METHODS),
+            "jsonContentType": JSON_CONTENT_TYPE,
+            "contentTypeHeader": CONTENT_TYPE_HEADER,
+            "passwordMinLength": PASSWORD_MIN_LENGTH,
+            "passwordMaxLength": PASSWORD_MAX_LENGTH,
+            "emailMaxLength": EMAIL_MAX_LENGTH,
+            "sessionRecheckMs": SESSION_RECHECK_SECONDS * 1000,
+        },
         "activitySeverity": _enum_values(ActivitySeverity),
         "apiPaths": {
+            "register": api_route_path(REGISTER_PATH),
+            "login": api_route_path(LOGIN_PATH),
+            "logout": api_route_path(LOGOUT_PATH),
+            "currentUser": api_route_path(ME_PATH),
             "graphPreview": api_route_path(GRAPH_PREVIEW_PATH),
             "botDefinitions": api_route_path(BOT_DEFINITIONS_PATH),
             "botGraphRevision": api_route_path(BOT_GRAPH_REVISION_PATH),

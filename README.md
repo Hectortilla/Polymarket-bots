@@ -39,7 +39,7 @@ The API and worker use these entrypoints (with their database and Redis settings
 configured in `.env`):
 
 ```sh
-uv run uvicorn api.http.app:app --env-file .env --reload
+uv run uvicorn api.http.app:app --env-file .env --reload --no-proxy-headers
 uv run --env-file .env taskiq worker api.execution.taskiq_app:broker --workers 1 --max-async-tasks 4
 ```
 
@@ -79,6 +79,58 @@ PostgreSQL and Redis integration tests require `POLYBOT_TEST_POSTGRES_URL` and
 `POLYBOT_TEST_REDIS_URL` pointing to disposable test services; the database tests
 rebuild their schema. Without those settings the service-dependent tests skip.
 
+## Local accounts and private access
+
+Set `POLYBOT_AUTH_ORIGIN` in `.env` to the exact browser origin, for example
+`http://localhost:5173`, and set `POLYBOT_AUTH_ALLOW_HTTP=true` only for local HTTP
+development. Start the frontend with `npm --prefix frontend run dev`, then open
+`/register` to create your account. No email service is needed. Passwords contain
+15–128 characters; emails are case-insensitive with dots and plus-tags retained.
+There is no password recovery, account editing, or email verification in this MVP.
+
+Sessions expire after 7 days; signing out revokes the current session and
+closes browser streams. Already-authorized background runs continue. Each account
+sees only its own bots, templates and run history. Code-owned starter graphs remain
+available to every signed-in account. The full policy lives in
+[the identity architecture](docs/web-control-plane-architecture.md#slice-15-identity-and-authorization).
+
+Migration 0005 requires empty pre-auth resource tables. The September 8 development
+reset was explicitly approved. On a disposable pre-auth installation only, use:
+
+```sh
+uv run --env-file .env python -m scripts.recreate_control_plane_database
+```
+
+This command deletes the configured database, including all bots, runs and accounts.
+Once accounts exist, preserve data through explicit forward migrations and backups;
+do not rewrite migration history or silently reset the database. Downgrading 0005
+removes identity and cannot represent duplicate template names across users.
+
+Keep API and frontend on one origin and retain the private network boundary.
+HTTPS deployments must use `POLYBOT_AUTH_ALLOW_HTTP=false`; cookies are then Secure.
+Run Uvicorn with `--no-proxy-headers` locally. Behind a controlled reverse proxy,
+explicitly allow only its address and overwrite incoming forwarded headers; never
+trust arbitrary forwarded IPs. PostgreSQL and Redis must remain private. Redis
+availability is required for signup/login, including invalid attempts. No public
+deployment is authorized by this slice.
+
+Browser acceptance uses real PostgreSQL, Redis, API sessions and Chromium. Only
+market discovery and execution delivery are fixtures; graph editing, ownership,
+persistence, SSE and stop transitions use application code. After installing
+Chromium with `npm --prefix frontend exec -- playwright install chromium`, run:
+
+```sh
+POLYBOT_BROWSER_POSTGRES_URL=postgresql://polybot:polybot@127.0.0.1:55432/polybot_browser_test \
+POLYBOT_BROWSER_REDIS_URL=redis://127.0.0.1:56379/15 \
+npm --prefix frontend run test:e2e
+```
+
+The browser harness recreates only the explicitly configured local `*_test`
+database and requires loopback Redis with an explicit port and nonzero database.
+Throttle cleanup deletes only authentication keys. Use separate disposable databases and Redis databases for Python and
+browser suites. Service-dependent tests must pass without skips to establish
+multi-user isolation. Account acceptance CI enforces this requirement.
+
 ## Documentation and Current Status
 
 Start with:
@@ -95,11 +147,16 @@ separately:
 - `docs/web-control-plane-architecture.md`
 
 [Slice 15](docs/implementation-plan.md#slice-15-users-authentication-and-resource-ownership)
-plans email/password registration and login without email verification, plus
-private user ownership of bots and their runs. It is not implemented yet. The
-control-plane specification and architecture distinguish that planned extension
-from today's single-operator deployment. Email verification, social login, and
-a bot-configuration marketplace remain later work.
+adds email/password accounts, server-side sessions, and private ownership of bots,
+templates, revisions, runs, and event streams. Registration signs in immediately
+without verification mail. Social login, password recovery and a marketplace are
+not included; the application still requires a local/private access boundary.
+
+[Slice 16: marketplace MVP](docs/marketplace-mvp-plan.md) is planned next: signed-in
+users publish visual-node strategy snapshots, browse shared listings, and create
+independent private copies for paper runs. It is a proposal, not implemented
+functionality; its delivery units are in the main implementation plan.
+
 
 The architecture document also defines strict field, abstraction, module,
 validation, safety, and test budgets for each implementation slice. A task that

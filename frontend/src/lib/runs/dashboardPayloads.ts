@@ -3,18 +3,11 @@ import { MAX_CHART_TOKENS, MAX_WALLET_TIMELINE_EVENTS } from '$lib/charts/contra
 import { isOutcomePrice } from '$lib/outcomePrices';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 import { isSide } from '$lib/sides';
-import {
-  isDecimal,
-  isNonemptyString,
-  isNonnegativeDecimal,
-  isNonnegativeInteger,
-  isPositiveDecimal,
-  isRecord,
-} from '$lib/valueGuards';
+import { isNonemptyString, isNonnegativeInteger, isRecord } from '$lib/valueGuards';
+import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from '$lib/decimalGuards';
 import { isWalletAddress } from '$lib/wallets';
 import Decimal from 'decimal.js';
 
-export { isNonnegativeInteger, isPositiveDecimal, isRecord } from '$lib/valueGuards';
 
 const DISPATCH_SKIP_REASONS = new Set<DispatchSkipReason>(
   Object.values(runtimeContract.dispatchSkipReason) as DispatchSkipReason[],

@@ -74,7 +74,6 @@ from api.graph_templates.schema import (
     GRAPH_TEMPLATES_TABLE_NAME,
 )
 from api.graph_templates.store import GraphTemplateStore
-from api.http.app import create_app
 from api.http.routes.paths import (
     BOT_RUNS_PATH,
     GRAPH_TEMPLATE_PATH,
@@ -110,6 +109,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.sql.elements import TextClause
 from sqlmodel import select
 
+from control_plane.auth_fixtures import TEST_HEADERS, ensure_test_user
+from control_plane.auth_fixtures import create_authenticated_app as create_app
 from control_plane.graph_fixtures import threshold_buy_graph
 from control_plane.service_config import (
     POSTGRES_NOT_CONFIGURED_SKIP_REASON,
@@ -152,7 +153,7 @@ async def _create_run(
     config,
     graph: NodeGraph | None = None,
 ) -> RunRead:
-    bot = await BotStore(session).create(
+    bot = await BotStore(session, await ensure_test_user(session)).create(
         definition_id=definition_id,
         config=config,
         graph=graph,
@@ -313,10 +314,11 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         return result
 
     saved_bot_schema = asyncio.run(inspect_saved_bot_schema())
-    assert tuple(
+    # ALTER TABLE appends ownership columns; physical column order is not a contract.
+    assert set(
         column["name"] for column in saved_bot_schema["template_columns"]
-    ) == tuple(GraphTemplateRow.__table__.columns.keys())
-    assert tuple(column["name"] for column in saved_bot_schema["bot_columns"]) == tuple(
+    ) == set(GraphTemplateRow.__table__.columns.keys())
+    assert set(column["name"] for column in saved_bot_schema["bot_columns"]) == set(
         BotRow.__table__.columns.keys()
     )
     assert tuple(
@@ -367,7 +369,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     async def assert_constraint_rejections() -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            bot = await BotStore(session).create(
+            bot = await BotStore(session, await ensure_test_user(session)).create(
                 definition_id=WINNER_DEFINITION_ID,
                 config=CATALOG[WINNER_DEFINITION_ID].parse_config(
                     {"name": "constraint"}
@@ -405,17 +407,13 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     async def insert_chart_sample(*, accepted: bool) -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            bot = await BotStore(session).create(
-                definition_id=WINNER_DEFINITION_ID,
-                config=CATALOG[WINNER_DEFINITION_ID].parse_config(
-                    {"name": "chart-sample"}
-                ),
-                graph=None,
-            )
+            # Reuse the bot seeded at head; old schemas have no identity columns.
+            bot_id = await session.scalar(select(BotRow.id).limit(1))
+            assert bot_id is not None
         run_id = uuid4()
         run_values = {
             RunColumn.ID.value: run_id,
-            RunColumn.BOT_ID.value: bot.id,
+            RunColumn.BOT_ID.value: bot_id,
             RunColumn.DEFINITION_ID.value: "definition",
             RunColumn.CONFIG.value: json.dumps({}),
             RunColumn.BOT_GRAPH_REVISION_ID.value: None,
@@ -606,11 +604,13 @@ def test_template_bot_revision_and_run_snapshots_are_isolated() -> None:
     async def scenario() -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            template_store = GraphTemplateStore(session)
+            template_store = GraphTemplateStore(
+                session, await ensure_test_user(session)
+            )
             template = await template_store.create(
                 GraphTemplateCreate(name="Reusable", graph=STARTER_NODE_GRAPH)
             )
-            first_bot = await BotStore(session).create(
+            first_bot = await BotStore(session, await ensure_test_user(session)).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=config,
                 graph=template.graph,
@@ -621,18 +621,24 @@ def test_template_bot_revision_and_run_snapshots_are_isolated() -> None:
                 template.id,
                 GraphTemplateUpdate(graph=updated_graph),
             )
-            revision_two = await BotStore(session).append_revision(
+            revision_two = await BotStore(
+                session, await ensure_test_user(session)
+            ).append_revision(
                 first_bot.id,
                 updated_graph,
             )
             assert revision_two is not None
-            revised_bot = await BotStore(session).read(first_bot.id)
+            revised_bot = await BotStore(session, await ensure_test_user(session)).read(
+                first_bot.id
+            )
             assert revised_bot is not None
             second_run = await RunStore(session).create_from_bot(revised_bot)
             third_run = await RunStore(session).create_from_bot(revised_bot)
 
             current_template = await template_store.read(template.id)
-            original_revision = await BotStore(session).read_revision(
+            original_revision = await BotStore(
+                session, await ensure_test_user(session)
+            ).read_revision(
                 first_bot.id,
                 first_bot.latest_graph_revision.id,
             )
@@ -644,7 +650,9 @@ def test_template_bot_revision_and_run_snapshots_are_isolated() -> None:
             assert second_run.graph == updated_graph
             assert second_run.bot_graph_revision_id == third_run.bot_graph_revision_id
 
-            second_bot = await BotStore(session).create(
+            second_bot = await BotStore(
+                session, await ensure_test_user(session)
+            ).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=config.model_copy(update={"name": "other"}),
                 graph=current_template.graph,
@@ -687,7 +695,9 @@ def test_persistence_updates_preserve_owned_graph_snapshots() -> None:
             {"name": "before-update", "market_slugs": ["example-market"]}
         )
         async with session_factory() as session:
-            template_store = GraphTemplateStore(session)
+            template_store = GraphTemplateStore(
+                session, await ensure_test_user(session)
+            )
             template = await template_store.create(
                 GraphTemplateCreate(name="Before rename", graph=STARTER_NODE_GRAPH)
             )
@@ -700,7 +710,7 @@ def test_persistence_updates_preserve_owned_graph_snapshots() -> None:
             assert renamed.graph == STARTER_NODE_GRAPH
             assert renamed.updated_at >= template.updated_at
 
-            bot_store = BotStore(session)
+            bot_store = BotStore(session, await ensure_test_user(session))
             graph_bot = await bot_store.create(
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=graph_config,
@@ -770,7 +780,9 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
         engine = create_async_engine(url)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         async with session_factory() as setup_session:
-            bot = await BotStore(setup_session).create(
+            bot = await BotStore(
+                setup_session, await ensure_test_user(setup_session)
+            ).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=original_config,
                 graph=STARTER_NODE_GRAPH,
@@ -791,6 +803,9 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
                 self.called.set()
 
         launcher = CapturingLauncher()
+        async with session_factory() as identity_session:
+            await ensure_test_user(identity_session)
+            await identity_session.commit()
         application = create_app(
             session_factory=session_factory,
             redis=FakeRedis(),
@@ -806,6 +821,7 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
             async with AsyncClient(
                 transport=ASGITransport(app=application),
                 base_url="http://test",
+                headers=TEST_HEADERS,
             ) as client:
                 launch_task = asyncio.create_task(
                     client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot.id))
@@ -853,7 +869,7 @@ def test_concurrent_graph_revisions_receive_unique_sequence_numbers() -> None:
         engine = create_async_engine(url)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         async with session_factory() as session:
-            bot = await BotStore(session).create(
+            bot = await BotStore(session, await ensure_test_user(session)).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
                     {"name": "revision-race", "market_slugs": ["example-market"]}
@@ -866,7 +882,9 @@ def test_concurrent_graph_revisions_receive_unique_sequence_numbers() -> None:
         async def append(graph: NodeGraph) -> BotRead | None:
             await start.wait()
             async with session_factory() as session:
-                return await BotStore(session).append_revision(bot.id, graph)
+                return await BotStore(
+                    session, await ensure_test_user(session)
+                ).append_revision(bot.id, graph)
 
         first_task = asyncio.create_task(
             append(NodeGraph.model_validate(threshold_buy_graph()))
@@ -1064,7 +1082,7 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_revision(
             {"name": f"{corruption}-graph", "market_slugs": ["example-market"]}
         )
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            bot = await BotStore(session).create(
+            bot = await BotStore(session, await ensure_test_user(session)).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=config,
                 graph=STARTER_NODE_GRAPH,
@@ -1130,6 +1148,9 @@ def test_graph_template_api_rolls_back_name_conflicts() -> None:
             async def publish(self, channel: str, message: str) -> int:
                 return 1
 
+        async with session_factory() as identity_session:
+            await ensure_test_user(identity_session)
+            await identity_session.commit()
         application = create_app(
             session_factory=session_factory,
             redis=FakeRedis(),
@@ -1139,6 +1160,7 @@ def test_graph_template_api_rolls_back_name_conflicts() -> None:
         async with AsyncClient(
             transport=ASGITransport(app=application),
             base_url="http://test",
+            headers=TEST_HEADERS,
         ) as client:
             first = await client.post(
                 api_route_path(GRAPH_TEMPLATES_PATH),
@@ -1590,7 +1612,7 @@ def test_graph_parameters_preserve_exact_values_and_run_revisions() -> None:
         engine = create_async_engine(url)
         try:
             async with AsyncSession(engine, expire_on_commit=False) as session:
-                bots = BotStore(session)
+                bots = BotStore(session, await ensure_test_user(session))
                 bot = await bots.create(
                     definition_id=NODE_BASED_DEFINITION_ID, config=config, graph=graph
                 )

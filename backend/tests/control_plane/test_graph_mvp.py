@@ -53,13 +53,11 @@ from api.catalog.node_based.preview import (
     PreviewClock,
     preview_graph,
 )
-from api.http.app import create_app
 from api.http.routes.paths import (
     GRAPH_PREVIEW_PATH,
     api_route_path,
 )
 from conftest import DummyBroker
-from fastapi.testclient import TestClient
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.config.models import BotConfig
@@ -74,6 +72,8 @@ from polybot.framework.events.books import (
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from pydantic import TypeAdapter, ValidationError
 
+from control_plane.auth_fixtures import authenticated_test_client as TestClient
+from control_plane.auth_fixtures import create_authenticated_app as create_app
 from control_plane.graph_fixtures import threshold_buy_graph
 from control_plane.graph_preview_fixture import preview_fixture
 

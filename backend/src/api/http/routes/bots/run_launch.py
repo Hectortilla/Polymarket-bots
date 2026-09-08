@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 from polybot.framework.clock import system_now_utc
 
+from api.auth.dependencies import CurrentUserDependency
 from api.bots.store import BotStore
 from api.events.writer import publish_durable_wake
 from api.http.dependencies import (
@@ -42,13 +43,14 @@ router = APIRouter()
 async def launch_bot_run(
     bot_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
     redis: RedisDependency,
     launcher: LauncherDependency,
 ) -> RunRead:
     async with session_factory() as session:
         # The lock makes the committed run snapshot atomic with config and
         # revision edits; delivery starts only after that transaction commits.
-        bot = require_bot(await BotStore(session).read(bot_id, lock=True))
+        bot = require_bot(await BotStore(session, user.id).read(bot_id, lock=True))
         definition = require_catalog_entry(bot.definition_id)
         require_run_revision_contract(definition, bot)
         run = await RunStore(session).create_from_bot(bot)

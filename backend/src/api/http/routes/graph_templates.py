@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth.dependencies import CurrentUserDependency
 from api.graph_templates.contracts import (
     GraphTemplateCreate,
     GraphTemplateRead,
@@ -46,11 +47,12 @@ router = APIRouter()
 async def create_graph_template(
     request: GraphTemplateCreate,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> GraphTemplateRead:
     async with session_factory() as session:
         return await _persist_template_write(
             session,
-            GraphTemplateStore(session).create(request),
+            GraphTemplateStore(session, user.id).create(request),
         )
 
 
@@ -61,9 +63,10 @@ async def create_graph_template(
 )
 async def list_graph_templates(
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> tuple[GraphTemplateRead, ...]:
     async with session_factory() as session:
-        return await GraphTemplateStore(session).list()
+        return await GraphTemplateStore(session, user.id).list()
 
 
 @router.get(
@@ -75,9 +78,10 @@ async def list_graph_templates(
 async def read_graph_template(
     template_id: UUID,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> GraphTemplateRead:
     async with session_factory() as session:
-        template = await GraphTemplateStore(session).read(template_id)
+        template = await GraphTemplateStore(session, user.id).read(template_id)
     return require_graph_template(template)
 
 
@@ -91,11 +95,12 @@ async def update_graph_template(
     template_id: UUID,
     request: GraphTemplateUpdate,
     session_factory: SessionFactoryDependency,
+    user: CurrentUserDependency,
 ) -> GraphTemplateRead:
     async with session_factory() as session:
         template = await _persist_template_write(
             session,
-            GraphTemplateStore(session).update(template_id, request),
+            GraphTemplateStore(session, user.id).update(template_id, request),
         )
     return require_graph_template(template)
 

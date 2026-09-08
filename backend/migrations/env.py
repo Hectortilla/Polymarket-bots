@@ -4,15 +4,15 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import Connection, pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
-from sqlmodel import SQLModel
 
 # Importing rows registers every control-plane table in shared SQLModel metadata.
+from api.auth.models import SessionRow, UserRow  # noqa: F401
 from api.bots.models import BotGraphRevisionRow, BotRow  # noqa: F401
 from api.graph_templates.models import GraphTemplateRow  # noqa: F401
 from api.runs.models import RunRow  # noqa: F401
-
+from sqlalchemy import Connection, pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlmodel import SQLModel
 
 config = context.config
 

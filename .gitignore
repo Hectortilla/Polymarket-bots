@@ -10,3 +10,5 @@ frontend/node_modules/
 .env
 /data/
 .DS_Store
+frontend/test-results/
+frontend/playwright-report/

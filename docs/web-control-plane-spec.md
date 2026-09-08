@@ -1,15 +1,15 @@
 # Web Control Plane v0 Product Specification
 
-Status: v0 implemented; the Slice 15 users extension below is planned, not implemented.
+Status: v0 and Slice 15 accounts/private ownership are implemented.
 This document owns product scope and user-visible outcomes.
 `web-control-plane-architecture.md` owns technical contracts. The implementation
 plan references those contracts instead of restating them.
 
 ## Purpose
 
-Build a small private control plane that lets one trusted operator launch and
-observe multiple paper bots. It is a useful local/private product, not a partial
-implementation of authentication, billing, tenancy, or live trading.
+The private control plane lets signed-in users configure, launch and observe
+their own paper bots. Accounts are local to this application; organization
+tenancy, billing and live trading remain outside this product.
 
 ## Goals
 
@@ -32,7 +32,7 @@ implementation of authentication, billing, tenancy, or live trading.
 
 ## Non-goals
 
-- Authentication, users, tenants, organizations, payments, plans, or quotas.
+- Organizations, payments, plans, or quotas.
 - Public-internet exposure without an external access boundary.
 - Live trading or web collection of wallet/CLOB credentials.
 - Pause, resume, automatic restart, or restoration of bot-local paper state.
@@ -52,21 +52,21 @@ If a feature is not in Goals, it is not implied by “SaaS,” “future,” or
 
 ## Trust Boundary
 
-v0 has one trusted operator and no identity model. It must run on a local or
-private network or behind access control supplied outside this application.
+Email/password sessions authenticate users and scope each private resource to
+its owner. The application must still run locally or on a private network, or
+behind an external access boundary. Accounts do not authorize public deployment.
 
 Every web launch is paper-only. The browser cannot select live mode or submit
 credentials. Existing live-execution gates remain unchanged; the control plane
-does not wrap, duplicate, or weaken them. Do not add placeholder identity,
-billing, entitlement, credential, or tenant fields.
+does not wrap, duplicate, or weaken them. Do not add placeholder billing, entitlement, trading credential, or organization fields.
 
 ## Bot Catalog
 
 A bot definition is a trusted, code-owned mapping from a stable public ID to a
 private Python factory and one typed launch-input model. The API never returns
 or accepts factory/import paths. During alpha there is no public definition or
-graph schema version; code, generated clients, and the disposable database move
-together and the database is recreated after incompatible contract changes.
+graph schema version. Code and generated clients move together, while databases
+containing accounts require explicit migrations that preserve private ownership.
 
 The descriptor tells the frontend whether market and wallet selection are
 user-configured, bot-managed, or absent. A bot-managed definition remains
@@ -100,9 +100,9 @@ never change and may be shared by multiple runs of that same bot.
 
 Each Run action creates a new UUID-backed run with an immutable definition ID,
 resolved paper configuration snapshot, saved-bot ID, and exact graph revision
-reference when applicable. Alpha deployments recreate their disposable
-control-plane database when the catalog or graph contract changes; they do not
-retain or reinterpret older incompatible runs.
+reference when applicable. Pre-auth alpha deployments recreated their disposable
+control-plane database for incompatible catalog or graph changes. Since Slice 15,
+account data and owned historical snapshots require deliberate forward migrations.
 
 The public lifecycle is:
 
@@ -247,11 +247,10 @@ contract and [delivery checklist](graph-mvp-plan.md) for both implementation pha
 These capabilities supersede earlier graph-MVP exclusions; public deployment and
 live trading remain outside this work.
 
-## Planned Slice 15: Users and Private Ownership
+## Slice 15: Users and Private Ownership
 
-This extension supersedes v0's single-operator, no-users, and no-authentication
-restrictions when Slice 15 is delivered. Until then, the existing private-network
-trust boundary still applies. Delivery and acceptance live in
+This implemented extension supersedes v0's single-operator and no-authentication
+restrictions. The private-network boundary still applies. Delivery and acceptance live in
 [Slice 15 of the implementation plan](implementation-plan.md#slice-15-users-authentication-and-resource-ownership).
 
 Agreed MVP scope:
@@ -290,3 +289,17 @@ Future social login must attach to stable internal users through an explicitly
 designed account-linking flow. Matching an email supplied during unverified
 registration is not sufficient proof to link accounts. Existing email/password
 accounts must not become implicitly verified when those features arrive.
+
+## Planned Slice 16: Bot Marketplace
+
+The [marketplace MVP proposal](marketplace-mvp-plan.md) describes the next product
+extension: signed-in users publish visual-node bot snapshots, inspect shared
+strategies and copy them into independently owned private bots. Those two scope
+choices are user-confirmed; the remaining proposal records recommended choices
+for implementation review. Delivery units live in
+[Slice 16](implementation-plan.md#slice-16-bot-marketplace-mvp).
+
+This is planned behavior, not an implemented exception to Slice 15 ownership.
+Adopt the relevant proposed product rules here during implementation. Public
+run access, automatic trading on copy, Python uploads and public deployment are
+outside this MVP.

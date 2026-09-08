@@ -6,16 +6,8 @@ import { isSide } from '$lib/sides';
 
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
-import {
-  isDecimal,
-  isNonemptyString,
-  isNonnegativeDecimal,
-  isNonnegativeInteger,
-  isNullableString,
-  isOneOf,
-  isPositiveDecimal,
-  isRecord,
-} from '$lib/valueGuards';
+import { isNonemptyString, isNonnegativeInteger, isNullableString, isOneOf, isRecord } from '$lib/valueGuards';
+import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from '$lib/decimalGuards';
 
 import { isPortfolioSnapshot } from '$lib/runs/eventPayloads/portfolio';
 
