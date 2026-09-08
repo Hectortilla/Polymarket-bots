@@ -290,7 +290,7 @@ describe('run detail interactions', () => {
     mocks.loadOlderEvents.mockResolvedValue({
       events: progressPage(1, 1),
       nextBeforeEventId: null,
-    });asd
+    });
     await fireEvent.click(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
     expect(mocks.loadOlderEvents).toHaveBeenCalledWith(RUN.id, 2);
     await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
