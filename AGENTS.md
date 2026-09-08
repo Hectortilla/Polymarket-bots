@@ -23,7 +23,14 @@ Other local agent assets:
 - `.agents/skills/code-style-review/` is the local source for the optional
   `$code-style-review` skill.
 - `.codex/config.toml` and `.codex/agents/reviewers/` register the reviewer
-  subagents used by `$code-style-review`.
+  subagents used only by explicit `$code-style-review` runs. Reviewer TOMLs
+  are the source of truth for the generated `.claude/agents/reviewers/` mirrors.
+- `.claude/skills/code-style-review/` provides the Claude Code workflow. Both
+  skill variants use `.agents/CODE_STYLE.md` as the shared coding standards.
+- After changing reviewer TOMLs or registrations, run
+  `uv run python .agents/skills/code-style-review/scripts/validate_reviewer_roster.py --write-claude-agents`.
+  Omit the flag to check registrations, read-only constraints, generated
+  mirrors, and shared Codex/Claude skill sections without writing files.
 
 If a task names a numbered implementation-plan slice, treat only that slice as
 the implementation scope unless the docs explicitly say another slice is a

@@ -1,3 +1,5 @@
+name = "dependency_light_foundation_reviewer"
+description = "Use only when explicitly invoked by the code-style-review skill. Reports dependency-heavy constants or pure helpers that invite cycles."
 model = "gpt-5.6-luna"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"

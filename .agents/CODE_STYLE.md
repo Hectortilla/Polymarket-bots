@@ -14,11 +14,14 @@ easy to read, easy to change, and boring to debug.
   services over repeating the same rule inline.
 - Keep abstractions honest. Extract code because it represents the same concept
   or behavior, not only because two snippets happen to look similar.
+  Avoid flags and branches that recombine unrelated behavior in one abstraction.
 - Do not hide important behavior behind vague utility functions. Shared code
   should make the domain clearer, not merely shorter.
 - For cross-boundary duplication, such as backend and frontend contracts, prefer
   stable shared definitions or generated clients when the project supports them.
   Until then, keep each side's constants explicit and named the same way.
+- Keep code, schemas, tests, prompts, and docs synchronized when they encode
+  the same repository-owned contract.
 
 ## Validation Boundaries
 
@@ -41,13 +44,29 @@ easy to read, easy to change, and boring to debug.
   checks in a named boundary helper or thin public wrapper and delegate formulas
   to private calculation functions.
 
+## Failures And Side Effects
+
+- Surface required infrastructure, configuration, and persisted-state failures
+  explicitly at the owning boundary. Do not convert them into empty results,
+  permissive defaults, or silent partial success. Keep established fail-safe
+  market-data skips distinct from hidden failures.
+- Keep blocking filesystem, network, database, subprocess, and sleep operations
+  off asynchronous execution paths unless isolated behind an appropriate async
+  adapter or worker.
+- Make retried events, jobs, webhooks, and queue messages idempotent at the
+  side-effect boundary when duplicate delivery is possible.
+- Consequential external mutations must enforce the configuration,
+  authorization, and environment or mode gates required by their boundary.
+  Follow `AGENTS.md` for live trading gates and paper/live contract parity.
+
 ## Official External Clients
 
 - Prefer an official vendor SDK/client whenever it supports the external
   operation. For Polymarket, follow the selection rule in
   `docs/api-notes.md`: unified async SDK first, then specialized official
   clients, then a documented direct-integration exception.
-- Keep vendor models, errors, and transport lifecycle inside the owning adapter.
+- Keep vendor models, errors, retry mechanics, and transport lifecycle inside
+  the owning adapter.
   Normalize them into package contracts before domain or bot code sees them.
 - Do not duplicate authentication, signing, serialization, pagination, or
   realtime subscription behavior supplied by an official client.
@@ -68,7 +87,8 @@ easy to read, easy to change, and boring to debug.
 - Keep constants named for meaning, not for their current value. Prefer
   `SERVICE_NAME` over `POLYFOLLOW_BACKEND_STRING`.
 - Avoid duplicating literals in tests. Tests should import contract constants
-  when they are asserting repo-owned behavior.
+  when they are asserting repo-owned behavior. Use raw external values when
+  their exact representation is the behavior under test.
 - One-off user-facing copy can stay close to the component when extracting it
   would make the UI harder to read. Extract it once it is reused, translated,
   shared with tests, or part of a stable contract.
@@ -126,6 +146,24 @@ easy to read, easy to change, and boring to debug.
   or behavior.
 - Avoid circular dependencies by keeping constants and pure helpers dependency
   light.
+- Do not call `_private` methods across module boundaries. Expose or use a
+  public contract instead.
+
+## Declaration Order
+
+- Arrange modules and classes for top-down understanding: necessary imports,
+  public types, constants, fields, and construction first, then primary
+  entrypoints and public operations, supporting workflows, progressively more
+  detailed implementations, and finally private utilities.
+- Prefer callers above their supporting helpers and keep related declarations
+  together. Higher-level means greater abstraction, not greater reusability;
+  a generic utility belongs below the workflow it supports.
+- Group module variables, constants, and class fields by semantic role. Keep
+  local variables near first use rather than hoisting them.
+- Preserve initialization and definition-time dependencies, field and
+  registration order, decorators, framework requirements, and applicable local
+  conventions. Do not impose alphabetical ordering or rearrange equally clear
+  peer operations. Fix reading order without changing behavior or ownership.
 
 ## Readability
 
@@ -141,8 +179,16 @@ easy to read, easy to change, and boring to debug.
 - Update tests when extracting shared constants so tests verify the same public
   behavior without repeating implementation literals.
 - Keep changes task-scoped. Do not refactor unrelated code just because it is
-  nearby.
+  nearby. Supporting tests, docs, and contract updates are in scope when needed
+  to prevent drift.
+- Give each test one distinct behavior. When a helper has direct tests, callers
+  only need to prove correct wiring.
+- Match test depth to risk: public contracts, persistence, concurrency,
+  integrations, trading safety, financial outcomes, and user-visible behavior
+  need coverage at the level where failure would occur.
 - Before finishing, scan for duplicated contract literals and accidental
   out-of-scope implementation.
 - Before finishing, scan changed domain code for validation logic woven into
   formulas or state transitions, and move it to a boundary when found.
+- Check the complete changed surface for hidden infrastructure failures, stale
+  exported contracts, and documentation drift.

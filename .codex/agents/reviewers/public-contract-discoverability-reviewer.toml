@@ -1,3 +1,5 @@
+name = "public_contract_discoverability_reviewer"
+description = "Use only when explicitly invoked by the code-style-review skill. Reports unstable or difficult-to-discover public contracts."
 model = "gpt-5.6-luna"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"

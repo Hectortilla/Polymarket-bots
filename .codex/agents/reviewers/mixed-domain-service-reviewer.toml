@@ -1,3 +1,5 @@
+name = "mixed_domain_service_reviewer"
+description = "Use only when explicitly invoked by the code-style-review skill. Reports service files containing multiple durable domains."
 model = "gpt-5.6-luna"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
