@@ -83,6 +83,7 @@ from polybot_control_plane.api.routes.paths import (
     GRAPH_TEMPLATE_PATH,
     GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
+    GRAPH_PREVIEW_PATH,
     MARKET_SEARCH_PATH,
     MARKET_LOOKUP_PATH,
     RUN_EVENTS_PATH,
@@ -130,6 +131,7 @@ def frontend_run_contract() -> dict[str, object]:
     return {
         "activitySeverity": _enum_values(ActivitySeverity),
         "apiPaths": {
+            "graphPreview": api_route_path(GRAPH_PREVIEW_PATH),
             "botDefinitions": api_route_path(BOT_DEFINITIONS_PATH),
             "botGraphRevision": api_route_path(BOT_GRAPH_REVISION_PATH),
             "botGraphRevisions": api_route_path(BOT_GRAPH_REVISIONS_PATH),
@@ -173,9 +175,7 @@ def frontend_run_contract() -> dict[str, object]:
             },
             "walletNotionalTierCount": WALLET_NOTIONAL_TIER_COUNT,
             "firstWalletNotionalTier": FIRST_WALLET_NOTIONAL_TIER,
-            "nonpositiveMaxNotionalThreshold": str(
-                NONPOSITIVE_MAX_NOTIONAL_THRESHOLD
-            ),
+            "nonpositiveMaxNotionalThreshold": str(NONPOSITIVE_MAX_NOTIONAL_THRESHOLD),
             "walletNotionalTierDenominator": WALLET_NOTIONAL_TIER_DENOMINATOR,
             "walletNotionalTierUpperNumerators": list(
                 WALLET_NOTIONAL_TIER_UPPER_NUMERATORS
@@ -200,9 +200,7 @@ def frontend_run_contract() -> dict[str, object]:
             reason.name: reason.value for reason in DispatchSkipReason
         },
         "dispatchOutcome": {
-            "acceptedAllowsSkipReason": (
-                DISPATCH_ACCEPTED_OUTCOME_ALLOWS_SKIP_REASON
-            ),
+            "acceptedAllowsSkipReason": (DISPATCH_ACCEPTED_OUTCOME_ALLOWS_SKIP_REASON),
             "skippedRequiresSkipReason": (
                 DISPATCH_SKIPPED_OUTCOME_REQUIRES_SKIP_REASON
             ),

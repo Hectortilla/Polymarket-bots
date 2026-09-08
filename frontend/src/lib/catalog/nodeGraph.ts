@@ -1,4 +1,10 @@
 import type {
+  GraphOperationDescriptor,
+  GraphOperationNode,
+  GraphParameterNode,
+  GraphParameter,
+  GraphInputDescriptor,
+  GraphOutputDescriptor,
   GraphBrokerActionDescriptor,
   GraphBrokerActionNode,
   GraphBrokerActionNodeData,
@@ -18,7 +24,8 @@ import type {
 } from '$lib/api/generated';
 import { addEdge, type Connection, type Edge, type Node } from '@xyflow/svelte';
 import { constantDataFromDescriptor } from './constantNode';
-import { GRAPH_NODE_TYPE } from './graphContracts';
+import catalogContract from './catalogContract.fixture.json';
+import { GRAPH_NODE_TYPE, GRAPH_CONTEXT_PORT_TYPE } from './graphContracts';
 
 export { GRAPH_NODE_TYPE } from './graphContracts';
 export { nodeGraphsEqual } from './nodeGraphEquality';
@@ -28,6 +35,8 @@ export type CanvasNode =
   | Node<GraphTriggerNodeData, GraphTriggerNode['type']>
   | Node<GraphConstantNodeData, GraphConstantNode['type']>
   | Node<GraphComparisonNodeData, GraphComparisonNode['type']>
+  | Node<GraphOperationNode['data'], GraphOperationNode['type']>
+  | Node<GraphParameterNode['data'], GraphParameterNode['type']>
   | Node<GraphBrokerActionNodeData, GraphBrokerActionNode['type']>;
 export type CanvasEdge = Edge;
 
@@ -41,6 +50,10 @@ function toCanvasNode(node: GraphNode): CanvasNode {
     position: { ...node.position }
   };
   switch (node.type) {
+    case GRAPH_NODE_TYPE.operation:
+      return { ...common, type: node.type, data: { ...node.data } };
+    case GRAPH_NODE_TYPE.parameter:
+      return { ...common, type: node.type, data: { ...node.data } };
     case GRAPH_NODE_TYPE.trigger:
       return { ...common, type: node.type, data: { ...node.data } };
     case GRAPH_NODE_TYPE.constant:
@@ -65,9 +78,11 @@ export function canvasEdges(graph: NodeGraph): CanvasEdge[] {
 // Project the canvas onto the backend contract so Flow-only state is never persisted.
 export function toPersistedNodeGraph(
   nodes: CanvasNode[],
-  edges: CanvasEdge[]
+  edges: CanvasEdge[],
+  parameters: GraphParameter[] = []
 ): NodeGraph {
   return {
+    ...(parameters.length ? { parameters } : {}),
     nodes: nodes.map(toPersistedNode),
     edges: edges.map(toPersistedEdge)
   };
@@ -92,6 +107,10 @@ function toPersistedNode(node: CanvasNode): GraphNode {
     position: { x: node.position.x, y: node.position.y }
   };
   switch (node.type) {
+    case GRAPH_NODE_TYPE.operation:
+      return { ...common, type: node.type, data: { ...node.data } };
+    case GRAPH_NODE_TYPE.parameter:
+      return { ...common, type: node.type, data: { ...node.data } };
     case GRAPH_NODE_TYPE.trigger:
       return { ...common, type: node.type, data: { ...node.data } };
     case GRAPH_NODE_TYPE.constant:
@@ -229,7 +248,8 @@ export function connectionIsValid(
   connection: Connection | CanvasEdge,
   nodes: CanvasNode[],
   edges: CanvasEdge[],
-  catalog: GraphNodeCatalog
+  catalog: GraphNodeCatalog,
+  parameters: GraphParameter[] = []
 ): boolean {
   if (!hasCompleteHandles(connection)) return false;
   if (
@@ -246,7 +266,8 @@ export function connectionIsValid(
   const sourceScalarType = graphOutputScalarType(
     source,
     connection.sourceHandle,
-    catalog
+    catalog,
+    parameters
   );
   const acceptedScalarTypes = inputScalarTypes(
     target,
@@ -259,7 +280,7 @@ export function connectionIsValid(
       .map((edge) => {
         const connectedSource = nodes.find((node) => node.id === edge.source);
         return connectedSource && edge.sourceHandle
-          ? graphOutputScalarType(connectedSource, edge.sourceHandle, catalog)
+          ? graphOutputScalarType(connectedSource, edge.sourceHandle, catalog, parameters)
           : null;
       });
     if (connectedScalarTypes.some((type) => type !== sourceScalarType)) return false;
@@ -276,44 +297,52 @@ export function addConnection(
   return addEdge(connection, edges);
 }
 
-export function graphOutputScalarType(
-  node: CanvasNode,
-  handleId: string,
-  catalog: GraphNodeCatalog
-) {
+export function operationForNode(catalog: GraphNodeCatalog, data: GraphOperationNode['data']): GraphOperationDescriptor {
+  const descriptor = catalog.operations?.find(item => item.operation === data.operation);
+  if (!descriptor) throw new Error(`Unknown operation: ${data.operation}`);
+  return descriptor;
+}
+
+export function createOperationNode(nodes: CanvasNode[], descriptor: GraphOperationDescriptor): CanvasNode {
+  return { ...nextNodeBase(nodes, descriptor.operation), type: GRAPH_NODE_TYPE.operation,
+    data: { operation: descriptor.operation, scalar_type: 'number', input_ids: descriptor.expandable ? descriptor.inputs.map(port => port.handle_id) : [] } };
+}
+
+export function createParameterNode(nodes: CanvasNode[], parameter: GraphParameter): CanvasNode {
+  return { ...nextNodeBase(nodes, 'parameter'), type: GRAPH_NODE_TYPE.parameter, data: { parameter_id: parameter.id } };
+}
+
+export function outputsForNode(node: CanvasNode, catalog: GraphNodeCatalog, parameters: GraphParameter[] = []): GraphOutputDescriptor[] {
   if (node.type === GRAPH_NODE_TYPE.trigger) {
     const trigger = triggerForNode(catalog, node.data);
-    return (
-      trigger.payload?.fields.find((field) => field.handle_id === handleId)
-        ?.scalar_type ?? null
-    );
+    return [{ handle_id: trigger.context_handle_id, display_name: 'Context', scalar_type: GRAPH_CONTEXT_PORT_TYPE }, ...(trigger.payload?.fields ?? []).filter(field => field.scalar_type !== null).map(field => ({ handle_id: field.handle_id, display_name: field.display_name, scalar_type: field.scalar_type!, nullable: field.nullable }))];
   }
-  if (node.type === GRAPH_NODE_TYPE.constant) {
-    return constantForNode(catalog, node.data).output.scalar_type;
+  if (node.type === GRAPH_NODE_TYPE.constant) return [constantForNode(catalog, node.data).output];
+  if (node.type === GRAPH_NODE_TYPE.comparison) return [comparisonForNode(catalog, node.data).output];
+  if (node.type === GRAPH_NODE_TYPE.brokerAction) return brokerActionForNode(catalog, node.data).outputs ?? [];
+  if (node.type === GRAPH_NODE_TYPE.parameter) {
+    const parameter = parameters.find(p => p.id === node.data.parameter_id);
+    return parameter ? [{ handle_id: catalogContract.graphPort.VALUE, display_name: 'Value', scalar_type: parameter.data.scalar_type }] : [];
   }
-  if (node.type === GRAPH_NODE_TYPE.comparison) {
-    return comparisonForNode(catalog, node.data).output.scalar_type;
-  }
-  return null;
+  const descriptor = operationForNode(catalog, node.data);
+  return descriptor.outputs.map(port => descriptor.selectable_scalar_type ? { ...port, scalar_type: node.data.scalar_type ?? 'number' } : port);
 }
 
-function inputScalarTypes(
-  node: CanvasNode,
-  handleId: string,
-  catalog: GraphNodeCatalog
-) {
-  const inputs = inputsForNode(node, catalog);
-  return inputs.find((input) => input.handle_id === handleId)?.scalar_types ?? [];
+export function graphOutputScalarType(node: CanvasNode, handleId: string, catalog: GraphNodeCatalog, parameters: GraphParameter[] = []) {
+  return outputsForNode(node, catalog, parameters).find(port => port.handle_id === handleId)?.scalar_type ?? null;
 }
 
-function inputsForNode(node: CanvasNode, catalog: GraphNodeCatalog) {
-  if (node.type === GRAPH_NODE_TYPE.comparison) {
-    return comparisonForNode(catalog, node.data).inputs;
-  }
-  if (node.type === GRAPH_NODE_TYPE.brokerAction) {
-    return brokerActionForNode(catalog, node.data).inputs;
-  }
-  return [];
+function inputScalarTypes(node: CanvasNode, handleId: string, catalog: GraphNodeCatalog) {
+  return inputsForNode(node, catalog).find(input => input.handle_id === handleId)?.scalar_types ?? [];
+}
+
+export function inputsForNode(node: CanvasNode, catalog: GraphNodeCatalog): GraphInputDescriptor[] {
+  if (node.type === GRAPH_NODE_TYPE.comparison) return comparisonForNode(catalog, node.data).inputs;
+  if (node.type === GRAPH_NODE_TYPE.brokerAction) return brokerActionForNode(catalog, node.data).inputs;
+  if (node.type !== GRAPH_NODE_TYPE.operation) return [];
+  const descriptor = operationForNode(catalog, node.data);
+  if (descriptor.expandable) return (node.data.input_ids?.length ? node.data.input_ids : descriptor.inputs.map(p => p.handle_id)).map(id => ({ ...descriptor.inputs[0], handle_id: id, display_name: id }));
+  return descriptor.inputs.map(port => descriptor.selectable_scalar_type && port.handle_id !== catalogContract.graphPort.CONDITION ? { ...port, scalar_types: [node.data.scalar_type ?? 'number'] } : port);
 }
 
 function hasCompleteHandles(

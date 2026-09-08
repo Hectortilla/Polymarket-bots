@@ -1480,3 +1480,23 @@ Documentation-drift audit: README, package architecture, API notes, bot-author
 guide, web architecture/specification, endpoint inventory, and generated
 OpenAPI/client fixtures describe the selector consistently. Earlier numbered
 slice scopes remain historical; this follow-up does not alter them.
+
+
+## Slice 14: Paper graph MVP in two phases
+
+The [MVP checklist](graph-mvp-plan.md) is the single source of completion status.
+Its individually assignable units are executed in order: phase 1 owns backend
+catalog/schema declarations, frontend representation/persistence, and the
+unsupported-execution boundary; phase 2 owns evaluation, portfolio integration,
+event controls, diagnostics and decision preview. Check a unit only after its
+implementation, relevant tests and documentation updates pass.
+
+This slice supersedes the four-node/scalar, null-comparison-false, action-only
+terminal, stateless-evaluator and unavailable-context constraints recorded in
+Slices 13A–13C. Persistence and immutable run revisions from Slices 13D–13F remain.
+The graph interface now has Number, Boolean and Text, with exact decimal strings
+for Number. See [graph behavior and authoring](graph-node-mvp.md) for the complete
+operation set, arithmetic policy, context API, signal-consumption rules, bounds,
+preview isolation and example strategies. Existing development data is disposable;
+no compatibility decoder or version migration is introduced. Public deployment,
+tenancy and live execution are not part of this slice.

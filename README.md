@@ -35,7 +35,8 @@ Taskiq worker, durable progress events, migrations, async stores, FastAPI runs
 API, durable SSE path,
 deterministic OpenAPI artifact, static client-rendered dashboard UI, and a
 validated alpha graph contract with framework-derived triggers, typed constants,
-comparisons, event-driven fixed-side paper broker actions, editable graph
+comparisons, generic operations, portfolio queries, signal controls, decision preview,
+event-driven fixed-side paper broker actions, editable graph
 storage, reusable saved bots, and immutable bot-owned graph revisions. The
 browser presents one node-based bot workspace: configuration and graph editing
 live in the same form, and a new graph can start fresh or copy another bot.
@@ -81,8 +82,10 @@ isolated Slices 12A through 12E and Slices 13A through 13F control-plane
 foundation, worker, durable progress path, runs API, mixed durable/live SSE
 stream, and browser dashboard. The dashboard has market-price and
 followed-wallet timeline views, plus one Svelte Flow bot editor that combines
-paper configuration and graph editing. Its trigger outputs, typed constants,
-comparisons, and fixed-side submit actions come from one backend catalog. New
+paper configuration and graph editing. Its trigger outputs, Number/Boolean/Text constants, comparisons, operations,
+portfolio queries, signal controls, and fixed-side submit actions come from one
+backend catalog. See [graph MVP authoring](docs/graph-node-mvp.md) and its
+[two-phase checklist](docs/graph-mvp-plan.md). New
 bots start from the catalog graph or a copy of another bot's latest graph. The
 frontend uses the existing template-copy API as an internal persistence detail,
 then snapshots the bot-owned revision for each run and executes it as an

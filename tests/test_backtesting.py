@@ -28,6 +28,7 @@ from polybot.backtesting.service.runner import run_backtest
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
+from polybot.framework.portfolio import PortfolioSnapshot
 from polybot.framework.events import (
     FillEvent,
     FillRejectReason,
@@ -658,7 +659,25 @@ def test_backtest_settles_recorded_resolution_at_contractual_payout(
     )
     archive_writer.close()
     archive = _ArchiveWindow(path, START_MS, end_ms)
-    bot = _BuyOnceBot()
+
+    class PortfolioTrackingBot(_BuyOnceBot):
+        def __init__(self) -> None:
+            super().__init__()
+            self.snapshots: list[PortfolioSnapshot] = []
+
+        async def on_start(self, ctx: BotContext) -> None:
+            await super().on_start(ctx)
+            self.snapshots.append(ctx.portfolio.snapshot())
+
+        async def on_book(self, ctx: BotContext, book: BookSnapshot) -> None:
+            await super().on_book(ctx, book)
+            self.snapshots.append(ctx.portfolio.snapshot())
+
+        async def on_stop(self, ctx: BotContext) -> None:
+            await super().on_stop(ctx)
+            self.snapshots.append(ctx.portfolio.snapshot())
+
+    bot = PortfolioTrackingBot()
 
     result = _run(bot, archive, tmp_path / "results")
     summary = _summary(result.results_dir)
@@ -675,6 +694,12 @@ def test_backtest_settles_recorded_resolution_at_contractual_payout(
     assert metrics["net_pnl_usdc"] == "0.80000"
     assert metrics["resolution_count"] == 1
     assert summary["open_positions"] == []
+    assert bot.snapshots[0].positions == ()
+    assert any(
+        snapshot.position(UP_TOKEN).size == bot.size for snapshot in bot.snapshots
+    )
+    assert bot.snapshots[-1].positions == ()
+    assert bot.snapshots[-1].available_cash == Decimal(metrics["final_cash_usdc"])
 
 
 def test_resolution_at_initial_state_timestamp_is_replayed(

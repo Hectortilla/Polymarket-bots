@@ -1,0 +1,650 @@
+{
+  "request": {
+    "graph": {
+      "parameters": [
+        {
+          "id": "entry",
+          "name": "Entry threshold",
+          "data": {
+            "scalar_type": "number",
+            "value": "0.45"
+          }
+        },
+        {
+          "id": "exit",
+          "name": "Exit threshold",
+          "data": {
+            "scalar_type": "number",
+            "value": "0.60"
+          }
+        },
+        {
+          "id": "budget",
+          "name": "Budget",
+          "data": {
+            "scalar_type": "number",
+            "value": "1"
+          }
+        }
+      ],
+      "nodes": [
+        {
+          "id": "book",
+          "type": "trigger",
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "data": {
+            "hook_name": "on_book"
+          }
+        },
+        {
+          "id": "entry",
+          "type": "parameter",
+          "position": {
+            "x": 320.0,
+            "y": 0.0
+          },
+          "data": {
+            "parameter_id": "entry"
+          }
+        },
+        {
+          "id": "exit",
+          "type": "parameter",
+          "position": {
+            "x": 640.0,
+            "y": 0.0
+          },
+          "data": {
+            "parameter_id": "exit"
+          }
+        },
+        {
+          "id": "budget",
+          "type": "parameter",
+          "position": {
+            "x": 960.0,
+            "y": 0.0
+          },
+          "data": {
+            "parameter_id": "budget"
+          }
+        },
+        {
+          "id": "position",
+          "type": "operation",
+          "position": {
+            "x": 1280.0,
+            "y": 0.0
+          },
+          "data": {
+            "operation": "position",
+            "input_ids": [],
+            "scalar_type": "number"
+          }
+        },
+        {
+          "id": "flat",
+          "type": "operation",
+          "position": {
+            "x": 0.0,
+            "y": 260.0
+          },
+          "data": {
+            "operation": "not",
+            "input_ids": [],
+            "scalar_type": "number"
+          }
+        },
+        {
+          "id": "cheap",
+          "type": "comparison",
+          "position": {
+            "x": 320.0,
+            "y": 260.0
+          },
+          "data": {
+            "operator": "less_than_or_equal"
+          }
+        },
+        {
+          "id": "enter",
+          "type": "operation",
+          "position": {
+            "x": 640.0,
+            "y": 260.0
+          },
+          "data": {
+            "operation": "and",
+            "input_ids": [],
+            "scalar_type": "number"
+          }
+        },
+        {
+          "id": "shares",
+          "type": "operation",
+          "position": {
+            "x": 960.0,
+            "y": 260.0
+          },
+          "data": {
+            "operation": "divide",
+            "input_ids": [],
+            "scalar_type": "number"
+          }
+        },
+        {
+          "id": "buy",
+          "type": "broker_action",
+          "position": {
+            "x": 1280.0,
+            "y": 260.0
+          },
+          "data": {
+            "action": "submit_buy"
+          }
+        },
+        {
+          "id": "expensive",
+          "type": "comparison",
+          "position": {
+            "x": 0.0,
+            "y": 520.0
+          },
+          "data": {
+            "operator": "greater_than_or_equal"
+          }
+        },
+        {
+          "id": "leave",
+          "type": "operation",
+          "position": {
+            "x": 320.0,
+            "y": 520.0
+          },
+          "data": {
+            "operation": "and",
+            "input_ids": [],
+            "scalar_type": "number"
+          }
+        },
+        {
+          "id": "sell",
+          "type": "broker_action",
+          "position": {
+            "x": 640.0,
+            "y": 520.0
+          },
+          "data": {
+            "action": "submit_sell"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "book-context-position-context",
+          "source": "book",
+          "source_handle": "context",
+          "target": "position",
+          "target_handle": "context"
+        },
+        {
+          "id": "book-field:token_id-position-token_id",
+          "source": "book",
+          "source_handle": "field:token_id",
+          "target": "position",
+          "target_handle": "token_id"
+        },
+        {
+          "id": "position-has_position-flat-value",
+          "source": "position",
+          "source_handle": "has_position",
+          "target": "flat",
+          "target_handle": "value"
+        },
+        {
+          "id": "book-field:best_ask.price-cheap-left",
+          "source": "book",
+          "source_handle": "field:best_ask.price",
+          "target": "cheap",
+          "target_handle": "left"
+        },
+        {
+          "id": "entry-value-cheap-right",
+          "source": "entry",
+          "source_handle": "value",
+          "target": "cheap",
+          "target_handle": "right"
+        },
+        {
+          "id": "flat-result-enter-input_1",
+          "source": "flat",
+          "source_handle": "result",
+          "target": "enter",
+          "target_handle": "input_1"
+        },
+        {
+          "id": "cheap-result-enter-input_2",
+          "source": "cheap",
+          "source_handle": "result",
+          "target": "enter",
+          "target_handle": "input_2"
+        },
+        {
+          "id": "budget-value-shares-left",
+          "source": "budget",
+          "source_handle": "value",
+          "target": "shares",
+          "target_handle": "left"
+        },
+        {
+          "id": "book-field:best_ask.price-shares-right",
+          "source": "book",
+          "source_handle": "field:best_ask.price",
+          "target": "shares",
+          "target_handle": "right"
+        },
+        {
+          "id": "enter-result-buy-enabled",
+          "source": "enter",
+          "source_handle": "result",
+          "target": "buy",
+          "target_handle": "enabled"
+        },
+        {
+          "id": "book-field:token_id-buy-token_id",
+          "source": "book",
+          "source_handle": "field:token_id",
+          "target": "buy",
+          "target_handle": "token_id"
+        },
+        {
+          "id": "book-field:best_ask.price-buy-price",
+          "source": "book",
+          "source_handle": "field:best_ask.price",
+          "target": "buy",
+          "target_handle": "price"
+        },
+        {
+          "id": "shares-value-buy-size",
+          "source": "shares",
+          "source_handle": "value",
+          "target": "buy",
+          "target_handle": "size"
+        },
+        {
+          "id": "book-field:best_bid.price-expensive-left",
+          "source": "book",
+          "source_handle": "field:best_bid.price",
+          "target": "expensive",
+          "target_handle": "left"
+        },
+        {
+          "id": "exit-value-expensive-right",
+          "source": "exit",
+          "source_handle": "value",
+          "target": "expensive",
+          "target_handle": "right"
+        },
+        {
+          "id": "position-has_position-leave-input_1",
+          "source": "position",
+          "source_handle": "has_position",
+          "target": "leave",
+          "target_handle": "input_1"
+        },
+        {
+          "id": "expensive-result-leave-input_2",
+          "source": "expensive",
+          "source_handle": "result",
+          "target": "leave",
+          "target_handle": "input_2"
+        },
+        {
+          "id": "leave-result-sell-enabled",
+          "source": "leave",
+          "source_handle": "result",
+          "target": "sell",
+          "target_handle": "enabled"
+        },
+        {
+          "id": "book-field:token_id-sell-token_id",
+          "source": "book",
+          "source_handle": "field:token_id",
+          "target": "sell",
+          "target_handle": "token_id"
+        },
+        {
+          "id": "book-field:best_bid.price-sell-price",
+          "source": "book",
+          "source_handle": "field:best_bid.price",
+          "target": "sell",
+          "target_handle": "price"
+        },
+        {
+          "id": "position-size-sell-size",
+          "source": "position",
+          "source_handle": "size",
+          "target": "sell",
+          "target_handle": "size"
+        }
+      ]
+    },
+    "hook_name": "on_book",
+    "payload": {
+      "token_id": "example-token",
+      "bids": [
+        {
+          "price": "0.39",
+          "size": "100"
+        }
+      ],
+      "asks": [
+        {
+          "price": "0.40",
+          "size": "100"
+        }
+      ],
+      "received_at_ms": 1000,
+      "market_slug": null,
+      "condition_id": null,
+      "outcome": null
+    },
+    "portfolio": {
+      "available_cash": "1000",
+      "positions": []
+    },
+    "now_ms": 1000
+  },
+  "response": {
+    "nodes": [
+      {
+        "node_id": "book",
+        "outputs": {
+          "context": {
+            "status": "available",
+            "value": "Context",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "field:token_id": {
+            "status": "available",
+            "value": "example-token",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "field:best_ask.price": {
+            "status": "available",
+            "value": "0.40",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "field:best_bid.price": {
+            "status": "available",
+            "value": "0.39",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "entry",
+        "outputs": {
+          "value": {
+            "status": "available",
+            "value": "0.45",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "exit",
+        "outputs": {
+          "value": {
+            "status": "available",
+            "value": "0.60",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "budget",
+        "outputs": {
+          "value": {
+            "status": "available",
+            "value": "1",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "position",
+        "outputs": {
+          "size": {
+            "status": "available",
+            "value": "0",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "has_position": {
+            "status": "available",
+            "value": false,
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "average_entry_price": {
+            "status": "missing",
+            "value": null,
+            "reason": "value_unavailable",
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "missing",
+        "reason": "value_unavailable"
+      },
+      {
+        "node_id": "cheap",
+        "outputs": {
+          "result": {
+            "status": "available",
+            "value": true,
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "expensive",
+        "outputs": {
+          "result": {
+            "status": "available",
+            "value": false,
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "shares",
+        "outputs": {
+          "value": {
+            "status": "available",
+            "value": "2.5",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "flat",
+        "outputs": {
+          "result": {
+            "status": "available",
+            "value": true,
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "leave",
+        "outputs": {
+          "result": {
+            "status": "available",
+            "value": false,
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "enter",
+        "outputs": {
+          "result": {
+            "status": "available",
+            "value": true,
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "available",
+        "reason": null
+      },
+      {
+        "node_id": "sell",
+        "outputs": {
+          "status": {
+            "status": "available",
+            "value": "skipped",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "filled_size": {
+            "status": "missing",
+            "value": null,
+            "reason": "value_unavailable",
+            "input_handle_id": null,
+            "message": null
+          },
+          "average_price": {
+            "status": "missing",
+            "value": null,
+            "reason": "value_unavailable",
+            "input_handle_id": null,
+            "message": null
+          },
+          "skip_reason": {
+            "status": "available",
+            "value": "disabled",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "reject_reason": {
+            "status": "missing",
+            "value": null,
+            "reason": "value_unavailable",
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "skipped",
+        "reason": "disabled"
+      },
+      {
+        "node_id": "buy",
+        "outputs": {
+          "status": {
+            "status": "available",
+            "value": "planned",
+            "reason": null,
+            "input_handle_id": null,
+            "message": null
+          },
+          "filled_size": {
+            "status": "planned",
+            "value": null,
+            "reason": "planned",
+            "input_handle_id": null,
+            "message": null
+          },
+          "average_price": {
+            "status": "planned",
+            "value": null,
+            "reason": "planned",
+            "input_handle_id": null,
+            "message": null
+          },
+          "skip_reason": {
+            "status": "missing",
+            "value": null,
+            "reason": "value_unavailable",
+            "input_handle_id": null,
+            "message": null
+          },
+          "reject_reason": {
+            "status": "missing",
+            "value": null,
+            "reason": "value_unavailable",
+            "input_handle_id": null,
+            "message": null
+          }
+        },
+        "status": "planned",
+        "reason": null
+      }
+    ],
+    "intended_orders": [
+      {
+        "token_id": "example-token",
+        "side": "BUY",
+        "price": "0.40",
+        "size": "2.5",
+        "market_slug": null,
+        "condition_id": null,
+        "source_id": null,
+        "reason": null
+      }
+    ]
+  }
+}

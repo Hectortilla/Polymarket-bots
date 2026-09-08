@@ -4,12 +4,24 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self
 
+from polybot_control_plane.catalog.graphs.ports import (
+    GraphInputDescriptor,
+    GraphOutputDescriptor,
+)
+from polybot_control_plane.catalog.graphs.preview_samples import (
+    sample_payload,
+    PREVIEW_SAMPLE_TIME_MS,
+)
+from polybot_control_plane.catalog.graphs.operations import (
+    GraphOperationDescriptor,
+    operation_descriptors,
+)
+
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     StrictBool,
-    StrictInt,
     StrictStr,
     model_validator,
 )
@@ -39,11 +51,11 @@ from polybot_control_plane.catalog.graphs.values import (
     GRAPH_CONTEXT_HANDLE_ID,
     GRAPH_CONTEXT_TYPE_NAME,
     GRAPH_VALUE_HANDLE_ID,
-    MIN_GRAPH_INPUT_SCALAR_TYPES,
     GraphBrokerAction,
     GraphComparisonOperator,
     GraphNodeType,
     GraphScalarType,
+    GraphPort,
 )
 from polybot_control_plane.catalog.graphs.types import (
     GraphFieldPath,
@@ -111,11 +123,14 @@ class GraphTriggerDescriptor(BaseModel):
     context_handle_id: Literal[GRAPH_CONTEXT_HANDLE_ID]
     context_type_name: Literal[GRAPH_CONTEXT_TYPE_NAME]
     payload: GraphPayloadDescriptor | None = None
+    sample_payload: dict[str, Any] | None = None
+    sample_time_ms: int = PREVIEW_SAMPLE_TIME_MS
 
     @classmethod
     def from_discovered(cls, trigger: DiscoveredGraphTrigger) -> Self:
         return cls(
             hook_name=trigger.hook_name,
+            sample_payload=sample_payload(trigger.hook_name),
             context_handle_id=GRAPH_CONTEXT_HANDLE_ID,
             context_type_name=GRAPH_CONTEXT_TYPE_NAME,
             payload=(
@@ -126,45 +141,24 @@ class GraphTriggerDescriptor(BaseModel):
         )
 
 
-class GraphOutputDescriptor(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    handle_id: GraphHandleId
-    display_name: str
-    scalar_type: GraphScalarType
-    nullable: bool = False
-
-
-class GraphInputDescriptor(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    handle_id: GraphHandleId
-    display_name: str
-    scalar_types: tuple[GraphScalarType, ...] = Field(
-        min_length=MIN_GRAPH_INPUT_SCALAR_TYPES
-    )
-    nullable: bool
-    required: bool
-
-
 class GraphConstantDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     node_type: Literal[GraphNodeType.CONSTANT] = GraphNodeType.CONSTANT
     scalar_type: GraphScalarType
     display_name: str
-    default_value: StrictBool | StrictInt | StrictStr
+    default_value: StrictBool | StrictStr
     output: GraphOutputDescriptor
 
     @classmethod
     def from_scalar_type(
         cls,
         scalar_type: GraphScalarType,
-        default_value: bool | int | str,
+        default_value: bool | str,
     ) -> Self:
         return cls(
             scalar_type=scalar_type,
-            display_name=f"{scalar_type.value.title()} constant",
+            display_name=f"{'Text' if scalar_type is GraphScalarType.STRING else scalar_type.value.title()} constant",
             default_value=default_value,
             output=GraphOutputDescriptor(
                 handle_id=GRAPH_VALUE_HANDLE_ID,
@@ -206,6 +200,7 @@ class GraphComparisonDescriptor(BaseModel):
                 handle_id=GRAPH_COMPARISON_RESULT_HANDLE_ID,
                 display_name="Result",
                 scalar_type=GraphScalarType.BOOLEAN,
+                nullable=True,
             ),
         )
 
@@ -219,6 +214,7 @@ class GraphBrokerActionDescriptor(BaseModel):
     display_name: str
     side: Side
     inputs: tuple[GraphInputDescriptor, ...]
+    outputs: tuple[GraphOutputDescriptor, ...] = ()
 
     @classmethod
     def from_discovered(cls, action: DiscoveredBrokerAction) -> Self:
@@ -229,6 +225,21 @@ class GraphBrokerActionDescriptor(BaseModel):
             method_name=action.method_name,
             display_name=f"{action.side.value} order",
             side=action.side,
+            outputs=tuple(
+                GraphOutputDescriptor(
+                    handle_id=name,
+                    display_name="Execution Price" if name == GraphPort.AVERAGE_PRICE else name.replace("_", " ").title(),
+                    scalar_type=kind,
+                    nullable=name != GraphPort.STATUS,
+                )
+                for name, kind in (
+                    (GraphPort.STATUS, GraphScalarType.STRING),
+                    (GraphPort.FILLED_SIZE, GraphScalarType.NUMBER),
+                    (GraphPort.AVERAGE_PRICE, GraphScalarType.NUMBER),
+                    (GraphPort.SKIP_REASON, GraphScalarType.STRING),
+                    (GraphPort.REJECT_REASON, GraphScalarType.STRING),
+                )
+            ),
             inputs=tuple(
                 GraphInputDescriptor(
                     handle_id=input_.name,
@@ -245,6 +256,7 @@ class GraphBrokerActionDescriptor(BaseModel):
 class GraphNodeCatalog(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    operations: tuple[GraphOperationDescriptor, ...] = ()
     triggers: tuple[GraphTriggerDescriptor, ...]
     constants: tuple[GraphConstantDescriptor, ...]
     comparisons: tuple[GraphComparisonDescriptor, ...]
@@ -272,6 +284,7 @@ class GraphNodeCatalog(BaseModel):
     @classmethod
     def from_bot_type(cls, bot_type: type[Any]) -> Self:
         return cls(
+            operations=operation_descriptors(),
             triggers=tuple(
                 GraphTriggerDescriptor.from_discovered(trigger)
                 for trigger in discover_graph_triggers(bot_type)
@@ -282,11 +295,7 @@ class GraphNodeCatalog(BaseModel):
                     False,
                 ),
                 GraphConstantDescriptor.from_scalar_type(
-                    GraphScalarType.INTEGER,
-                    0,
-                ),
-                GraphConstantDescriptor.from_scalar_type(
-                    GraphScalarType.DECIMAL,
+                    GraphScalarType.NUMBER,
                     "0",
                 ),
                 GraphConstantDescriptor.from_scalar_type(

@@ -1,6 +1,7 @@
 import type {
   BotDefinitionDescriptor,
   GraphNode,
+  GraphInputDescriptor,
   GraphNodeCatalog,
   GraphScalarType,
   NodeGraph
@@ -23,10 +24,11 @@ type GraphScalarTypeContract = {
 const graphNodeTypeContract = catalogContract.graphNodeType as GraphNodeTypeContract;
 const graphScalarTypeContract = catalogContract.graphScalarType as GraphScalarTypeContract;
 
+export const GRAPH_CONTEXT_PORT_TYPE = catalogContract.contextPortType as GraphInputDescriptor['scalar_types'][number];
+
 export const GRAPH_SCALAR_TYPE = {
   boolean: graphScalarTypeContract.BOOLEAN,
-  integer: graphScalarTypeContract.INTEGER,
-  decimal: graphScalarTypeContract.DECIMAL,
+  number: graphScalarTypeContract.NUMBER,
   string: graphScalarTypeContract.STRING
 } as const satisfies Record<string, GraphScalarType>;
 
@@ -34,6 +36,8 @@ export const GRAPH_NODE_TYPE = {
   trigger: graphNodeTypeContract.TRIGGER,
   constant: graphNodeTypeContract.CONSTANT,
   comparison: graphNodeTypeContract.COMPARISON,
+  operation: graphNodeTypeContract.OPERATION,
+  parameter: graphNodeTypeContract.PARAMETER,
   brokerAction: graphNodeTypeContract.BROKER_ACTION
 } as const satisfies Record<string, GraphNode['type']>;
 

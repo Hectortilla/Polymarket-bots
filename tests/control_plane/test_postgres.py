@@ -48,6 +48,7 @@ from polybot_control_plane.catalog.definitions import (
 )
 from polybot_control_plane.catalog.graphs.contracts import NodeGraph
 from polybot_control_plane.catalog.graphs.starter import STARTER_NODE_GRAPH
+from polybot_control_plane.catalog.graphs.examples import entry_exit_example
 from polybot_control_plane.api.app import create_app
 from polybot_control_plane.api.routes.paths import (
     BOT_RUNS_PATH,
@@ -1571,3 +1572,54 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
     assert restored is not None
     assert restored.status is RunStatus.STOPPED
     assert events[-1].payload.status is RunStatus.STOPPED
+
+
+@pytest.mark.postgres
+def test_graph_parameters_preserve_exact_values_and_run_revisions() -> None:
+    url = _postgres_url()
+    alembic_config = _alembic_config(url)
+    command.downgrade(alembic_config, "base")
+    command.upgrade(alembic_config, "head")
+    graph_data = entry_exit_example().graph.model_dump(mode="json")
+    exact_value = "9007199254740993.000000000000000001"
+    graph_data["parameters"][0]["data"]["value"] = exact_value
+    graph = NodeGraph.model_validate(graph_data)
+    config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+        {"name": "parameter isolation", "market_slugs": ["example-market"]}
+    )
+
+    async def scenario() -> None:
+        engine = create_async_engine(url)
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                bots = BotStore(session)
+                bot = await bots.create(
+                    definition_id=NODE_BASED_DEFINITION_ID, config=config, graph=graph
+                )
+                original_revision_id = bot.latest_graph_revision.id
+                run = await RunStore(session).create_from_bot(bot)
+                graph_data["parameters"][0]["data"]["value"] = "0.25"
+                replacement = NodeGraph.model_validate(graph_data)
+                await bots.append_revision(bot.id, replacement)
+                session.expire_all()
+                original = await bots.read_revision(bot.id, original_revision_id)
+                latest = await bots.read(bot.id)
+                saved_run = await RunStore(session).read(run.id)
+                assert original.graph == graph
+                assert original.graph.parameters[0].data.value == exact_value
+                assert saved_run.graph == graph
+                assert latest.latest_graph_revision.graph == replacement
+                copied = await bots.create(
+                    definition_id=NODE_BASED_DEFINITION_ID,
+                    config=config,
+                    graph=original.graph,
+                )
+                assert copied.latest_graph_revision.graph == graph
+                assert copied.latest_graph_revision.id != original_revision_id
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        command.downgrade(alembic_config, "base")

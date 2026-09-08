@@ -19,7 +19,7 @@ import {
 import { GRAPH_NODE_TYPE } from './graphContracts';
 import {
   BUY_ACTION,
-  DECIMAL_CONSTANT,
+  NUMBER_CONSTANT,
   EQUAL_COMPARISON,
   LESS_THAN_OR_EQUAL,
   ON_BOOK_TRIGGER,
@@ -127,11 +127,11 @@ describe('node graph canvas adapter', () => {
       type: ON_START_TRIGGER.node_type,
       data: { hook_name: ON_START_TRIGGER.hook_name }
     });
-    expect(createConstantNode(nodes, DECIMAL_CONSTANT)).toMatchObject({
-      type: DECIMAL_CONSTANT.node_type,
+    expect(createConstantNode(nodes, NUMBER_CONSTANT)).toMatchObject({
+      type: NUMBER_CONSTANT.node_type,
       data: {
-        scalar_type: DECIMAL_CONSTANT.scalar_type,
-        value: DECIMAL_CONSTANT.default_value
+        scalar_type: NUMBER_CONSTANT.scalar_type,
+        value: NUMBER_CONSTANT.default_value
       }
     });
     expect(createComparisonNode(nodes, LESS_THAN_OR_EQUAL)).toMatchObject({
@@ -147,20 +147,20 @@ describe('node graph canvas adapter', () => {
   });
 
   it('keeps generated node IDs unique', () => {
-    const first = createConstantNode(canvasNodes(TEST_GRAPH), DECIMAL_CONSTANT);
+    const first = createConstantNode(canvasNodes(TEST_GRAPH), NUMBER_CONSTANT);
     const second = createConstantNode(
       [...canvasNodes(TEST_GRAPH), first],
-      DECIMAL_CONSTANT
+      NUMBER_CONSTANT
     );
 
-    expect(first.id).toBe('constant-decimal');
-    expect(second.id).toBe('constant-decimal-2');
+    expect(first.id).toBe('constant-number');
+    expect(second.id).toBe('constant-number-2');
   });
 
   it('adds complete handled connections and rejects handle-less persistence', () => {
     const connection = {
       source: 'constant-threshold',
-      sourceHandle: DECIMAL_CONSTANT.output.handle_id,
+      sourceHandle: NUMBER_CONSTANT.output.handle_id,
       target: 'comparison-threshold',
       targetHandle: LESS_THAN_OR_EQUAL.inputs[1].handle_id
     };

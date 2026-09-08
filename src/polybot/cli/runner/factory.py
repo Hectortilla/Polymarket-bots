@@ -11,6 +11,7 @@ from polybot.cli.observability.observer import RuntimeObserver
 from polybot.execution.paper import PaperBroker
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.gamma import GammaClient
@@ -73,6 +74,7 @@ async def create_runtime(
             ctx=BotContext(
                 config=config,
                 broker=broker,
+                portfolio=PaperPortfolioReader(paper_broker.portfolio),
                 markets=gamma,
                 books=clob,
                 wallet_activity=wallet_activity_client,

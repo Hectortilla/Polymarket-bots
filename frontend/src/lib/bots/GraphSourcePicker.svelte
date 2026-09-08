@@ -1,18 +1,20 @@
 <script lang="ts">
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
 
-  import type { BotRead, NodeGraph } from '$lib/api/generated';
+  import type { BotRead, NodeGraph, GraphExample } from '$lib/api/generated';
   import { cloneNodeGraph } from '$lib/catalog/graphContracts';
   import { GRAPH_SOURCE_COPY } from './graphSource';
 
   let {
     bots,
     starterGraph,
+    examples = [],
     excludeBotId,
     onselect
   }: {
     bots: BotRead[];
     starterGraph: NodeGraph;
+    examples?: GraphExample[];
     excludeBotId?: string;
     onselect: (graph: NodeGraph, sourceName: string) => void;
   } = $props();
@@ -31,6 +33,8 @@
       onselect(cloneNodeGraph(starterGraph), GRAPH_SOURCE_COPY.FRESH);
       return;
     }
+    const example = examples.find((item, index) => `example-${index}` === selectedSource);
+    if (example) { onselect(cloneNodeGraph(example.graph), example.name); return; }
     const source = graphBots.find((bot) => bot.id === selectedSource);
     const graph = source?.latest_graph_revision?.graph;
     if (source && graph) {
@@ -47,6 +51,7 @@
     </span>
     <select id="graph-source" aria-describedby="graph-source-helper" bind:value={selectedSource}>
       <option value={START_FRESH}>Start fresh</option>
+      {#each examples as example, index}<option value={`example-${index}`}>{example.name}</option>{/each}
       {#each graphBots as source (source.id)}
         <option value={source.id}>{source.config.name}</option>
       {/each}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { graphNumberIsValid } from './numberValue';
+  import NodeIssues from './NodeIssues.svelte';
   import { getContext } from 'svelte';
   import { Handle, Position } from '@xyflow/svelte';
 
@@ -13,6 +15,7 @@
   let { id, data }: { id: string; data: GraphConstantNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const descriptor = $derived(constantForNode(editor.catalog, data));
+  const numberInvalid = $derived(data.scalar_type === 'number' && !graphNumberIsValid(data.value));
   const inputControl = $derived(constantInput(data.scalar_type));
 
   function updateValue(event: Event): void {
@@ -40,6 +43,7 @@
       <input
         type={inputControl.type}
         value={data.value}
+        aria-invalid={numberInvalid}
         step={inputControl.step}
         disabled={editor.readOnly}
         onchange={updateValue}
@@ -52,7 +56,8 @@
       isConnectable={!editor.readOnly}
     />
   </label>
-</section>
+{#if numberInvalid}<p role="alert">Enter a finite Number within the supported range.</p>{/if}
+<NodeIssues {id} /></section>
 
 <style>
   .functional-node {

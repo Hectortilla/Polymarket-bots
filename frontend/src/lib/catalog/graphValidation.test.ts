@@ -13,10 +13,10 @@ const GRAPH = {
       data: { hook_name: 'on_book' }
     },
     {
-      id: 'constant-decimal',
+      id: 'constant-number',
       type: GRAPH_NODE_TYPE.constant,
       position: { x: 200, y: 0 },
-      data: { scalar_type: GRAPH_SCALAR_TYPE.decimal, value: '1.0' }
+      data: { scalar_type: GRAPH_SCALAR_TYPE.number, value: '1.0' }
     }
   ],
   edges: []
@@ -28,8 +28,8 @@ describe('graph validation presentation', () => {
       {
         detail: [
           {
-            loc: ['body', 'graph', 'nodes', 1, 'constant', 'data', 'decimal', 'value'],
-            msg: 'Value error, decimal graph constants must be finite decimal strings',
+            loc: ['body', 'graph', 'nodes', 1, 'constant', 'data', 'number', 'value'],
+            msg: 'Value error, Number must be finite and within the supported range',
             type: 'value_error'
           }
         ]
@@ -39,8 +39,8 @@ describe('graph validation presentation', () => {
 
     expect(issues).toEqual([
       {
-        location: 'Node 2: Decimal constant, Value',
-        message: 'Decimal graph constants must be finite decimal strings.'
+        location: 'Node 2: Number constant, Value',
+        message: 'Number must be finite and within the supported range.'
       }
     ]);
   });

@@ -6,6 +6,7 @@ export function nodeGraphsEqual(
   right: NodeGraph | undefined
 ): boolean {
   if (!left || !right) return left === right;
+  if (JSON.stringify(left.parameters ?? []) !== JSON.stringify(right.parameters ?? [])) return false;
   if (left.nodes.length !== right.nodes.length) return false;
 
   const leftEdges = left.edges ?? [];
@@ -40,6 +41,9 @@ function graphNodesEqual(left: GraphNode, right: GraphNode): boolean {
   ) return false;
 
   switch (left.type) {
+    case GRAPH_NODE_TYPE.operation:
+    case GRAPH_NODE_TYPE.parameter:
+      return JSON.stringify(left.data) === JSON.stringify(right.data);
     case GRAPH_NODE_TYPE.trigger:
       return right.type === GRAPH_NODE_TYPE.trigger
         && left.data.hook_name === right.data.hook_name;

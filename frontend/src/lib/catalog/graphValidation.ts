@@ -71,6 +71,10 @@ function indexedSegment(
 
 function graphNodeLabel(node: GraphNode): string {
   switch (node.type) {
+    case GRAPH_NODE_TYPE.operation:
+      return humanize(node.data.operation);
+    case GRAPH_NODE_TYPE.parameter:
+      return `Parameter ${node.data.parameter_id}`;
     case GRAPH_NODE_TYPE.trigger:
       return `${humanize(node.data.hook_name)} trigger`;
     case GRAPH_NODE_TYPE.constant:

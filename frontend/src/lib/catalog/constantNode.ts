@@ -19,24 +19,13 @@ const CONSTANT_SPECS = {
         : null,
     fromInput: (input) => ({ scalar_type: GRAPH_SCALAR_TYPE.boolean, value: input.checked })
   },
-  [GRAPH_SCALAR_TYPE.integer]: {
-    input: { type: 'number', step: '1' },
-    fromDefault: (value) =>
-      typeof value === 'number' && Number.isInteger(value)
-        ? { scalar_type: GRAPH_SCALAR_TYPE.integer, value }
-        : null,
-    fromInput: (input) =>
-      Number.isInteger(input.valueAsNumber)
-        ? { scalar_type: GRAPH_SCALAR_TYPE.integer, value: input.valueAsNumber }
-        : null
-  },
-  [GRAPH_SCALAR_TYPE.decimal]: {
+  [GRAPH_SCALAR_TYPE.number]: {
     input: { type: 'text' },
     fromDefault: (value) =>
       typeof value === 'string'
-        ? { scalar_type: GRAPH_SCALAR_TYPE.decimal, value }
+        ? { scalar_type: GRAPH_SCALAR_TYPE.number, value }
         : null,
-    fromInput: (input) => ({ scalar_type: GRAPH_SCALAR_TYPE.decimal, value: input.value })
+    fromInput: (input) => ({ scalar_type: GRAPH_SCALAR_TYPE.number, value: input.value })
   },
   [GRAPH_SCALAR_TYPE.string]: {
     input: { type: 'text' },

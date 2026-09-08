@@ -25,6 +25,8 @@ from polybot_control_plane.catalog.graphs.values import (
     MIN_GRAPH_IDENTIFIER_LENGTH,
     MIN_GRAPH_INPUT_SCALAR_TYPES,
     NODE_GRAPH_COORDINATE_LIMIT,
+    GRAPH_CONTEXT_PORT_TYPE,
+    GraphPort,
     GraphBrokerAction,
     GraphComparisonOperator,
     GraphNodeType,
@@ -33,12 +35,21 @@ from polybot_control_plane.catalog.graphs.values import (
 from polybot_control_plane.catalog.graphs.contracts import (
     MAX_INPUT_CONNECTIONS_PER_HANDLE,
     MAX_NODE_GRAPH_EDGES,
+    MAX_GRAPH_PARAMETERS,
+    MAX_PARAMETER_NAME_LENGTH,
     MAX_NODE_GRAPH_NODES,
     MIN_NODE_GRAPH_NODES,
     NO_INPUT_CONNECTIONS,
     EXPECTED_TRIGGER_BRANCH_COUNT,
 )
 from polybot_control_plane.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from polybot_control_plane.catalog.graphs.operations import MAX_BOOLEAN_INPUTS
+from polybot_control_plane.catalog.graphs.results import GraphValueStatus
+from polybot_control_plane.catalog.graphs.numbers import (
+    MAX_NUMBER_TEXT_LENGTH,
+    MAX_NUMBER_EXPONENT,
+    GRAPH_NUMBER_PATTERN,
+)
 from polybot_control_plane.api.market_contracts import (
     DEFAULT_MARKET_SEARCH_LIMIT,
     MAX_MARKET_SEARCH_LENGTH,
@@ -60,6 +71,15 @@ FRONTEND_CATALOG_CONTRACT_PATH = (
 
 def frontend_catalog_contract() -> dict[str, object]:
     return {
+        "graphPort": {port.name: port.value for port in GraphPort},
+        "graphValueStatus": {status.name: status.value for status in GraphValueStatus},
+        "maximumBooleanInputs": MAX_BOOLEAN_INPUTS,
+        "maximumNumberTextLength": MAX_NUMBER_TEXT_LENGTH,
+        "maximumNumberExponent": MAX_NUMBER_EXPONENT,
+        "numberPattern": GRAPH_NUMBER_PATTERN,
+        "contextPortType": GRAPH_CONTEXT_PORT_TYPE,
+        "maximumParameters": MAX_GRAPH_PARAMETERS,
+        "maximumParameterNameLength": MAX_PARAMETER_NAME_LENGTH,
         "marketSearch": {
             "minimumQueryLength": MIN_MARKET_SEARCH_LENGTH,
             "maximumQueryLength": MAX_MARKET_SEARCH_LENGTH,
@@ -100,9 +120,7 @@ def frontend_catalog_contract() -> dict[str, object]:
         "graphScalarType": {
             scalar_type.name: scalar_type.value for scalar_type in GraphScalarType
         },
-        "botDefinitionLabel": {
-            label.name: label.value for label in BotDefinitionLabel
-        },
+        "botDefinitionLabel": {label.name: label.value for label in BotDefinitionLabel},
         "selectionMode": {mode.name: mode.value for mode in SelectionMode},
         "widgetKind": {kind.name: kind.value for kind in WidgetKind},
     }

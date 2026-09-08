@@ -92,6 +92,14 @@
               }
             ]
           },
+          "graph_examples": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphExample"
+            },
+            "title": "Graph Examples",
+            "type": "array"
+          },
           "input_schema": {
             "additionalProperties": true,
             "title": "Input Schema",
@@ -634,6 +642,14 @@
             "title": "Node Type",
             "type": "string"
           },
+          "outputs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphOutputDescriptor"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
           "side": {
             "$ref": "#/components/schemas/Side"
           }
@@ -792,9 +808,6 @@
                 "type": "boolean"
               },
               {
-                "type": "integer"
-              },
-              {
                 "type": "string"
               }
             ],
@@ -857,8 +870,7 @@
         "discriminator": {
           "mapping": {
             "boolean": "#/components/schemas/GraphBooleanConstantData",
-            "decimal": "#/components/schemas/GraphDecimalConstantData",
-            "integer": "#/components/schemas/GraphIntegerConstantData",
+            "number": "#/components/schemas/GraphNumberConstantData",
             "string": "#/components/schemas/GraphStringConstantData"
           },
           "propertyName": "scalar_type"
@@ -868,10 +880,7 @@
             "$ref": "#/components/schemas/GraphBooleanConstantData"
           },
           {
-            "$ref": "#/components/schemas/GraphIntegerConstantData"
-          },
-          {
-            "$ref": "#/components/schemas/GraphDecimalConstantData"
+            "$ref": "#/components/schemas/GraphNumberConstantData"
           },
           {
             "$ref": "#/components/schemas/GraphStringConstantData"
@@ -882,26 +891,6 @@
         "maximum": 10000.0,
         "minimum": -10000.0,
         "type": "number"
-      },
-      "GraphDecimalConstantData": {
-        "additionalProperties": false,
-        "properties": {
-          "scalar_type": {
-            "const": "decimal",
-            "title": "Scalar Type",
-            "type": "string"
-          },
-          "value": {
-            "title": "Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "scalar_type",
-          "value"
-        ],
-        "title": "GraphDecimalConstantData",
-        "type": "object"
       },
       "GraphEdge": {
         "additionalProperties": false,
@@ -941,6 +930,28 @@
         "maxLength": 64,
         "minLength": 1,
         "type": "string"
+      },
+      "GraphExample": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/NodeGraph"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "graph"
+        ],
+        "title": "GraphExample",
+        "type": "object"
       },
       "GraphFieldDescriptor": {
         "additionalProperties": false,
@@ -1032,12 +1043,45 @@
       "GraphInputDescriptor": {
         "additionalProperties": false,
         "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
           },
           "handle_id": {
             "$ref": "#/components/schemas/GraphHandleId"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
           },
           "nullable": {
             "title": "Nullable",
@@ -1049,11 +1093,24 @@
           },
           "scalar_types": {
             "items": {
-              "$ref": "#/components/schemas/GraphScalarType"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphScalarType"
+                },
+                {
+                  "const": "context",
+                  "type": "string"
+                }
+              ]
             },
             "minItems": 1,
             "title": "Scalar Types",
             "type": "array"
+          },
+          "whole_number": {
+            "default": false,
+            "title": "Whole Number",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1066,32 +1123,14 @@
         "title": "GraphInputDescriptor",
         "type": "object"
       },
-      "GraphIntegerConstantData": {
-        "additionalProperties": false,
-        "properties": {
-          "scalar_type": {
-            "const": "integer",
-            "title": "Scalar Type",
-            "type": "string"
-          },
-          "value": {
-            "title": "Value",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "scalar_type",
-          "value"
-        ],
-        "title": "GraphIntegerConstantData",
-        "type": "object"
-      },
       "GraphNode": {
         "discriminator": {
           "mapping": {
             "broker_action": "#/components/schemas/GraphBrokerActionNode",
             "comparison": "#/components/schemas/GraphComparisonNode",
             "constant": "#/components/schemas/GraphConstantNode",
+            "operation": "#/components/schemas/GraphOperationNode",
+            "parameter": "#/components/schemas/GraphParameterNode",
             "trigger": "#/components/schemas/GraphTriggerNode"
           },
           "propertyName": "type"
@@ -1108,6 +1147,12 @@
           },
           {
             "$ref": "#/components/schemas/GraphBrokerActionNode"
+          },
+          {
+            "$ref": "#/components/schemas/GraphOperationNode"
+          },
+          {
+            "$ref": "#/components/schemas/GraphParameterNode"
           }
         ]
       },
@@ -1135,6 +1180,14 @@
             "title": "Constants",
             "type": "array"
           },
+          "operations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphOperationDescriptor"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
           "triggers": {
             "items": {
               "$ref": "#/components/schemas/GraphTriggerDescriptor"
@@ -1150,6 +1203,224 @@
           "broker_actions"
         ],
         "title": "GraphNodeCatalog",
+        "type": "object"
+      },
+      "GraphNodeEvaluationRead": {
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "outputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GraphValueRead"
+            },
+            "title": "Outputs",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GraphValueStatus",
+            "default": "available"
+          }
+        },
+        "required": [
+          "node_id",
+          "outputs"
+        ],
+        "title": "GraphNodeEvaluationRead",
+        "type": "object"
+      },
+      "GraphNumberConstantData": {
+        "additionalProperties": false,
+        "properties": {
+          "scalar_type": {
+            "const": "number",
+            "title": "Scalar Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scalar_type",
+          "value"
+        ],
+        "title": "GraphNumberConstantData",
+        "type": "object"
+      },
+      "GraphOperation": {
+        "enum": [
+          "and",
+          "or",
+          "not",
+          "is_present",
+          "between",
+          "select",
+          "add",
+          "subtract",
+          "multiply",
+          "divide",
+          "min",
+          "max",
+          "clamp",
+          "round",
+          "cooldown",
+          "once",
+          "deduplicate",
+          "position",
+          "balance",
+          "inspect",
+          "log"
+        ],
+        "title": "GraphOperation",
+        "type": "string"
+      },
+      "GraphOperationDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expandable": {
+            "default": false,
+            "title": "Expandable",
+            "type": "boolean"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/GraphInputDescriptor"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "maximum_inputs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Inputs"
+          },
+          "minimum_inputs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Inputs"
+          },
+          "node_type": {
+            "const": "operation",
+            "default": "operation",
+            "title": "Node Type",
+            "type": "string"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/GraphOperation"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/GraphOutputDescriptor"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "selectable_scalar_type": {
+            "default": false,
+            "title": "Selectable Scalar Type",
+            "type": "boolean"
+          },
+          "terminal": {
+            "default": false,
+            "title": "Terminal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operation",
+          "display_name",
+          "category",
+          "inputs",
+          "outputs"
+        ],
+        "title": "GraphOperationDescriptor",
+        "type": "object"
+      },
+      "GraphOperationNode": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GraphOperationNodeData"
+          },
+          "id": {
+            "$ref": "#/components/schemas/GraphElementId"
+          },
+          "position": {
+            "$ref": "#/components/schemas/GraphPosition"
+          },
+          "type": {
+            "const": "operation",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "position",
+          "data"
+        ],
+        "title": "GraphOperationNode",
+        "type": "object"
+      },
+      "GraphOperationNodeData": {
+        "additionalProperties": false,
+        "properties": {
+          "input_ids": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphHandleId"
+            },
+            "title": "Input Ids",
+            "type": "array"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/GraphOperation"
+          },
+          "scalar_type": {
+            "$ref": "#/components/schemas/GraphScalarType",
+            "default": "number"
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "title": "GraphOperationNodeData",
         "type": "object"
       },
       "GraphOutputDescriptor": {
@@ -1168,7 +1439,16 @@
             "type": "boolean"
           },
           "scalar_type": {
-            "$ref": "#/components/schemas/GraphScalarType"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphScalarType"
+              },
+              {
+                "const": "context",
+                "type": "string"
+              }
+            ],
+            "title": "Scalar Type"
           }
         },
         "required": [
@@ -1177,6 +1457,70 @@
           "scalar_type"
         ],
         "title": "GraphOutputDescriptor",
+        "type": "object"
+      },
+      "GraphParameter": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GraphConstantNodeData"
+          },
+          "id": {
+            "$ref": "#/components/schemas/GraphElementId"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "data"
+        ],
+        "title": "GraphParameter",
+        "type": "object"
+      },
+      "GraphParameterNode": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GraphParameterNodeData"
+          },
+          "id": {
+            "$ref": "#/components/schemas/GraphElementId"
+          },
+          "position": {
+            "$ref": "#/components/schemas/GraphPosition"
+          },
+          "type": {
+            "const": "parameter",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "position",
+          "data"
+        ],
+        "title": "GraphParameterNode",
+        "type": "object"
+      },
+      "GraphParameterNodeData": {
+        "additionalProperties": false,
+        "properties": {
+          "parameter_id": {
+            "$ref": "#/components/schemas/GraphElementId"
+          }
+        },
+        "required": [
+          "parameter_id"
+        ],
+        "title": "GraphParameterNodeData",
         "type": "object"
       },
       "GraphPayloadDescriptor": {
@@ -1218,6 +1562,76 @@
         "title": "GraphPosition",
         "type": "object"
       },
+      "GraphPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/NodeGraph"
+          },
+          "hook_name": {
+            "$ref": "#/components/schemas/GraphHookName"
+          },
+          "now_ms": {
+            "minimum": 0.0,
+            "title": "Now Ms",
+            "type": "integer"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "portfolio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewPortfolio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "graph",
+          "hook_name",
+          "now_ms"
+        ],
+        "title": "GraphPreviewRequest",
+        "type": "object"
+      },
+      "GraphPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "intended_orders": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRequest"
+            },
+            "title": "Intended Orders",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeEvaluationRead"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "intended_orders"
+        ],
+        "title": "GraphPreviewResponse",
+        "type": "object"
+      },
       "GraphRevisionNumber": {
         "minimum": 1.0,
         "type": "integer"
@@ -1225,8 +1639,7 @@
       "GraphScalarType": {
         "enum": [
           "boolean",
-          "integer",
-          "decimal",
+          "number",
           "string"
         ],
         "title": "GraphScalarType",
@@ -1367,6 +1780,23 @@
                 "type": "null"
               }
             ]
+          },
+          "sample_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Payload"
+          },
+          "sample_time_ms": {
+            "default": 1000,
+            "title": "Sample Time Ms",
+            "type": "integer"
           }
         },
         "required": [
@@ -1416,6 +1846,77 @@
         ],
         "title": "GraphTriggerNodeData",
         "type": "object"
+      },
+      "GraphValueRead": {
+        "additionalProperties": false,
+        "properties": {
+          "input_handle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Handle Id"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GraphValueStatus"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "GraphValueRead",
+        "type": "object"
+      },
+      "GraphValueStatus": {
+        "enum": [
+          "available",
+          "missing",
+          "invalid",
+          "skipped",
+          "planned"
+        ],
+        "title": "GraphValueStatus",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1882,6 +2383,15 @@
             "maxItems": 50,
             "minItems": 1,
             "title": "Nodes",
+            "type": "array"
+          },
+          "parameters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphParameter"
+            },
+            "maxItems": 50,
+            "title": "Parameters",
             "type": "array"
           }
         },
@@ -2517,6 +3027,48 @@
         "title": "PersistedWalletTimelineEvent",
         "type": "object"
       },
+      "PortfolioPosition": {
+        "properties": {
+          "average_entry_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Entry Price"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Size"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "size",
+          "average_entry_price"
+        ],
+        "title": "PortfolioPosition",
+        "type": "object"
+      },
       "PortfolioPositionSnapshot": {
         "properties": {
           "average_entry_price": {
@@ -2609,6 +3161,34 @@
       "PositiveDecimal": {
         "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
         "type": "string"
+      },
+      "PreviewPortfolio": {
+        "additionalProperties": false,
+        "properties": {
+          "available_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "1000",
+            "title": "Available Cash"
+          },
+          "positions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPosition"
+            },
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "title": "PreviewPortfolio",
+        "type": "object"
       },
       "RunBootstrapPayload": {
         "additionalProperties": false,
@@ -3887,6 +4467,44 @@
           }
         },
         "summary": "Update Graph Template"
+      }
+    },
+    "/api/v1/graphs/preview": {
+      "post": {
+        "operationId": "preview_graph",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Graph"
       }
     },
     "/api/v1/health": {

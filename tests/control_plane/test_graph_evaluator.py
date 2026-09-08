@@ -175,7 +175,7 @@ def test_decimal_comparison_operators_are_exact(
     )
 
 
-def test_null_comparison_input_is_false_without_coercion() -> None:
+def test_null_comparison_input_remains_unavailable() -> None:
     broker = _RecordingBroker()
 
     result = asyncio.run(
@@ -189,7 +189,7 @@ def test_null_comparison_input_is_false_without_coercion() -> None:
     )
 
     assert broker.orders == []
-    assert result.action_results[0].skip_reason is GraphActionSkipReason.DISABLED
+    assert result.action_results[0].skip_reason == "value_unavailable"
 
 
 def test_nullable_required_action_input_has_stable_skip_reason() -> None:
@@ -559,7 +559,7 @@ def _always_enabled_graph(
             "id": "size",
             "type": GraphNodeType.CONSTANT.value,
             "position": {"x": 0, "y": 200},
-            "data": {"scalar_type": GraphScalarType.DECIMAL.value, "value": "1.25"},
+            "data": {"scalar_type": GraphScalarType.NUMBER.value, "value": "1.25"},
         },
         {
             "id": "action",
@@ -653,7 +653,7 @@ def _always_enabled_graph_for_book_gap() -> NodeGraph:
                 "type": GraphNodeType.CONSTANT.value,
                 "position": {"x": 0, "y": 400},
                 "data": {
-                    "scalar_type": GraphScalarType.DECIMAL.value,
+                    "scalar_type": GraphScalarType.NUMBER.value,
                     "value": "0.50",
                 },
             },

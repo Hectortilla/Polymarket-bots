@@ -12,12 +12,18 @@
   import catalogContract from './catalogContract.fixture.json';
 
   import type {
+    GraphOperationNodeData,
+    GraphParameter,
     GraphComparisonNodeData,
     GraphConstantNodeData,
     GraphNodeCatalog,
     GraphTriggerDescriptor,
     NodeGraph
   } from '$lib/api/generated';
+  import OperationNode from './OperationNode.svelte';
+  import ParameterNode from './ParameterNode.svelte';
+  import GraphParameters from './GraphParameters.svelte';
+  import GraphPreview from './GraphPreview.svelte';
   import BrokerActionNode from './BrokerActionNode.svelte';
   import ComparisonNode from './ComparisonNode.svelte';
   import ConstantNode from './ConstantNode.svelte';
@@ -28,6 +34,8 @@
     canvasEdges,
     canvasNodes,
     connectionIsValid,
+    createOperationNode,
+    createParameterNode,
     createBrokerActionNode,
     createComparisonNode,
     createConstantNode,
@@ -70,6 +78,8 @@
   const initialGraphSnapshot = untrack(() => initialGraph);
   const catalogSnapshot = untrack(() => graphCatalog);
   const nodeTypes = {
+    [GRAPH_NODE_TYPE.operation]: OperationNode,
+    [GRAPH_NODE_TYPE.parameter]: ParameterNode,
     [GRAPH_NODE_TYPE.trigger]: TriggerNode,
     [GRAPH_NODE_TYPE.constant]: ConstantNode,
     [GRAPH_NODE_TYPE.comparison]: ComparisonNode,
@@ -78,6 +88,8 @@
   const readOnlyFlowOptions = { hideAttribution: true };
   let nodes = $state.raw<CanvasNode[]>(canvasNodes(initialGraphSnapshot));
   let edges = $state.raw<CanvasEdge[]>(canvasEdges(initialGraphSnapshot));
+  let parameters = $state<GraphParameter[]>(initialGraphSnapshot.parameters ?? []);
+  let connectionNotice = $state('');
   let graphChangeReportingReady = false;
   const coordinateLimit = catalogContract.nodeGraph.coordinateLimit;
   const nodeExtent: CoordinateExtent = [
@@ -95,6 +107,12 @@
     get readOnly() {
       return readOnly;
     },
+    issuesForNode(nodeId) {
+      const index = nodes.findIndex(node => node.id === nodeId);
+      return validationIssues.filter(issue => issue.location.startsWith(`Node ${index + 1}:`)).map(issue => issue.message);
+    },
+    get parameters() { return parameters; },
+    setOperationData,
     setComparisonData,
     setConstantData
   };
@@ -104,7 +122,7 @@
   // Rebuilding the initial graph can reorder object keys and falsely mark it dirty.
   $effect(() => {
     if (readOnly) return;
-    const graph = toPersistedNodeGraph(nodes, edges);
+    const graph = toPersistedNodeGraph(nodes, edges, parameters);
     if (graphChangeReportingReady) {
       untrack(() => onchange?.(graph));
     } else {
@@ -146,8 +164,27 @@
     edges = edges.filter(
       (edge) =>
         edge.target !== nodeId ||
-        connectionIsValid(edge, updatedNodes, [], catalogSnapshot)
+        connectionIsValid(edge, updatedNodes, [], catalogSnapshot, parameters)
     );
+  }
+
+  function pruneConnections(): void {
+    const count = edges.length;
+    edges = edges.filter(edge => connectionIsValid(edge, nodes, [], catalogSnapshot, parameters));
+    connectionNotice = count > edges.length ? `${count - edges.length} incompatible connection(s) removed after this change.` : '';
+  }
+
+  function setOperationData(nodeId: string, data: GraphOperationNodeData): void {
+    if (readOnly) return;
+    nodes = nodes.map(node => node.id === nodeId && node.type === GRAPH_NODE_TYPE.operation ? { ...node, data } : node);
+    pruneConnections();
+  }
+
+  function setParameters(next: GraphParameter[]): void {
+    if (readOnly) return;
+    parameters = next;
+    nodes = nodes.filter(node => node.type !== GRAPH_NODE_TYPE.parameter || next.some(p => p.id === node.data.parameter_id));
+    pruneConnections();
   }
 
   function connect(connection: Connection): void {
@@ -158,6 +195,8 @@
 </script>
 
 <div class="graph-editor">
+  <GraphParameters {parameters} catalog={catalogSnapshot} onchange={setParameters} {readOnly} />
+  {#if connectionNotice}<p role="status">{connectionNotice}</p>{/if}
   <div class="graph-toolbar">
     <div class="graph-summary" aria-live="polite">
       <span><strong>{nodes.length}</strong> {nodes.length === 1 ? 'node' : 'nodes'}</span>
@@ -167,6 +206,9 @@
       <NodePalette
         catalog={catalogSnapshot}
         {nodes}
+        {parameters}
+        onaddoperation={(operation) => addNode(createOperationNode(nodes, operation))}
+        onaddparameter={(parameter) => addNode(createParameterNode(nodes, parameter))}
         additionDisabled={nodes.length >= catalogContract.nodeGraph.maximumNodes}
         onaddtrigger={addTrigger}
         onaddconstant={(constant) => addNode(createConstantNode(nodes, constant))}
@@ -189,7 +231,7 @@
       {nodeTypes}
       isValidConnection={(connection) =>
         edges.length < catalogContract.nodeGraph.maximumEdges
-        && connectionIsValid(connection, nodes, edges, catalogSnapshot)}
+        && connectionIsValid(connection, nodes, edges, catalogSnapshot, parameters)}
       onconnect={connect}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly && edges.length < catalogContract.nodeGraph.maximumEdges}
@@ -224,6 +266,7 @@
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
     </SvelteFlow>
   </div>
+  {#if !readOnly}<GraphPreview graph={toPersistedNodeGraph(nodes, edges, parameters)} catalog={catalogSnapshot} />{/if}
   {#if validationIssues.length > 0}
     <section
       class="graph-validation-summary"

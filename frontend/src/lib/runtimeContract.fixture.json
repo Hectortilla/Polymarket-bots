@@ -6,6 +6,7 @@
     "ERROR": "error"
   },
   "apiPaths": {
+    "graphPreview": "/api/v1/graphs/preview",
     "botDefinitions": "/api/v1/bot-definitions",
     "botGraphRevision": "/api/v1/bots/{bot_id}/graph-revisions/{revision_id}",
     "botGraphRevisions": "/api/v1/bots/{bot_id}/graph-revisions",

@@ -1,12 +1,17 @@
 """Compile validated node graphs into event branches."""
 
 from dataclasses import dataclass
+from decimal import Decimal
+from polybot_control_plane.catalog.graphs.values import GraphScalarType
 
 from polybot_control_plane.catalog.graphs.catalog import (
     GRAPH_NODE_CATALOG,
     GraphBrokerActionDescriptor,
 )
 from polybot_control_plane.catalog.graphs.contracts import (
+    GraphOperationNode,
+    GraphComparisonNode,
+    GraphParameterNode,
     GraphBrokerActionNode,
     GraphConstantNode,
     GraphEdge,
@@ -17,6 +22,7 @@ from polybot_control_plane.catalog.graphs.contracts import (
 from polybot_control_plane.catalog.graphs.topology import GraphTopology
 from polybot_control_plane.catalog.graphs.types import GraphHookName
 from polybot_control_plane.catalog.node_based.evaluator.contracts import OutputKey
+from polybot_control_plane.catalog.node_based.evaluator import capabilities
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +45,25 @@ class _GraphCompiler:
         self._topology = GraphTopology.from_edges(self._nodes, graph.edges)
 
     def compile(self) -> CompiledGraph:
+        for node in self._graph.nodes:
+            if type(node) not in (
+                GraphTriggerNode,
+                GraphConstantNode,
+                GraphParameterNode,
+                GraphComparisonNode,
+                GraphOperationNode,
+                GraphBrokerActionNode,
+            ):
+                raise capabilities.UnsupportedGraphOperation(
+                    f"Unsupported node: {node.id}"
+                )
+            if (
+                isinstance(node, GraphOperationNode)
+                and node.data.operation not in capabilities.EXECUTABLE_OPERATIONS
+            ):
+                raise capabilities.UnsupportedGraphOperation(
+                    f"Execution unavailable for {node.data.operation} at node {node.id}"
+                )
         return CompiledGraph(
             incoming=self._index_inputs(),
             outgoing=self._topology.outgoing,
@@ -47,17 +72,31 @@ class _GraphCompiler:
                 for node in self._graph.nodes
                 if isinstance(node, GraphTriggerNode)
             },
-            constant_values={
-                node.id: node.runtime_value()
-                for node in self._graph.nodes
-                if isinstance(node, GraphConstantNode)
-            },
+            constant_values=self._source_values(),
             action_descriptors={
                 node.id: GRAPH_NODE_CATALOG.broker_action(node.data.action)
                 for node in self._graph.nodes
                 if isinstance(node, GraphBrokerActionNode)
             },
         )
+
+    def _source_values(self) -> dict[str, object]:
+        values = {
+            node.id: node.runtime_value()
+            for node in self._graph.nodes
+            if isinstance(node, GraphConstantNode)
+        }
+        for node in self._graph.nodes:
+            if isinstance(node, GraphParameterNode):
+                parameter = next(
+                    p for p in self._graph.parameters if p.id == node.data.parameter_id
+                )
+                values[node.id] = (
+                    Decimal(parameter.data.value)
+                    if parameter.data.scalar_type is GraphScalarType.NUMBER
+                    else parameter.data.value
+                )
+        return values
 
     def _compile_branch(self, trigger_id: str) -> tuple[GraphNode, ...]:
         branch_node_ids = self._topology.branch_node_ids(trigger_id)

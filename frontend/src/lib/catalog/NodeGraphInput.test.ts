@@ -1,13 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import parityContract from './graphValidationContract.fixture.json';
 import type { NodeGraph } from '$lib/api/generated';
 import NodeGraphInput from './NodeGraphInput.svelte';
 import { ADD_NODE_LABEL } from './NodePalette.svelte';
 import { GRAPH_NODE_TYPE } from './graphContracts';
 import {
   BUY_ACTION,
-  DECIMAL_CONSTANT,
+  NUMBER_CONSTANT,
   EQUAL_COMPARISON,
   ON_BOOK_TRIGGER,
   TEST_GRAPH,
@@ -48,11 +49,12 @@ describe('node graph editor', () => {
     });
 
     for (const name of [
-      DECIMAL_CONSTANT.display_name,
+      NUMBER_CONSTANT.display_name,
       'Comparison',
       BUY_ACTION.display_name
     ]) {
       await fireEvent.click(screen.getByRole('button', { name: ADD_NODE_LABEL }));
+      await fireEvent.input(screen.getByRole('searchbox'), { target: { value: name } });
       await fireEvent.click(screen.getByRole('button', { name: `Add ${name}` }));
     }
     await waitFor(() => {
@@ -64,8 +66,8 @@ describe('node graph editor', () => {
             }),
             expect.objectContaining({
               data: {
-                scalar_type: DECIMAL_CONSTANT.scalar_type,
-                value: DECIMAL_CONSTANT.default_value
+                scalar_type: NUMBER_CONSTANT.scalar_type,
+                value: NUMBER_CONSTANT.default_value
               }
             }),
             expect.objectContaining({
@@ -90,7 +92,7 @@ describe('node graph editor', () => {
     }
     const sourceHandle = document.querySelector<HTMLElement>(
       `[data-nodeid="${constantNode.id}"]`
-      + `[data-handleid="${DECIMAL_CONSTANT.output.handle_id}"]`
+      + `[data-handleid="${NUMBER_CONSTANT.output.handle_id}"]`
     );
     const targetHandle = document.querySelector<HTMLElement>(
       `[data-nodeid="${comparisonNode.id}"]`
@@ -117,7 +119,7 @@ describe('node graph editor', () => {
         expect.objectContaining({
           edges: [expect.objectContaining({
             source: constantNode.id,
-            source_handle: DECIMAL_CONSTANT.output.handle_id,
+            source_handle: NUMBER_CONSTANT.output.handle_id,
             target: comparisonNode.id,
             target_handle: EQUAL_COMPARISON.inputs[0].handle_id
           })]
@@ -141,6 +143,64 @@ describe('node graph editor', () => {
     )).toBeTruthy();
     expect(document.querySelector('.graph-summary')?.textContent)
       .toContain('1 connection');
+  });
+
+  it('creates and reopens every MVP operation through the actual editor', async () => {
+    stubFlowBrowserApis();
+    const onchange = vi.fn<(graph: NodeGraph) => void>();
+    const view = render(NodeGraphInput, { initialGraph: TEST_GRAPH, graphCatalog: TEST_GRAPH_CATALOG, onchange, labelledby: 'editor' });
+    for (const operation of TEST_GRAPH_CATALOG.operations ?? []) {
+      await fireEvent.click(screen.getByRole('button', { name: ADD_NODE_LABEL }));
+      await fireEvent.input(screen.getByRole('searchbox'), { target: { value: operation.display_name } });
+      await fireEvent.click(screen.getByRole('button', { name: `Add ${operation.display_name}` }));
+      expect(screen.getByLabelText(`${operation.display_name} node`, { selector: "section" })).toBeTruthy();
+    }
+    const graph = onchange.mock.calls.at(-1)?.[0];
+    if (!graph) throw new Error('Expected graph edit');
+    view.unmount();
+    render(NodeGraphInput, { initialGraph: graph, graphCatalog: TEST_GRAPH_CATALOG, labelledby: 'reopened' });
+    for (const operation of TEST_GRAPH_CATALOG.operations ?? []) expect(screen.getByLabelText(`${operation.display_name} node`, { selector: "section" })).toBeTruthy();
+  });
+
+  it('removes only an expandable input edge and explains incompatible parameter wiring', async () => {
+    stubFlowBrowserApis();
+    const graph = parityContract.cases.find(item => item.name === 'Multiple conditions and cooldown')!.graph as NodeGraph;
+    const onchange = vi.fn<(graph: NodeGraph) => void>();
+    render(NodeGraphInput, { initialGraph: graph, graphCatalog: TEST_GRAPH_CATALOG, onchange, labelledby: 'editor' });
+    await fireEvent.click(screen.getByRole('button', { name: 'Remove input_2' }));
+    await waitFor(() => expect(onchange).toHaveBeenCalled());
+    let edited = onchange.mock.calls.at(-1)![0];
+    expect(edited.edges).toEqual(graph.edges!.filter(edge => !(edge.target === 'conditions' && edge.target_handle === 'input_2')));
+    const condition = edited.nodes.find(node => node.id === 'conditions');
+    expect(condition?.data).toMatchObject({ input_ids: ['input_1', 'input_3'] });
+    await fireEvent.change(screen.getAllByLabelText('Parameter type')[0], { target: { value: 'boolean' } });
+    edited = onchange.mock.calls.at(-1)![0];
+    expect(edited.parameters![0].data.scalar_type).toBe('boolean');
+    expect(edited.edges!.some(edge => edge.source === 'entry')).toBe(false);
+    expect(screen.getAllByRole('status').some(element => element.textContent?.includes('incompatible connection'))).toBe(true);
+  });
+
+  it('collapses sections and operation groups while search reveals matches', async () => {
+    stubFlowBrowserApis();
+    render(NodeGraphInput, { initialGraph: TEST_GRAPH, graphCatalog: TEST_GRAPH_CATALOG, labelledby: 'editor' });
+    await fireEvent.click(screen.getByRole('button', { name: ADD_NODE_LABEL }));
+    const operations = screen.getByRole('button', { name: 'Operations' });
+    const math = screen.getByRole('button', { name: 'Math' });
+    expect(operations.getAttribute('aria-expanded')).toBe('true');
+    expect(math.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Add Multiply' })).toBeNull();
+    await fireEvent.click(math);
+    expect(screen.getByRole('button', { name: 'Add Multiply' })).toBeTruthy();
+    await fireEvent.click(operations);
+    expect(screen.queryByRole('button', { name: 'Math' })).toBeNull();
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'Multiply' } });
+    expect(screen.getByRole('button', { name: 'Add Multiply' })).toBeTruthy();
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '' } });
+    expect(operations.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Add Multiply' })).toBeNull();
+    const values = screen.getByRole('button', { name: 'Values' });
+    await fireEvent.click(values);
+    expect(screen.getByRole('button', { name: `Add ${NUMBER_CONSTANT.display_name}` })).toBeTruthy();
   });
 
   it('renders the same graph as a strictly non-interactive snapshot', async () => {

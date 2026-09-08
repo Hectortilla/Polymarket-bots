@@ -6,6 +6,7 @@ from typing import Protocol
 
 from polybot.execution.broker import Broker
 from polybot.framework.activity import ActivitySink, NullActivitySink
+from polybot.framework.portfolio import PortfolioReader
 from polybot.framework.clock import Clock, SystemClock
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events.books import BookSnapshot
@@ -42,6 +43,7 @@ class BotContext:
     books: BookClient
     wallet_activity: WalletActivityClient
     positions: PositionClient | None = None
+    portfolio: PortfolioReader | None = None
     activity: ActivitySink = field(default_factory=NullActivitySink)
     clock: Clock = field(default_factory=SystemClock)
     rng: random.Random = field(default_factory=random.Random)

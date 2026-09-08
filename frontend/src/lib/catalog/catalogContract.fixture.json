@@ -1,4 +1,45 @@
 {
+  "graphPort": {
+    "CONTEXT": "context",
+    "VALUE": "value",
+    "LEFT": "left",
+    "RIGHT": "right",
+    "RESULT": "result",
+    "ENABLED": "enabled",
+    "CONDITION": "condition",
+    "WHEN_TRUE": "when_true",
+    "WHEN_FALSE": "when_false",
+    "MINIMUM": "minimum",
+    "MAXIMUM": "maximum",
+    "PLACES": "places",
+    "KEY": "key",
+    "RESET": "reset",
+    "DURATION_MS": "duration_ms",
+    "TOKEN_ID": "token_id",
+    "SIZE": "size",
+    "HAS_POSITION": "has_position",
+    "AVERAGE_ENTRY_PRICE": "average_entry_price",
+    "AVAILABLE_CASH": "available_cash",
+    "STATUS": "status",
+    "FILLED_SIZE": "filled_size",
+    "AVERAGE_PRICE": "average_price",
+    "SKIP_REASON": "skip_reason",
+    "REJECT_REASON": "reject_reason"
+  },
+  "graphValueStatus": {
+    "AVAILABLE": "available",
+    "MISSING": "missing",
+    "INVALID": "invalid",
+    "SKIPPED": "skipped",
+    "PLANNED": "planned"
+  },
+  "maximumBooleanInputs": 16,
+  "maximumNumberTextLength": 256,
+  "maximumNumberExponent": 1000,
+  "numberPattern": "^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?$",
+  "contextPortType": "context",
+  "maximumParameters": 50,
+  "maximumParameterNameLength": 64,
   "marketSearch": {
     "minimumQueryLength": 2,
     "maximumQueryLength": 200,
@@ -29,13 +70,1077 @@
     "requiredTriggerBranchCount": 1
   },
   "graphNodeCatalog": {
+    "operations": [
+      {
+        "node_type": "operation",
+        "operation": "and",
+        "display_name": "AND",
+        "category": "Logic",
+        "inputs": [
+          {
+            "handle_id": "input_1",
+            "display_name": "Input 1",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "input_2",
+            "display_name": "Input 2",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": true,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": 2,
+        "maximum_inputs": 16
+      },
+      {
+        "node_type": "operation",
+        "operation": "or",
+        "display_name": "OR",
+        "category": "Logic",
+        "inputs": [
+          {
+            "handle_id": "input_1",
+            "display_name": "Input 1",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "input_2",
+            "display_name": "Input 2",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": true,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": 2,
+        "maximum_inputs": 16
+      },
+      {
+        "node_type": "operation",
+        "operation": "not",
+        "display_name": "NOT",
+        "category": "Logic",
+        "inputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "is_present",
+        "display_name": "Is Present",
+        "category": "Logic",
+        "inputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "boolean",
+              "number",
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "between",
+        "display_name": "Between",
+        "category": "Logic",
+        "inputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "minimum",
+            "display_name": "Minimum",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "maximum",
+            "display_name": "Maximum",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "select",
+        "display_name": "Select Value",
+        "category": "Logic",
+        "inputs": [
+          {
+            "handle_id": "condition",
+            "display_name": "Condition",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "when_true",
+            "display_name": "When True",
+            "scalar_types": [
+              "boolean",
+              "number",
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "when_false",
+            "display_name": "When False",
+            "scalar_types": [
+              "boolean",
+              "number",
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": true,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "add",
+        "display_name": "Add",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "subtract",
+        "display_name": "Subtract",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "multiply",
+        "display_name": "Multiply",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "divide",
+        "display_name": "Divide",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "min",
+        "display_name": "Min",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "max",
+        "display_name": "Max",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "left",
+            "display_name": "Left",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "right",
+            "display_name": "Right",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "clamp",
+        "display_name": "Clamp",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "minimum",
+            "display_name": "Minimum",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "maximum",
+            "display_name": "Maximum",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "round",
+        "display_name": "Round",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "places",
+            "display_name": "Places",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": true,
+            "minimum": "0",
+            "maximum": "1000",
+            "description": "Nonnegative decimal places; ties round away from zero."
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "cooldown",
+        "display_name": "Cooldown",
+        "category": "Event controls",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "enabled",
+            "display_name": "Enabled",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "key",
+            "display_name": "Key",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "duration_ms",
+            "display_name": "Duration Ms",
+            "scalar_types": [
+              "number"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": true,
+            "minimum": "0",
+            "maximum": null,
+            "description": "Nonnegative cooldown duration in milliseconds."
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "once",
+        "display_name": "Once Per Key",
+        "category": "Event controls",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "enabled",
+            "display_name": "Enabled",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "key",
+            "display_name": "Key",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "reset",
+            "display_name": "Reset",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "deduplicate",
+        "display_name": "Deduplicate Event",
+        "category": "Event controls",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "enabled",
+            "display_name": "Enabled",
+            "scalar_types": [
+              "boolean"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "key",
+            "display_name": "Key",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "result",
+            "display_name": "Result",
+            "scalar_type": "boolean",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "position",
+        "display_name": "Position",
+        "category": "Portfolio",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "token_id",
+            "display_name": "Token Id",
+            "scalar_types": [
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "size",
+            "display_name": "Size",
+            "scalar_type": "number",
+            "nullable": true
+          },
+          {
+            "handle_id": "has_position",
+            "display_name": "Has Position",
+            "scalar_type": "boolean",
+            "nullable": true
+          },
+          {
+            "handle_id": "average_entry_price",
+            "display_name": "Average Entry Price",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "balance",
+        "display_name": "Available Balance",
+        "category": "Portfolio",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "available_cash",
+            "display_name": "Available Cash",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "inspect",
+        "display_name": "Inspect Value",
+        "category": "Diagnostics",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "boolean",
+              "number",
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [],
+        "expandable": false,
+        "terminal": true,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
+        "operation": "log",
+        "display_name": "Log / Explain Decision",
+        "category": "Diagnostics",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": [
+              "context"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_types": [
+              "boolean",
+              "number",
+              "string"
+            ],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [],
+        "expandable": false,
+        "terminal": true,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      }
+    ],
     "triggers": [
       {
         "node_type": "trigger",
         "hook_name": "on_start",
         "context_handle_id": "context",
         "context_type_name": "BotContext",
-        "payload": null
+        "payload": null,
+        "sample_payload": null,
+        "sample_time_ms": 1000
       },
       {
         "node_type": "trigger",
@@ -180,7 +1285,7 @@
               "handle_id": "field:received_at_ms",
               "display_name": "BookSnapshot.received_at_ms",
               "value_type": "int",
-              "scalar_type": "integer",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -266,7 +1371,7 @@
               "handle_id": "field:best_bid.price",
               "display_name": "BookSnapshot.best_bid.price",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": true,
               "collection": false,
               "value_schema": {
@@ -291,7 +1396,7 @@
               "handle_id": "field:best_bid.size",
               "display_name": "BookSnapshot.best_bid.size",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": true,
               "collection": false,
               "value_schema": {
@@ -316,7 +1421,7 @@
               "handle_id": "field:best_ask.price",
               "display_name": "BookSnapshot.best_ask.price",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": true,
               "collection": false,
               "value_schema": {
@@ -341,7 +1446,7 @@
               "handle_id": "field:best_ask.size",
               "display_name": "BookSnapshot.best_ask.size",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": true,
               "collection": false,
               "value_schema": {
@@ -357,7 +1462,27 @@
               }
             }
           ]
-        }
+        },
+        "sample_payload": {
+          "token_id": "example-token",
+          "bids": [
+            {
+              "price": "0.39",
+              "size": "100"
+            }
+          ],
+          "asks": [
+            {
+              "price": "0.40",
+              "size": "100"
+            }
+          ],
+          "received_at_ms": 1000,
+          "market_slug": null,
+          "condition_id": null,
+          "outcome": null
+        },
+        "sample_time_ms": 1000
       },
       {
         "node_type": "trigger",
@@ -399,7 +1524,7 @@
               "handle_id": "field:observed_at_ms",
               "display_name": "BookGapEvent.observed_at_ms",
               "value_type": "int",
-              "scalar_type": "integer",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -434,7 +1559,13 @@
               }
             }
           ]
-        }
+        },
+        "sample_payload": {
+          "condition_id": null,
+          "observed_at_ms": 1000,
+          "reason": "book_stream_gap"
+        },
+        "sample_time_ms": 1000
       },
       {
         "node_type": "trigger",
@@ -522,7 +1653,7 @@
               "handle_id": "field:size",
               "display_name": "WalletTradeEvent.size",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -546,7 +1677,7 @@
               "handle_id": "field:price",
               "display_name": "WalletTradeEvent.price",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -586,7 +1717,7 @@
               "handle_id": "field:trade_timestamp_ms",
               "display_name": "WalletTradeEvent.trade_timestamp_ms",
               "value_type": "int",
-              "scalar_type": "integer",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -602,7 +1733,7 @@
               "handle_id": "field:observed_at_ms",
               "display_name": "WalletTradeEvent.observed_at_ms",
               "value_type": "int",
-              "scalar_type": "integer",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -701,7 +1832,23 @@
               }
             }
           ]
-        }
+        },
+        "sample_payload": {
+          "wallet": "0x0000000000000000000000000000000000000001",
+          "condition_id": "example-condition",
+          "token_id": "example-token",
+          "side": "BUY",
+          "size": "1",
+          "price": "0.4",
+          "source_id": "example-trade",
+          "trade_timestamp_ms": 1000,
+          "observed_at_ms": 1000,
+          "kind": "trade",
+          "market_slug": null,
+          "transaction_hash": null,
+          "outcome": null
+        },
+        "sample_time_ms": 1000
       },
       {
         "node_type": "trigger",
@@ -797,7 +1944,7 @@
               "handle_id": "field:requested_size",
               "display_name": "FillEvent.requested_size",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -821,7 +1968,7 @@
               "handle_id": "field:filled_size",
               "display_name": "FillEvent.filled_size",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -845,7 +1992,7 @@
               "handle_id": "field:average_price",
               "display_name": "FillEvent.average_price",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": true,
               "collection": false,
               "value_schema": {
@@ -872,7 +2019,7 @@
               "handle_id": "field:fee_usdc",
               "display_name": "FillEvent.fee_usdc",
               "value_type": "Decimal",
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -896,7 +2043,7 @@
               "handle_id": "field:received_at_ms",
               "display_name": "FillEvent.received_at_ms",
               "value_type": "int",
-              "scalar_type": "integer",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -978,7 +2125,21 @@
               }
             }
           ]
-        }
+        },
+        "sample_payload": {
+          "order_id": "example-order",
+          "token_id": "example-token",
+          "side": "BUY",
+          "status": "filled",
+          "requested_size": "1",
+          "filled_size": "1",
+          "average_price": "0.4",
+          "fee_usdc": "0",
+          "received_at_ms": 1000,
+          "reject_reason": null,
+          "reject_message": null
+        },
+        "sample_time_ms": 1000
       },
       {
         "node_type": "trigger",
@@ -1087,7 +2248,7 @@
               "handle_id": "field:resolved_at_ms",
               "display_name": "MarketResolutionEvent.resolved_at_ms",
               "value_type": "int",
-              "scalar_type": "integer",
+              "scalar_type": "number",
               "nullable": false,
               "collection": false,
               "value_schema": {
@@ -1111,14 +2272,29 @@
               }
             }
           ]
-        }
+        },
+        "sample_payload": {
+          "condition_id": "example-condition",
+          "market_slug": "example-market",
+          "token_ids": [
+            "example-token",
+            "other-token"
+          ],
+          "winning_token_id": "example-token",
+          "winning_outcome": "Up",
+          "resolved_at_ms": 1000,
+          "source": "preview"
+        },
+        "sample_time_ms": 1000
       },
       {
         "node_type": "trigger",
         "hook_name": "on_stop",
         "context_handle_id": "context",
         "context_type_name": "BotContext",
-        "payload": null
+        "payload": null,
+        "sample_payload": null,
+        "sample_time_ms": 1000
       }
     ],
     "constants": [
@@ -1136,32 +2312,20 @@
       },
       {
         "node_type": "constant",
-        "scalar_type": "integer",
-        "display_name": "Integer constant",
-        "default_value": 0,
-        "output": {
-          "handle_id": "value",
-          "display_name": "Value",
-          "scalar_type": "integer",
-          "nullable": false
-        }
-      },
-      {
-        "node_type": "constant",
-        "scalar_type": "decimal",
-        "display_name": "Decimal constant",
+        "scalar_type": "number",
+        "display_name": "Number constant",
         "default_value": "0",
         "output": {
           "handle_id": "value",
           "display_name": "Value",
-          "scalar_type": "decimal",
+          "scalar_type": "number",
           "nullable": false
         }
       },
       {
         "node_type": "constant",
         "scalar_type": "string",
-        "display_name": "String constant",
+        "display_name": "Text constant",
         "default_value": "",
         "output": {
           "handle_id": "value",
@@ -1182,31 +2346,37 @@
             "display_name": "Left",
             "scalar_types": [
               "boolean",
-              "integer",
-              "decimal",
+              "number",
               "string"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "right",
             "display_name": "Right",
             "scalar_types": [
               "boolean",
-              "integer",
-              "decimal",
+              "number",
               "string"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           }
         ],
         "output": {
           "handle_id": "result",
           "display_name": "Result",
           "scalar_type": "boolean",
-          "nullable": false
+          "nullable": true
         }
       },
       {
@@ -1219,31 +2389,37 @@
             "display_name": "Left",
             "scalar_types": [
               "boolean",
-              "integer",
-              "decimal",
+              "number",
               "string"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "right",
             "display_name": "Right",
             "scalar_types": [
               "boolean",
-              "integer",
-              "decimal",
+              "number",
               "string"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           }
         ],
         "output": {
           "handle_id": "result",
           "display_name": "Result",
           "scalar_type": "boolean",
-          "nullable": false
+          "nullable": true
         }
       },
       {
@@ -1255,28 +2431,34 @@
             "handle_id": "left",
             "display_name": "Left",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "right",
             "display_name": "Right",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           }
         ],
         "output": {
           "handle_id": "result",
           "display_name": "Result",
           "scalar_type": "boolean",
-          "nullable": false
+          "nullable": true
         }
       },
       {
@@ -1288,28 +2470,34 @@
             "handle_id": "left",
             "display_name": "Left",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "right",
             "display_name": "Right",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           }
         ],
         "output": {
           "handle_id": "result",
           "display_name": "Result",
           "scalar_type": "boolean",
-          "nullable": false
+          "nullable": true
         }
       },
       {
@@ -1321,28 +2509,34 @@
             "handle_id": "left",
             "display_name": "Left",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "right",
             "display_name": "Right",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           }
         ],
         "output": {
           "handle_id": "result",
           "display_name": "Result",
           "scalar_type": "boolean",
-          "nullable": false
+          "nullable": true
         }
       },
       {
@@ -1354,28 +2548,34 @@
             "handle_id": "left",
             "display_name": "Left",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "right",
             "display_name": "Right",
             "scalar_types": [
-              "integer",
-              "decimal"
+              "number"
             ],
             "nullable": true,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           }
         ],
         "output": {
           "handle_id": "result",
           "display_name": "Result",
           "scalar_type": "boolean",
-          "nullable": false
+          "nullable": true
         }
       }
     ],
@@ -1394,7 +2594,11 @@
               "boolean"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "token_id",
@@ -1403,25 +2607,37 @@
               "string"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "price",
             "display_name": "Price",
             "scalar_types": [
-              "decimal"
+              "number"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "size",
             "display_name": "Size",
             "scalar_types": [
-              "decimal"
+              "number"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "market_slug",
@@ -1430,7 +2646,11 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "condition_id",
@@ -1439,7 +2659,11 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "source_id",
@@ -1448,7 +2672,11 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "reason",
@@ -1457,7 +2685,43 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "status",
+            "display_name": "Status",
+            "scalar_type": "string",
+            "nullable": false
+          },
+          {
+            "handle_id": "filled_size",
+            "display_name": "Filled Size",
+            "scalar_type": "number",
+            "nullable": true
+          },
+          {
+            "handle_id": "average_price",
+            "display_name": "Execution Price",
+            "scalar_type": "number",
+            "nullable": true
+          },
+          {
+            "handle_id": "skip_reason",
+            "display_name": "Skip Reason",
+            "scalar_type": "string",
+            "nullable": true
+          },
+          {
+            "handle_id": "reject_reason",
+            "display_name": "Reject Reason",
+            "scalar_type": "string",
+            "nullable": true
           }
         ]
       },
@@ -1475,7 +2739,11 @@
               "boolean"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "token_id",
@@ -1484,25 +2752,37 @@
               "string"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "price",
             "display_name": "Price",
             "scalar_types": [
-              "decimal"
+              "number"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "size",
             "display_name": "Size",
             "scalar_types": [
-              "decimal"
+              "number"
             ],
             "nullable": false,
-            "required": true
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "market_slug",
@@ -1511,7 +2791,11 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "condition_id",
@@ -1520,7 +2804,11 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "source_id",
@@ -1529,7 +2817,11 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
           },
           {
             "handle_id": "reason",
@@ -1538,7 +2830,43 @@
               "string"
             ],
             "nullable": true,
-            "required": false
+            "required": false,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "status",
+            "display_name": "Status",
+            "scalar_type": "string",
+            "nullable": false
+          },
+          {
+            "handle_id": "filled_size",
+            "display_name": "Filled Size",
+            "scalar_type": "number",
+            "nullable": true
+          },
+          {
+            "handle_id": "average_price",
+            "display_name": "Execution Price",
+            "scalar_type": "number",
+            "nullable": true
+          },
+          {
+            "handle_id": "skip_reason",
+            "display_name": "Skip Reason",
+            "scalar_type": "string",
+            "nullable": true
+          },
+          {
+            "handle_id": "reject_reason",
+            "display_name": "Reject Reason",
+            "scalar_type": "string",
+            "nullable": true
           }
         ]
       }
@@ -1548,7 +2876,9 @@
     "TRIGGER": "trigger",
     "CONSTANT": "constant",
     "COMPARISON": "comparison",
-    "BROKER_ACTION": "broker_action"
+    "BROKER_ACTION": "broker_action",
+    "OPERATION": "operation",
+    "PARAMETER": "parameter"
   },
   "graphBrokerAction": {
     "SUBMIT_BUY": "submit_buy",
@@ -1564,8 +2894,7 @@
   },
   "graphScalarType": {
     "BOOLEAN": "boolean",
-    "INTEGER": "integer",
-    "DECIMAL": "decimal",
+    "NUMBER": "number",
     "STRING": "string"
   },
   "botDefinitionLabel": {

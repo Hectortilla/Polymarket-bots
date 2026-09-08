@@ -14,9 +14,9 @@ from polybot_control_plane.catalog.node_based.evaluator.contracts import (
 )
 
 if TYPE_CHECKING:
+    from polybot_control_plane.catalog.graphs.ports import GraphInputDescriptor
     from polybot_control_plane.catalog.graphs.catalog import (
         GraphBrokerActionDescriptor,
-        GraphInputDescriptor,
     )
     from polybot_control_plane.catalog.graphs.contracts import GraphBrokerActionNode
 

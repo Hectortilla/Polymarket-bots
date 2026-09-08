@@ -6,7 +6,7 @@ import {
   constantDataFromInput,
   constantInput
 } from './constantNode';
-import { DECIMAL_CONSTANT } from './nodeGraphTestFixtures';
+import { NUMBER_CONSTANT } from './nodeGraphTestFixtures';
 import { GRAPH_SCALAR_TYPE } from './graphContracts';
 
 describe('constant node inputs', () => {
@@ -21,17 +21,17 @@ describe('constant node inputs', () => {
 
     input.type = 'number';
     input.value = '12';
-    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.integer, input)).toEqual({
-      scalar_type: GRAPH_SCALAR_TYPE.integer,
-      value: 12
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.number, input)).toEqual({
+      scalar_type: GRAPH_SCALAR_TYPE.number,
+      value: '12'
     });
     input.value = '1.5';
-    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.integer, input)).toBeNull();
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.number, input)).toEqual({ scalar_type: GRAPH_SCALAR_TYPE.number, value: '1.5' });
 
     input.type = 'text';
     input.value = '000.5400';
-    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.decimal, input)).toEqual({
-      scalar_type: GRAPH_SCALAR_TYPE.decimal,
+    expect(constantDataFromInput(GRAPH_SCALAR_TYPE.number, input)).toEqual({
+      scalar_type: GRAPH_SCALAR_TYPE.number,
       value: '000.5400'
     });
     expect(constantDataFromInput(GRAPH_SCALAR_TYPE.string, input)).toEqual({
@@ -42,15 +42,15 @@ describe('constant node inputs', () => {
 
   it('owns the scalar editor controls in one exhaustive map', () => {
     expect(constantInput(GRAPH_SCALAR_TYPE.boolean)).toEqual({ type: 'checkbox' });
-    expect(constantInput(GRAPH_SCALAR_TYPE.integer)).toEqual({ type: 'number', step: '1' });
-    expect(constantInput(GRAPH_SCALAR_TYPE.decimal)).toEqual({ type: 'text' });
+    expect(constantInput(GRAPH_SCALAR_TYPE.number)).toEqual({ type: 'text' });
+    expect(constantInput(GRAPH_SCALAR_TYPE.number)).toEqual({ type: 'text' });
     expect(constantInput(GRAPH_SCALAR_TYPE.string)).toEqual({ type: 'text' });
   });
 
   it.each([
     [GRAPH_SCALAR_TYPE.boolean, true],
-    [GRAPH_SCALAR_TYPE.integer, 12],
-    [GRAPH_SCALAR_TYPE.decimal, '000.5400'],
+    [GRAPH_SCALAR_TYPE.number, '12'],
+    [GRAPH_SCALAR_TYPE.number, '000.5400'],
     [GRAPH_SCALAR_TYPE.string, 'hello']
   ] as const)('normalizes the %s catalog default', (scalarType, value) => {
     expect(
@@ -70,9 +70,9 @@ function descriptor(
   defaultValue: GraphConstantDescriptor['default_value']
 ): GraphConstantDescriptor {
   return {
-    ...DECIMAL_CONSTANT,
+    ...NUMBER_CONSTANT,
     scalar_type: scalarType,
     default_value: defaultValue,
-    output: { ...DECIMAL_CONSTANT.output, scalar_type: scalarType }
+    output: { ...NUMBER_CONSTANT.output, scalar_type: scalarType }
   };
 }

@@ -9,6 +9,7 @@ import pytest
 
 import polybot_control_plane.execution.worker.lifecycle as worker_lifecycle
 import polybot_control_plane.execution.worker.runtime as worker_runtime
+from conftest import DummyBroker
 from control_plane.graph_fixtures import threshold_buy_graph
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import PortfolioSnapshot, StreamHealth
@@ -403,6 +404,7 @@ def test_node_based_action_graph_submits_each_matching_event(
         }
     )
     broker = AsyncMock(spec=Broker)
+    broker.submit.side_effect = DummyBroker([]).submit
     received: list[tuple[BaseBot, object]] = []
 
     async def run_bot(bot, runtime_config, *, observer) -> None:
@@ -435,9 +437,7 @@ def test_node_based_action_graph_submits_each_matching_event(
     assert isinstance(bot, NodeBasedBot)
     assert runtime_config.stream_rules == config.stream_rules
     assert not hasattr(runtime_config, "graph")
-    assert any(
-        node.type == GraphNodeType.BROKER_ACTION for node in graph.nodes
-    )
+    assert any(node.type == GraphNodeType.BROKER_ACTION for node in graph.nodes)
     assert broker.submit.await_count == 1
     assert broker.submit.await_args.args[0].token_id == "token"
 

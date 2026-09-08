@@ -42,6 +42,7 @@ from polybot_control_plane.catalog.inputs import (
     WinnerLaunchInputs,
 )
 from polybot_control_plane.catalog.graphs.contracts import NodeGraph
+from polybot_control_plane.catalog.graphs.examples import GRAPH_EXAMPLES
 from polybot_control_plane.catalog.graphs.starter import STARTER_NODE_GRAPH
 from polybot_control_plane.catalog.node_based.bot import NodeBasedBot
 from polybot_control_plane.runs.contracts import PaperRunConfig
@@ -101,6 +102,7 @@ class CatalogEntry:
             graph_catalog=(
                 None if self.graph_capability is None else self.graph_capability.catalog
             ),
+            graph_examples=GRAPH_EXAMPLES if self.graph_capability is not None else (),
             starter_graph=(
                 None
                 if self.graph_capability is None

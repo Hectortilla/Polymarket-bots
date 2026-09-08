@@ -29,6 +29,8 @@ class GraphNodeType(StrEnum):
     CONSTANT = "constant"
     COMPARISON = "comparison"
     BROKER_ACTION = "broker_action"
+    OPERATION = "operation"
+    PARAMETER = "parameter"
 
 
 class GraphComparisonOperator(StrEnum):
@@ -47,6 +49,62 @@ class GraphBrokerAction(StrEnum):
 
 class GraphScalarType(StrEnum):
     BOOLEAN = "boolean"
-    INTEGER = "integer"
-    DECIMAL = "decimal"
+    NUMBER = "number"
     STRING = "string"
+
+
+GRAPH_CONTEXT_PORT_TYPE = GRAPH_CONTEXT_HANDLE_ID
+
+
+class GraphOperation(StrEnum):
+    AND = "and"
+    OR = "or"
+    NOT = "not"
+    IS_PRESENT = "is_present"
+    BETWEEN = "between"
+    SELECT = "select"
+    ADD = "add"
+    SUBTRACT = "subtract"
+    MULTIPLY = "multiply"
+    DIVIDE = "divide"
+    MIN = "min"
+    MAX = "max"
+    CLAMP = "clamp"
+    ROUND = "round"
+    COOLDOWN = "cooldown"
+    ONCE = "once"
+    DEDUPLICATE = "deduplicate"
+    POSITION = "position"
+    BALANCE = "balance"
+    INSPECT = "inspect"
+    LOG = "log"
+
+
+class GraphPort(StrEnum):
+    """Stable handles shared by graph descriptors, evaluation and examples."""
+
+    CONTEXT = GRAPH_CONTEXT_HANDLE_ID
+    VALUE = GRAPH_VALUE_HANDLE_ID
+    LEFT = GRAPH_COMPARISON_LEFT_HANDLE_ID
+    RIGHT = GRAPH_COMPARISON_RIGHT_HANDLE_ID
+    RESULT = GRAPH_COMPARISON_RESULT_HANDLE_ID
+    ENABLED = GRAPH_ACTION_ENABLED_HANDLE_ID
+    CONDITION = "condition"
+    WHEN_TRUE = "when_true"
+    WHEN_FALSE = "when_false"
+    MINIMUM = "minimum"
+    MAXIMUM = "maximum"
+    PLACES = "places"
+    KEY = "key"
+    RESET = "reset"
+    DURATION_MS = "duration_ms"
+    TOKEN_ID = "token_id"
+    SIZE = "size"
+    HAS_POSITION = "has_position"
+    AVERAGE_ENTRY_PRICE = "average_entry_price"
+    AVAILABLE_CASH = "available_cash"
+    STATUS = "status"
+    FILLED_SIZE = "filled_size"
+    AVERAGE_PRICE = "average_price"
+    SKIP_REASON = "skip_reason"
+    REJECT_REASON = "reject_reason"

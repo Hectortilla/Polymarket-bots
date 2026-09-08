@@ -24,10 +24,8 @@ def scalar_type_for_annotation(annotation: object) -> GraphScalarType | None:
     annotation, _ = without_none(annotation)
     if annotation is bool:
         return GraphScalarType.BOOLEAN
-    if annotation is int:
-        return GraphScalarType.INTEGER
-    if annotation is Decimal:
-        return GraphScalarType.DECIMAL
+    if annotation in (int, Decimal):
+        return GraphScalarType.NUMBER
     if annotation is str or (
         isinstance(annotation, type) and issubclass(annotation, Enum)
     ):

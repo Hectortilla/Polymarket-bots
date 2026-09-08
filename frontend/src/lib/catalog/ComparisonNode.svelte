@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NodeIssues from './NodeIssues.svelte';
   import { getContext } from 'svelte';
   import { Handle, Position } from '@xyflow/svelte';
 
@@ -67,7 +68,7 @@
       isConnectable={!editor.readOnly}
     />
   </div>
-</section>
+<NodeIssues {id} /></section>
 
 <style>
   .functional-node {

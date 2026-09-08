@@ -10,13 +10,13 @@
       "id": "constant-threshold",
       "type": "constant",
       "position": { "x": 0, "y": 200 },
-      "data": { "scalar_type": "decimal", "value": "0.5500" }
+      "data": { "scalar_type": "number", "value": "0.5500" }
     },
     {
       "id": "constant-size",
       "type": "constant",
       "position": { "x": 250, "y": 300 },
-      "data": { "scalar_type": "decimal", "value": "1.250" }
+      "data": { "scalar_type": "number", "value": "1.250" }
     },
     {
       "id": "comparison-threshold",

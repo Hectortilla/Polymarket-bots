@@ -51,9 +51,9 @@ from polybot_control_plane.catalog.graphs.contracts import (
     MAX_NODE_GRAPH_EDGES,
     MAX_NODE_GRAPH_NODES,
     GraphBooleanConstantData,
-    GraphDecimalConstantData,
+    GraphNumberConstantData,
     GraphEdge,
-    GraphIntegerConstantData,
+    GraphNumberConstantData,
     GraphStringConstantData,
     NodeGraph,
 )
@@ -270,21 +270,17 @@ def test_graph_catalog_derives_base_bot_lifecycle_hooks_and_payload_fields() -> 
     wallet_fields = {field.path.dotted: field for field in wallet_trade.payload.fields}
     assert book_fields["bids"].collection is True
     assert book_fields["bids"].value_type == "BookLevel"
-    assert book_fields["bids"].handle_id == GraphFieldPath(
-        segments=("bids",)
-    ).handle_id
+    assert book_fields["bids"].handle_id == GraphFieldPath(segments=("bids",)).handle_id
     assert book_fields["bids"].display_name == "BookSnapshot.bids"
     assert GRAPH_FIELD_PATH_SEPARATOR.join(("bids", "price")) not in book_fields
-    assert {
-        path for path in book_fields if path.startswith("best_")
-    } == {
+    assert {path for path in book_fields if path.startswith("best_")} == {
         GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")),
         GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "size")),
         GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "price")),
         GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "size")),
     }
     assert all(
-        book_fields[path].scalar_type is GraphScalarType.DECIMAL
+        book_fields[path].scalar_type is GraphScalarType.NUMBER
         and book_fields[path].nullable
         for path in (
             GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")),
@@ -596,6 +592,8 @@ def test_node_graph_uses_typed_finite_node_kinds() -> None:
         GraphNodeType.CONSTANT,
         GraphNodeType.COMPARISON,
         GraphNodeType.BROKER_ACTION,
+        GraphNodeType.OPERATION,
+        GraphNodeType.PARAMETER,
     )
     assert STARTER_NODE_GRAPH.nodes[0].data.hook_name == STARTER_TRIGGER_HOOK_NAME
     assert STARTER_NODE_GRAPH.nodes[0].data.model_dump() == {
@@ -772,11 +770,11 @@ def test_functional_graph_identifies_the_missing_required_input() -> None:
 def test_functional_graph_rejects_mixed_comparison_scalar_types() -> None:
     graph = threshold_buy_graph()
     graph["nodes"][1]["data"] = {
-        "scalar_type": GraphScalarType.INTEGER.value,
-        "value": 1,
+        "scalar_type": GraphScalarType.STRING.value,
+        "value": "1",
     }
 
-    with pytest.raises(ValidationError, match="matching scalar input types"):
+    with pytest.raises(ValidationError, match="scalar types are incompatible"):
         NodeGraph.model_validate(graph)
 
 
@@ -853,10 +851,10 @@ def test_functional_graph_rejects_action_without_trigger_ancestry() -> None:
     ("model", "scalar_type", "value"),
     [
         (GraphBooleanConstantData, GraphScalarType.BOOLEAN, "true"),
-        (GraphIntegerConstantData, GraphScalarType.INTEGER, True),
-        (GraphDecimalConstantData, GraphScalarType.DECIMAL, "NaN"),
-        (GraphDecimalConstantData, GraphScalarType.DECIMAL, "Infinity"),
-        (GraphDecimalConstantData, GraphScalarType.DECIMAL, "not-decimal"),
+        (GraphNumberConstantData, GraphScalarType.NUMBER, True),
+        (GraphNumberConstantData, GraphScalarType.NUMBER, "NaN"),
+        (GraphNumberConstantData, GraphScalarType.NUMBER, "Infinity"),
+        (GraphNumberConstantData, GraphScalarType.NUMBER, "not-decimal"),
         (GraphStringConstantData, GraphScalarType.STRING, 1),
     ],
 )

@@ -135,9 +135,10 @@ needs the event or settlement types.
 The alpha web graph catalog derives these hooks from `BaseBot` and ordinary
 event dataclass fields. Only explicitly marked computed properties are added;
 `BookSnapshot.best_bid` and `best_ask` provide nullable top-of-book price and
-size leaves. The node-based web bot compiles validated graphs containing typed
-constants, comparisons, and fixed-side submit actions once, then evaluates the
-matching branch for every accepted hook event. Actions use `ctx.broker`, so
+size leaves. The node-based web bot compiles validated graphs once, then evaluates
+the matching branch for each accepted hook event. The backend catalog also owns
+Number/Boolean/Text values, parameters, comparisons, logic, arithmetic, explicit
+event controls, portfolio queries, diagnostics and fixed-side actions with feedback. Actions use `ctx.broker`, so
 paper validation, fills, and observability remain unchanged.
 
 ## Config Overrides
@@ -705,3 +706,11 @@ Rerunning the bot uses its latest saved revision. Earlier runs continue to show
 and execute the revision they originally referenced after the bot changes.
 On the home page, failed Recent Runs rows expose the latest durable runtime
 error and the recorded failure outcome on hover or keyboard focus.
+
+
+### Graph MVP operations and own portfolio
+
+See [Graph MVP authoring](graph-node-mvp.md) for Number ports, custom parameters,
+logic/math operations, `ctx.portfolio` snapshots, keyed signal controls, diagnostic
+outputs and the isolated decision preview. Python-authored bots may use the same
+read-only `ctx.portfolio.snapshot()` API; `ctx.positions` queries external wallets.

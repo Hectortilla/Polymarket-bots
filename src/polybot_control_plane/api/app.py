@@ -1,6 +1,9 @@
 """FastAPI application assembly for the private paper-run control plane."""
 
 from fastapi import FastAPI
+from polybot_control_plane.api.routes.graph_preview import (
+    router as graph_preview_router,
+)
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -43,6 +46,7 @@ def create_app(
     if market_discovery is not None:
         application.state.market_discovery = market_discovery
     for router in (
+        graph_preview_router,
         catalog_router,
         markets_router,
         graph_templates_router,

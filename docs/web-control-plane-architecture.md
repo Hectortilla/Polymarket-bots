@@ -154,6 +154,7 @@ graph is part of `PaperRunConfig`.
 - `wallet_selection`
 - `input_schema`
 - `graph_catalog` (omitted for definitions without a node graph)
+- `graph_examples` (omitted when no examples are provided)
 - `starter_graph` (omitted for definitions without a node graph)
 
 `BotCreate` has exactly:
@@ -211,79 +212,19 @@ database recreation instead of compatibility migrations, legacy graph decoders,
 or simultaneous schema variants. A future stabilization slice may deliberately
 introduce versioning when persisted compatibility becomes a product requirement.
 
-`GraphNodeType` contains exactly `trigger`, `constant`, `comparison`, and
-`broker_action`. Every node contains a unique ID, a finite bounded `x`/`y`
-position, and the data variant owned by its type. Each `GraphEdge` contains
-unique ID, source node and handle IDs, and target node and handle IDs. Launch
-validation resolves every node and handle, enforces input cardinality and scalar
-type compatibility, rejects cycles, and requires every action to have exactly
-one upstream trigger ancestry. Constants can be shared within one trigger
-branch; processing/action nodes cannot be disconnected or join different
-triggers.
+The current graph MVP contract and execution semantics are specified in
+[Graph MVP architecture and authoring](graph-node-mvp.md). The backend publishes
+trigger, constant, comparison, broker-action, operation and parameter node kinds.
+Number replaces Integer/Decimal at graph ports; exact values remain decimal strings
+on the wire. Context ports support own-portfolio reads, keyed signal controls and
+diagnostics. Action outputs and diagnostic-only branches are supported. Missing
+comparison inputs remain unavailable through Boolean operations.
 
-The node-based descriptor alone includes a `GraphNodeCatalog`. Trigger catalog
-construction discovers every async `BaseBot` method beginning with `on_` in
-class-definition order, resolves postponed annotations, requires `BotContext`
-and at most one dataclass payload, and ignores return annotations. Stream-plan
-and backtest-query methods are not lifecycle triggers. The catalog exposes the
-opaque context handle `context` plus connectable payload fields derived through
-Pydantic `TypeAdapter`. Ordinary nested dataclasses are traversed; lists and
-tuples are collection boundaries, so `BookSnapshot.bids` exists but
-`BookSnapshot.bids.price` does not.
-
-Ordinary methods and properties remain hidden. The framework may explicitly
-mark a zero-argument annotated computed event property as graph-safe.
-`BookSnapshot.best_bid` and `best_ask` are the first such properties: best bid is
-the highest executable SELL-side level and best ask is the lowest executable
-BUY-side level. Both return `BookLevel | None`; discovery exposes their nested
-`price` and `size` fields and propagates the parent nullability. The stored
-`bids` and `asks` collections remain the single source of truth. `midpoint()` and
-other unmarked behavior are not graph outputs.
-
-Every scalar trigger field has a generated handle
-`field:<dot-joined-path>` and display label
-`<PayloadType>.<dot-joined-path>`; no whole-event output exists. Constants are
-typed boolean, integer, exact decimal, or string scalar sources. Comparisons are
-binary `equal`, `not_equal`, `less_than`, `less_than_or_equal`, `greater_than`,
-or `greater_than_or_equal` nodes with one boolean output. A null comparison
-input evaluates `False` without coercion.
-
-The broker catalog explicitly publishes only
-`Broker.submit(OrderRequest) -> FillEvent`; it never exposes every broker method
-implicitly. Its order inputs are derived from the broker signature,
-`OrderRequest`, `Side`, and their annotations. BUY and SELL are fixed-side
-variants with required `enabled`, `token_id`, limit `price`, and share `size`
-inputs plus the existing optional market, condition, source, and reason fields.
-`cancel_all` and action-result outputs are outside the MVP.
-
-The frontend uses only backend catalog metadata and generated types for its
-palette, labels, always-visible scalar trigger handles, controls, and
-connections, and strips only Svelte Flow transient state. The palette presents
-a single Comparison item; its node-level select exposes every catalog operator
-and removes an existing input edge if the selected operator no longer accepts
-its scalar type. Drawn edges are the sole persisted record of which trigger
-outputs a graph uses. The starter graph remains non-trading. A complete
-supported graph can compare `BookSnapshot.best_ask.price` with a decimal constant and,
-when true, submit a BUY using the event token and ask price plus a constant
-share size.
-
-At runtime, the worker resolves the run's exact bot-owned graph revision once,
-then the catalog constructs `NodeBasedBot(BaseBot)` from that graph and the
-decoded `PaperRunConfig`. That bot owns a focused evaluator; `BaseBot` and general
-`BotConfig` do not gain graph behavior or graph fields. The graph is compiled
-once to dependency indexes and deterministic topological order. Each accepted
-hook invocation creates one ephemeral frame and evaluates the matching trigger's
-reachable acyclic branch once. This is an event-driven DAG pass, not a state
-machine or a fixed-point loop.
-
-An action runs only when `enabled` is exactly true and all required values are
-non-null, then constructs the existing `OrderRequest` and awaits
-`ctx.broker.submit()`. A missing best level or required value fails closed with
-a stable graph skip reason. The evaluator has no cross-event state: every
-matching accepted event can submit again while its comparison remains true.
-Position checks, cooldowns, once/rising-edge behavior, and dedupe must be future
-explicit nodes rather than hidden action semantics. Broker results do not
-recursively dispatch `on_fill` in this MVP.
+The compiler checks executable capabilities before any action. The frontend consumes
+backend catalog metadata and generated schemas, including operation descriptors and
+synthetic preview samples. Catalog definitions also provide independently copyable
+example graphs. The default starter remains non-trading. See the
+[two-phase implementation checklist](graph-mvp-plan.md) for delivery units.
 
 The saved-bot boundary performs the only request normalization:
 
@@ -569,6 +510,8 @@ alongside `PersistedDurableEvent` so OpenAPI generates every frontend payload
 type.
 
 ## HTTP API
+
+- `POST /graphs/preview`: validate a draft graph and synthetic event, then return node results and intended orders without any broker submission, persistence, or network reads.
 
 The route prefix `/api/v1` is defined here once. The current API has only:
 

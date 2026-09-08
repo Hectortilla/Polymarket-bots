@@ -1298,6 +1298,10 @@ def test_runtime_factory_starts_each_paper_run_with_fresh_in_memory_state(
     assert first.registry.entries == ()
     assert second.followed_wallets.active_wallets == ()
     assert second.paper_broker.portfolio.positions == {}
+    assert first.ctx.portfolio.snapshot().position("first-run-token").size == 1
+    assert second.ctx.portfolio.snapshot().positions == ()
+    assert first.ctx.broker is first.broker
+    assert first.ctx.positions is sources.position_client
     assert second.registry.entries == ()
     assert legacy_state_file.read_text(encoding="utf-8") == '{"legacy": true}'
     assert tuple(legacy_state_dir.iterdir()) == (legacy_state_file,)

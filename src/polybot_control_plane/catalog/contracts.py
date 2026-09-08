@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from polybot_control_plane.catalog.graphs.examples import GraphExample
 from polybot_control_plane.catalog.graphs.catalog import GraphNodeCatalog
 from polybot_control_plane.catalog.graphs.contracts import NodeGraph
 from polybot_control_plane.catalog.values import (
@@ -24,6 +25,9 @@ class BotDefinitionDescriptor(BaseModel):
     graph_catalog: GraphNodeCatalog | None = Field(
         default=None,
         exclude_if=lambda catalog: catalog is None,
+    )
+    graph_examples: tuple[GraphExample, ...] = Field(
+        default=(), exclude_if=lambda values: not values
     )
     starter_graph: NodeGraph | None = Field(
         default=None,

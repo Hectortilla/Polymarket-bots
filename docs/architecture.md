@@ -735,8 +735,9 @@ excluding stream-planning and backtest-query methods. Its payload outputs are
 derived from annotated event dataclasses plus explicitly marked computed
 properties. `BookSnapshot.best_bid` and `best_ask` expose nullable price and
 size leaves without duplicating stored depth. The same backend catalog owns
-typed constants, binary comparisons, and the allowlisted fixed-side
-`Broker.submit` actions. `NodeBasedBot` compiles each validated graph once and
+Number, Boolean and Text values, parameters, logic and arithmetic, explicit
+event controls, portfolio queries, diagnostics, and allowlisted fixed-side
+`Broker.submit` actions with feedback outputs. `NodeBasedBot` compiles each validated graph once and
 evaluates only the matching trigger branch for every accepted hook invocation.
 Enabled actions with complete required inputs submit through `ctx.broker`; a
 nullable missing value skips with a stable graph reason.
@@ -988,3 +989,15 @@ Preferred source order:
 2. An on-chain/indexer stream with the same normalized fields.
 3. Data API `/trades?user=...` and `/activity?user=...` for bootstrap,
    reconnect backfill, reconciliation, and degraded fallback.
+
+
+## Paper graph MVP extension
+
+[Graph MVP architecture and semantics](graph-node-mvp.md) supersedes the earlier
+four-kind graph and stateless-evaluation descriptions. The backend retains catalog
+ownership. Graph Number ports normalize framework ints and Decimals into Decimal
+values without changing framework event contracts. An immutable `ctx.portfolio`
+reader exposes existing paper accounting to both Python and graph bots. The graph
+evaluator owns bounded per-run signal state and per-event value status, supports
+diagnostic sinks and action-result outputs, and also runs isolated decision previews.
+The [implementation checklist](graph-mvp-plan.md) records both delivery phases.

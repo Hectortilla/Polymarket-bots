@@ -152,20 +152,20 @@ outputs derived from that hook's annotated event dataclass and explicitly
 marked computed outputs. Drawn edges determine which outputs the graph uses.
 `BookSnapshot.best_bid` and `best_ask` provide nullable
 top-level price/size fields without duplicating the underlying books. The same
-backend catalog describes typed constants, binary comparisons, and fixed-side
-BUY/SELL actions derived from `Broker.submit(OrderRequest)`; the frontend
-contains no parallel hook, event-field, or broker-action registry.
+backend catalog describes Number/Boolean/Text values, parameters, comparisons,
+logic, arithmetic, event controls, portfolio queries, diagnostics and fixed-side
+BUY/SELL actions derived from `Broker.submit(OrderRequest)`. The frontend
+uses these descriptors for ports and operation choices.
 
 The builder draft stores the editable catalog graph. Copying another bot takes
 its latest graph as an independent draft and saves it into a new immutable
 bot-owned revision.
 For each accepted event, the node bot evaluates the matching acyclic branch once
 and submits each reachable enabled action at most once through the existing
-paper broker. Evaluation has no implicit cross-event state: while a condition
-remains true, every matching accepted event may submit another order. The
-operator is responsible for adding explicit position, cooldown, once, or other
-state nodes when those capabilities are introduced; the MVP does not silently
-invent them.
+paper broker. While a condition remains true, each accepted event may submit
+another order unless the graph adds an explicit portfolio condition or event
+control. Cooldown, Once Per Key and Deduplicate Event retain bounded state for
+one bot run; a new run starts with fresh state.
 
 ### Bot and run detail
 
@@ -231,3 +231,15 @@ v0 is complete when one trusted operator can:
 
 No endpoint may violate the **Trust Boundary**, and the existing CLI must remain
 usable without control-plane services.
+
+
+## Graph MVP update
+
+The current node editor adds backend-catalogued logic/math, custom parameters,
+unified Number ports, own-portfolio queries, signal controls and diagnostics.
+`POST /api/v1/graphs/preview` evaluates a draft against synthetic inputs without
+submitting orders or creating a run. The starting-point selector includes two
+example strategies. See [Graph MVP authoring](graph-node-mvp.md) for the complete
+contract and [delivery checklist](graph-mvp-plan.md) for both implementation phases.
+These capabilities supersede earlier graph-MVP exclusions; public deployment and
+live trading remain outside this work.

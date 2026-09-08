@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import CaretRightIcon from 'phosphor-svelte/lib/CaretRightIcon';
   import { tick } from 'svelte';
   import ArrowsLeftRightIcon from 'phosphor-svelte/lib/ArrowsLeftRightIcon';
   import HashStraightIcon from 'phosphor-svelte/lib/HashStraightIcon';
@@ -14,6 +15,8 @@
   import ToggleLeftIcon from 'phosphor-svelte/lib/ToggleLeftIcon';
 
   import type {
+    GraphOperationDescriptor,
+    GraphParameter,
     GraphBrokerActionDescriptor,
     GraphComparisonDescriptor,
     GraphConstantDescriptor,
@@ -35,9 +38,15 @@
     onaddtrigger,
     onaddconstant,
     onaddcomparison,
-    onaddaction
+    onaddaction,
+    onaddoperation,
+    onaddparameter,
+    parameters = []
   }: {
     catalog: GraphNodeCatalog;
+    parameters?: GraphParameter[];
+    onaddoperation: (operation: GraphOperationDescriptor) => void;
+    onaddparameter: (parameter: GraphParameter) => void;
     nodes: CanvasNode[];
     additionDisabled?: boolean;
     onaddtrigger: (trigger: GraphTriggerDescriptor) => void;
@@ -59,6 +68,7 @@
   type PaletteItem = {
     id: string;
     category: NodeCategory;
+    subgroup?: string;
     icon: PaletteIcon;
     name: string;
     description: string;
@@ -69,6 +79,8 @@
   };
 
   const categories = [
+    { id: GRAPH_NODE_TYPE.operation, label: "Operations", description: "Calculate, control signals, query your portfolio, and inspect results." },
+    { id: GRAPH_NODE_TYPE.parameter, label: "Parameters", description: "Reuse named strategy settings." },
     {
       id: GRAPH_NODE_TYPE.trigger,
       label: 'Triggers',
@@ -81,7 +93,7 @@
     },
     {
       id: GRAPH_NODE_TYPE.comparison,
-      label: 'Logic',
+      label: 'Comparisons',
       description: 'Compare compatible values.'
     },
     {
@@ -97,7 +109,12 @@
 
   let open = $state(false);
   let query = $state('');
+  let expandedGroups = $state<Record<string, boolean>>({ [GRAPH_NODE_TYPE.operation]: true });
+  let searchExpansion = $state<Record<string, boolean>>({});
   let searchInput = $state<HTMLInputElement>();
+  let triggerButton = $state<HTMLButtonElement>();
+  let opensAbove = $state(false);
+  let panelMaxHeight = $state(544);
 
   function comparisonPaletteItems(
     comparisons: GraphComparisonDescriptor[]
@@ -132,8 +149,7 @@
     switch (constant.scalar_type) {
       case GRAPH_SCALAR_TYPE.boolean:
         return 'boolean';
-      case GRAPH_SCALAR_TYPE.integer:
-      case GRAPH_SCALAR_TYPE.decimal:
+      case GRAPH_SCALAR_TYPE.number:
         return 'number';
       case GRAPH_SCALAR_TYPE.string:
         return 'string';
@@ -150,6 +166,8 @@
   }
 
   const paletteItems = $derived<PaletteItem[]>([
+    ...(catalog.operations ?? []).map(operation => ({ id: operation.operation, category: GRAPH_NODE_TYPE.operation, subgroup: operation.category, icon: 'comparison' as const, name: operation.display_name, description: operation.category, meta: operation.category, searchTerms: `${operation.display_name} ${operation.operation} ${operation.category}`, disabled: additionDisabled, select: () => onaddoperation(operation) })),
+    ...parameters.map(parameter => ({ id: parameter.id, category: GRAPH_NODE_TYPE.parameter, icon: 'number' as const, name: parameter.name, description: 'Named strategy parameter', meta: parameter.data.scalar_type, searchTerms: parameter.name, disabled: additionDisabled, select: () => onaddparameter(parameter) })),
     ...catalog.triggers.map((trigger) => ({
       id: `trigger-${trigger.hook_name}`,
       category: GRAPH_NODE_TYPE.trigger,
@@ -204,13 +222,45 @@
       }))
       .filter((category) => category.items.length > 0)
   );
+  function operationGroups(items: PaletteItem[]) {
+    return [...new Set(items.map(item => item.subgroup!))].map(label => ({
+      id: `${GRAPH_NODE_TYPE.operation}-${encodeURIComponent(label)}`,
+      label,
+      items: items.filter(item => item.subgroup === label)
+    }));
+  }
+
+  function groupIsExpanded(id: string): boolean {
+    return normalizedQuery ? searchExpansion[id] ?? true : expandedGroups[id] ?? false;
+  }
+
+  function toggleGroup(id: string): void {
+    const expanded = !groupIsExpanded(id);
+    if (normalizedQuery) searchExpansion = { ...searchExpansion, [id]: expanded };
+    else expandedGroups = { ...expandedGroups, [id]: expanded };
+  }
+
+  $effect(() => {
+    normalizedQuery;
+    searchExpansion = {};
+  });
+
   const visibleItemCount = $derived(
     visibleGroups.reduce((count, group) => count + group.items.length, 0)
   );
 
   $effect(() => {
-    if (open) void tick().then(() => searchInput?.focus());
+    if (open) void tick().then(() => { positionPanel(); searchInput?.focus(); });
   });
+
+  function positionPanel(): void {
+    if (!open || !triggerButton) return;
+    const rect = triggerButton.getBoundingClientRect();
+    const above = rect.top - 16;
+    const below = window.innerHeight - rect.bottom - 16;
+    opensAbove = below < 320 && above > below;
+    panelMaxHeight = Math.max(180, opensAbove ? above : below);
+  }
 
   function togglePalette(): void {
     open = !open;
@@ -220,6 +270,7 @@
   function closePalette(): void {
     open = false;
     query = '';
+    triggerButton?.focus();
   }
 
   function addItem(item: PaletteItem): void {
@@ -233,56 +284,10 @@
   }
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
-
-<div class="node-palette">
-  <button
-    type="button"
-    class="palette-trigger"
-    aria-label={ADD_NODE_LABEL}
-    aria-expanded={open}
-    aria-controls="node-palette-panel"
-    onclick={togglePalette}
-  >
-    <PlusIcon aria-hidden="true" size={15} weight="bold" />
-    <span>{ADD_NODE_LABEL}</span>
-  </button>
-
-  {#if open}
-    <div
-      class="palette-panel"
-      id="node-palette-panel"
-      role="dialog"
-      aria-label="Add graph node"
-    >
-      <div class="palette-search">
-        <label for="node-palette-search">Find a node</label>
-        <input
-          bind:this={searchInput}
-          bind:value={query}
-          id="node-palette-search"
-          type="search"
-          placeholder="Search triggers, values, logic, and actions"
-          autocomplete="off"
-        />
-        <span aria-live="polite">{visibleItemCount} available</span>
-      </div>
-
-      <div class="palette-results">
-        {#each visibleGroups as group (group.id)}
-          <section class="palette-group" aria-labelledby={`palette-group-${group.id}`}>
-            <header>
-              <div>
-                <h3 id={`palette-group-${group.id}`}>{group.label}</h3>
-                <p>{group.description}</p>
-              </div>
-              <span>{group.items.length}</span>
-            </header>
-
+{#snippet itemGrid(items: PaletteItem[])}
             <div class="palette-grid">
-              {#each group.items as item (item.id)}
-                <button
-                  type="button"
+              {#each items as item (item.id)}
+                <button type="button"
                   class="palette-item"
                   aria-label={`Add ${item.name}`}
                   disabled={item.disabled}
@@ -313,6 +318,68 @@
                 </button>
               {/each}
             </div>
+{/snippet}
+
+<svelte:window onkeydown={handleWindowKeydown} onresize={positionPanel} onscroll={positionPanel} />
+
+<div class="node-palette">
+  <button type="button"
+    bind:this={triggerButton}
+    class="palette-trigger"
+    aria-label={ADD_NODE_LABEL}
+    aria-expanded={open}
+    aria-controls="node-palette-panel"
+    onclick={togglePalette}
+  >
+    <PlusIcon aria-hidden="true" size={15} weight="bold" />
+    <span>{ADD_NODE_LABEL}</span>
+  </button>
+
+  {#if open}
+    <div
+      class="palette-panel"
+      class:above={opensAbove}
+      style:max-height={`${panelMaxHeight}px`}
+      id="node-palette-panel"
+      role="dialog"
+      aria-label="Add graph node"
+    >
+      <div class="palette-search">
+        <label for="node-palette-search">Find a node</label>
+        <input
+          bind:this={searchInput}
+          bind:value={query}
+          id="node-palette-search"
+          type="search"
+          placeholder="Search triggers, values, logic, and actions"
+          autocomplete="off"
+        />
+        <span aria-live="polite">{visibleItemCount} available</span>
+      </div>
+
+      <div class="palette-results">
+        {#each visibleGroups as group (group.id)}
+          <section class="palette-group">
+            <button type="button" class="group-toggle" aria-label={group.label} aria-expanded={groupIsExpanded(group.id)} aria-controls={`palette-items-${group.id}`} onclick={() => toggleGroup(group.id)}>
+              <span class="group-chevron" class:expanded={groupIsExpanded(group.id)}><CaretRightIcon size={14} aria-hidden="true" /></span>
+              <span class="group-heading"><strong>{group.label}</strong><small>{group.description}</small></span>
+              <span class="group-count">{group.items.length}</span>
+            </button>
+            <div id={`palette-items-${group.id}`} hidden={!groupIsExpanded(group.id)}>
+              {#if group.id === GRAPH_NODE_TYPE.operation}
+                {#each operationGroups(group.items) as subgroup (subgroup.id)}
+                  <section class="palette-subgroup">
+                    <button type="button" class="group-toggle subgroup-toggle" aria-label={subgroup.label} aria-expanded={groupIsExpanded(subgroup.id)} aria-controls={`palette-items-${subgroup.id}`} onclick={() => toggleGroup(subgroup.id)}>
+                      <span class="group-chevron" class:expanded={groupIsExpanded(subgroup.id)}><CaretRightIcon size={13} aria-hidden="true" /></span>
+                      <strong>{subgroup.label}</strong><span class="group-count">{subgroup.items.length}</span>
+                    </button>
+                    <div id={`palette-items-${subgroup.id}`} hidden={!groupIsExpanded(subgroup.id)}>{@render itemGrid(subgroup.items)}</div>
+                  </section>
+                {/each}
+              {:else}
+                {@render itemGrid(group.items)}
+              {/if}
+            </div>
           </section>
         {:else}
           <div class="palette-empty">
@@ -340,7 +407,11 @@
     font-size: 0.8rem;
   }
 
+  .palette-panel.above { top: auto; bottom: calc(100% + .65rem); }
+
   .palette-panel {
+    display: flex;
+    flex-direction: column;
     position: absolute;
     top: calc(100% + 0.65rem);
     right: 0;
@@ -356,6 +427,7 @@
   }
 
   .palette-search {
+    flex: none;
     position: relative;
     border-bottom: 1px solid var(--line);
     padding: 1rem;
@@ -372,6 +444,8 @@
   }
 
   .palette-search > span {
+    grid-column: 2;
+    grid-row: 1;
     color: var(--text-muted);
     font-family: 'Geist Mono Variable', ui-monospace, monospace;
     font-size: 0.68rem;
@@ -385,55 +459,36 @@
   }
 
   .palette-results {
-    max-height: min(34rem, calc(100dvh - 12rem));
+    min-height: 0;
+    max-height: 34rem;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-color: var(--control-line) transparent;
     scrollbar-width: thin;
   }
 
-  .palette-group {
-    margin: 0;
-    padding: 1rem;
+  .palette-group { margin: 0; padding: .35rem .75rem; }
+  .palette-group + .palette-group { border-top: 1px solid var(--line); }
+  .group-toggle {
+    width: 100%; padding: .8rem .35rem; display: flex; gap: .65rem;
+    align-items: center; justify-content: flex-start; border: 0;
+    background: transparent; color: var(--text-soft); text-align: left;
+    white-space: normal;
   }
-
-  .palette-group + .palette-group {
-    border-top: 1px solid var(--line);
-  }
-
-  .palette-group header {
-    margin-bottom: 0.7rem;
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: start;
-  }
-
-  .palette-group h3,
-  .palette-group p {
-    margin: 0;
-  }
-
-  .palette-group h3 {
-    font-size: 0.82rem;
-    font-weight: 640;
-    letter-spacing: -0.01em;
-  }
-
-  .palette-group p {
-    margin-top: 0.15rem;
-    color: var(--text-muted);
-    font-size: 0.7rem;
-    line-height: 1.4;
-  }
-
-  .palette-group header > span {
-    color: var(--text-muted);
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
-    font-size: 0.68rem;
-  }
+  .group-toggle:hover { background: var(--surface-input); color: var(--text); }
+  .group-heading { display: grid; gap: .3rem; }
+  .group-toggle strong { font-size: .82rem; font-weight: 640; }
+  .group-heading small { color: var(--text-muted); font-size: .7rem; font-weight: 400; line-height: 1.5; }
+  .group-count { margin-left: auto; color: var(--text-muted); font-size: .7rem; }
+  .group-chevron { display: inline-flex; flex: none; transition: transform var(--transition); }
+  .group-chevron.expanded { transform: rotate(90deg); }
+  .palette-subgroup { margin: 0 0 .2rem .6rem; border-left: 1px solid var(--line); padding-left: .65rem; }
+  .subgroup-toggle { padding: .65rem .35rem; min-height: 2.5rem; }
+  .subgroup-toggle strong { font-size: .76rem; }
+  [hidden] { display: none !important; }
 
   .palette-grid {
+    padding: .25rem 0 .85rem;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
@@ -541,18 +596,27 @@
   }
 
   @media (max-width: 560px) {
-    .palette-panel {
+    .palette-panel.above { top: auto; bottom: calc(100% + .65rem); }
+
+  .palette-panel {
+    display: flex;
+    flex-direction: column;
       right: -0.25rem;
       width: min(31rem, calc(100vw - 2rem));
     }
 
     .palette-grid {
+    padding: .25rem 0 .85rem;
       grid-template-columns: 1fr;
     }
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    .palette-panel {
+    .palette-panel.above { top: auto; bottom: calc(100% + .65rem); }
+
+  .palette-panel {
+    display: flex;
+    flex-direction: column;
       background: var(--surface-raised);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;

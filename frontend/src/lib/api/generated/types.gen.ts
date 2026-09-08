@@ -57,6 +57,10 @@ export type BotDefinitionDescriptor = {
     display_name: string;
     graph_catalog?: GraphNodeCatalog | null;
     /**
+     * Graph Examples
+     */
+    graph_examples?: Array<GraphExample>;
+    /**
      * Input Schema
      */
     input_schema: {
@@ -326,6 +330,10 @@ export type GraphBrokerActionDescriptor = {
      * Node Type
      */
     node_type?: 'broker_action';
+    /**
+     * Outputs
+     */
+    outputs?: Array<GraphOutputDescriptor>;
     side: Side;
 };
 
@@ -404,7 +412,7 @@ export type GraphConstantDescriptor = {
     /**
      * Default Value
      */
-    default_value: boolean | number | string;
+    default_value: boolean | string;
     /**
      * Display Name
      */
@@ -433,28 +441,12 @@ export type GraphConstantNode = {
 export type GraphConstantNodeData = ({
     scalar_type: 'boolean';
 } & GraphBooleanConstantData) | ({
-    scalar_type: 'integer';
-} & GraphIntegerConstantData) | ({
-    scalar_type: 'decimal';
-} & GraphDecimalConstantData) | ({
+    scalar_type: 'number';
+} & GraphNumberConstantData) | ({
     scalar_type: 'string';
 } & GraphStringConstantData);
 
 export type GraphCoordinate = number;
-
-/**
- * GraphDecimalConstantData
- */
-export type GraphDecimalConstantData = {
-    /**
-     * Scalar Type
-     */
-    scalar_type: 'decimal';
-    /**
-     * Value
-     */
-    value: string;
-};
 
 /**
  * GraphEdge
@@ -470,6 +462,21 @@ export type GraphEdge = {
 export type GraphEdgeId = string;
 
 export type GraphElementId = string;
+
+/**
+ * GraphExample
+ */
+export type GraphExample = {
+    /**
+     * Description
+     */
+    description: string;
+    graph: NodeGraph;
+    /**
+     * Name
+     */
+    name: string;
+};
 
 /**
  * GraphFieldDescriptor
@@ -523,10 +530,22 @@ export type GraphHookName = string;
  */
 export type GraphInputDescriptor = {
     /**
+     * Description
+     */
+    description?: string | null;
+    /**
      * Display Name
      */
     display_name: string;
     handle_id: GraphHandleId;
+    /**
+     * Maximum
+     */
+    maximum?: string | null;
+    /**
+     * Minimum
+     */
+    minimum?: string | null;
     /**
      * Nullable
      */
@@ -538,21 +557,11 @@ export type GraphInputDescriptor = {
     /**
      * Scalar Types
      */
-    scalar_types: Array<GraphScalarType>;
-};
-
-/**
- * GraphIntegerConstantData
- */
-export type GraphIntegerConstantData = {
+    scalar_types: Array<GraphScalarType | 'context'>;
     /**
-     * Scalar Type
+     * Whole Number
      */
-    scalar_type: 'integer';
-    /**
-     * Value
-     */
-    value: number;
+    whole_number?: boolean;
 };
 
 export type GraphNode = ({
@@ -563,7 +572,11 @@ export type GraphNode = ({
     type: 'comparison';
 } & GraphComparisonNode) | ({
     type: 'broker_action';
-} & GraphBrokerActionNode);
+} & GraphBrokerActionNode) | ({
+    type: 'operation';
+} & GraphOperationNode) | ({
+    type: 'parameter';
+} & GraphParameterNode);
 
 /**
  * GraphNodeCatalog
@@ -582,9 +595,125 @@ export type GraphNodeCatalog = {
      */
     constants: Array<GraphConstantDescriptor>;
     /**
+     * Operations
+     */
+    operations?: Array<GraphOperationDescriptor>;
+    /**
      * Triggers
      */
     triggers: Array<GraphTriggerDescriptor>;
+};
+
+/**
+ * GraphNodeEvaluationRead
+ */
+export type GraphNodeEvaluationRead = {
+    /**
+     * Node Id
+     */
+    node_id: string;
+    /**
+     * Outputs
+     */
+    outputs: {
+        [key: string]: GraphValueRead;
+    };
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    status?: GraphValueStatus;
+};
+
+/**
+ * GraphNumberConstantData
+ */
+export type GraphNumberConstantData = {
+    /**
+     * Scalar Type
+     */
+    scalar_type: 'number';
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
+ * GraphOperation
+ */
+export type GraphOperation = 'and' | 'or' | 'not' | 'is_present' | 'between' | 'select' | 'add' | 'subtract' | 'multiply' | 'divide' | 'min' | 'max' | 'clamp' | 'round' | 'cooldown' | 'once' | 'deduplicate' | 'position' | 'balance' | 'inspect' | 'log';
+
+/**
+ * GraphOperationDescriptor
+ */
+export type GraphOperationDescriptor = {
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Expandable
+     */
+    expandable?: boolean;
+    /**
+     * Inputs
+     */
+    inputs: Array<GraphInputDescriptor>;
+    /**
+     * Maximum Inputs
+     */
+    maximum_inputs?: number | null;
+    /**
+     * Minimum Inputs
+     */
+    minimum_inputs?: number | null;
+    /**
+     * Node Type
+     */
+    node_type?: 'operation';
+    operation: GraphOperation;
+    /**
+     * Outputs
+     */
+    outputs: Array<GraphOutputDescriptor>;
+    /**
+     * Selectable Scalar Type
+     */
+    selectable_scalar_type?: boolean;
+    /**
+     * Terminal
+     */
+    terminal?: boolean;
+};
+
+/**
+ * GraphOperationNode
+ */
+export type GraphOperationNode = {
+    data: GraphOperationNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    /**
+     * Type
+     */
+    type: 'operation';
+};
+
+/**
+ * GraphOperationNodeData
+ */
+export type GraphOperationNodeData = {
+    /**
+     * Input Ids
+     */
+    input_ids?: Array<GraphHandleId>;
+    operation: GraphOperation;
+    scalar_type?: GraphScalarType;
 };
 
 /**
@@ -600,7 +729,42 @@ export type GraphOutputDescriptor = {
      * Nullable
      */
     nullable?: boolean;
-    scalar_type: GraphScalarType;
+    /**
+     * Scalar Type
+     */
+    scalar_type: GraphScalarType | 'context';
+};
+
+/**
+ * GraphParameter
+ */
+export type GraphParameter = {
+    data: GraphConstantNodeData;
+    id: GraphElementId;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * GraphParameterNode
+ */
+export type GraphParameterNode = {
+    data: GraphParameterNodeData;
+    id: GraphElementId;
+    position: GraphPosition;
+    /**
+     * Type
+     */
+    type: 'parameter';
+};
+
+/**
+ * GraphParameterNodeData
+ */
+export type GraphParameterNodeData = {
+    parameter_id: GraphElementId;
 };
 
 /**
@@ -625,12 +789,45 @@ export type GraphPosition = {
     y: GraphCoordinate;
 };
 
+/**
+ * GraphPreviewRequest
+ */
+export type GraphPreviewRequest = {
+    graph: NodeGraph;
+    hook_name: GraphHookName;
+    /**
+     * Now Ms
+     */
+    now_ms: number;
+    /**
+     * Payload
+     */
+    payload?: {
+        [key: string]: unknown;
+    } | null;
+    portfolio?: PreviewPortfolio | null;
+};
+
+/**
+ * GraphPreviewResponse
+ */
+export type GraphPreviewResponse = {
+    /**
+     * Intended Orders
+     */
+    intended_orders: Array<OrderRequest>;
+    /**
+     * Nodes
+     */
+    nodes: Array<GraphNodeEvaluationRead>;
+};
+
 export type GraphRevisionNumber = number;
 
 /**
  * GraphScalarType
  */
-export type GraphScalarType = 'boolean' | 'integer' | 'decimal' | 'string';
+export type GraphScalarType = 'boolean' | 'number' | 'string';
 
 /**
  * GraphStringConstantData
@@ -702,6 +899,16 @@ export type GraphTriggerDescriptor = {
      */
     node_type?: 'trigger';
     payload?: GraphPayloadDescriptor | null;
+    /**
+     * Sample Payload
+     */
+    sample_payload?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Sample Time Ms
+     */
+    sample_time_ms?: number;
 };
 
 /**
@@ -723,6 +930,34 @@ export type GraphTriggerNode = {
 export type GraphTriggerNodeData = {
     hook_name: GraphHookName;
 };
+
+/**
+ * GraphValueRead
+ */
+export type GraphValueRead = {
+    /**
+     * Input Handle Id
+     */
+    input_handle_id?: string | null;
+    /**
+     * Message
+     */
+    message?: string | null;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    status: GraphValueStatus;
+    /**
+     * Value
+     */
+    value?: boolean | string | null;
+};
+
+/**
+ * GraphValueStatus
+ */
+export type GraphValueStatus = 'available' | 'missing' | 'invalid' | 'skipped' | 'planned';
 
 /**
  * HTTPValidationError
@@ -999,6 +1234,10 @@ export type NodeGraph = {
      * Nodes
      */
     nodes: Array<GraphNode>;
+    /**
+     * Parameters
+     */
+    parameters?: Array<GraphParameter>;
 };
 
 export type NonnegativeDecimal = string;
@@ -1333,6 +1572,24 @@ export type PersistedWalletTimelineEvent = {
 };
 
 /**
+ * PortfolioPosition
+ */
+export type PortfolioPosition = {
+    /**
+     * Average Entry Price
+     */
+    average_entry_price: number | string | null;
+    /**
+     * Size
+     */
+    size: number | string;
+    /**
+     * Token Id
+     */
+    token_id: string;
+};
+
+/**
  * PortfolioPositionSnapshot
  */
 export type PortfolioPositionSnapshot = {
@@ -1387,6 +1644,20 @@ export type PortfolioSnapshotPayload = {
 };
 
 export type PositiveDecimal = string;
+
+/**
+ * PreviewPortfolio
+ */
+export type PreviewPortfolio = {
+    /**
+     * Available Cash
+     */
+    available_cash?: number | string;
+    /**
+     * Positions
+     */
+    positions?: Array<PortfolioPosition>;
+};
 
 /**
  * RunBootstrapPayload
@@ -2112,6 +2383,31 @@ export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses = {
 };
 
 export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponse = UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses[keyof UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses];
+
+export type PreviewGraphData = {
+    body: GraphPreviewRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/graphs/preview';
+};
+
+export type PreviewGraphErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewGraphError = PreviewGraphErrors[keyof PreviewGraphErrors];
+
+export type PreviewGraphResponses = {
+    /**
+     * Successful Response
+     */
+    200: GraphPreviewResponse;
+};
+
+export type PreviewGraphResponse = PreviewGraphResponses[keyof PreviewGraphResponses];
 
 export type HealthApiV1HealthGetData = {
     body?: never;

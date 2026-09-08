@@ -53,3 +53,7 @@ HEALTH_OPERATION_ID = "health_api_v1_health_get"
 def api_route_path(path: str, **parameters: object) -> str:
     resolved_path = path.format(**parameters) if parameters else path
     return f"{API_PREFIX}{resolved_path}"
+
+
+GRAPH_PREVIEW_PATH = "/graphs/preview"
+PREVIEW_GRAPH_OPERATION_ID = "preview_graph"

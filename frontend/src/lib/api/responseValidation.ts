@@ -1,6 +1,7 @@
 import { client } from './generated/client.gen';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 import catalogContract from '$lib/catalog/catalogContract.fixture.json';
+import { graphScalarValueIsValid as isScalarValue } from '$lib/catalog/scalarValue';
 import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
 import { nodeGraphContractIsValid } from '$lib/catalog/runtimeGraphValidation';
 import {
@@ -67,7 +68,8 @@ function isObjectResponse(value: Record<string, unknown>): boolean {
     || isEventPage(value)
     || isRunEvent(value)
     || isHealthResponse(value)
-    || isMarketSearchResults(value);
+    || isMarketSearchResults(value)
+    || isGraphPreviewResponse(value);
 }
 
 function isMarketSuggestion(value: Record<string, unknown>): boolean {
@@ -98,6 +100,8 @@ function isDefinition(value: Record<string, unknown>): boolean {
     && (value.graph_catalog === undefined
       || value.graph_catalog === null
       || isGraphCatalog(value.graph_catalog))
+    && (value.graph_examples === undefined || isArrayOf(value.graph_examples, example =>
+      isNonemptyString(example.name) && isNonemptyString(example.description) && isNodeGraph(example.graph)))
     && (value.starter_graph === undefined
       || value.starter_graph === null
       || isNodeGraph(value.starter_graph));
@@ -183,6 +187,7 @@ function isNodeGraph(value: unknown): boolean {
     return false;
   }
   if (!value.nodes.every(isGraphNode)) return false;
+  if (value.parameters !== undefined && (!Array.isArray(value.parameters) || !value.parameters.every(p => isRecord(p) && isGraphIdentifier(p.id) && typeof p.name === 'string' && p.name.length > 0 && p.name.length <= catalogContract.maximumParameterNameLength && isRecord(p.data) && isConstantNodeData(p.data)))) return false;
   const edgesAreValid = value.edges === undefined || (
     Array.isArray(value.edges)
     && value.edges.every((edge) => isRecord(edge)
@@ -204,6 +209,12 @@ function isGraphNode(node: unknown): boolean {
     || !isGraphCoordinate(node.position.y)
     || !isRecord(node.data)) return false;
   switch (node.type) {
+    case GRAPH_NODE_TYPE.parameter:
+      return isGraphIdentifier(node.data.parameter_id);
+    case GRAPH_NODE_TYPE.operation:
+      return catalogContract.graphNodeCatalog.operations.map(item => item.operation).includes(node.data.operation as never)
+        && (node.data.scalar_type === undefined || isOneOf(node.data.scalar_type, GRAPH_SCALAR_TYPES))
+        && (node.data.input_ids === undefined || Array.isArray(node.data.input_ids) && node.data.input_ids.every(isGraphIdentifier));
     case GRAPH_NODE_TYPE.trigger:
       return isGraphHookName(node.data.hook_name);
     case GRAPH_NODE_TYPE.constant:
@@ -222,20 +233,6 @@ function isConstantNodeData(data: Record<string, unknown>): boolean {
   return isScalarValue(data.scalar_type, data.value);
 }
 
-function isScalarValue(scalarType: string, value: unknown): boolean {
-  switch (scalarType) {
-    case catalogContract.graphScalarType.BOOLEAN:
-      return typeof value === 'boolean';
-    case catalogContract.graphScalarType.INTEGER:
-      return typeof value === 'number' && Number.isSafeInteger(value);
-    case catalogContract.graphScalarType.DECIMAL:
-      return typeof value === 'string' && isFiniteDecimal(value);
-    case catalogContract.graphScalarType.STRING:
-      return typeof value === 'string';
-    default:
-      return false;
-  }
-}
 
 function isStreamRule(value: unknown): boolean {
   if (!isRecord(value)
@@ -299,10 +296,12 @@ function isGraphCoordinate(value: unknown): value is number {
 function isGraphCatalog(value: unknown): boolean {
   if (!isRecord(value)
     || !isArrayOf(value.triggers, isTriggerDescriptor)
+    || !isArrayOf(value.operations, isOperationDescriptor)
     || !isArrayOf(value.constants, isConstantDescriptor)
     || !isArrayOf(value.comparisons, isComparisonDescriptor)
     || !isArrayOf(value.broker_actions, isBrokerActionDescriptor)) return false;
   return hasUniqueValues(value.triggers, 'hook_name')
+    && hasUniqueValues(value.operations, 'operation')
     && hasUniqueValues(value.constants, 'scalar_type')
     && hasUniqueValues(value.comparisons, 'operator')
     && hasUniqueValues(value.broker_actions, 'action');
@@ -400,7 +399,7 @@ function isGraphInputDescriptor(value: unknown): boolean {
     && Array.isArray(value.scalar_types)
     && value.scalar_types.length
       >= catalogContract.nodeGraph.minimumInputScalarTypes
-    && value.scalar_types.every((type) => isOneOf(type, GRAPH_SCALAR_TYPES))
+    && value.scalar_types.every((type) => isOneOf(type, [...GRAPH_SCALAR_TYPES, catalogContract.contextPortType]))
     && typeof value.nullable === 'boolean'
     && typeof value.required === 'boolean';
 }
@@ -408,7 +407,7 @@ function isGraphInputDescriptor(value: unknown): boolean {
 function isGraphOutputDescriptor(value: Record<string, unknown>): boolean {
   return isGraphIdentifier(value.handle_id)
     && isNonemptyString(value.display_name)
-    && isOneOf(value.scalar_type, GRAPH_SCALAR_TYPES)
+    && isOneOf(value.scalar_type, [...GRAPH_SCALAR_TYPES, catalogContract.contextPortType])
     && (value.nullable === undefined || typeof value.nullable === 'boolean');
 }
 
@@ -481,6 +480,7 @@ function isExpectedOperationResponse(
   data: unknown
 ): boolean {
   const paths = runtimeContract.apiPaths;
+  if (url === paths.graphPreview) return isRecord(data) && isGraphPreviewResponse(data);
   if (url === paths.marketSearch) return isRecord(data) && isMarketSearchResults(data);
   if (url === paths.marketLookup) return isArrayOf(data, isMarketSuggestion);
   if (url === paths.botDefinitions) return isArrayOf(data, isDefinition);
@@ -535,14 +535,22 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function isFiniteDecimal(value: string): boolean {
-  const numeric = Number(value);
-  return value.trim() !== '' && Number.isFinite(numeric);
-}
-
 function isOptionalNullable(
   value: unknown,
   predicate: (candidate: unknown) => boolean
 ): boolean {
   return value === undefined || value === null || predicate(value);
+}
+
+function isOperationDescriptor(value: Record<string, unknown>): boolean {
+  return catalogContract.graphNodeCatalog.operations.some(item => item.operation === value.operation)
+    && isNonemptyString(value.display_name) && isNonemptyString(value.category)
+    && isArrayOf(value.inputs, isGraphInputDescriptor) && isArrayOf(value.outputs, isGraphOutputDescriptor);
+}
+
+function isGraphPreviewResponse(value: Record<string, unknown>): boolean {
+  const statuses = Object.values(catalogContract.graphValueStatus);
+  return isArrayOf(value.nodes, node => isGraphIdentifier(node.node_id) && isOneOf(node.status, statuses) && isRecord(node.outputs)
+    && Object.values(node.outputs).every(output => isRecord(output) && isOneOf(output.status, statuses) && (output.value === null || typeof output.value === 'boolean' || typeof output.value === 'string') && (output.reason === null || typeof output.reason === 'string')))
+    && isArrayOf(value.intended_orders, order => isNonemptyString(order.token_id) && isOneOf(order.side, Object.values(runtimeContract.side)) && isDecimal(order.price) && isDecimal(order.size));
 }

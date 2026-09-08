@@ -172,6 +172,7 @@ describe('saved-bot detail page', () => {
     expect(screen.queryByText(BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK)).toBeNull();
 
     await fireEvent.click(await screen.findByRole('button', { name: ADD_NODE_LABEL }));
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'on_start' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Add on_start' }));
     expect(runButton.disabled).toBe(true);
     expect(saveGraphButton.disabled).toBe(false);
@@ -220,6 +221,7 @@ describe('saved-bot detail page', () => {
     render(Page);
 
     await fireEvent.click(await screen.findByRole('button', { name: ADD_NODE_LABEL }));
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'on_start' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Add on_start' }));
     const saveGraphButton = screen.getByRole<HTMLButtonElement>('button', {
       name: BOT_DETAIL_COPY.SAVE_CHANGES
@@ -269,6 +271,7 @@ describe('saved-bot detail page', () => {
     render(Page);
 
     await fireEvent.click(await screen.findByRole('button', { name: ADD_NODE_LABEL }));
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'on_start' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Add on_start' }));
     await fireEvent.click(
       screen.getByRole('button', { name: BOT_DETAIL_COPY.SAVE_CHANGES })

@@ -8,17 +8,23 @@ from typing import TYPE_CHECKING
 
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.wallet_trades import WalletTradeValidationIssue
+from polybot_control_plane.catalog.graphs.results import (
+    GraphNodeEvaluationRead,
+    GraphReason,
+)
+from polybot_control_plane.catalog.node_based.evaluator.values import RuntimeValue
+from polybot.framework.portfolio import PortfolioSnapshot
 from polybot_control_plane.catalog.graphs.types import GraphFieldPath
 
 if TYPE_CHECKING:
     from polybot.framework.context import BotContext
-    from polybot.framework.events import FillEvent
+    from polybot.framework.events import FillEvent, OrderRequest
 
 type OutputKey = tuple[str, str]
 
 
 class GraphActionSkipReason(StrEnum):
-    DISABLED = "disabled"
+    DISABLED = GraphReason.DISABLED.value
     REQUIRED_INPUT_UNAVAILABLE = "required_input_unavailable"
     BOOK_GAP = "book_gap"
     BOOK_STALE = BookValidationIssue.STALE.value
@@ -31,7 +37,7 @@ class GraphActionSkipReason(StrEnum):
 class GraphActionResult:
     node_id: str
     fill: FillEvent | None = None
-    skip_reason: GraphActionSkipReason | None = None
+    skip_reason: GraphActionSkipReason | str | None = None
     missing_input_handle_id: str | None = None
 
 
@@ -39,15 +45,18 @@ class GraphActionResult:
 class GraphEvaluationResult:
     evaluated_node_ids: tuple[str, ...]
     action_results: tuple[GraphActionResult, ...]
+    nodes: tuple[GraphNodeEvaluationRead, ...] = ()
+    intended_orders: tuple[OrderRequest, ...] = ()
 
 
 @dataclass(slots=True)
 class EvaluationFrame:
     ctx: BotContext
     payload: object | None
-    values: dict[OutputKey, object | None] = field(default_factory=dict)
+    values: dict[OutputKey, RuntimeValue] = field(default_factory=dict)
     evaluated_node_ids: list[str] = field(default_factory=list)
     action_results: list[GraphActionResult] = field(default_factory=list)
+    portfolio: PortfolioSnapshot | None = None
     _payload_values: dict[tuple[str, ...], object | None] = field(default_factory=dict)
 
     def resolve_payload_value(self, handle_id: str) -> object | None:

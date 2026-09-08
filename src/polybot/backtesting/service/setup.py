@@ -22,6 +22,7 @@ from polybot.execution.paper import PaperBroker
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.recording.archive.reader import RecordingReader
 
 from ..coverage import ReplayCoverage
@@ -82,6 +83,7 @@ async def prepare_replay(
     planning_context = BotContext(
         config=config,
         broker=RejectingPlanningBroker(),
+        portfolio=PaperPortfolioReader(paper_broker.portfolio),
         markets=state,
         books=state,
         wallet_activity=RejectingWalletActivityClient(),

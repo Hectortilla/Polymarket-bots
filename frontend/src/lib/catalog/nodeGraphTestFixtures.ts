@@ -37,9 +37,9 @@ export const ON_WALLET_TRADE_TRIGGER: GraphTriggerDescriptor = requireDescriptor
   (descriptor) => descriptor.hook_name === 'on_wallet_trade',
   'on_wallet_trade trigger'
 );
-export const DECIMAL_CONSTANT: GraphConstantDescriptor = requireDescriptor(
+export const NUMBER_CONSTANT: GraphConstantDescriptor = requireDescriptor(
   TEST_GRAPH_CATALOG.constants,
-  (descriptor) => descriptor.scalar_type === GRAPH_SCALAR_TYPE.decimal,
+  (descriptor) => descriptor.scalar_type === GRAPH_SCALAR_TYPE.number,
   'decimal constant'
 );
 export const BOOLEAN_CONSTANT: GraphConstantDescriptor = requireDescriptor(

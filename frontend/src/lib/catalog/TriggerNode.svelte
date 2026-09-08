@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NodeIssues from './NodeIssues.svelte';
   import { getContext } from 'svelte';
   import { Handle, Position } from '@xyflow/svelte';
 
@@ -9,7 +10,7 @@
     type NodeGraphEditorContext
   } from './nodeGraphContext';
 
-  let { data }: { data: GraphTriggerNodeData } = $props();
+  let { id = "", data }: { id?: string; data: GraphTriggerNodeData } = $props();
 
   const editor = getContext<NodeGraphEditorContext>(
     NODE_GRAPH_EDITOR_CONTEXT
@@ -24,12 +25,12 @@
   </header>
 
   <div class="output context-output">
-    <span>{trigger.context_type_name}</span>
+    <span>Context</span>
     <Handle
       type="source"
       position={Position.Right}
       id={trigger.context_handle_id}
-      isConnectable={false}
+      isConnectable={!editor.readOnly}
     />
   </div>
 
@@ -40,7 +41,7 @@
         <div class="field-output">
           <span>{field.display_name}</span>
           <small>
-            {field.collection ? `collection<${field.value_type}>` : field.value_type}{field.nullable ? ' | null' : ''}
+            {field.collection ? `collection<${field.value_type}>` : field.scalar_type ?? field.value_type}{field.nullable ? ' | null' : ''}
           </small>
           <Handle
             type="source"
@@ -54,7 +55,7 @@
   {:else}
     <p class="lifecycle-only">Lifecycle trigger with context only.</p>
   {/if}
-</section>
+<NodeIssues {id} /></section>
 
 <style>
   .trigger-node {

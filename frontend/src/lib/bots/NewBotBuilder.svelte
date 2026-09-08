@@ -170,6 +170,7 @@
       <GraphSourcePicker
         {bots}
         starterGraph={descriptor.starter_graph}
+          examples={descriptor.graph_examples}
         onselect={selectGraph}
       />
       {#key graphEditorResetKey}

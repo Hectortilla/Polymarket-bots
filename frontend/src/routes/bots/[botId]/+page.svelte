@@ -239,6 +239,7 @@
         <GraphSourcePicker
           {bots}
           starterGraph={descriptor.starter_graph}
+          examples={descriptor.graph_examples}
           excludeBotId={bot.id}
           onselect={selectGraph}
         />

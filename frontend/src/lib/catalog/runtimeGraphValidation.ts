@@ -1,6 +1,9 @@
 import type { GraphNode, GraphNodeCatalog, NodeGraph } from '$lib/api/generated';
+import { graphScalarValueIsValid } from './scalarValue';
 import catalogContract from './catalogContract.fixture.json';
 import {
+  operationForNode,
+  inputsForNode,
   brokerActionForNode,
   canvasEdges,
   canvasNodes,
@@ -30,6 +33,10 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
     || !hasUnique((graph.edges ?? []).map(({ id }) => id))) return false;
 
   const nodes = canvasNodes(graph);
+  const parameters = graph.parameters ?? [];
+  if (parameters.length > catalogContract.maximumParameters || !hasUnique(parameters.map(p => p.id)) || !hasUnique(parameters.map(p => p.name))) return false;
+  if (!parameters.every(p => graphScalarValueIsValid(p.data.scalar_type, p.data.value))) return false;
+  if (nodes.some(node => node.type === GRAPH_NODE_TYPE.parameter && !parameters.some(p => p.id === node.data.parameter_id))) return false;
   if (!nodes.every(nodeMatchesCatalog)) return false;
   const triggerHooks = nodes
     .filter((node) => node.type === GRAPH_NODE_TYPE.trigger)
@@ -39,7 +46,7 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
   const edges = canvasEdges(graph);
   const acceptedEdges = [];
   for (const edge of edges) {
-    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog)) return false;
+    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog, graph.parameters ?? [])) return false;
     acceptedEdges.push(edge);
   }
 
@@ -57,12 +64,18 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
 
 function nodeMatchesCatalog(node: CanvasNode): boolean {
   switch (node.type) {
+    case GRAPH_NODE_TYPE.operation: {
+      const descriptor = operationForNode(catalog, node.data);
+      const ids = node.data.input_ids ?? [];
+      return descriptor.expandable ? ids.length === 0 || ids.length >= (descriptor.minimum_inputs ?? 0) && ids.length <= (descriptor.maximum_inputs ?? Infinity) && hasUnique(ids) : ids.length === 0;
+    }
+    case GRAPH_NODE_TYPE.parameter: return true;
     case GRAPH_NODE_TYPE.trigger:
       triggerForNode(catalog, node.data);
       return true;
     case GRAPH_NODE_TYPE.constant:
       constantForNode(catalog, node.data);
-      return true;
+      return graphScalarValueIsValid(node.data.scalar_type, node.data.value);
     case GRAPH_NODE_TYPE.comparison:
       comparisonForNode(catalog, node.data);
       return true;
@@ -90,15 +103,7 @@ function requiredInputsConnected(
   return true;
 }
 
-function nodeInputs(node: CanvasNode) {
-  if (node.type === GRAPH_NODE_TYPE.comparison) {
-    return comparisonForNode(catalog, node.data).inputs;
-  }
-  if (node.type === GRAPH_NODE_TYPE.brokerAction) {
-    return brokerActionForNode(catalog, node.data).inputs;
-  }
-  return [];
-}
+function nodeInputs(node: CanvasNode) { return inputsForNode(node, catalog); }
 
 function topologicalNodeOrder(
   nodes: CanvasNode[],
@@ -136,13 +141,14 @@ function branchesBelongToOneTrigger(
     nodes.filter(({ type }) => type === GRAPH_NODE_TYPE.trigger).map(({ id }) => id)
   );
   const actionIds = new Set(
-    nodes.filter(({ type }) => type === GRAPH_NODE_TYPE.brokerAction).map(({ id }) => id)
+    nodes.filter(node => node.type === GRAPH_NODE_TYPE.brokerAction || node.type === GRAPH_NODE_TYPE.operation && operationForNode(catalog, node.data).terminal).map(({ id }) => id)
   );
   for (const node of nodes) {
     if (node.type === GRAPH_NODE_TYPE.trigger) continue;
     const descendantActions = [...(descendants.get(node.id) ?? [])]
       .filter((id) => actionIds.has(id));
     if (descendantActions.length === 0) return false;
+    if (node.type === GRAPH_NODE_TYPE.constant || node.type === GRAPH_NODE_TYPE.parameter) continue;
     const branchTriggers = new Set<string>();
     for (const actionId of descendantActions) {
       for (const ancestorId of ancestors.get(actionId) ?? []) {

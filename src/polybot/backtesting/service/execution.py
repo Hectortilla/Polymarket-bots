@@ -16,6 +16,7 @@ from polybot.backtesting.scheduler.replay import ReplayScheduler
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.runner import BotRunner
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
 from polybot.performance.contracts.run import PerformanceRunStatus
@@ -51,6 +52,7 @@ async def execute_replay(
     context = BotContext(
         config=config,
         broker=broker,
+        portfolio=PaperPortfolioReader(paper_broker.portfolio),
         markets=prepared.state,
         books=prepared.state,
         wallet_activity=RejectingWalletActivityClient(),

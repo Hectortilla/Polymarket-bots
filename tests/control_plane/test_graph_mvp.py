@@ -1,0 +1,668 @@
+"""MVP graph contract and execution behavior at public boundaries."""
+
+import json
+from pathlib import Path
+import asyncio
+from decimal import Decimal
+from unittest.mock import AsyncMock
+import pytest
+from pydantic import ValidationError
+from polybot.framework.config.models import BotConfig
+from polybot.framework.context import BotContext
+from polybot_control_plane.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from polybot_control_plane.catalog.graphs.contracts import NodeGraph
+from polybot_control_plane.catalog.graphs.operations import OPERATION_DESCRIPTORS
+from polybot_control_plane.catalog.graphs.values import GraphOperation, GraphScalarType
+from polybot_control_plane.catalog.node_based.evaluator import (
+    GraphEvaluator,
+    capabilities,
+)
+from dataclasses import replace
+from polybot.framework.events.books import (
+    BookSnapshot,
+    BookLevel,
+    BookGapEvent,
+    BookGapReason,
+)
+from polybot.framework.portfolio import PortfolioSnapshot, PortfolioPosition
+from polybot.execution.paper.portfolio import PaperPortfolio
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
+from polybot.framework.events import Side, FillEvent, FillRejectReason, OrderStatus
+from polybot.framework.events.resolutions import MarketResolutionEvent
+from unittest.mock import Mock
+from polybot_control_plane.catalog.graphs.preview import (
+    GraphPreviewRequest,
+    PreviewPortfolio,
+)
+from polybot_control_plane.catalog.graphs.results import GraphReason, GraphValueStatus
+from polybot_control_plane.catalog.node_based.preview import (
+    PreviewClock,
+    PreviewBroker,
+    preview_graph,
+)
+from polybot_control_plane.catalog.node_based.evaluator.event_controls import (
+    EventControlState,
+)
+from polybot_control_plane.catalog.node_based.evaluator.values import RuntimeValue
+from control_plane.graph_fixtures import threshold_buy_graph
+from polybot_control_plane.catalog.node_based.evaluator.pure import evaluate_pure
+from polybot_control_plane.catalog.node_based.evaluator import event_controls
+from fastapi.testclient import TestClient
+from polybot_control_plane.api.app import create_app
+from polybot_control_plane.api.routes.paths import (
+    GRAPH_PREVIEW_PATH,
+    api_route_path,
+)
+from control_plane.graph_preview_fixture import preview_fixture
+from conftest import DummyBroker
+from polybot_control_plane.catalog.graphs.examples import (
+    entry_exit_example,
+    multiple_conditions_example,
+)
+from polybot_control_plane.catalog.node_based.evaluator.diagnostics import (
+    GraphDiagnostics,
+)
+
+
+def operation_graph(
+    operation: GraphOperation,
+    values: dict[str, object],
+    *,
+    input_ids: tuple[str, ...] = (),
+) -> dict:
+    nodes = [
+        dict(
+            id="trigger",
+            type="trigger",
+            position=dict(x=0, y=0),
+            data=dict(hook_name="on_start"),
+        ),
+        dict(
+            id="operation",
+            type="operation",
+            position=dict(x=200, y=0),
+            data=dict(operation=operation.value, input_ids=list(input_ids)),
+        ),
+    ]
+    edges = []
+    descriptor = OPERATION_DESCRIPTORS[operation]
+    for port in descriptor.inputs:
+        if port.handle_id == "context":
+            edges.append(edge("trigger", "context", "operation", "context"))
+    for name, value in values.items():
+        kind = (
+            GraphScalarType.BOOLEAN
+            if isinstance(value, bool)
+            else (
+                GraphScalarType.NUMBER
+                if isinstance(value, (int, Decimal))
+                else GraphScalarType.STRING
+            )
+        )
+        nodes.append(
+            dict(
+                id=name,
+                type="constant",
+                position=dict(x=0, y=100),
+                data=dict(
+                    scalar_type=kind.value,
+                    value=str(value) if kind is GraphScalarType.NUMBER else value,
+                ),
+            )
+        )
+        edges.append(edge(name, "value", "operation", name))
+    if not descriptor.terminal:
+        nodes.append(
+            dict(
+                id="inspect",
+                type="operation",
+                position=dict(x=400, y=0),
+                data=dict(operation=GraphOperation.INSPECT.value),
+            )
+        )
+        edges.extend(
+            [
+                edge("trigger", "context", "inspect", "context"),
+                edge("operation", descriptor.outputs[0].handle_id, "inspect", "value"),
+            ]
+        )
+    return dict(nodes=nodes, edges=edges)
+
+
+def edge(source: str, output: str, target: str, input_: str) -> dict:
+    return dict(
+        id=f"{source}-{output}-{target}-{input_}",
+        source=source,
+        source_handle=output,
+        target=target,
+        target_handle=input_,
+    )
+
+
+def test_catalog_exposes_all_operations_and_one_numeric_constant():
+    assert {item.operation for item in GRAPH_NODE_CATALOG.operations} == set(
+        GraphOperation
+    )
+    assert [item.scalar_type for item in GRAPH_NODE_CATALOG.constants] == [
+        GraphScalarType.BOOLEAN,
+        GraphScalarType.NUMBER,
+        GraphScalarType.STRING,
+    ]
+
+
+def test_number_strings_round_trip_without_precision_loss():
+    graph = operation_graph(
+        GraphOperation.ADD,
+        dict(left=Decimal("9007199254740993"), right=Decimal("0.000000000000000001")),
+    )
+    parsed = NodeGraph.model_validate(graph)
+    assert (
+        parsed.model_dump(mode="json")["nodes"][2]["data"]["value"]
+        == "9007199254740993"
+    )
+    assert NodeGraph.model_validate_json(parsed.model_dump_json()) == parsed
+
+
+def test_diagnostic_only_branch_and_expandable_ports():
+    graph = operation_graph(
+        GraphOperation.AND, dict(first=True, third=False), input_ids=("first", "third")
+    )
+    NodeGraph.model_validate(graph)
+    graph["nodes"][1]["data"]["input_ids"] = ["first", "first"]
+    with pytest.raises(ValidationError, match="unique handles"):
+        NodeGraph.model_validate(graph)
+
+
+def test_compiler_rejects_unsupported_operation_before_any_execution(monkeypatch):
+    graph = NodeGraph.model_validate(
+        operation_graph(GraphOperation.ADD, dict(left=1, right=2))
+    )
+    monkeypatch.setattr(capabilities, "EXECUTABLE_OPERATIONS", frozenset())
+    with pytest.raises(capabilities.UnsupportedGraphOperation, match="operation"):
+        GraphEvaluator(graph)
+
+
+def context(now=1000, portfolio=None):
+    return BotContext(
+        config=BotConfig(name="test"),
+        broker=PreviewBroker(),
+        markets=AsyncMock(),
+        books=AsyncMock(),
+        wallet_activity=AsyncMock(),
+        clock=PreviewClock(now),
+        portfolio=portfolio,
+    )
+
+
+def operation_result(graph, ctx=None, payload=None):
+    result = asyncio.run(
+        GraphEvaluator(NodeGraph.model_validate(graph)).evaluate_and_execute(
+            "on_start", ctx or context(), payload
+        )
+    )
+    return next(node for node in result.nodes if node.node_id == "operation")
+
+
+@pytest.mark.parametrize(
+    "operation,values,expected",
+    [
+        (GraphOperation.ADD, dict(left=Decimal("0.1"), right=Decimal("0.2")), "0.3"),
+        (GraphOperation.SUBTRACT, dict(left=3, right=2), "1"),
+        (GraphOperation.MULTIPLY, dict(left=3, right=2), "6"),
+        (
+            GraphOperation.DIVIDE,
+            dict(left=1, right=3),
+            "0.3333333333333333333333333333",
+        ),
+        (GraphOperation.MIN, dict(left=3, right=2), "2"),
+        (GraphOperation.MAX, dict(left=3, right=2), "3"),
+        (GraphOperation.AND, dict(input_1=True, input_2=False), False),
+        (GraphOperation.OR, dict(input_1=True, input_2=False), True),
+        (GraphOperation.NOT, dict(value=True), False),
+        (GraphOperation.BETWEEN, dict(value=2, minimum=2, maximum=3), True),
+        (GraphOperation.CLAMP, dict(value=5, minimum=2, maximum=3), "3"),
+        (GraphOperation.ROUND, dict(value=Decimal("-2.345"), places=2), "-2.35"),
+        (
+            GraphOperation.ROUND,
+            dict(value=Decimal("2.345"), places=Decimal("2.0")),
+            "2.35",
+        ),
+        (GraphOperation.IS_PRESENT, dict(value=0), True),
+        (GraphOperation.SELECT, dict(condition=False, when_true=1, when_false=2), "2"),
+    ],
+)
+def test_pure_operations(operation, values, expected):
+    read = operation_result(operation_graph(operation, values))
+    assert next(iter(read.outputs.values())).value == expected
+
+
+@pytest.mark.parametrize(
+    "operation,values,reason",
+    [
+        (GraphOperation.DIVIDE, dict(left=1, right=0), GraphReason.DIVISION_BY_ZERO),
+        (
+            GraphOperation.CLAMP,
+            dict(value=1, minimum=3, maximum=2),
+            GraphReason.INVALID_BOUNDS,
+        ),
+        (
+            GraphOperation.BETWEEN,
+            dict(value=1, minimum=3, maximum=2),
+            GraphReason.INVALID_BOUNDS,
+        ),
+        (
+            GraphOperation.ROUND,
+            dict(value=1, places=Decimal("2.7")),
+            GraphReason.WHOLE_NUMBER_REQUIRED,
+        ),
+    ],
+)
+def test_invalid_arithmetic_has_structured_reason(operation, values, reason):
+    read = operation_result(operation_graph(operation, values))
+    assert read.status is GraphValueStatus.INVALID
+    assert read.reason == reason
+
+
+def test_missing_comparison_through_not_never_enables_order():
+
+    graph = threshold_buy_graph()
+    graph["nodes"].append(
+        dict(
+            id="invert",
+            type="operation",
+            position=dict(x=0, y=0),
+            data=dict(operation=GraphOperation.NOT),
+        )
+    )
+    for connection in graph["edges"]:
+        if connection["target_handle"] == "enabled":
+            connection.update(source="invert", source_handle="result")
+    graph["edges"].append(edge("comparison-threshold", "result", "invert", "value"))
+    book = BookSnapshot("token", (), (), 1000)
+    result = asyncio.run(
+        GraphEvaluator(
+            NodeGraph.model_validate(graph), preview=True
+        ).evaluate_and_execute("on_book", context(), book)
+    )
+    assert not result.intended_orders
+    assert result.action_results[0].skip_reason == GraphReason.MISSING
+
+
+def test_select_ignores_missing_unselected_value_and_is_present_distinguishes_invalid():
+
+    missing = RuntimeValue.from_value(None)
+    invalid = RuntimeValue.invalid(GraphReason.INVALID_NUMBER)
+    selected = evaluate_pure(
+        GraphOperation.SELECT,
+        {
+            "condition": RuntimeValue(True),
+            "when_true": RuntimeValue(Decimal(2)),
+            "when_false": missing,
+        },
+    )
+    assert selected.value == 2
+    assert evaluate_pure(GraphOperation.IS_PRESENT, {"value": missing}).value is False
+    assert evaluate_pure(GraphOperation.IS_PRESENT, {"value": invalid}) == invalid
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [GraphOperation.COOLDOWN, GraphOperation.ONCE, GraphOperation.DEDUPLICATE],
+)
+def test_event_control_consumes_only_enabled_signals_and_isolates_keys(operation):
+    values = dict(enabled=False, key="token")
+    if operation is GraphOperation.COOLDOWN:
+        values["duration_ms"] = 100
+    graph = operation_graph(operation, values)
+    evaluator = GraphEvaluator(NodeGraph.model_validate(graph))
+
+    async def run():
+        ctx = context()
+        first = await evaluator.evaluate_and_execute("on_start", ctx)
+        assert (
+            not next(n for n in first.nodes if n.node_id == "operation")
+            .outputs["result"]
+            .value
+        )
+        # A fresh enabled graph has its own run state; repeated events use the same evaluator.
+        for node in graph["nodes"]:
+            if node["id"] == "enabled":
+                node["data"]["value"] = True
+        active = GraphEvaluator(NodeGraph.model_validate(graph))
+        reads = [await active.evaluate_and_execute("on_start", ctx) for _ in range(2)]
+        assert [
+            next(n for n in r.nodes if n.node_id == "operation").outputs["result"].value
+            for r in reads
+        ] == [True, False]
+        if operation is GraphOperation.COOLDOWN:
+            ctx.clock._now_ms += 100
+            third = await active.evaluate_and_execute("on_start", ctx)
+            assert (
+                next(n for n in third.nodes if n.node_id == "operation")
+                .outputs["result"]
+                .value
+                is True
+            )
+
+    asyncio.run(run())
+
+
+def test_once_reset_and_capacity_never_evict_claims(monkeypatch):
+
+    monkeypatch.setattr(event_controls, "MAX_STATE_KEYS_PER_NODE", 1)
+    state = EventControlState()
+    inputs = {"enabled": RuntimeValue(True), "key": RuntimeValue("a")}
+    assert state.evaluate("node", GraphOperation.ONCE, inputs, 0).value is True
+    assert (
+        state.evaluate(
+            "node", GraphOperation.ONCE, {**inputs, "key": RuntimeValue("b")}, 0
+        ).reason
+        == GraphReason.STATE_CAPACITY
+    )
+    assert state.evaluate("node", GraphOperation.ONCE, inputs, 0).value is False
+    assert (
+        state.evaluate(
+            "node", GraphOperation.ONCE, {**inputs, "reset": RuntimeValue(True)}, 0
+        ).reason
+        == GraphReason.RESET
+    )
+    assert state.evaluate("node", GraphOperation.ONCE, inputs, 0).value is True
+
+
+def test_gap_does_not_consume_or_rearm_state():
+    evaluator = GraphEvaluator(
+        NodeGraph.model_validate(
+            operation_graph(GraphOperation.ONCE, dict(enabled=True, key="a"))
+        )
+    )
+    gap = BookGapEvent(None, 1000, BookGapReason.BOOK_STREAM_GAP)
+
+    async def run():
+        ctx = context()
+        results = [
+            await evaluator.evaluate_and_execute("on_start", ctx, gap),
+            await evaluator.evaluate_and_execute("on_start", ctx),
+            await evaluator.evaluate_and_execute("on_start", ctx, gap),
+            await evaluator.evaluate_and_execute("on_start", ctx),
+        ]
+        values = [
+            next(n for n in r.nodes if n.node_id == "operation").outputs["result"]
+            for r in results
+        ]
+        assert [v.value for v in values] == [None, True, None, False]
+
+    asyncio.run(run())
+
+
+def test_portfolio_reads_use_immutable_paper_accounting():
+    portfolio = PaperPortfolio(Decimal("100"))
+    reader = PaperPortfolioReader(portfolio)
+    before = reader.snapshot()
+    portfolio.apply_fill(
+        token_id="token",
+        side=Side.BUY,
+        filled_size=Decimal(2),
+        average_price=Decimal("0.4"),
+        fee_usdc=Decimal(0),
+    )
+    after = reader.snapshot()
+    assert before.available_cash == 100 and not before.positions
+    assert after.available_cash == Decimal("99.2")
+    assert after.position("token").size == 2
+    read = operation_result(
+        operation_graph(GraphOperation.POSITION, dict(token_id="token")),
+        context(portfolio=reader),
+    )
+    assert read.outputs["size"].value == "2"
+    assert read.outputs["has_position"].value is True
+    assert read.outputs["average_entry_price"].value == "0.4"
+    missing = operation_result(
+        operation_graph(GraphOperation.POSITION, dict(token_id="absent")),
+        context(portfolio=reader),
+    )
+    assert missing.outputs["size"].value == "0"
+    unavailable = operation_result(operation_graph(GraphOperation.BALANCE, {}))
+    assert (
+        unavailable.outputs["available_cash"].reason
+        == GraphReason.PORTFOLIO_UNAVAILABLE
+    )
+
+
+def test_preview_plans_orders_without_submitting_or_fabricating_fills():
+
+    request = GraphPreviewRequest(
+        graph=threshold_buy_graph(),
+        hook_name="on_book",
+        now_ms=1000,
+        payload=dict(
+            token_id="token",
+            bids=[dict(price="0.39", size="100")],
+            asks=[dict(price="0.4", size="100")],
+            received_at_ms=1000,
+        ),
+    )
+    result = asyncio.run(preview_graph(request))
+    assert len(result.intended_orders) == 1
+    action = next(n for n in result.nodes if n.node_id == "action-buy")
+    assert action.outputs["status"].value == GraphValueStatus.PLANNED.value
+    assert action.outputs["filled_size"].value is None
+    assert request.portfolio.available_cash == 1000
+
+
+def test_preview_http_endpoint_and_sample_errors():
+
+    fixture = preview_fixture()
+    client = TestClient(create_app())
+    response = client.post(api_route_path(GRAPH_PREVIEW_PATH), json=fixture["request"])
+    assert response.status_code == 200
+    assert response.json() == fixture["response"]
+    fixture["request"]["payload"]["received_at_ms"] = "not-a-time"
+    response = client.post(api_route_path(GRAPH_PREVIEW_PATH), json=fixture["request"])
+    assert response.status_code == 422
+    assert any(
+        "received_at_ms" in str(issue["loc"]) for issue in response.json()["detail"]
+    )
+
+
+def test_examples_enter_hold_and_exit_with_paper_accounting():
+
+    class AccountingBroker(DummyBroker):
+        async def submit(self, order):
+            fill = await super().submit(order)
+            portfolio.apply_fill(
+                token_id=fill.token_id,
+                side=fill.side,
+                filled_size=fill.filled_size,
+                average_price=fill.average_price,
+                fee_usdc=fill.fee_usdc,
+            )
+            return fill
+
+    portfolio = PaperPortfolio(Decimal(100))
+    broker = AccountingBroker([])
+    ctx = replace(context(portfolio=PaperPortfolioReader(portfolio)), broker=broker)
+
+    async def run():
+        evaluator = GraphEvaluator(entry_exit_example().graph)
+        cheap = BookSnapshot(
+            "token",
+            (BookLevel(Decimal("0.39"), Decimal(10)),),
+            (BookLevel(Decimal("0.40"), Decimal(10)),),
+            1000,
+        )
+        await evaluator.evaluate_and_execute("on_book", ctx, cheap)
+        await evaluator.evaluate_and_execute("on_book", ctx, cheap)
+        assert len(broker.submitted) == 1
+        expensive = replace(
+            cheap,
+            bids=(BookLevel(Decimal("0.65"), Decimal(10)),),
+            asks=(BookLevel(Decimal("0.66"), Decimal(10)),),
+        )
+        await evaluator.evaluate_and_execute("on_book", ctx, expensive)
+        assert [order.side for order in broker.submitted] == [Side.BUY, Side.SELL]
+        assert portfolio.position("token").size == 0
+        assert portfolio.cash_usdc > 100
+        result = await GraphEvaluator(
+            multiple_conditions_example().graph, preview=True
+        ).evaluate_and_execute("on_book", ctx, cheap)
+        assert len(result.intended_orders) == 1
+
+    asyncio.run(run())
+
+
+def test_diagnostics_coalesce_repeats_and_report_suppressed_count():
+
+    sink = AsyncMock()
+    ctx = replace(context(), activity=sink)
+    diagnostics = GraphDiagnostics()
+
+    async def run():
+        for _ in range(3):
+            await diagnostics.emit(ctx, "node", "same")
+        assert sink.emit.await_count == 1
+        ctx.clock._now_ms += 1000
+        await diagnostics.emit(ctx, "node", "same")
+        assert sink.emit.await_count == 2
+        assert "2 repeated messages suppressed" in sink.emit.await_args.args[0]
+
+    asyncio.run(run())
+
+
+def test_frontend_preview_fixture_is_generated_from_backend():
+    path = (
+        Path(__file__).parents[2] / "frontend/src/lib/catalog/graphPreview.fixture.json"
+    )
+    assert json.loads(path.read_text()) == preview_fixture()
+
+
+@pytest.mark.parametrize(
+    "status", (OrderStatus.FILLED, OrderStatus.PARTIAL, OrderStatus.REJECTED)
+)
+def test_action_outputs_preserve_real_fill_status_and_reason(status):
+    graph = NodeGraph.model_validate(threshold_buy_graph())
+    size = Decimal("2")
+    rejected = status is OrderStatus.REJECTED
+    fill = FillEvent(
+        order_id="test-order",
+        token_id="token",
+        side=Side.BUY,
+        status=status,
+        requested_size=size,
+        filled_size=(
+            Decimal(0)
+            if rejected
+            else size if status is OrderStatus.FILLED else size / 2
+        ),
+        average_price=None if rejected else Decimal("0.4"),
+        fee_usdc=Decimal(0),
+        received_at_ms=1000,
+        reject_reason=FillRejectReason.BAD_SIZE if rejected else None,
+        reject_message="Invalid size" if rejected else None,
+    )
+    broker = AsyncMock()
+    broker.submit.return_value = fill
+    ctx = replace(context(), broker=broker)
+    book = BookSnapshot(
+        "token",
+        (BookLevel(Decimal("0.39"), Decimal(10)),),
+        (BookLevel(Decimal("0.40"), Decimal(10)),),
+        1000,
+    )
+    result = asyncio.run(
+        GraphEvaluator(graph).evaluate_and_execute("on_book", ctx, book)
+    )
+    action = next(n for n in result.nodes if n.node_id == "action-buy")
+    assert action.outputs["status"].value == status.value
+    assert action.outputs["filled_size"].value == str(fill.filled_size)
+    assert action.outputs["average_price"].value == (None if rejected else "0.4")
+    assert action.outputs["reject_reason"].value == fill.reject_reason
+    assert action.outputs["skip_reason"].value is None
+    broker.submit.assert_awaited_once()
+
+
+def test_portfolio_snapshot_preserves_shorts_and_observes_settlement():
+    portfolio = PaperPortfolio(Decimal("100"))
+    reader = PaperPortfolioReader(portfolio)
+    portfolio.apply_fill(
+        token_id="token",
+        side=Side.SELL,
+        filled_size=Decimal(2),
+        average_price=Decimal("0.4"),
+        fee_usdc=Decimal(0),
+    )
+    before = reader.snapshot()
+    assert before.position("token").size == -2
+    read = operation_result(
+        operation_graph(GraphOperation.POSITION, dict(token_id="token")),
+        context(portfolio=reader),
+    )
+    assert read.outputs["size"].value == "-2"
+    assert read.outputs["has_position"].value is True
+    portfolio.settle_market(
+        MarketResolutionEvent(
+            condition_id="condition",
+            market_slug="market",
+            token_ids=("token", "other"),
+            winning_token_id="token",
+            winning_outcome="Yes",
+            resolved_at_ms=1000,
+            source="test",
+        )
+    )
+    after = reader.snapshot()
+    assert after.position("token").size == 0
+    assert after.available_cash == Decimal("98.8")
+    assert before.position("token").size == -2
+
+
+def test_one_snapshot_per_event_and_preview_matches_paper_decisions():
+    graph = multiple_conditions_example().graph
+    provider = Mock(wraps=PreviewPortfolio())
+    broker = DummyBroker([])
+    ctx = replace(context(portfolio=provider), broker=broker)
+    fixture = preview_fixture()
+    request = GraphPreviewRequest(**{**fixture["request"], "graph": graph})
+
+    async def run():
+        preview = await preview_graph(request)
+        evaluator = GraphEvaluator(graph)
+        first = await evaluator.evaluate_and_execute(
+            request.hook_name, ctx, request.event
+        )
+        assert tuple(broker.submitted) == preview.intended_orders
+        for preview_node, paper_node in zip(preview.nodes, first.nodes, strict=True):
+            if preview_node.node_id not in ("buy", "explain"):
+                assert preview_node == paper_node
+        assert len(first.evaluated_node_ids) == len(set(first.evaluated_node_ids))
+        provider.snapshot.assert_called_once()
+        await evaluator.evaluate_and_execute(request.hook_name, ctx, request.event)
+        assert provider.snapshot.call_count == 2
+        assert len(broker.submitted) == 1
+        await GraphEvaluator(graph).evaluate_and_execute(
+            request.hook_name, ctx, request.event
+        )
+        assert len(broker.submitted) == 2
+
+    asyncio.run(run())
+
+
+def test_fractional_whole_number_error_identifies_setting():
+    read = operation_result(
+        operation_graph(GraphOperation.ROUND, dict(value=2, places=Decimal("2.7")))
+    )
+    value = read.outputs["value"]
+    assert value.reason == GraphReason.WHOLE_NUMBER_REQUIRED
+    assert value.input_handle_id == "places"
+    assert "Decimal places" in value.message
+
+
+def test_broker_exception_reports_originating_node_before_failing():
+    fixture = preview_fixture()
+    request = GraphPreviewRequest(**fixture["request"])
+    broker = AsyncMock()
+    broker.submit.side_effect = RuntimeError("test broker unavailable")
+    sink = AsyncMock()
+    ctx = replace(context(portfolio=request.portfolio), broker=broker, activity=sink)
+    with pytest.raises(RuntimeError, match="test broker unavailable"):
+        asyncio.run(GraphEvaluator(request.graph).evaluate_and_execute(request.hook_name, ctx, request.event))
+    assert any("[buy] Execution failed" in call.args[0] for call in sink.emit.await_args_list)

@@ -23,7 +23,7 @@
               "y": 200
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "0.5500"
             }
           },
@@ -35,7 +35,7 @@
               "y": 300
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "1.250"
             }
           },
@@ -132,7 +132,7 @@
               "y": 200
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "0.5500"
             }
           },
@@ -144,7 +144,7 @@
               "y": 300
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "1.250"
             }
           },
@@ -234,7 +234,7 @@
               "y": 200
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "0.5500"
             }
           },
@@ -343,7 +343,7 @@
               "y": 200
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "0.5500"
             }
           },
@@ -355,7 +355,7 @@
               "y": 300
             },
             "data": {
-              "scalar_type": "decimal",
+              "scalar_type": "number",
               "value": "1.250"
             }
           },
@@ -385,6 +385,4078 @@
             "source_handle": "value",
             "target": "comparison-threshold",
             "target_handle": "right"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "Threshold entry and exit",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.45"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "Multiple conditions and cooldown",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.45"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          },
+          {
+            "id": "cooldown_ms",
+            "name": "Cooldown milliseconds",
+            "data": {
+              "scalar_type": "number",
+              "value": "1000"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "cooldown_ms",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "cooldown_ms"
+            }
+          },
+          {
+            "id": "cash",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "balance",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "funded",
+            "type": "comparison",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "conditions",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [
+                "input_1",
+                "input_2",
+                "input_3"
+              ],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "gate",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "cooldown",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "explain",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "log",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-cash-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "cash",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "cash-available_cash-funded-left",
+            "source": "cash",
+            "source_handle": "available_cash",
+            "target": "funded",
+            "target_handle": "left"
+          },
+          {
+            "id": "budget-value-funded-right",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "funded",
+            "target_handle": "right"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-conditions-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "conditions",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-conditions-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "conditions",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "funded-result-conditions-input_3",
+            "source": "funded",
+            "source_handle": "result",
+            "target": "conditions",
+            "target_handle": "input_3"
+          },
+          {
+            "id": "book-context-gate-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "gate",
+            "target_handle": "context"
+          },
+          {
+            "id": "conditions-result-gate-enabled",
+            "source": "conditions",
+            "source_handle": "result",
+            "target": "gate",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-gate-key",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "gate",
+            "target_handle": "key"
+          },
+          {
+            "id": "cooldown_ms-value-gate-duration_ms",
+            "source": "cooldown_ms",
+            "source_handle": "value",
+            "target": "gate",
+            "target_handle": "duration_ms"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "gate-result-buy-enabled",
+            "source": "gate",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-context-explain-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "explain",
+            "target_handle": "context"
+          },
+          {
+            "id": "buy-status-explain-value",
+            "source": "buy",
+            "source_handle": "status",
+            "target": "explain",
+            "target_handle": "value"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "exact large Number",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "9007199254740993.000000000000000001"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "nonfinite Number",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "NaN"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "unsupported exponent",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "1e1001"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "invalid Number separator",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "1_000"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "signed fractional Number",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "+.5"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "zero exponent normalization",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0e10000"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "missing parameter reference",
+      "graph": {
+        "parameters": [],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "duplicate expandable port",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.45"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          },
+          {
+            "id": "cooldown_ms",
+            "name": "Cooldown milliseconds",
+            "data": {
+              "scalar_type": "number",
+              "value": "1000"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "cooldown_ms",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "cooldown_ms"
+            }
+          },
+          {
+            "id": "cash",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "balance",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "funded",
+            "type": "comparison",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "conditions",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [
+                "input_1",
+                "input_1",
+                "input_3"
+              ],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "gate",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "cooldown",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "explain",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "log",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-cash-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "cash",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "cash-available_cash-funded-left",
+            "source": "cash",
+            "source_handle": "available_cash",
+            "target": "funded",
+            "target_handle": "left"
+          },
+          {
+            "id": "budget-value-funded-right",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "funded",
+            "target_handle": "right"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-conditions-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "conditions",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-conditions-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "conditions",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "funded-result-conditions-input_3",
+            "source": "funded",
+            "source_handle": "result",
+            "target": "conditions",
+            "target_handle": "input_3"
+          },
+          {
+            "id": "book-context-gate-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "gate",
+            "target_handle": "context"
+          },
+          {
+            "id": "conditions-result-gate-enabled",
+            "source": "conditions",
+            "source_handle": "result",
+            "target": "gate",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-gate-key",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "gate",
+            "target_handle": "key"
+          },
+          {
+            "id": "cooldown_ms-value-gate-duration_ms",
+            "source": "cooldown_ms",
+            "source_handle": "value",
+            "target": "gate",
+            "target_handle": "duration_ms"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "gate-result-buy-enabled",
+            "source": "gate",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-context-explain-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "explain",
+            "target_handle": "context"
+          },
+          {
+            "id": "buy-status-explain-value",
+            "source": "buy",
+            "source_handle": "status",
+            "target": "explain",
+            "target_handle": "value"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "shared parameter across diagnostic-only branches",
+      "graph": {
+        "nodes": [
+          {
+            "id": "first",
+            "type": "trigger",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "hook_name": "on_start"
+            }
+          },
+          {
+            "id": "second",
+            "type": "trigger",
+            "position": {
+              "x": 0,
+              "y": 1
+            },
+            "data": {
+              "hook_name": "on_stop"
+            }
+          },
+          {
+            "id": "shared",
+            "type": "parameter",
+            "position": {
+              "x": 1,
+              "y": 0
+            },
+            "data": {
+              "parameter_id": "amount"
+            }
+          },
+          {
+            "id": "inspect-first",
+            "type": "operation",
+            "position": {
+              "x": 2,
+              "y": 0
+            },
+            "data": {
+              "operation": "inspect"
+            }
+          },
+          {
+            "id": "inspect-second",
+            "type": "operation",
+            "position": {
+              "x": 2,
+              "y": 1
+            },
+            "data": {
+              "operation": "inspect"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "first-first",
+            "source": "first",
+            "source_handle": "context",
+            "target": "inspect-first",
+            "target_handle": "context"
+          },
+          {
+            "id": "shared-first",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-first",
+            "target_handle": "value"
+          },
+          {
+            "id": "second-second",
+            "source": "second",
+            "source_handle": "context",
+            "target": "inspect-second",
+            "target_handle": "context"
+          },
+          {
+            "id": "shared-second",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-second",
+            "target_handle": "value"
+          }
+        ],
+        "parameters": [
+          {
+            "id": "amount",
+            "name": "Amount",
+            "data": {
+              "scalar_type": "number",
+              "value": "2.0"
+            }
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "Number is not Context",
+      "graph": {
+        "nodes": [
+          {
+            "id": "first",
+            "type": "trigger",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "hook_name": "on_start"
+            }
+          },
+          {
+            "id": "second",
+            "type": "trigger",
+            "position": {
+              "x": 0,
+              "y": 1
+            },
+            "data": {
+              "hook_name": "on_stop"
+            }
+          },
+          {
+            "id": "shared",
+            "type": "parameter",
+            "position": {
+              "x": 1,
+              "y": 0
+            },
+            "data": {
+              "parameter_id": "amount"
+            }
+          },
+          {
+            "id": "inspect-first",
+            "type": "operation",
+            "position": {
+              "x": 2,
+              "y": 0
+            },
+            "data": {
+              "operation": "inspect"
+            }
+          },
+          {
+            "id": "inspect-second",
+            "type": "operation",
+            "position": {
+              "x": 2,
+              "y": 1
+            },
+            "data": {
+              "operation": "inspect"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "first-first",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-first",
+            "target_handle": "context"
+          },
+          {
+            "id": "shared-first",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-first",
+            "target_handle": "value"
+          },
+          {
+            "id": "second-second",
+            "source": "second",
+            "source_handle": "context",
+            "target": "inspect-second",
+            "target_handle": "context"
+          },
+          {
+            "id": "shared-second",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-second",
+            "target_handle": "value"
+          }
+        ],
+        "parameters": [
+          {
+            "id": "amount",
+            "name": "Amount",
+            "data": {
+              "scalar_type": "number",
+              "value": "2.0"
+            }
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "processing cannot join triggers",
+      "graph": {
+        "nodes": [
+          {
+            "id": "first",
+            "type": "trigger",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "hook_name": "on_start"
+            }
+          },
+          {
+            "id": "second",
+            "type": "trigger",
+            "position": {
+              "x": 0,
+              "y": 1
+            },
+            "data": {
+              "hook_name": "on_stop"
+            }
+          },
+          {
+            "id": "shared",
+            "type": "operation",
+            "position": {
+              "x": 1,
+              "y": 0
+            },
+            "data": {
+              "operation": "add"
+            }
+          },
+          {
+            "id": "inspect-first",
+            "type": "operation",
+            "position": {
+              "x": 2,
+              "y": 0
+            },
+            "data": {
+              "operation": "inspect"
+            }
+          },
+          {
+            "id": "inspect-second",
+            "type": "operation",
+            "position": {
+              "x": 2,
+              "y": 1
+            },
+            "data": {
+              "operation": "inspect"
+            }
+          },
+          {
+            "id": "constant",
+            "type": "constant",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "scalar_type": "number",
+              "value": "2"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "first-first",
+            "source": "first",
+            "source_handle": "context",
+            "target": "inspect-first",
+            "target_handle": "context"
+          },
+          {
+            "id": "shared-first",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-first",
+            "target_handle": "value"
+          },
+          {
+            "id": "second-second",
+            "source": "second",
+            "source_handle": "context",
+            "target": "inspect-second",
+            "target_handle": "context"
+          },
+          {
+            "id": "shared-second",
+            "source": "shared",
+            "source_handle": "value",
+            "target": "inspect-second",
+            "target_handle": "value"
+          },
+          {
+            "id": "left",
+            "source": "constant",
+            "source_handle": "value",
+            "target": "shared",
+            "target_handle": "left"
+          },
+          {
+            "id": "right",
+            "source": "constant",
+            "source_handle": "value",
+            "target": "shared",
+            "target_handle": "right"
+          }
+        ],
+        "parameters": [
+          {
+            "id": "amount",
+            "name": "Amount",
+            "data": {
+              "scalar_type": "number",
+              "value": "2.0"
+            }
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "MVP processing cycle",
+      "graph": {
+        "parameters": [
+          {
+            "id": "entry",
+            "name": "Entry threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.45"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit threshold",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.60"
+            }
+          },
+          {
+            "id": "budget",
+            "name": "Budget",
+            "data": {
+              "scalar_type": "number",
+              "value": "1"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "entry",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "entry"
+            }
+          },
+          {
+            "id": "exit",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "exit"
+            }
+          },
+          {
+            "id": "budget",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "budget"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "cheap",
+            "type": "comparison",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than_or_equal"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "divide",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "expensive",
+            "type": "comparison",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operator": "greater_than_or_equal"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-cheap-left",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "cheap",
+            "target_handle": "left"
+          },
+          {
+            "id": "entry-value-cheap-right",
+            "source": "entry",
+            "source_handle": "value",
+            "target": "cheap",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "cheap-result-enter-input_2",
+            "source": "cheap",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "budget-value-shares-left",
+            "source": "budget",
+            "source_handle": "value",
+            "target": "shares",
+            "target_handle": "left"
+          },
+          {
+            "id": "book-field:best_ask.price-shares-right",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "shares",
+            "target_handle": "right"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "book-field:best_bid.price-expensive-left",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "expensive",
+            "target_handle": "left"
+          },
+          {
+            "id": "exit-value-expensive-right",
+            "source": "exit",
+            "source_handle": "value",
+            "target": "expensive",
+            "target_handle": "right"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "expensive-result-leave-input_2",
+            "source": "expensive",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
           }
         ]
       },

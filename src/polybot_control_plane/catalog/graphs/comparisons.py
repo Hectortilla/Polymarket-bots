@@ -20,7 +20,7 @@ class GraphComparisonSpec:
 
 
 _ALL_SCALAR_TYPES = tuple(GraphScalarType)
-_ORDERED_SCALAR_TYPES = (GraphScalarType.INTEGER, GraphScalarType.DECIMAL)
+_ORDERED_SCALAR_TYPES = (GraphScalarType.NUMBER,)
 
 GRAPH_COMPARISON_SPECS: dict[GraphComparisonOperator, GraphComparisonSpec] = {
     GraphComparisonOperator.EQUAL: GraphComparisonSpec(_ALL_SCALAR_TYPES, operator.eq),
