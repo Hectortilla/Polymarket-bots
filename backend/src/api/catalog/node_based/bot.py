@@ -7,6 +7,7 @@ from polybot.framework.events import FillEvent
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.graphs.types import GraphHookName
 from api.catalog.node_based.evaluator import GraphEvaluator

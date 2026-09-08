@@ -1,40 +1,39 @@
 """Serializable graph evaluation and diagnostic contracts."""
 
-from enum import StrEnum
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from api.catalog.graphs.value_status import GraphValueStatus
+
+if TYPE_CHECKING:
+    from api.catalog.node_based.evaluator.values import RuntimeValue
+
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 
-
-class GraphValueStatus(StrEnum):
-    AVAILABLE = "available"
-    MISSING = "missing"
-    INVALID = "invalid"
-    SKIPPED = "skipped"
-    PLANNED = "planned"
-
-
-class GraphReason(StrEnum):
-    MISSING = "value_unavailable"
-    INVALID_NUMBER = "invalid_number"
-    DIVISION_BY_ZERO = "division_by_zero"
-    INVALID_BOUNDS = "invalid_bounds"
-    WHOLE_NUMBER_REQUIRED = "whole_number_required"
-    PORTFOLIO_UNAVAILABLE = "portfolio_unavailable"
-    COOLDOWN_ACTIVE = "cooldown_active"
-    ALREADY_CONSUMED = "already_consumed"
-    RESET = "reset"
-    STATE_CAPACITY = "state_capacity_exceeded"
-    INVALID_KEY = "invalid_key"
-    DISABLED = "disabled"
-    PLANNED = "planned"
+from api.catalog.graphs.evaluation_reasons import GraphEvaluationReason
 
 
 class GraphValueRead(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     status: GraphValueStatus
     value: StrictBool | StrictStr | None = None
-    reason: str | None = None
+    reason: GraphEvaluationReason | None = None
     input_handle_id: str | None = None
     message: str | None = None
+
+    @classmethod
+    def from_runtime(cls, runtime: RuntimeValue) -> GraphValueRead:
+        value = runtime.value
+        if value is not None and not isinstance(value, (bool, str)):
+            value = str(value)
+        return cls(
+            status=runtime.status,
+            value=value,
+            reason=runtime.reason,
+            input_handle_id=runtime.input_handle_id,
+            message=runtime.message,
+        )
 
 
 class GraphNodeEvaluationRead(BaseModel):
@@ -42,4 +41,4 @@ class GraphNodeEvaluationRead(BaseModel):
     node_id: str
     outputs: dict[str, GraphValueRead]
     status: GraphValueStatus = GraphValueStatus.AVAILABLE
-    reason: str | None = None
+    reason: GraphEvaluationReason | None = None

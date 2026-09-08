@@ -8,10 +8,10 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from api.runs.contracts import PaperRunConfig, RunRead
-from api.runs.models import RunRow
 from api.bots.contracts import BotRead
 from api.bots.store import BotStore
+from api.runs.contracts import PaperRunConfig, RunRead
+from api.runs.models import RunRow
 from api.runs.status import (
     INTERRUPTIBLE_RUN_STATUSES,
     OWNED_STOP_PREVIOUS_STATUSES,
@@ -200,6 +200,27 @@ class RunStore:
         )
         return (await self._session.execute(statement)).scalar_one_or_none()
 
+    async def read_row(self, row: RunRow) -> RunRead:
+        return await self._read_row(row)
+
+    @staticmethod
+    def read_from_row(row: RunRow, revision=None) -> RunRead:
+        return RunRead(
+            id=row.id,
+            bot_id=row.bot_id,
+            definition_id=row.definition_id,
+            config=PaperRunConfig.model_validate(row.config),
+            bot_graph_revision_id=row.bot_graph_revision_id,
+            graph_revision=None if revision is None else revision.revision,
+            graph=None if revision is None else revision.graph,
+            status=row.status,
+            created_at=row.created_at,
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            heartbeat_at=row.heartbeat_at,
+            failure_detail=row.failure_detail,
+        )
+
     async def _transition(
         self,
         run_id: UUID,
@@ -229,24 +250,3 @@ class RunStore:
                     "run graph revision is missing or owned by another bot"
                 )
         return self.read_from_row(row, revision)
-
-    async def read_row(self, row: RunRow) -> RunRead:
-        return await self._read_row(row)
-
-    @staticmethod
-    def read_from_row(row: RunRow, revision=None) -> RunRead:
-        return RunRead(
-            id=row.id,
-            bot_id=row.bot_id,
-            definition_id=row.definition_id,
-            config=PaperRunConfig.model_validate(row.config),
-            bot_graph_revision_id=row.bot_graph_revision_id,
-            graph_revision=None if revision is None else revision.revision,
-            graph=None if revision is None else revision.graph,
-            status=row.status,
-            created_at=row.created_at,
-            started_at=row.started_at,
-            ended_at=row.ended_at,
-            heartbeat_at=row.heartbeat_at,
-            failure_detail=row.failure_detail,
-        )

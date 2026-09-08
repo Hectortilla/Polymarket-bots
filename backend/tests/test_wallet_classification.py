@@ -7,8 +7,8 @@ from scripts.wallet_analysis.classification import (
     classify_wallet_candidate,
 )
 from scripts.wallet_analysis.contracts import (
-    HEDGE_AVERAGE_METRIC,
     GROSS_BEFORE_FEES_METRIC,
+    HEDGE_AVERAGE_METRIC,
     NET_CASH_METRIC,
     WalletClassificationReason,
     WalletMetrics,
@@ -19,10 +19,28 @@ from scripts.wallet_analysis.contracts import (
 @pytest.mark.parametrize(
     ("net", "gross", "hedge", "verdict", "reason"),
     (
-        (1.0, 1.2, 0.1, WalletVerdict.GOOD, WalletClassificationReason.NET_POSITIVE_DIRECTIONAL_REALIZED),
-        (1.0, 1.2, HEDGE_SCORE_THRESHOLD, WalletVerdict.BAD, WalletClassificationReason.HEDGED),
+        (
+            1.0,
+            1.2,
+            0.1,
+            WalletVerdict.GOOD,
+            WalletClassificationReason.NET_POSITIVE_DIRECTIONAL_REALIZED,
+        ),
+        (
+            1.0,
+            1.2,
+            HEDGE_SCORE_THRESHOLD,
+            WalletVerdict.BAD,
+            WalletClassificationReason.HEDGED,
+        ),
         (-0.1, 0.1, 0.1, WalletVerdict.BAD, WalletClassificationReason.FEE_EATEN),
-        (0.0, 0.0, 0.1, WalletVerdict.BAD, WalletClassificationReason.NET_NEGATIVE_OR_FLAT),
+        (
+            0.0,
+            0.0,
+            0.1,
+            WalletVerdict.BAD,
+            WalletClassificationReason.NET_NEGATIVE_OR_FLAT,
+        ),
     ),
 )
 def test_wallet_classification_branches(

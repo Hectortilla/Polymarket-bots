@@ -9,14 +9,13 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from rich.panel import Panel
-from rich.table import Table
-
 from polybot.cli.config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from polybot.cli.factories import load_bot
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.recording.archive.paths import RECORDING_ARCHIVE_SUFFIX
+from rich.panel import Panel
+from rich.table import Table
 
 from .duration import parse_duration_seconds
 from .identity import bot_target_identity, static_target_identity
@@ -24,40 +23,12 @@ from .planning import StaticStreamPlanProvider
 from .service.recorder import record_markets
 from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_console
 
-
 RECORDING_CONFIG_NAME = "market-recorder"
 DEFAULT_RECORDINGS_DIR = Path("data/recordings")
 DEFAULT_RECORDINGS_DIR_ENV = "DEFAULT_RECORDINGS_DIR"
 
 
-def recordings_dir_from_env() -> Path:
-    """Return the recording directory configured for this process."""
-    configured_dir = os.environ.get(DEFAULT_RECORDINGS_DIR_ENV)
-    return Path(configured_dir) if configured_dir else DEFAULT_RECORDINGS_DIR
-
-
-def default_output_path(
-    *,
-    bot_spec: str | None,
-    market_slugs: tuple[str, ...],
-    now: datetime | None = None,
-    recordings_dir: Path = DEFAULT_RECORDINGS_DIR,
-) -> Path:
-    """Return the conventional timestamped path for a new recording."""
-    timestamp = (now or datetime.now().astimezone()).strftime("%Y%m%d-%H%M%S")
-    if bot_spec is not None:
-        module, _, factory = bot_spec.rpartition(":")
-        description = f"bot-{module.rsplit('.', 1)[-1] or factory}"
-    elif len(market_slugs) == 1:
-        description = f"market-{market_slugs[0]}"
-    else:
-        description = "markets"
-    description = re.sub(r"[^A-Za-z0-9._-]+", "-", description).strip("-.")
-    return (
-        recordings_dir
-        / timestamp
-        / f"{description or 'recording'}{RECORDING_ARCHIVE_SUFFIX}"
-    )
+MARKET_RECORDER_TITLE = "Market recorder"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -123,19 +94,48 @@ def main(argv: list[str] | None = None) -> int:
                 "[bold yellow]Recording interrupted[/]\n"
                 f"[dim]Committed data remains at[/] {output_path}",
                 border_style=WARNING_STYLE,
-                title="[bold]Market recorder[/]",
+                title=f"[bold]{MARKET_RECORDER_TITLE}[/]",
             )
         )
         return 0
     recording_console().print(
         Panel.fit(
-            "[bold green]Recording complete[/]\n"
-            f"[dim]Archive[/] {output_path}",
+            f"[bold green]Recording complete[/]\n[dim]Archive[/] {output_path}",
             border_style=SUCCESS_STYLE,
-            title="[bold]Market recorder[/]",
+            title=f"[bold]{MARKET_RECORDER_TITLE}[/]",
         )
     )
     return 0
+
+
+def recordings_dir_from_env() -> Path:
+    """Return the recording directory configured for this process."""
+    configured_dir = os.environ.get(DEFAULT_RECORDINGS_DIR_ENV)
+    return Path(configured_dir) if configured_dir else DEFAULT_RECORDINGS_DIR
+
+
+def default_output_path(
+    *,
+    bot_spec: str | None,
+    market_slugs: tuple[str, ...],
+    now: datetime | None = None,
+    recordings_dir: Path = DEFAULT_RECORDINGS_DIR,
+) -> Path:
+    """Return the conventional timestamped path for a new recording."""
+    timestamp = (now or datetime.now().astimezone()).strftime("%Y%m%d-%H%M%S")
+    if bot_spec is not None:
+        module, _, factory = bot_spec.rpartition(":")
+        description = f"bot-{module.rsplit('.', 1)[-1] or factory}"
+    elif len(market_slugs) == 1:
+        description = f"market-{market_slugs[0]}"
+    else:
+        description = "markets"
+    description = re.sub(r"[^A-Za-z0-9._-]+", "-", description).strip("-.")
+    return (
+        recordings_dir
+        / timestamp
+        / f"{description or 'recording'}{RECORDING_ARCHIVE_SUFFIX}"
+    )
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -207,6 +207,6 @@ def _print_recording_start(
         Panel(
             details,
             border_style=ACCENT_STYLE,
-            title="[bold bright_cyan]Market recorder[/]",
+            title=f"[bold bright_cyan]{MARKET_RECORDER_TITLE}[/]",
         )
     )

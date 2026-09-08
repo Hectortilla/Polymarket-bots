@@ -1,19 +1,21 @@
 """Editable, synthetic framework event samples for the decision preview form."""
 
 from decimal import Decimal
-from pydantic import TypeAdapter
+
 from polybot.framework.base import BaseBot
 from polybot.framework.events import FillEvent, OrderStatus, Side
 from polybot.framework.events.books import (
-    BookSnapshot,
-    BookLevel,
     BookGapEvent,
     BookGapReason,
+    BookLevel,
+    BookSnapshot,
 )
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.portfolio import PortfolioPosition
+from pydantic import TypeAdapter
 
+DEFAULT_PREVIEW_CASH = Decimal("1000")
 PREVIEW_SAMPLE_TIME_MS = 1000
 PREVIEW_SAMPLE_TOKEN_ID = "example-token"
 PREVIEW_SAMPLE_POSITIONS = (

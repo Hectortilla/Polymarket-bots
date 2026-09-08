@@ -11,12 +11,12 @@ import { formatTime } from '$lib/time';
 
 const mocks = vi.hoisted(() => ({
   listBots: vi.fn(),
-  listRuns: vi.fn()
+  listRuns: vi.fn(),
 }));
 
 vi.mock('$lib/api/generated', () => ({
   listBotsApiV1BotsGet: mocks.listBots,
-  listRunsApiV1RunsGet: mocks.listRuns
+  listRunsApiV1RunsGet: mocks.listRuns,
 }));
 
 import Page from './+page.svelte';
@@ -30,8 +30,8 @@ const BOT = {
     stream_rules: [
       {
         relation: runtimeContract.streamRelation.INDEPENDENT as StreamRelation,
-        market_slugs: ['btc-updown-5m-test']
-      }
+        market_slugs: ['btc-updown-5m-test'],
+      },
     ],
     data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget,
     max_order_size: '10',
@@ -39,17 +39,17 @@ const BOT = {
     paper_latency_ms: 250,
     paper_latency_jitter_ms: 100,
     event_max_age_ms: 5000,
-    paper_portfolio_usdc: '1000'
+    paper_portfolio_usdc: '1000',
   },
   latest_graph_revision: {
     id: 'cccccccc-0000-0000-0000-000000000001',
     bot_id: 'aaaaaaaa-0000-0000-0000-000000000001',
     revision: 4,
     graph: TEST_GRAPH,
-    created_at: '2026-08-30T00:00:00Z'
+    created_at: '2026-08-30T00:00:00Z',
   },
   created_at: '2026-08-30T00:00:00Z',
-  updated_at: '2026-08-30T00:00:00Z'
+  updated_at: '2026-08-30T00:00:00Z',
 } satisfies BotRead;
 
 const RUN = {
@@ -57,7 +57,7 @@ const RUN = {
   bot_id: BOT.id,
   definition_id: BOT.definition_id,
   config: BOT.config,
-  status: 'running',
+  status: RUN_STATUS.RUNNING,
   created_at: BOT.created_at,
   started_at: BOT.created_at,
   ended_at: null,
@@ -67,7 +67,7 @@ const RUN = {
   graph_revision: BOT.latest_graph_revision.revision,
   graph: TEST_GRAPH,
   latest_equity: '1004.25',
-  equity_status: 'fresh'
+  equity_status: VALUATION_STATUS.fresh,
 } satisfies RunRead;
 
 afterEach(() => {
@@ -88,13 +88,11 @@ describe('bots home', () => {
     expect(screen.getByRole('heading', { name: NAVIGATION_LABEL.BOTS, level: 1 })).toBeTruthy();
     expect(await screen.findByText(HOME_COPY.CREATE_FIRST_BOT)).toBeTruthy();
     expect(screen.getByRole('link', { name: NAVIGATION_LABEL.NEW_BOT }).getAttribute('href')).toBe(
-      NAVIGATION_PATH.NEW_BOT
+      NAVIGATION_PATH.NEW_BOT,
     );
     expect(screen.queryByText('Bot catalog')).toBeNull();
     expect(screen.queryByText('Bot workspace')).toBeNull();
-    expect(
-      screen.getByRole('heading', { name: HOME_COPY.CONFIGURED_BOTS, level: 2 })
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: HOME_COPY.CONFIGURED_BOTS, level: 2 })).toBeTruthy();
   });
 
   it('shows configured bots as scannable rows with their operational context', async () => {
@@ -109,13 +107,13 @@ describe('bots home', () => {
     expect(within(botLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
 
     const runLink = screen.getByRole('link', {
-      name: runRowLabel(RUN.config.name, formatTime(RUN.created_at))
+      name: runRowLabel(RUN.config.name, formatTime(RUN.created_at)),
     });
     expect(runLink.getAttribute('href')).toBe(runPath(RUN.id));
     expect(within(runLink).getByText(RUN.config.name)).toBeTruthy();
     expect(within(runLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
     expect(
-      within(runLink).getByText(`${RUN.latest_equity} / ${VALUATION_STATUS.fresh}`)
+      within(runLink).getByText(`${RUN.latest_equity} / ${VALUATION_STATUS.fresh}`),
     ).toBeTruthy();
     const runTimes = runLink.querySelectorAll('time');
     expect(runTimes).toHaveLength(2);
@@ -140,13 +138,13 @@ describe('bots home', () => {
       status: RUN_STATUS.FAILED,
       ended_at: '2026-08-30T00:00:05Z',
       failure_detail: recordedFailureDetail,
-      latest_runtime_failure: runtimeFailure
+      latest_runtime_failure: runtimeFailure,
     } satisfies RunRead;
     loadHome({ bots: [BOT], runs: [failedRun] });
     render(Page);
 
     const runLink = await screen.findByRole('link', {
-      name: runRowLabel(failedRun.config.name, formatTime(failedRun.created_at))
+      name: runRowLabel(failedRun.config.name, formatTime(failedRun.created_at)),
     });
     const failureDetailId = `recent-run-failure-detail-${failedRun.id}`;
     expect(runLink.getAttribute('aria-describedby')).toBe(failureDetailId);
@@ -154,7 +152,7 @@ describe('bots home', () => {
     expect(within(runLink).getByRole('tooltip').getAttribute('id')).toBe(failureDetailId);
     expect(within(runLink).getByRole('tooltip').textContent).toContain(runtimeFailure);
     expect(within(runLink).getByRole('tooltip').textContent).toContain(
-      `Recorded failure: ${recordedFailureDetail}`
+      `Recorded failure: ${recordedFailureDetail}`,
     );
   });
 
@@ -172,9 +170,7 @@ describe('bots home', () => {
     mocks.listRuns.mockResolvedValue({ data: [RUN] });
     render(Page);
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      HOME_COPY.LOAD_ERROR
-    );
+    expect((await screen.findByRole('alert')).textContent).toContain(HOME_COPY.LOAD_ERROR);
     expect(screen.queryByText(RUN.config.name)).toBeNull();
   });
 });

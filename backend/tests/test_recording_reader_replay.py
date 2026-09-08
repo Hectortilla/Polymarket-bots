@@ -6,9 +6,8 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 import polybot.recording.archive.reader as reader_module
+import pytest
 from polybot.recording.archive.errors import ArchiveCoverageError, ArchiveFormatError
 from polybot.recording.archive.models import RecordingEventBounds
 from polybot.recording.archive.reader import RecordingReader
@@ -18,10 +17,6 @@ from polybot.recording.contracts.book import (
     RecordedBookLevel,
     TickSizeChangePayload,
 )
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    RecordedEvent,
-)
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
@@ -30,6 +25,10 @@ from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
     MarketOutcomeMetadata,
+)
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
 )
 
 
@@ -395,12 +394,8 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
             event.sequence
             for event in reader.iter_events(market_slugs={first_market.market_slug})
         ] == [1, 2, 3]
-        assert reader.coverage_gaps(
-            condition_ids={first_market.condition_id}
-        ) == ()
-        assert reader.event_count(
-            condition_ids={first_market.condition_id}
-        ) == 3
+        assert reader.coverage_gaps(condition_ids={first_market.condition_id}) == ()
+        assert reader.event_count(condition_ids={first_market.condition_id}) == 3
         assert reader.market_slugs_with_metadata_revisions(
             start_at_ms=started_at_ms,
             end_at_ms=first_end,
@@ -413,14 +408,15 @@ def test_reader_set_filters_scope_events_and_coverage_gaps(tmp_path) -> None:
         ) == (second_market.market_slug,)
         assert [
             gap.gap_id
-            for gap in reader.coverage_gaps(
-                market_slugs={second_market.market_slug}
-            )
+            for gap in reader.coverage_gaps(market_slugs={second_market.market_slug})
         ] == [gap_id]
-        assert reader.event_count(
-            market_slugs={second_market.market_slug},
-            allow_gaps=True,
-        ) == 5
+        assert (
+            reader.event_count(
+                market_slugs={second_market.market_slug},
+                allow_gaps=True,
+            )
+            == 5
+        )
         with pytest.raises(ArchiveCoverageError):
             tuple(
                 reader.iter_events(
@@ -447,9 +443,7 @@ def test_complete_baseline_pair_requires_both_tokens_in_one_generation(
     path = tmp_path / "baseline-pair.sqlite3"
     started_at_ms = time.time_ns() // 1_000_000
     market = _market("condition-1", "market-one", "one")
-    first_token, second_token = (
-        outcome.token_id for outcome in market.outcomes
-    )
+    first_token, second_token = (outcome.token_id for outcome in market.outcomes)
     archive = RecordingArchive.create(
         path,
         target_identity="slugs:market-one",
@@ -520,9 +514,7 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
         market,
         observed_at_ms=started_at_ms,
     )
-    first_token, second_token = (
-        outcome.token_id for outcome in market.outcomes
-    )
+    first_token, second_token = (outcome.token_id for outcome in market.outcomes)
     archive.append_checkpoints(
         (
             _checkpoint(
@@ -606,10 +598,13 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
     archive.close()
 
     with RecordingReader(path) as reader:
-        assert reader.checkpoint_pair_before(
-            market.condition_id,
-            baseline_end + 1,
-        ) is None
+        assert (
+            reader.checkpoint_pair_before(
+                market.condition_id,
+                baseline_end + 1,
+            )
+            is None
+        )
         pair = reader.checkpoint_pair_before(
             market.condition_id,
             common_at_ms + 1,
@@ -621,14 +616,20 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
         )
         assert {checkpoint.sequence for checkpoint in pair} == {3}
         assert {checkpoint.observed_at_ms for checkpoint in pair} == {common_at_ms}
-        assert reader.checkpoint_pair_at(
-            market.condition_id,
-            common_at_ms,
-        ) == pair
-        assert reader.checkpoint_pair_at(
-            market.condition_id,
-            common_at_ms + 1,
-        ) is None
+        assert (
+            reader.checkpoint_pair_at(
+                market.condition_id,
+                common_at_ms,
+            )
+            == pair
+        )
+        assert (
+            reader.checkpoint_pair_at(
+                market.condition_id,
+                common_at_ms + 1,
+            )
+            is None
+        )
         with pytest.raises(ArchiveCoverageError):
             reader.checkpoint_pair_before(
                 market.condition_id,
@@ -640,11 +641,14 @@ def test_checkpoint_pair_requires_one_common_gap_free_boundary(tmp_path) -> None
             session_id=1,
         )
         assert recovered_pair is not None
-        assert {
-            checkpoint.observed_at_ms for checkpoint in recovered_pair
-        } == {recovered_at_ms}
-        assert reader.checkpoint_pair_at(
-            market.condition_id,
-            recovered_at_ms,
-            session_id=1,
-        ) == recovered_pair
+        assert {checkpoint.observed_at_ms for checkpoint in recovered_pair} == {
+            recovered_at_ms
+        }
+        assert (
+            reader.checkpoint_pair_at(
+                market.condition_id,
+                recovered_at_ms,
+                session_id=1,
+            )
+            == recovered_pair
+        )

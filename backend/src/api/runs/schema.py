@@ -6,7 +6,6 @@ from sqlalchemy import Enum
 
 from api.runs.status import RunStatus
 
-
 RUNS_TABLE_NAME = "runs"
 RUN_STATUS_CONSTRAINT_NAME = "run_status"
 RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME = "fk_runs_bot_graph_revision"

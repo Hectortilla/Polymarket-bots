@@ -8,7 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from polybot.async_io import run_blocking
 from polybot.backtesting.contracts import (
     BacktestGapPolicy,
@@ -23,20 +22,26 @@ from polybot.cli.backtest_command import (
 )
 from polybot.cli.config import load_dotenv, parse_overrides
 from polybot.cli.dashboard.state import DashboardState
-from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 from polybot.cli.entrypoint import (
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
     TERM_ENV_KEY,
     _dashboard_enabled,
     main,
 )
-from polybot.cli.performance_chart.contracts import PerformanceChartError
 from polybot.cli.factories import INVALID_BOT_FACTORY_PREFIX, load_bot
-from polybot.cli.markets import resolve_plan_markets
-from polybot.runtime import run_bot
-from polybot.cli.runner.factory import RuntimeComponents, create_runtime
+from polybot.cli.markets import ResolvedMarketPlan
+from polybot.cli.observability.events import (
+    BootstrapPhase,
+    BootstrapProgress,
+    MarketSettled,
+    RuntimeFailed,
+    RuntimeState,
+    RuntimeStateChanged,
+)
+from polybot.cli.observability.observer import RuntimeObserver
+from polybot.cli.performance_chart.contracts import PerformanceChartError
 from polybot.cli.runner.dispatch import dispatch_stream_event
-from polybot.cli.runner.streams import wait_for_stream_plan_change
+from polybot.cli.runner.factory import RuntimeComponents, create_runtime
 from polybot.cli.streams.contracts import (
     BookGapStreamEvent,
     BookStreamEvent,
@@ -48,21 +53,14 @@ from polybot.cli.streams.contracts import (
 from polybot.cli.streams.kinds import StreamKind
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.streams.telemetry import StreamTelemetry
-from polybot.cli.observability.events import (
-    BootstrapPhase,
-    BootstrapProgress,
-    RuntimeState,
-    RuntimeStateChanged,
-    RuntimeFailed,
-    MarketSettled,
-)
-from polybot.cli.observability.observer import RuntimeObserver
-from polybot.framework.base import BaseBot
+from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.activity import ActivitySeverity, BotActivityEvent
-from polybot.framework.config.mode import BotMode
+from polybot.framework.base import BaseBot
 from polybot.framework.config.constants import BOT_MODE_ENV
+from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import Side
 from polybot.framework.events.books import (
     BookGapEvent,
@@ -71,15 +69,30 @@ from polybot.framework.events.books import (
     BookSnapshot,
 )
 from polybot.framework.events.resolutions import MarketResolutionEvent
-from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.runner import BotRunner
-from polybot.execution.paper.portfolio import PaperPortfolio
-from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
+from polybot.performance.contracts.files import (
+    EQUITY_FILE_NAME,
+    ORDERS_FILE_NAME,
+    RESULT_SCHEMA_VERSION,
+    SUMMARY_FILE_NAME,
+    PerformanceArtifactField,
+    PerformanceMetricsField,
+    PerformanceProvenanceField,
+    PerformanceSelectionField,
+    PerformanceSummaryField,
+    PerformanceTimingField,
+    PerformanceValuationField,
+)
+from polybot.performance.contracts.run import PerformanceRunKind, PerformanceRunStatus
+from polybot.performance.contracts.valuation_status import ValuationStatus
 from polybot.polymarket.market_hints import MarketTradeHint
+from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.polymarket.public_data.runtime import RuntimePublicData
 from polybot.recording.contracts.session import SessionIntegrityStatus
-from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
+from polybot.runtime import run_bot
 
 
 def _stream_event(value: object):
@@ -154,8 +167,12 @@ def test_dashboard_rejects_explicit_non_tty_output(monkeypatch) -> None:
 
 def test_main_treats_keyboard_interrupt_as_graceful_shutdown(monkeypatch) -> None:
     monkeypatch.setattr("polybot.cli.entrypoint.load_dotenv", lambda path: None)
-    monkeypatch.setattr("polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot())
-    monkeypatch.setattr("polybot.cli.entrypoint._dashboard_enabled", lambda value: False)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
+    )
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint._dashboard_enabled", lambda value: False
+    )
 
     def raise_keyboard_interrupt(awaitable) -> None:
         awaitable.close()
@@ -185,7 +202,7 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
         return value
 
     async def fake_run_backtest(bot, config, *, bot_spec, options):
-        captured["bot_spec"] = bot_spec
+        captured[PerformanceProvenanceField.BOT_SPEC] = bot_spec
         captured["options"] = options
         return BacktestResult(
             selection=BacktestSelection(7, 100, 200, ("one", "two"), 50),
@@ -196,9 +213,7 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
             resolution_count=0,
         )
 
-    monkeypatch.setattr(
-        "polybot.cli.entrypoint._dashboard_enabled", dashboard_enabled
-    )
+    monkeypatch.setattr("polybot.cli.entrypoint._dashboard_enabled", dashboard_enabled)
     monkeypatch.setattr(
         "polybot.cli.backtest_command.run_backtest",
         fake_run_backtest,
@@ -212,32 +227,35 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
         lambda path: captured.setdefault("chart_path", path),
     )
 
-    assert main(
-        [
-            "--bot",
-            "polybot.my_bot:create",
-            "--backtest",
-            str(archive),
-            "--session",
-            "7",
-            "--start-ms",
-            "100",
-            "--end-ms",
-            "200",
-            "--market-slug",
-            "one",
-            "--market-slug",
-            "two",
-            "--gap-policy",
-            "blackout",
-            "--seed",
-            "42",
-            "--results-dir",
-            str(results_dir),
-            "--report-interval-ms",
-            "250",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "--bot",
+                "polybot.my_bot:create",
+                "--backtest",
+                str(archive),
+                "--session",
+                "7",
+                "--start-ms",
+                "100",
+                "--end-ms",
+                "200",
+                "--market-slug",
+                "one",
+                "--market-slug",
+                "two",
+                "--gap-policy",
+                "blackout",
+                "--seed",
+                "42",
+                "--results-dir",
+                str(results_dir),
+                "--report-interval-ms",
+                "250",
+            ]
+        )
+        == 0
+    )
 
     options = captured["options"]
     assert options.archive_path == archive
@@ -294,14 +312,17 @@ def test_main_keeps_completed_backtest_success_when_chart_rendering_fails(
         fail_chart,
     )
 
-    assert main(
-        [
-            "--bot",
-            "polybot.my_bot:create",
-            "--backtest",
-            str(tmp_path / "archive.sqlite"),
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "--bot",
+                "polybot.my_bot:create",
+                "--backtest",
+                str(tmp_path / "archive.sqlite"),
+            ]
+        )
+        == 0
+    )
 
     assert BACKTEST_CHART_WARNING in capsys.readouterr().err
 
@@ -312,79 +333,82 @@ def test_backtest_summary_labels_partial_recording_source(
 ) -> None:
     results_dir = tmp_path / "results"
     results_dir.mkdir()
-    (results_dir / "summary.json").write_text(
+    (results_dir / SUMMARY_FILE_NAME).write_text(
         json.dumps(
             {
-                "schema_version": 1,
-                "status": "completed",
-                "partial": False,
-                "error": None,
-                "provenance": {
-                    "kind": "backtest",
-                    "bot_spec": "tests:create",
-                    "configuration": {},
-                    "seed": 0,
-                    "archive_sha256": "archive",
-                    "archive_schema_version": 2,
-                    "archive_target_identity": "target",
+                PerformanceSummaryField.SCHEMA_VERSION: RESULT_SCHEMA_VERSION,
+                PerformanceSummaryField.STATUS: PerformanceRunStatus.COMPLETED,
+                PerformanceSummaryField.PARTIAL: False,
+                PerformanceSummaryField.ERROR: None,
+                PerformanceSummaryField.PROVENANCE: {
+                    PerformanceProvenanceField.KIND: PerformanceRunKind.BACKTEST,
+                    PerformanceProvenanceField.BOT_SPEC: "tests:create",
+                    PerformanceProvenanceField.CONFIGURATION: {},
+                    PerformanceProvenanceField.SEED: 0,
+                    PerformanceProvenanceField.ARCHIVE_SHA256: "archive",
+                    PerformanceProvenanceField.ARCHIVE_SCHEMA_VERSION: 2,
+                    PerformanceProvenanceField.ARCHIVE_TARGET_IDENTITY: "target",
                 },
-                "selection": {
-                    "session_id": 1,
-                    "start_ms": 100,
-                    "end_ms": 200,
-                    "market_slugs": ["one"],
-                    "replay_cutoff_sequence": 50,
-                    "session_integrity_status": "incomplete",
-                    "uses_partial_session": True,
-                    "gap_policy": None,
-                    "coverage_gap_ids": [],
-                    "coverage_gap_count": 0,
-                    "coverage_gap_duration_ms": 0,
-                    "coverage_gap_open_count": 0,
-                    "coverage_gap_affected_position_token_ids": [],
-                    "coverage_gap_affected_position_count": 0,
+                PerformanceSummaryField.SELECTION: {
+                    PerformanceSelectionField.SESSION_ID: 1,
+                    PerformanceSelectionField.START_MS: 100,
+                    PerformanceSelectionField.END_MS: 200,
+                    PerformanceSelectionField.MARKET_SLUGS: ["one"],
+                    PerformanceSelectionField.REPLAY_CUTOFF_SEQUENCE: 50,
+                    PerformanceSelectionField.SESSION_INTEGRITY_STATUS: SessionIntegrityStatus.INCOMPLETE,
+                    PerformanceSelectionField.USES_PARTIAL_SESSION: True,
+                    PerformanceSelectionField.GAP_POLICY: None,
+                    PerformanceSelectionField.COVERAGE_GAP_IDS: [],
+                    PerformanceSelectionField.COVERAGE_GAP_COUNT: 0,
+                    PerformanceSelectionField.COVERAGE_GAP_DURATION_MS: 0,
+                    PerformanceSelectionField.COVERAGE_GAP_OPEN_COUNT: 0,
+                    PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS: [],
+                    PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_COUNT: 0,
                 },
-                "timing": {
-                    "started_at_ms": 100,
-                    "ended_at_ms": 200,
-                    "virtual_duration_ms": 100,
+                PerformanceSummaryField.TIMING: {
+                    PerformanceTimingField.STARTED_AT_MS: 100,
+                    PerformanceTimingField.ENDED_AT_MS: 200,
+                    PerformanceTimingField.VIRTUAL_DURATION_MS: 100,
                 },
-                "metrics": {
-                    "initial_cash_usdc": "0",
-                    "initial_equity_usdc": "0",
-                    "final_cash_usdc": "0",
-                    "final_marked_position_value_usdc": "0",
-                    "final_equity_usdc": "0",
-                    "gross_pnl_usdc": "0",
-                    "event_count": 3,
-                    "order_count": 0,
-                    "fill_count": 0,
-                    "rejected_order_count": 0,
-                    "coverage_gap_rejected_order_count": 0,
-                    "resolution_count": 0,
-                    "dispatch_count": 0,
-                    "accepted_dispatch_count": 0,
-                    "skipped_dispatch_count": 0,
-                    "net_pnl_usdc": "0",
-                    "return": "0",
-                    "max_drawdown_usdc": "0",
-                    "max_drawdown_fraction": "0",
-                    "fees_usdc": "0",
-                    "filled_notional_usdc": "0",
+                PerformanceSummaryField.METRICS: {
+                    PerformanceMetricsField.INITIAL_CASH_USDC: "0",
+                    PerformanceMetricsField.INITIAL_EQUITY_USDC: "0",
+                    PerformanceMetricsField.FINAL_CASH_USDC: "0",
+                    PerformanceMetricsField.FINAL_MARKED_POSITION_VALUE_USDC: "0",
+                    PerformanceMetricsField.FINAL_EQUITY_USDC: "0",
+                    PerformanceMetricsField.GROSS_PNL_USDC: "0",
+                    PerformanceMetricsField.EVENT_COUNT: 3,
+                    PerformanceMetricsField.ORDER_COUNT: 0,
+                    PerformanceMetricsField.FILL_COUNT: 0,
+                    PerformanceMetricsField.REJECTED_ORDER_COUNT: 0,
+                    PerformanceMetricsField.COVERAGE_GAP_REJECTED_ORDER_COUNT: 0,
+                    PerformanceMetricsField.RESOLUTION_COUNT: 0,
+                    PerformanceMetricsField.DISPATCH_COUNT: 0,
+                    PerformanceMetricsField.ACCEPTED_DISPATCH_COUNT: 0,
+                    PerformanceMetricsField.SKIPPED_DISPATCH_COUNT: 0,
+                    PerformanceMetricsField.NET_PNL_USDC: "0",
+                    PerformanceMetricsField.RETURN_FRACTION: "0",
+                    PerformanceMetricsField.MAX_DRAWDOWN_USDC: "0",
+                    PerformanceMetricsField.MAX_DRAWDOWN_FRACTION: "0",
+                    PerformanceMetricsField.FEES_USDC: "0",
+                    PerformanceMetricsField.FILLED_NOTIONAL_USDC: "0",
                 },
-                "valuation": {
-                    "final_status": "fresh",
-                    "history_status": "fresh",
-                    "drawdown_status": "fresh",
-                    "complete": True,
-                    "estimated": False,
-                    "sample_count": 1,
-                    "available_sample_count": 1,
-                    "stale_sample_count": 0,
-                    "unavailable_sample_count": 0,
+                PerformanceSummaryField.VALUATION: {
+                    PerformanceValuationField.FINAL_STATUS: ValuationStatus.FRESH,
+                    PerformanceValuationField.HISTORY_STATUS: ValuationStatus.FRESH,
+                    PerformanceValuationField.DRAWDOWN_STATUS: ValuationStatus.FRESH,
+                    PerformanceValuationField.COMPLETE: True,
+                    PerformanceValuationField.ESTIMATED: False,
+                    PerformanceValuationField.SAMPLE_COUNT: 1,
+                    PerformanceValuationField.AVAILABLE_SAMPLE_COUNT: 1,
+                    PerformanceValuationField.STALE_SAMPLE_COUNT: 0,
+                    PerformanceValuationField.UNAVAILABLE_SAMPLE_COUNT: 0,
                 },
-                "open_positions": [],
-                "artifacts": {"equity": "equity.csv", "orders": "orders.csv"},
+                PerformanceSummaryField.OPEN_POSITIONS: [],
+                PerformanceSummaryField.ARTIFACTS: {
+                    PerformanceArtifactField.EQUITY: EQUITY_FILE_NAME,
+                    PerformanceArtifactField.ORDERS: ORDERS_FILE_NAME,
+                },
             }
         ),
         encoding="utf-8",
@@ -430,7 +454,9 @@ def test_backtest_summary_labels_blackout_gap_handling(
                 return_fraction="0",
                 max_drawdown_usdc="0",
             ),
-            valuation=SimpleNamespace(final_status="fresh", complete=True),
+            valuation=SimpleNamespace(
+                final_status=ValuationStatus.FRESH, complete=True
+            ),
         ),
     )
     result = BacktestResult(
@@ -480,20 +506,23 @@ def test_main_routes_results_directory_to_ordinary_paper_run(
     monkeypatch.setattr("polybot.cli.entrypoint.run_bot", fake_run_bot)
     results_dir = tmp_path / "paper-results"
 
-    assert main(
-        [
-            "--bot",
-            "polybot.my_bot:create",
-            "--no-dashboard",
-            "--results-dir",
-            str(results_dir),
-            "--report-interval-ms",
-            "500",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "--bot",
+                "polybot.my_bot:create",
+                "--no-dashboard",
+                "--results-dir",
+                str(results_dir),
+                "--report-interval-ms",
+                "500",
+            ]
+        )
+        == 0
+    )
 
     assert captured["results_dir"] == results_dir
-    assert captured["bot_spec"] == "polybot.my_bot:create"
+    assert captured[PerformanceProvenanceField.BOT_SPEC] == "polybot.my_bot:create"
     assert captured["report_interval_ms"] == 500
 
 
@@ -655,7 +684,9 @@ def test_wallet_trade_identity_is_validated_before_bot_or_follow_state() -> None
         )
         return matching_outcome, mismatched_outcome, runner.calls, len(followed.calls)
 
-    matching_outcome, mismatched_outcome, runner_calls, recorded_count = asyncio.run(run())
+    matching_outcome, mismatched_outcome, runner_calls, recorded_count = asyncio.run(
+        run()
+    )
 
     assert matching_outcome is not None and matching_outcome.accepted
     assert mismatched_outcome is not None
@@ -731,8 +762,7 @@ def test_merge_streams_discards_pending_books_across_continuity_gap() -> None:
 
     async def run():
         return [
-            item
-            async for item in merge_streams((StreamSourceSpec.primary(source()),))
+            item async for item in merge_streams((StreamSourceSpec.primary(source()),))
         ]
 
     assert asyncio.run(run()) == [
@@ -777,9 +807,7 @@ def test_merge_streams_preserves_wallet_trades_and_coalesces_hints() -> None:
                             )
                         )
                     ),
-                    StreamSourceSpec.primary(
-                        source((first_wallet, second_wallet))
-                    ),
+                    StreamSourceSpec.primary(source((first_wallet, second_wallet))),
                 )
             )
         ]
@@ -924,9 +952,7 @@ def test_merge_streams_consumes_resolution_only_source_until_completion() -> Non
     async def run():
         return [
             item
-            async for item in merge_streams(
-                (StreamSourceSpec.auxiliary(source()),)
-            )
+            async for item in merge_streams((StreamSourceSpec.auxiliary(source()),))
         ]
 
     items = asyncio.run(run())
@@ -1002,7 +1028,7 @@ def test_resolve_plan_markets_requires_current_and_tolerates_next() -> None:
             return tuple(_market(slug) if slug == "current" else None for slug in slugs)
 
     async def run():
-        return await resolve_plan_markets(
+        return await ResolvedMarketPlan.from_stream_plan(
             StreamPlan(
                 current=(StreamRule(StreamRelation.INDEPENDENT, ("current",)),),
                 next=(StreamRule(StreamRelation.INDEPENDENT, ("future",)),),
@@ -1021,12 +1047,8 @@ def test_resolve_plan_markets_rejects_missing_current() -> None:
             return tuple(None for _ in slugs)
 
     async def run():
-        await resolve_plan_markets(
-            StreamPlan(
-                current=(
-                    StreamRule(StreamRelation.INDEPENDENT, ("missing",)),
-                )
-            ),
+        await ResolvedMarketPlan.from_stream_plan(
+            StreamPlan(current=(StreamRule(StreamRelation.INDEPENDENT, ("missing",)),)),
             FakeGamma(),  # type: ignore[arg-type]
         )
 
@@ -1090,7 +1112,7 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
         async def events(self, token_ids):
             yield _book("token", 0)
 
-    class FakeBotRunner:
+    class FakeBotRunner(BotRunner):
         def __init__(self, bot, ctx) -> None:
             self.bot = bot
             self.stream_plan = StreamPlan(current=())
@@ -1101,9 +1123,7 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
 
         async def refresh_stream_plan(self):
             self.stream_plan = StreamPlan(
-                current=(
-                    StreamRule(StreamRelation.INDEPENDENT, ("current",)),
-                )
+                current=(StreamRule(StreamRelation.INDEPENDENT, ("current",)),)
             )
             return self.stream_plan
 
@@ -1137,8 +1157,12 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
             return None
 
     monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter
+    )
     monkeypatch.setattr(
         "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
         FakeAdapter,
@@ -1149,8 +1173,8 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
     async def run() -> tuple[int, int, bool, RecordingObserver]:
         client = FakeClient()
         monkeypatch.setattr(
-                "polybot.polymarket.client_lifecycle.AsyncPublicClient",
-                lambda: client,
+            "polybot.polymarket.client_lifecycle.AsyncPublicClient",
+            lambda: client,
         )
         bot = LifecycleBot()
         observer = RecordingObserver()
@@ -1158,9 +1182,7 @@ def test_run_bot_runs_lifecycle_and_closes_owned_client(monkeypatch) -> None:
             bot,
             BotConfig(
                 name="runner",
-                stream_rules=(
-                    StreamRule(StreamRelation.INDEPENDENT, ("current",)),
-                ),
+                stream_rules=(StreamRule(StreamRelation.INDEPENDENT, ("current",)),),
             ),
             observer=observer,
         )
@@ -1315,7 +1337,7 @@ def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) 
         current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-300",)),),
     )
 
-    class DynamicRunner:
+    class DynamicRunner(BotRunner):
         def __init__(self) -> None:
             self.calls = 0
 
@@ -1324,13 +1346,17 @@ def test_stream_plan_change_waiter_detects_dynamic_market_rollover(monkeypatch) 
             return initial if self.calls == 1 else rolled
 
     async def run() -> StreamPlan:
-        return await wait_for_stream_plan_change(DynamicRunner(), initial)
+        return await BotRunner.wait_for_stream_plan_change(DynamicRunner(), initial)
 
-    monkeypatch.setattr("polybot.cli.runner.streams.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(
+        "polybot.framework.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0
+    )
     assert asyncio.run(run()) == rolled
 
 
-def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(monkeypatch) -> None:
+def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(
+    monkeypatch,
+) -> None:
     initial = StreamPlan(
         current=(StreamRule(StreamRelation.INDEPENDENT, ("bucket-0",)),),
     )
@@ -1359,7 +1385,7 @@ def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(mo
                 await asyncio.Event().wait()
             yield _book("token", 0)
 
-    class DynamicRunner:
+    class DynamicRunner(BotRunner):
         def __init__(self, bot, ctx) -> None:
             self.calls = 0
             self.dispatched = 0
@@ -1376,15 +1402,21 @@ def test_run_bot_rebuilds_union_stream_and_retains_unresolved_rollover_market(mo
             return DispatchOutcome.accepted_event()
 
     monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter
+    )
     monkeypatch.setattr(
         "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
         FakeAdapter,
     )
     monkeypatch.setattr("polybot.cli.runner.factory.PaperBroker", _TestPaperBroker)
     monkeypatch.setattr("polybot.runtime.BotRunner", DynamicRunner)
-    monkeypatch.setattr("polybot.cli.runner.streams.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(
+        "polybot.framework.runner.STREAM_PLAN_REFRESH_INTERVAL_SECONDS", 0
+    )
 
     asyncio.run(
         run_bot(
@@ -1469,7 +1501,7 @@ def test_resolution_closes_old_stream_and_rebuilds_without_resolved_tokens(
         def __init__(self, client) -> None:
             pass
 
-    class FakeRunner:
+    class FakeRunner(BotRunner):
         books: list[str] = []
         resolutions: list[str] = []
 
@@ -1587,7 +1619,7 @@ def test_gamma_resolved_market_is_settled_before_stream_creation(
         def __init__(self, client) -> None:
             pass
 
-    class FakeRunner:
+    class FakeRunner(BotRunner):
         settled: list[str] = []
 
         def __init__(self, bot, ctx) -> None:
@@ -1651,12 +1683,10 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
         async def events(self, token_ids):
             yield object()
 
-    class FakeBotRunner:
+    class FakeBotRunner(BotRunner):
         def __init__(self, bot, ctx) -> None:
             self.stream_plan = StreamPlan(
-                current=(
-                    StreamRule(StreamRelation.INDEPENDENT, ("current",)),
-                )
+                current=(StreamRule(StreamRelation.INDEPENDENT, ("current",)),)
             )
 
         def set_runtime_market_slugs(self, market_slugs) -> None:
@@ -1687,8 +1717,12 @@ def test_run_bot_reports_failed_shutdown_and_stops_observer(monkeypatch) -> None
             self.stopped = True
 
     monkeypatch.setattr("polybot.polymarket.public_data.runtime.GammaClient", FakeGamma)
-    monkeypatch.setattr("polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter)
-    monkeypatch.setattr("polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter)
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.ClobClient", FakeAdapter
+    )
+    monkeypatch.setattr(
+        "polybot.polymarket.public_data.runtime.MarketStream", FakeAdapter
+    )
     monkeypatch.setattr(
         "polybot.polymarket.public_data.runtime.PolymarketWalletActivityClient",
         FakeAdapter,

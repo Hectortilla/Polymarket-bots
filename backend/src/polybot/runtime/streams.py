@@ -5,27 +5,24 @@ from __future__ import annotations
 import asyncio
 from time import monotonic
 
-from polybot.cli.markets import resolve_plan_markets
+from polybot.cli.markets import ResolvedMarketPlan
 from polybot.cli.observability.bootstrap import (
     BootstrapProgressAdapter,
-)
-from polybot.cli.observability.portfolio_bootstrap import (
-    emit_paper_position_book_bootstraps,
 )
 from polybot.cli.observability.events import DispatchCompleted, StreamReceived
 from polybot.cli.observability.observer import (
     RuntimeObserver,
     emit_observer_fail_open,
 )
+from polybot.cli.observability.portfolio_bootstrap import (
+    emit_paper_position_book_bootstraps,
+)
 from polybot.cli.resolution.reconciliation import reconcile_resolutions
 from polybot.cli.resolution.settlement import ResolutionSettlementService
 from polybot.cli.runner.dispatch import dispatch_stream_event
 from polybot.cli.runner.factory import RuntimeComponents
 from polybot.cli.runner.health import stream_health
-from polybot.cli.runner.streams import (
-    compile_selectors,
-    wait_for_stream_plan_change,
-)
+from polybot.cli.runner.streams import compile_selectors
 from polybot.cli.streams.builders import build_streams
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.streams.telemetry import StreamTelemetry
@@ -60,7 +57,7 @@ async def run_runtime_streams(
         plan = await runner.refresh_stream_plan()
         bootstrap_progress.begin_cycle()
         bootstrap_gamma = bootstrap_progress.wrap_gamma(runtime.gamma)
-        resolved = await resolve_plan_markets(plan, bootstrap_gamma)
+        resolved = await ResolvedMarketPlan.from_stream_plan(plan, bootstrap_gamma)
         for market in resolved.current:
             runtime.registry.add(market, MarketInterest.CONFIGURED)
         wallet_scopes = plan.wallet_discovery_scopes()
@@ -123,7 +120,7 @@ async def run_runtime_streams(
                 observer,
             )
         )
-        plan_change = asyncio.create_task(wait_for_stream_plan_change(runner, plan))
+        plan_change = asyncio.create_task(runner.wait_for_stream_plan_change(plan))
         registry_change = asyncio.create_task(
             runtime.registry.wait_for_change(runtime.registry.revision)
         )

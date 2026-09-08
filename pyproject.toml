@@ -32,6 +32,18 @@ dev = [
 
 [tool.setuptools]
 packages = [
+  "polybot.recording.trim_recovery",
+  "polybot.recording.trim_export",
+  "polybot.recording.trim_validation",
+  "polybot.polymarket.normalization.recording_events",
+  "polybot.polymarket.wallet_activity.normalization",
+  "polybot.recording.trim_bootstrap",
+  "polybot.recording.trim_planning",
+  "polybot.backtesting.selection",
+  "polybot.recording.archive.writer",
+  "api.events.contracts.payloads",
+  "api.catalog.graphs.catalog",
+  "api.catalog.graphs.contracts",
   "polybot",
   "polybot.examples",
   "polybot.execution",

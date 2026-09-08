@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import pytest
-
 from polybot.framework.events import Side
 from polybot.framework.outcomes import YES_OUTCOME
+
 from scripts.wallet_analysis.cash_metrics import fee_paid, signed_cash
+from scripts.wallet_analysis.contracts import MarketMetrics
 from scripts.wallet_analysis.market_metrics import (
     hedge_score,
     market_trade_share,
     weighted_hedge_score,
 )
-from scripts.wallet_analysis.contracts import MarketMetrics
 from scripts.wallet_payloads import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
-    ACTIVITY_SLUG_FIELD,
     ACTIVITY_SIZE_FIELD,
+    ACTIVITY_SLUG_FIELD,
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
     CONDITION_ID_FIELD,
@@ -47,7 +47,9 @@ def test_signed_cash_respects_activity_direction(
 
 
 def test_fee_paid_is_trade_notional_difference() -> None:
-    assert fee_paid(_activity(ActivityType.TRADE, size=2, price=0.4, usdc_size=0.9)) == pytest.approx(0.1)
+    assert fee_paid(
+        _activity(ActivityType.TRADE, size=2, price=0.4, usdc_size=0.9)
+    ) == pytest.approx(0.1)
     assert fee_paid(_activity(ActivityType.REWARD, usdc_size=0.9)) == 0.0
 
 
@@ -70,7 +72,9 @@ def test_hedge_score_and_weighted_score_use_signed_position_sizes() -> None:
     unbalanced.signed_position_sizes_by_outcome.update(yes=4.0, no=1.0)
 
     assert hedge_score(balanced.signed_position_sizes_by_outcome) == 1.0
-    assert hedge_score(unbalanced.signed_position_sizes_by_outcome) == pytest.approx(0.4)
+    assert hedge_score(unbalanced.signed_position_sizes_by_outcome) == pytest.approx(
+        0.4
+    )
     assert weighted_hedge_score((balanced, unbalanced)) == pytest.approx(2 / 3)
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
-
 RECORDER_DISTRIBUTION = "polymarket-polybot"
 SDK_DISTRIBUTION = "polymarket-client"
 

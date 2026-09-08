@@ -22,15 +22,15 @@ from polybot.cli.observability.observer import (
     start_observer_fail_open,
     stop_observer_fail_open,
 )
+from polybot.cli.runner.factory import create_runtime
 from polybot.framework.base import BaseBot
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.framework.runner import BotRunner
-from polybot.polymarket.public_data.runtime import RuntimePublicData
-from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
 from polybot.performance.artifacts.errors import PerformanceOutputExistsError
 from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
-from polybot.cli.runner.factory import create_runtime
+from polybot.polymarket.public_data.runtime import RuntimePublicData
+from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
 
 from .performance.broker import PaperPerformanceBroker
 from .performance.observer import PaperPerformanceObserver

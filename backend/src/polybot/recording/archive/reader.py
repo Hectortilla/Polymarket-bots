@@ -9,6 +9,9 @@ from pathlib import Path
 from threading import RLock
 from typing import BinaryIO
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import SESSIONS_TABLE
+
 from ..contracts.anomalies import CaptureFailureKind
 from ..contracts.market import MarketMetadataPayload
 from ..contracts.records import (
@@ -19,19 +22,28 @@ from ..contracts.records import (
 )
 from .anomalies import (
     capture_anomaly_journal_available as _capture_anomaly_journal_available,
+)
+from .anomalies import (
     iter_capture_anomalies as _iter_capture_anomalies,
 )
 from .baselines import (
     first_complete_baseline_pair_at_or_after as _first_baseline_pair,
+)
+from .baselines import (
     has_complete_baseline_pair as _has_baseline_pair,
 )
 from .checkpoints import (
     checkpoint_before as _checkpoint_before,
+)
+from .checkpoints import (
     checkpoint_pair_at as _checkpoint_pair_at,
+)
+from .checkpoints import (
     checkpoint_pair_at_or_after as _checkpoint_pair_at_or_after,
+)
+from .checkpoints import (
     checkpoint_pair_before as _checkpoint_pair_before,
 )
-from .connections import configure_writer_connection
 from .coverage import coverage_gaps as _coverage_gaps
 from .coverage import reject_known_gaps as _reject_known_gaps
 from .errors import ArchiveClosedError, ArchiveFormatError
@@ -41,19 +53,25 @@ from .events import stream_events as _stream_events
 from .features import _capture_anomaly_journal_provenance
 from .format import _validate_archive
 from .lifecycle import (
-    _acquire_writer_lock,
     _archive_path,
     _checkpoint_wal,
-    _open_connection,
     _open_readonly_connection,
-    _open_writer_lock_file,
     _release_writer_lock,
+    open_exclusive_connection,
 )
 from .markets import (
     market_at as _market_at,
+)
+from .markets import (
     market_slugs_with_metadata_revisions as _market_slugs_with_metadata_revisions,
+)
+from .markets import (
     market_state_at as _market_state_at,
+)
+from .markets import (
     markets_at as _markets_at,
+)
+from .markets import (
     unresolved_markets as _unresolved_markets,
 )
 from .models import (
@@ -64,7 +82,7 @@ from .models import (
 )
 from .primitives import _nonnegative_timestamp, _positive_int, _required_text
 from .schema import SCHEMA_VERSION
-from .selection import _selection
+from .selection import ArchiveSelection
 from .sessions import _recover_interrupted_session, _session_from_row
 from .sessions import select_session as _select_session
 from .snapshot import (
@@ -116,11 +134,11 @@ class RecordingReader:
             self._sessions = tuple(
                 _session_from_row(row)
                 for row in self._connection.execute(
-                    "SELECT * FROM sessions ORDER BY session_id"
+                    f"SELECT * FROM {SESSIONS_TABLE} ORDER BY {ArchiveColumn.SESSION_ID}"
                 ).fetchall()
             )
-            self._capture_anomaly_provenance = (
-                _capture_anomaly_journal_provenance(self._connection)
+            self._capture_anomaly_provenance = _capture_anomaly_journal_provenance(
+                self._connection
             )
             self._capture_anomaly_cutoff_id = (
                 0
@@ -148,12 +166,10 @@ class RecordingReader:
             raise ArchiveFormatError(
                 f"recording archive does not exist: {archive_path}"
             )
-        lock_file = _open_writer_lock_file(archive_path)
+        lock_file = None
         connection: sqlite3.Connection | None = None
         try:
-            _acquire_writer_lock(lock_file, archive_path)
-            connection = _open_connection(archive_path)
-            configure_writer_connection(connection)
+            connection, lock_file = open_exclusive_connection(archive_path)
             target_identity = _validate_archive(connection)
             _recover_interrupted_session(connection)
             _checkpoint_wal(connection)
@@ -169,7 +185,8 @@ class RecordingReader:
                 with suppress(sqlite3.Error):
                     connection.rollback()
                 connection.close()
-            _release_writer_lock(lock_file)
+            if lock_file is not None:
+                _release_writer_lock(lock_file)
             raise
 
     @property
@@ -227,7 +244,7 @@ class RecordingReader:
         token_id: str | None = None,
         allow_gaps: bool = False,
     ) -> Iterator[RecordedEvent]:
-        selection = _selection(
+        selection = ArchiveSelection.from_filters(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
             session_id=session_id,
@@ -262,7 +279,7 @@ class RecordingReader:
     ) -> RecordingEventBounds | None:
         """Return observed-time and sequence bounds for a validated selection."""
 
-        selection = _selection(
+        selection = ArchiveSelection.from_filters(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
             session_id=session_id,
@@ -297,7 +314,7 @@ class RecordingReader:
     ) -> int:
         """Count non-gap events in one validated reader selection."""
 
-        selection = _selection(
+        selection = ArchiveSelection.from_filters(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
             session_id=session_id,
@@ -328,7 +345,7 @@ class RecordingReader:
     ) -> tuple[str, ...]:
         """Return selected slugs whose metadata changed inside the selection."""
 
-        selection = _selection(
+        selection = ArchiveSelection.from_filters(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
             session_id=session_id,
@@ -350,7 +367,12 @@ class RecordingReader:
                     _reject_known_gaps(
                         connection,
                         replay_cutoff_sequence=self._replay_cutoff_sequence,
-                        **selection,
+                        start_at_ms=selection.start_at_ms,
+                        end_at_ms=selection.end_at_ms,
+                        session_id=selection.session_id,
+                        condition_ids=selection.condition_ids,
+                        market_slugs=selection.market_slugs,
+                        token_id=selection.token_id,
                     )
                 return _market_slugs_with_metadata_revisions(
                     connection,
@@ -410,7 +432,7 @@ class RecordingReader:
     ) -> tuple[MarketMetadataPayload, ...]:
         """Enumerate latest market revisions visible at one replay time."""
 
-        selection = _selection(
+        selection = ArchiveSelection.from_filters(
             start_at_ms=observed_at_ms,
             end_at_ms=observed_at_ms,
             session_id=session_id,
@@ -426,7 +448,12 @@ class RecordingReader:
                 _reject_known_gaps(
                     self._connection,
                     replay_cutoff_sequence=self._replay_cutoff_sequence,
-                    **selection,
+                    start_at_ms=selection.start_at_ms,
+                    end_at_ms=selection.end_at_ms,
+                    session_id=selection.session_id,
+                    condition_ids=selection.condition_ids,
+                    market_slugs=selection.market_slugs,
+                    token_id=selection.token_id,
                 )
             return _markets_at(
                 self._connection,
@@ -617,7 +644,7 @@ class RecordingReader:
         token_id: str | None = None,
         open_only: bool = False,
     ) -> tuple[CoverageGapRecord, ...]:
-        selection = _selection(
+        selection = ArchiveSelection.from_filters(
             start_at_ms=start_at_ms,
             end_at_ms=end_at_ms,
             session_id=session_id,
@@ -633,7 +660,12 @@ class RecordingReader:
                 self._connection,
                 replay_cutoff_sequence=self._replay_cutoff_sequence,
                 open_only=open_only,
-                **selection,
+                start_at_ms=selection.start_at_ms,
+                end_at_ms=selection.end_at_ms,
+                session_id=selection.session_id,
+                condition_ids=selection.condition_ids,
+                market_slugs=selection.market_slugs,
+                token_id=selection.token_id,
             )
 
     def capture_anomaly_journal_available(self, session_id: int) -> bool:

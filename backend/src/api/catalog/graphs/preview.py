@@ -1,8 +1,17 @@
 """Preview ingress: framework-validated events and isolated portfolio samples."""
 
+from dataclasses import replace
+from decimal import Decimal
 from inspect import signature
 from typing import Any, Self, get_type_hints
-from decimal import Decimal
+
+from polybot.framework.base import BaseBot
+from polybot.framework.config.constants import DEFAULT_EVENT_MAX_AGE_MS
+from polybot.framework.events import OrderRequest
+from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.portfolio import PortfolioPosition, PortfolioSnapshot
+from polybot.framework.wallets import validate_wallet_address
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -11,17 +20,17 @@ from pydantic import (
     TypeAdapter,
     model_validator,
 )
-from polybot.framework.base import BaseBot
-from polybot.framework.events import OrderRequest
-from polybot.framework.portfolio import PortfolioPosition, PortfolioSnapshot
+
 from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.preview_samples import DEFAULT_PREVIEW_CASH
 from api.catalog.graphs.results import GraphNodeEvaluationRead
 from api.catalog.graphs.types import GraphHookName
+from api.catalog.graphs.values import GraphNodeType
 
 
 class PreviewPortfolio(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    available_cash: Decimal = Field(default=Decimal("1000"), allow_inf_nan=False)
+    available_cash: Decimal = Field(default=DEFAULT_PREVIEW_CASH, allow_inf_nan=False)
     positions: tuple[PortfolioPosition, ...] = ()
 
     @model_validator(mode="after")
@@ -57,7 +66,7 @@ class GraphPreviewRequest(BaseModel):
     @model_validator(mode="after")
     def _validate_event(self) -> Self:
         if not any(
-            node.type == "trigger" and node.data.hook_name == self.hook_name
+            node.type == GraphNodeType.TRIGGER and node.data.hook_name == self.hook_name
             for node in self.graph.nodes
         ):
             raise ValueError("Select a trigger present in this graph")
@@ -69,7 +78,29 @@ class GraphPreviewRequest(BaseModel):
         else:
             annotation = get_type_hints(method)[parameters[-1].name]
             self._event = TypeAdapter(annotation).validate_python(self.payload)
+            self._validate_event_semantics()
         return self
+
+    def _validate_event_semantics(self) -> None:
+        event = self._event
+        if isinstance(event, BookSnapshot):
+            event = replace(event, token_id=event.token_id.strip())
+            self._event = event
+            if not event.token_id:
+                raise ValueError("Preview book token ID must be nonempty")
+            issue = event.validation_issue(self.now_ms, DEFAULT_EVENT_MAX_AGE_MS)
+            if issue is not None:
+                raise ValueError(issue.value)
+        elif isinstance(event, WalletTradeEvent):
+            event = replace(
+                event,
+                wallet=validate_wallet_address(event.wallet),
+                token_id=event.token_id.strip(),
+            )
+            self._event = event
+            issue = event.validation_issue(self.now_ms, DEFAULT_EVENT_MAX_AGE_MS)
+            if issue is not None:
+                raise ValueError(issue.value)
 
     @property
     def event(self) -> object | None:

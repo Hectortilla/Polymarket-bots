@@ -6,6 +6,8 @@ import sqlite3
 from collections.abc import Mapping
 
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import EVENT_TOKENS_TABLE, EVENTS_TABLE
 
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketMetadataPayload
@@ -73,7 +75,11 @@ def first_complete_baseline_pair_at_or_after(
         )
         for token_id in token_ids
     )
-    session_clause = "" if normalized_session is None else "AND event.session_id = ?"
+    session_clause = (
+        ""
+        if normalized_session is None
+        else f"AND event.{ArchiveColumn.SESSION_ID} = ?"
+    )
     parameters: list[object] = [
         PayloadKind.BOOK_BASELINE.value,
         market.condition_id,
@@ -92,30 +98,30 @@ def first_complete_baseline_pair_at_or_after(
     row = connection.execute(
         f"""
         WITH first_token_baseline AS (
-            SELECT event.subscription_generation,
-                   selected_token.token_id,
-                   MIN(event.observed_at_ms) AS first_observed_at_ms
-            FROM events AS event
-            JOIN event_tokens AS selected_token
-              ON selected_token.sequence = event.sequence
-            WHERE event.payload_kind = ? AND event.condition_id = ?
-              AND event.observed_at_ms >= ?
-              AND event.observed_at_ms <= ?
-              AND event.sequence <= ?
-              AND selected_token.token_id IN ({token_placeholders})
+            SELECT event.{ArchiveColumn.SUBSCRIPTION_GENERATION},
+                   selected_token.{ArchiveColumn.TOKEN_ID},
+                   MIN(event.{ArchiveColumn.OBSERVED_AT_MS}) AS first_observed_at_ms
+            FROM {EVENTS_TABLE} AS event
+            JOIN {EVENT_TOKENS_TABLE} AS selected_token
+              ON selected_token.{ArchiveColumn.SEQUENCE} = event.{ArchiveColumn.SEQUENCE}
+            WHERE event.{ArchiveColumn.PAYLOAD_KIND} = ? AND event.{ArchiveColumn.CONDITION_ID} = ?
+              AND event.{ArchiveColumn.OBSERVED_AT_MS} >= ?
+              AND event.{ArchiveColumn.OBSERVED_AT_MS} <= ?
+              AND event.{ArchiveColumn.SEQUENCE} <= ?
+              AND selected_token.{ArchiveColumn.TOKEN_ID} IN ({token_placeholders})
               AND (
-                  (selected_token.token_id = ? AND event.sequence > ?)
+                  (selected_token.{ArchiveColumn.TOKEN_ID} = ? AND event.{ArchiveColumn.SEQUENCE} > ?)
                   OR
-                  (selected_token.token_id = ? AND event.sequence > ?)
+                  (selected_token.{ArchiveColumn.TOKEN_ID} = ? AND event.{ArchiveColumn.SEQUENCE} > ?)
               )
               {session_clause}
-            GROUP BY event.subscription_generation,
-                     selected_token.token_id
+            GROUP BY event.{ArchiveColumn.SUBSCRIPTION_GENERATION},
+                     selected_token.{ArchiveColumn.TOKEN_ID}
         )
         SELECT MAX(first_observed_at_ms) AS complete_at_ms
         FROM first_token_baseline
-        GROUP BY subscription_generation
-        HAVING COUNT(DISTINCT token_id) = ?
+        GROUP BY {ArchiveColumn.SUBSCRIPTION_GENERATION}
+        HAVING COUNT(DISTINCT {ArchiveColumn.TOKEN_ID}) = ?
         ORDER BY complete_at_ms
         LIMIT 1
         """,

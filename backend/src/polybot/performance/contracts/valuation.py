@@ -9,7 +9,6 @@ from typing import Protocol
 
 from .valuation_status import ValuationStatus
 
-
 ZERO_MARKET_VALUE = Decimal("0")
 
 

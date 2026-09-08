@@ -20,16 +20,15 @@ from polybot.framework.clock import system_now_ms, system_now_utc
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import Side
 
-from .contracts import DurableEvent
-from .projection import (
-    project_chart_sample,
-    project_live_chart_events,
-    project_live_stream_health,
-    project_runtime_event_to_durable,
-    project_terminal_stream_health,
+from api.events.contracts import (
+    ChartSampleEvent,
+    LiveStreamHealthEvent,
+    StreamHealthEvent,
 )
-from .writer import RunEventWriter
 
+from .contracts import DurableEvent
+from .projection import project_live_chart_events, project_runtime_event_to_durable
+from .writer import RunEventWriter
 
 MAX_PENDING_EVENTS = 256
 DURABLE_DASHBOARD_INTERVAL_SECONDS = 1.0
@@ -94,17 +93,15 @@ class WebRuntimeObserver:
         if projection is not None:
             occurred_at = self._now_utc()
             await self._pending.put(
-                project_chart_sample(
+                ChartSampleEvent.from_sample(
                     self._run_id,
-                    self._with_durable_markers(
-                        projection.sample(self._now_ms())
-                    ),
+                    self._with_durable_markers(projection.sample(self._now_ms())),
                     occurred_at=occurred_at,
                 )
             )
         if self._latest_stream_health is not None:
             await self._pending.put(
-                project_terminal_stream_health(
+                StreamHealthEvent.from_observation(
                     self._run_id,
                     self._latest_stream_health,
                 )
@@ -156,7 +153,7 @@ class WebRuntimeObserver:
             if health is not None:
                 try:
                     await self._event_writer.publish_live(
-                        project_live_stream_health(
+                        LiveStreamHealthEvent.from_observation(
                             self._run_id,
                             health,
                             occurred_at=occurred_at,
@@ -165,7 +162,7 @@ class WebRuntimeObserver:
                 except Exception:
                     pass
             self._enqueue(
-                project_chart_sample(
+                ChartSampleEvent.from_sample(
                     self._run_id,
                     self._with_durable_markers(sample),
                     occurred_at=occurred_at,

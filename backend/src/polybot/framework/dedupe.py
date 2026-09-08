@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 class SourceEventDeduper:
     """Remember source IDs for the full lifetime of one runtime."""
 

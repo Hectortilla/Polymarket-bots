@@ -13,7 +13,6 @@ from polybot.framework.events import FillEvent, OrderRequest
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
 
-
 ORDERING_DISABLED_MESSAGE = "the recording planner cannot submit or cancel orders"
 WALLET_ACTIVITY_DISABLED_MESSAGE = (
     "the market-only recording planner cannot query wallet activity"
@@ -59,9 +58,7 @@ class StaticStreamPlanProvider:
 
     def __post_init__(self) -> None:
         normalized = tuple(
-            dict.fromkeys(
-                slug.strip() for slug in self.market_slugs if slug.strip()
-            )
+            dict.fromkeys(slug.strip() for slug in self.market_slugs if slug.strip())
         )
         if not normalized:
             raise ValueError("at least one market slug is required")

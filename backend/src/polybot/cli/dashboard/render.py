@@ -6,21 +6,28 @@ from collections import deque
 from math import isnan
 
 import asciichartpy
-from rich.console import Group
-from rich.layout import Layout
-from rich.panel import Panel
-from rich.text import Text
-
 from polybot.cli.charting import (
     DIMMED_VALUE_COLOR,
     chart_time_range,
+)
+from polybot.cli.charting import (
     padded_value_bounds as _padded_bounds,
+)
+from polybot.cli.charting import (
     render_chart as _chart,
+)
+from polybot.cli.charting import (
     resample_indices as _resample_indices,
+)
+from polybot.cli.charting import (
     split_stale_samples as _split_stale_samples,
 )
 from polybot.framework.events import Side
 from polybot.framework.events.prices import OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR
+from rich.console import Group
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.text import Text
 
 from .layout import (
     DASHBOARD_NARROW_WIDTH,
@@ -30,21 +37,11 @@ from .layout import (
 )
 from .palette import SERIES_PALETTE, side_chart_color
 from .state import DashboardState
-from .view_state import DashboardView
-from .status import fixed_ms as _fixed_ms
-from .status import money as _money
-from .status import optional_money as _optional_money
-from .status import optional_ms as _optional_ms
 from .status import status_panel as _status_panel
 from .status import ticker_panel as _ticker_panel
+from .view_state import DashboardView
 from .wallet_timeline import (
-    short_wallet as _short_wallet,
-    wallet_bucket_glyph as _wallet_bucket_glyph,
-    wallet_lane_summary as _wallet_lane_summary,
     wallet_timeline as _wallet_timeline,
-    wallet_timeline_buckets as _wallet_timeline_buckets,
-    wallet_timeline_columns as _wallet_timeline_columns,
-    wallet_lane_capacity,
 )
 
 PRICE_CHART_MIN = float(OUTCOME_PRICE_FLOOR)
@@ -250,7 +247,7 @@ def _price_chart_height(width: int, height: int) -> int:
 def _time_window_label(zoom_level: int) -> str:
     if zoom_level == 0:
         return "normal"
-    return f"{2**abs(zoom_level)}x {'closer' if zoom_level < 0 else 'wider'}"
+    return f"{2 ** abs(zoom_level)}x {'closer' if zoom_level < 0 else 'wider'}"
 
 
 def _chart_time_range(state: DashboardState, width: int) -> Text:

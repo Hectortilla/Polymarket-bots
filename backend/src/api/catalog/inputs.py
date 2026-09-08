@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
-
 from polybot.framework.config.constants import (
     DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
@@ -20,7 +18,10 @@ from polybot.framework.wallets import (
     WALLET_ADDRESS_SCHEMA_PATTERN,
     validate_wallet_address,
 )
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+
 from api.catalog.values import WIDGET_SCHEMA_KEY, WidgetKind
+from api.market_selection import MAX_SELECTED_MARKETS, MarketSlug
 from api.runs.contracts import (
     DataTradesBudget,
     NonnegativeDecimal,
@@ -29,7 +30,6 @@ from api.runs.contracts import (
     PositiveDecimal,
     RunName,
 )
-
 
 type WalletAddress = Annotated[
     str,
@@ -40,12 +40,6 @@ type WalletAddress = Annotated[
     ),
     AfterValidator(validate_wallet_address),
 ]
-type MarketSlug = Annotated[
-    str,
-    StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200),
-]
-
-MAX_SELECTED_MARKETS = 100
 
 
 class PaperLaunchInputs(BaseModel):

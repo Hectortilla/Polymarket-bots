@@ -5,10 +5,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from api.catalog.values import DefinitionId
-from api.catalog.graphs.contracts import NodeGraph
-from api.runs.contracts import PaperRunConfig
 from api.bots.revisions import GraphRevisionNumber
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.values import DefinitionId
+from api.runs.contracts import PaperRunConfig
 
 
 class BotCreate(BaseModel):

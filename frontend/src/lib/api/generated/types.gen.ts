@@ -10,6 +10,11 @@ export type ClientOptions = {
 export type ActivitySeverity = 'info' | 'success' | 'warning' | 'error';
 
 /**
+ * BookValidationIssue
+ */
+export type BookValidationIssue = 'market_metadata_missing' | 'book_identity_mismatch' | 'bad_book_timestamp' | 'book_future_dated' | 'book_stale' | 'bad_book_level' | 'book_crossed';
+
+/**
  * BootstrapPhase
  */
 export type BootstrapPhase = 'markets' | 'wallets';
@@ -291,6 +296,11 @@ export type FillEvent = {
 export type FillRejectReason = 'missing_token_id' | 'bad_side' | 'bad_price' | 'bad_size' | 'book_unavailable' | 'book_mismatch' | 'bad_book_timestamp' | 'book_stale' | 'book_future_dated' | 'bad_book_level' | 'book_crossed' | 'market_unavailable' | 'market_fee_invalid' | 'market_metadata_mismatch' | 'market_resolved' | 'no_depth_within_slippage' | 'duplicate_source_id' | 'invalid_source_id' | 'backtest_data_exhausted' | 'backtest_coverage_gap';
 
 /**
+ * GraphActionSkipReason
+ */
+export type GraphActionSkipReason = 'disabled' | 'required_input_unavailable' | 'book_gap' | 'book_stale' | 'wallet_trade_invalid' | 'wallet_trade_future_dated' | 'wallet_trade_stale';
+
+/**
  * GraphBooleanConstantData
  */
 export type GraphBooleanConstantData = {
@@ -463,6 +473,8 @@ export type GraphEdgeId = string;
 
 export type GraphElementId = string;
 
+export type GraphEvaluationReason = GraphReason | GraphActionSkipReason | BookValidationIssue | WalletTradeValidationIssue | FillRejectReason;
+
 /**
  * GraphExample
  */
@@ -622,10 +634,7 @@ export type GraphNodeEvaluationRead = {
     outputs: {
         [key: string]: GraphValueRead;
     };
-    /**
-     * Reason
-     */
-    reason?: string | null;
+    reason?: GraphEvaluationReason | null;
     status?: GraphValueStatus;
 };
 
@@ -826,6 +835,11 @@ export type GraphPreviewResponse = {
     nodes: Array<GraphNodeEvaluationRead>;
 };
 
+/**
+ * GraphReason
+ */
+export type GraphReason = 'value_unavailable' | 'invalid_number' | 'division_by_zero' | 'invalid_bounds' | 'whole_number_required' | 'portfolio_unavailable' | 'cooldown_active' | 'already_consumed' | 'reset' | 'state_capacity_exceeded' | 'invalid_key' | 'disabled' | 'planned';
+
 export type GraphRevisionNumber = number;
 
 /**
@@ -947,10 +961,7 @@ export type GraphValueRead = {
      * Message
      */
     message?: string | null;
-    /**
-     * Reason
-     */
-    reason?: string | null;
+    reason?: GraphEvaluationReason | null;
     status: GraphValueStatus;
     /**
      * Value
@@ -2035,6 +2046,11 @@ export type WalletTradeEvent = {
  * WalletTradeKind
  */
 export type WalletTradeKind = 'trade' | 'backfill' | 'reconciliation';
+
+/**
+ * WalletTradeValidationIssue
+ */
+export type WalletTradeValidationIssue = 'wallet_trade_invalid' | 'wallet_trade_future_dated' | 'wallet_trade_stale';
 
 export type ListBotDefinitionsApiV1BotDefinitionsGetData = {
     body?: never;

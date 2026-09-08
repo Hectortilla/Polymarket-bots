@@ -4,8 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from api.catalog.inputs import MarketSlug, MAX_SELECTED_MARKETS
-
+from api.market_selection import MAX_SELECTED_MARKETS, MarketSlug
 
 MIN_MARKET_SEARCH_LENGTH = 2
 MAX_MARKET_SEARCH_LENGTH = 200

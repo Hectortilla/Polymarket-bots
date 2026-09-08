@@ -10,10 +10,10 @@ from polybot.persistence.json_codec import loads_json
 
 from ..files import RESULT_SCHEMA_VERSION, PerformanceSummaryField
 from ..parsing import (
+    require_exact_keys,
     required_bool,
     required_mapping,
     required_text,
-    require_exact_keys,
 )
 from ..run import PerformanceRunStatus
 from . import artifacts as artifact_section

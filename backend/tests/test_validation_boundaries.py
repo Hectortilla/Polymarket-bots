@@ -1,9 +1,8 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 import pytest
-
 from polybot.execution.paper import BAD_BOOK_TIMESTAMP_MESSAGE, PaperBroker
 from polybot.execution.paper.validation import BOOK_VALIDATION_REJECT_REASON
 from polybot.framework.config.models import BotConfig
@@ -49,12 +48,30 @@ class SequencedBooks:
 @pytest.mark.parametrize(
     ("order", "reason"),
     (
-        (OrderRequest("", Side.BUY, Decimal("0.5"), Decimal("1")), FillRejectReason.MISSING_TOKEN_ID),
-        (OrderRequest("token", "HOLD", Decimal("0.5"), Decimal("1")), FillRejectReason.BAD_SIDE),  # type: ignore[arg-type]
-        (OrderRequest("token", Side.BUY, Decimal("0"), Decimal("1")), FillRejectReason.BAD_PRICE),
-        (OrderRequest("token", Side.BUY, Decimal("NaN"), Decimal("1")), FillRejectReason.BAD_PRICE),
-        (OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("0")), FillRejectReason.BAD_SIZE),
-        (OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("Infinity")), FillRejectReason.BAD_SIZE),
+        (
+            OrderRequest("", Side.BUY, Decimal("0.5"), Decimal("1")),
+            FillRejectReason.MISSING_TOKEN_ID,
+        ),
+        (
+            OrderRequest("token", "HOLD", Decimal("0.5"), Decimal("1")),
+            FillRejectReason.BAD_SIDE,
+        ),  # type: ignore[arg-type]
+        (
+            OrderRequest("token", Side.BUY, Decimal("0"), Decimal("1")),
+            FillRejectReason.BAD_PRICE,
+        ),
+        (
+            OrderRequest("token", Side.BUY, Decimal("NaN"), Decimal("1")),
+            FillRejectReason.BAD_PRICE,
+        ),
+        (
+            OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("0")),
+            FillRejectReason.BAD_SIZE,
+        ),
+        (
+            OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("Infinity")),
+            FillRejectReason.BAD_SIZE,
+        ),
     ),
 )
 def test_invalid_orders_reject_before_book_lookup(
@@ -70,7 +87,9 @@ def test_invalid_orders_reject_before_book_lookup(
 
 
 @pytest.mark.parametrize("book_error", (None, RuntimeError("offline")))
-def test_unavailable_book_rejects_without_mutation(book_error: Exception | None) -> None:
+def test_unavailable_book_rejects_without_mutation(
+    book_error: Exception | None,
+) -> None:
     books = CountingBooks(error=book_error)
     broker = _broker(books)
     fill = asyncio.run(broker.submit(_order()))
@@ -248,8 +267,14 @@ def test_failed_source_claim_propagates_and_can_retry() -> None:
     ("markets", "reason"),
     (
         (MarketSource(None), FillRejectReason.MARKET_UNAVAILABLE),
-        (MarketSource(error=RuntimeError("offline")), FillRejectReason.MARKET_UNAVAILABLE),
-        (MarketSource(type("BadFee", (), {"fee_rate": "0.1"})()), FillRejectReason.MARKET_FEE_INVALID),
+        (
+            MarketSource(error=RuntimeError("offline")),
+            FillRejectReason.MARKET_UNAVAILABLE,
+        ),
+        (
+            MarketSource(type("BadFee", (), {"fee_rate": "0.1"})()),
+            FillRejectReason.MARKET_FEE_INVALID,
+        ),
     ),
 )
 def test_market_lookup_failures_reject_without_mutation(
@@ -330,3 +355,21 @@ def _book(
         market_slug="market",
         condition_id="condition",
     )
+
+
+@pytest.mark.parametrize(
+    "changes", ({"market_slug": "other"}, {"condition_id": "other"})
+)
+def test_explicit_order_identity_mismatch_rejects_before_market_lookup(changes):
+    class UnexpectedLookup:
+        async def find_by_slug(self, slug):
+            raise AssertionError("mismatched order must reject before metadata lookup")
+
+    books = CountingBooks(snapshot=_book())
+    broker = _broker(books, markets=UnexpectedLookup())
+    cash = broker.portfolio.cash_usdc
+    fill = asyncio.run(broker.submit(replace(_order(), **changes)))
+    assert fill.reject_reason is FillRejectReason.BOOK_MISMATCH
+    assert books.calls == 1
+    assert broker.portfolio.cash_usdc == cash
+    assert broker.portfolio.positions == {}

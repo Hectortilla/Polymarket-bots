@@ -6,7 +6,6 @@ from enum import StrEnum
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.wallet_trades import WalletTradeValidationIssue
 
-
 DISPATCH_ACCEPTED_OUTCOME_ALLOWS_SKIP_REASON = False
 DISPATCH_SKIPPED_OUTCOME_REQUIRES_SKIP_REASON = True
 
@@ -54,6 +53,10 @@ class DispatchOutcome:
     @classmethod
     def skipped(cls, reason: DispatchSkipReason) -> DispatchOutcome:
         return cls(accepted=False, skip_reason=reason)
+
+    @property
+    def is_duplicate(self) -> bool:
+        return self.skip_reason is DispatchSkipReason.DUPLICATE_SOURCE_EVENT
 
     def __bool__(self) -> bool:
         return self.accepted

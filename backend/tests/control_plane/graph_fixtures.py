@@ -1,10 +1,12 @@
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 
-
 THRESHOLD_BUY_GRAPH_PATH = (
-    Path(__file__).parents[1] / "fixtures" / "control_plane" / "threshold_buy_graph.json"
+    Path(__file__).parents[1]
+    / "fixtures"
+    / "control_plane"
+    / "threshold_buy_graph.json"
 )
 THRESHOLD_BUY_GRAPH = json.loads(THRESHOLD_BUY_GRAPH_PATH.read_text())
 

@@ -1,58 +1,53 @@
 <script lang="ts">
-  import { setContext, untrack } from 'svelte';
   import {
+    addEdge,
     Background,
     BackgroundVariant,
+    Controls,
+    SvelteFlow,
     type Connection,
     type CoordinateExtent,
-    Controls,
-    SvelteFlow
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
+  import { setContext, untrack } from 'svelte';
   import catalogContract from './catalogContract.fixture.json';
 
   import type {
-    GraphOperationNodeData,
-    GraphParameter,
     GraphComparisonNodeData,
     GraphConstantNodeData,
     GraphNodeCatalog,
+    GraphOperationNodeData,
+    GraphParameter,
     GraphTriggerDescriptor,
-    NodeGraph
+    NodeGraph,
   } from '$lib/api/generated';
-  import OperationNode from './OperationNode.svelte';
-  import ParameterNode from './ParameterNode.svelte';
-  import GraphParameters from './GraphParameters.svelte';
-  import GraphPreview from './GraphPreview.svelte';
-  import BrokerActionNode from './BrokerActionNode.svelte';
-  import ComparisonNode from './ComparisonNode.svelte';
-  import ConstantNode from './ConstantNode.svelte';
-  import NodePalette from './NodePalette.svelte';
-  import TriggerNode from './TriggerNode.svelte';
+  import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
+  import { connectionIsValid } from '$lib/catalog/nodeGraph/connections';
+  import { type CanvasEdge, type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
   import {
-    addConnection,
-    canvasEdges,
-    canvasNodes,
-    connectionIsValid,
-    createOperationNode,
-    createParameterNode,
     createBrokerActionNode,
     createComparisonNode,
     createConstantNode,
+    createOperationNode,
+    createParameterNode,
     createTriggerNode,
-    GRAPH_NODE_TYPE,
+  } from '$lib/catalog/nodeGraph/factories';
+  import {
+    canvasEdges,
+    canvasNodes,
     toPersistedNodeGraph,
-    type CanvasEdge,
-    type CanvasNode
-  } from './nodeGraph';
-  import {
-    NODE_GRAPH_EDITOR_CONTEXT,
-    type NodeGraphEditorContext
-  } from './nodeGraphContext';
-  import {
-    GRAPH_VALIDATION_COPY,
-    type GraphValidationIssue
-  } from './graphValidation';
+  } from '$lib/catalog/nodeGraph/projections';
+  import BrokerActionNode from './BrokerActionNode.svelte';
+  import ComparisonNode from './ComparisonNode.svelte';
+  import ConstantNode from './ConstantNode.svelte';
+  import GraphParameters from './GraphParameters.svelte';
+  import GraphPreview from './GraphPreview.svelte';
+  import { GRAPH_VALIDATION_COPY, type GraphValidationIssue } from './graphValidation';
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
+  import NodePalette from './NodePalette.svelte';
+  import OperationNode from './OperationNode.svelte';
+  import ParameterNode from './ParameterNode.svelte';
+  import TriggerNode from './TriggerNode.svelte';
 
   let {
     initialGraph,
@@ -62,7 +57,7 @@
     describedby,
     readOnly = false,
     validationIssues = [],
-    validationSummaryId = 'graph-validation-summary'
+    validationSummaryId = 'graph-validation-summary',
   }: {
     initialGraph: NodeGraph;
     graphCatalog: GraphNodeCatalog;
@@ -83,7 +78,7 @@
     [GRAPH_NODE_TYPE.trigger]: TriggerNode,
     [GRAPH_NODE_TYPE.constant]: ConstantNode,
     [GRAPH_NODE_TYPE.comparison]: ComparisonNode,
-    [GRAPH_NODE_TYPE.brokerAction]: BrokerActionNode
+    [GRAPH_NODE_TYPE.brokerAction]: BrokerActionNode,
   };
   const readOnlyFlowOptions = { hideAttribution: true };
   let nodes = $state.raw<CanvasNode[]>(canvasNodes(initialGraphSnapshot));
@@ -94,12 +89,12 @@
   const coordinateLimit = catalogContract.nodeGraph.coordinateLimit;
   const nodeExtent: CoordinateExtent = [
     [-coordinateLimit, -coordinateLimit],
-    [coordinateLimit, coordinateLimit]
+    [coordinateLimit, coordinateLimit],
   ];
   const canvasDescription = $derived(
     [describedby, validationIssues.length > 0 ? validationSummaryId : undefined]
       .filter(Boolean)
-      .join(' ') || undefined
+      .join(' ') || undefined,
   );
 
   const editorContext: NodeGraphEditorContext = {
@@ -108,13 +103,17 @@
       return readOnly;
     },
     issuesForNode(nodeId) {
-      const index = nodes.findIndex(node => node.id === nodeId);
-      return validationIssues.filter(issue => issue.location.startsWith(`Node ${index + 1}:`)).map(issue => issue.message);
+      const index = nodes.findIndex((node) => node.id === nodeId);
+      return validationIssues
+        .filter((issue) => issue.location.startsWith(`Node ${index + 1}:`))
+        .map((issue) => issue.message);
     },
-    get parameters() { return parameters; },
+    get parameters() {
+      return parameters;
+    },
     setOperationData,
     setComparisonData,
-    setConstantData
+    setConstantData,
   };
   setContext(NODE_GRAPH_EDITOR_CONTEXT, editorContext);
 
@@ -144,53 +143,55 @@
   function setConstantData(nodeId: string, data: GraphConstantNodeData): void {
     if (readOnly) return;
     nodes = nodes.map((node) =>
-      node.id === nodeId && node.type === GRAPH_NODE_TYPE.constant
-        ? { ...node, data }
-        : node
+      node.id === nodeId && node.type === GRAPH_NODE_TYPE.constant ? { ...node, data } : node,
     );
   }
 
-  function setComparisonData(
-    nodeId: string,
-    data: GraphComparisonNodeData
-  ): void {
+  function setComparisonData(nodeId: string, data: GraphComparisonNodeData): void {
     if (readOnly) return;
     const updatedNodes = nodes.map((node) =>
-      node.id === nodeId && node.type === GRAPH_NODE_TYPE.comparison
-        ? { ...node, data }
-        : node
+      node.id === nodeId && node.type === GRAPH_NODE_TYPE.comparison ? { ...node, data } : node,
     );
     nodes = updatedNodes;
     edges = edges.filter(
       (edge) =>
         edge.target !== nodeId ||
-        connectionIsValid(edge, updatedNodes, [], catalogSnapshot, parameters)
+        connectionIsValid(edge, updatedNodes, [], catalogSnapshot, parameters),
     );
   }
 
   function pruneConnections(): void {
     const count = edges.length;
-    edges = edges.filter(edge => connectionIsValid(edge, nodes, [], catalogSnapshot, parameters));
-    connectionNotice = count > edges.length ? `${count - edges.length} incompatible connection(s) removed after this change.` : '';
+    edges = edges.filter((edge) => connectionIsValid(edge, nodes, [], catalogSnapshot, parameters));
+    connectionNotice =
+      count > edges.length
+        ? `${count - edges.length} incompatible connection(s) removed after this change.`
+        : '';
   }
 
   function setOperationData(nodeId: string, data: GraphOperationNodeData): void {
     if (readOnly) return;
-    nodes = nodes.map(node => node.id === nodeId && node.type === GRAPH_NODE_TYPE.operation ? { ...node, data } : node);
+    nodes = nodes.map((node) =>
+      node.id === nodeId && node.type === GRAPH_NODE_TYPE.operation ? { ...node, data } : node,
+    );
     pruneConnections();
   }
 
   function setParameters(next: GraphParameter[]): void {
     if (readOnly) return;
     parameters = next;
-    nodes = nodes.filter(node => node.type !== GRAPH_NODE_TYPE.parameter || next.some(p => p.id === node.data.parameter_id));
+    nodes = nodes.filter(
+      (node) =>
+        node.type !== GRAPH_NODE_TYPE.parameter ||
+        next.some((p) => p.id === node.data.parameter_id),
+    );
     pruneConnections();
   }
 
   function connect(connection: Connection): void {
     if (readOnly) return;
     if (edges.length >= catalogContract.nodeGraph.maximumEdges) return;
-    edges = addConnection(connection, edges);
+    edges = addEdge(connection, edges);
   }
 </script>
 
@@ -200,7 +201,9 @@
   <div class="graph-toolbar">
     <div class="graph-summary" aria-live="polite">
       <span><strong>{nodes.length}</strong> {nodes.length === 1 ? 'node' : 'nodes'}</span>
-      <span><strong>{edges.length}</strong> {edges.length === 1 ? 'connection' : 'connections'}</span>
+      <span
+        ><strong>{edges.length}</strong> {edges.length === 1 ? 'connection' : 'connections'}</span
+      >
     </div>
     {#if !readOnly}
       <NodePalette
@@ -230,8 +233,8 @@
       bind:edges
       {nodeTypes}
       isValidConnection={(connection) =>
-        edges.length < catalogContract.nodeGraph.maximumEdges
-        && connectionIsValid(connection, nodes, edges, catalogSnapshot, parameters)}
+        edges.length < catalogContract.nodeGraph.maximumEdges &&
+        connectionIsValid(connection, nodes, edges, catalogSnapshot, parameters)}
       onconnect={connect}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly && edges.length < catalogContract.nodeGraph.maximumEdges}
@@ -257,16 +260,15 @@
       maxZoom={2}
     >
       {#if !readOnly}
-        <Controls
-          class="node-graph-controls"
-          position="bottom-right"
-          orientation="horizontal"
-        />
+        <Controls class="node-graph-controls" position="bottom-right" orientation="horizontal" />
       {/if}
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
     </SvelteFlow>
   </div>
-  {#if !readOnly}<GraphPreview graph={toPersistedNodeGraph(nodes, edges, parameters)} catalog={catalogSnapshot} />{/if}
+  {#if !readOnly}<GraphPreview
+      graph={toPersistedNodeGraph(nodes, edges, parameters)}
+      catalog={catalogSnapshot}
+    />{/if}
   {#if validationIssues.length > 0}
     <section
       class="graph-validation-summary"
@@ -434,10 +436,7 @@
       transform var(--transition);
   }
 
-  :global(
-    .node-graph-controls.svelte-flow__controls.horizontal
-      .svelte-flow__controls-button
-  ) {
+  :global(.node-graph-controls.svelte-flow__controls.horizontal .svelte-flow__controls-button) {
     border-right: 0;
   }
 

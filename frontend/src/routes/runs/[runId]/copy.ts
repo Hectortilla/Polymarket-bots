@@ -1,17 +1,25 @@
 export const RUN_DETAIL_COPY = {
+  STALE_BOOK_INPUT: 'stale book input',
+  STOP_ERROR: 'The stop request could not be sent.',
+  SENDING: 'Sending…',
+  LOAD_EARLIER: 'Load earlier events',
+  LOAD_ERROR: 'Older durable events could not be loaded.',
+  LOADING: 'Loading…',
+
+  BOT_CONFIGURATION: 'Bot configuration',
   EXECUTED_GRAPH_REVISION: 'Executed graph revision',
   GRAPH_REVISION: 'graph revision',
-  GRAPH_LOAD_ERROR: 'The executed graph could not be displayed.'
+  GRAPH_LOAD_ERROR: 'The executed graph could not be displayed.',
 } as const;
 
-export function runGraphRevisionLabel(
-  revision: number | null | undefined
-): string {
+export function runGraphRevisionLabel(revision: number | null | undefined): string {
   return `${RUN_DETAIL_COPY.GRAPH_REVISION} ${revision}`;
 }
 
-export function executedRunGraphRevisionLabel(
-  revision: number | null | undefined
-): string {
+export function executedRunGraphRevisionLabel(revision: number | null | undefined): string {
   return `${RUN_DETAIL_COPY.EXECUTED_GRAPH_REVISION} ${revision}`;
+}
+
+export function loadedEventsLabel(count: number): string {
+  return `${count} events loaded`;
 }

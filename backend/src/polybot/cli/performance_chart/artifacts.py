@@ -12,14 +12,13 @@ from pathlib import Path
 from polybot.performance.contracts.files import (
     EQUITY_FIELDS,
     EQUITY_FILE_NAME,
-    EquityField,
     SUMMARY_FILE_NAME,
+    EquityField,
 )
 from polybot.performance.contracts.summary import PerformanceSummaryV1
 from polybot.performance.contracts.valuation_status import ValuationStatus
 
 from .contracts import PerformanceChartData, PerformanceChartError
-
 
 MAX_CHART_TIMESTAMP_MS = (1 << 63) - 1
 

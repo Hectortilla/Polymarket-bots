@@ -2,7 +2,6 @@
 
 from enum import StrEnum
 
-
 MIN_GRAPH_IDENTIFIER_LENGTH = 1
 MIN_GRAPH_FIELD_PATH_SEGMENTS = 1
 MIN_GRAPH_INPUT_SCALAR_TYPES = 1
@@ -53,6 +52,9 @@ class GraphScalarType(StrEnum):
     STRING = "string"
 
 
+DEFAULT_OPERATION_SCALAR_TYPE = GraphScalarType.NUMBER
+
+
 GRAPH_CONTEXT_PORT_TYPE = GRAPH_CONTEXT_HANDLE_ID
 
 
@@ -99,6 +101,7 @@ class GraphPort(StrEnum):
     RESET = "reset"
     DURATION_MS = "duration_ms"
     TOKEN_ID = "token_id"
+    PRICE = "price"
     SIZE = "size"
     HAS_POSITION = "has_position"
     AVERAGE_ENTRY_PRICE = "average_entry_price"

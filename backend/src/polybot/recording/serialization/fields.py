@@ -7,7 +7,6 @@ from polybot.framework.events.resolution_fields import (
     RESOLUTION_WINNING_TOKEN_ID_FIELD,
 )
 
-
 ACCEPTING_ORDERS_FIELD: Final = "accepting_orders"
 ACTIVE_FIELD: Final = "active"
 ACTUAL_FINGERPRINT_FIELD: Final = "actual_fingerprint"

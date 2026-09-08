@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
-
-
-MILLISECONDS_PER_SECOND = 1_000
+from polybot.framework.timestamps import (
+    MILLISECONDS_PER_SECOND,
+    require_nonnegative_timestamp,
+)
 
 
 def market_bucket_start_seconds(
@@ -16,7 +16,7 @@ def market_bucket_start_seconds(
     """Return the owning Unix-second bucket after applying an offset."""
     if bucket_seconds <= 0:
         raise ValueError("bucket_seconds must be positive")
-    return (now_seconds // bucket_seconds + bucket_offset) * bucket_seconds
+    return _bucket_start_seconds(now_seconds, bucket_seconds, bucket_offset)
 
 
 def market_bucket_slug(
@@ -86,3 +86,9 @@ class FixedBucketTiming:
 
     def _allows_valid_entry(self, delay_ms: int, cutoff_ms: int) -> bool:
         return self.elapsed_ms >= delay_ms and self.remaining_ms > cutoff_ms
+
+
+def _bucket_start_seconds(
+    now_seconds: int, bucket_seconds: int, bucket_offset: int
+) -> int:
+    return (now_seconds // bucket_seconds + bucket_offset) * bucket_seconds

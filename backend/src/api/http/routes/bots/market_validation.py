@@ -2,19 +2,18 @@
 
 from fastapi import HTTPException, status
 from fastapi.exceptions import RequestValidationError
-
+from polybot.framework.streams import STREAM_RULE_MARKET_SLUGS_FIELD
 from polybot.polymarket.discovery import MarketDiscovery
 from polybot.polymarket.errors import MarketDataError, MarketDataTransportError
-from polybot.framework.streams import STREAM_RULE_MARKET_SLUGS_FIELD
+
+from api.http.market_contracts import (
+    MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
+)
 from api.http.routes.bots.validation import (
     BOT_INPUTS_FIELD,
     REQUEST_BODY_LOCATION,
 )
-from api.http.market_contracts import (
-    MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
-)
 from api.runs.contracts import PaperRunConfig
-
 
 MARKET_SELECTION_UNAVAILABLE_DETAIL = (
     "Select an available market from the search results."

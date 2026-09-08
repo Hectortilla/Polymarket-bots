@@ -1,66 +1,63 @@
+from __future__ import annotations
+
 import asyncio
+import json
 from collections import deque
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 from io import StringIO
-import json
 from math import inf, isnan, nan
 from pathlib import Path
 from threading import Event, Thread
 
 import asciichartpy
 import pytest
-from rich.console import Console
-
 from polybot.async_io import run_blocking
 from polybot.cli.charting import (
     padded_value_bounds,
     render_chart,
     resample_indices,
 )
+from polybot.cli.dashboard.controller import TerminalDashboard
 from polybot.cli.dashboard.render import (
     PRICE_CHART_MAX,
     PRICE_CHART_MIN,
     _chart_time_range,
-    _fixed_ms,
     _price_chart_height,
     _price_chart_series,
-    _wallet_bucket_glyph,
-    _wallet_timeline_buckets,
     render_dashboard,
 )
-from polybot.cli.dashboard.controller import TerminalDashboard
-from polybot.cli.dashboard.status import filled_progress_width, optional_money
-from polybot.dashboard.contracts import (
-    DashboardKey,
-    MAX_CHART_HISTORY_POINTS,
-    MAX_CHART_TOKENS,
-)
-from polybot.dashboard.wallets import wallet_notional_tier
 from polybot.cli.dashboard.state import DashboardState
+from polybot.cli.dashboard.status import (
+    activity_panel_title,
+    filled_progress_width,
+    optional_money,
+)
+from polybot.cli.dashboard.status import fixed_ms as _fixed_ms
 from polybot.cli.dashboard.view_state import DashboardView
-from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
-from polybot.framework.activity import ActivitySeverity, BotActivityEvent
+from polybot.cli.dashboard.wallet_timeline import (
+    wallet_bucket_glyph as _wallet_bucket_glyph,
+)
+from polybot.cli.dashboard.wallet_timeline import (
+    wallet_timeline_buckets as _wallet_timeline_buckets,
+)
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import (
-    BrokerFailed,
     BootstrapPhase,
     BootstrapProgress,
+    BrokerFailed,
     DispatchCompleted,
     FillCompleted,
     MarketSettled,
     OrderSubmitted,
-    PortfolioPositionSnapshot,
     PortfolioBookBootstrap,
+    PortfolioPositionSnapshot,
     PortfolioSnapshot,
     RuntimeFailed,
     RuntimeStarted,
-    StreamReceived,
     StreamHealth,
-)
-from polybot.cli.observability.portfolio_bootstrap import (
-    emit_paper_position_book_bootstraps,
+    StreamReceived,
 )
 from polybot.cli.observability.observer import (
     RuntimeObserver,
@@ -68,22 +65,40 @@ from polybot.cli.observability.observer import (
     start_observer_fail_open,
     stop_observer_fail_open,
 )
+from polybot.cli.observability.portfolio_bootstrap import (
+    emit_paper_position_book_bootstraps,
+)
 from polybot.cli.streams.contracts import (
     BookStreamEvent,
     MarketHintStreamEvent,
     StreamKind,
     WalletStreamEvent,
 )
+from polybot.dashboard.contracts import (
+    MAX_CHART_HISTORY_POINTS,
+    MAX_CHART_TOKENS,
+    DashboardKey,
+)
+from polybot.dashboard.wallets import wallet_notional_tier
+from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.framework.config.models import BotConfig
-from polybot.framework.events import FillEvent, FillRejectReason, OrderRequest, OrderStatus, Side
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
+from polybot.framework.events import (
+    FillEvent,
+    FillRejectReason,
+    OrderRequest,
+    OrderStatus,
+    Side,
+)
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     MarketSettlementEvent,
 )
-from polybot.framework.outcomes import YES_OUTCOME
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.outcomes import YES_OUTCOME
 from polybot.polymarket.market_hints import MarketTradeHint
+from rich.console import Console
 
 
 class RecordingObserver(RuntimeObserver):
@@ -344,9 +359,7 @@ def test_dashboard_start_paths_show_configured_cash_equity_and_zero_pnl() -> Non
         state.record_chart_sample(now_ms=1_000)
 
         valuation = state.portfolio_valuation(now_ms=1_000)
-        assert state.portfolio == PortfolioSnapshot.initial(
-            config.paper_portfolio_usdc
-        )
+        assert state.portfolio == PortfolioSnapshot.initial(config.paper_portfolio_usdc)
         assert state.initial_cash_usdc == config.paper_portfolio_usdc
         assert valuation.cash_usdc == config.paper_portfolio_usdc
         assert valuation.equity_usdc == config.paper_portfolio_usdc
@@ -361,7 +374,9 @@ def test_dashboard_pnl_is_unavailable_when_position_cannot_be_marked() -> None:
     state.portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("90"),
         cumulative_fees_usdc=Decimal("0"),
-        positions=(PortfolioPositionSnapshot("missing", Decimal("1"), Decimal("0.50")),),
+        positions=(
+            PortfolioPositionSnapshot("missing", Decimal("1"), Decimal("0.50")),
+        ),
     )
 
     assert state.executable_equity() is None
@@ -409,8 +424,7 @@ def test_dashboard_uses_last_executable_mark_while_waiting_for_resolution() -> N
         == "$91.00 (stale)"
     )
     assert (
-        optional_money(valuation.pnl_usdc, stale=valuation.is_stale)
-        == "$-9.00 (stale)"
+        optional_money(valuation.pnl_usdc, stale=valuation.is_stale) == "$-9.00 (stale)"
     )
 
 
@@ -556,10 +570,7 @@ def test_dashboard_keeps_chart_selection_stable_when_markets_exceed_capacity() -
     )
     state.apply(StreamReceived(WalletStreamEvent(StreamKind.WALLET, trade), 6.0))
 
-    expected_tokens = tuple(
-        f"token-{index}"
-        for index in range(MAX_CHART_TOKENS)
-    )
+    expected_tokens = tuple(f"token-{index}" for index in range(MAX_CHART_TOKENS))
     assert tuple(state.chart_tokens) == expected_tokens
     assert state.average_wallet_lag_ms() == 125
     assert state.stream_counts[StreamKind.BOOK] == 2 * (MAX_CHART_TOKENS + 1)
@@ -683,7 +694,9 @@ def test_dashboard_ignores_non_book_health_samples_for_recent_drop_window() -> N
     state = DashboardState()
     state.apply(StreamHealth(0, 1, None, book_received_count=2, book_coalesced_count=1))
     for _ in range(150):
-        state.apply(StreamHealth(0, 1, None, book_received_count=2, book_coalesced_count=1))
+        state.apply(
+            StreamHealth(0, 1, None, book_received_count=2, book_coalesced_count=1)
+        )
 
     assert list(state.book_coalescing_samples) == [(2, 1)]
     assert state.recent_book_coalescing_ratio() == 0.5
@@ -692,11 +705,15 @@ def test_dashboard_ignores_non_book_health_samples_for_recent_drop_window() -> N
 def test_dashboard_keeps_chart_series_order_stable_on_book_updates() -> None:
     state = DashboardState()
     first = StreamReceived(
-        BookStreamEvent(StreamKind.BOOK, _book("first", Decimal("0.4"), Decimal("0.6"))),
+        BookStreamEvent(
+            StreamKind.BOOK, _book("first", Decimal("0.4"), Decimal("0.6"))
+        ),
         1.0,
     )
     second = StreamReceived(
-        BookStreamEvent(StreamKind.BOOK, _book("second", Decimal("0.3"), Decimal("0.7"))),
+        BookStreamEvent(
+            StreamKind.BOOK, _book("second", Decimal("0.3"), Decimal("0.7"))
+        ),
         2.0,
     )
 
@@ -731,7 +748,9 @@ def test_dashboard_uses_market_slug_for_chart_labels() -> None:
     assert state.market_label("unknown-token") == "unknown…oken"
 
 
-def test_dashboard_hides_market_activity_by_default_and_labels_orders_and_fills() -> None:
+def test_dashboard_hides_market_activity_by_default_and_labels_orders_and_fills() -> (
+    None
+):
     state = DashboardState()
     book = _book("blue-token", Decimal("0.4"), Decimal("0.6"))
     state.apply(
@@ -784,16 +803,20 @@ def test_dashboard_hides_market_activity_by_default_and_labels_orders_and_fills(
     ]
 
     hidden_output = StringIO()
-    Console(file=hidden_output, width=120, height=35).print(render_dashboard(state, 120, 35))
-    assert "Activity · m: market off" in hidden_output.getvalue()
+    Console(file=hidden_output, width=120, height=35).print(
+        render_dashboard(state, 120, 35)
+    )
+    assert activity_panel_title(False) in hidden_output.getvalue()
     assert "MARKET blue-token" not in hidden_output.getvalue()
     assert "MARKET HINT hint-token" not in hidden_output.getvalue()
 
     state.toggle_market_events()
 
     shown_output = StringIO()
-    Console(file=shown_output, width=120, height=35).print(render_dashboard(state, 120, 35))
-    assert "Activity · m: market on" in shown_output.getvalue()
+    Console(file=shown_output, width=120, height=35).print(
+        render_dashboard(state, 120, 35)
+    )
+    assert activity_panel_title(True) in shown_output.getvalue()
     assert "MARKET blue-token mid 0.5000" in shown_output.getvalue()
     assert "MARKET HINT hint-token" in shown_output.getvalue()
 
@@ -871,7 +894,9 @@ def test_observable_broker_preserves_broker_failure() -> None:
         observer = RecordingObserver()
         broker = ObservableBroker(FailingBroker(), observer, lambda: None)
         with pytest.raises(RuntimeError, match="broker unavailable"):
-            await broker.submit(OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("1")))
+            await broker.submit(
+                OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("1"))
+            )
         return observer.events
 
     events = asyncio.run(run())
@@ -904,7 +929,9 @@ def test_observable_broker_ignores_portfolio_snapshot_failure() -> None:
             observer,
             lambda: (_ for _ in ()).throw(RuntimeError("snapshot unavailable")),
         )
-        fill = await broker.submit(OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("1")))
+        fill = await broker.submit(
+            OrderRequest("token", Side.BUY, Decimal("0.5"), Decimal("1"))
+        )
         return fill, observer.events
 
     fill, events = asyncio.run(run())
@@ -945,7 +972,9 @@ def test_dashboard_promotes_accepted_books_for_valuation() -> None:
     state.portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("90"),
         cumulative_fees_usdc=Decimal("0"),
-        positions=(PortfolioPositionSnapshot("accepted", Decimal("1"), Decimal("0.50")),),
+        positions=(
+            PortfolioPositionSnapshot("accepted", Decimal("1"), Decimal("0.50")),
+        ),
     )
 
     assert state.pending_books == {}
@@ -956,7 +985,9 @@ def test_dashboard_promotes_accepted_books_for_valuation() -> None:
 def test_dashboard_recovers_held_position_mark_from_subscription_bootstrap() -> None:
     book = _book("held", Decimal("0.40"), Decimal("0.60"), received_at_ms=1_000)
 
-    state = DashboardState(require_accepted_books=True, initial_cash_usdc=Decimal("100"))
+    state = DashboardState(
+        require_accepted_books=True, initial_cash_usdc=Decimal("100")
+    )
     state.portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("90"),
         cumulative_fees_usdc=Decimal("0"),
@@ -997,7 +1028,9 @@ def test_position_book_bootstrap_is_dashboard_only_and_rejects_crossed_books() -
 
 def test_dashboard_marks_expired_books_unavailable() -> None:
     state = DashboardState(book_max_age_ms=100)
-    state.books["token"] = _book("token", Decimal("0.40"), Decimal("0.60"), received_at_ms=1_000)
+    state.books["token"] = _book(
+        "token", Decimal("0.40"), Decimal("0.60"), received_at_ms=1_000
+    )
     state.portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("90"),
         cumulative_fees_usdc=Decimal("0"),
@@ -1025,7 +1058,9 @@ def test_dashboard_tracks_dispatch_skips_and_rejected_fills() -> None:
     )
     state.apply(
         DispatchCompleted(
-            BookStreamEvent(StreamKind.BOOK, _book("token", Decimal("0.4"), Decimal("0.6"))),
+            BookStreamEvent(
+                StreamKind.BOOK, _book("token", Decimal("0.4"), Decimal("0.6"))
+            ),
             DispatchOutcome.skipped(DispatchSkipReason.BOOK_CROSSED),
             1.0,
         )
@@ -1200,9 +1235,7 @@ def test_dashboard_time_zoom_keeps_the_rendered_chart_width(monkeypatch) -> None
 
 def test_dashboard_shows_visible_epoch_seconds_range_endpoints() -> None:
     state = DashboardState()
-    state.chart_sample_epoch_seconds = deque(
-        (1_700_000_000.0, 1_700_000_010.0)
-    )
+    state.chart_sample_epoch_seconds = deque((1_700_000_000.0, 1_700_000_010.0))
 
     label = _chart_time_range(state, 100).plain
 
@@ -1235,7 +1268,9 @@ def test_dashboard_keyboard_switches_views_and_pages_wallets() -> None:
     assert dashboard._state.view is DashboardView.MARKET
 
 
-def test_dashboard_projects_wallet_trades_and_dispatch_status_by_wallet_source() -> None:
+def test_dashboard_projects_wallet_trades_and_dispatch_status_by_wallet_source() -> (
+    None
+):
     state = DashboardState()
     first = _wallet_trade("0x" + "1" * 40, "same", Side.BUY, 1_000)
     second = _wallet_trade("0x" + "2" * 40, "same", Side.SELL, 1_001)
@@ -1251,10 +1286,23 @@ def test_dashboard_projects_wallet_trades_and_dispatch_status_by_wallet_source()
         )
     )
     state.apply(DispatchCompleted(second_item, DispatchOutcome.accepted_event(), 2.0))
+    original = state.wallet_timeline[-1]
+    state.apply(StreamReceived(second_item, 3.0))
+    assert state.wallet_timeline[-1] is original
+    state.apply(
+        DispatchCompleted(
+            second_item,
+            DispatchOutcome.skipped(DispatchSkipReason.DUPLICATE_SOURCE_EVENT),
+            3.0,
+        )
+    )
 
     assert tuple(state.wallet_lanes) == (first.wallet, second.wallet)
-    assert [event.accepted for event in state.wallet_timeline] == [False, True]
-    assert [event.notional for event in state.wallet_timeline] == [Decimal("1"), Decimal("1")]
+    assert [event.accepted for event in state.wallet_timeline] == [None, True]
+    assert [event.notional for event in state.wallet_timeline] == [
+        Decimal("1"),
+        Decimal("1"),
+    ]
 
 
 def test_wallet_timeline_buckets_by_trade_time_and_styles_skipped_events() -> None:
@@ -1281,7 +1329,9 @@ def test_wallet_timeline_buckets_by_trade_time_and_styles_skipped_events() -> No
         2.0,
         10,
     )
-    skipped_glyph, skipped_style = _wallet_bucket_glyph(buckets[skipped.wallet][0], Decimal("1"))
+    skipped_glyph, skipped_style = _wallet_bucket_glyph(
+        buckets[skipped.wallet][0], Decimal("1")
+    )
     accepted_glyph, accepted_style = _wallet_bucket_glyph(
         buckets[accepted.wallet][5],
         Decimal("1"),
@@ -1504,7 +1554,10 @@ def test_dashboard_renders_trade_markers_on_token_lines_with_side_colors() -> No
             for index, value in enumerate(series[marker_index])
             if not isnan(value)
         )
-        assert series[marker_index][display_index] == series[token_series_index][display_index]
+        assert (
+            series[marker_index][display_index]
+            == series[token_series_index][display_index]
+        )
 
 
 def test_dashboard_ticker_removes_terminal_control_characters() -> None:
@@ -1579,7 +1632,9 @@ def _book(
     )
 
 
-def _wallet_trade(wallet: str, source_id: str, side: Side, timestamp_ms: int) -> WalletTradeEvent:
+def _wallet_trade(
+    wallet: str, source_id: str, side: Side, timestamp_ms: int
+) -> WalletTradeEvent:
     return WalletTradeEvent(
         wallet=wallet,
         condition_id="condition",

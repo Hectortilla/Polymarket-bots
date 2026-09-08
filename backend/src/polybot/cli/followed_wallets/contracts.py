@@ -34,7 +34,9 @@ class WalletFollowState:
     epoch_history: list[WalletFollowState] = field(default_factory=list)
 
     def has_settlement(self, condition_id: str) -> bool:
-        return any(settlement.condition_id == condition_id for settlement in self.settlements)
+        return any(
+            settlement.condition_id == condition_id for settlement in self.settlements
+        )
 
     def gross_pnl(self, marks: dict[str, Decimal]) -> Decimal | None:
         accounting_inputs = self._complete_accounting_inputs(marks)
@@ -47,39 +49,6 @@ class WalletFollowState:
                 for realized_pnl, size, average_basis, mark in open_position_values
             ),
             Decimal("0"),
-        )
-
-    def _complete_accounting_inputs(
-        self,
-        marks: dict[str, Decimal],
-    ) -> tuple[
-        tuple[Decimal, ...],
-        tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
-    ] | None:
-        archived_pnl = tuple(
-            settlement.gross_realized_pnl_usdc for settlement in self.settlements
-        )
-        if any(value is None for value in archived_pnl):
-            return None
-
-        open_position_values: list[tuple[Decimal, Decimal, Decimal, Decimal]] = []
-        for position in self.replay_positions().values():
-            realized_pnl = position.realized_pnl_usdc
-            average_basis = position.average_basis
-            if realized_pnl is None or average_basis is None:
-                return None
-            if position.size == ZERO_POSITION_SIZE:
-                mark = average_basis
-            else:
-                mark = marks.get(position.token_id)
-                if mark is None:
-                    return None
-            open_position_values.append(
-                (realized_pnl, position.size, average_basis, mark)
-            )
-        return (
-            tuple(value for value in archived_pnl if value is not None),
-            tuple(open_position_values),
         )
 
     def snapshot_epoch(self) -> WalletFollowState:
@@ -174,12 +143,11 @@ class WalletFollowState:
             elif gross_realized is not None:
                 gross_realized += realized
             settled.append(
-                SettledPosition(
+                SettledPosition.from_payout(
                     owner=self.wallet,
                     token_id=position.token_id,
                     size=position.size,
                     payout_per_token=payout,
-                    cash_payout_usdc=position.size * payout,
                     realized_pnl_usdc=realized,
                 )
             )
@@ -219,3 +187,41 @@ class WalletFollowState:
             ),
         )
         return calculation.settled_positions, True
+
+    def _complete_accounting_inputs(
+        self,
+        marks: dict[str, Decimal],
+    ) -> (
+        tuple[
+            tuple[Decimal, ...],
+            tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
+        ]
+        | None
+    ):
+        archived_pnl = tuple(
+            settlement.gross_realized_pnl_usdc for settlement in self.settlements
+        )
+        if any(value is None for value in archived_pnl):
+            return None
+
+        open_position_values: list[tuple[Decimal, Decimal, Decimal, Decimal]] = []
+        for position in self.replay_positions().values():
+            realized_pnl = position.realized_pnl_usdc
+            average_basis = position.average_basis
+            if realized_pnl is None:
+                return None
+            if position.size == ZERO_POSITION_SIZE:
+                archived_pnl += (realized_pnl,)
+                continue
+            if average_basis is None:
+                return None
+            mark = marks.get(position.token_id)
+            if mark is None:
+                return None
+            open_position_values.append(
+                (realized_pnl, position.size, average_basis, mark)
+            )
+        return (
+            tuple(value for value in archived_pnl if value is not None),
+            tuple(open_position_values),
+        )

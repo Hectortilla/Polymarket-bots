@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from ..contracts.anomalies import (
@@ -51,6 +50,48 @@ def encode_capture_anomaly(anomaly: CaptureAnomalyPayload) -> dict[str, Any]:
             _capture_fragment_to_data(fragment) for fragment in anomaly.fragments
         ],
     }
+
+
+def decode_capture_anomaly(data: dict[str, Any]) -> CaptureAnomalyPayload:
+    require_exact_keys(data, fields.CAPTURE_ANOMALY_FIELDS)
+    return CaptureAnomalyPayload(
+        failure_kind=_capture_failure_kind(data[fields.FAILURE_KIND_FIELD]),
+        expected_fingerprint=_fingerprint_from_data(
+            data[fields.EXPECTED_FINGERPRINT_FIELD],
+            "expected revision fingerprint",
+        ),
+        actual_fingerprint=_fingerprint_from_data(
+            data[fields.ACTUAL_FINGERPRINT_FIELD],
+            "actual revision fingerprint",
+        ),
+        fragments=tuple(
+            _capture_fragment_from_data(value)
+            for value in require_array(
+                data[fields.FRAGMENTS_FIELD],
+                "capture anomaly fragments",
+            )
+        ),
+        book_diagnostics=tuple(
+            _book_diagnostics_from_data(value)
+            for value in require_array(
+                data[fields.BOOK_DIAGNOSTICS_FIELD],
+                "capture anomaly book diagnostics",
+            )
+        ),
+        dropped_count_before=require_integer(
+            data[fields.DROPPED_COUNT_BEFORE_FIELD],
+            "capture anomaly initial drop count",
+        ),
+        dropped_count_after=require_integer(
+            data[fields.DROPPED_COUNT_AFTER_FIELD],
+            "capture anomaly final drop count",
+        ),
+        elapsed_ms=require_integer(
+            data[fields.ELAPSED_MS_FIELD],
+            "capture anomaly elapsed time",
+        ),
+        details=optional_text(data[fields.DETAILS_FIELD], "capture anomaly details"),
+    )
 
 
 def _fingerprint_to_data(
@@ -109,48 +150,6 @@ def _book_diagnostics_to_data(
         ),
         fields.TOKEN_ID_FIELD: diagnostics.token_id,
     }
-
-
-def decode_capture_anomaly(data: dict[str, Any]) -> CaptureAnomalyPayload:
-    require_exact_keys(data, fields.CAPTURE_ANOMALY_FIELDS)
-    return CaptureAnomalyPayload(
-        failure_kind=_capture_failure_kind(data[fields.FAILURE_KIND_FIELD]),
-        expected_fingerprint=_fingerprint_from_data(
-            data[fields.EXPECTED_FINGERPRINT_FIELD],
-            "expected revision fingerprint",
-        ),
-        actual_fingerprint=_fingerprint_from_data(
-            data[fields.ACTUAL_FINGERPRINT_FIELD],
-            "actual revision fingerprint",
-        ),
-        fragments=tuple(
-            _capture_fragment_from_data(value)
-            for value in require_array(
-                data[fields.FRAGMENTS_FIELD],
-                "capture anomaly fragments",
-            )
-        ),
-        book_diagnostics=tuple(
-            _book_diagnostics_from_data(value)
-            for value in require_array(
-                data[fields.BOOK_DIAGNOSTICS_FIELD],
-                "capture anomaly book diagnostics",
-            )
-        ),
-        dropped_count_before=require_integer(
-            data[fields.DROPPED_COUNT_BEFORE_FIELD],
-            "capture anomaly initial drop count",
-        ),
-        dropped_count_after=require_integer(
-            data[fields.DROPPED_COUNT_AFTER_FIELD],
-            "capture anomaly final drop count",
-        ),
-        elapsed_ms=require_integer(
-            data[fields.ELAPSED_MS_FIELD],
-            "capture anomaly elapsed time",
-        ),
-        details=optional_text(data[fields.DETAILS_FIELD], "capture anomaly details"),
-    )
 
 
 def _capture_failure_kind(value: object) -> CaptureFailureKind:

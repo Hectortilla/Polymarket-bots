@@ -1,8 +1,4 @@
-import {
-  EVENT_KIND,
-  INITIAL_EVENT_CURSOR,
-  type PersistedDurableEvent
-} from './durableEvents';
+import { EVENT_KIND, INITIAL_EVENT_CURSOR, type PersistedDurableEvent } from './durableEvents';
 import { RUN_STATUS, runStatusLabel } from './status';
 
 export function eventSummary(event: PersistedDurableEvent): string {
@@ -39,12 +35,9 @@ export function eventSummary(event: PersistedDurableEvent): string {
 export function eventFailureDetail(
   event: PersistedDurableEvent,
   events: PersistedDurableEvent[],
-  recordedFailureDetail: string | null | undefined
+  recordedFailureDetail: string | null | undefined,
 ): string | null {
-  if (
-    event.kind !== EVENT_KIND.runLifecycle ||
-    event.payload.status !== RUN_STATUS.FAILED
-  ) {
+  if (event.kind !== EVENT_KIND.runLifecycle || event.payload.status !== RUN_STATUS.FAILED) {
     return null;
   }
 
@@ -54,13 +47,9 @@ export function eventFailureDetail(
 
 export function combinedFailureDetail(
   runtimeFailure: string | null | undefined,
-  recordedFailureDetail: string | null | undefined
+  recordedFailureDetail: string | null | undefined,
 ): string | null {
-  if (
-    runtimeFailure &&
-    recordedFailureDetail &&
-    runtimeFailure !== recordedFailureDetail
-  ) {
+  if (runtimeFailure && recordedFailureDetail && runtimeFailure !== recordedFailureDetail) {
     return `${runtimeFailure}\nRecorded failure: ${recordedFailureDetail}`;
   }
   return runtimeFailure ?? recordedFailureDetail ?? null;
@@ -68,7 +57,7 @@ export function combinedFailureDetail(
 
 function latestRuntimeFailureBefore(
   lifecycleEvent: PersistedDurableEvent,
-  events: PersistedDurableEvent[]
+  events: PersistedDurableEvent[],
 ): string | null {
   let latestId = INITIAL_EVENT_CURSOR;
   let detail: string | null = null;
@@ -86,7 +75,7 @@ function latestRuntimeFailureBefore(
 }
 
 function fillSummary(
-  fill: Extract<PersistedDurableEvent, { kind: 'broker.fill' }>['payload']['fill']
+  fill: Extract<PersistedDurableEvent, { kind: typeof EVENT_KIND.brokerFill }>['payload']['fill'],
 ): string {
   const rejection = [fill.reject_reason, fill.reject_message]
     .filter((detail): detail is string => Boolean(detail))

@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from decimal import Decimal
 
 from polybot.framework.events.books import BookSnapshot
+from polybot.integers import validate_nonnegative_int
 from polybot.performance.contracts.valuation import (
     ZERO_MARKET_VALUE,
     PortfolioLike,
@@ -162,16 +163,10 @@ def _validate_valuation_options(
     now_ms: int | None,
     max_book_age_ms: int | None,
 ) -> None:
+    if max_book_age_ms is not None:
+        validate_nonnegative_int(max_book_age_ms, "maximum book age")
     if max_book_age_ms is not None and (
-        isinstance(max_book_age_ms, bool)
-        or not isinstance(max_book_age_ms, int)
-        or max_book_age_ms < 0
-    ):
-        raise ValueError("maximum book age must be a nonnegative integer")
-    if max_book_age_ms is not None and (
-        isinstance(now_ms, bool)
-        or not isinstance(now_ms, int)
-        or now_ms < 0
+        isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms < 0
     ):
         raise ValueError("now_ms is required and must be nonnegative")
 

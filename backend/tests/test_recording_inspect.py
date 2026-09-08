@@ -5,17 +5,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from polybot.recording import inspect as inspect_cli
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.writer import RecordingArchive
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     RecordedBookLevel,
-)
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    RecordedEvent,
 )
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
@@ -26,9 +21,13 @@ from polybot.recording.contracts.market import (
     MarketMetadataPayload,
     MarketOutcomeMetadata,
 )
-from polybot.recording.inspection import inspect_recording
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
 from polybot.recording.identity import static_target_identity
-
+from polybot.recording.inspect import RECORDING_INSPECTOR_TITLE
+from polybot.recording.inspection import inspect_recording
 
 MARKET_SLUG = "btc-updown-5m-1"
 CONDITION_ID = "condition-1"
@@ -236,9 +235,7 @@ def test_inspection_takes_a_point_in_time_snapshot_of_an_active_archive(
         archive.close(ended_at_ms=1_001)
 
     assert inspection.replay_event_count == 1
-    assert (
-        inspection.sessions[0].statistics.session.integrity_status.value == "active"
-    )
+    assert inspection.sessions[0].statistics.session.integrity_status.value == "active"
 
 
 def test_cli_prints_general_recording_information(
@@ -250,7 +247,7 @@ def test_cli_prints_general_recording_information(
     assert inspect_cli.main([str(path)]) == 0
 
     output = capsys.readouterr().out
-    assert "Recording inspector" in output
+    assert RECORDING_INSPECTOR_TITLE in output
     assert "Schema" in output
     assert "v2" in output
     assert f"static {MARKET_SLUG}" in output

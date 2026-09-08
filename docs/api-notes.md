@@ -477,3 +477,21 @@ markets are normal for ephemeral markets and should be retried without blocking
 the current market's hot path. `GammaClient.wait_for_slug()` provides that
 cancel-safe async retry primitive; stream-plan orchestration schedules it in a
 separate task when consuming `StreamPlan.next`.
+
+## Normalization consistency follow-up — September 2026
+
+Official market status documentation was checked through PolymarketDocs for this
+follow-up: [Market status](https://docs.polymarket.com/market-data/market-details#market-status).
+A terminal Gamma resolution status with no unambiguous binary payout winner is
+rejected as `ambiguous_market_metadata`; it cannot become tradable merely because
+operational flags remain open. A closed market without an identifiable winner
+remains closed and cannot supply a guessed resolution. Missing optional status
+flags retain their existing handling.
+
+Wallet trade rows and injected stream events validate address shape at adapter
+ingress. Followed-wallet bootstrap registers resolved token/condition identities
+with the CLOB adapter before requesting marks, so its existing book identity check
+also applies to positions discovered during bootstrap. Missing or rejected books
+continue to produce unknown baseline marks. The refactor retains official SDK
+subscription, pagination, error conversion, and lifecycle ownership; no direct
+transport or protocol exception was introduced.

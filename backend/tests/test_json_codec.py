@@ -1,5 +1,4 @@
 import pytest
-
 from polybot.persistence.json_codec import NonFiniteJsonNumberError, loads_json
 
 

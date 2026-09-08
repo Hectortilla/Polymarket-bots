@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
-from polybot.framework.events import FillRejectReason, OrderRequest, Side
+from polybot.framework.events import FillRejectReason, OrderRequest
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.prices import (
     is_decimal_in_unit_interval,
-    is_outcome_price,
 )
-
-ORDER_SIZE_FLOOR = Decimal("0")
 
 BOOK_VALIDATION_REJECT_REASON = {
     BookValidationIssue.MISSING_MARKET_IDENTITY: FillRejectReason.BOOK_MISMATCH,
@@ -21,34 +18,6 @@ BOOK_VALIDATION_REJECT_REASON = {
     BookValidationIssue.BAD_LEVEL: FillRejectReason.BAD_BOOK_LEVEL,
     BookValidationIssue.CROSSED: FillRejectReason.BOOK_CROSSED,
 }
-
-
-def validate_order(order: OrderRequest) -> tuple[FillRejectReason, str] | None:
-    if not order.token_id:
-        return FillRejectReason.MISSING_TOKEN_ID, "order is missing token_id"
-    if not isinstance(order.side, Side):
-        return FillRejectReason.BAD_SIDE, "order side is invalid"
-    if order.source_id is not None and (
-        not isinstance(order.source_id, str)
-        or not order.source_id
-        or "\n" in order.source_id
-        or "\r" in order.source_id
-    ):
-        return (
-            FillRejectReason.INVALID_SOURCE_ID,
-            "order source_id must be non-empty single-line text",
-        )
-    try:
-        if not is_outcome_price(order.price):
-            return (
-                FillRejectReason.BAD_PRICE,
-                "order price must be finite and between 0 and 1",
-            )
-        if not order.size.is_finite() or order.size <= ORDER_SIZE_FLOOR:
-            return FillRejectReason.BAD_SIZE, "order size must be finite and positive"
-    except (AttributeError, InvalidOperation, TypeError, ValueError):
-        return FillRejectReason.BAD_PRICE, "order price and size must be decimals"
-    return None
 
 
 def classify_book(

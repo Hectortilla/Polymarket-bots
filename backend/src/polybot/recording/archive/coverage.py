@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import COVERAGE_GAPS_TABLE
+
 from ..contracts.gaps import CoverageGapPayload
 from ..contracts.kinds import PayloadKind
 from ..contracts.records import CoverageGapRecord
@@ -28,32 +31,34 @@ def coverage_gaps(
     """Return validated gaps that affect one already-validated selection."""
 
     clauses: list[str] = [
-        "event_sequence <= ?",
-        "(ended_at_ms IS NULL OR ended_at_ms > started_at_ms)",
+        f"{ArchiveColumn.EVENT_SEQUENCE} <= ?",
+        f"({ArchiveColumn.ENDED_AT_MS} IS NULL OR {ArchiveColumn.ENDED_AT_MS} > {ArchiveColumn.STARTED_AT_MS})",
     ]
     parameters: list[object] = [replay_cutoff_sequence]
     if start_at_ms is not None:
-        clauses.append("(ended_at_ms IS NULL OR ended_at_ms > ?)")
+        clauses.append(
+            f"({ArchiveColumn.ENDED_AT_MS} IS NULL OR {ArchiveColumn.ENDED_AT_MS} > ?)"
+        )
         parameters.append(start_at_ms)
     if end_at_ms is not None:
-        clauses.append("started_at_ms <= ?")
+        clauses.append(f"{ArchiveColumn.STARTED_AT_MS} <= ?")
         parameters.append(end_at_ms)
     if session_id is not None:
-        clauses.append("session_id = ?")
+        clauses.append(f"{ArchiveColumn.SESSION_ID} = ?")
         parameters.append(session_id)
     if open_only:
-        clauses.append("ended_at_ms IS NULL")
+        clauses.append(f"{ArchiveColumn.ENDED_AT_MS} IS NULL")
     rows = connection.execute(
-        "SELECT * FROM coverage_gaps WHERE "
+        f"SELECT * FROM {COVERAGE_GAPS_TABLE} WHERE "
         + " AND ".join(clauses)
-        + " ORDER BY started_at_ms, gap_id",
+        + f" ORDER BY {ArchiveColumn.STARTED_AT_MS}, {ArchiveColumn.GAP_ID}",
         tuple(parameters),
     ).fetchall()
     result: list[CoverageGapRecord] = []
     for row in rows:
         payload = _typed_payload(
             PayloadKind.COVERAGE_GAP,
-            row["payload_json"],
+            row[ArchiveColumn.PAYLOAD_JSON],
             CoverageGapPayload,
         )
         identity = _identity_from_row(row)
@@ -66,29 +71,29 @@ def coverage_gaps(
         ):
             continue
         if (
-            payload.started_at_ms != row["started_at_ms"]
-            or payload.ended_at_ms != row["ended_at_ms"]
-            or payload.reason != row["reason"]
+            payload.started_at_ms != row[ArchiveColumn.STARTED_AT_MS]
+            or payload.ended_at_ms != row[ArchiveColumn.ENDED_AT_MS]
+            or payload.reason != row[ArchiveColumn.REASON]
         ):
             raise ArchiveFormatError("coverage gap index is inconsistent")
         try:
             result.append(
                 CoverageGapRecord(
-                    gap_id=_strict_int(row["gap_id"], "coverage gap ID"),
+                    gap_id=_strict_int(row[ArchiveColumn.GAP_ID], "coverage gap ID"),
                     event_sequence=_strict_int(
-                        row["event_sequence"],
+                        row[ArchiveColumn.EVENT_SEQUENCE],
                         "coverage gap sequence",
                     ),
                     session_id=_strict_int(
-                        row["session_id"],
+                        row[ArchiveColumn.SESSION_ID],
                         "coverage gap session",
                     ),
                     subscription_generation=_strict_int(
-                        row["subscription_generation"],
+                        row[ArchiveColumn.SUBSCRIPTION_GENERATION],
                         "coverage gap generation",
                     ),
                     observed_at_ms=_strict_int(
-                        row["observed_at_ms"],
+                        row[ArchiveColumn.OBSERVED_AT_MS],
                         "coverage gap observation",
                     ),
                     identity=identity,

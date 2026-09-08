@@ -1,21 +1,28 @@
 <script lang="ts">
-  import { graphNumberIsValid } from './numberValue';
-  import NodeIssues from './NodeIssues.svelte';
-  import { getContext } from 'svelte';
+  import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
   import { Handle, Position } from '@xyflow/svelte';
+  import { getContext } from 'svelte';
+  import {
+    DEFAULT_OPERATION_SCALAR_TYPE,
+    DEFAULT_PREVIEW_CASH,
+    GRAPH_NODE_TYPE,
+    GRAPH_PORT,
+    GRAPH_SCALAR_TYPE,
+  } from './graphContracts';
+  import NodeIssues from './NodeIssues.svelte';
+  import { graphNumberIsValid } from './numberValue';
 
   import type { GraphConstantNodeData } from '$lib/api/generated';
+  import { constantForNode } from '$lib/catalog/nodeGraph/catalog';
   import { constantDataFromInput, constantInput } from './constantNode';
-  import { constantForNode } from './nodeGraph';
-  import {
-    NODE_GRAPH_EDITOR_CONTEXT,
-    type NodeGraphEditorContext
-  } from './nodeGraphContext';
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
 
   let { id, data }: { id: string; data: GraphConstantNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const descriptor = $derived(constantForNode(editor.catalog, data));
-  const numberInvalid = $derived(data.scalar_type === 'number' && !graphNumberIsValid(data.value));
+  const numberInvalid = $derived(
+    data.scalar_type === GRAPH_SCALAR_TYPE.number && !graphNumberIsValid(data.value),
+  );
   const inputControl = $derived(constantInput(data.scalar_type));
 
   function updateValue(event: Event): void {
@@ -56,8 +63,9 @@
       isConnectable={!editor.readOnly}
     />
   </label>
-{#if numberInvalid}<p role="alert">Enter a finite Number within the supported range.</p>{/if}
-<NodeIssues {id} /></section>
+  {#if numberInvalid}<p role="alert">{GRAPH_FIELD_COPY.INVALID_NUMBER}</p>{/if}
+  <NodeIssues {id} />
+</section>
 
 <style>
   .functional-node {

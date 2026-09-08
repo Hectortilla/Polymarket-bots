@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 
-from polymarket import AsyncPublicClient, PolymarketError
-
 from polybot.polymarket.client_lifecycle import (
     PublicClientLease,
 )
 from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.gamma import _GammaMarketSourceClient, wait_for_market
+
+from polymarket import AsyncPublicClient, PolymarketError
 
 from .contracts import RecordingMarket
 from .normalization import normalize_recording_market

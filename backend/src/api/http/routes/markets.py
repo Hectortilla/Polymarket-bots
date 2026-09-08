@@ -3,9 +3,9 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-
 from polybot.polymarket.discovery_contracts import MarketSearchResults, MarketSuggestion
 from polybot.polymarket.errors import MarketDataError, MarketDataTransportError
+
 from api.http.dependencies import MarketDiscoveryDependency
 from api.http.market_contracts import (
     MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
@@ -14,12 +14,11 @@ from api.http.market_contracts import (
 )
 from api.http.responses import SERVICE_UNAVAILABLE_RESPONSE
 from api.http.routes.paths import (
-    MARKET_SEARCH_PATH,
-    MARKET_LOOKUP_PATH,
-    SEARCH_MARKETS_OPERATION_ID,
     LOOKUP_MARKETS_OPERATION_ID,
+    MARKET_LOOKUP_PATH,
+    MARKET_SEARCH_PATH,
+    SEARCH_MARKETS_OPERATION_ID,
 )
-
 
 router = APIRouter()
 

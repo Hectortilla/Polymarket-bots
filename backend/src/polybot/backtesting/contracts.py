@@ -7,7 +7,14 @@ from enum import StrEnum
 from pathlib import Path
 
 from polybot.framework.timestamps import require_nonnegative_timestamp
-from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
+from polybot.integers import validate_positive_int
+from polybot.performance.contracts.sampling import (
+    DEFAULT_REPORT_INTERVAL_MS,
+    validate_report_interval,
+)
+from polybot.recording.contracts.coverage_selection import (
+    normalize_coverage_gap_selection,
+)
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
@@ -58,12 +65,8 @@ class BacktestOptions:
         except (TypeError, ValueError) as error:
             raise ValueError("backtest gap policy is invalid") from error
         object.__setattr__(self, "gap_policy", normalized_gap_policy)
-        if self.session_id is not None and (
-            isinstance(self.session_id, bool)
-            or not isinstance(self.session_id, int)
-            or self.session_id <= 0
-        ):
-            raise ValueError("backtest session ID must be positive")
+        if self.session_id is not None:
+            validate_positive_int(self.session_id, "backtest session ID")
         if self.start_at_ms is not None:
             require_nonnegative_timestamp(self.start_at_ms, "backtest start")
         if self.end_at_ms is not None:
@@ -76,15 +79,9 @@ class BacktestOptions:
             raise ValueError("backtest end cannot precede its start")
         if isinstance(self.seed, bool) or not isinstance(self.seed, int):
             raise ValueError("backtest seed must be an integer")
-        if (
-            isinstance(self.report_interval_ms, bool)
-            or not isinstance(self.report_interval_ms, int)
-            or self.report_interval_ms <= 0
-        ):
-            raise ValueError("report interval must be positive")
+        validate_report_interval(self.report_interval_ms)
         if any(
-            not isinstance(slug, str) or not slug.strip()
-            for slug in self.market_slugs
+            not isinstance(slug, str) or not slug.strip() for slug in self.market_slugs
         ):
             raise ValueError("backtest market slugs must not be empty")
         normalized_slugs = tuple(
@@ -100,9 +97,7 @@ class BacktestSelection:
     end_at_ms: int
     market_slugs: tuple[str, ...]
     replay_cutoff_sequence: int
-    session_integrity_status: SessionIntegrityStatus = (
-        SessionIntegrityStatus.COMPLETE
-    )
+    session_integrity_status: SessionIntegrityStatus = SessionIntegrityStatus.COMPLETE
     uses_partial_session: bool = False
     gap_policy: BacktestGapPolicy = BacktestGapPolicy.STRICT
     coverage_gap_ids: tuple[int, ...] = ()
@@ -115,27 +110,15 @@ class BacktestSelection:
         except (TypeError, ValueError) as error:
             raise ValueError("backtest selection gap policy is invalid") from error
         object.__setattr__(self, "gap_policy", normalized_gap_policy)
-        if any(
-            isinstance(gap_id, bool)
-            or not isinstance(gap_id, int)
-            or gap_id <= 0
-            for gap_id in self.coverage_gap_ids
-        ):
-            raise ValueError("backtest coverage gap IDs must be positive")
-        normalized_gap_ids = tuple(sorted(set(self.coverage_gap_ids)))
-        object.__setattr__(self, "coverage_gap_ids", normalized_gap_ids)
-        for value, label in (
-            (self.coverage_gap_duration_ms, "duration"),
-            (self.coverage_gap_open_count, "open count"),
-        ):
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ValueError(
-                    f"backtest coverage gap {label} must be nonnegative"
-                )
-        if self.coverage_gap_open_count > len(normalized_gap_ids):
-            raise ValueError(
-                "backtest coverage gap open count exceeds the gap count"
-            )
+        object.__setattr__(
+            self,
+            "coverage_gap_ids",
+            normalize_coverage_gap_selection(
+                self.coverage_gap_ids,
+                self.coverage_gap_duration_ms,
+                self.coverage_gap_open_count,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)

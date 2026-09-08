@@ -8,6 +8,7 @@ from typing import get_type_hints
 
 from polybot.execution.broker import Broker
 from polybot.framework.events import FillEvent, OrderRequest, Side
+
 from api.catalog.graphs._annotations import (
     scalar_type_for_annotation,
     without_none,

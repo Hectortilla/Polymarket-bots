@@ -9,9 +9,9 @@ from polybot.backtesting.contracts import (
     BacktestOptions,
     BacktestResult,
 )
+from polybot.backtesting.validation import backtest_config_issue
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
-from polybot.backtesting.validation import backtest_config_issue
 from polybot.recording.archive.errors import (
     ArchiveCoverageError,
     ArchiveFormatError,

@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+from polybot.integers import validate_nonnegative_int
 from polybot.polymarket.resolution_status import ResolutionStatus
 
 from .validation import (
     normalize_optional_text_fields,
     normalize_required_text_fields,
-    validate_outcome_payout,
     validate_bool,
     validate_decimal,
-    validate_nonnegative_int,
+    validate_outcome_payout,
     validate_tick_size,
 )
 

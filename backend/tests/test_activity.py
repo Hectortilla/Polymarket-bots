@@ -2,7 +2,11 @@ import asyncio
 
 from polybot.cli.observability.activity import ObserverActivitySink
 from polybot.cli.observability.observer import RuntimeObserver
-from polybot.framework.activity import ActivitySeverity, BotActivityEvent, NullActivitySink
+from polybot.framework.activity import (
+    ActivitySeverity,
+    BotActivityEvent,
+    NullActivitySink,
+)
 from polybot.framework.config.models import BotConfig
 
 

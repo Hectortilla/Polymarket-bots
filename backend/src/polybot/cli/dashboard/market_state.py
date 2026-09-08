@@ -9,7 +9,6 @@ from polybot.dashboard.contracts import format_token_label
 from polybot.dashboard.markets import DashboardMarkets as SharedDashboardMarkets
 from polybot.framework.events.books import BookSnapshot
 
-
 MARKET_TICKER_INTERVAL_SECONDS = 1
 
 
@@ -35,9 +34,7 @@ class DashboardMarkets(SharedDashboardMarkets):
         )
         return f"MARKET {format_token_label(book.token_id)} mid {midpoint:.4f}"
 
-    def settle(
-        self, *, condition_id: str, token_ids: Iterable[str]
-    ) -> tuple[str, ...]:
+    def settle(self, *, condition_id: str, token_ids: Iterable[str]) -> tuple[str, ...]:
         settled_token_ids = SharedDashboardMarkets.settle(
             self,
             condition_id=condition_id,

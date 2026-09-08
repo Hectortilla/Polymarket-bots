@@ -1,14 +1,26 @@
 """Executable, configurable example graphs built from the current contract."""
 
+from polybot.framework.base import BaseBot
 from pydantic import BaseModel
+
 from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.operations import DEFAULT_BOOLEAN_INPUT_IDS
+from api.catalog.graphs.types import GraphFieldPath
 from api.catalog.graphs.values import (
-    GraphPort,
-    GraphOperation,
-    GraphScalarType,
-    GraphComparisonOperator,
     GraphBrokerAction,
+    GraphComparisonOperator,
+    GraphNodeType,
+    GraphOperation,
+    GraphPort,
+    GraphScalarType,
 )
+
+FUNDING_CONDITION_INPUT = "input_3"
+
+BUDGET_LABEL = "Budget"
+
+
+ENTRY_THRESHOLD_LABEL = "Entry threshold"
 
 
 class GraphExample(BaseModel):
@@ -22,71 +34,87 @@ class _ExampleBuilder:
         self.nodes: list[dict] = []
         self.edges: list[dict] = []
         self.parameters: list[dict] = []
-        self.node("book", "trigger", {"hook_name": "on_book"})
+        self.node(
+            "book", GraphNodeType.TRIGGER, {"hook_name": BaseBot.on_book.__name__}
+        )
 
-    def node(self, id: str, type: str, data: dict) -> None:
+    def node(self, node_id: str, node_type: str, node_data: dict) -> None:
         index = len(self.nodes)
         self.nodes.append(
             dict(
-                id=id,
-                type=type,
+                id=node_id,
+                type=node_type,
                 position=dict(x=(index % 5) * 320, y=(index // 5) * 260),
-                data=data,
+                data=node_data,
             )
         )
 
-    def connect(self, source: str, output: str, target: str, input: str) -> None:
+    def connect(
+        self,
+        source_node_id: str,
+        source_handle_id: str,
+        target_node_id: str,
+        target_handle_id: str,
+    ) -> None:
         self.edges.append(
             dict(
-                id=f"{source}-{output}-{target}-{input}",
-                source=source,
-                source_handle=output,
-                target=target,
-                target_handle=input,
+                id=f"{source_node_id}-{source_handle_id}-{target_node_id}-{target_handle_id}",
+                source=source_node_id,
+                source_handle=source_handle_id,
+                target=target_node_id,
+                target_handle=target_handle_id,
             )
         )
 
     def operation(
-        self, id: str, operation: GraphOperation, **inputs: tuple[str, str]
+        self,
+        node_id: str,
+        operation: GraphOperation,
+        inputs: dict[str, tuple[str, str]],
     ) -> None:
-        self.node(id, "operation", dict(operation=operation))
-        for name, (source, output) in inputs.items():
-            self.connect(source, output, id, name)
+        self.node(node_id, GraphNodeType.OPERATION, dict(operation=operation))
+        for name, (source_node_id, source_handle_id) in inputs.items():
+            self.connect(source_node_id, source_handle_id, node_id, name)
 
-    def parameter(self, id: str, name: str, value: str) -> None:
+    def parameter(self, node_id: str, name: str, value: str) -> None:
         self.parameters.append(
             dict(
-                id=id,
+                id=node_id,
                 name=name,
                 data=dict(scalar_type=GraphScalarType.NUMBER, value=value),
             )
         )
-        self.node(id, "parameter", dict(parameter_id=id))
+        self.node(node_id, GraphNodeType.PARAMETER, dict(parameter_id=node_id))
 
     def comparison(
         self,
-        id: str,
+        node_id: str,
         operator: GraphComparisonOperator,
         left: tuple[str, str],
         right: tuple[str, str],
     ) -> None:
-        self.node(id, "comparison", dict(operator=operator))
-        self.connect(*left, id, GraphPort.LEFT)
-        self.connect(*right, id, GraphPort.RIGHT)
+        self.node(node_id, GraphNodeType.COMPARISON, dict(operator=operator))
+        self.connect(*left, node_id, GraphPort.LEFT)
+        self.connect(*right, node_id, GraphPort.RIGHT)
 
     def action(
         self,
-        id: str,
+        node_id: str,
         action: GraphBrokerAction,
         enabled: tuple[str, str],
         price: str,
         size: tuple[str, str],
     ) -> None:
-        self.node(id, "broker_action", dict(action=action))
-        self.connect(*enabled, id, GraphPort.ENABLED)
-        self.connect("book", "field:token_id", id, GraphPort.TOKEN_ID)
-        self.connect("book", price, id, "price")
-        self.connect(*size, id, GraphPort.SIZE)
+        self.node(node_id, GraphNodeType.BROKER_ACTION, dict(action=action))
+        self.connect(*enabled, node_id, GraphPort.ENABLED)
+        self.connect(
+            "book",
+            GraphFieldPath(segments=("token_id",)).handle_id,
+            node_id,
+            GraphPort.TOKEN_ID,
+        )
+        self.connect("book", price, node_id, GraphPort.PRICE)
+        self.connect(*size, node_id, GraphPort.SIZE)
 
     def graph(self) -> NodeGraph:
         return NodeGraph.model_validate(
@@ -96,60 +124,76 @@ class _ExampleBuilder:
 
 def entry_exit_example() -> GraphExample:
     builder = _ExampleBuilder()
-    builder.parameter("entry", "Entry threshold", "0.45")
+    builder.parameter("entry", ENTRY_THRESHOLD_LABEL, "0.45")
     builder.parameter("exit", "Exit threshold", "0.60")
-    builder.parameter("budget", "Budget", "1")
+    builder.parameter("budget", BUDGET_LABEL, "1")
     builder.operation(
         "position",
         GraphOperation.POSITION,
-        context=("book", GraphPort.CONTEXT),
-        token_id=("book", "field:token_id"),
+        {
+            GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
+            GraphPort.TOKEN_ID: (
+                "book",
+                GraphFieldPath(segments=("token_id",)).handle_id,
+            ),
+        },
     )
     builder.operation(
-        "flat", GraphOperation.NOT, value=("position", GraphPort.HAS_POSITION)
+        "flat",
+        GraphOperation.NOT,
+        {GraphPort.VALUE: ("position", GraphPort.HAS_POSITION)},
     )
     builder.comparison(
         "cheap",
         GraphComparisonOperator.LESS_THAN_OR_EQUAL,
-        ("book", "field:best_ask.price"),
+        ("book", GraphFieldPath(segments=("best_ask", "price")).handle_id),
         ("entry", GraphPort.VALUE),
     )
     builder.operation(
         "enter",
         GraphOperation.AND,
-        input_1=("flat", GraphPort.RESULT),
-        input_2=("cheap", GraphPort.RESULT),
+        {
+            DEFAULT_BOOLEAN_INPUT_IDS[0]: ("flat", GraphPort.RESULT),
+            DEFAULT_BOOLEAN_INPUT_IDS[1]: ("cheap", GraphPort.RESULT),
+        },
     )
     builder.operation(
         "shares",
         GraphOperation.DIVIDE,
-        left=("budget", GraphPort.VALUE),
-        right=("book", "field:best_ask.price"),
+        {
+            GraphPort.LEFT: ("budget", GraphPort.VALUE),
+            GraphPort.RIGHT: (
+                "book",
+                GraphFieldPath(segments=("best_ask", "price")).handle_id,
+            ),
+        },
     )
     builder.action(
         "buy",
         GraphBrokerAction.SUBMIT_BUY,
         ("enter", GraphPort.RESULT),
-        "field:best_ask.price",
+        GraphFieldPath(segments=("best_ask", "price")).handle_id,
         ("shares", GraphPort.VALUE),
     )
     builder.comparison(
         "expensive",
         GraphComparisonOperator.GREATER_THAN_OR_EQUAL,
-        ("book", "field:best_bid.price"),
+        ("book", GraphFieldPath(segments=("best_bid", "price")).handle_id),
         ("exit", GraphPort.VALUE),
     )
     builder.operation(
         "leave",
         GraphOperation.AND,
-        input_1=("position", GraphPort.HAS_POSITION),
-        input_2=("expensive", GraphPort.RESULT),
+        {
+            DEFAULT_BOOLEAN_INPUT_IDS[0]: ("position", GraphPort.HAS_POSITION),
+            DEFAULT_BOOLEAN_INPUT_IDS[1]: ("expensive", GraphPort.RESULT),
+        },
     )
     builder.action(
         "sell",
         GraphBrokerAction.SUBMIT_SELL,
         ("leave", GraphPort.RESULT),
-        "field:best_bid.price",
+        GraphFieldPath(segments=("best_bid", "price")).handle_id,
         ("position", GraphPort.SIZE),
     )
     return GraphExample(
@@ -161,20 +205,27 @@ def entry_exit_example() -> GraphExample:
 
 def multiple_conditions_example() -> GraphExample:
     builder = _ExampleBuilder()
-    builder.parameter("entry", "Entry threshold", "0.45")
-    builder.parameter("budget", "Budget", "1")
+    builder.parameter("entry", ENTRY_THRESHOLD_LABEL, "0.45")
+    builder.parameter("budget", BUDGET_LABEL, "1")
     builder.parameter("cooldown_ms", "Cooldown milliseconds", "1000")
     builder.operation(
-        "cash", GraphOperation.BALANCE, context=("book", GraphPort.CONTEXT)
+        "cash", GraphOperation.BALANCE, {GraphPort.CONTEXT: ("book", GraphPort.CONTEXT)}
     )
     builder.operation(
         "position",
         GraphOperation.POSITION,
-        context=("book", GraphPort.CONTEXT),
-        token_id=("book", "field:token_id"),
+        {
+            GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
+            GraphPort.TOKEN_ID: (
+                "book",
+                GraphFieldPath(segments=("token_id",)).handle_id,
+            ),
+        },
     )
     builder.operation(
-        "flat", GraphOperation.NOT, value=("position", GraphPort.HAS_POSITION)
+        "flat",
+        GraphOperation.NOT,
+        {GraphPort.VALUE: ("position", GraphPort.HAS_POSITION)},
     )
     builder.comparison(
         "funded",
@@ -185,45 +236,56 @@ def multiple_conditions_example() -> GraphExample:
     builder.comparison(
         "cheap",
         GraphComparisonOperator.LESS_THAN_OR_EQUAL,
-        ("book", "field:best_ask.price"),
+        ("book", GraphFieldPath(segments=("best_ask", "price")).handle_id),
         ("entry", GraphPort.VALUE),
     )
     builder.operation(
         "conditions",
         GraphOperation.AND,
-        input_1=("flat", GraphPort.RESULT),
-        input_2=("cheap", GraphPort.RESULT),
-        input_3=("funded", GraphPort.RESULT),
+        {
+            DEFAULT_BOOLEAN_INPUT_IDS[0]: ("flat", GraphPort.RESULT),
+            DEFAULT_BOOLEAN_INPUT_IDS[1]: ("cheap", GraphPort.RESULT),
+            FUNDING_CONDITION_INPUT: ("funded", GraphPort.RESULT),
+        },
     )
     next(node for node in builder.nodes if node["id"] == "conditions")["data"][
         "input_ids"
-    ] = ["input_1", "input_2", "input_3"]
+    ] = [*DEFAULT_BOOLEAN_INPUT_IDS, FUNDING_CONDITION_INPUT]
     builder.operation(
         "gate",
         GraphOperation.COOLDOWN,
-        context=("book", GraphPort.CONTEXT),
-        enabled=("conditions", GraphPort.RESULT),
-        key=("book", "field:token_id"),
-        duration_ms=("cooldown_ms", GraphPort.VALUE),
+        {
+            GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
+            GraphPort.ENABLED: ("conditions", GraphPort.RESULT),
+            GraphPort.KEY: ("book", GraphFieldPath(segments=("token_id",)).handle_id),
+            GraphPort.DURATION_MS: ("cooldown_ms", GraphPort.VALUE),
+        },
     )
     builder.operation(
         "shares",
         GraphOperation.DIVIDE,
-        left=("budget", GraphPort.VALUE),
-        right=("book", "field:best_ask.price"),
+        {
+            GraphPort.LEFT: ("budget", GraphPort.VALUE),
+            GraphPort.RIGHT: (
+                "book",
+                GraphFieldPath(segments=("best_ask", "price")).handle_id,
+            ),
+        },
     )
     builder.action(
         "buy",
         GraphBrokerAction.SUBMIT_BUY,
         ("gate", GraphPort.RESULT),
-        "field:best_ask.price",
+        GraphFieldPath(segments=("best_ask", "price")).handle_id,
         ("shares", GraphPort.VALUE),
     )
     builder.operation(
         "explain",
         GraphOperation.LOG,
-        context=("book", GraphPort.CONTEXT),
-        value=("buy", GraphPort.STATUS),
+        {
+            GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
+            GraphPort.VALUE: ("buy", GraphPort.STATUS),
+        },
     )
     return GraphExample(
         name="Multiple conditions and cooldown",

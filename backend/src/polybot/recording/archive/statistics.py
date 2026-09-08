@@ -5,8 +5,11 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterable
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import BOOK_CHECKPOINTS_TABLE, EVENTS_TABLE
+
+from ..contracts.kinds import PayloadKind
 from .errors import ArchiveFormatError
-from .schema import CAPTURE_ANOMALIES_TABLE
 from .models import (
     RecordingEventBounds,
     RecordingEventCounts,
@@ -15,7 +18,7 @@ from .models import (
     RecordingSession,
     RecordingSessionStatistics,
 )
-from ..contracts.kinds import PayloadKind
+from .schema import CAPTURE_ANOMALIES_TABLE
 
 
 def read_recording_statistics(
@@ -27,26 +30,26 @@ def read_recording_statistics(
     anomaly_provenance: RecordingFeatureProvenance | None,
 ) -> tuple[RecordingSessionStatistics, ...]:
     grouped_rows = connection.execute(
-        """
-        SELECT session_id, condition_id, market_slug, payload_kind,
+        f"""
+        SELECT {ArchiveColumn.SESSION_ID}, {ArchiveColumn.CONDITION_ID}, {ArchiveColumn.MARKET_SLUG}, {ArchiveColumn.PAYLOAD_KIND},
                COUNT(*) AS event_count,
-               MIN(observed_at_ms) AS start_at_ms,
-               MAX(observed_at_ms) AS end_at_ms,
-               MIN(sequence) AS first_sequence,
-               MAX(sequence) AS last_sequence
-        FROM events
-        WHERE sequence <= ?
-        GROUP BY session_id, condition_id, market_slug, payload_kind
-        ORDER BY session_id, condition_id, market_slug, payload_kind
+               MIN({ArchiveColumn.OBSERVED_AT_MS}) AS start_at_ms,
+               MAX({ArchiveColumn.OBSERVED_AT_MS}) AS end_at_ms,
+               MIN({ArchiveColumn.SEQUENCE}) AS first_sequence,
+               MAX({ArchiveColumn.SEQUENCE}) AS last_sequence
+        FROM {EVENTS_TABLE}
+        WHERE {ArchiveColumn.SEQUENCE} <= ?
+        GROUP BY {ArchiveColumn.SESSION_ID}, {ArchiveColumn.CONDITION_ID}, {ArchiveColumn.MARKET_SLUG}, {ArchiveColumn.PAYLOAD_KIND}
+        ORDER BY {ArchiveColumn.SESSION_ID}, {ArchiveColumn.CONDITION_ID}, {ArchiveColumn.MARKET_SLUG}, {ArchiveColumn.PAYLOAD_KIND}
         """,
         (replay_cutoff_sequence,),
     ).fetchall()
     checkpoint_rows = connection.execute(
-        """
-        SELECT session_id, COUNT(*) AS checkpoint_count
-        FROM book_checkpoints
-        WHERE sequence <= ?
-        GROUP BY session_id
+        f"""
+        SELECT {ArchiveColumn.SESSION_ID}, COUNT(*) AS checkpoint_count
+        FROM {BOOK_CHECKPOINTS_TABLE}
+        WHERE {ArchiveColumn.SEQUENCE} <= ?
+        GROUP BY {ArchiveColumn.SESSION_ID}
         """,
         (replay_cutoff_sequence,),
     ).fetchall()
@@ -55,10 +58,10 @@ def read_recording_statistics(
         if anomaly_provenance is None
         else connection.execute(
             f"""
-            SELECT session_id, COUNT(*) AS anomaly_count
+            SELECT {ArchiveColumn.SESSION_ID}, COUNT(*) AS anomaly_count
             FROM {CAPTURE_ANOMALIES_TABLE}
-            WHERE anomaly_id <= ?
-            GROUP BY session_id
+            WHERE {ArchiveColumn.ANOMALY_ID} <= ?
+            GROUP BY {ArchiveColumn.SESSION_ID}
             """,
             (anomaly_cutoff_id,),
         ).fetchall()
@@ -92,9 +95,11 @@ def _statistics_from_rows(
 
     try:
         for row in grouped_rows:
-            session_id = _integer(row["session_id"], "statistics session ID", 1)
+            session_id = _integer(
+                row[ArchiveColumn.SESSION_ID], "statistics session ID", 1
+            )
             _require_session(session_id, session_ids)
-            kind = PayloadKind(row["payload_kind"])
+            kind = PayloadKind(row[ArchiveColumn.PAYLOAD_KIND])
             event_count = _integer(row["event_count"], "event count", 1)
             start_at_ms = _integer(
                 row["start_at_ms"],
@@ -123,8 +128,8 @@ def _statistics_from_rows(
                 start_at_ms=start_at_ms,
                 end_at_ms=end_at_ms,
             )
-            condition_id = row["condition_id"]
-            market_slug = row["market_slug"]
+            condition_id = row[ArchiveColumn.CONDITION_ID]
+            market_slug = row[ArchiveColumn.MARKET_SLUG]
             if condition_id is not None and market_slug is not None:
                 _merge_market(
                     market_rows,
@@ -263,7 +268,9 @@ def _grouped_count_rows(
     result: dict[int, int] = {}
     try:
         for row in rows:
-            session_id = _integer(row["session_id"], "statistics session ID", 1)
+            session_id = _integer(
+                row[ArchiveColumn.SESSION_ID], "statistics session ID", 1
+            )
             _require_session(session_id, session_ids)
             result[session_id] = _integer(
                 row[count_column],

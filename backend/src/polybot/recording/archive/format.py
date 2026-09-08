@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import ARCHIVE_META_TABLE
+
 from .errors import ArchiveFormatError
 from .primitives import _required_text
 from .schema import (
@@ -15,12 +18,8 @@ from .schema import (
 
 def _validate_archive(connection: sqlite3.Connection) -> str:
     try:
-        application_id = int(
-            connection.execute("PRAGMA application_id").fetchone()[0]
-        )
-        schema_version = int(
-            connection.execute("PRAGMA user_version").fetchone()[0]
-        )
+        application_id = int(connection.execute("PRAGMA application_id").fetchone()[0])
+        schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
         if application_id != SQLITE_APPLICATION_ID or schema_version != SCHEMA_VERSION:
             raise ArchiveFormatError(
                 f"unsupported recording archive schema version {schema_version}"
@@ -30,15 +29,17 @@ def _validate_archive(connection: sqlite3.Connection) -> str:
             raise ArchiveFormatError("recording archive failed SQLite integrity check")
         _validate_core_schema(connection)
         row = connection.execute(
-            """
-            SELECT schema_version, target_identity
-            FROM archive_meta
-            WHERE singleton = 1
+            f"""
+            SELECT {ArchiveColumn.SCHEMA_VERSION}, {ArchiveColumn.TARGET_IDENTITY}
+            FROM {ARCHIVE_META_TABLE}
+            WHERE {ArchiveColumn.SINGLETON} = 1
             """
         ).fetchone()
-        if row is None or row["schema_version"] != SCHEMA_VERSION:
+        if row is None or row[ArchiveColumn.SCHEMA_VERSION] != SCHEMA_VERSION:
             raise ArchiveFormatError("recording archive metadata is malformed")
-        return _required_text(row["target_identity"], "stored target identity")
+        return _required_text(
+            row[ArchiveColumn.TARGET_IDENTITY], "stored target identity"
+        )
     except ArchiveFormatError:
         raise
     except (IndexError, sqlite3.Error, TypeError, ValueError) as error:

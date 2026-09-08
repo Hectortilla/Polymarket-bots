@@ -23,14 +23,13 @@ from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
-from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.book_freshness import paired_observations_are_current
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
-
 
 # The signal and trade window are intentionally late: the leader must have
 # repriced materially before capital is committed.  The final 45 seconds are
@@ -185,9 +184,7 @@ class WinnerTradingBot(BaseBot):
 
     async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
         affected_conditions = {
-            condition_id
-            for condition_id in self._quotes
-            if gap.affects(condition_id)
+            condition_id for condition_id in self._quotes if gap.affects(condition_id)
         }
         for condition_id in affected_conditions:
             self._quotes.pop(condition_id, None)
@@ -311,9 +308,7 @@ class WinnerTradingBot(BaseBot):
         late_recovery: bool,
     ) -> bool:
         minimum_leader_bid = (
-            LATE_LEADER_BID_THRESHOLD
-            if late_confirmation
-            else LEADER_BID_THRESHOLD
+            LATE_LEADER_BID_THRESHOLD if late_confirmation else LEADER_BID_THRESHOLD
         )
         minimum_stable_leader_bid = (
             LATE_MINIMUM_STABLE_LEADER_BID
@@ -351,6 +346,7 @@ class WinnerTradingBot(BaseBot):
             or timing.elapsed_ms < EARLY_ENTRY_MIN_ELAPSED_MS
             or timing.elapsed_ms >= EARLY_ENTRY_MAX_ELAPSED_MS
         )
+
     def _leader_was_stable(
         self,
         condition_id: str,
@@ -435,9 +431,7 @@ class WinnerTradingBot(BaseBot):
         window_ms: int,
     ) -> list[Decimal]:
         cutoff_ms = now_ms - window_ms
-        return [
-            bid for observed_at_ms, bid in history if observed_at_ms >= cutoff_ms
-        ]
+        return [bid for observed_at_ms, bid in history if observed_at_ms >= cutoff_ms]
 
     async def _maybe_exit(
         self,

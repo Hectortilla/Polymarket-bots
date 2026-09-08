@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import deque
-from math import nan
 
 from polybot.cli.dashboard.chart_contracts import (
     MAX_TERMINAL_CHART_POINTS,
@@ -11,13 +10,11 @@ from polybot.cli.dashboard.chart_contracts import (
 )
 from polybot.dashboard.contracts import (
     MAX_CHART_HISTORY_POINTS,
-    MAX_TIME_ZOOM_LEVEL,
-    MIN_TIME_ZOOM_LEVEL,
     scaled_chart_window_points,
 )
-from polybot.dashboard.history import last_chart_value, trim
 
 from .layout import chart_panel_width
+
 
 def chart_window_points(time_zoom_level: int, width: int) -> int:
     base_points = chart_display_points(width)

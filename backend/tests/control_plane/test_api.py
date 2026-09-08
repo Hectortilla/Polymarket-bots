@@ -1,69 +1,31 @@
-from datetime import UTC, datetime
 import json
-from pathlib import Path
 import re
+from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
-
-from fastapi.testclient import TestClient
-import pytest
-from sqlalchemy.exc import IntegrityError
 
 import api.http.dependencies as dependencies_module
 import api.http.openapi as openapi_module
-import api.http.routes.events as events_routes
 import api.http.routes.bots.run_launch as bot_run_routes
 import api.http.routes.bots.saved_bot as saved_bot_routes
 import api.http.routes.bots.validation as bot_validation
+import api.http.routes.events as events_routes
 import api.http.routes.graph_templates as graph_template_routes
 import api.http.routes.run_lookup as run_lookup
 import api.http.routes.runs as runs_routes
-from api.http.app import app, create_app
-from control_plane.market_fixtures import market_discovery
-from api.http.routes.bots.market_validation import (
-    MARKET_SELECTION_UNAVAILABLE_DETAIL,
-)
-from api.http.contracts import HealthResponse
-from api.http.routes.events import (
-    DURABLE_EVENT_SCHEMA_REFERENCE,
-    LAST_EVENT_ID_HEADER,
-    SSE_MEDIA_TYPE,
-)
-from api.http.routes.health import SERVICE_UNAVAILABLE_DETAIL
-from api.http.routes.paths import (
-    API_PREFIX,
-    BOT_DEFINITIONS_PATH,
-    BOTS_PATH,
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
-    BOT_PATH,
-    BOT_RUNS_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
-    HEALTH_PATH,
-    RUN_EVENTS_PATH,
-    RUN_EVENTS_STREAM_PATH,
-    RUN_PATH,
-    RUN_STOP_PATH,
-    RUNS_PATH,
-    api_route_path,
-)
+import pytest
+from api.bots.contracts import BotCreate, BotGraphRevisionRead, BotRead, BotUpdate
+from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.revisions import (
     FIRST_GRAPH_REVISION_NUMBER,
     next_graph_revision_number,
 )
-from api.http.routes.bots.run_launch import RUN_LAUNCH_FAILURE_REASON
-from api.http.openapi import OPENAPI_OUTPUT_PATH
+from api.catalog.contracts import BotDefinitionDescriptor
 from api.catalog.definitions import (
     NODE_BASED_DEFINITION_ID,
     WINNER_DEFINITION_ID,
 )
-from api.catalog.contracts import BotDefinitionDescriptor
 from api.catalog.graphs.catalog import GraphNodeCatalog
-from api.bots.contracts import BotGraphRevisionRead, BotRead
-from api.bots.contracts import BotCreate, BotUpdate
-from api.bots.models import BotGraphRevisionRow, BotRow
-from api.graph_templates.contracts import GraphTemplateRead
-from api.graph_templates.models import GraphTemplateRow
 from api.events.contracts import (
     ChartSampleEvent,
     ChartSamplePayload,
@@ -73,7 +35,7 @@ from api.events.contracts import (
     RunLifecycleEvent,
     RunStatusPayload,
 )
-from api.events.contracts.payloads import EquityChartPointPayload
+from api.events.contracts.payloads.chart import EquityChartPointPayload
 from api.events.ids import (
     FIRST_EVENT_CURSOR,
     MAX_DURABLE_EVENT_ID,
@@ -85,11 +47,48 @@ from api.events.pagination import (
     next_event_page_cursor,
 )
 from api.events.store import StoredEventPage
+from api.graph_templates.contracts import GraphTemplateRead
+from api.graph_templates.models import GraphTemplateRow
+from api.http.app import app, create_app
+from api.http.contracts import HealthResponse
+from api.http.openapi import OPENAPI_OUTPUT_PATH
+from api.http.routes.bots.market_validation import (
+    MARKET_SELECTION_UNAVAILABLE_DETAIL,
+)
+from api.http.routes.bots.run_launch import RUN_LAUNCH_FAILURE_REASON
+from api.http.routes.events import (
+    DURABLE_EVENT_SCHEMA_REFERENCE,
+    LAST_EVENT_ID_HEADER,
+    SSE_MEDIA_TYPE,
+)
+from api.http.routes.health import SERVICE_UNAVAILABLE_DETAIL
+from api.http.routes.paths import (
+    API_PREFIX,
+    BOT_DEFINITIONS_PATH,
+    BOT_GRAPH_REVISION_PATH,
+    BOT_GRAPH_REVISIONS_PATH,
+    BOT_PATH,
+    BOT_RUNS_PATH,
+    BOTS_PATH,
+    GRAPH_TEMPLATE_PATH,
+    GRAPH_TEMPLATES_PATH,
+    HEALTH_PATH,
+    RUN_EVENTS_PATH,
+    RUN_EVENTS_STREAM_PATH,
+    RUN_PATH,
+    RUN_STOP_PATH,
+    RUNS_PATH,
+    api_route_path,
+)
 from api.runs.contracts import PaperRunConfig, RunRead
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
+from fastapi.testclient import TestClient
 from polybot.performance.contracts.valuation_status import ValuationStatus
+from sqlalchemy.exc import IntegrityError
+
 from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.market_fixtures import market_discovery
 from control_plane.run_contract_fixture import (
     FRONTEND_RUN_CONTRACT_PATH,
     frontend_run_contract,
@@ -191,9 +190,7 @@ def test_node_graph_saved_bot_persists_exact_snapshot_and_rejects_invalid_graph(
         "graph_template_id": template.json()["id"],
     }
     saved_bot = client.post(api_route_path(BOTS_PATH), json=body)
-    launched = client.post(
-        api_route_path(BOT_RUNS_PATH, bot_id=saved_bot.json()["id"])
-    )
+    launched = client.post(api_route_path(BOT_RUNS_PATH, bot_id=saved_bot.json()["id"]))
     invalid_graph = {**graph, "schema_version": 1}
     rejected_graph = client.post(
         api_route_path(GRAPH_TEMPLATES_PATH),
@@ -250,9 +247,14 @@ def test_saved_bot_rejects_unavailable_additions_without_writing(
     )
     for response in (rejected_create, rejected_update):
         assert response.status_code == 422
-        assert response.json()["detail"][0]["msg"] == MARKET_SELECTION_UNAVAILABLE_DETAIL
+        assert (
+            response.json()["detail"][0]["msg"] == MARKET_SELECTION_UNAVAILABLE_DETAIL
+        )
     assert len(state.bots) == 1
-    assert client.get(api_route_path(BOT_PATH, bot_id=bot["id"])).json()["config"] == bot["config"]
+    assert (
+        client.get(api_route_path(BOT_PATH, bot_id=bot["id"])).json()["config"]
+        == bot["config"]
+    )
 
 
 def test_template_and_bot_graph_edits_are_isolated_revisions(
@@ -281,9 +283,7 @@ def test_template_and_bot_graph_edits_are_isolated_revisions(
         api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"]),
         json={"graph": changed_graph},
     ).json()
-    unchanged_bot = client.get(
-        api_route_path(BOT_PATH, bot_id=bot["id"])
-    ).json()
+    unchanged_bot = client.get(api_route_path(BOT_PATH, bot_id=bot["id"])).json()
     revision_two = client.post(
         api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=bot["id"]),
         json={"graph": bot_graph},
@@ -356,15 +356,17 @@ def test_template_and_saved_bot_crud_preserve_revision_ownership(
 
     assert template["name"] == "Reusable graph"
     assert client.get(api_route_path(GRAPH_TEMPLATES_PATH)).json() == [template]
-    assert client.get(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"])
-    ).json() == template
+    assert (
+        client.get(
+            api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"])
+        ).json()
+        == template
+    )
     assert updated_bot.status_code == 200
     assert updated_bot.json()["config"]["name"] == "after"
     assert updated_bot.json()["latest_graph_revision"] == revision
     assert {
-        saved_bot["id"]
-        for saved_bot in client.get(api_route_path(BOTS_PATH)).json()
+        saved_bot["id"] for saved_bot in client.get(api_route_path(BOTS_PATH)).json()
     } == {
         bot["id"],
         non_graph_bot["id"],
@@ -404,20 +406,32 @@ def test_graph_template_conflicts_and_missing_writes_preserve_state(
 
     assert duplicate.status_code == 409
     assert conflicting_rename.status_code == 409
-    assert client.get(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=missing_id)
-    ).status_code == 404
-    assert client.patch(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=missing_id),
-        json={"name": "Missing"},
-    ).status_code == 404
-    assert client.patch(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=first["id"]),
-        json={},
-    ).status_code == 422
-    assert client.get(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=second["id"])
-    ).json()["name"] == "Other"
+    assert (
+        client.get(
+            api_route_path(GRAPH_TEMPLATE_PATH, template_id=missing_id)
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            api_route_path(GRAPH_TEMPLATE_PATH, template_id=missing_id),
+            json={"name": "Missing"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            api_route_path(GRAPH_TEMPLATE_PATH, template_id=first["id"]),
+            json={},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            api_route_path(GRAPH_TEMPLATE_PATH, template_id=second["id"])
+        ).json()["name"]
+        == "Other"
+    )
 
 
 def test_missing_saved_bot_routes_have_no_side_effects(
@@ -485,12 +499,8 @@ def test_run_launch_rejects_inconsistent_persisted_graph_contracts(
         }
     )
 
-    missing_revision = client.post(
-        api_route_path(BOT_RUNS_PATH, bot_id=graph_bot_id)
-    )
-    forbidden_revision = client.post(
-        api_route_path(BOT_RUNS_PATH, bot_id=plain_bot_id)
-    )
+    missing_revision = client.post(api_route_path(BOT_RUNS_PATH, bot_id=graph_bot_id))
+    forbidden_revision = client.post(api_route_path(BOT_RUNS_PATH, bot_id=plain_bot_id))
 
     assert missing_revision.status_code == 409
     assert forbidden_revision.status_code == 409
@@ -688,8 +698,7 @@ def test_missing_run_event_routes_and_pagination_bounds(
     missing_id = uuid4()
 
     assert (
-        client.post(api_route_path(RUN_STOP_PATH, run_id=missing_id)).status_code
-        == 404
+        client.post(api_route_path(RUN_STOP_PATH, run_id=missing_id)).status_code == 404
     )
     assert (
         client.get(api_route_path(RUN_EVENTS_PATH, run_id=missing_id)).status_code
@@ -788,9 +797,9 @@ def test_openapi_has_only_v0_routes_and_all_stream_schemas() -> None:
     assert all(path.startswith(API_PREFIX) for path in document["paths"])
     assert "definition_version" not in encoded
     assert "schema_version" not in encoded
-    stream_schema = document["paths"][
-        api_route_path(RUN_EVENTS_STREAM_PATH)
-    ]["get"]["responses"]["200"]["content"][SSE_MEDIA_TYPE]["schema"]
+    stream_schema = document["paths"][api_route_path(RUN_EVENTS_STREAM_PATH)]["get"][
+        "responses"
+    ]["200"]["content"][SSE_MEDIA_TYPE]["schema"]
     assert stream_schema == {
         "oneOf": [
             {"$ref": DURABLE_EVENT_SCHEMA_REFERENCE},
@@ -820,9 +829,7 @@ def test_documented_exact_field_inventories_match_contract_owners() -> None:
     architecture = Path("docs/web-control-plane-architecture.md").read_text()
 
     def documented_fields_after(marker: str) -> tuple[str, ...]:
-        field_block = (
-            architecture.split(marker, 1)[1].lstrip().split("\n\n", 1)[0]
-        )
+        field_block = architecture.split(marker, 1)[1].lstrip().split("\n\n", 1)[0]
         return tuple(re.findall(r"^- `([^`]+)`", field_block, re.MULTILINE))
 
     assert documented_fields_after("`BotDefinitionDescriptor` has exactly:") == tuple(
@@ -844,9 +851,7 @@ def test_documented_exact_field_inventories_match_contract_owners() -> None:
     assert documented_fields_after("`graph_templates` has exactly:") == tuple(
         GraphTemplateRow.model_fields
     )
-    assert documented_fields_after("`bots` has exactly:") == tuple(
-        BotRow.model_fields
-    )
+    assert documented_fields_after("`bots` has exactly:") == tuple(BotRow.model_fields)
     assert documented_fields_after("`bot_graph_revisions` has exactly:") == tuple(
         BotGraphRevisionRow.model_fields
     )
@@ -1264,9 +1269,7 @@ class _ApiRunLifecycle:
             return None
         event_id = None
         if run.status is RunStatus.QUEUED:
-            run = run.model_copy(
-                update={"status": RunStatus.STOPPED, "ended_at": now}
-            )
+            run = run.model_copy(update={"status": RunStatus.STOPPED, "ended_at": now})
             event_id = self._terminal_event_id()
         elif run.status in {RunStatus.STARTING, RunStatus.RUNNING}:
             run = run.model_copy(update={"status": RunStatus.STOP_REQUESTED})

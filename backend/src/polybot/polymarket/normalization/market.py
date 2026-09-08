@@ -3,18 +3,18 @@ from __future__ import annotations
 from decimal import Decimal
 from enum import StrEnum
 
-from polymarket.models.gamma.market import Market as SdkMarket
-
+from polybot.framework.events.resolutions import (
+    LOSING_PAYOUT_PER_TOKEN,
+    WINNING_PAYOUT_PER_TOKEN,
+)
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.markets import (
     Market,
     MarketOutcome,
 )
 from polybot.polymarket.resolution_status import FINAL_RESOLUTION_STATUSES
-from polybot.framework.events.resolutions import (
-    LOSING_PAYOUT_PER_TOKEN,
-    WINNING_PAYOUT_PER_TOKEN,
-)
+
+from polymarket.models.gamma.market import Market as SdkMarket
 
 from .values import (
     _nested_value,
@@ -254,7 +254,9 @@ def _resolved_outcome_from_source(
     )
     status_value = getattr(resolution_status, "value", resolution_status)
     normalized_status = (
-        status_value.strip().casefold() if isinstance(status_value, str) else status_value
+        status_value.strip().casefold()
+        if isinstance(status_value, str)
+        else status_value
     )
     resolution_reported = (
         normalized_status in FINAL_RESOLUTION_STATUSES or closed is True
@@ -271,4 +273,9 @@ def _resolved_outcome_from_source(
         and first_price == LOSING_PAYOUT_PER_TOKEN
     ):
         return True, second_token_id, second_label
+    if normalized_status in FINAL_RESOLUTION_STATUSES:
+        raise MarketDataError(
+            MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+            "terminal market metadata does not identify an unambiguous winner",
+        )
     return False, None, None

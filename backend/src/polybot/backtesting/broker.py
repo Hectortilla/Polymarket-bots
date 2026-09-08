@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from polybot.execution.broker import Broker
 from polybot.async_io import run_blocking
+from polybot.execution.broker import Broker
 from polybot.framework.clock import Clock
 from polybot.framework.events import FillEvent, OrderRequest
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts

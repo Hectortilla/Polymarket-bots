@@ -9,54 +9,12 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import pytest
-from alembic import command
-from alembic.config import Config
-from httpx import ASGITransport, AsyncClient
-from pydantic import ValidationError
-from sqlalchemy import inspect, text
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.sql.elements import TextClause
-from sqlmodel import select
-
 import api.execution.worker.lifecycle as worker_lifecycle
 import api.execution.worker.resources as worker_resources
 import api.execution.worker.runtime as worker_runtime
-from control_plane.graph_fixtures import threshold_buy_graph
-from control_plane.service_config import (
-    POSTGRES_NOT_CONFIGURED_SKIP_REASON,
-    TEST_POSTGRES_URL_ENV,
-)
-from polybot.cli.observability.broker import ObservableBroker
-from polybot.execution.broker import Broker
-from polybot.framework.context import BotContext
-from polybot.framework.events import FillEvent, FillRejectReason, Side
-from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.streams import StreamRelation
-from polybot.performance.contracts.valuation_status import ValuationStatus
-from api.catalog.definitions import (
-    CATALOG,
-    GraphRequirementError,
-    NODE_BASED_DEFINITION_ID,
-    WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-    WINNER_DEFINITION_ID,
-)
-from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.starter import STARTER_NODE_GRAPH
-from api.catalog.graphs.examples import entry_exit_example
-from api.http.app import create_app
-from api.http.routes.paths import (
-    BOT_RUNS_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
-    api_route_path,
-)
+import pytest
+from alembic import command
+from alembic.config import Config
 from api.bots.contracts import BotRead
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
@@ -68,33 +26,32 @@ from api.bots.schema import (
     BOTS_TABLE_NAME,
 )
 from api.bots.store import BotStore
-from api.graph_templates.contracts import (
-    GraphTemplateCreate,
-    GraphTemplateUpdate,
+from api.catalog.definitions import (
+    CATALOG,
+    NODE_BASED_DEFINITION_ID,
+    WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
+    WINNER_DEFINITION_ID,
+    GraphRequirementError,
 )
-from api.graph_templates.models import GraphTemplateRow
-from api.graph_templates.schema import (
-    GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME,
-    GRAPH_TEMPLATES_TABLE_NAME,
-)
-from api.graph_templates.store import GraphTemplateStore
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.examples import entry_exit_example
+from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.database import DATABASE_URL_ENV, async_database_url
 from api.events.contracts import (
     BrokerFillEvent,
     BrokerOrderEvent,
-    PersistedBrokerFillEvent,
-    PersistedBrokerOrderEvent,
     ChartSampleEvent,
     ChartSamplePayload,
+    PersistedBrokerFillEvent,
+    PersistedBrokerOrderEvent,
     RunFailureEvent,
     RunFailurePayload,
     RunLifecycleEvent,
     RunStatusPayload,
 )
+from api.events.contracts.payloads.chart import EquityChartPointPayload
 from api.events.kinds import EventKind
-from api.events.contracts.payloads import EquityChartPointPayload
 from api.events.models import EventRow
-from api.events.observer import WebRuntimeObserver
 from api.events.schema import (
     EVENT_KIND_CONSTRAINT_NAME,
     RUN_EVENTS_CURSOR_INDEX_NAME,
@@ -107,8 +64,24 @@ from api.events.writer import RunEventWriter
 from api.execution.config import REDIS_URL_ENV
 from api.execution.worker import execute_run
 from api.execution.worker.lease import reconcile_expired_run
+from api.graph_templates.contracts import (
+    GraphTemplateCreate,
+    GraphTemplateUpdate,
+)
+from api.graph_templates.models import GraphTemplateRow
+from api.graph_templates.schema import (
+    GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME,
+    GRAPH_TEMPLATES_TABLE_NAME,
+)
+from api.graph_templates.store import GraphTemplateStore
+from api.http.app import create_app
+from api.http.routes.paths import (
+    BOT_RUNS_PATH,
+    GRAPH_TEMPLATE_PATH,
+    GRAPH_TEMPLATES_PATH,
+    api_route_path,
+)
 from api.runs.contracts import RunRead
-from api.runs.status import RunStatus
 from api.runs.models import RunRow
 from api.runs.schema import (
     RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
@@ -116,7 +89,32 @@ from api.runs.schema import (
     RUNS_TABLE_NAME,
     RunColumn,
 )
+from api.runs.status import RunStatus
 from api.runs.store import RunStore
+from httpx import ASGITransport, AsyncClient
+from polybot.cli.observability.broker import ObservableBroker
+from polybot.framework.context import BotContext
+from polybot.framework.events import FillEvent, FillRejectReason
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.streams import StreamRelation
+from polybot.performance.contracts.valuation_status import ValuationStatus
+from pydantic import ValidationError
+from sqlalchemy import inspect, text
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.sql.elements import TextClause
+from sqlmodel import select
+
+from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.service_config import (
+    POSTGRES_NOT_CONFIGURED_SKIP_REASON,
+    TEST_POSTGRES_URL_ENV,
+)
 
 BACKEND_ROOT = Path(__file__).parents[2]
 
@@ -144,9 +142,7 @@ def _run_insert_statement() -> TextClause:
         )
         for column in RunColumn
     )
-    return text(
-        f"INSERT INTO {RUNS_TABLE_NAME} ({columns}) VALUES ({values})"
-    )
+    return text(f"INSERT INTO {RUNS_TABLE_NAME} ({columns}) VALUES ({values})")
 
 
 async def _create_run(
@@ -193,14 +189,14 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
                 )
             )
             checks = await connection.run_sync(
-                lambda sync_connection: inspect(
-                    sync_connection
-                ).get_check_constraints(RUNS_TABLE_NAME)
+                lambda sync_connection: inspect(sync_connection).get_check_constraints(
+                    RUNS_TABLE_NAME
+                )
             )
             primary_key = await connection.run_sync(
-                lambda sync_connection: inspect(
-                    sync_connection
-                ).get_pk_constraint(RUNS_TABLE_NAME)
+                lambda sync_connection: inspect(sync_connection).get_pk_constraint(
+                    RUNS_TABLE_NAME
+                )
             )
             event_columns = []
             event_indexes = []
@@ -224,14 +220,14 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
                     ).get_check_constraints(RUN_EVENTS_TABLE_NAME)
                 )
                 event_foreign_keys = await connection.run_sync(
-                    lambda sync_connection: inspect(
-                        sync_connection
-                    ).get_foreign_keys(RUN_EVENTS_TABLE_NAME)
+                    lambda sync_connection: inspect(sync_connection).get_foreign_keys(
+                        RUN_EVENTS_TABLE_NAME
+                    )
                 )
                 event_primary_key = await connection.run_sync(
-                    lambda sync_connection: inspect(
-                        sync_connection
-                    ).get_pk_constraint(RUN_EVENTS_TABLE_NAME)
+                    lambda sync_connection: inspect(sync_connection).get_pk_constraint(
+                        RUN_EVENTS_TABLE_NAME
+                    )
                 )
         await engine.dispose()
         return (
@@ -289,6 +285,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     async def inspect_saved_bot_schema() -> dict[str, object]:
         engine = create_async_engine(url)
         async with engine.connect() as connection:
+
             def inspect_all(sync_connection):
                 inspector = inspect(sync_connection)
                 return {
@@ -308,9 +305,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
                     "revision_uniques": inspector.get_unique_constraints(
                         BOT_GRAPH_REVISIONS_TABLE_NAME
                     ),
-                    "run_foreign_keys": inspector.get_foreign_keys(
-                        RUNS_TABLE_NAME
-                    ),
+                    "run_foreign_keys": inspector.get_foreign_keys(RUNS_TABLE_NAME),
                 }
 
             result = await connection.run_sync(inspect_all)
@@ -321,9 +316,9 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     assert tuple(
         column["name"] for column in saved_bot_schema["template_columns"]
     ) == tuple(GraphTemplateRow.__table__.columns.keys())
-    assert tuple(
-        column["name"] for column in saved_bot_schema["bot_columns"]
-    ) == tuple(BotRow.__table__.columns.keys())
+    assert tuple(column["name"] for column in saved_bot_schema["bot_columns"]) == tuple(
+        BotRow.__table__.columns.keys()
+    )
     assert tuple(
         column["name"] for column in saved_bot_schema["revision_columns"]
     ) == tuple(BotGraphRevisionRow.__table__.columns.keys())
@@ -357,16 +352,12 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         )
         assert database_column["nullable"] is model_column.nullable
     assert event_primary_key["constrained_columns"] == [EventRow.id.name]
-    assert {index["name"] for index in event_indexes} == {
-        RUN_EVENTS_CURSOR_INDEX_NAME
-    }
+    assert {index["name"] for index in event_indexes} == {RUN_EVENTS_CURSOR_INDEX_NAME}
     assert event_indexes[0]["column_names"] == [
         EventRow.run_id.name,
         EventRow.id.name,
     ]
-    assert {check["name"] for check in event_checks} == {
-        EVENT_KIND_CONSTRAINT_NAME
-    }
+    assert {check["name"] for check in event_checks} == {EVENT_KIND_CONSTRAINT_NAME}
     assert EventKind.CHART_SAMPLE.value in event_checks[0]["sqltext"]
     assert len(event_foreign_keys) == 1
     assert event_foreign_keys[0]["constrained_columns"] == [EventRow.run_id.name]
@@ -396,11 +387,13 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
             RunColumn.HEARTBEAT_AT.value: None,
             RunColumn.FAILURE_DETAIL.value: None,
         }
-        invalid_rows = ({
-            **common_values,
-            RunColumn.ID.value: uuid4(),
-            RunColumn.STATUS.value: "unknown",
-        },)
+        invalid_rows = (
+            {
+                **common_values,
+                RunColumn.ID.value: uuid4(),
+                RunColumn.STATUS.value: "unknown",
+            },
+        )
         for row in invalid_rows:
             with pytest.raises(IntegrityError):
                 async with engine.begin() as connection:
@@ -495,9 +488,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     }
     assert slice_12b_schema[5][0]["column_names"] == [EventRow.run_id.name]
     assert EventKind.CHART_SAMPLE.value not in slice_12b_schema[6][0]["sqltext"]
-    assert asyncio.run(persisted_event_kinds()) == (
-        EventKind.RUN_LIFECYCLE.value,
-    )
+    assert asyncio.run(persisted_event_kinds()) == (EventKind.RUN_LIFECYCLE.value,)
     asyncio.run(insert_chart_sample(accepted=False))
 
     command.downgrade(config, "0001")
@@ -539,12 +530,14 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
             store = RunStore(session)
-            first = await _create_run(session,
+            first = await _create_run(
+                session,
                 definition_id=definition_id,
                 config=config,
                 graph=expected_graph,
             )
-            second = await _create_run(session,
+            second = await _create_run(
+                session,
                 definition_id=definition_id,
                 config=config.model_copy(update={"name": "second"}),
                 graph=expected_graph,
@@ -577,9 +570,7 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
         return first, second, restored, missing, runs, tied_rows
 
     try:
-        first, second, restored, missing, runs, tied_rows = asyncio.run(
-            round_trip()
-        )
+        first, second, restored, missing, runs, tied_rows = asyncio.run(round_trip())
     finally:
         command.downgrade(alembic_config, "base")
 
@@ -592,9 +583,10 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     assert restored.graph == expected_graph
     assert missing is None
     run_ids = tuple(run.id for run in runs)
-    assert tuple(
-        run_id for run_id in run_ids if run_id in {first.id, second.id}
-    ) == (second.id, first.id)
+    assert tuple(run_id for run_id in run_ids if run_id in {first.id, second.id}) == (
+        second.id,
+        first.id,
+    )
     assert tuple(
         run_id for run_id in run_ids if run_id in {row.id for row in tied_rows}
     ) == tuple(sorted((row.id for row in tied_rows), reverse=True))
@@ -992,7 +984,8 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
     async def scenario() -> tuple[RunRead, tuple[object, ...]]:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            created = await _create_run(session,
+            created = await _create_run(
+                session,
                 definition_id=NODE_BASED_DEFINITION_ID,
                 config=CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
                     {
@@ -1203,9 +1196,7 @@ def test_expired_worker_lease_interrupts_once_and_never_relaunches(
     config = CATALOG[WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID].parse_config(
         {
             "name": "expired-worker",
-            "wallet_addresses": [
-                "0x0000000000000000000000000000000000000001"
-            ],
+            "wallet_addresses": ["0x0000000000000000000000000000000000000001"],
         }
     )
 
@@ -1263,9 +1254,7 @@ def test_expired_worker_lease_interrupts_once_and_never_relaunches(
         assert reconciliations.count(True) == 1
         assert restored is not None
         assert restored.status is RunStatus.INTERRUPTED
-        assert [event.payload.status for event in events] == [
-            RunStatus.INTERRUPTED
-        ]
+        assert [event.payload.status for event in events] == [RunStatus.INTERRUPTED]
         assert bot_starts == 0
         await engine.dispose()
 
@@ -1284,9 +1273,7 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
     config = CATALOG[WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID].parse_config(
         {
             "name": "concurrent",
-            "wallet_addresses": [
-                "0x0000000000000000000000000000000000000001"
-            ],
+            "wallet_addresses": ["0x0000000000000000000000000000000000000001"],
         }
     )
 
@@ -1297,23 +1284,28 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
             return AsyncSession(engine, expire_on_commit=False)
 
         async with session_factory() as session:
-            queued = await _create_run(session,
+            queued = await _create_run(
+                session,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config,
             )
-            queued_stop = await _create_run(session,
+            queued_stop = await _create_run(
+                session,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "queued-stop"}),
             )
-            starting_stop = await _create_run(session,
+            starting_stop = await _create_run(
+                session,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "starting-stop"}),
             )
-            failed_run = await _create_run(session,
+            failed_run = await _create_run(
+                session,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "failed"}),
             )
-            interrupted_run = await _create_run(session,
+            interrupted_run = await _create_run(
+                session,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "interrupted"}),
             )
@@ -1343,12 +1335,10 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         async with session_factory() as session:
             store = RunStore(session)
             assert (
-                await store.request_stop(queued_stop.id, now=now)
-                is RunStatus.STOPPED
+                await store.request_stop(queued_stop.id, now=now) is RunStatus.STOPPED
             )
             assert (
-                await store.request_stop(queued_stop.id, now=now)
-                is RunStatus.STOPPED
+                await store.request_stop(queued_stop.id, now=now) is RunStatus.STOPPED
             )
             assert await store.claim(starting_stop.id, now=now) is not None
             assert (
@@ -1552,11 +1542,10 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
     async def scenario() -> tuple[RunRead | None, tuple[RunLifecycleEvent, ...]]:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            created = await _create_run(session,
+            created = await _create_run(
+                session,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                config=CATALOG[
-                    WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID
-                ].parse_config(
+                config=CATALOG[WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID].parse_config(
                     {
                         "name": "duplicate-worker",
                         "wallet_addresses": [

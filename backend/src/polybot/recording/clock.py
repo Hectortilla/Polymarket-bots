@@ -5,7 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import (
+    NANOSECONDS_PER_MILLISECOND,
+    require_nonnegative_timestamp,
+)
 
 
 class ObservationClock:
@@ -24,7 +27,9 @@ class ObservationClock:
 
     def now_ms(self) -> int:
         elapsed_ns = self._monotonic_ns() - self._monotonic_anchor_ns
-        observed_at_ms = (self._unix_anchor_ns + elapsed_ns) // 1_000_000
+        observed_at_ms = (
+            self._unix_anchor_ns + elapsed_ns
+        ) // NANOSECONDS_PER_MILLISECOND
         self._floor_ms = max(self._floor_ms, observed_at_ms)
         return self._floor_ms
 

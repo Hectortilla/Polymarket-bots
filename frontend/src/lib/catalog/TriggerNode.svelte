@@ -1,20 +1,15 @@
 <script lang="ts">
-  import NodeIssues from './NodeIssues.svelte';
-  import { getContext } from 'svelte';
   import { Handle, Position } from '@xyflow/svelte';
+  import { getContext } from 'svelte';
+  import NodeIssues from './NodeIssues.svelte';
 
   import type { GraphTriggerNodeData } from '$lib/api/generated';
-  import { triggerForNode } from './nodeGraph';
-  import {
-    NODE_GRAPH_EDITOR_CONTEXT,
-    type NodeGraphEditorContext
-  } from './nodeGraphContext';
+  import { triggerForNode } from '$lib/catalog/nodeGraph/catalog';
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
 
-  let { id = "", data }: { id?: string; data: GraphTriggerNodeData } = $props();
+  let { id = '', data }: { id?: string; data: GraphTriggerNodeData } = $props();
 
-  const editor = getContext<NodeGraphEditorContext>(
-    NODE_GRAPH_EDITOR_CONTEXT
-  );
+  const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const trigger = $derived(triggerForNode(editor.catalog, data));
 </script>
 
@@ -41,7 +36,9 @@
         <div class="field-output">
           <span>{field.display_name}</span>
           <small>
-            {field.collection ? `collection<${field.value_type}>` : field.scalar_type ?? field.value_type}{field.nullable ? ' | null' : ''}
+            {field.collection
+              ? `collection<${field.value_type}>`
+              : (field.scalar_type ?? field.value_type)}{field.nullable ? ' | null' : ''}
           </small>
           <Handle
             type="source"
@@ -55,7 +52,8 @@
   {:else}
     <p class="lifecycle-only">Lifecycle trigger with context only.</p>
   {/if}
-<NodeIssues {id} /></section>
+  <NodeIssues {id} />
+</section>
 
 <style>
   .trigger-node {

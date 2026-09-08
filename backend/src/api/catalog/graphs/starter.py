@@ -1,11 +1,12 @@
 """Code-owned starter graph snapshot for node-based launches."""
 
 from polybot.framework.base import BaseBot
-from api.catalog.graphs.contracts import (
+
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.contracts.nodes import (
     GraphPosition,
     GraphTriggerNode,
     GraphTriggerNodeData,
-    NodeGraph,
 )
 from api.catalog.graphs.values import GraphNodeType
 

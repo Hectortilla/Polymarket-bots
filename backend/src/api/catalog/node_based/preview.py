@@ -2,7 +2,8 @@
 
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.framework.events import OrderRequest, FillEvent
+from polybot.framework.events import FillEvent, OrderRequest
+
 from api.catalog.graphs.preview import (
     GraphPreviewRequest,
     GraphPreviewResponse,
@@ -29,7 +30,7 @@ class PreviewBroker:
         raise RuntimeError("Decision previews cannot cancel orders")
 
 
-class PreviewData:
+class RejectingPreviewData:
     async def latest(self, token_id: str):
         raise RuntimeError("Decision previews cannot fetch market data")
 
@@ -41,13 +42,13 @@ class PreviewData:
 
 
 async def preview_graph(request: GraphPreviewRequest) -> GraphPreviewResponse:
-    data = PreviewData()
+    rejecting_preview_data = RejectingPreviewData()
     ctx = BotContext(
         config=BotConfig(name="Decision preview"),
         broker=PreviewBroker(),
-        markets=data,
-        books=data,
-        wallet_activity=data,
+        markets=rejecting_preview_data,
+        books=rejecting_preview_data,
+        wallet_activity=rejecting_preview_data,
         portfolio=request.portfolio,
         clock=PreviewClock(request.now_ms),
     )

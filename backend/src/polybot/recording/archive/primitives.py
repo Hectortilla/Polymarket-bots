@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.integers import validate_positive_int
+
+
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must not be empty")
@@ -19,17 +23,13 @@ def _optional_strict_int(value: object, name: str) -> int | None:
 
 
 def _positive_int(value: object, name: str) -> int:
-    parsed = _strict_int(value, name)
-    if parsed <= 0:
-        raise ValueError(f"{name} must be positive")
-    return parsed
+    validate_positive_int(value, name)
+    return value
 
 
 def _nonnegative_timestamp(value: object, name: str) -> int:
     parsed = _strict_int(value, name)
-    if parsed < 0:
-        raise ValueError(f"{name} must be nonnegative")
-    return parsed
+    return require_nonnegative_timestamp(parsed, name)
 
 
 def _nonnegative_int(value: object, name: str) -> int:

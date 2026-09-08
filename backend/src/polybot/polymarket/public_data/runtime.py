@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from polymarket import AsyncPublicClient
-
-from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.client_lifecycle import PublicClientLease
+from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.ws_market import MarketStream
+
+from polymarket import AsyncPublicClient
+
 
 @dataclass(slots=True)
 class RuntimePublicData:

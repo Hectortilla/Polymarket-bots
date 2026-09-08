@@ -11,6 +11,19 @@
         "title": "ActivitySeverity",
         "type": "string"
       },
+      "BookValidationIssue": {
+        "enum": [
+          "market_metadata_missing",
+          "book_identity_mismatch",
+          "bad_book_timestamp",
+          "book_future_dated",
+          "book_stale",
+          "bad_book_level",
+          "book_crossed"
+        ],
+        "title": "BookValidationIssue",
+        "type": "string"
+      },
       "BootstrapPhase": {
         "enum": [
           "markets",
@@ -586,6 +599,19 @@
         "title": "FillRejectReason",
         "type": "string"
       },
+      "GraphActionSkipReason": {
+        "enum": [
+          "disabled",
+          "required_input_unavailable",
+          "book_gap",
+          "book_stale",
+          "wallet_trade_invalid",
+          "wallet_trade_future_dated",
+          "wallet_trade_stale"
+        ],
+        "title": "GraphActionSkipReason",
+        "type": "string"
+      },
       "GraphBooleanConstantData": {
         "additionalProperties": false,
         "properties": {
@@ -931,6 +957,25 @@
         "minLength": 1,
         "type": "string"
       },
+      "GraphEvaluationReason": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GraphReason"
+          },
+          {
+            "$ref": "#/components/schemas/GraphActionSkipReason"
+          },
+          {
+            "$ref": "#/components/schemas/BookValidationIssue"
+          },
+          {
+            "$ref": "#/components/schemas/WalletTradeValidationIssue"
+          },
+          {
+            "$ref": "#/components/schemas/FillRejectReason"
+          }
+        ]
+      },
       "GraphExample": {
         "properties": {
           "description": {
@@ -1236,13 +1281,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/GraphEvaluationReason"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/GraphValueStatus",
@@ -1646,6 +1690,25 @@
         "title": "GraphPreviewResponse",
         "type": "object"
       },
+      "GraphReason": {
+        "enum": [
+          "value_unavailable",
+          "invalid_number",
+          "division_by_zero",
+          "invalid_bounds",
+          "whole_number_required",
+          "portfolio_unavailable",
+          "cooldown_active",
+          "already_consumed",
+          "reset",
+          "state_capacity_exceeded",
+          "invalid_key",
+          "disabled",
+          "planned"
+        ],
+        "title": "GraphReason",
+        "type": "string"
+      },
       "GraphRevisionNumber": {
         "minimum": 1.0,
         "type": "integer"
@@ -1889,13 +1952,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/GraphEvaluationReason"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/GraphValueStatus"
@@ -3921,6 +3983,15 @@
           "reconciliation"
         ],
         "title": "WalletTradeKind",
+        "type": "string"
+      },
+      "WalletTradeValidationIssue": {
+        "enum": [
+          "wallet_trade_invalid",
+          "wallet_trade_future_dated",
+          "wallet_trade_stale"
+        ],
+        "title": "WalletTradeValidationIssue",
         "type": "string"
       }
     }

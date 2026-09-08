@@ -4,20 +4,34 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import get_args
 
-from api.catalog.values import (
-    BotDefinitionLabel,
-    WIDGET_SCHEMA_KEY,
-    SelectionMode,
-    WidgetKind,
+from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from api.catalog.graphs.contracts.limits import (
+    EXPECTED_TRIGGER_BRANCH_COUNT,
+    MAX_GRAPH_PARAMETERS,
+    MAX_INPUT_CONNECTIONS_PER_HANDLE,
+    MAX_NODE_GRAPH_EDGES,
+    MAX_NODE_GRAPH_NODES,
+    MAX_PARAMETER_NAME_LENGTH,
+    MIN_NODE_GRAPH_NODES,
+    NO_INPUT_CONNECTIONS,
 )
-from api.graph_templates.names import (
-    GRAPH_TEMPLATE_NAME_MAX_LENGTH,
+from api.catalog.graphs.evaluation_reasons import GraphEvaluationReason
+from api.catalog.graphs.numbers import (
+    GRAPH_NUMBER_PATTERN,
+    MAX_NUMBER_EXPONENT,
+    MAX_NUMBER_TEXT_LENGTH,
 )
+from api.catalog.graphs.operations import MAX_BOOLEAN_INPUTS
+from api.catalog.graphs.preview_samples import DEFAULT_PREVIEW_CASH
+from api.catalog.graphs.value_status import GraphValueStatus
 from api.catalog.graphs.values import (
+    DEFAULT_OPERATION_SCALAR_TYPE,
     GRAPH_BROKER_SUBMIT_METHOD_NAME,
-    GRAPH_FIELD_PATH_SEPARATOR,
+    GRAPH_CONTEXT_PORT_TYPE,
     GRAPH_FIELD_PATH_SEGMENT_PATTERN,
+    GRAPH_FIELD_PATH_SEPARATOR,
     GRAPH_HOOK_NAME_PATTERN,
     MAX_GRAPH_EDGE_IDENTIFIER_LENGTH,
     MAX_GRAPH_IDENTIFIER_LENGTH,
@@ -25,30 +39,20 @@ from api.catalog.graphs.values import (
     MIN_GRAPH_IDENTIFIER_LENGTH,
     MIN_GRAPH_INPUT_SCALAR_TYPES,
     NODE_GRAPH_COORDINATE_LIMIT,
-    GRAPH_CONTEXT_PORT_TYPE,
-    GraphPort,
     GraphBrokerAction,
     GraphComparisonOperator,
     GraphNodeType,
+    GraphPort,
     GraphScalarType,
 )
-from api.catalog.graphs.contracts import (
-    MAX_INPUT_CONNECTIONS_PER_HANDLE,
-    MAX_NODE_GRAPH_EDGES,
-    MAX_GRAPH_PARAMETERS,
-    MAX_PARAMETER_NAME_LENGTH,
-    MAX_NODE_GRAPH_NODES,
-    MIN_NODE_GRAPH_NODES,
-    NO_INPUT_CONNECTIONS,
-    EXPECTED_TRIGGER_BRANCH_COUNT,
+from api.catalog.values import (
+    WIDGET_SCHEMA_KEY,
+    BotDefinitionLabel,
+    SelectionMode,
+    WidgetKind,
 )
-from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
-from api.catalog.graphs.operations import MAX_BOOLEAN_INPUTS
-from api.catalog.graphs.results import GraphValueStatus
-from api.catalog.graphs.numbers import (
-    MAX_NUMBER_TEXT_LENGTH,
-    MAX_NUMBER_EXPONENT,
-    GRAPH_NUMBER_PATTERN,
+from api.graph_templates.names import (
+    GRAPH_TEMPLATE_NAME_MAX_LENGTH,
 )
 from api.http.market_contracts import (
     DEFAULT_MARKET_SEARCH_LIMIT,
@@ -56,8 +60,7 @@ from api.http.market_contracts import (
     MAX_MARKET_SEARCH_LIMIT,
     MIN_MARKET_SEARCH_LENGTH,
 )
-from api.catalog.inputs import MAX_SELECTED_MARKETS
-
+from api.market_selection import MAX_SELECTED_MARKETS
 
 FRONTEND_CATALOG_CONTRACT_PATH = (
     Path(__file__).parents[3]
@@ -72,6 +75,13 @@ FRONTEND_CATALOG_CONTRACT_PATH = (
 def frontend_catalog_contract() -> dict[str, object]:
     return {
         "graphPort": {port.name: port.value for port in GraphPort},
+        "graphEvaluationReasons": sorted(
+            {
+                reason.value
+                for reason_type in get_args(GraphEvaluationReason.__value__)
+                for reason in reason_type
+            }
+        ),
         "graphValueStatus": {status.name: status.value for status in GraphValueStatus},
         "maximumBooleanInputs": MAX_BOOLEAN_INPUTS,
         "maximumNumberTextLength": MAX_NUMBER_TEXT_LENGTH,
@@ -109,6 +119,8 @@ def frontend_catalog_contract() -> dict[str, object]:
             "noInputConnections": NO_INPUT_CONNECTIONS,
             "requiredTriggerBranchCount": EXPECTED_TRIGGER_BRANCH_COUNT,
         },
+        "defaultPreviewCash": str(DEFAULT_PREVIEW_CASH),
+        "defaultOperationScalarType": DEFAULT_OPERATION_SCALAR_TYPE,
         "graphNodeCatalog": GRAPH_NODE_CATALOG.model_dump(mode="json"),
         "graphNodeType": {kind.name: kind.value for kind in GraphNodeType},
         "graphBrokerAction": {

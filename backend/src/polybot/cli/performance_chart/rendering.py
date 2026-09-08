@@ -5,30 +5,34 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 import asciichartpy
-from rich.console import Group
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-
 from polybot.cli.charting import (
     DIMMED_VALUE_COLOR,
-    MAX_TERMINAL_CHART_POINTS,
-    MIN_TERMINAL_CHART_POINTS,
     chart_time_range,
     padded_value_bounds,
     render_chart,
     resample_indices,
     split_stale_samples,
 )
+from polybot.cli.dashboard.chart_contracts import (
+    MAX_TERMINAL_CHART_POINTS,
+    MIN_TERMINAL_CHART_POINTS,
+)
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 from polybot.performance.contracts.run import PerformanceRunKind
 from polybot.performance.contracts.summary import PerformanceSummaryV1
 from polybot.performance.contracts.valuation_status import ValuationStatus
+from rich.console import Group
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from .contracts import PerformanceChartData, PerformanceChartError
 
-
 CHART_HORIZONTAL_OVERHEAD = 16
 PNL_CHART_HEIGHT = 5
+
+
+PNL_UNAVAILABLE_LABEL = "PnL unavailable"
 
 
 def render_performance_chart(data: PerformanceChartData, width: int) -> Panel:
@@ -43,13 +47,13 @@ def render_performance_chart(data: PerformanceChartData, width: int) -> Panel:
         split_stale_samples(values, stale_samples),
         (asciichartpy.lightgreen, DIMMED_VALUE_COLOR),
         PNL_CHART_HEIGHT,
-        "PnL unavailable",
+        PNL_UNAVAILABLE_LABEL,
         minimum=minimum,
         maximum=maximum,
     )
     visible_range = (
-        data.timestamps_ms[0] / 1_000,
-        data.timestamps_ms[-1] / 1_000,
+        data.timestamps_ms[0] / MILLISECONDS_PER_SECOND,
+        data.timestamps_ms[-1] / MILLISECONDS_PER_SECOND,
     )
     title = f"{_run_kind_label(data.summary)} net PnL · {data.summary.status.value}"
     if data.summary.partial:
@@ -132,9 +136,7 @@ def _percent_metric(label: str, value: str | None) -> Text:
     percentage = _summary_decimal(value, label) * 100
     sign = "+" if percentage > 0 else ""
     style = (
-        "bold green"
-        if percentage > 0
-        else "bold red" if percentage < 0 else "white"
+        "bold green" if percentage > 0 else "bold red" if percentage < 0 else "white"
     )
     return _metric(label, f"{sign}{percentage:.2f}%", style)
 
@@ -144,7 +146,9 @@ def _valuation_metric(summary: PerformanceSummaryV1) -> Text:
     style = (
         "green"
         if status is ValuationStatus.FRESH
-        else "yellow" if status is ValuationStatus.STALE else "red"
+        else "yellow"
+        if status is ValuationStatus.STALE
+        else "red"
     )
     return _metric("Valuation", status.value, style)
 
@@ -164,9 +168,7 @@ def _summary_decimal(value: str, label: str) -> Decimal:
             f"performance summary {label} is invalid"
         ) from error
     if not parsed.is_finite():
-        raise PerformanceChartError(
-            f"performance summary {label} is not finite"
-        )
+        raise PerformanceChartError(f"performance summary {label} is not finite")
     return parsed
 
 

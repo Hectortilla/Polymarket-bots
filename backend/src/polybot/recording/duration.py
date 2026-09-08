@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 _DURATION_PATTERN = re.compile(r"^(?P<amount>[1-9][0-9]*)(?P<unit>[smhd])$")
 _SECONDS_BY_UNIT = {
     "s": 1,

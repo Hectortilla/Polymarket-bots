@@ -13,10 +13,10 @@ from polybot.backtesting.clients import (
 )
 from polybot.backtesting.scheduler.cursor import ReplayCursor
 from polybot.backtesting.scheduler.replay import ReplayScheduler
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.runner import BotRunner
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
 from polybot.performance.contracts.run import PerformanceRunStatus

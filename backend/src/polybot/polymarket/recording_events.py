@@ -15,7 +15,6 @@ from polybot.recording.contracts.payloads import (
     ResolutionPayload,
 )
 
-
 type CapturedMarketPayload = (
     BookBaselinePayload
     | BookDeltaPayload

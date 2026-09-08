@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
 
@@ -28,7 +29,7 @@ def datetime_to_epoch_ms(value: object) -> int | None:
             "market source timestamp must include a UTC offset",
         )
     try:
-        timestamp_ms = int(value.timestamp() * 1_000)
+        timestamp_ms = int(value.timestamp() * MILLISECONDS_PER_SECOND)
     except (OverflowError, OSError, ValueError) as error:
         raise MarketDataError(
             MarketDataIssue.INVALID_MARKET_PARAMETERS,

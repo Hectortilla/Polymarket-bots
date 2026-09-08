@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from ..files import PerformanceProvenanceField
 from ..parsing import (
     optional_text,
+    require_exact_keys,
     required_mapping,
     required_text,
-    require_exact_keys,
 )
 from ..run import PerformanceRunKind, RunProvenance
 

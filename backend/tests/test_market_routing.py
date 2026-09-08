@@ -3,7 +3,6 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 
 import pytest
-
 from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
@@ -11,8 +10,7 @@ from polybot.examples.btc_five_minute_market import (
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.framework.dispatch import DispatchSkipReason
-from polybot.framework.dispatch import DispatchOutcome
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import Side
 from polybot.framework.events.books import (
     BookGapEvent,
@@ -107,9 +105,7 @@ def test_runner_accepts_wallet_trade_without_market_plan_per_contract(
             _with_config(dummy_context, BotConfig(name="wallet")),
             now_ms_fn=lambda: 1_100,
         )
-        outcome = await runner.dispatch_wallet_trade(
-            _wallet_trade("btc", "trade-1")
-        )
+        outcome = await runner.dispatch_wallet_trade(_wallet_trade("btc", "trade-1"))
         return outcome.accepted
 
     assert asyncio.run(run()) is True
@@ -137,7 +133,9 @@ def test_runner_routes_books_for_runtime_wallet_discoveries(
     assert books == ["btc"]
 
 
-def test_runner_rejects_fresh_book_from_untracked_market(dummy_context: BotContext) -> None:
+def test_runner_rejects_fresh_book_from_untracked_market(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> tuple[bool, int]:
         ctx = _with_config(dummy_context, _bot_config("multi", markets=("btc", "eth")))
         bot = RecordingMarketBot(books=[], wallet_trades=[])
@@ -276,9 +274,7 @@ def test_runner_rechecks_book_freshness_after_refresh(
         now_values = iter((1_000, 1_000, 1_001))
         bot = RecordingMarketBot(books=[], wallet_trades=[])
         runner = BotRunner(bot, ctx, now_ms_fn=lambda: next(now_values))
-        outcome = await runner.dispatch_book(
-            replace(_book("btc"), received_at_ms=0)
-        )
+        outcome = await runner.dispatch_book(replace(_book("btc"), received_at_ms=0))
         return outcome, bot.books
 
     outcome, books = asyncio.run(run())
@@ -328,9 +324,7 @@ def test_runner_rejects_malformed_book_level(dummy_context: BotContext) -> None:
             BookSnapshot(
                 token_id="123",
                 bids=(),
-                asks=(
-                    BookLevel(price=Decimal("0"), size=Decimal("10")),
-                ),
+                asks=(BookLevel(price=Decimal("0"), size=Decimal("10")),),
                 received_at_ms=1_000,
                 market_slug="btc",
                 condition_id="condition",
@@ -360,9 +354,7 @@ def test_runner_combines_multi_market_and_multi_wallet_routes(
         runner = BotRunner(bot, ctx, now_ms_fn=lambda: 1_100)
 
         accepted = await runner.dispatch_wallet_trade(_wallet_trade("eth", "tx-1"))
-        wrong_market = await runner.dispatch_wallet_trade(
-            _wallet_trade("sol", "tx-2")
-        )
+        wrong_market = await runner.dispatch_wallet_trade(_wallet_trade("sol", "tx-2"))
         wrong_wallet = await runner.dispatch_wallet_trade(
             _wallet_trade("btc", "tx-3", wallet="0xother")
         )
@@ -492,11 +484,11 @@ def _bot_config(
     **overrides: object,
 ) -> BotConfig:
     relation = (
-        StreamRelation.FILTERED
-        if markets and wallets
-        else StreamRelation.INDEPENDENT
+        StreamRelation.FILTERED if markets and wallets else StreamRelation.INDEPENDENT
     )
-    rules = () if not (markets or wallets) else (StreamRule(relation, markets, wallets),)
+    rules = (
+        () if not (markets or wallets) else (StreamRule(relation, markets, wallets),)
+    )
     return BotConfig(name=name, stream_rules=rules, **overrides)  # type: ignore[arg-type]
 
 

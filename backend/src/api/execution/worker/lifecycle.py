@@ -3,9 +3,9 @@
 import asyncio
 from uuid import UUID
 
+from polybot.framework.clock import system_now_utc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from polybot.framework.clock import system_now_utc
 from api.events.contracts import RunLifecycleEvent
 from api.events.observer import WebRuntimeObserver
 from api.events.writer import RunEventWriter
@@ -14,7 +14,6 @@ from api.runs.status import RunStatus
 from api.runs.store import RunStore
 
 from .runtime import run_claimed_bot
-
 
 WORKER_POLL_INTERVAL_SECONDS = 5
 PAPER_RUN_FAILURE_REASON = "paper run failed"
@@ -71,6 +70,14 @@ class RunLifecycleCoordinator:
                 )
             )
             try:
+                done, _ = await asyncio.wait(
+                    (bot_task, monitor_task), return_when=asyncio.FIRST_COMPLETED
+                )
+                if monitor_task in done:
+                    # Monitoring owns the stop lease; its failure must stop execution.
+                    await monitor_task
+                    if not bot_task.done() and not cooperative_stop.is_set():
+                        raise RuntimeError("owned run monitoring ended unexpectedly")
                 await bot_task
             except asyncio.CancelledError:
                 # Only the durable stop monitor owns a graceful STOPPED cancellation;
@@ -79,8 +86,9 @@ class RunLifecycleCoordinator:
                     terminal_status = RunStatus.INTERRUPTED
                     propagate_cancellation = True
             finally:
+                bot_task.cancel()
                 monitor_task.cancel()
-                await asyncio.gather(monitor_task, return_exceptions=True)
+                await asyncio.gather(bot_task, monitor_task, return_exceptions=True)
         except asyncio.CancelledError:
             terminal_status = RunStatus.INTERRUPTED
             propagate_cancellation = True
@@ -111,7 +119,7 @@ class RunLifecycleCoordinator:
                 store = RunStore(session)
                 status = await store.status(run_id)
                 if status is None:
-                    return
+                    raise RuntimeError("owned run disappeared while monitoring")
                 if status is RunStatus.STOP_REQUESTED:
                     if await store.begin_stopping(run_id):
                         # Persist the transition before local cancellation so another

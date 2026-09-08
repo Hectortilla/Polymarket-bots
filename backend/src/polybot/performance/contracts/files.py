@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-
 RESULT_SCHEMA_VERSION = 1
 SUMMARY_FILE_NAME = "summary.json"
 EQUITY_FILE_NAME = "equity.csv"

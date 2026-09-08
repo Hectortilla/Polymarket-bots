@@ -1,7 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { onMount, tick } from 'svelte';
+  import { BOT_BUILDER_COPY } from '$lib/bots/copy';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
+  import { onMount, tick } from 'svelte';
+  import './builder.css';
 
   import {
     createBotApiV1BotsPost,
@@ -10,29 +12,20 @@
     listBotsApiV1BotsGet,
     type BotDefinitionDescriptor,
     type BotRead,
-    type NodeGraph
+    type NodeGraph,
   } from '$lib/api/generated';
   import GraphSourcePicker from '$lib/bots/GraphSourcePicker.svelte';
   import { GRAPH_SOURCE_COPY } from '$lib/bots/graphSource';
   import LaunchForm from '$lib/catalog/LaunchForm.svelte';
   import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
   import { cloneNodeGraph, hasGraphCapability } from '$lib/catalog/graphContracts';
-  import {
-    graphValidationIssues,
-    type GraphValidationIssue
-  } from '$lib/catalog/graphValidation';
+  import { graphValidationIssues, type GraphValidationIssue } from '$lib/catalog/graphValidation';
   import {
     launchRequestValidationIssues,
     type LaunchInputs,
-    type LaunchValidationIssue
+    type LaunchValidationIssue,
   } from '$lib/catalog/schema';
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
-
-  const COPY = {
-    LOAD_ERROR: 'The bot builder could not be loaded.',
-    MISSING_DEFINITION: 'The node-based bot definition is unavailable.',
-    SAVE_ERROR: 'The bot could not be saved. Your configuration and graph are still here.'
-  } as const;
 
   let descriptor = $state<BotDefinitionDescriptor>();
   let bots = $state<BotRead[]>([]);
@@ -55,17 +48,17 @@
     try {
       const [definitionsResponse, botsResponse] = await Promise.all([
         listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true }),
-        listBotsApiV1BotsGet({ throwOnError: true })
+        listBotsApiV1BotsGet({ throwOnError: true }),
       ]);
       descriptor = definitionsResponse.data.find(hasGraphCapability);
       bots = botsResponse.data.filter((bot) => bot.latest_graph_revision);
       if (!hasGraphCapability(descriptor)) {
-        error = COPY.MISSING_DEFINITION;
+        error = BOT_BUILDER_COPY.MISSING_DEFINITION;
         return;
       }
       graph = cloneNodeGraph(descriptor.starter_graph);
     } catch {
-      error = COPY.LOAD_ERROR;
+      error = BOT_BUILDER_COPY.LOAD_ERROR;
     } finally {
       loading = false;
     }
@@ -92,15 +85,15 @@
     try {
       const templateResponse = await createGraphTemplateApiV1GraphTemplatesPost({
         body: { name: privateTemplateName(), graph: graphToSave },
-        throwOnError: true
+        throwOnError: true,
       });
       const botResponse = await createBotApiV1BotsPost({
         body: {
           definition_id: descriptor.definition_id,
           inputs,
-          graph_template_id: templateResponse.data.id
+          graph_template_id: templateResponse.data.id,
         },
-        throwOnError: true
+        throwOnError: true,
       });
       await goto(botPath(botResponse.data.id));
     } catch (caught) {
@@ -110,7 +103,7 @@
         await tick();
         document.getElementById('new-bot-graph-validation')?.focus();
       } else if (configServerIssues.length === 0) {
-        error = COPY.SAVE_ERROR;
+        error = BOT_BUILDER_COPY.SAVE_ERROR;
       }
     } finally {
       saving = false;
@@ -119,7 +112,7 @@
 </script>
 
 <svelte:head>
-  <title>New bot | Polybot</title>
+  <title>{NAVIGATION_LABEL.NEW_BOT} | Polybot</title>
   <meta
     name="description"
     content="Configure a paper bot and build its node strategy in one workspace."
@@ -139,10 +132,10 @@
     <div class="skeleton skeleton-panel" aria-hidden="true"></div>
   </div>
 {:else if !hasGraphCapability(descriptor) || !graph}
-  <p class="notice error" role="alert">{error || COPY.MISSING_DEFINITION}</p>
+  <p class="notice error" role="alert">{error || BOT_BUILDER_COPY.MISSING_DEFINITION}</p>
 {:else}
   <header class="builder-page-heading">
-    <p class="page-kicker">New bot</p>
+    <p class="page-kicker">{NAVIGATION_LABEL.NEW_BOT}</p>
     <h1>Configure how your bot trades.</h1>
     <p>Set the operating limits and build the strategy graph before saving.</p>
   </header>
@@ -153,24 +146,24 @@
     {descriptor}
     onsubmit={createSavedBot}
     busy={saving}
-    submitLabel="Create bot"
-    busyLabel="Creating bot"
+    submitLabel={BOT_BUILDER_COPY.CREATE}
+    busyLabel={BOT_BUILDER_COPY.CREATING}
     serverIssues={configServerIssues}
     showSelectionNotes={false}
-    sectionTitle="Configuration"
+    sectionTitle={BOT_BUILDER_COPY.CONFIGURATION}
     sectionDescription="Name the bot, choose its markets, and set paper-trading limits."
   >
     <section class="builder-section graph-builder-section">
       <header class="builder-section-heading">
         <div>
-          <h2 id="new-bot-graph-label">Strategy graph</h2>
+          <h2 id="new-bot-graph-label">{BOT_BUILDER_COPY.STRATEGY_GRAPH}</h2>
           <p>Build the event logic this bot will execute. Current source: {graphSourceName}.</p>
         </div>
       </header>
       <GraphSourcePicker
         {bots}
         starterGraph={descriptor.starter_graph}
-          examples={descriptor.graph_examples}
+        examples={descriptor.graph_examples}
         onselect={selectGraph}
       />
       {#key graphEditorResetKey}

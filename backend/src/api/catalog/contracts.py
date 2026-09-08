@@ -2,9 +2,9 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.catalog.graphs.examples import GraphExample
 from api.catalog.graphs.catalog import GraphNodeCatalog
 from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.examples import GraphExample
 from api.catalog.values import (
     BotDefinitionLabel,
     DefinitionId,

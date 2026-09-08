@@ -1,17 +1,17 @@
 """Isolated graph decision preview."""
 
 from fastapi import APIRouter
-from api.http.routes.paths import (
-    GRAPH_PREVIEW_PATH,
-    PREVIEW_GRAPH_OPERATION_ID,
-)
+
 from api.catalog.graphs.preview import (
     GraphPreviewRequest,
     GraphPreviewResponse,
 )
-
 from api.catalog.node_based.preview import (
     preview_graph as evaluate_preview,
+)
+from api.http.routes.paths import (
+    GRAPH_PREVIEW_PATH,
+    PREVIEW_GRAPH_OPERATION_ID,
 )
 
 router = APIRouter()

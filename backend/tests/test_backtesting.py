@@ -11,24 +11,18 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
     BacktestGapPolicy,
     BacktestOptions,
 )
-from polybot.backtesting.selection import (
-    replayable_session_end,
-    resolve_backtest_selection,
-    validate_backtest_selection,
-    validate_backtest_selection_coverage,
-)
+from polybot.backtesting.selection import ReplaySelectionResolver
+from polybot.backtesting.selection.coverage import SelectionCoverage
 from polybot.backtesting.service.runner import run_backtest
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.framework.portfolio import PortfolioSnapshot
 from polybot.framework.events import (
     FillEvent,
     FillRejectReason,
@@ -38,8 +32,24 @@ from polybot.framework.events import (
 )
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.framework.portfolio import PortfolioSnapshot
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.performance.artifacts.errors import PerformanceOutputExistsError
+from polybot.performance.contracts.files import (
+    EQUITY_FILE_NAME,
+    ORDERS_FILE_NAME,
+    SUMMARY_FILE_NAME,
+    EquityField,
+    OrderField,
+    PerformanceMetricsField,
+    PerformancePositionField,
+    PerformanceSelectionField,
+    PerformanceSummaryField,
+    PerformanceTimingField,
+    PerformanceValuationField,
+)
+from polybot.performance.contracts.run import PerformanceRunStatus
+from polybot.performance.contracts.valuation_status import ValuationStatus
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.sessions import INTERRUPTED_SESSION_REASON
 from polybot.recording.archive.writer import RecordingArchive
@@ -49,10 +59,6 @@ from polybot.recording.contracts.book import (
     BookDeltaPayload,
     RecordedBookLevel,
     TickSizeChangePayload,
-)
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    RecordedEvent,
 )
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
@@ -67,8 +73,11 @@ from polybot.recording.contracts.payloads import (
     PublicTradePayload,
     ResolutionPayload,
 )
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
 from polybot.recording.contracts.session import SessionIntegrityStatus
-
 
 START_MS = 1_700_000_000_000
 MARKET_SLUG = "btc-updown-5m-1700000000"
@@ -476,11 +485,11 @@ def _run(
 
 
 def _summary(results_dir: Path) -> dict[str, object]:
-    return json.loads((results_dir / "summary.json").read_text(encoding="utf-8"))
+    return json.loads((results_dir / SUMMARY_FILE_NAME).read_text(encoding="utf-8"))
 
 
 def _orders(results_dir: Path) -> list[dict[str, str]]:
-    with (results_dir / "orders.csv").open(
+    with (results_dir / ORDERS_FILE_NAME).open(
         encoding="utf-8",
         newline="",
     ) as source:
@@ -488,7 +497,7 @@ def _orders(results_dir: Path) -> list[dict[str, str]]:
 
 
 def _equity(results_dir: Path) -> list[dict[str, str]]:
-    with (results_dir / "equity.csv").open(
+    with (results_dir / EQUITY_FILE_NAME).open(
         encoding="utf-8",
         newline="",
     ) as source:
@@ -512,22 +521,27 @@ def test_backtest_no_trade_runs_hooks_once_and_writes_complete_artifacts(
     assert result.selection.start_at_ms == START_MS + 2
     assert result.event_count == 1
     assert result.accepted_dispatch_count == 2
-    assert summary["status"] == "completed"
-    assert summary["selection"]["replay_cutoff_sequence"] == 4
-    assert summary["timing"] == {
-        "started_at_ms": START_MS + 2,
-        "ended_at_ms": archive.end_ms,
-        "virtual_duration_ms": archive.end_ms - (START_MS + 2),
+    assert summary[PerformanceSummaryField.STATUS] == PerformanceRunStatus.COMPLETED
+    assert (
+        summary[PerformanceSummaryField.SELECTION][
+            PerformanceSelectionField.REPLAY_CUTOFF_SEQUENCE
+        ]
+        == 4
+    )
+    assert summary[PerformanceSummaryField.TIMING] == {
+        PerformanceTimingField.STARTED_AT_MS: START_MS + 2,
+        PerformanceTimingField.ENDED_AT_MS: archive.end_ms,
+        PerformanceTimingField.VIRTUAL_DURATION_MS: archive.end_ms - (START_MS + 2),
     }
-    metrics = summary["metrics"]
+    metrics = summary[PerformanceSummaryField.METRICS]
     assert isinstance(metrics, dict)
-    assert metrics["initial_cash_usdc"] == "100"
-    assert metrics["final_cash_usdc"] == "100"
-    assert metrics["final_equity_usdc"] == "100"
-    assert metrics["net_pnl_usdc"] == "0"
-    assert metrics["return"] == "0"
-    assert metrics["order_count"] == 0
-    assert (result.results_dir / "equity.csv").is_file()
+    assert metrics[PerformanceMetricsField.INITIAL_CASH_USDC] == "100"
+    assert metrics[PerformanceMetricsField.FINAL_CASH_USDC] == "100"
+    assert metrics[PerformanceMetricsField.FINAL_EQUITY_USDC] == "100"
+    assert metrics[PerformanceMetricsField.NET_PNL_USDC] == "0"
+    assert metrics[PerformanceMetricsField.RETURN_FRACTION] == "0"
+    assert metrics[PerformanceMetricsField.ORDER_COUNT] == 0
+    assert (result.results_dir / EQUITY_FILE_NAME).is_file()
     assert _orders(result.results_dir) == []
 
 
@@ -538,9 +552,10 @@ def test_indexed_selection_coverage_avoids_replay_event_scan(
     archive = _basic_archive(tmp_path)
     with RecordingReader(archive.path) as reader:
         session = reader.select_session()
-        assert replayable_session_end(reader, session) == session.ended_at_ms
-        selection = resolve_backtest_selection(
-            reader,
+        assert (
+            ReplaySelectionResolver(reader).session_end(session) == session.ended_at_ms
+        )
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(
                 archive_path=archive.path,
@@ -552,7 +567,7 @@ def test_indexed_selection_coverage_avoids_replay_event_scan(
             raise AssertionError("selection validation scanned replay events")
 
         monkeypatch.setattr(reader, "iter_events", unexpected_event_scan)
-        validate_backtest_selection_coverage(reader, selection)
+        SelectionCoverage(reader).validate_indexes(selection)
 
 
 def test_semantic_preflight_rejects_malformed_event_before_bot_hooks(
@@ -562,8 +577,7 @@ def test_semantic_preflight_rejects_malformed_event_before_bot_hooks(
     connection = sqlite3.connect(archive.path)
     try:
         connection.execute(
-            "UPDATE events SET payload_json = '{}' "
-            "WHERE payload_kind = 'public_trade'"
+            "UPDATE events SET payload_json = '{}' WHERE payload_kind = 'public_trade'"
         )
         connection.commit()
     finally:
@@ -593,41 +607,41 @@ def test_backtest_partial_fill_fees_and_open_position_metrics(tmp_path: Path) ->
     assert bot.fill.average_price == Decimal("0.60")
     assert bot.fill.fee_usdc == Decimal("0.01200")
     assert _orders(result.results_dir)[0] == {
-        "submitted_at_ms": str(START_MS + 2),
-        "completed_at_ms": str(START_MS + 2),
-        "order_id": "paper-1",
-        "market_slug": MARKET_SLUG,
-        "condition_id": CONDITION_ID,
-        "token_id": UP_TOKEN,
-        "side": "BUY",
-        "requested_price": "0.70",
-        "requested_size": "2",
-        "status": "partial",
-        "filled_size": "1",
-        "average_price": "0.60",
-        "fee_usdc": "0.01200",
-        "reject_reason": "",
-        "reject_message": "",
-        "strategy_reason": "synthetic-entry",
-        "source_id": "entry-1",
+        OrderField.SUBMITTED_AT_MS: str(START_MS + 2),
+        OrderField.COMPLETED_AT_MS: str(START_MS + 2),
+        OrderField.ORDER_ID: "paper-1",
+        OrderField.MARKET_SLUG: MARKET_SLUG,
+        OrderField.CONDITION_ID: CONDITION_ID,
+        OrderField.TOKEN_ID: UP_TOKEN,
+        OrderField.SIDE: Side.BUY,
+        OrderField.REQUESTED_PRICE: "0.70",
+        OrderField.REQUESTED_SIZE: "2",
+        OrderField.STATUS: OrderStatus.PARTIAL,
+        OrderField.FILLED_SIZE: "1",
+        OrderField.AVERAGE_PRICE: "0.60",
+        OrderField.FEE_USDC: "0.01200",
+        OrderField.REJECT_REASON: "",
+        OrderField.REJECT_MESSAGE: "",
+        OrderField.STRATEGY_REASON: "synthetic-entry",
+        OrderField.SOURCE_ID: "entry-1",
     }
-    metrics = summary["metrics"]
+    metrics = summary[PerformanceSummaryField.METRICS]
     assert isinstance(metrics, dict)
-    assert metrics["final_cash_usdc"] == "99.38800"
-    assert metrics["final_equity_usdc"] == "99.78800"
-    assert metrics["gross_pnl_usdc"] == "-0.20000"
-    assert metrics["net_pnl_usdc"] == "-0.21200"
-    assert metrics["fees_usdc"] == "0.01200"
-    assert metrics["filled_notional_usdc"] == "0.60"
-    assert summary["open_positions"] == [
+    assert metrics[PerformanceMetricsField.FINAL_CASH_USDC] == "99.38800"
+    assert metrics[PerformanceMetricsField.FINAL_EQUITY_USDC] == "99.78800"
+    assert metrics[PerformanceMetricsField.GROSS_PNL_USDC] == "-0.20000"
+    assert metrics[PerformanceMetricsField.NET_PNL_USDC] == "-0.21200"
+    assert metrics[PerformanceMetricsField.FEES_USDC] == "0.01200"
+    assert metrics[PerformanceMetricsField.FILLED_NOTIONAL_USDC] == "0.60"
+    assert summary[PerformanceSummaryField.OPEN_POSITIONS] == [
         {
-            "token_id": UP_TOKEN,
-            "size": "1",
-            "average_entry_price": "0.60",
-            "executable_mark": "0.40",
-            "last_executable_mark": None,
-            "market_value_usdc": "0.40",
-            "valuation_status": "fresh",
+            PerformancePositionField.TOKEN_ID: UP_TOKEN,
+            PerformancePositionField.SIZE: "1",
+            PerformancePositionField.AVERAGE_ENTRY_PRICE: "0.60",
+            PerformancePositionField.EXECUTABLE_MARK: "0.40",
+            PerformancePositionField.LAST_EXECUTABLE_MARK: None,
+            PerformancePositionField.MARKET_VALUE_USDC: "0.40",
+            PerformancePositionField.VALUATION_STATUS: ValuationStatus.FRESH,
         }
     ]
 
@@ -687,19 +701,21 @@ def test_backtest_settles_recorded_resolution_at_contractual_payout(
     assert bot.resolutions[0].winning_token_id == UP_TOKEN
     assert bot.resolutions[0].resolved_at_ms == end_ms
     assert result.resolution_count == 1
-    metrics = summary["metrics"]
+    metrics = summary[PerformanceSummaryField.METRICS]
     assert isinstance(metrics, dict)
-    assert metrics["final_cash_usdc"] == "100.80000"
-    assert metrics["final_equity_usdc"] == "100.80000"
-    assert metrics["net_pnl_usdc"] == "0.80000"
-    assert metrics["resolution_count"] == 1
-    assert summary["open_positions"] == []
+    assert metrics[PerformanceMetricsField.FINAL_CASH_USDC] == "100.80000"
+    assert metrics[PerformanceMetricsField.FINAL_EQUITY_USDC] == "100.80000"
+    assert metrics[PerformanceMetricsField.NET_PNL_USDC] == "0.80000"
+    assert metrics[PerformanceMetricsField.RESOLUTION_COUNT] == 1
+    assert summary[PerformanceSummaryField.OPEN_POSITIONS] == []
     assert bot.snapshots[0].positions == ()
     assert any(
         snapshot.position(UP_TOKEN).size == bot.size for snapshot in bot.snapshots
     )
     assert bot.snapshots[-1].positions == ()
-    assert bot.snapshots[-1].available_cash == Decimal(metrics["final_cash_usdc"])
+    assert bot.snapshots[-1].available_cash == Decimal(
+        metrics[PerformanceMetricsField.FINAL_CASH_USDC]
+    )
 
 
 def test_resolution_at_initial_state_timestamp_is_replayed(
@@ -870,9 +886,7 @@ def test_post_readiness_same_timestamp_delta_is_replayed_and_counted(
     )
 
     assert result.event_count == 2
-    assert [
-        (book.token_id, book.asks[0].price) for book in bot.books
-    ] == [
+    assert [(book.token_id, book.asks[0].price) for book in bot.books] == [
         (UP_TOKEN, Decimal("0.60")),
         (DOWN_TOKEN, Decimal("0.60")),
         (UP_TOKEN, Decimal("0.70")),
@@ -913,7 +927,7 @@ def test_broker_latency_uses_intervening_delta_for_fill_time_book(
     assert bot.fill.status is OrderStatus.FILLED
     assert bot.fill.received_at_ms == START_MS + 12
     assert bot.fill.average_price == Decimal("0.70")
-    assert _orders(result.results_dir)[0]["average_price"] == "0.70"
+    assert _orders(result.results_dir)[0][OrderField.AVERAGE_PRICE] == "0.70"
 
 
 def test_callback_latency_is_non_reentrant_and_coalesces_in_marker_order(
@@ -954,8 +968,7 @@ def test_callback_latency_is_non_reentrant_and_coalesces_in_marker_order(
 
     assert bot.max_callback_depth == 1
     assert [
-        (book.token_id, min(level.price for level in book.asks))
-        for book in bot.books
+        (book.token_id, min(level.price for level in book.asks)) for book in bot.books
     ] == [
         (UP_TOKEN, Decimal("0.60")),
         (DOWN_TOKEN, Decimal("0.65")),
@@ -976,7 +989,7 @@ def test_same_archive_configuration_and_seed_produce_identical_artifacts(
     second = _run(second_bot, archive, tmp_path / "second", seed=73)
 
     assert first_bot.size == second_bot.size
-    for artifact_name in ("summary.json", "equity.csv", "orders.csv"):
+    for artifact_name in (SUMMARY_FILE_NAME, EQUITY_FILE_NAME, ORDERS_FILE_NAME):
         assert (first.results_dir / artifact_name).read_bytes() == (
             second.results_dir / artifact_name
         ).read_bytes()
@@ -989,8 +1002,9 @@ def test_same_archive_configuration_and_seed_produce_identical_artifacts(
         seed=3,
     )
     assert different_bot.size != first_bot.size
-    assert _orders(different.results_dir)[0]["requested_size"] != (
-        _orders(first.results_dir)[0]["requested_size"]
+    assert (
+        _orders(different.results_dir)[0][OrderField.REQUESTED_SIZE]
+        != (_orders(first.results_dir)[0][OrderField.REQUESTED_SIZE])
     )
 
 
@@ -1076,8 +1090,11 @@ def test_latency_past_selected_end_is_an_explicit_fill_rejection(
     assert bot.fill.reject_reason is FillRejectReason.BACKTEST_DATA_EXHAUSTED
     assert bot.fill.received_at_ms == START_MS + 2
     order = _orders(result.results_dir)[0]
-    assert order["reject_reason"] == "backtest_data_exhausted"
-    assert _summary(result.results_dir)["status"] == "completed"
+    assert order[OrderField.REJECT_REASON] == FillRejectReason.BACKTEST_DATA_EXHAUSTED
+    assert (
+        _summary(result.results_dir)[PerformanceSummaryField.STATUS]
+        == PerformanceRunStatus.COMPLETED
+    )
 
 
 def test_active_session_is_locked_failed_prefix_replays_and_ambiguity_fails(
@@ -1130,9 +1147,19 @@ def test_active_session_is_locked_failed_prefix_replays_and_ambiguity_fails(
     )
     assert failed_result.selection.uses_partial_session is True
     failed_summary = _summary(failed_result.results_dir)
-    assert failed_summary["partial"] is False
-    assert failed_summary["selection"]["session_integrity_status"] == "failed"
-    assert failed_summary["selection"]["uses_partial_session"] is True
+    assert failed_summary[PerformanceSummaryField.PARTIAL] is False
+    assert (
+        failed_summary[PerformanceSummaryField.SELECTION][
+            PerformanceSelectionField.SESSION_INTEGRITY_STATUS
+        ]
+        == SessionIntegrityStatus.FAILED
+    )
+    assert (
+        failed_summary[PerformanceSummaryField.SELECTION][
+            PerformanceSelectionField.USES_PARTIAL_SESSION
+        ]
+        is True
+    )
     with pytest.raises(BacktestError) as beyond_failure:
         _run(
             BaseBot(),
@@ -1622,21 +1649,21 @@ def test_blackout_gap_starts_at_backdated_boundary_and_recovers_atomically(
         (UP_TOKEN, START_MS + 12),
         (DOWN_TOKEN, START_MS + 12),
     ]
-    assert summary["selection"] == {
-        "session_id": result.selection.session_id,
-        "start_ms": START_MS + 2,
-        "end_ms": end_ms,
-        "market_slugs": [MARKET_SLUG],
-        "replay_cutoff_sequence": 8,
-        "session_integrity_status": "incomplete",
-        "uses_partial_session": True,
-        "gap_policy": "blackout",
-        "coverage_gap_ids": [gap_id],
-        "coverage_gap_count": 1,
-        "coverage_gap_duration_ms": 5,
-        "coverage_gap_open_count": 0,
-        "coverage_gap_affected_position_token_ids": [],
-        "coverage_gap_affected_position_count": 0,
+    assert summary[PerformanceSummaryField.SELECTION] == {
+        PerformanceSelectionField.SESSION_ID: result.selection.session_id,
+        PerformanceSelectionField.START_MS: START_MS + 2,
+        PerformanceSelectionField.END_MS: end_ms,
+        PerformanceSelectionField.MARKET_SLUGS: [MARKET_SLUG],
+        PerformanceSelectionField.REPLAY_CUTOFF_SEQUENCE: 8,
+        PerformanceSelectionField.SESSION_INTEGRITY_STATUS: SessionIntegrityStatus.INCOMPLETE,
+        PerformanceSelectionField.USES_PARTIAL_SESSION: True,
+        PerformanceSelectionField.GAP_POLICY: BacktestGapPolicy.BLACKOUT,
+        PerformanceSelectionField.COVERAGE_GAP_IDS: [gap_id],
+        PerformanceSelectionField.COVERAGE_GAP_COUNT: 1,
+        PerformanceSelectionField.COVERAGE_GAP_DURATION_MS: 5,
+        PerformanceSelectionField.COVERAGE_GAP_OPEN_COUNT: 0,
+        PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS: [],
+        PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_COUNT: 0,
     }
 
 
@@ -1700,10 +1727,17 @@ def test_blackout_rejects_order_when_latency_crosses_recovered_gap(
         (UP_TOKEN, START_MS + 10),
         (DOWN_TOKEN, START_MS + 10),
     ]
-    assert orders[0]["reject_reason"] == "backtest_coverage_gap"
-    assert orders[0]["completed_at_ms"] == str(START_MS + 12)
-    assert summary["selection"]["coverage_gap_ids"] == [gap_id]
-    assert summary["metrics"]["coverage_gap_rejected_order_count"] == 1
+    assert orders[0][OrderField.REJECT_REASON] == FillRejectReason.BACKTEST_COVERAGE_GAP
+    assert orders[0][OrderField.COMPLETED_AT_MS] == str(START_MS + 12)
+    assert summary[PerformanceSummaryField.SELECTION][
+        PerformanceSelectionField.COVERAGE_GAP_IDS
+    ] == [gap_id]
+    assert (
+        summary[PerformanceSummaryField.METRICS][
+            PerformanceMetricsField.COVERAGE_GAP_REJECTED_ORDER_COUNT
+        ]
+        == 1
+    )
 
 
 def test_blackout_releases_staged_pair_at_gap_end_and_restores_valuation(
@@ -1761,17 +1795,24 @@ def test_blackout_releases_staged_pair_at_gap_end_and_restores_valuation(
         (UP_TOKEN, START_MS + 10),
         (DOWN_TOKEN, START_MS + 10),
     ]
-    assert [row["valuation_status"] for row in _equity(result.results_dir)] == [
-        "fresh",
-        "fresh",
-        "unavailable",
-        "fresh",
-        "fresh",
+    assert [
+        row[EquityField.VALUATION_STATUS] for row in _equity(result.results_dir)
+    ] == [
+        ValuationStatus.FRESH,
+        ValuationStatus.FRESH,
+        ValuationStatus.UNAVAILABLE,
+        ValuationStatus.FRESH,
+        ValuationStatus.FRESH,
     ]
-    assert summary["valuation"]["final_status"] == "fresh"
-    assert summary["selection"]["coverage_gap_affected_position_token_ids"] == [
-        UP_TOKEN
-    ]
+    assert (
+        summary[PerformanceSummaryField.VALUATION][
+            PerformanceValuationField.FINAL_STATUS
+        ]
+        == ValuationStatus.FRESH
+    )
+    assert summary[PerformanceSummaryField.SELECTION][
+        PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS
+    ] == [UP_TOKEN]
 
 
 def test_open_blackout_keeps_position_and_final_valuation_unavailable(
@@ -1814,14 +1855,36 @@ def test_open_blackout_keeps_position_and_final_valuation_unavailable(
 
     assert bot.fill is not None
     assert bot.fill.status is OrderStatus.FILLED
-    assert summary["selection"]["coverage_gap_ids"] == [gap_id]
-    assert summary["selection"]["coverage_gap_open_count"] == 1
-    assert summary["selection"]["coverage_gap_affected_position_token_ids"] == [
-        UP_TOKEN
-    ]
-    assert summary["metrics"]["final_equity_usdc"] is None
-    assert summary["valuation"]["final_status"] == "unavailable"
-    assert summary["open_positions"][0]["token_id"] == UP_TOKEN
+    assert summary[PerformanceSummaryField.SELECTION][
+        PerformanceSelectionField.COVERAGE_GAP_IDS
+    ] == [gap_id]
+    assert (
+        summary[PerformanceSummaryField.SELECTION][
+            PerformanceSelectionField.COVERAGE_GAP_OPEN_COUNT
+        ]
+        == 1
+    )
+    assert summary[PerformanceSummaryField.SELECTION][
+        PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS
+    ] == [UP_TOKEN]
+    assert (
+        summary[PerformanceSummaryField.METRICS][
+            PerformanceMetricsField.FINAL_EQUITY_USDC
+        ]
+        is None
+    )
+    assert (
+        summary[PerformanceSummaryField.VALUATION][
+            PerformanceValuationField.FINAL_STATUS
+        ]
+        == ValuationStatus.UNAVAILABLE
+    )
+    assert (
+        summary[PerformanceSummaryField.OPEN_POSITIONS][0][
+            PerformancePositionField.TOKEN_ID
+        ]
+        == UP_TOKEN
+    )
 
 
 def test_clean_subrange_after_gap_replays_from_common_checkpoint(
@@ -1948,7 +2011,10 @@ def test_clean_subrange_can_start_on_post_gap_baseline_boundary(
 
     assert result.selection.start_at_ms == recovery_ms
     assert [book.token_id for book in bot.books] == [UP_TOKEN, DOWN_TOKEN]
-    assert _summary(result.results_dir)["status"] == "completed"
+    assert (
+        _summary(result.results_dir)[PerformanceSummaryField.STATUS]
+        == PerformanceRunStatus.COMPLETED
+    )
 
 
 def test_pre_gap_tick_state_survives_explicit_gap_end_start(
@@ -2113,9 +2179,7 @@ def test_clean_multi_market_subrange_uses_each_market_checkpoint(
         bot,
         _ArchiveWindow(path, START_MS, end_ms),
         tmp_path / "results",
-        config=_config(
-            stream_rules=(_market_rule(MARKET_SLUG, NEXT_MARKET_SLUG),)
-        ),
+        config=_config(stream_rules=(_market_rule(MARKET_SLUG, NEXT_MARKET_SLUG),)),
         start_ms=replay_start_ms,
     )
 
@@ -2126,7 +2190,10 @@ def test_clean_multi_market_subrange_uses_each_market_checkpoint(
         NEXT_UP_TOKEN,
         NEXT_DOWN_TOKEN,
     }
-    assert _summary(result.results_dir)["status"] == "completed"
+    assert (
+        _summary(result.results_dir)[PerformanceSummaryField.STATUS]
+        == PerformanceRunStatus.COMPLETED
+    )
 
 
 def test_existing_output_directory_is_refused_and_bot_failure_is_partial(
@@ -2145,7 +2212,7 @@ def test_existing_output_directory_is_refused_and_bot_failure_is_partial(
         _run(bot, archive, results_dir)
 
     summary = _summary(results_dir)
-    assert summary["status"] == "failed"
-    assert summary["partial"] is True
-    assert summary["error"] == "RuntimeError: strategy exploded"
+    assert summary[PerformanceSummaryField.STATUS] == PerformanceRunStatus.FAILED
+    assert summary[PerformanceSummaryField.PARTIAL] is True
+    assert summary[PerformanceSummaryField.ERROR] == "RuntimeError: strategy exploded"
     assert (bot.start_count, bot.stop_count) == (1, 1)

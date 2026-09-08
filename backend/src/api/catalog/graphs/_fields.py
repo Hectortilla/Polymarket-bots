@@ -7,15 +7,14 @@ from dataclasses import dataclass, fields, is_dataclass
 from inspect import Parameter, signature
 from typing import Any, get_args, get_origin, get_type_hints
 
+from polybot.framework.graph import is_graph_output
 from pydantic import TypeAdapter
 
-from polybot.framework.graph import is_graph_output
 from api.catalog.graphs._annotations import (
     scalar_type_for_annotation,
     without_none,
 )
 from api.catalog.graphs.values import GraphScalarType
-
 
 COLLECTION_ORIGINS = frozenset({list, tuple})
 

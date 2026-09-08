@@ -19,18 +19,17 @@ from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
 from polybot.examples.meh_trading_bot import create as create_contrarian
 from polybot.examples.winner_trading_bot import create as create_winner
 from polybot.framework.base import BaseBot
-from polybot.framework.factories import BoundBotFactory, bind_bot_factory
 from polybot.framework.config.models import BotConfig
+from polybot.framework.factories import BoundBotFactory, bind_bot_factory
+
 from api.catalog.contracts import BotDefinitionDescriptor
-from api.catalog.values import (
-    BotDefinitionLabel,
-    DefinitionId,
-    SelectionMode,
-)
 from api.catalog.graphs.catalog import (
     GRAPH_NODE_CATALOG,
     GraphNodeCatalog,
 )
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.examples import GRAPH_EXAMPLES
+from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.catalog.inputs import (
     ContrarianLaunchInputs,
     MarketWatcherLaunchInputs,
@@ -41,10 +40,12 @@ from api.catalog.inputs import (
     WalletFilterCopyExampleLaunchInputs,
     WinnerLaunchInputs,
 )
-from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.examples import GRAPH_EXAMPLES
-from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.catalog.node_based.bot import NodeBasedBot
+from api.catalog.values import (
+    BotDefinitionLabel,
+    DefinitionId,
+    SelectionMode,
+)
 from api.runs.contracts import PaperRunConfig
 
 WINNER_DEFINITION_ID = "btc-five-minute-winner"

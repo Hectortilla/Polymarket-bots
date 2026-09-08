@@ -7,7 +7,6 @@ from decimal import Decimal
 
 from polybot.framework.events import Side, require_side
 
-
 ZERO_POSITION_SIZE = Decimal("0")
 
 
@@ -76,8 +75,7 @@ def _weighted_basis(
     if current_average_basis is None:
         return None
     return (
-        abs(current_size) * current_average_basis
-        + abs(signed_fill_size) * fill_price
+        abs(current_size) * current_average_basis + abs(signed_fill_size) * fill_price
     ) / abs(next_size)
 
 

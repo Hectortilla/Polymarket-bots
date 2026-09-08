@@ -5,20 +5,21 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable
 from time import monotonic
 
+from polybot.framework.clock import system_now_ms
 from polybot.framework.config.constants import (
     DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
 )
-from polybot.framework.clock import system_now_ms
 from polybot.framework.dedupe import SourceEventDeduper
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 
 from .client import PolymarketWalletActivityClient
 from .contracts import (
-    WalletTradeSelector,
-    WalletTradeSource,
     WalletActivityError,
     WalletActivityIssue,
+    WalletTradeSelector,
+    WalletTradeSource,
 )
 from .normalization import normalize_stream_event
 
@@ -28,29 +29,31 @@ WALLET_STREAM_POLL_INTERVAL_SECONDS = 0.05
 
 
 class SlidingWindowLimiter:
-    def __init__(self, budget: int, *, now: Callable[[], float] = monotonic) -> None:
+    def __init__(
+        self, budget: int, *, monotonic_clock: Callable[[], float] = monotonic
+    ) -> None:
         if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
             raise ValueError("rate-limit budget must be a positive integer")
         self._budget = budget
-        self._now = now
+        self._monotonic_clock = monotonic_clock
         self._timestamps: deque[float] = deque()
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
         while True:
             async with self._lock:
-                now = self._now()
+                now_monotonic_seconds = self._monotonic_clock()
                 while (
                     self._timestamps
-                    and now - self._timestamps[0]
+                    and now_monotonic_seconds - self._timestamps[0]
                     >= DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS
                 ):
                     self._timestamps.popleft()
                 if len(self._timestamps) < self._budget:
-                    self._timestamps.append(now)
+                    self._timestamps.append(now_monotonic_seconds)
                     return
                 wait_for = DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS - (
-                    now - self._timestamps[0]
+                    now_monotonic_seconds - self._timestamps[0]
                 )
             await asyncio.sleep(max(wait_for, 0.001))
 
@@ -136,11 +139,12 @@ class WalletActivityStream:
             try:
                 await self._limiter.acquire()
                 now_ms = self._now_ms()
-                end_epoch_seconds = now_ms // 1_000
+                end_epoch_seconds = now_ms // MILLISECONDS_PER_SECOND
                 oldest_usable_ms = now_ms - self._max_trade_age_ms
                 start_epoch_seconds = max(
                     0,
-                    max(last_timestamp_ms, oldest_usable_ms) // 1_000 - 1,
+                    max(last_timestamp_ms, oldest_usable_ms) // MILLISECONDS_PER_SECOND
+                    - 1,
                 )
                 assert self._client is not None
                 trades = await self._client.latest_selector(
@@ -179,9 +183,7 @@ class WalletActivityStream:
 
     async def _push(self, queue: asyncio.Queue[WalletTradeEvent]) -> None:
         wallets = frozenset(
-            selector.wallet
-            for selector in self._selectors
-            if selector.wallet
+            selector.wallet for selector in self._selectors if selector.wallet
         )
         if not wallets:
             return

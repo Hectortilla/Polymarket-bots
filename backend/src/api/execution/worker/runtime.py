@@ -1,6 +1,7 @@
 """Catalog-owned bot construction and paper-runtime invocation."""
 
 from polybot.runtime import run_bot
+
 from api.catalog.definitions import CATALOG
 from api.events.observer import WebRuntimeObserver
 from api.runs.contracts import RunRead

@@ -1,0 +1,214 @@
+.run-heading {
+  margin-bottom: 64px;
+  padding-top: 16px;
+  padding-bottom: 40px;
+}
+
+.run-heading h1 {
+  max-width: 880px;
+  font-size: clamp(2.5rem, 5vw, 3.75rem);
+  overflow-wrap: anywhere;
+}
+
+.run-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.run-title-row h1 {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.section-count {
+  color: var(--text-muted);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.historical-graph {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+  padding: 32px;
+}
+
+.detail-grid {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(248px, 0.68fr) minmax(0, 1.32fr);
+}
+
+.detail-section {
+  min-width: 0;
+  padding: 32px 0 40px;
+}
+
+.timing-panel {
+  padding-right: 40px;
+}
+
+.configuration-panel {
+  border-left: 1px solid var(--line);
+  padding-left: 40px;
+}
+
+dl {
+  margin: 28px 0 0;
+  display: grid;
+  gap: 20px;
+}
+
+dl div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(96px, 0.62fr) minmax(0, 1.38fr);
+  gap: 16px;
+}
+
+.configuration-panel dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+  row-gap: 24px;
+}
+
+.configuration-panel dl div {
+  display: block;
+}
+
+dt {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-transform: capitalize;
+}
+
+.configuration-panel dt {
+  margin-bottom: 8px;
+}
+
+dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.stream-health-panel {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 40px;
+}
+
+.health-stale {
+  color: var(--warning);
+}
+
+.health-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.health-metrics div {
+  display: block;
+}
+
+.health-metrics dt {
+  margin-bottom: 8px;
+}
+
+.progress-section {
+  min-width: 0;
+}
+
+.event-table td:first-child {
+  white-space: nowrap;
+}
+
+.event-table {
+  overflow: visible;
+}
+
+.event-kind {
+  color: var(--accent);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 960px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .timing-panel {
+    border-bottom: 1px solid var(--line);
+    padding-right: 0;
+  }
+
+  .configuration-panel {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .timing-panel dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 32px;
+  }
+
+  .timing-panel dl div {
+    display: block;
+  }
+
+  .timing-panel dt {
+    margin-bottom: 8px;
+  }
+}
+
+@media (max-width: 767px) {
+  .run-heading {
+    margin-bottom: 48px;
+  }
+
+  .run-heading h1 {
+    font-size: clamp(2.25rem, 11vw, 3rem);
+  }
+
+  .section-actions {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .event-table td:first-child {
+    white-space: normal;
+  }
+
+  .configuration-panel dl {
+    grid-template-columns: 1fr;
+  }
+
+  .health-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .section-count {
+    padding-top: 4px;
+  }
+
+  .timing-panel dl {
+    grid-template-columns: 1fr;
+  }
+}

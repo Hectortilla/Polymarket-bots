@@ -146,3 +146,20 @@ instance for database integration tests. From `frontend/`, run `npm run generate
 
 No new Polymarket transport, SDK integration, live execution, arbitrary code, loops,
 collection processing or cross-stream joining is introduced by this MVP.
+
+### Preview ingress and reason contracts
+
+Preview validates book and wallet event semantics before evaluating any node.
+Malformed token identity, timestamps, book levels, crossed books, and malformed
+wallet addresses are rejected at ingress. Intended orders must satisfy the same
+shared order-shape validation used by paper execution. Invalid orders are skipped
+with the existing stable rejection reason before an intended order is returned.
+A valid hook absent from a graph remains a no-op; an unknown hook is invalid.
+Evaluation and preview diagnostics expose the finite graph/book/wallet/fill reason
+union. Preview cash defaults to the catalog's dedicated preview-cash value, and
+new parameters derive their initial value from the selected constant descriptor.
+
+Preview ingress canonicalizes padded token IDs and wallet addresses before any
+graph evaluation. Computed orders pass the shared order-shape guard before being
+included in a preview or submitted to a broker; the broker retains the same guard
+for orders supplied directly by other bots.

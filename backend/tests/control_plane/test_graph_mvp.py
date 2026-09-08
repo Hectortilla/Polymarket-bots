@@ -1,20 +1,35 @@
+from __future__ import annotations
+
+from api.catalog.graphs.preview_samples import DEFAULT_PREVIEW_CASH
+from api.catalog.graphs.values import GraphPort
+from polybot.framework.base import BaseBot
+from polybot.framework.config.constants import DEFAULT_EVENT_MAX_AGE_MS
+from polybot.framework.events.wallet_trades import WalletTradeValidationIssue
+
 """MVP graph contract and execution behavior at public boundaries."""
 
-import json
-from pathlib import Path
 import asyncio
+import json
+from dataclasses import replace
 from decimal import Decimal
-from unittest.mock import AsyncMock
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from pydantic import TypeAdapter, ValidationError
-from polybot.framework.config.models import BotConfig
-from polybot.framework.context import BotContext
-from api.catalog.graphs.catalog import (
-    GRAPH_NODE_CATALOG,
-    GraphTriggerDescriptor,
-)
+from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from api.catalog.graphs.catalog.triggers import GraphTriggerDescriptor
 from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.examples import (
+    entry_exit_example,
+    multiple_conditions_example,
+)
 from api.catalog.graphs.operations import OPERATION_DESCRIPTORS
+from api.catalog.graphs.preview import (
+    GraphPreviewRequest,
+    PreviewPortfolio,
+)
+from api.catalog.graphs.reasons import GraphReason
+from api.catalog.graphs.value_status import GraphValueStatus
 from api.catalog.graphs.values import (
     GraphNodeType,
     GraphOperation,
@@ -23,52 +38,44 @@ from api.catalog.graphs.values import (
 from api.catalog.node_based.evaluator import (
     GraphEvaluator,
     capabilities,
+    event_controls,
 )
-from dataclasses import replace
-from polybot.framework.events.books import (
-    BookSnapshot,
-    BookLevel,
-    BookGapEvent,
-    BookGapReason,
-)
-from polybot.framework.portfolio import PortfolioSnapshot, PortfolioPosition
-from polybot.execution.paper.portfolio import PaperPortfolio
-from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
-from polybot.framework.events import Side, FillEvent, FillRejectReason, OrderStatus
-from polybot.framework.events.resolutions import MarketResolutionEvent
-from unittest.mock import Mock
-from api.catalog.graphs.preview import (
-    GraphPreviewRequest,
-    PreviewPortfolio,
-)
-from api.catalog.graphs.results import GraphReason, GraphValueStatus
-from api.catalog.node_based.preview import (
-    PreviewClock,
-    PreviewBroker,
-    preview_graph,
+from api.catalog.node_based.evaluator.diagnostics import (
+    GraphDiagnostics,
 )
 from api.catalog.node_based.evaluator.event_controls import (
     EventControlState,
 )
-from api.catalog.node_based.evaluator.values import RuntimeValue
-from control_plane.graph_fixtures import threshold_buy_graph
 from api.catalog.node_based.evaluator.pure import evaluate_pure
-from api.catalog.node_based.evaluator import event_controls
-from fastapi.testclient import TestClient
+from api.catalog.node_based.evaluator.values import RuntimeValue
+from api.catalog.node_based.preview import (
+    PreviewBroker,
+    PreviewClock,
+    preview_graph,
+)
 from api.http.app import create_app
 from api.http.routes.paths import (
     GRAPH_PREVIEW_PATH,
     api_route_path,
 )
-from control_plane.graph_preview_fixture import preview_fixture
 from conftest import DummyBroker
-from api.catalog.graphs.examples import (
-    entry_exit_example,
-    multiple_conditions_example,
+from fastapi.testclient import TestClient
+from polybot.execution.paper.portfolio import PaperPortfolio
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
+from polybot.framework.config.models import BotConfig
+from polybot.framework.context import BotContext
+from polybot.framework.events import FillEvent, FillRejectReason, OrderStatus, Side
+from polybot.framework.events.books import (
+    BookGapEvent,
+    BookGapReason,
+    BookLevel,
+    BookSnapshot,
 )
-from api.catalog.node_based.evaluator.diagnostics import (
-    GraphDiagnostics,
-)
+from polybot.framework.events.resolutions import MarketResolutionEvent
+from pydantic import TypeAdapter, ValidationError
+
+from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.graph_preview_fixture import preview_fixture
 
 
 def operation_graph(
@@ -80,13 +87,13 @@ def operation_graph(
     nodes = [
         dict(
             id="trigger",
-            type="trigger",
+            type=GraphNodeType.TRIGGER,
             position=dict(x=0, y=0),
             data=dict(hook_name="on_start"),
         ),
         dict(
             id="operation",
-            type="operation",
+            type=GraphNodeType.OPERATION,
             position=dict(x=200, y=0),
             data=dict(operation=operation.value, input_ids=list(input_ids)),
         ),
@@ -94,8 +101,10 @@ def operation_graph(
     edges = []
     descriptor = OPERATION_DESCRIPTORS[operation]
     for port in descriptor.inputs:
-        if port.handle_id == "context":
-            edges.append(edge("trigger", "context", "operation", "context"))
+        if port.handle_id == GraphPort.CONTEXT:
+            edges.append(
+                edge("trigger", GraphPort.CONTEXT, "operation", GraphPort.CONTEXT)
+            )
     for name, value in values.items():
         kind = (
             GraphScalarType.BOOLEAN
@@ -109,7 +118,7 @@ def operation_graph(
         nodes.append(
             dict(
                 id=name,
-                type="constant",
+                type=GraphNodeType.CONSTANT,
                 position=dict(x=0, y=100),
                 data=dict(
                     scalar_type=kind.value,
@@ -117,20 +126,25 @@ def operation_graph(
                 ),
             )
         )
-        edges.append(edge(name, "value", "operation", name))
+        edges.append(edge(name, GraphPort.VALUE, "operation", name))
     if not descriptor.terminal:
         nodes.append(
             dict(
                 id="inspect",
-                type="operation",
+                type=GraphNodeType.OPERATION,
                 position=dict(x=400, y=0),
                 data=dict(operation=GraphOperation.INSPECT.value),
             )
         )
         edges.extend(
             [
-                edge("trigger", "context", "inspect", "context"),
-                edge("operation", descriptor.outputs[0].handle_id, "inspect", "value"),
+                edge("trigger", GraphPort.CONTEXT, "inspect", GraphPort.CONTEXT),
+                edge(
+                    "operation",
+                    descriptor.outputs[0].handle_id,
+                    "inspect",
+                    GraphPort.VALUE,
+                ),
             ]
         )
     return dict(nodes=nodes, edges=edges)
@@ -276,15 +290,17 @@ def test_missing_comparison_through_not_never_enables_order():
     graph["nodes"].append(
         dict(
             id="invert",
-            type="operation",
+            type=GraphNodeType.OPERATION,
             position=dict(x=0, y=0),
             data=dict(operation=GraphOperation.NOT),
         )
     )
     for connection in graph["edges"]:
-        if connection["target_handle"] == "enabled":
-            connection.update(source="invert", source_handle="result")
-    graph["edges"].append(edge("comparison-threshold", "result", "invert", "value"))
+        if connection["target_handle"] == GraphPort.ENABLED:
+            connection.update(source="invert", source_handle=GraphPort.RESULT)
+    graph["edges"].append(
+        edge("comparison-threshold", GraphPort.RESULT, "invert", GraphPort.VALUE)
+    )
     book = BookSnapshot("token", (), (), 1000)
     result = asyncio.run(
         GraphEvaluator(
@@ -302,14 +318,19 @@ def test_select_ignores_missing_unselected_value_and_is_present_distinguishes_in
     selected = evaluate_pure(
         GraphOperation.SELECT,
         {
-            "condition": RuntimeValue(True),
-            "when_true": RuntimeValue(Decimal(2)),
-            "when_false": missing,
+            GraphPort.CONDITION: RuntimeValue(True),
+            GraphPort.WHEN_TRUE: RuntimeValue(Decimal(2)),
+            GraphPort.WHEN_FALSE: missing,
         },
     )
     assert selected.value == 2
-    assert evaluate_pure(GraphOperation.IS_PRESENT, {"value": missing}).value is False
-    assert evaluate_pure(GraphOperation.IS_PRESENT, {"value": invalid}) == invalid
+    assert (
+        evaluate_pure(GraphOperation.IS_PRESENT, {GraphPort.VALUE: missing}).value
+        is False
+    )
+    assert (
+        evaluate_pure(GraphOperation.IS_PRESENT, {GraphPort.VALUE: invalid}) == invalid
+    )
 
 
 @pytest.mark.parametrize(
@@ -328,17 +349,19 @@ def test_event_control_consumes_only_enabled_signals_and_isolates_keys(operation
         first = await evaluator.evaluate_and_execute("on_start", ctx)
         assert (
             not next(n for n in first.nodes if n.node_id == "operation")
-            .outputs["result"]
+            .outputs[GraphPort.RESULT]
             .value
         )
         # A fresh enabled graph has its own run state; repeated events use the same evaluator.
         for node in graph["nodes"]:
-            if node["id"] == "enabled":
+            if node["id"] == GraphPort.ENABLED:
                 node["data"]["value"] = True
         active = GraphEvaluator(NodeGraph.model_validate(graph))
         reads = [await active.evaluate_and_execute("on_start", ctx) for _ in range(2)]
         assert [
-            next(n for n in r.nodes if n.node_id == "operation").outputs["result"].value
+            next(n for n in r.nodes if n.node_id == "operation")
+            .outputs[GraphPort.RESULT]
+            .value
             for r in reads
         ] == [True, False]
         if operation is GraphOperation.COOLDOWN:
@@ -346,7 +369,7 @@ def test_event_control_consumes_only_enabled_signals_and_isolates_keys(operation
             third = await active.evaluate_and_execute("on_start", ctx)
             assert (
                 next(n for n in third.nodes if n.node_id == "operation")
-                .outputs["result"]
+                .outputs[GraphPort.RESULT]
                 .value
                 is True
             )
@@ -358,18 +381,21 @@ def test_once_reset_and_capacity_never_evict_claims(monkeypatch):
 
     monkeypatch.setattr(event_controls, "MAX_STATE_KEYS_PER_NODE", 1)
     state = EventControlState()
-    inputs = {"enabled": RuntimeValue(True), "key": RuntimeValue("a")}
+    inputs = {GraphPort.ENABLED: RuntimeValue(True), GraphPort.KEY: RuntimeValue("a")}
     assert state.evaluate("node", GraphOperation.ONCE, inputs, 0).value is True
     assert (
         state.evaluate(
-            "node", GraphOperation.ONCE, {**inputs, "key": RuntimeValue("b")}, 0
+            "node", GraphOperation.ONCE, {**inputs, GraphPort.KEY: RuntimeValue("b")}, 0
         ).reason
         == GraphReason.STATE_CAPACITY
     )
     assert state.evaluate("node", GraphOperation.ONCE, inputs, 0).value is False
     assert (
         state.evaluate(
-            "node", GraphOperation.ONCE, {**inputs, "reset": RuntimeValue(True)}, 0
+            "node",
+            GraphOperation.ONCE,
+            {**inputs, GraphPort.RESET: RuntimeValue(True)},
+            0,
         ).reason
         == GraphReason.RESET
     )
@@ -393,7 +419,9 @@ def test_gap_does_not_consume_or_rearm_state():
             await evaluator.evaluate_and_execute("on_start", ctx),
         ]
         values = [
-            next(n for n in r.nodes if n.node_id == "operation").outputs["result"]
+            next(n for n in r.nodes if n.node_id == "operation").outputs[
+                GraphPort.RESULT
+            ]
             for r in results
         ]
         assert [v.value for v in values] == [None, True, None, False]
@@ -420,17 +448,17 @@ def test_portfolio_reads_use_immutable_paper_accounting():
         operation_graph(GraphOperation.POSITION, dict(token_id="token")),
         context(portfolio=reader),
     )
-    assert read.outputs["size"].value == "2"
-    assert read.outputs["has_position"].value is True
-    assert read.outputs["average_entry_price"].value == "0.4"
+    assert read.outputs[GraphPort.SIZE].value == "2"
+    assert read.outputs[GraphPort.HAS_POSITION].value is True
+    assert read.outputs[GraphPort.AVERAGE_ENTRY_PRICE].value == "0.4"
     missing = operation_result(
         operation_graph(GraphOperation.POSITION, dict(token_id="absent")),
         context(portfolio=reader),
     )
-    assert missing.outputs["size"].value == "0"
+    assert missing.outputs[GraphPort.SIZE].value == "0"
     unavailable = operation_result(operation_graph(GraphOperation.BALANCE, {}))
     assert (
-        unavailable.outputs["available_cash"].reason
+        unavailable.outputs[GraphPort.AVAILABLE_CASH].reason
         == GraphReason.PORTFOLIO_UNAVAILABLE
     )
 
@@ -464,9 +492,10 @@ def test_catalog_samples_match_preview_event_contracts(trigger: GraphTriggerDesc
             )
         )
     )
-    assert TypeAdapter(type(request.event)).dump_python(
-        request.event, mode="json"
-    ) == trigger.sample_payload
+    assert (
+        TypeAdapter(type(request.event)).dump_python(request.event, mode="json")
+        == trigger.sample_payload
+    )
     assert request.portfolio.positions == GRAPH_NODE_CATALOG.sample_positions
 
 
@@ -486,9 +515,9 @@ def test_preview_plans_orders_without_submitting_or_fabricating_fills():
     result = asyncio.run(preview_graph(request))
     assert len(result.intended_orders) == 1
     action = next(n for n in result.nodes if n.node_id == "action-buy")
-    assert action.outputs["status"].value == GraphValueStatus.PLANNED.value
-    assert action.outputs["filled_size"].value is None
-    assert request.portfolio.available_cash == 1000
+    assert action.outputs[GraphPort.STATUS].value == GraphValueStatus.PLANNED.value
+    assert action.outputs[GraphPort.FILLED_SIZE].value is None
+    assert request.portfolio.available_cash == DEFAULT_PREVIEW_CASH
 
 
 def test_preview_http_endpoint_and_sample_errors():
@@ -593,7 +622,9 @@ def test_action_outputs_preserve_real_fill_status_and_reason(status):
         filled_size=(
             Decimal(0)
             if rejected
-            else size if status is OrderStatus.FILLED else size / 2
+            else size
+            if status is OrderStatus.FILLED
+            else size / 2
         ),
         average_price=None if rejected else Decimal("0.4"),
         fee_usdc=Decimal(0),
@@ -614,11 +645,13 @@ def test_action_outputs_preserve_real_fill_status_and_reason(status):
         GraphEvaluator(graph).evaluate_and_execute("on_book", ctx, book)
     )
     action = next(n for n in result.nodes if n.node_id == "action-buy")
-    assert action.outputs["status"].value == status.value
-    assert action.outputs["filled_size"].value == str(fill.filled_size)
-    assert action.outputs["average_price"].value == (None if rejected else "0.4")
-    assert action.outputs["reject_reason"].value == fill.reject_reason
-    assert action.outputs["skip_reason"].value is None
+    assert action.outputs[GraphPort.STATUS].value == status.value
+    assert action.outputs[GraphPort.FILLED_SIZE].value == str(fill.filled_size)
+    assert action.outputs[GraphPort.AVERAGE_PRICE].value == (
+        None if rejected else "0.4"
+    )
+    assert action.outputs[GraphPort.REJECT_REASON].value == fill.reject_reason
+    assert action.outputs[GraphPort.SKIP_REASON].value is None
     broker.submit.assert_awaited_once()
 
 
@@ -638,8 +671,8 @@ def test_portfolio_snapshot_preserves_shorts_and_observes_settlement():
         operation_graph(GraphOperation.POSITION, dict(token_id="token")),
         context(portfolio=reader),
     )
-    assert read.outputs["size"].value == "-2"
-    assert read.outputs["has_position"].value is True
+    assert read.outputs[GraphPort.SIZE].value == "-2"
+    assert read.outputs[GraphPort.HAS_POSITION].value is True
     portfolio.settle_market(
         MarketResolutionEvent(
             condition_id="condition",
@@ -692,9 +725,9 @@ def test_fractional_whole_number_error_identifies_setting():
     read = operation_result(
         operation_graph(GraphOperation.ROUND, dict(value=2, places=Decimal("2.7")))
     )
-    value = read.outputs["value"]
+    value = read.outputs[GraphPort.VALUE]
     assert value.reason == GraphReason.WHOLE_NUMBER_REQUIRED
-    assert value.input_handle_id == "places"
+    assert value.input_handle_id == GraphPort.PLACES
     assert "Decimal places" in value.message
 
 
@@ -706,5 +739,107 @@ def test_broker_exception_reports_originating_node_before_failing():
     sink = AsyncMock()
     ctx = replace(context(portfolio=request.portfolio), broker=broker, activity=sink)
     with pytest.raises(RuntimeError, match="test broker unavailable"):
-        asyncio.run(GraphEvaluator(request.graph).evaluate_and_execute(request.hook_name, ctx, request.event))
-    assert any("[buy] Execution failed" in call.args[0] for call in sink.emit.await_args_list)
+        asyncio.run(
+            GraphEvaluator(request.graph).evaluate_and_execute(
+                request.hook_name, ctx, request.event
+            )
+        )
+    assert any(
+        "[buy] Execution failed" in call.args[0] for call in sink.emit.await_args_list
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"token_id": ""},
+        {"asks": [{"price": "0.4", "size": "0"}]},
+        {"bids": [{"price": "0.6", "size": "1"}]},
+        {"received_at_ms": -1},
+    ],
+)
+def test_preview_rejects_semantically_invalid_books_at_ingress(mutation):
+    payload = dict(
+        token_id="token",
+        bids=[dict(price="0.39", size="100")],
+        asks=[dict(price="0.4", size="100")],
+        received_at_ms=1000,
+    )
+    payload.update(mutation)
+    with pytest.raises(ValueError):
+        GraphPreviewRequest(
+            graph=threshold_buy_graph(),
+            hook_name="on_book",
+            now_ms=1000,
+            payload=payload,
+        )
+
+
+@pytest.mark.parametrize("invalid_input", ["wallet", "stale", "future"])
+def test_preview_rejects_invalid_wallet_trade_at_ingress(invalid_input):
+    trigger = next(
+        item
+        for item in GRAPH_NODE_CATALOG.triggers
+        if item.hook_name == BaseBot.on_wallet_trade.__name__
+    )
+    payload = dict(trigger.sample_payload)
+    now_ms = trigger.sample_time_ms
+    if invalid_input == "wallet":
+        payload["wallet"] = "malformed"
+    elif invalid_input == "stale":
+        now_ms = payload["trade_timestamp_ms"] + DEFAULT_EVENT_MAX_AGE_MS + 1
+    else:
+        payload["observed_at_ms"] = now_ms + 1
+    expected_reason = {
+        "wallet": "wallet address",
+        "stale": WalletTradeValidationIssue.STALE.value,
+        "future": WalletTradeValidationIssue.FUTURE_DATED.value,
+    }[invalid_input]
+    with pytest.raises(ValueError, match=expected_reason):
+        GraphPreviewRequest(
+            graph=dict(
+                nodes=[
+                    dict(
+                        id="trigger",
+                        type=GraphNodeType.TRIGGER,
+                        position=dict(x=0, y=0),
+                        data=dict(hook_name=trigger.hook_name),
+                    )
+                ]
+            ),
+            hook_name=trigger.hook_name,
+            payload=payload,
+            now_ms=now_ms,
+        )
+
+
+@pytest.mark.parametrize(
+    "hook", [BaseBot.on_book.__name__, BaseBot.on_wallet_trade.__name__]
+)
+def test_preview_normalizes_external_identity_fields(hook):
+    trigger = next(
+        item for item in GRAPH_NODE_CATALOG.triggers if item.hook_name == hook
+    )
+    payload = dict(trigger.sample_payload)
+    original_token = payload["token_id"]
+    payload["token_id"] = f"  {original_token}  "
+    if hook == BaseBot.on_wallet_trade.__name__:
+        payload["wallet"] = "  0x" + "A" * 40 + "  "
+    request = GraphPreviewRequest(
+        graph=dict(
+            nodes=[
+                dict(
+                    id="trigger",
+                    type=GraphNodeType.TRIGGER,
+                    position=dict(x=0, y=0),
+                    data=dict(hook_name=hook),
+                )
+            ]
+        ),
+        hook_name=hook,
+        payload=payload,
+        now_ms=trigger.sample_time_ms,
+    )
+    assert request.event.token_id == original_token
+    if hook == BaseBot.on_wallet_trade.__name__:
+        assert request.event.wallet == "0x" + "a" * 40

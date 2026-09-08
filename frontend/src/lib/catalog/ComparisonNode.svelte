@@ -1,15 +1,13 @@
 <script lang="ts">
-  import NodeIssues from './NodeIssues.svelte';
-  import { getContext } from 'svelte';
+  import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
   import { Handle, Position } from '@xyflow/svelte';
+  import { getContext } from 'svelte';
+  import NodeIssues from './NodeIssues.svelte';
 
   import type { GraphComparisonNodeData } from '$lib/api/generated';
-  import { comparisonForNode } from './nodeGraph';
+  import { comparisonForNode } from '$lib/catalog/nodeGraph/catalog';
   import { GRAPH_NODE_TYPE } from './graphContracts';
-  import {
-    NODE_GRAPH_EDITOR_CONTEXT,
-    type NodeGraphEditorContext
-  } from './nodeGraphContext';
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
 
   let { id, data }: { id: string; data: GraphComparisonNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
@@ -18,12 +16,10 @@
 
   function updateOperator(event: Event): void {
     const select = event.currentTarget as HTMLSelectElement;
-    const comparison = editor.catalog.comparisons.find(
-      ({ operator }) => operator === select.value
-    );
+    const comparison = editor.catalog.comparisons.find(({ operator }) => operator === select.value);
     if (!comparison) return;
     editor.setComparisonData(id, {
-      operator: comparison.operator
+      operator: comparison.operator,
     });
   }
 </script>
@@ -34,9 +30,9 @@
     <span>{nodeKind}</span>
   </header>
   <label class="operator-control nodrag nowheel">
-    <span>Operator</span>
+    <span>{GRAPH_FIELD_COPY.OPERATOR}</span>
     <select
-      aria-label="Comparison operator"
+      aria-label={GRAPH_FIELD_COPY.COMPARISON_OPERATOR}
       value={data.operator}
       disabled={editor.readOnly}
       onchange={updateOperator}
@@ -68,7 +64,8 @@
       isConnectable={!editor.readOnly}
     />
   </div>
-<NodeIssues {id} /></section>
+  <NodeIssues {id} />
+</section>
 
 <style>
   .functional-node {

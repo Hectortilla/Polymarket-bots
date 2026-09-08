@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from polybot.execution.paper.validation import valid_fee_rate
 from polybot.framework.context import BookClient, MarketClient
 from polybot.framework.events import FillRejectReason, OrderRequest
 from polybot.framework.events.books import BookSnapshot
-from polybot.execution.paper.validation import valid_fee_rate
 from polybot.polymarket.markets import Market
 
 MARKET_UNAVAILABLE_MESSAGE = "fill-time market metadata was unavailable"
@@ -25,6 +25,23 @@ MARKET_MINIMUM_ORDER_SIZE_MESSAGE = "order size is below the market minimum"
 class FillMarketData:
     market: Market
     fee_rate: Decimal
+
+    def validate(
+        self,
+        order: OrderRequest,
+        book: BookSnapshot,
+    ) -> tuple[FillRejectReason, str] | None:
+        """Validate already-fetched market data against one fill-time book snapshot."""
+        market = self.market
+        if not market_matches_order_and_book(market, order, book):
+            return (
+                FillRejectReason.MARKET_METADATA_MISMATCH,
+                MARKET_METADATA_MISMATCH_MESSAGE,
+            )
+        constraint_reject = _validate_order_constraints(order, market)
+        if constraint_reject is not None:
+            return constraint_reject
+        return None
 
 
 async def latest_book(
@@ -62,28 +79,10 @@ async def resolve_fill_market_data(
     if not getattr(market, "is_open_for_trading", False):
         return None, (FillRejectReason.MARKET_UNAVAILABLE, MARKET_NOT_TRADABLE_MESSAGE)
     market_data = FillMarketData(market=market, fee_rate=fee_rate)
-    validation_reject = validate_fill_market_data(market_data, order, book)
+    validation_reject = market_data.validate(order, book)
     if validation_reject is not None:
         return None, validation_reject
     return market_data, None
-
-
-def validate_fill_market_data(
-    market_data: FillMarketData,
-    order: OrderRequest,
-    book: BookSnapshot,
-) -> tuple[FillRejectReason, str] | None:
-    """Validate already-fetched market data against one fill-time book snapshot."""
-    market = market_data.market
-    if not market_matches_order_and_book(market, order, book):
-        return (
-            FillRejectReason.MARKET_METADATA_MISMATCH,
-            MARKET_METADATA_MISMATCH_MESSAGE,
-        )
-    constraint_reject = _validate_order_constraints(order, market)
-    if constraint_reject is not None:
-        return constraint_reject
-    return None
 
 
 def market_matches_order_and_book(

@@ -4,15 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from polybot.dashboard.contracts import MAX_TIME_ZOOM_LEVEL, MIN_TIME_ZOOM_LEVEL
 from polybot.dashboard.history import DashboardHistory
 
-from .chart_state import (
-    MAX_TIME_ZOOM_LEVEL,
-    MIN_TIME_ZOOM_LEVEL,
-    chart_display_points,
-    chart_window_points,
-    visible_epoch_seconds_range,
-)
+from .chart_state import chart_window_points, visible_epoch_seconds_range
 
 
 @dataclass(slots=True)
@@ -21,10 +16,6 @@ class DashboardCharts(DashboardHistory):
 
     def chart_window_points(self, width: int) -> int:
         return chart_window_points(self.time_zoom_level, width)
-
-    @staticmethod
-    def chart_display_points(width: int) -> int:
-        return chart_display_points(width)
 
     def visible_epoch_seconds_range(self, width: int) -> tuple[float, float] | None:
         return visible_epoch_seconds_range(

@@ -3,7 +3,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-
 from polybot.framework.events import Side
 from polybot.framework.position_transition import transition_signed_position
 

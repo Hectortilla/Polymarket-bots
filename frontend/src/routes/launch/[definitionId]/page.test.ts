@@ -1,15 +1,10 @@
+import { BOT_BUILDER_COPY } from '$lib/bots/copy';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BotDefinitionDescriptor, BotRead } from '$lib/api/generated';
-import {
-  TEST_GRAPH,
-  TEST_GRAPH_CATALOG
-} from '$lib/catalog/nodeGraphTestFixtures';
-import {
-  BOT_DEFINITION_LABEL,
-  SELECTION_MODE
-} from '$lib/catalog/schema';
+import { TEST_GRAPH, TEST_GRAPH_CATALOG } from '$lib/catalog/nodeGraphTestFixtures';
+import { BOT_DEFINITION_LABEL, SELECTION_MODE } from '$lib/catalog/schema';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 const mocks = vi.hoisted(() => ({
@@ -17,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   createTemplate: vi.fn(),
   goto: vi.fn(),
   listBots: vi.fn(),
-  listDefinitions: vi.fn()
+  listDefinitions: vi.fn(),
 }));
 
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
@@ -25,7 +20,7 @@ vi.mock('$lib/api/generated', () => ({
   createBotApiV1BotsPost: mocks.createBot,
   createGraphTemplateApiV1GraphTemplatesPost: mocks.createTemplate,
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
-  listBotsApiV1BotsGet: mocks.listBots
+  listBotsApiV1BotsGet: mocks.listBots,
 }));
 
 import Page from './+page.svelte';
@@ -43,8 +38,8 @@ const DEFINITION = {
     type: 'object',
     additionalProperties: false,
     required: ['name'],
-    properties: { name: { type: 'string', minLength: 1 } }
-  }
+    properties: { name: { type: 'string', minLength: 1 } },
+  },
 } satisfies BotDefinitionDescriptor;
 
 const SOURCE_BOT = {
@@ -59,17 +54,17 @@ const SOURCE_BOT = {
     paper_latency_ms: 250,
     paper_latency_jitter_ms: 100,
     event_max_age_ms: 5000,
-    paper_portfolio_usdc: '1000'
+    paper_portfolio_usdc: '1000',
   },
   latest_graph_revision: {
     id: 'cccccccc-0000-0000-0000-000000000001',
     bot_id: 'aaaaaaaa-0000-0000-0000-000000000001',
     revision: 2,
     graph: TEST_GRAPH,
-    created_at: '2026-08-30T00:00:00Z'
+    created_at: '2026-08-30T00:00:00Z',
   },
   created_at: '2026-08-30T00:00:00Z',
-  updated_at: '2026-08-30T00:00:00Z'
+  updated_at: '2026-08-30T00:00:00Z',
 } satisfies BotRead;
 
 afterEach(() => {
@@ -81,10 +76,10 @@ function loadBuilder(bots: BotRead[] = []): void {
   mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
   mocks.listBots.mockResolvedValue({ data: bots });
   mocks.createTemplate.mockResolvedValue({
-    data: { id: 'dddddddd-0000-0000-0000-000000000001' }
+    data: { id: 'dddddddd-0000-0000-0000-000000000001' },
   });
   mocks.createBot.mockResolvedValue({
-    data: { id: 'eeeeeeee-0000-0000-0000-000000000001' }
+    data: { id: 'eeeeeeee-0000-0000-0000-000000000001' },
   });
 }
 
@@ -94,30 +89,28 @@ describe('unified bot creation page', () => {
     render(Page);
 
     await fireEvent.input(await screen.findByLabelText('Name'), {
-      target: { value: 'Threshold buyer' }
+      target: { value: 'Threshold buyer' },
     });
-    await fireEvent.click(screen.getByRole('button', { name: 'Create bot' }));
+    await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
 
     await waitFor(() => {
       expect(mocks.createTemplate).toHaveBeenCalledWith({
         body: {
           name: expect.stringMatching(/^bot-draft-/),
-          graph: TEST_GRAPH
+          graph: TEST_GRAPH,
         },
-        throwOnError: true
+        throwOnError: true,
       });
       expect(mocks.createBot).toHaveBeenCalledWith({
         body: {
           definition_id: DEFINITION.definition_id,
           inputs: { name: 'Threshold buyer' },
-          graph_template_id: 'dddddddd-0000-0000-0000-000000000001'
+          graph_template_id: 'dddddddd-0000-0000-0000-000000000001',
         },
-        throwOnError: true
+        throwOnError: true,
       });
     });
-    expect(mocks.goto).toHaveBeenCalledWith(
-      '/bots/eeeeeeee-0000-0000-0000-000000000001'
-    );
+    expect(mocks.goto).toHaveBeenCalledWith('/bots/eeeeeeee-0000-0000-0000-000000000001');
   });
 
   it('offers existing bots as graph starting points without exposing templates', async () => {
@@ -126,7 +119,7 @@ describe('unified bot creation page', () => {
 
     const source = await screen.findByLabelText('Starting point');
     await fireEvent.change(source, { target: { value: SOURCE_BOT.id } });
-    await fireEvent.click(screen.getByRole('button', { name: 'Copy graph' }));
+    await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.COPY_GRAPH }));
 
     expect(screen.getByText(/Current source: Source bot/)).toBeTruthy();
     expect(screen.queryByText('Graph template')).toBeNull();
@@ -138,7 +131,7 @@ describe('unified bot creation page', () => {
     render(Page);
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'The node-based bot definition is unavailable.'
+      BOT_BUILDER_COPY.MISSING_DEFINITION,
     );
     expect(screen.queryByLabelText('Name')).toBeNull();
   });
@@ -150,11 +143,9 @@ describe('unified bot creation page', () => {
 
     const name = await screen.findByLabelText('Name');
     await fireEvent.input(name, { target: { value: 'Keep my draft' } });
-    await fireEvent.click(screen.getByRole('button', { name: 'Create bot' }));
+    await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'The bot could not be saved.'
-    );
+    expect((await screen.findByRole('alert')).textContent).toContain('The bot could not be saved.');
     expect((name as HTMLInputElement).value).toBe('Keep my draft');
   });
 });

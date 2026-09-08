@@ -1,8 +1,8 @@
 from scripts.wallet_analysis.contracts import NET_CASH_METRIC
 from scripts.wallet_analysis.metrics import compute_metrics
 from scripts.wallet_payloads import (
-    ACTIVITY_PRICE_FIELD,
     ACTIVITY_OUTCOME_FIELD,
+    ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
     ACTIVITY_SIZE_FIELD,
     ACTIVITY_TIMESTAMP_FIELD,
@@ -32,16 +32,19 @@ def test_activity_normalization_rejects_nonfinite_financial_values() -> None:
 
 
 def test_activity_normalization_rejects_out_of_range_trade_values() -> None:
-    assert normalize_activity_rows(
-        _trade_payload(
-            **{
-                ACTIVITY_SIDE_FIELD: "SELL",
-                ACTIVITY_SIZE_FIELD: -1,
-                ACTIVITY_PRICE_FIELD: 1.1,
-                ACTIVITY_USDC_SIZE_FIELD: -1,
-            }
+    assert (
+        normalize_activity_rows(
+            _trade_payload(
+                **{
+                    ACTIVITY_SIDE_FIELD: "SELL",
+                    ACTIVITY_SIZE_FIELD: -1,
+                    ACTIVITY_PRICE_FIELD: 1.1,
+                    ACTIVITY_USDC_SIZE_FIELD: -1,
+                }
+            )
         )
-    ) == []
+        == []
+    )
 
 
 def test_activity_normalization_preserves_arbitrary_outcome_label() -> None:
@@ -53,16 +56,21 @@ def test_activity_normalization_preserves_arbitrary_outcome_label() -> None:
 
 
 def test_position_normalization_requires_nonnegative_size_and_value() -> None:
-    assert normalize_position_rows(
-        [{
-            PROXY_WALLET_FIELD: "0xwallet",
-            CONDITION_ID_FIELD: "condition",
-            POSITION_SIZE_FIELD: -1,
-            POSITION_CURRENT_VALUE_FIELD: 1,
-            POSITION_REALIZED_PNL_FIELD: 0,
-            POSITION_CASH_PNL_FIELD: 0,
-        }]
-    ) == []
+    assert (
+        normalize_position_rows(
+            [
+                {
+                    PROXY_WALLET_FIELD: "0xwallet",
+                    CONDITION_ID_FIELD: "condition",
+                    POSITION_SIZE_FIELD: -1,
+                    POSITION_CURRENT_VALUE_FIELD: 1,
+                    POSITION_REALIZED_PNL_FIELD: 0,
+                    POSITION_CASH_PNL_FIELD: 0,
+                }
+            ]
+        )
+        == []
+    )
 
 
 def test_wallet_metrics_use_only_normalized_trade_sides() -> None:

@@ -6,7 +6,6 @@ from typing import Final
 
 from polybot.framework.wallets import normalize_wallet_address, validate_wallet_address
 
-
 STREAM_RULE_RELATION_FIELD = "relation"
 STREAM_RULE_MARKET_SLUGS_FIELD = "market_slugs"
 STREAM_RULE_WALLET_ADDRESSES_FIELD = "wallet_addresses"
@@ -55,7 +54,9 @@ class StreamRule:
     wallet_addresses: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        markets = tuple(dict.fromkeys(slug.strip() for slug in self.market_slugs if slug.strip()))
+        markets = tuple(
+            dict.fromkeys(slug.strip() for slug in self.market_slugs if slug.strip())
+        )
         wallets = tuple(
             dict.fromkeys(
                 normalize_wallet_address(wallet.strip())
@@ -119,8 +120,7 @@ class StreamRule:
                 for wallet in self.wallet_addresses
             )
         scopes = [
-            StreamScope(wallet_address=wallet)
-            for wallet in self.wallet_addresses
+            StreamScope(wallet_address=wallet) for wallet in self.wallet_addresses
         ]
         if self.market_slugs:
             scopes.append(StreamScope(market_slugs=self.market_slugs))
@@ -181,7 +181,5 @@ class StreamPlan:
     @staticmethod
     def _wallet_addresses(rules: tuple[StreamRule, ...]) -> tuple[str, ...]:
         return tuple(
-            dict.fromkeys(
-                wallet for rule in rules for wallet in rule.wallet_addresses
-            )
+            dict.fromkeys(wallet for rule in rules for wallet in rule.wallet_addresses)
         )

@@ -1,7 +1,10 @@
 """Exact graph Number ingress and arithmetic policy."""
 
 import re
-from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN
+from decimal import ROUND_HALF_EVEN, Context, Decimal, InvalidOperation
+
+INVALID_NUMBER_MESSAGE = "Enter a valid number"
+
 
 GRAPH_NUMBER_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
 MAX_NUMBER_TEXT_LENGTH = 256
@@ -14,11 +17,11 @@ def number_from_text(value: str) -> Decimal:
     if len(value) > MAX_NUMBER_TEXT_LENGTH:
         raise ValueError("Number is too long")
     if re.fullmatch(GRAPH_NUMBER_PATTERN, value) is None:
-        raise ValueError("Enter a valid number")
+        raise ValueError(INVALID_NUMBER_MESSAGE)
     try:
         number = Decimal(value)
     except InvalidOperation as error:
-        raise ValueError("Enter a valid number") from error
+        raise ValueError(INVALID_NUMBER_MESSAGE) from error
     if not number.is_finite() or (
         not number.is_zero() and abs(number.adjusted()) > MAX_NUMBER_EXPONENT
     ):

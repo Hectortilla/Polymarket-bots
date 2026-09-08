@@ -7,14 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from api.events.contracts import (
+    PERSISTED_DURABLE_EVENT_ADAPTER,
     ChartSampleEvent,
     DurableEvent,
-    PERSISTED_DURABLE_EVENT_ADAPTER,
     PersistedDurableEvent,
     RunFailureEvent,
 )
-from api.events.kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
 from api.events.ids import FIRST_EVENT_CURSOR, is_durable_event_id
+from api.events.kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
 from api.events.models import EventRow
 from api.events.pagination import (
     MAX_EVENT_PAGE_LIMIT,
@@ -38,7 +38,9 @@ class EventStore:
         await self._session.flush()
         if not is_durable_event_id(row.id):
             await self._session.rollback()
-            raise ValueError("persisted durable event ID exceeds the public cursor range")
+            raise ValueError(
+                "persisted durable event ID exceeds the public cursor range"
+            )
         await self._session.commit()
         await self._session.refresh(row)
         return self._event_from_row(row)

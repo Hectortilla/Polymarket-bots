@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
-from polybot.recording.contracts.book import BookDeltaPayload
 from polybot.recording.contracts.anomalies import (
     CaptureAnomalyFragment,
     CaptureAnomalyPayload,
     CaptureBookDiagnostics,
     CaptureFragmentRole,
 )
+from polybot.recording.contracts.book import BookDeltaPayload
 
 
 def create_capture_anomaly_payload(
@@ -47,7 +48,7 @@ def create_capture_anomaly_payload(
         book_diagnostics=_capture_book_diagnostics(error),
         dropped_count_before=error.dropped_count_before,
         dropped_count_after=error.dropped_count_after,
-        elapsed_ms=int(error.elapsed_seconds * 1_000),
+        elapsed_ms=int(error.elapsed_seconds * MILLISECONDS_PER_SECOND),
         details=f"{type(error).__name__}: {error}",
     )
 

@@ -1,25 +1,25 @@
 """FastAPI application assembly for the private paper-run control plane."""
 
 from fastapi import FastAPI
-from api.http.routes.graph_preview import (
-    router as graph_preview_router,
-)
+from polybot.polymarket.discovery import MarketDiscovery
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from polybot.polymarket.discovery import MarketDiscovery
+from api.execution.launcher import RunLauncher
 from api.http.dependencies import application_lifespan
 from api.http.routes.bots import router as bots_router
 from api.http.routes.catalog import router as catalog_router
+from api.http.routes.events import router as events_router
+from api.http.routes.graph_preview import (
+    router as graph_preview_router,
+)
 from api.http.routes.graph_templates import (
     router as graph_templates_router,
 )
-from api.http.routes.events import router as events_router
 from api.http.routes.health import router as health_router
 from api.http.routes.markets import router as markets_router
 from api.http.routes.paths import API_PREFIX
 from api.http.routes.runs import router as runs_router
-from api.execution.launcher import RunLauncher
 
 
 def create_app(

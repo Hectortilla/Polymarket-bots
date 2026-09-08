@@ -2,19 +2,19 @@
 
 from uuid import UUID
 
+from polybot.framework.clock import system_now_utc
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from polybot.framework.clock import system_now_utc
 from api.bots.contracts import BotGraphRevisionRead, BotRead
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.revisions import (
     FIRST_GRAPH_REVISION_NUMBER,
     next_graph_revision_number,
 )
-from api.catalog.values import DefinitionId
 from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.values import DefinitionId
 from api.runs.contracts import PaperRunConfig
 
 

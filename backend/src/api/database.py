@@ -4,7 +4,6 @@ import os
 
 from sqlalchemy.engine import URL, make_url
 
-
 DATABASE_URL_ENV = "POLYBOT_DATABASE_URL"
 POSTGRESQL_BACKEND_NAME = "postgresql"
 ASYNC_POSTGRESQL_DRIVER_NAME = "postgresql+asyncpg"

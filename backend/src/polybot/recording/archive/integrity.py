@@ -4,21 +4,28 @@ from __future__ import annotations
 
 import sqlite3
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import (
+    EVENT_TOKENS_TABLE,
+    EVENTS_TABLE,
+    METADATA_REVISIONS_TABLE,
+)
+
 from ..contracts.book import (
     BookBaselinePayload,
     BookDeltaPayload,
 )
 from ..contracts.gaps import CoverageGapPayload
+from ..contracts.kinds import PayloadKind
 from ..contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
 )
-from ..contracts.records import RecordedEvent
 from ..contracts.payloads import (
     ResolutionPayload,
     event_token_ids,
 )
-from ..contracts.kinds import PayloadKind
+from ..contracts.records import RecordedEvent
 from ..coverage import CoverageScope
 from .errors import ArchiveFormatError, ArchiveIntegrityError
 from .primitives import _strict_int
@@ -101,9 +108,7 @@ def _validate_payload_market_identity(
         raise ArchiveIntegrityError(
             "resolution token pair does not match market metadata"
         )
-    outcome_by_token = {
-        outcome.token_id: outcome.label for outcome in market.outcomes
-    }
+    outcome_by_token = {outcome.token_id: outcome.label for outcome in market.outcomes}
     expected_outcome = outcome_by_token[event.payload.winning_token_id]
     if event.payload.winning_outcome != expected_outcome:
         raise ArchiveIntegrityError("resolution outcome does not match market metadata")
@@ -123,9 +128,7 @@ def _invalidate_gap_baselines(
     if affected_tokens is None:
         baselines.clear()
         return
-    baselines.difference_update(
-        {key for key in baselines if key[1] in affected_tokens}
-    )
+    baselines.difference_update({key for key in baselines if key[1] in affected_tokens})
 
 
 def _validate_stored_event_dependencies(
@@ -150,10 +153,10 @@ def _validate_stored_event_dependencies(
         raise ArchiveFormatError("stored market event lacks condition identity")
     if identity.condition_id not in verified_metadata:
         row = connection.execute(
-            """
-            SELECT payload_json FROM metadata_revisions
-            WHERE condition_id = ? AND sequence < ?
-            ORDER BY sequence DESC
+            f"""
+            SELECT {ArchiveColumn.PAYLOAD_JSON} FROM {METADATA_REVISIONS_TABLE}
+            WHERE {ArchiveColumn.CONDITION_ID} = ? AND {ArchiveColumn.SEQUENCE} < ?
+            ORDER BY {ArchiveColumn.SEQUENCE} DESC
             LIMIT 1
             """,
             (identity.condition_id, event.sequence),
@@ -164,7 +167,7 @@ def _validate_stored_event_dependencies(
             )
         market = _typed_payload(
             PayloadKind.MARKET_METADATA,
-            row["payload_json"],
+            row[ArchiveColumn.PAYLOAD_JSON],
             MarketMetadataPayload,
         )
         if market.condition_id != identity.condition_id:
@@ -194,16 +197,16 @@ def _validate_stored_event_dependencies(
         if baseline_key in verified_baselines:
             continue
         row = connection.execute(
-            """
-            SELECT event.sequence
-            FROM events AS event
-            JOIN event_tokens AS token ON token.sequence = event.sequence
-            WHERE event.payload_kind = ?
-              AND event.subscription_generation = ?
-              AND event.session_id = ?
-              AND token.token_id = ?
-              AND event.sequence < ?
-            ORDER BY event.sequence DESC
+            f"""
+            SELECT event.{ArchiveColumn.SEQUENCE}
+            FROM {EVENTS_TABLE} AS event
+            JOIN {EVENT_TOKENS_TABLE} AS token ON token.{ArchiveColumn.SEQUENCE} = event.{ArchiveColumn.SEQUENCE}
+            WHERE event.{ArchiveColumn.PAYLOAD_KIND} = ?
+              AND event.{ArchiveColumn.SUBSCRIPTION_GENERATION} = ?
+              AND event.{ArchiveColumn.SESSION_ID} = ?
+              AND token.{ArchiveColumn.TOKEN_ID} = ?
+              AND event.{ArchiveColumn.SEQUENCE} < ?
+            ORDER BY event.{ArchiveColumn.SEQUENCE} DESC
             LIMIT 1
             """,
             (
@@ -217,7 +220,7 @@ def _validate_stored_event_dependencies(
         if row is None or _has_affecting_gap_after_baseline(
             connection,
             baseline_sequence=_strict_int(
-                row["sequence"],
+                row[ArchiveColumn.SEQUENCE],
                 "baseline sequence",
             ),
             event=event,
@@ -240,10 +243,10 @@ def _has_affecting_gap_after_baseline(
     if identity is None:
         raise AssertionError("book delta has no market identity")
     rows = connection.execute(
-        """
-        SELECT * FROM events
-        WHERE payload_kind = ? AND sequence > ? AND sequence < ?
-        ORDER BY sequence
+        f"""
+        SELECT * FROM {EVENTS_TABLE}
+        WHERE {ArchiveColumn.PAYLOAD_KIND} = ? AND {ArchiveColumn.SEQUENCE} > ? AND {ArchiveColumn.SEQUENCE} < ?
+        ORDER BY {ArchiveColumn.SEQUENCE}
         """,
         (
             PayloadKind.COVERAGE_GAP.value,
@@ -281,6 +284,4 @@ def _invalidate_stored_gap_baselines(
     if affected_tokens is None:
         baselines.clear()
         return
-    baselines.difference_update(
-        {key for key in baselines if key[2] in affected_tokens}
-    )
+    baselines.difference_update({key for key in baselines if key[2] in affected_tokens})

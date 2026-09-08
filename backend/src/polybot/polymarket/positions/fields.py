@@ -2,7 +2,6 @@
 
 from typing import Final
 
-
 POSITIONS_REQUEST_USER_FIELD: Final = "user"
 POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD: Final = "size_threshold"
 POSITIONS_REQUEST_PAGE_SIZE_FIELD: Final = "page_size"

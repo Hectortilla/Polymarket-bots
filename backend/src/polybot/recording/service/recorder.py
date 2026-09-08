@@ -27,7 +27,6 @@ from .markets import resolve_initial_markets
 from .resume import ResumeState, read_resume_state
 from .session import start_recording_session
 
-
 NO_CURRENT_MARKETS_MESSAGE = (
     "the recorder requires at least one current market subscription"
 )
@@ -60,11 +59,7 @@ async def record_markets(
     if resume_state.clock_floor_ms is not None:
         clock.advance_to(resume_state.clock_floor_ms)
 
-    sources = (
-        RecordingPublicData.create()
-        if public_data is None
-        else public_data
-    )
+    sources = RecordingPublicData.create() if public_data is None else public_data
     writer: AsyncRecordingWriter | None = None
     coordinator: RecordingCoordinator | None = None
     try:
@@ -104,9 +99,7 @@ async def record_markets(
             writer=writer,
             clock=clock,
             stop_when_terminal=bot is None,
-            resumed_gap_conditions_by_id=dict(
-                resume_state.open_gap_conditions_by_id
-            ),
+            resumed_gap_conditions_by_id=dict(resume_state.open_gap_conditions_by_id),
         )
         await coordinator.start(
             initial_plan,

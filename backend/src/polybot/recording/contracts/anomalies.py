@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from polybot.integers import validate_nonnegative_int
+
 from .market import MarketIdentity
 from .payloads import (
     RECORDED_PAYLOAD_TYPES,
@@ -16,8 +18,6 @@ from .validation import (
     normalize_optional_text_fields,
     normalize_required_text_fields,
     validate_outcome_payout,
-    validate_decimal,
-    validate_nonnegative_int,
 )
 
 

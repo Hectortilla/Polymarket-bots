@@ -3,11 +3,10 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, call
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from api.bots.models import BotRow
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def test_list_materializes_bots_after_loading_latest_revisions() -> None:

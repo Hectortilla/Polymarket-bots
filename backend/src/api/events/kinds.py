@@ -2,7 +2,6 @@
 
 from enum import StrEnum
 
-
 EVENT_DISCRIMINATOR_FIELD = "kind"
 
 

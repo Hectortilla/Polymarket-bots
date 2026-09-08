@@ -1,7 +1,8 @@
 """Graph reads of the event's immutable own-portfolio snapshot."""
 
 from polybot.framework.portfolio import PortfolioSnapshot
-from api.catalog.graphs.results import GraphReason
+
+from api.catalog.graphs.reasons import GraphReason
 from api.catalog.graphs.values import GraphOperation, GraphPort
 from api.catalog.node_based.evaluator.values import RuntimeValue
 

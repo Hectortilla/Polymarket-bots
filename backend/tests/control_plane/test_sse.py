@@ -1,18 +1,11 @@
 import asyncio
-from datetime import UTC, datetime
-import logging
 import json
+import logging
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-import pytest
-
 import api.http.sse as sse_module
-from api.http.sse import (
-    RunEventStreamer,
-    SSE_DATA_FIELD,
-    SSE_FIELD_SEPARATOR,
-    SSE_ID_FIELD,
-)
+import pytest
 from api.events.channels import (
     decode_durable_wake_frame,
     encode_durable_wake_frame,
@@ -24,26 +17,30 @@ from api.events.contracts import (
     RunLifecycleEvent,
     RunStatusPayload,
 )
-from api.events.kinds import (
-    EVENT_DISCRIMINATOR_FIELD,
-    LiveEventKind,
-)
-from api.events.contracts.payloads import EquityChartPointPayload
+from api.events.contracts.payloads.chart import EquityChartPointPayload
 from api.events.ids import (
     FIRST_DURABLE_EVENT_ID,
     FIRST_EVENT_CURSOR,
     MAX_DURABLE_EVENT_ID,
     MAX_DURABLE_EVENT_ID_DIGITS,
 )
+from api.events.kinds import (
+    EVENT_DISCRIMINATOR_FIELD,
+    LiveEventKind,
+)
 from api.events.pagination import MAX_EVENT_PAGE_LIMIT
+from api.http.sse import (
+    SSE_DATA_FIELD,
+    SSE_FIELD_SEPARATOR,
+    SSE_ID_FIELD,
+    RunEventStreamer,
+)
 from api.runs.status import RunStatus
 from polybot.performance.contracts.valuation_status import ValuationStatus
 
 
 def test_durable_wake_frame_is_strict_positive_bigint_ascii() -> None:
-    assert encode_durable_wake_frame(MAX_DURABLE_EVENT_ID) == str(
-        MAX_DURABLE_EVENT_ID
-    )
+    assert encode_durable_wake_frame(MAX_DURABLE_EVENT_ID) == str(MAX_DURABLE_EVENT_ID)
     with pytest.raises(ValueError):
         encode_durable_wake_frame(FIRST_DURABLE_EVENT_ID - 1)
     with pytest.raises(ValueError):
@@ -180,9 +177,7 @@ def test_initial_replay_reads_large_backlog_in_bounded_batches(
 
     async def read_events(*args, after_event_id: int, **kwargs):
         cursors.append(after_event_id)
-        return events[
-            after_event_id : after_event_id + MAX_EVENT_PAGE_LIMIT
-        ]
+        return events[after_event_id : after_event_id + MAX_EVENT_PAGE_LIMIT]
 
     redis = _Redis(_PubSub(()))
     monkeypatch.setattr(RunEventStreamer, "_read_events", read_events)
@@ -231,9 +226,7 @@ def test_live_frame_has_no_cursor_and_durable_continuation_keeps_its_cursor(
             ),
         ),
     )
-    pubsub = _PubSub(
-        ({"data": encode_live_event_frame(live)}, {"data": b"2"})
-    )
+    pubsub = _PubSub(({"data": encode_live_event_frame(live)}, {"data": b"2"}))
     reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
 
     async def read_events(*args, **kwargs):
@@ -246,9 +239,10 @@ def test_live_frame_has_no_cursor_and_durable_continuation_keeps_its_cursor(
     id_prefix = f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}"
     assert frames[0].startswith(data_prefix)
     assert not frames[0].startswith(id_prefix)
-    assert json.loads(frames[0].split(data_prefix, 1)[1])[
-        EVENT_DISCRIMINATOR_FIELD
-    ] == LiveEventKind.CHART_EQUITY.value
+    assert (
+        json.loads(frames[0].split(data_prefix, 1)[1])[EVENT_DISCRIMINATOR_FIELD]
+        == LiveEventKind.CHART_EQUITY.value
+    )
     assert _frame_id(frames[1]) == 2
 
 
@@ -332,9 +326,7 @@ def _event(run_id: UUID, event_id: int, status: RunStatus) -> RunLifecycleEvent:
 
 def _frame_id(frame: str) -> int:
     first_line = frame.splitlines()[0]
-    return int(
-        first_line.removeprefix(f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}")
-    )
+    return int(first_line.removeprefix(f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}"))
 
 
 class _Request:

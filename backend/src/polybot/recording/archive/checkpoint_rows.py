@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import METADATA_REVISIONS_TABLE
+
 from ..contracts.book import BookBaselinePayload
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketIdentity, MarketMetadataPayload
@@ -24,8 +27,8 @@ def checkpoint_from_row(
 
     market = market_before_checkpoint(
         connection,
-        row["condition_id"],
-        _strict_int(row["sequence"], "checkpoint sequence"),
+        row[ArchiveColumn.CONDITION_ID],
+        _strict_int(row[ArchiveColumn.SEQUENCE], "checkpoint sequence"),
     )
     return checkpoint_from_validated_row(
         row,
@@ -41,10 +44,10 @@ def market_before_checkpoint(
     sequence: int,
 ) -> MarketMetadataPayload:
     metadata_row = connection.execute(
-        """
-        SELECT payload_json FROM metadata_revisions
-        WHERE condition_id = ? AND sequence <= ?
-        ORDER BY sequence DESC
+        f"""
+        SELECT {ArchiveColumn.PAYLOAD_JSON} FROM {METADATA_REVISIONS_TABLE}
+        WHERE {ArchiveColumn.CONDITION_ID} = ? AND {ArchiveColumn.SEQUENCE} <= ?
+        ORDER BY {ArchiveColumn.SEQUENCE} DESC
         LIMIT 1
         """,
         (condition_id, sequence),
@@ -53,7 +56,7 @@ def market_before_checkpoint(
         raise ArchiveIntegrityError("book checkpoint has no preceding market metadata")
     return _typed_payload(
         PayloadKind.MARKET_METADATA,
-        metadata_row["payload_json"],
+        metadata_row[ArchiveColumn.PAYLOAD_JSON],
         MarketMetadataPayload,
     )
 
@@ -65,17 +68,17 @@ def checkpoint_from_validated_row(
     replay_cutoff_sequence: int,
     market: MarketMetadataPayload,
 ) -> BookCheckpoint:
-    sequence = _strict_int(row["sequence"], "checkpoint sequence")
+    sequence = _strict_int(row[ArchiveColumn.SEQUENCE], "checkpoint sequence")
     if sequence > replay_cutoff_sequence:
         raise ArchiveIntegrityError("book checkpoint exceeds the replay cutoff")
     book = _typed_payload(
         PayloadKind.BOOK_BASELINE,
-        row["payload_json"],
+        row[ArchiveColumn.PAYLOAD_JSON],
         BookBaselinePayload,
     )
     if (
-        row["condition_id"] != market.condition_id
-        or row["market_slug"] != market.market_slug
+        row[ArchiveColumn.CONDITION_ID] != market.condition_id
+        or row[ArchiveColumn.MARKET_SLUG] != market.market_slug
         or token_id not in {outcome.token_id for outcome in market.outcomes}
         or book.token_id != token_id
     ):
@@ -85,18 +88,18 @@ def checkpoint_from_validated_row(
     try:
         return BookCheckpoint(
             sequence=sequence,
-            session_id=_strict_int(row["session_id"], "checkpoint session"),
+            session_id=_strict_int(row[ArchiveColumn.SESSION_ID], "checkpoint session"),
             subscription_generation=_strict_int(
-                row["subscription_generation"],
+                row[ArchiveColumn.SUBSCRIPTION_GENERATION],
                 "checkpoint generation",
             ),
             observed_at_ms=_strict_int(
-                row["observed_at_ms"],
+                row[ArchiveColumn.OBSERVED_AT_MS],
                 "checkpoint timestamp",
             ),
             identity=MarketIdentity(
-                condition_id=row["condition_id"],
-                market_slug=row["market_slug"],
+                condition_id=row[ArchiveColumn.CONDITION_ID],
+                market_slug=row[ArchiveColumn.MARKET_SLUG],
                 token_id=token_id,
             ),
             book=book,

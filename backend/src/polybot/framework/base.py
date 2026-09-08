@@ -4,8 +4,8 @@ from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import FillEvent
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
-from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.streams import StreamRule
 
 

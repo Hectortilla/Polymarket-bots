@@ -4,7 +4,6 @@ from typing import Annotated
 
 from pydantic import Field, StrictInt
 
-
 FIRST_GRAPH_REVISION_NUMBER = 1
 
 type GraphRevisionNumber = Annotated[

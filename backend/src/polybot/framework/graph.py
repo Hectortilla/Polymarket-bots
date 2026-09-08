@@ -3,7 +3,6 @@
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-
 GRAPH_OUTPUT_MARKER = "__polybot_graph_output__"
 GraphOutputFunctionT = TypeVar("GraphOutputFunctionT", bound=Callable[..., Any])
 

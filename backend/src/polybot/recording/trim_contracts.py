@@ -7,7 +7,6 @@ from pathlib import Path
 
 from .archive.models import RecordingSession
 
-
 DEFAULT_TRIM_BACKUP_SUFFIX = ".pre-trim"
 
 

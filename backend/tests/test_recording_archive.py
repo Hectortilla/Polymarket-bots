@@ -7,10 +7,13 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-
 from polybot.framework.events import Side
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.normalization.recording_events.market_events import (
+    MARKET_WEBSOCKET_SOURCE,
+)
+from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.recording.archive.errors import (
     ArchiveCoverageError,
     ArchiveExistsError,
@@ -20,20 +23,10 @@ from polybot.recording.archive.errors import (
     CaptureAnomalyJournalUnavailableError,
     RecordingArchiveError,
 )
+from polybot.recording.archive.models import RecordingSession
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.schema import SCHEMA_VERSION
 from polybot.recording.archive.writer import RecordingArchive
-from polybot.recording.contracts.book import (
-    BookBaselinePayload,
-    BookChange,
-    BookDeltaPayload,
-    RecordedBookLevel,
-    TickSizeChangePayload,
-)
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    RecordedEvent,
-)
 from polybot.recording.contracts.anomalies import (
     CaptureAnomalyFragment,
     CaptureAnomalyPayload,
@@ -42,10 +35,18 @@ from polybot.recording.contracts.anomalies import (
     CaptureFragmentRole,
     RevisionFingerprint,
 )
+from polybot.recording.contracts.book import (
+    BookBaselinePayload,
+    BookChange,
+    BookDeltaPayload,
+    RecordedBookLevel,
+    TickSizeChangePayload,
+)
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
 )
+from polybot.recording.contracts.kinds import PayloadKind
 from polybot.recording.contracts.market import (
     FeeScheduleMetadata,
     MarketEventMetadata,
@@ -57,10 +58,12 @@ from polybot.recording.contracts.payloads import (
     PublicTradePayload,
     ResolutionPayload,
 )
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
 from polybot.recording.contracts.session import SessionIntegrityStatus
-from polybot.recording.archive.models import RecordingSession
 from polybot.recording.coverage import CoverageScope
-from polybot.recording.contracts.kinds import PayloadKind
 from polybot.recording.serialization.entrypoints import (
     capture_anomaly_from_json,
     capture_anomaly_json,
@@ -419,7 +422,7 @@ def test_capture_anomaly_serialization_is_canonical_and_exact() -> None:
             token_ids=("up-token", "down-token"),
             winning_token_id="up-token",
             winning_outcome="Up",
-            source="market_websocket",
+            source=MARKET_WEBSOCKET_SOURCE,
             resolution_id="resolution-1",
         ),
         CoverageGapPayload(
@@ -872,7 +875,7 @@ def test_archive_rejects_payload_identity_outside_committed_market(tmp_path) -> 
                         token_ids=("up-token", "down-token"),
                         winning_token_id="up-token",
                         winning_outcome="Down",
-                        source="market_websocket",
+                        source=MARKET_WEBSOCKET_SOURCE,
                     ),
                     observed_at_ms=started_at_ms + 1,
                     identity=_identity(),
@@ -1038,16 +1041,16 @@ def test_metadata_and_resolution_batch_is_all_or_nothing(tmp_path) -> None:
             token_ids=("up-token", "down-token"),
             winning_token_id="up-token",
             winning_outcome="Down",
-            source="gamma_reconciliation",
+            source=GAMMA_RECONCILIATION_SOURCE,
         ),
     )
 
     with pytest.raises(ArchiveIntegrityError, match="resolution outcome"):
         archive.append_events((metadata, invalid_resolution))
 
-    event_count = archive._connection.execute(
-        "SELECT COUNT(*) FROM events"
-    ).fetchone()[0]
+    event_count = archive._connection.execute("SELECT COUNT(*) FROM events").fetchone()[
+        0
+    ]
     metadata_count = archive._connection.execute(
         "SELECT COUNT(*) FROM metadata_revisions"
     ).fetchone()[0]
@@ -1208,9 +1211,7 @@ def test_gap_lifecycle_rejects_ranges_and_requires_fresh_baseline(tmp_path) -> N
         )
     )
     delta = BookDeltaPayload(
-        changes=(
-            BookChange("up-token", Side.BUY, Decimal("0.42"), Decimal("0")),
-        )
+        changes=(BookChange("up-token", Side.BUY, Decimal("0.42"), Decimal("0")),)
     )
     with pytest.raises(ArchiveIntegrityError, match="missing a baseline"):
         archive.append_event(
@@ -1239,13 +1240,13 @@ def test_gap_lifecycle_rejects_ranges_and_requires_fresh_baseline(tmp_path) -> N
         assert not gaps[0].is_open
         with pytest.raises(ArchiveCoverageError):
             tuple(reader.iter_events(condition_id="condition-1"))
-        assert len(
-            tuple(reader.iter_events(condition_id="condition-1", allow_gaps=True))
-        ) == 4
+        assert (
+            len(tuple(reader.iter_events(condition_id="condition-1", allow_gaps=True)))
+            == 4
+        )
         assert reader.sessions()[0].clean_close
         assert (
-            reader.sessions()[0].integrity_status
-            is SessionIntegrityStatus.INCOMPLETE
+            reader.sessions()[0].integrity_status is SessionIntegrityStatus.INCOMPLETE
         )
 
 
@@ -1565,7 +1566,7 @@ def test_resolution_removes_market_from_resume_set(tmp_path) -> None:
                 token_ids=("up-token", "down-token"),
                 winning_token_id="up-token",
                 winning_outcome="Up",
-                source="gamma_reconciliation",
+                source=GAMMA_RECONCILIATION_SOURCE,
             ),
             observed_at_ms=started_at_ms + 1,
             identity=_identity(),
@@ -1619,3 +1620,95 @@ def test_reader_rejects_stored_slug_mismatch_against_metadata(tmp_path) -> None:
     with RecordingReader(path) as reader:
         with pytest.raises(ArchiveIntegrityError, match="event identity"):
             tuple(reader.iter_events())
+
+
+def test_truly_global_gap_invalidates_every_market_baseline(tmp_path):
+    archive, now_ms = _opened_archive(tmp_path)
+    markets = [
+        _metadata(),
+        replace(
+            _metadata(condition_id="condition-2"),
+            market_id="market-2",
+            market_slug="second",
+            outcomes=(
+                MarketOutcomeMetadata("Up", "second-up", Decimal("0.4")),
+                MarketOutcomeMetadata("Down", "second-down", Decimal("0.6")),
+            ),
+        ),
+    ]
+    for market in markets:
+        identity = MarketIdentity(
+            condition_id=market.condition_id, market_slug=market.market_slug
+        )
+        archive.append_event(
+            _event(archive, market, observed_at_ms=now_ms, identity=identity)
+        )
+        for outcome in market.outcomes:
+            archive.append_event(
+                _event(
+                    archive,
+                    _baseline(outcome.token_id),
+                    observed_at_ms=now_ms,
+                    identity=replace(identity, token_id=outcome.token_id),
+                )
+            )
+    archive.append_gap(
+        _event(
+            archive,
+            CoverageGapPayload(
+                reason=CoverageGapReason.SDK_QUEUE_DROP,
+                started_at_ms=now_ms + 1,
+                ended_at_ms=now_ms + 1,
+            ),
+            observed_at_ms=now_ms + 1,
+            identity=None,
+        )
+    )
+    for market in markets:
+        for outcome in market.outcomes:
+            identity = MarketIdentity(
+                condition_id=market.condition_id,
+                market_slug=market.market_slug,
+                token_id=outcome.token_id,
+            )
+            delta = BookDeltaPayload(
+                changes=(
+                    BookChange(
+                        outcome.token_id, Side.BUY, Decimal("0.42"), Decimal("0")
+                    ),
+                )
+            )
+            with pytest.raises(ArchiveIntegrityError, match="missing a baseline"):
+                archive.append_event(
+                    _event(archive, delta, observed_at_ms=now_ms + 2, identity=identity)
+                )
+            archive.append_event(
+                _event(
+                    archive,
+                    _baseline(outcome.token_id),
+                    observed_at_ms=now_ms + 2,
+                    identity=identity,
+                )
+            )
+            archive.append_event(
+                _event(archive, delta, observed_at_ms=now_ms + 2, identity=identity)
+            )
+    archive.close(ended_at_ms=now_ms + 3)
+
+
+@pytest.mark.parametrize("field", ["session_id", "started_at_ms", "ended_at_ms"])
+@pytest.mark.parametrize("value", [True, 1.5])
+def test_recording_session_rejects_nonintegral_identity_and_times(field, value):
+    fields = dict(
+        session_id=1,
+        started_at_ms=1,
+        ended_at_ms=2,
+        clean_close=True,
+        integrity_status=SessionIntegrityStatus.COMPLETE,
+        recorder_version="1",
+        sdk_version="1",
+        failure_reason=None,
+    )
+    fields[field] = value
+    with pytest.raises(ValueError):
+        RecordingSession(**fields)

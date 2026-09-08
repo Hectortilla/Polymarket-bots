@@ -9,9 +9,28 @@ from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO
 
-from .connections import SQLITE_CONNECTION_TIMEOUT_SECONDS, readonly_database_uri
+from .connections import (
+    SQLITE_CONNECTION_TIMEOUT_SECONDS,
+    configure_writer_connection,
+    readonly_database_uri,
+)
 from .errors import ArchiveFormatError, ArchiveLockedError, RecordingArchiveError
 from .paths import RECORDING_LOCK_SUFFIX
+
+
+def open_exclusive_connection(path: Path) -> tuple[sqlite3.Connection, BinaryIO]:
+    lock_file = _open_writer_lock_file(path)
+    connection = None
+    try:
+        _acquire_writer_lock(lock_file, path)
+        connection = _open_connection(path)
+        configure_writer_connection(connection)
+        return connection, lock_file
+    except BaseException:
+        if connection is not None:
+            connection.close()
+        _release_writer_lock(lock_file)
+        raise
 
 
 def _archive_path(path: str | Path) -> Path:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 from rich.console import Console
-
 
 ACCENT_STYLE = "bright_cyan"
 SUCCESS_STYLE = "green"
@@ -24,14 +24,14 @@ def format_timestamp(timestamp_ms: int | None) -> str:
     if timestamp_ms is None:
         return "n/a"
     return (
-        datetime.fromtimestamp(timestamp_ms / 1_000, tz=UTC)
+        datetime.fromtimestamp(timestamp_ms / MILLISECONDS_PER_SECOND, tz=UTC)
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
 
 
 def format_duration(duration_ms: int) -> str:
-    remaining_seconds, milliseconds = divmod(duration_ms, 1_000)
+    remaining_seconds, milliseconds = divmod(duration_ms, MILLISECONDS_PER_SECOND)
     hours, remaining_seconds = divmod(remaining_seconds, 3_600)
     minutes, seconds = divmod(remaining_seconds, 60)
     parts: list[str] = []

@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from time import time_ns
 from typing import Protocol
 
+from polybot.framework.timestamps import NANOSECONDS_PER_MILLISECOND
+
 
 class ClockDataExhaustedError(RuntimeError):
     """Signal that a simulated clock cannot advance within available data."""
@@ -20,7 +22,7 @@ class Clock(Protocol):
 
 def system_now_ms() -> int:
     """Return the current system wall-clock time in whole milliseconds."""
-    return time_ns() // 1_000_000
+    return time_ns() // NANOSECONDS_PER_MILLISECOND
 
 
 def system_now_utc() -> datetime:

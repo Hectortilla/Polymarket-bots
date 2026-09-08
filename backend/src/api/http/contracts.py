@@ -17,7 +17,6 @@ from api.events.pagination import (
     MIN_EVENT_PAGE_LIMIT,
 )
 
-
 type EventCursorValue = Annotated[
     int,
     Field(ge=FIRST_EVENT_CURSOR, le=MAX_DURABLE_EVENT_ID),
@@ -36,10 +35,13 @@ class RunEventPage(BaseModel):
     next_before_event_id: DurableEventId | None
 
 
+HEALTH_STATUS_OK = "ok"
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["ok"] = "ok"
+    status: Literal[HEALTH_STATUS_OK] = HEALTH_STATUS_OK
 
 
 class ErrorResponse(BaseModel):

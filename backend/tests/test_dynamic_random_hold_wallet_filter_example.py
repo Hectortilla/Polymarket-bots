@@ -2,7 +2,6 @@ import asyncio
 from decimal import Decimal
 
 import pytest
-
 from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
@@ -15,8 +14,8 @@ from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.framework.markets import market_bucket_slug
+from polybot.framework.streams import StreamRelation, StreamRule
 
 WALLETS = (
     "0x0000000000000000000000000000000000000001",
@@ -61,7 +60,9 @@ def test_wallet_filter_bot_declares_filtered_current_and_next_buckets(
 
 
 def test_wallet_filter_bot_requires_wallets() -> None:
-    with pytest.raises(ValueError, match="wallet_addresses must contain at least one wallet"):
+    with pytest.raises(
+        ValueError, match="wallet_addresses must contain at least one wallet"
+    ):
         ExampleDynamicRandomHoldWalletFilterBot(BTC_FIVE_MINUTE_SLUG_PREFIX, ())
 
 
@@ -89,9 +90,7 @@ def test_wallet_filter_bot_tracks_positions_per_wallet_and_caps_sells(
     assert [order.side for order in orders] == [Side.BUY, Side.SELL]
     assert orders[0].size == Decimal("25")
     assert orders[1].size == Decimal("12.5")
-    assert positions == {
-        (WALLETS[0], "condition-id", "token-id"): Decimal("12.5")
-    }
+    assert positions == {(WALLETS[0], "condition-id", "token-id"): Decimal("12.5")}
 
 
 def test_copy_trade_transition_is_pure_and_bounded() -> None:
@@ -120,12 +119,15 @@ def test_copy_trade_transition_is_pure_and_bounded() -> None:
 
     assert sell_decision is not None
     assert sell_decision.order.size == Decimal("10")
-    assert positions_after_copy_fill(
-        after_buy,
-        sell_decision,
-        side=Side.SELL,
-        filled_size=Decimal("10"),
-    ) == {}
+    assert (
+        positions_after_copy_fill(
+            after_buy,
+            sell_decision,
+            side=Side.SELL,
+            filled_size=Decimal("10"),
+        )
+        == {}
+    )
 
 
 def _wallet_trade(

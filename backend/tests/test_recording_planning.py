@@ -4,7 +4,6 @@ import asyncio
 import json
 
 import pytest
-
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRelation, StreamRule
@@ -12,11 +11,11 @@ from polybot.recording.clock import ObservationClock
 from polybot.recording.duration import parse_duration_seconds
 from polybot.recording.identity import bot_target_identity, static_target_identity
 from polybot.recording.planning import (
-    BotStreamPlanProvider,
     ORDERING_DISABLED_MESSAGE,
+    WALLET_ACTIVITY_DISABLED_MESSAGE,
+    BotStreamPlanProvider,
     RejectingRecordingBroker,
     StaticStreamPlanProvider,
-    WALLET_ACTIVITY_DISABLED_MESSAGE,
     planning_context,
 )
 
@@ -122,9 +121,7 @@ def test_static_plan_requires_a_market() -> None:
 def test_target_identity_is_canonical_and_excludes_credentials() -> None:
     config = BotConfig(
         name="recorder",
-        stream_rules=(
-            StreamRule(StreamRelation.INDEPENDENT, market_slugs=("btc",)),
-        ),
+        stream_rules=(StreamRule(StreamRelation.INDEPENDENT, market_slugs=("btc",)),),
         private_key="secret-key",
         api_secret="secret-api-value",
     )

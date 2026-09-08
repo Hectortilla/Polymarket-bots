@@ -3,7 +3,6 @@
 import os
 from urllib.parse import urlsplit
 
-
 REDIS_URL_ENV = "POLYBOT_REDIS_URL"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 REDIS_URL_SCHEMES = frozenset({"redis", "rediss"})

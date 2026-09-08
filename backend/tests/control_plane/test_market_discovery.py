@@ -1,20 +1,14 @@
 import asyncio
 from dataclasses import asdict
 
-from fastapi import HTTPException
-from fastapi.exceptions import RequestValidationError
-from fastapi.testclient import TestClient
 import pytest
-
-from control_plane.market_fixtures import market_discovery, market_suggestion
-from polybot.polymarket.discovery_contracts import MarketSearchResults
-from polybot.polymarket.errors import MarketDataTransportError
+from api.catalog.inputs import NodeBasedLaunchInputs
 from api.http.app import create_app
 from api.http.market_contracts import (
     DEFAULT_MARKET_SEARCH_LIMIT,
+    MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
     MAX_MARKET_SEARCH_LENGTH,
     MAX_MARKET_SEARCH_LIMIT,
-    MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
 )
 from api.http.routes.bots.market_validation import (
     validate_new_market_selections,
@@ -24,10 +18,14 @@ from api.http.routes.paths import (
     MARKET_SEARCH_PATH,
     api_route_path,
 )
-from api.catalog.inputs import (
-    MAX_SELECTED_MARKETS,
-    NodeBasedLaunchInputs,
-)
+from api.market_selection import MAX_SELECTED_MARKETS
+from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.testclient import TestClient
+from polybot.polymarket.discovery_contracts import MarketSearchResults
+from polybot.polymarket.errors import MarketDataTransportError
+
+from control_plane.market_fixtures import market_discovery, market_suggestion
 
 
 def test_search_normalizes_query_and_returns_typed_markets() -> None:

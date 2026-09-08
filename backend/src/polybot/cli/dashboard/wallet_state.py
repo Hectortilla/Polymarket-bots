@@ -6,8 +6,6 @@ from dataclasses import dataclass
 
 from polybot.dashboard.wallets import (
     DashboardWallets,
-    WalletTimelineEvent,
-    wallet_market_label,
 )
 
 
@@ -21,6 +19,9 @@ class DashboardWalletTimeline(DashboardWallets):
     def maximum_page(self, lanes_per_page: int) -> int:
         if lanes_per_page <= 0:
             return 0
+        return self._maximum_page(lanes_per_page)
+
+    def _maximum_page(self, lanes_per_page: int) -> int:
         return max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
 
     def page(self, direction: int, lanes_per_page: int) -> bool:

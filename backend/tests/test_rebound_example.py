@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import replace
 from decimal import Decimal
 
+from polybot.examples.example_rebound import REBOUND_ORDER_REASON, ExampleReboundBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import Side
@@ -12,7 +13,6 @@ from polybot.framework.events.books import (
     BookSnapshot,
 )
 from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
-from polybot.examples.example_rebound import REBOUND_ORDER_REASON, ExampleReboundBot
 from polybot.polymarket.markets import Market, MarketOutcome
 
 

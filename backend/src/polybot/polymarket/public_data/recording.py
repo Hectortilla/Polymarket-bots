@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from polymarket import AsyncPublicClient
-
-from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.client_lifecycle import PublicClientLease
+from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.gamma import GammaClient
 from polybot.polymarket.recording_feed.feed import MarketRecordingFeed
 from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
+
+from polymarket import AsyncPublicClient
 
 
 @dataclass(slots=True)

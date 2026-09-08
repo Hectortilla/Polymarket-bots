@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from polymarket.models.clob.order_book import OrderBookLevel
-
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
+
+from polymarket.models.clob.order_book import OrderBookLevel
 
 from .values import require_text
 

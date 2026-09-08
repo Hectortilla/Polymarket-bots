@@ -5,7 +5,6 @@ from __future__ import annotations
 from polybot.backtesting.contracts import BacktestError, BacktestFailureReason
 from polybot.framework.events import FillEvent, OrderRequest
 
-
 UNSUPPORTED_WALLET_MESSAGE = (
     "the selected recording contains no wallet activity; wallet-dependent bots "
     "cannot be replayed"

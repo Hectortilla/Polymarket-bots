@@ -7,9 +7,9 @@ from decimal import Decimal
 from time import monotonic
 from typing import TYPE_CHECKING
 
+from polybot.framework.activity import BotActivityEvent
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
-from polybot.framework.activity import BotActivityEvent
 from polybot.framework.dispatch import DispatchOutcome
 from polybot.framework.events import FillEvent, OrderRequest
 from polybot.framework.events.books import BookSnapshot

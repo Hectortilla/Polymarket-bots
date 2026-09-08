@@ -9,7 +9,7 @@ from polybot.backtesting.contracts import BacktestGapPolicy
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
 from ..files import PerformanceSelectionField
-from ..parsing import nonnegative_int, required_bool, require_exact_keys
+from ..parsing import nonnegative_int, require_exact_keys, required_bool
 from ..run import RunSelection
 
 
@@ -136,9 +136,7 @@ class PerformanceSelectionSummary:
                 if self.session_integrity_status is None
                 else self.session_integrity_status.value
             ),
-            PerformanceSelectionField.USES_PARTIAL_SESSION: (
-                self.uses_partial_session
-            ),
+            PerformanceSelectionField.USES_PARTIAL_SESSION: (self.uses_partial_session),
             PerformanceSelectionField.GAP_POLICY: (
                 None if self.gap_policy is None else self.gap_policy.value
             ),
@@ -213,9 +211,7 @@ def _unique_text_tuple(payload: Mapping[str, object], key: str) -> tuple[str, ..
     value = payload.get(key)
     if not isinstance(value, list):
         raise ValueError(f"performance summary {key} must be an array")
-    normalized = tuple(
-        item.strip() if isinstance(item, str) else "" for item in value
-    )
+    normalized = tuple(item.strip() if isinstance(item, str) else "" for item in value)
     if not all(normalized) or len(normalized) != len(set(normalized)):
         raise ValueError(f"performance summary {key} must contain unique text")
     if key is PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS and (

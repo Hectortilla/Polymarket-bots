@@ -3,13 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from polybot.backtesting.contracts import BacktestError, BacktestFailureReason
 from polybot.recording import trim as trim_cli
 from polybot.recording.archive.errors import ArchiveFormatError
 from polybot.recording.archive.models import RecordingSession
 from polybot.recording.contracts.session import SessionIntegrityStatus
+from polybot.recording.trim import RECORDING_TRIM_COMPLETE_TITLE
 from polybot.recording.trim_contracts import (
+    DEFAULT_TRIM_BACKUP_SUFFIX,
     RecordingTrimError,
     RecordingTrimPlan,
     RecordingTrimResult,
@@ -124,7 +125,9 @@ def test_main_prints_replacement_backup_and_trimmed_size(
 ) -> None:
     plan = _plan(tmp_path)
     backup_path = (
-        plan.archive_path.with_name(f"{plan.archive_path.name}.pre-trim")
+        plan.archive_path.with_name(
+            f"{plan.archive_path.name}{DEFAULT_TRIM_BACKUP_SUFFIX}"
+        )
         if keep_backup
         else None
     )
@@ -150,7 +153,7 @@ def test_main_prints_replacement_backup_and_trimmed_size(
     assert trim_cli.main(arguments) == 0
 
     output = capsys.readouterr().out
-    assert "Recording trim complete" in output
+    assert RECORDING_TRIM_COMPLETE_TITLE in output
     assert plan.archive_path.name in output
     assert "Trimmed size" in output
     assert "6.63 KiB" in output

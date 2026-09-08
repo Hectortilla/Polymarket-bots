@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from polybot.framework.context import BotContext
-from polybot.framework.markets import market_bucket_slug
-from polybot.framework.streams import StreamRelation, StreamRule
-from polybot.examples.example_random_hold import ExampleRandomHoldBot
 from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
 )
-
+from polybot.examples.example_random_hold import ExampleRandomHoldBot
+from polybot.framework.context import BotContext
+from polybot.framework.markets import market_bucket_slug
+from polybot.framework.streams import StreamRelation, StreamRule
 
 DYNAMIC_RANDOM_HOLD_ORDER_SIZE = Decimal("5")
 

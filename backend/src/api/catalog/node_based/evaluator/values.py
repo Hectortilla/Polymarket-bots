@@ -1,20 +1,23 @@
 """Runtime values preserve unavailability separately from Boolean false."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from decimal import Decimal
-from polybot.framework.context import BotContext
-from api.catalog.graphs.results import (
-    GraphReason,
-    GraphValueRead,
-    GraphValueStatus,
-)
+from typing import TYPE_CHECKING
+
+from api.catalog.graphs.reasons import GraphReason
+
+if TYPE_CHECKING:
+    from api.catalog.graphs.evaluation_reasons import GraphEvaluationReason
+from api.catalog.graphs.value_status import GraphValueStatus
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeValue:
     value: object | None = None
     status: GraphValueStatus = GraphValueStatus.AVAILABLE
-    reason: str | None = None
+    reason: GraphEvaluationReason | None = None
     input_handle_id: str | None = None
     message: str | None = None
 
@@ -31,7 +34,7 @@ class RuntimeValue:
     @classmethod
     def invalid(
         cls,
-        reason: str,
+        reason: GraphEvaluationReason,
         *,
         input_handle_id: str | None = None,
         message: str | None = None,
@@ -39,23 +42,9 @@ class RuntimeValue:
         return cls(None, GraphValueStatus.INVALID, reason, input_handle_id, message)
 
     @classmethod
-    def skipped(cls, reason: str) -> "RuntimeValue":
+    def skipped(cls, reason: GraphEvaluationReason) -> "RuntimeValue":
         return cls(None, GraphValueStatus.SKIPPED, reason)
 
     @property
     def available(self) -> bool:
         return self.status is GraphValueStatus.AVAILABLE
-
-    def read(self) -> GraphValueRead:
-        value = self.value
-        if isinstance(value, BotContext):
-            value = "Context"
-        elif value is not None and not isinstance(value, (bool, str)):
-            value = str(value)
-        return GraphValueRead(
-            status=self.status,
-            value=value,
-            reason=self.reason,
-            input_handle_id=self.input_handle_id,
-            message=self.message,
-        )

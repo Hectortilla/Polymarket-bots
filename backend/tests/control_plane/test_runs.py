@@ -2,8 +2,8 @@ from datetime import UTC
 from uuid import uuid4
 
 from api.runs.contracts import RunRead
-from api.runs.status import RunStatus
 from api.runs.models import RunRow
+from api.runs.status import RunStatus
 
 
 def test_run_contract_matches_the_run_row() -> None:

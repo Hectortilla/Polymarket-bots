@@ -18,6 +18,9 @@ PaperPortfolioSnapshot = tuple[Decimal, Decimal, dict[str, "PaperPosition"]]
 INITIAL_CUMULATIVE_FEES_USDC = Decimal("0")
 
 
+PAPER_SETTLEMENT_OWNER = "paper"
+
+
 @dataclass(frozen=True, slots=True)
 class PaperPosition:
     token_id: str
@@ -128,14 +131,12 @@ class PaperPortfolio:
             if position is None:
                 continue
             payout = event.payout_for(token_id)
-            cash_payout = position.size * payout
             settlements.append(
-                SettledPosition(
-                    owner="paper",
+                SettledPosition.from_payout(
+                    owner=PAPER_SETTLEMENT_OWNER,
                     token_id=token_id,
                     size=position.size,
                     payout_per_token=payout,
-                    cash_payout_usdc=cash_payout,
                     realized_pnl_usdc=realized_resolution_pnl(
                         position.size,
                         position.required_average_entry_price(),
@@ -143,7 +144,7 @@ class PaperPortfolio:
                     ),
                 )
             )
-            cash_delta += cash_payout
+            cash_delta += settlements[-1].cash_payout_usdc
             settled_token_ids.add(token_id)
         return PaperSettlementCalculation(
             settled_positions=tuple(settlements),

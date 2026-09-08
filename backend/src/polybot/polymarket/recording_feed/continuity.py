@@ -8,11 +8,11 @@ from dataclasses import dataclass, field
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.errors import MarketDataError
 from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.recording.contracts.book import BookDeltaPayload
 from polybot.recording.contracts.anomalies import (
     CaptureFailureKind,
     RevisionFingerprint,
 )
+from polybot.recording.contracts.book import BookDeltaPayload
 
 
 class CaptureContinuityError(MarketDataError):

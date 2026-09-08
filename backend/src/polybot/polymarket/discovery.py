@@ -4,8 +4,6 @@ import asyncio
 import logging
 from dataclasses import replace
 
-from polymarket import AsyncPublicClient, PolymarketError
-
 from polybot.polymarket.client_lifecycle import PublicClientLease
 from polybot.polymarket.discovery_contracts import MarketSearchResults, MarketSuggestion
 from polybot.polymarket.errors import (
@@ -16,6 +14,7 @@ from polybot.polymarket.errors import (
 from polybot.polymarket.gamma import _GammaMarketSourceClient
 from polybot.polymarket.normalization.discovery import normalize_suggestion
 
+from polymarket import AsyncPublicClient, PolymarketError
 
 DISCOVERY_TIMEOUT_SECONDS = 5
 ACTIVE_SEARCH_EVENTS = "active"

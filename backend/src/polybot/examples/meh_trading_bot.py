@@ -15,18 +15,17 @@ from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
 )
-from polybot.framework.events.book_freshness import paired_observations_are_current
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+from polybot.framework.events.book_freshness import paired_observations_are_current
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
-
 
 ENTRY_DELAY_MS = 210_000
 ENTRY_CUTOFF_MS = 45_000
@@ -94,10 +93,7 @@ class MehTradingBot(BaseBot):
         ctx: BotContext,
         book: BookSnapshot,
     ) -> DispatchSkipReason | None:
-        if (
-            self._entry_count >= MAXIMUM_TRADES_PER_RUN
-            and self._position is None
-        ):
+        if self._entry_count >= MAXIMUM_TRADES_PER_RUN and self._position is None:
             return
         if book.market_slug is None:
             return

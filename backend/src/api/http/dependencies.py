@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
+from polybot.polymarket.discovery import MarketDiscovery
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -13,7 +14,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from polybot.polymarket.discovery import MarketDiscovery
 from api.database import configured_database_url
 from api.execution.config import configured_redis_url
 from api.execution.launcher import RunLauncher

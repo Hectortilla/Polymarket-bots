@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterable
 from typing import TYPE_CHECKING
 
-from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.polymarket.markets import Market
 from polybot.polymarket.market_hints import MarketTradeHint
+from polybot.polymarket.markets import Market
 
 from .contracts import (
     BookGapStreamEvent,
@@ -17,7 +17,6 @@ from .contracts import (
     MarketHintStreamEvent,
     ResolutionStreamEvent,
     StreamSourceSpec,
-    StreamSource,
     WalletStreamEvent,
 )
 from .kinds import StreamKind
@@ -36,14 +35,10 @@ def build_streams(
     resolution_stream: AsyncIterator[MarketResolutionEvent] | None = None,
 ) -> tuple[StreamSourceSpec, ...]:
     streams: list[StreamSourceSpec] = []
-    token_ids = {
-        token_id for market in markets for token_id in market.token_ids
-    }
+    token_ids = {token_id for market in markets for token_id in market.token_ids}
     if token_ids:
         streams.append(
-            StreamSourceSpec.primary(
-                _market_events(market_stream.events(token_ids))
-            )
+            StreamSourceSpec.primary(_market_events(market_stream.events(token_ids)))
         )
     if wallet_enabled:
         streams.append(StreamSourceSpec.primary(_wallet_events(wallet_stream.trades())))
@@ -59,10 +54,7 @@ async def _market_events(
         BookSnapshot | BookGapEvent | MarketTradeHint | MarketResolutionEvent
     ],
 ) -> AsyncIterator[
-    BookStreamEvent
-    | BookGapStreamEvent
-    | MarketHintStreamEvent
-    | ResolutionStreamEvent
+    BookStreamEvent | BookGapStreamEvent | MarketHintStreamEvent | ResolutionStreamEvent
 ]:
     async for event in events:
         if isinstance(event, BookSnapshot):

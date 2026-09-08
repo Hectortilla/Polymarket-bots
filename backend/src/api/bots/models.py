@@ -3,12 +3,21 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, String
-from sqlalchemy import UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgreSQLUUID
+from polybot.framework.clock import system_now_utc
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
-from polybot.framework.clock import system_now_utc
+from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.bots.schema import (
     BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
     BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
@@ -18,7 +27,6 @@ from api.bots.schema import (
     BotColumn,
     BotGraphRevisionColumn,
 )
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 
 
 class BotRow(SQLModel, table=True):

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from polybot.integers import validate_nonnegative_int, validate_positive_int
+
 from .anomalies import CaptureAnomalyPayload
 from .book import BookBaselinePayload
 from .gaps import CoverageGapPayload
@@ -14,7 +16,6 @@ from .payloads import (
     validate_event_identity,
     validate_token_identity,
 )
-from .validation import validate_nonnegative_int, validate_positive_int
 
 
 @dataclass(frozen=True, slots=True)

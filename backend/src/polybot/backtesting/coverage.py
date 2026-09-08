@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from polybot.recording.contracts.records import CoverageGapRecord
 from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.recording.contracts.records import CoverageGapRecord
 
 
 class ReplayCoverage:
@@ -28,9 +28,7 @@ class ReplayCoverage:
         self._start_at_ms = start_at_ms
         self._end_at_ms = end_at_ms
         selected = tuple(
-            record
-            for record in records
-            if self._overlaps_selection(record)
+            record for record in records if self._overlaps_selection(record)
         )
         self._records = tuple(
             sorted(
@@ -77,10 +75,7 @@ class ReplayCoverage:
         intervals = sorted(
             interval
             for record in self._records
-            if (
-                interval := self._clipped_interval(record)
-            )
-            is not None
+            if (interval := self._clipped_interval(record)) is not None
         )
         if not intervals:
             return 0
@@ -127,10 +122,14 @@ class ReplayCoverage:
         if next_start_at_ms is None:
             return ()
         end = self._next_start_index
-        while end < len(self._records) and max(
-            self._start_at_ms,
-            self._records[end].gap.started_at_ms,
-        ) == next_start_at_ms:
+        while (
+            end < len(self._records)
+            and max(
+                self._start_at_ms,
+                self._records[end].gap.started_at_ms,
+            )
+            == next_start_at_ms
+        ):
             end += 1
         return self._records[self._next_start_index : end]
 
@@ -146,9 +145,8 @@ class ReplayCoverage:
         require_nonnegative_timestamp(observed_at_ms, "replay coverage boundary")
         records: list[CoverageGapRecord] = []
         while (
-            (next_start_at_ms := self.next_start_at_ms) is not None
-            and next_start_at_ms <= observed_at_ms
-        ):
+            next_start_at_ms := self.next_start_at_ms
+        ) is not None and next_start_at_ms <= observed_at_ms:
             records.extend(self.pop_next_start_records())
         return tuple(records)
 
@@ -159,9 +157,8 @@ class ReplayCoverage:
         require_nonnegative_timestamp(observed_at_ms, "replay coverage boundary")
         start = self._next_end_index
         while (
-            (next_end_at_ms := self.next_end_at_ms) is not None
-            and next_end_at_ms <= observed_at_ms
-        ):
+            next_end_at_ms := self.next_end_at_ms
+        ) is not None and next_end_at_ms <= observed_at_ms:
             self._next_end_index += 1
         return self._end_records[start : self._next_end_index]
 
@@ -182,11 +179,7 @@ class ReplayCoverage:
         selection_end_exclusive = self._end_at_ms + 1
         clipped_end = min(
             selection_end_exclusive,
-            (
-                selection_end_exclusive
-                if gap.ended_at_ms is None
-                else gap.ended_at_ms
-            ),
+            (selection_end_exclusive if gap.ended_at_ms is None else gap.ended_at_ms),
         )
         if clipped_end <= clipped_start:
             return None

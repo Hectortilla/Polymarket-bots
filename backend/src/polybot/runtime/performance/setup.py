@@ -9,12 +9,12 @@ from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
-from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.performance.contracts.run import (
     PerformanceRunKind,
     RunProvenance,
     RunSelection,
 )
+from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 
 from .recording import PaperPerformanceRecorder
 
@@ -42,7 +42,7 @@ async def create_paper_performance_recorder(
             session_id=None,
             start_ms=start_ms,
             end_ms=None,
-            market_slugs=configured_market_slugs(config),
+            market_slugs=config.configured_market_slugs(),
         ),
         initial_cash_usdc=config.paper_portfolio_usdc,
         report_interval_ms=report_interval_ms,
@@ -52,13 +52,4 @@ async def create_paper_performance_recorder(
         artifacts,
         portfolio=portfolio,
         clock=ctx.clock,
-    )
-
-
-def configured_market_slugs(config: BotConfig) -> tuple[str, ...]:
-    """Return the unique static market slugs represented by paper artifacts."""
-    return tuple(
-        dict.fromkeys(
-            slug for rule in config.stream_rules for slug in rule.market_slugs
-        )
     )

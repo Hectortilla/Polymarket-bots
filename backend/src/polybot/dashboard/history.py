@@ -9,6 +9,8 @@ from decimal import Decimal
 from math import isfinite
 from typing import TYPE_CHECKING
 
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
+
 from .contracts import MAX_CHART_HISTORY_POINTS, MAX_CHART_TOKENS
 
 if TYPE_CHECKING:
@@ -63,7 +65,7 @@ class DashboardHistory:
         current_book: Callable[[str, int], BookSnapshot | None],
         executable_equity: Decimal | None,
     ) -> None:
-        self.chart_sample_epoch_seconds.append(sampled_at_ms / 1_000)
+        self.chart_sample_epoch_seconds.append(sampled_at_ms / MILLISECONDS_PER_SECOND)
         trim(self.chart_sample_epoch_seconds, MAX_CHART_HISTORY_POINTS)
         for token_id in self.chart_tokens:
             history, stale_history, marker_history = self._token_histories(token_id)
@@ -93,9 +95,7 @@ class DashboardHistory:
         else:
             value = last_chart_value(self.executable_equity_history)
             is_stale = value is not None
-        self.executable_equity_history.append(
-            float("nan") if value is None else value
-        )
+        self.executable_equity_history.append(float("nan") if value is None else value)
         self.executable_equity_stale_history.append(is_stale)
         trim(self.executable_equity_history, MAX_CHART_HISTORY_POINTS)
         trim(self.executable_equity_stale_history, MAX_CHART_HISTORY_POINTS)

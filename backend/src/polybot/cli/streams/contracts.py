@@ -11,7 +11,9 @@ from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.polymarket.market_hints import MarketTradeHint
+
 from .kinds import StreamKind
+
 
 @dataclass(frozen=True, slots=True)
 class BookStreamEvent:

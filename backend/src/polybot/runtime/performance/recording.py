@@ -20,11 +20,11 @@ from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.clock import Clock
 from polybot.framework.events import FillEvent, OrderRequest
 from polybot.framework.events.books import BookSnapshot
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
 from polybot.performance.contracts.run import PerformanceRunStatus
 
 from .warnings import PaperPerformanceWarning
-
 
 PAPER_ARTIFACT_QUEUE_CAPACITY = 1_024
 PAPER_RECORDING_DISABLED_MESSAGE = "paper performance recording disabled"
@@ -86,8 +86,8 @@ class PaperPerformanceRecorder:
                 self._artifacts.advance_to(timestamp_ms, portfolio)
                 self._artifacts.record_events()
                 if event.item.kind is StreamKind.BOOK:
-                    self._prior_books_by_event[id(event.item)] = self._artifacts.books.get(
-                        event.item.event.token_id
+                    self._prior_books_by_event[id(event.item)] = (
+                        self._artifacts.books.get(event.item.event.token_id)
                     )
                     self._artifacts.record_book(event.item.event)
                 elif event.item.kind is StreamKind.BOOK_GAP:
@@ -197,7 +197,7 @@ class PaperPerformanceRecorder:
             )
 
     async def _sample_intervals(self) -> None:
-        interval_seconds = self._artifacts.report_interval_ms / 1_000
+        interval_seconds = self._artifacts.report_interval_ms / MILLISECONDS_PER_SECOND
         while self._enabled:
             await self._clock.sleep(interval_seconds)
             portfolio = self._portfolio_copy()

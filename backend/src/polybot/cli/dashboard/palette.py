@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asciichartpy
-
 from polybot.framework.events import Side
 
 SERIES_PALETTE: tuple[tuple[str, str], ...] = (

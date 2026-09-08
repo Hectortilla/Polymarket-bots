@@ -5,19 +5,67 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
+from api.events.contracts.payloads.chart import (
+    CHART_NULL_VALUE_STATUSES,
+    CHART_VALUE_REQUIRED_STATUSES,
+)
+from api.events.contracts.payloads.portfolio import (
+    PORTFOLIO_EMPTY_POSITION_REQUIRES_NULL_PRICE,
+    PORTFOLIO_MINIMUM_CUMULATIVE_FEES,
+    PORTFOLIO_MINIMUM_POSITION_SIZE,
+    PORTFOLIO_TOKEN_IDS_MUST_BE_UNIQUE,
+)
+from api.events.ids import (
+    FIRST_DURABLE_EVENT_ID,
+    FIRST_EVENT_CURSOR,
+    MAX_DURABLE_EVENT_ID,
+)
+from api.events.kinds import EventKind, LiveEventKind
+from api.events.pagination import NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX
+from api.http.contracts import HealthResponse
+from api.http.routes.paths import (
+    BOT_DEFINITIONS_PATH,
+    BOT_GRAPH_REVISION_PATH,
+    BOT_GRAPH_REVISIONS_PATH,
+    BOT_PATH,
+    BOT_RUNS_PATH,
+    BOTS_PATH,
+    GRAPH_PREVIEW_PATH,
+    GRAPH_TEMPLATE_PATH,
+    GRAPH_TEMPLATES_PATH,
+    HEALTH_PATH,
+    MARKET_LOOKUP_PATH,
+    MARKET_SEARCH_PATH,
+    RUN_EVENTS_PATH,
+    RUN_EVENTS_STREAM_PATH,
+    RUN_PATH,
+    RUN_STOP_PATH,
+    RUNS_PATH,
+    api_route_path,
+)
+from api.runs.status import (
+    INITIAL_RUN_STATUS,
+    STOPPABLE_RUN_STATUSES,
+    TERMINAL_RUN_STATUSES,
+    RunStatus,
+)
+from polybot.cli.observability.states import (
+    BOOTSTRAP_COMPLETED_MAY_EXCEED_TOTAL,
+    BOOTSTRAP_PROGRESS_MINIMUM,
+    BootstrapPhase,
+)
 from polybot.dashboard.contracts import (
-    DashboardKey,
-    BucketRounding,
     CHART_WINDOW_CLAMP_MAXIMUM,
     CHART_WINDOW_CLAMP_MINIMUM,
     CHART_WINDOW_ROUNDING,
-    INITIAL_TIME_ZOOM_LEVEL,
     FIRST_WALLET_NOTIONAL_TIER,
+    INITIAL_TIME_ZOOM_LEVEL,
+    MARKET_LABEL_PART_SEPARATOR,
     MAX_CHART_HISTORY_POINTS,
     MAX_CHART_TOKENS,
     MAX_TIME_ZOOM_LEVEL,
     MAX_WALLET_TIMELINE_EVENTS,
-    MARKET_LABEL_PART_SEPARATOR,
     MIN_TIME_ZOOM_LEVEL,
     NONPOSITIVE_MAX_NOTIONAL_THRESHOLD,
     TIME_ZOOM_FACTOR,
@@ -25,17 +73,14 @@ from polybot.dashboard.contracts import (
     TOKEN_LABEL_MAXIMUM_LENGTH,
     TOKEN_LABEL_PREFIX_LENGTH,
     TOKEN_LABEL_SUFFIX_LENGTH,
-    WALLET_NOTIONAL_TIER_COUNT,
-    WALLET_NOTIONAL_TIER_DENOMINATOR,
-    WALLET_NOTIONAL_TIER_UPPER_NUMERATORS,
     WALLET_BUCKET_CLAMP_TO_LAST_COLUMN,
     WALLET_BUCKET_ROUNDING,
+    WALLET_NOTIONAL_TIER_COUNT,
+    WALLET_NOTIONAL_TIER_DENOMINATOR,
     WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE,
-)
-from polybot.cli.observability.states import (
-    BOOTSTRAP_COMPLETED_MAY_EXCEED_TOTAL,
-    BOOTSTRAP_PROGRESS_MINIMUM,
-    BootstrapPhase,
+    WALLET_NOTIONAL_TIER_UPPER_NUMERATORS,
+    BucketRounding,
+    DashboardKey,
 )
 from polybot.framework.activity import ActivitySeverity
 from polybot.framework.config.constants import (
@@ -73,50 +118,6 @@ from polybot.framework.streams import (
 )
 from polybot.framework.wallets import WALLET_ADDRESS_SCHEMA_PATTERN
 from polybot.performance.contracts.valuation_status import ValuationStatus
-from api.http.routes.paths import (
-    BOT_DEFINITIONS_PATH,
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
-    BOT_PATH,
-    BOT_RUNS_PATH,
-    BOTS_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
-    HEALTH_PATH,
-    GRAPH_PREVIEW_PATH,
-    MARKET_SEARCH_PATH,
-    MARKET_LOOKUP_PATH,
-    RUN_EVENTS_PATH,
-    RUN_EVENTS_STREAM_PATH,
-    RUN_PATH,
-    RUN_STOP_PATH,
-    RUNS_PATH,
-    api_route_path,
-)
-from api.http.contracts import HealthResponse
-from api.events.ids import (
-    FIRST_DURABLE_EVENT_ID,
-    FIRST_EVENT_CURSOR,
-    MAX_DURABLE_EVENT_ID,
-)
-from api.events.pagination import NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
-from api.events.kinds import EventKind, LiveEventKind
-from api.events.contracts.payloads import (
-    CHART_NULL_VALUE_STATUSES,
-    CHART_VALUE_REQUIRED_STATUSES,
-    PORTFOLIO_EMPTY_POSITION_REQUIRES_NULL_PRICE,
-    PORTFOLIO_MINIMUM_CUMULATIVE_FEES,
-    PORTFOLIO_MINIMUM_POSITION_SIZE,
-    PORTFOLIO_TOKEN_IDS_MUST_BE_UNIQUE,
-)
-from api.runs.status import (
-    INITIAL_RUN_STATUS,
-    STOPPABLE_RUN_STATUSES,
-    TERMINAL_RUN_STATUSES,
-    RunStatus,
-)
-
 
 FRONTEND_RUN_CONTRACT_PATH = (
     Path(__file__).parents[3]

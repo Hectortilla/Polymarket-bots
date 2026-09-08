@@ -1,13 +1,15 @@
 """Pure scalar operations with numeric preconditions checked before formulas."""
 
 import operator
-from decimal import Decimal, DecimalException, localcontext, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, DecimalException, localcontext
+
 from api.catalog.graphs.numbers import (
     GRAPH_NUMBER_CONTEXT,
     MAX_ROUND_DECIMAL_PLACES,
     whole_number,
 )
-from api.catalog.graphs.results import GraphReason, GraphValueStatus
+from api.catalog.graphs.reasons import GraphReason
+from api.catalog.graphs.value_status import GraphValueStatus
 from api.catalog.graphs.values import GraphOperation, GraphPort
 from api.catalog.node_based.evaluator.values import RuntimeValue
 
@@ -43,20 +45,13 @@ def evaluate_pure(
             return RuntimeValue(False)
         return RuntimeValue(True) if value.available else value
     if operation is GraphOperation.SELECT:
-        condition = inputs[GraphPort.CONDITION]
-        return (
-            inputs[
-                GraphPort.WHEN_TRUE if condition.value is True else GraphPort.WHEN_FALSE
-            ]
-            if condition.available
-            else condition
-        )
+        return _select_value(inputs)
     unavailable = next(
         (value for value in inputs.values() if not value.available), None
     )
     if unavailable is not None:
         return unavailable
-    values = {name: value.value for name, value in inputs.items()}
+    values = {input_handle_id: value.value for input_handle_id, value in inputs.items()}
     issue = _numeric_precondition(operation, values)
     if issue is not None:
         return issue
@@ -130,3 +125,12 @@ def _calculate(operation: GraphOperation, values: dict) -> object:
             Decimal(1).scaleb(-int(values[GraphPort.PLACES])), rounding=ROUND_HALF_UP
         )
     raise AssertionError(f"Missing pure operation: {operation}")
+
+
+def _select_value(inputs: dict[str, RuntimeValue]) -> RuntimeValue:
+    condition = inputs[GraphPort.CONDITION]
+    if not condition.available:
+        return condition
+    if condition.value is True:
+        return inputs[GraphPort.WHEN_TRUE]
+    return inputs[GraphPort.WHEN_FALSE]

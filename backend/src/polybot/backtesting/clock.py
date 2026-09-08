@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from polybot.framework.clock import ClockDataExhaustedError
-from polybot.framework.timestamps import require_nonnegative_timestamp
-
+from polybot.framework.timestamps import (
+    MILLISECONDS_PER_SECOND,
+    require_nonnegative_timestamp,
+)
 
 AdvanceFn = Callable[[int], Awaitable[None]]
 
@@ -42,7 +44,7 @@ class ReplayClock:
     async def sleep(self, seconds: float) -> None:
         if seconds < 0:
             raise ValueError("clock sleep must be nonnegative")
-        target_ms = self._now_ms + round(seconds * 1_000)
+        target_ms = self._now_ms + round(seconds * MILLISECONDS_PER_SECOND)
         if target_ms > self._end_at_ms:
             raise ClockDataExhaustedError(
                 "simulated latency extends beyond selected recording data"

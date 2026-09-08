@@ -2,17 +2,17 @@
 
 import re
 from uuid import UUID
+
 from pydantic import ValidationError
 
-from api.events.ids import (
-    MAX_DURABLE_EVENT_ID_DIGITS,
-    is_durable_event_id,
-)
 from api.events.contracts import (
     LIVE_RUN_EVENT_ADAPTER,
     LiveRunEvent,
 )
-
+from api.events.ids import (
+    MAX_DURABLE_EVENT_ID_DIGITS,
+    is_durable_event_id,
+)
 
 RUN_EVENT_CHANNEL_PREFIX = "run:"
 _DURABLE_WAKE_PATTERN = re.compile(rb"[0-9]+")

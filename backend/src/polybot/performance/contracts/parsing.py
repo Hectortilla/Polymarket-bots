@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from decimal import Decimal, InvalidOperation
 
-
 MAX_PERSISTED_DECIMAL_ADJUSTED_EXPONENT = 308
 MAX_PERSISTED_DECIMAL_DIGITS = 308
 

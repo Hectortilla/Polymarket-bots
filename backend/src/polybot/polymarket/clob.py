@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from http import HTTPStatus
 
-from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
-
 from polybot.framework.clock import system_now_ms
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.client_lifecycle import (
@@ -15,11 +13,13 @@ from polybot.polymarket.errors import (
     MarketDataIssue,
     MarketDataTransportError,
 )
-from polybot.polymarket.normalization.book import normalize_book
 from polybot.polymarket.markets import (
     Market,
     index_markets_by_token,
 )
+from polybot.polymarket.normalization.book import normalize_book
+
+from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
 
 
 class ClobClient:
@@ -46,7 +46,9 @@ class ClobClient:
         )
 
     def has_market_slug(self, slug: str) -> bool:
-        return any(candidate.slug == slug for candidate in self._market_by_token.values())
+        return any(
+            candidate.slug == slug for candidate in self._market_by_token.values()
+        )
 
     async def latest(self, token_id: str) -> BookSnapshot | None:
         if not token_id.strip():

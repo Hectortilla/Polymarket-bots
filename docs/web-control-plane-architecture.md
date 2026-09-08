@@ -645,3 +645,33 @@ Authentication, tenancy, payments, ECS, EventBridge, retention/deletion,
 scheduling, executable node programming, and live trading are later products. v0 creates
 no fields, tables, interfaces, routes, feature flags, or placeholder modules for
 them, except the explicitly required `RunLauncher` seam.
+
+## Review follow-up — September 2026
+
+The worker observes bot execution and its required heartbeat/stop monitor together.
+A failed monitor interrupts the owned bot and records run failure; a disappeared
+run row is an infrastructure failure. Both tasks are cleaned up on exit.
+
+Graph models separate node and edge schemas from aggregate topology validation,
+and catalog descriptors have trigger and functional owners. Preview validates
+event semantics at HTTP ingress and validates intended orders before returning a
+plan. Evaluation reasons are finite unions of existing graph, book, wallet, and
+fill reason contracts, exposed in OpenAPI and the generated catalog fixture.
+Preview cash and operation scalar defaults have named catalog contracts.
+
+Backend event payload families and frontend durable-event validators separate
+lifecycle, broker, portfolio, and chart responsibilities behind one event dispatch
+boundary. Response validation distinguishes revision append (updated saved bot)
+from revision detail (graph revision). Canvas projections, factories, catalog
+lookup, and connection/port rules have distinct frontend modules. Home, bot
+builder, run detail, chart dashboard, and failure-detail styles live near their
+owners; tokens, shell, reset, controls, and shared primitives remain global.
+
+Persisted and live wallet chart payloads validate wallet address shape and
+canonicalize case/whitespace at their model boundary. Durable wallet timeline
+payloads apply the same normalization to the trade and its chart point, then
+check that the point matches its source trade and outcome.
+
+Portfolio snapshots, settlements and their validation policies have a dedicated
+payload owner. Broker payloads share its public portfolio validator without
+owning standalone portfolio event contracts.

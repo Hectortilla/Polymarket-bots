@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Generic, TypeVar
 
-
 KeyT = TypeVar("KeyT")
 ValueT = TypeVar("ValueT")
 
@@ -36,9 +35,7 @@ class PendingByKey(Generic[KeyT, ValueT]):
         predicate: Callable[[ValueT], bool],
     ) -> tuple[KeyT, ...]:
         """Discard selected values and return their keys."""
-        keys = tuple(
-            key for key, value in self._values.items() if predicate(value)
-        )
+        keys = tuple(key for key, value in self._values.items() if predicate(value))
         for key in keys:
             del self._values[key]
         return keys

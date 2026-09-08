@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Sequence
 from typing import Protocol
 
-from polymarket import PolymarketError
-
 from polybot.async_io import run_blocking
 from polybot.framework.wallets import normalize_wallet_address
 from polybot.polymarket.errors import (
@@ -16,6 +14,8 @@ from polybot.polymarket.errors import (
 )
 from polybot.polymarket.pagination import sdk_page_items
 
+from polymarket import PolymarketError
+
 from .contracts import Position
 from .fields import (
     POSITIONS_REQUEST_MARKET_FIELD,
@@ -24,7 +24,6 @@ from .fields import (
     POSITIONS_REQUEST_USER_FIELD,
 )
 from .normalization import normalize_position
-
 
 POSITIONS_PAGE_SIZE = 100
 
@@ -39,8 +38,7 @@ class PositionDataClient(Protocol):
         size_threshold: int,
         page_size: int,
         market: tuple[str, ...] | None = None,
-    ) -> AsyncIterable[object]:
-        ...
+    ) -> AsyncIterable[object]: ...
 
 
 class PositionClient:
@@ -56,7 +54,9 @@ class PositionClient:
         if condition_ids is not None and not condition_ids:
             return []
         requested_wallet = normalize_wallet_address(wallet)
-        requested_conditions = None if condition_ids is None else frozenset(condition_ids)
+        requested_conditions = (
+            None if condition_ids is None else frozenset(condition_ids)
+        )
         request: dict[str, object] = {
             POSITIONS_REQUEST_USER_FIELD: requested_wallet,
             POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD: 0,

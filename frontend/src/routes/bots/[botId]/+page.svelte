@@ -1,9 +1,11 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { onMount, tick } from 'svelte';
+  import '$lib/bots/builder.css';
+  import { BOT_BUILDER_COPY } from '$lib/bots/copy';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
+  import { onMount, tick } from 'svelte';
 
   import {
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
@@ -14,23 +16,20 @@
     updateBotApiV1BotsBotIdPatch,
     type BotDefinitionDescriptor,
     type BotRead,
-    type NodeGraph
+    type NodeGraph,
   } from '$lib/api/generated';
   import GraphSourcePicker from '$lib/bots/GraphSourcePicker.svelte';
   import { GRAPH_SOURCE_COPY } from '$lib/bots/graphSource';
   import LaunchForm from '$lib/catalog/LaunchForm.svelte';
   import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
   import { hasGraphCapability } from '$lib/catalog/graphContracts';
+  import { graphValidationIssues, type GraphValidationIssue } from '$lib/catalog/graphValidation';
   import { nodeGraphsEqual } from '$lib/catalog/nodeGraphEquality';
-  import {
-    graphValidationIssues,
-    type GraphValidationIssue
-  } from '$lib/catalog/graphValidation';
   import {
     launchInputsFromConfig,
     launchRequestValidationIssues,
     type LaunchInputs,
-    type LaunchValidationIssue
+    type LaunchValidationIssue,
   } from '$lib/catalog/schema';
   import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from '$lib/navigation';
   import { formatTime } from '$lib/time';
@@ -71,12 +70,12 @@
       const [botResponse, definitionsResponse, botsResponse] = await Promise.all([
         readBotApiV1BotsBotIdGet({ path: { bot_id: botId }, throwOnError: true }),
         listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true }),
-        listBotsApiV1BotsGet({ throwOnError: true })
+        listBotsApiV1BotsGet({ throwOnError: true }),
       ]);
       bot = botResponse.data;
       bots = botsResponse.data;
       descriptor = definitionsResponse.data.find(
-        (definition) => definition.definition_id === bot?.definition_id
+        (definition) => definition.definition_id === bot?.definition_id,
       );
       if (!descriptor) throw new Error('definition missing');
       savedInputs = launchInputsFromConfig(descriptor, bot.config);
@@ -115,7 +114,7 @@
         const response = await updateBotApiV1BotsBotIdPatch({
           path: { bot_id: bot.id },
           body: { inputs },
-          throwOnError: true
+          throwOnError: true,
         });
         bot = response.data;
         savedInputs = inputs;
@@ -127,7 +126,7 @@
         const response = await createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
           path: { bot_id: bot.id },
           body: { graph: graphToSave },
-          throwOnError: true
+          throwOnError: true,
         });
         bot = response.data;
         savedGraph = response.data.latest_graph_revision?.graph;
@@ -160,7 +159,7 @@
     try {
       const response = await launchBotRunApiV1BotsBotIdRunsPost({
         path: { bot_id: bot.id },
-        throwOnError: true
+        throwOnError: true,
       });
       await goto(runPath(response.data.id));
     } catch {
@@ -221,7 +220,7 @@
     busyLabel={BOT_DETAIL_COPY.SAVING_CHANGES}
     serverIssues={configServerIssues}
     showSelectionNotes={false}
-    sectionTitle="Configuration"
+    sectionTitle={BOT_BUILDER_COPY.CONFIGURATION}
     sectionDescription="Adjust the market scope, risk limits, and paper execution behavior."
   >
     {#if hasGraphCapability(descriptor) && savedGraph && editedGraph}
@@ -229,12 +228,19 @@
         <header class="builder-section-heading">
           <div>
             <h2 id="bot-graph-editor-label">
-              Strategy graph
-              <span class="revision-label">{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</span>
+              {BOT_BUILDER_COPY.STRATEGY_GRAPH}
+              <span class="revision-label"
+                >{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</span
+              >
             </h2>
-            <p>Edit the current graph or replace it with the latest graph from another bot. Current source: {graphSourceName}.</p>
+            <p>
+              Edit the current graph or replace it with the latest graph from another bot. Current
+              source: {graphSourceName}.
+            </p>
           </div>
-          <span class="save-state">{graphDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span>
+          <span class="save-state"
+            >{graphDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span
+          >
         </header>
         <GraphSourcePicker
           {bots}

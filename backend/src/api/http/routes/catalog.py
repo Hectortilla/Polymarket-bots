@@ -2,13 +2,12 @@
 
 from fastapi import APIRouter
 
+from api.catalog.contracts import BotDefinitionDescriptor
+from api.catalog.definitions import catalog_descriptors
 from api.http.routes.paths import (
     BOT_DEFINITIONS_PATH,
     LIST_BOT_DEFINITIONS_OPERATION_ID,
 )
-from api.catalog.contracts import BotDefinitionDescriptor
-from api.catalog.definitions import catalog_descriptors
-
 
 router = APIRouter()
 

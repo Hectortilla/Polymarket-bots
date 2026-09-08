@@ -7,7 +7,6 @@ from decimal import Decimal
 from polybot.framework.events import OrderRequest
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 
-
 COPY_TRADE_NOTIONAL_USDC = Decimal("10")
 FIXED_DOLLAR_COPY_REASON = "fixed_dollar_wallet_copy"
 
@@ -35,8 +34,4 @@ def fixed_dollar_copy_size(
     maximum_size: Decimal | None = None,
 ) -> Decimal:
     requested_size = COPY_TRADE_NOTIONAL_USDC / trade.price
-    return (
-        requested_size
-        if maximum_size is None
-        else min(requested_size, maximum_size)
-    )
+    return requested_size if maximum_size is None else min(requested_size, maximum_size)

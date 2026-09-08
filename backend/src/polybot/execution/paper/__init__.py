@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from itertools import count
 
 from polybot.execution.broker import Broker
+from polybot.execution.order_validation import validate_order
 from polybot.framework.clock import Clock, ClockDataExhaustedError, SystemClock
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BookClient, MarketClient
@@ -17,14 +18,14 @@ from polybot.framework.events import (
 )
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent, SettledPosition
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 
-from .fill_math import simulate_fill
-from .portfolio import PaperPortfolioSnapshot
+from .continuity import BookContinuity, BookContinuitySource
 from .contracts import (
-    BAD_BOOK_TIMESTAMP_MESSAGE,
-    BAD_BOOK_LEVEL_MESSAGE,
     BACKTEST_COVERAGE_GAP_MESSAGE,
     BACKTEST_DATA_EXHAUSTED_MESSAGE,
+    BAD_BOOK_LEVEL_MESSAGE,
+    BAD_BOOK_TIMESTAMP_MESSAGE,
     BOOK_CROSSED_MESSAGE,
     BOOK_FUTURE_DATED_MESSAGE,
     BOOK_MISMATCH_MESSAGE,
@@ -33,19 +34,16 @@ from .contracts import (
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
     PAPER_ORDER_ID_PREFIX,
 )
-from .continuity import BookContinuity, BookContinuitySource
+from .fill_math import simulate_fill
+from .latency import latency_ms
 from .market_data import (
-    FillMarketData,
-    MARKET_FEE_INVALID_MESSAGE,
-    MARKET_UNAVAILABLE_MESSAGE,
     MARKET_RESOLVED_MESSAGE,
+    FillMarketData,
     latest_book,
     resolve_fill_market_data,
-    validate_fill_market_data,
 )
-from .latency import latency_ms
-from .portfolio import PaperPortfolio
-from .validation import classify_book, validate_order
+from .portfolio import PaperPortfolio, PaperPortfolioSnapshot
+from .validation import classify_book
 
 SleepFn = Callable[[float], Awaitable[None]]
 NowMsFn = Callable[[], int]
@@ -159,6 +157,21 @@ class PaperBroker(Broker):
                     self._fills_by_source_id.pop(order.source_id, None)
             raise
 
+    async def cancel_all(self) -> None:
+        return None
+
+    def settle_market(
+        self,
+        event: MarketResolutionEvent,
+    ) -> tuple[SettledPosition, ...]:
+        if event.condition_id in self._settled_conditions:
+            return ()
+        settlements = self._portfolio.settle_market(event)
+        for token_id in event.token_ids:
+            self._position_market_refs.pop(token_id, None)
+        self._settled_conditions.add(event.condition_id)
+        return settlements
+
     async def _submit_once(self, order: OrderRequest) -> FillEvent:
         order_id = f"{PAPER_ORDER_ID_PREFIX}{next(self._order_ids)}"
         start_ms = self._now_ms()
@@ -170,12 +183,11 @@ class PaperBroker(Broker):
             jitter_offset_ms,
         )
         try:
-            await self._sleep(selected_latency_ms / 1000)
+            await self._sleep(selected_latency_ms / MILLISECONDS_PER_SECOND)
         except ClockDataExhaustedError:
             current_continuity = self._book_continuity(order.token_id)
-            if (
-                initial_continuity is not None
-                and initial_continuity.was_disrupted_by(current_continuity)
+            if initial_continuity is not None and initial_continuity.was_disrupted_by(
+                current_continuity
             ):
                 return self._coverage_gap_rejection(order_id, order)
             return self._rejected_fill(
@@ -186,9 +198,8 @@ class PaperBroker(Broker):
                 reject_message=BACKTEST_DATA_EXHAUSTED_MESSAGE,
             )
         current_continuity = self._book_continuity(order.token_id)
-        if (
-            initial_continuity is not None
-            and initial_continuity.was_disrupted_by(current_continuity)
+        if initial_continuity is not None and initial_continuity.was_disrupted_by(
+            current_continuity
         ):
             return self._coverage_gap_rejection(order_id, order)
         if self._is_settled(order.condition_id):
@@ -215,16 +226,6 @@ class PaperBroker(Broker):
         if isinstance(initial_market, FillEvent):
             return initial_market
 
-        # Re-read market metadata before the final book lookup. The final awaited
-        # input is therefore the book snapshot that is immediately validated and
-        # simulated, rather than a potentially slow metadata request.
-        final_market = await self._validated_market_data(
-            order_id,
-            order,
-            initial_book,
-        )
-        if isinstance(final_market, FillEvent):
-            return final_market
         final_book = await self._validated_book_input(
             order_id,
             order,
@@ -233,11 +234,34 @@ class PaperBroker(Broker):
         )
         if isinstance(final_book, FillEvent):
             return final_book
-        final_market_reject = validate_fill_market_data(
-            final_market,
+        final_market = await self._validated_market_data(order_id, order, final_book)
+        if isinstance(final_market, FillEvent):
+            return final_market
+        # Metadata may change during the book read, and its lookup may age the
+        # book. Reconcile both inputs at the current clock before any mutation.
+        final_book = self._validated_book_snapshot(
+            order_id,
             order,
             final_book.book,
+            fill_time_ms=max(start_ms + selected_latency_ms, self._now_ms()),
         )
+        if isinstance(final_book, FillEvent):
+            return final_book
+        # The final lookup may yield to resolution or gap handling. Keep these
+        # local checks and the portfolio mutation in the same uninterrupted turn.
+        if self._is_settled(final_market.market.condition_id):
+            return self._rejected_fill(
+                order_id,
+                order,
+                received_at_ms=final_book.fill_time_ms,
+                reject_reason=FillRejectReason.MARKET_RESOLVED,
+                reject_message=MARKET_RESOLVED_MESSAGE,
+            )
+        if initial_continuity is not None and initial_continuity.was_disrupted_by(
+            self._book_continuity(order.token_id)
+        ):
+            return self._coverage_gap_rejection(order_id, order)
+        final_market_reject = final_market.validate(order, final_book.book)
         if final_market_reject is not None:
             return self._rejected_fill(
                 order_id,
@@ -292,7 +316,21 @@ class PaperBroker(Broker):
     ) -> _BookFillInput | FillEvent:
         """Read and validate one book at the execution-time boundary."""
         book = await latest_book(self._books, order.token_id)
-        fill_time_ms = max(start_ms + selected_latency_ms, self._now_ms())
+        return self._validated_book_snapshot(
+            order_id,
+            order,
+            book,
+            fill_time_ms=max(start_ms + selected_latency_ms, self._now_ms()),
+        )
+
+    def _validated_book_snapshot(
+        self,
+        order_id: str,
+        order: OrderRequest,
+        book: BookSnapshot | None,
+        *,
+        fill_time_ms: int,
+    ) -> _BookFillInput | FillEvent:
         if book is None:
             return self._rejected_fill(
                 order_id,
@@ -372,21 +410,6 @@ class PaperBroker(Broker):
             reject_reason=FillRejectReason.BACKTEST_COVERAGE_GAP,
             reject_message=BACKTEST_COVERAGE_GAP_MESSAGE,
         )
-
-    async def cancel_all(self) -> None:
-        return None
-
-    def settle_market(
-        self,
-        event: MarketResolutionEvent,
-    ) -> tuple[SettledPosition, ...]:
-        if event.condition_id in self._settled_conditions:
-            return ()
-        settlements = self._portfolio.settle_market(event)
-        for token_id in event.token_ids:
-            self._position_market_refs.pop(token_id, None)
-        self._settled_conditions.add(event.condition_id)
-        return settlements
 
     @staticmethod
     def _book_reject_message(reason: FillRejectReason) -> str:

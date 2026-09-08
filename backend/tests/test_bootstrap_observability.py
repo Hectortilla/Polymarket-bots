@@ -2,7 +2,6 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-
 from polybot.cli.followed_wallets.tracker import FollowedWalletTracker
 from polybot.cli.observability.bootstrap import BootstrapProgressAdapter
 from polybot.cli.observability.events import (

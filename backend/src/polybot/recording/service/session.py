@@ -14,6 +14,7 @@ from polybot.recording.contracts.gaps import (
 )
 from polybot.recording.writer import AsyncRecordingWriter
 
+
 @dataclass(frozen=True, slots=True)
 class StartedRecordingSession:
     writer: AsyncRecordingWriter

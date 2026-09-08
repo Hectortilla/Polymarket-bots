@@ -6,24 +6,6 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 
-from api.http.contracts import (
-    EventCursorValue,
-    EventPageLimitValue,
-    RunEventPage,
-)
-from api.http.dependencies import (
-    RedisDependency,
-    SessionFactoryDependency,
-)
-from api.http.routes.paths import (
-    READ_RUN_EVENTS_OPERATION_ID,
-    RUN_EVENTS_PATH,
-    RUN_EVENTS_STREAM_PATH,
-    STREAM_RUN_EVENTS_OPERATION_ID,
-)
-from api.http.routes.run_lookup import require_stored_run
-from api.http.responses import NOT_FOUND_RESPONSE
-from api.http.sse import RunEventStreamer
 from api.events.contracts import (
     LIVE_EVENT_MODELS,
     PERSISTED_DURABLE_EVENT_ADAPTER,
@@ -33,14 +15,30 @@ from api.events.contracts import (
 from api.events.ids import FIRST_EVENT_CURSOR
 from api.events.pagination import DEFAULT_EVENT_PAGE_LIMIT
 from api.events.store import EventStore
-
+from api.http.contracts import (
+    EventCursorValue,
+    EventPageLimitValue,
+    RunEventPage,
+)
+from api.http.dependencies import (
+    RedisDependency,
+    SessionFactoryDependency,
+)
+from api.http.responses import NOT_FOUND_RESPONSE
+from api.http.routes.paths import (
+    READ_RUN_EVENTS_OPERATION_ID,
+    RUN_EVENTS_PATH,
+    RUN_EVENTS_STREAM_PATH,
+    STREAM_RUN_EVENTS_OPERATION_ID,
+)
+from api.http.routes.run_lookup import require_stored_run
+from api.http.sse import RunEventStreamer
 
 SSE_MEDIA_TYPE = "text/event-stream"
 LAST_EVENT_ID_HEADER = "Last-Event-ID"
 DURABLE_EVENT_SCHEMA_REFERENCE = "#/components/schemas/PersistedDurableEvent"
 LIVE_EVENT_SCHEMA_REFERENCES = tuple(
-    f"#/components/schemas/{model.__name__}"
-    for model in LIVE_EVENT_MODELS
+    f"#/components/schemas/{model.__name__}" for model in LIVE_EVENT_MODELS
 )
 
 router = APIRouter()
@@ -67,9 +65,7 @@ async def read_run_events(
         )
     return RunEventPage(
         events=tuple(
-            PERSISTED_DURABLE_EVENT_ADAPTER.validate_python(
-                event.model_dump()
-            )
+            PERSISTED_DURABLE_EVENT_ADAPTER.validate_python(event.model_dump())
             for event in page.events
         ),
         next_before_event_id=page.next_before_event_id,
@@ -97,7 +93,7 @@ async def read_run_events(
                     }
                 }
             }
-        }
+        },
     },
 )
 async def stream_run_events(

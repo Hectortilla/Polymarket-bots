@@ -7,7 +7,6 @@ from enum import StrEnum
 
 from polybot.framework.config.models import BotConfig
 
-
 TARGET_IDENTITY_KIND_FIELD = "kind"
 TARGET_IDENTITY_BOT_SPEC_FIELD = "spec"
 TARGET_IDENTITY_CONFIGURATION_FIELD = "config"
@@ -38,10 +37,6 @@ def static_target_identity(market_slugs: tuple[str, ...]) -> str:
     )
 
 
-def _canonical_identity(payload: dict[str, object]) -> str:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-
 def describe_target_identity(target_identity: str) -> str:
     """Return a compact label for a recognized canonical target identity."""
     try:
@@ -63,3 +58,7 @@ def describe_target_identity(target_identity: str) -> str:
     ):
         return "static " + ", ".join(market_slugs)
     return target_identity
+
+
+def _canonical_identity(payload: dict[str, object]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))

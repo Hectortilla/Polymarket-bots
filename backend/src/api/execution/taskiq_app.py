@@ -7,7 +7,6 @@ from taskiq_redis import RedisStreamBroker
 from api.execution.config import configured_redis_url
 from api.execution.worker import execute_run
 
-
 broker = RedisStreamBroker(
     configured_redis_url(),
     consumer_id="0-0",

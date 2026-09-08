@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 
 from polybot.backtesting.contracts import (
@@ -18,12 +19,10 @@ from polybot.performance.contracts.summary import PerformanceSummaryV1
 from .performance_chart.command import print_performance_chart
 from .performance_chart.contracts import PerformanceChartError
 
-
 PARTIAL_RECORDING_WARNING = "Backtest source is a partial recording session"
 BLACKOUT_GAP_WARNING = "Backtest used blackout coverage-gap handling"
-BACKTEST_CHART_WARNING = (
-    "Backtest completed, but the PnL chart could not be rendered"
-)
+BACKTEST_CHART_WARNING = "Backtest completed, but the PnL chart could not be rendered"
+
 
 async def execute_backtest(
     bot: BaseBot,
@@ -38,9 +37,9 @@ async def execute_backtest(
         bot_spec=bot_spec,
         options=options,
     )
-    print_backtest_summary(result)
+    await asyncio.to_thread(print_backtest_summary, result)
     try:
-        print_performance_chart(result.results_dir)
+        await asyncio.to_thread(print_performance_chart, result.results_dir)
     except PerformanceChartError as error:
         print(f"{BACKTEST_CHART_WARNING}: {error}", file=sys.stderr)
 

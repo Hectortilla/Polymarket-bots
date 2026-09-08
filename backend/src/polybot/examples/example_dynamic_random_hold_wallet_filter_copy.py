@@ -6,23 +6,22 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
-from polybot.framework.context import BotContext
-from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.base import BaseBot
-from polybot.framework.config.models import BotConfig
-from polybot.framework.markets import market_bucket_slug
-from polybot.framework.streams import StreamRelation, StreamRule
-from polybot.framework.wallets import normalize_wallet_address
-from polybot.examples.wallet_copy import (
-    fixed_dollar_copy_order,
-    fixed_dollar_copy_size,
-)
 from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
     BTC_FIVE_MINUTE_SLUG_PREFIX,
 )
-
+from polybot.examples.wallet_copy import (
+    fixed_dollar_copy_order,
+    fixed_dollar_copy_size,
+)
+from polybot.framework.base import BaseBot
+from polybot.framework.config.models import BotConfig
+from polybot.framework.context import BotContext
+from polybot.framework.events import OrderRequest, Side
+from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.markets import market_bucket_slug
+from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.framework.wallets import normalize_wallet_address
 
 type CopyPositionKey = tuple[str, str, str]
 

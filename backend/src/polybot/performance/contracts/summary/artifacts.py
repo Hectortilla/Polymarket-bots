@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from ..files import PerformanceArtifactField
-from ..parsing import required_text, require_exact_keys
+from ..parsing import require_exact_keys, required_text
 
 
 @dataclass(frozen=True, slots=True)

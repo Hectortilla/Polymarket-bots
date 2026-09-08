@@ -10,7 +10,6 @@ from .contracts.market import MarketIdentity
 from .contracts.payloads import RecordedPayload
 from .contracts.records import RecordedEvent
 
-
 DEFAULT_RECORDING_WRITE_QUEUE_SIZE = 4_096
 DEFAULT_RECORDING_WRITE_BATCH_SIZE = 256
 RECORDING_WRITE_QUEUE_FULL_MESSAGE = "recording write queue is full"

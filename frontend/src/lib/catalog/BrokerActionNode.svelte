@@ -1,16 +1,13 @@
 <script lang="ts">
-  import NodeIssues from './NodeIssues.svelte';
-  import { getContext } from 'svelte';
   import { Handle, Position } from '@xyflow/svelte';
+  import { getContext } from 'svelte';
+  import NodeIssues from './NodeIssues.svelte';
 
   import type { GraphBrokerActionNodeData } from '$lib/api/generated';
-  import { brokerActionForNode } from './nodeGraph';
-  import {
-    NODE_GRAPH_EDITOR_CONTEXT,
-    type NodeGraphEditorContext
-  } from './nodeGraphContext';
+  import { brokerActionForNode } from '$lib/catalog/nodeGraph/catalog';
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
 
-  let { id = "", data }: { id?: string; data: GraphBrokerActionNodeData } = $props();
+  let { id = '', data }: { id?: string; data: GraphBrokerActionNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const descriptor = $derived(brokerActionForNode(editor.catalog, data));
 </script>
@@ -33,9 +30,17 @@
     </div>
   {/each}
   {#each descriptor.outputs ?? [] as output (output.handle_id)}
-    <div class="port"><span>{output.display_name}</span><small>{output.scalar_type}</small><Handle type="source" position={Position.Right} id={output.handle_id} isConnectable={!editor.readOnly} /></div>
+    <div class="port">
+      <span>{output.display_name}</span><small>{output.scalar_type}</small><Handle
+        type="source"
+        position={Position.Right}
+        id={output.handle_id}
+        isConnectable={!editor.readOnly}
+      />
+    </div>
   {/each}
-<NodeIssues {id} /></section>
+  <NodeIssues {id} />
+</section>
 
 <style>
   .action-node {

@@ -8,7 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from polybot.cli.observability.events import (
     DispatchCompleted,
     MarketSettled,
@@ -16,13 +15,12 @@ from polybot.cli.observability.events import (
     StreamReceived,
 )
 from polybot.cli.observability.observer import NullRuntimeObserver
-from polybot.runtime import run_bot
 from polybot.cli.streams.contracts import BookStreamEvent
 from polybot.cli.streams.kinds import StreamKind
 from polybot.execution.paper.portfolio import PaperPortfolio
 from polybot.framework.base import BaseBot
-from polybot.framework.context import BotContext
 from polybot.framework.config.models import BotConfig
+from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import (
     FillEvent,
@@ -33,11 +31,21 @@ from polybot.framework.events import (
 )
 from polybot.framework.events.books import BookLevel, BookSnapshot
 from polybot.performance.artifacts.lifecycle import PerformanceArtifacts
+from polybot.performance.contracts.files import (
+    ORDERS_FILE_NAME,
+    SUMMARY_FILE_NAME,
+    OrderField,
+    PerformanceMetricsField,
+    PerformanceProvenanceField,
+    PerformanceSummaryField,
+)
 from polybot.performance.contracts.run import (
     PerformanceRunKind,
+    PerformanceRunStatus,
     RunProvenance,
     RunSelection,
 )
+from polybot.runtime import run_bot
 from polybot.runtime.performance.broker import PaperPerformanceBroker
 from polybot.runtime.performance.observer import PaperPerformanceObserver
 from polybot.runtime.performance.recording import PaperPerformanceRecorder
@@ -127,19 +135,36 @@ def test_paper_performance_records_books_orders_fills_and_summary(
 
     asyncio.run(run())
 
-    summary = json.loads((tmp_path / "results" / "summary.json").read_text())
-    with (tmp_path / "results" / "orders.csv").open(
+    summary = json.loads((tmp_path / "results" / SUMMARY_FILE_NAME).read_text())
+    with (tmp_path / "results" / ORDERS_FILE_NAME).open(
         encoding="utf-8", newline=""
     ) as source:
         orders = list(csv.DictReader(source))
 
-    assert summary["status"] == "completed"
-    assert summary["provenance"]["kind"] == "paper"
-    assert summary["metrics"]["event_count"] == 1
-    assert summary["metrics"]["accepted_dispatch_count"] == 1
-    assert summary["metrics"]["order_count"] == 1
-    assert summary["metrics"]["fill_count"] == 1
-    assert orders[0]["strategy_reason"] == "entry"
+    assert summary[PerformanceSummaryField.STATUS] == PerformanceRunStatus.COMPLETED
+    assert (
+        summary[PerformanceSummaryField.PROVENANCE][PerformanceProvenanceField.KIND]
+        == PerformanceRunKind.PAPER
+    )
+    assert (
+        summary[PerformanceSummaryField.METRICS][PerformanceMetricsField.EVENT_COUNT]
+        == 1
+    )
+    assert (
+        summary[PerformanceSummaryField.METRICS][
+            PerformanceMetricsField.ACCEPTED_DISPATCH_COUNT
+        ]
+        == 1
+    )
+    assert (
+        summary[PerformanceSummaryField.METRICS][PerformanceMetricsField.ORDER_COUNT]
+        == 1
+    )
+    assert (
+        summary[PerformanceSummaryField.METRICS][PerformanceMetricsField.FILL_COUNT]
+        == 1
+    )
+    assert orders[0][OrderField.STRATEGY_REASON] == "entry"
 
 
 def test_paper_performance_failure_warns_and_does_not_block_broker(
@@ -162,12 +187,12 @@ def test_paper_performance_failure_warns_and_does_not_block_broker(
                 return FillEvent.rejected(
                     order_id="paper-1",
                     token_id=order.token_id,
-                        side=order.side,
-                        requested_size=order.size,
-                        received_at_ms=clock.now_ms(),
-                        reject_reason=FillRejectReason.BOOK_UNAVAILABLE,
-                        reject_message="no book",
-                    )
+                    side=order.side,
+                    requested_size=order.size,
+                    received_at_ms=clock.now_ms(),
+                    reject_reason=FillRejectReason.BOOK_UNAVAILABLE,
+                    reject_message="no book",
+                )
 
             async def cancel_all(self) -> None:
                 return None
@@ -336,9 +361,7 @@ def test_settlement_evicts_performance_books(
     monkeypatch.setattr(recorder, "_enqueue", operations.append)
     recorder.emit(
         MarketSettled(
-            SimpleNamespace(
-                resolution=SimpleNamespace(token_ids=("up", "down"))
-            ),  # type: ignore[arg-type]
+            SimpleNamespace(resolution=SimpleNamespace(token_ids=("up", "down"))),  # type: ignore[arg-type]
             PortfolioSnapshot(Decimal("100"), Decimal("0"), ()),
             0.0,
         )
@@ -435,9 +458,7 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
     async def fake_create_runtime(config, observer, *, public_data):
         return runtime
 
-    monkeypatch.setattr(
-        "polybot.runtime.create_runtime", fake_create_runtime
-    )
+    monkeypatch.setattr("polybot.runtime.create_runtime", fake_create_runtime)
     monkeypatch.setattr(
         "polybot.runtime.performance.setup.PerformanceArtifacts",
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("read only")),

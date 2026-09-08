@@ -10,8 +10,8 @@ from ..parsing import (
     nonnegative_int,
     optional_decimal_text,
     optional_nonnegative_int,
-    required_decimal_text,
     require_exact_keys,
+    required_decimal_text,
 )
 
 
@@ -87,9 +87,7 @@ class PerformanceMetricsSummary:
             return_fraction=optional_decimal_text(
                 payload, PerformanceMetricsField.RETURN_FRACTION
             ),
-            fees_usdc=required_decimal_text(
-                payload, PerformanceMetricsField.FEES_USDC
-            ),
+            fees_usdc=required_decimal_text(payload, PerformanceMetricsField.FEES_USDC),
             filled_notional_usdc=required_decimal_text(
                 payload, PerformanceMetricsField.FILLED_NOTIONAL_USDC
             ),

@@ -2,33 +2,15 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import Protocol
-
+from polybot.cli.followed_wallets.ports import FollowedWalletStore
 from polybot.polymarket.clob import ClobClient
-from polybot.polymarket.positions.client import PositionClient
-from polybot.polymarket.positions.contracts import Position
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.markets import Market
+from polybot.polymarket.positions.client import PositionClient
 
-from ..followed_wallets.position_contracts import FollowPosition
-from ..markets import MarketResolver
 from ..market_identity import MarketIdentity
+from ..markets import MarketResolver
 from ..tracked_markets import MarketInterest, TrackedMarketRegistry
-
-
-class FollowedWalletStore(Protocol):
-    def synchronize(self, wallets: tuple[str, ...]) -> tuple[str, ...]: ...
-
-    def bootstrap(
-        self,
-        wallet: str,
-        positions_with_baseline_marks: tuple[tuple[Position, Decimal | None], ...],
-    ) -> None: ...
-
-    def open_market_slugs(self) -> tuple[str, ...]: ...
-
-    def tracked_market_positions(self) -> tuple[tuple[str, FollowPosition], ...]: ...
 
 
 class FollowedWalletSynchronizer:
@@ -92,9 +74,7 @@ class FollowedWalletSynchronizer:
             )
         if allowlist is not None:
             positions = tuple(
-                position
-                for position in positions
-                if position.market_slug in allowlist
+                position for position in positions if position.market_slug in allowlist
             )
         markets = await self._gamma.find_many(
             dict.fromkeys(
@@ -114,12 +94,13 @@ class FollowedWalletSynchronizer:
                     "current wallet position has unresolved market identity"
                 )
             position_markets.append(market)
+        # Publish only the complete, identity-checked metadata set before CLOB
+        # normalizes books. The runtime registry is committed after marking.
+        self._clob.set_markets((*self._registry.markets, *position_markets))
         marked_positions = []
         for position in positions:
             book = await self._clob.latest(position.token_id)
-            if book is not None and (
-                not book.has_valid_levels() or book.is_crossed()
-            ):
+            if book is not None and (not book.has_valid_levels() or book.is_crossed()):
                 raise MarketDataError(
                     MarketDataIssue.INVALID_BOOK_LEVEL,
                     "followed-wallet bootstrap received an invalid market book",

@@ -5,7 +5,6 @@ from typing import Final
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.polymarket.markets import Market
 
-
 GAMMA_RECONCILIATION_SOURCE: Final = "gamma_reconciliation"
 
 

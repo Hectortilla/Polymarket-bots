@@ -4,17 +4,17 @@ import asyncio
 from collections.abc import AsyncIterable, Callable, Iterable
 from typing import Final
 
-from polymarket import PolymarketError
-
 from polybot.framework.clock import system_now_ms
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import normalize_wallet_address
 from polybot.polymarket.pagination import sdk_page_items
 
+from polymarket import PolymarketError
+
 from .contracts import (
+    WalletActivityError,
     WalletActivityIssue,
     WalletDataClient,
-    WalletActivityError,
     WalletReadFailure,
     WalletTradeBatch,
     WalletTradeSelector,
@@ -49,27 +49,6 @@ class PolymarketWalletActivityClient:
             normalize_wallet_address(wallet),
             limit,
         )
-
-    async def _latest_trades_for_normalized_wallet(
-        self,
-        wallet: str,
-        limit: int,
-    ) -> tuple[WalletTradeEvent, ...]:
-        try:
-            try:
-                paginator = self._client.list_trades(
-                    user=wallet, taker_only=False, page_size=limit
-                )
-            except TypeError:
-                paginator = self._client.list_trades(user=wallet, page_size=limit)
-            return await self._collect_trades(
-                paginator,
-                limit=limit,
-                kind=WalletTradeKind.BACKFILL,
-                wallet=wallet,
-            )
-        except PolymarketError as error:
-            raise _wallet_read_error() from error
 
     async def latest_selector(
         self,
@@ -164,6 +143,27 @@ class PolymarketWalletActivityClient:
             *(read_wallet_trades(wallet) for wallet in addresses)
         )
         return _merge_wallet_results(tuple(results))
+
+    async def _latest_trades_for_normalized_wallet(
+        self,
+        wallet: str,
+        limit: int,
+    ) -> tuple[WalletTradeEvent, ...]:
+        try:
+            try:
+                paginator = self._client.list_trades(
+                    user=wallet, taker_only=False, page_size=limit
+                )
+            except TypeError:
+                paginator = self._client.list_trades(user=wallet, page_size=limit)
+            return await self._collect_trades(
+                paginator,
+                limit=limit,
+                kind=WalletTradeKind.BACKFILL,
+                wallet=wallet,
+            )
+        except PolymarketError as error:
+            raise _wallet_read_error() from error
 
     async def _collect_trades(
         self,

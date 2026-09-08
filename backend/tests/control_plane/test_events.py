@@ -5,13 +5,41 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import pytest
-from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
-
 import api.events.writer as event_writer_module
+import pytest
+from api.events.channels import run_event_channel
+from api.events.contracts import (
+    DURABLE_EVENT_ADAPTER,
+    BrokerOrderPayload,
+    DurableEvent,
+    DurableEventBase,
+    LiveStreamHealthEvent,
+    PersistedRunLifecycleEvent,
+    PortfolioSnapshotPayload,
+    RunLifecycleEvent,
+    RunStatusPayload,
+    WalletTimelineDurableEvent,
+    WalletTimelinePayload,
+)
+from api.events.contracts.payloads.chart import (
+    EquityChartPointPayload,
+    MarketChartPointPayload,
+)
 from api.events.ids import FIRST_DURABLE_EVENT_ID, MAX_DURABLE_EVENT_ID
+from api.events.kinds import (
+    EVENT_DISCRIMINATOR_FIELD,
+    EventKind,
+    LiveEventKind,
+)
+from api.events.observer import WebRuntimeObserver
+from api.events.projection import (
+    project_live_chart_events,
+    project_runtime_event_to_durable,
+)
 from api.events.store import EventStore
+from api.events.writer import RunEventWriter
+from api.runs.status import RunStatus
+from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.observability.events import (
     BootstrapProgress,
     BrokerFailed,
@@ -24,17 +52,17 @@ from polybot.cli.observability.events import (
     RuntimeFailed,
     RuntimeStarted,
     RuntimeStateChanged,
-    StreamReceived,
     StreamHealth,
+    StreamReceived,
 )
 from polybot.cli.observability.states import BootstrapPhase, RuntimeState
-from polybot.cli.streams.contracts import ResolutionStreamEvent, WalletStreamEvent
 from polybot.cli.streams.contracts import (
     BookGapStreamEvent,
     BookStreamEvent,
+    ResolutionStreamEvent,
+    WalletStreamEvent,
 )
-from polybot.cli.dashboard.state import DashboardState
-from polybot.dashboard.projection import DashboardProjection
+from polybot.cli.streams.kinds import StreamKind
 from polybot.dashboard.contracts import (
     CHART_SAMPLE_INTERVAL_SECONDS,
     DashboardSample,
@@ -42,7 +70,8 @@ from polybot.dashboard.contracts import (
     MarketChartPoint,
     WalletChartPoint,
 )
-from polybot.cli.streams.kinds import StreamKind
+from polybot.dashboard.projection import DashboardProjection
+from polybot.execution.paper.portfolio import PAPER_SETTLEMENT_OWNER
 from polybot.framework.activity import ActivitySeverity, BotActivityEvent
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
@@ -67,45 +96,17 @@ from polybot.framework.events.resolutions import (
 )
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.performance.contracts.valuation_status import ValuationStatus
-from api.events.channels import run_event_channel
-from api.events.contracts import (
-    DURABLE_EVENT_ADAPTER,
-    BrokerOrderPayload,
-    DurableEvent,
-    DurableEventBase,
-    RunLifecycleEvent,
-    PersistedRunLifecycleEvent,
-    RunStatusPayload,
-    PortfolioSnapshotPayload,
-    WalletTimelineDurableEvent,
-    WalletTimelinePayload,
-)
-from api.events.kinds import (
-    EVENT_DISCRIMINATOR_FIELD,
-    EventKind,
-    LiveEventKind,
-)
-from api.events.contracts.payloads import (
-    EquityChartPointPayload,
-    MarketChartPointPayload,
-)
-from api.events.observer import WebRuntimeObserver
-from api.events.projection import (
-    project_live_chart_events,
-    project_live_stream_health,
-    project_runtime_event_to_durable,
-)
-from api.events.writer import RunEventWriter
-from api.runs.status import RunStatus
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def test_runtime_projection_keeps_typed_lifecycle_payloads() -> None:
     run_id = uuid4()
-    started, = project_runtime_event_to_durable(
+    (started,) = project_runtime_event_to_durable(
         run_id,
         RuntimeStarted("run", BotMode.PAPER, Decimal("100"), 12.0),
     )
-    running, = project_runtime_event_to_durable(
+    (running,) = project_runtime_event_to_durable(
         run_id,
         RuntimeStateChanged(RuntimeState.RUNNING, 12.5),
     )
@@ -115,10 +116,13 @@ def test_runtime_projection_keeps_typed_lifecycle_payloads() -> None:
     assert running.run_id == run_id
     assert running.payload.status is RunStatus.RUNNING
     assert running.occurred_at.tzinfo is UTC
-    assert project_runtime_event_to_durable(
-        run_id,
-        RuntimeStateChanged(RuntimeState.STOPPED, 13.0),
-    ) == ()
+    assert (
+        project_runtime_event_to_durable(
+            run_id,
+            RuntimeStateChanged(RuntimeState.STOPPED, 13.0),
+        )
+        == ()
+    )
 
 
 def test_runtime_projection_maps_every_immediately_durable_event_kind() -> None:
@@ -154,7 +158,7 @@ def test_runtime_projection_maps_every_immediately_durable_event_kind() -> None:
     assert wallet_point.notional == Decimal("0.5")
     assert wallet_point.market_label == "token"
     assert wallet_point.accepted is True
-    skipped, = project_runtime_event_to_durable(
+    (skipped,) = project_runtime_event_to_durable(
         run_id,
         DispatchCompleted(
             WalletStreamEvent(kind=StreamKind.WALLET, event=_wallet_trade()),
@@ -163,10 +167,24 @@ def test_runtime_projection_maps_every_immediately_durable_event_kind() -> None:
         ),
     )
     assert skipped.payload.point.accepted is False
-    assert project_runtime_event_to_durable(
-        run_id,
-        StreamHealth(1, 2, 3, False, 1.0, 4, 1),
-    ) == ()
+    assert (
+        project_runtime_event_to_durable(
+            run_id,
+            DispatchCompleted(
+                WalletStreamEvent(kind=StreamKind.WALLET, event=_wallet_trade()),
+                DispatchOutcome.skipped(DispatchSkipReason.DUPLICATE_SOURCE_EVENT),
+                1.0,
+            ),
+        )
+        == ()
+    )
+    assert (
+        project_runtime_event_to_durable(
+            run_id,
+            StreamHealth(1, 2, 3, False, 1.0, 4, 1),
+        )
+        == ()
+    )
 
 
 def test_live_dashboard_projection_preserves_sample_and_wallet_fields() -> None:
@@ -190,7 +208,7 @@ def test_live_dashboard_projection_preserves_sample_and_wallet_fields() -> None:
     )
     wallet_point = WalletChartPoint(
         source_key="wallet\0source",
-        wallet="wallet",
+        wallet="0x" + "a" * 40,
         trade_timestamp_ms=41,
         side=Side.SELL,
         notional=Decimal("1.25"),
@@ -207,13 +225,15 @@ def test_live_dashboard_projection_preserves_sample_and_wallet_fields() -> None:
 
     assert market.payload.model_dump() == {
         "sampled_at_ms": 42,
-        "points": ({
-            "token_id": "token",
-            "label": "Market · Up",
-            "value": Decimal("0.55"),
-            "status": ValuationStatus.STALE,
-            "markers": (Side.BUY,),
-        },),
+        "points": (
+            {
+                "token_id": "token",
+                "label": "Market · Up",
+                "value": Decimal("0.55"),
+                "status": ValuationStatus.STALE,
+                "markers": (Side.BUY,),
+            },
+        ),
     }
     assert equity.payload.model_dump() == {
         "sampled_at_ms": 42,
@@ -224,17 +244,19 @@ def test_live_dashboard_projection_preserves_sample_and_wallet_fields() -> None:
     }
     assert wallet.payload.model_dump() == {
         "sampled_at_ms": 42,
-        "points": ({
-            "source_key": "wallet\0source",
-            "wallet": "wallet",
-            "trade_timestamp_ms": 41,
-            "side": Side.SELL,
-            "notional": Decimal("1.25"),
-            "market_label": "Market · Down",
-            "accepted": False,
-        },),
+        "points": (
+            {
+                "source_key": "wallet\0source",
+                "wallet": "0x" + "a" * 40,
+                "trade_timestamp_ms": 41,
+                "side": Side.SELL,
+                "notional": Decimal("1.25"),
+                "market_label": "Market · Down",
+                "accepted": False,
+            },
+        ),
     }
-    health = project_live_stream_health(
+    health = LiveStreamHealthEvent.from_observation(
         run_id,
         StreamHealth(1, 2, 3, True, 1.0, 4, 1),
         occurred_at=occurred_at,
@@ -250,12 +272,12 @@ def test_live_dashboard_projection_preserves_sample_and_wallet_fields() -> None:
 
 
 def test_durable_event_adapter_rejects_invalid_finite_state() -> None:
-    event, = project_runtime_event_to_durable(
+    (event,) = project_runtime_event_to_durable(
         uuid4(),
         RuntimeStateChanged(RuntimeState.RUNNING, 1.0),
     )
     invalid = event.model_dump(mode="json")
-    status_field, = RunStatusPayload.model_fields
+    (status_field,) = RunStatusPayload.model_fields
     invalid["payload"][status_field] = "bogus"
 
     with pytest.raises(ValidationError):
@@ -268,9 +290,7 @@ def test_fill_and_settlement_project_portfolio_snapshots() -> None:
     portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("99.5"),
         cumulative_fees_usdc=Decimal("0.01"),
-        positions=(
-            PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.5")),
-        ),
+        positions=(PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.5")),),
     )
     fill = FillEvent(
         order_id="order",
@@ -296,7 +316,7 @@ def test_fill_and_settlement_project_portfolio_snapshots() -> None:
         resolution=resolution,
         paper_positions=(
             SettledPosition(
-                owner="paper",
+                owner=PAPER_SETTLEMENT_OWNER,
                 token_id="token",
                 size=Decimal("1"),
                 payout_per_token=Decimal("1"),
@@ -331,25 +351,31 @@ def test_fill_and_settlement_project_portfolio_snapshots() -> None:
     assert tuple(event.kind for event in fill_without_portfolio) == (
         EventKind.BROKER_FILL,
     )
-    assert project_runtime_event_to_durable(
-        run_id,
-        DispatchCompleted(
-            ResolutionStreamEvent(StreamKind.RESOLUTION, resolution),
-            DispatchOutcome.accepted_event(),
-            1.0,
-        ),
-    ) == ()
-    assert project_runtime_event_to_durable(
-        run_id,
-        StreamReceived(
-            ResolutionStreamEvent(StreamKind.RESOLUTION, resolution),
-            1.0,
-        ),
-    ) == ()
+    assert (
+        project_runtime_event_to_durable(
+            run_id,
+            DispatchCompleted(
+                ResolutionStreamEvent(StreamKind.RESOLUTION, resolution),
+                DispatchOutcome.accepted_event(),
+                1.0,
+            ),
+        )
+        == ()
+    )
+    assert (
+        project_runtime_event_to_durable(
+            run_id,
+            StreamReceived(
+                ResolutionStreamEvent(StreamKind.RESOLUTION, resolution),
+                1.0,
+            ),
+        )
+        == ()
+    )
 
 
 def test_durable_event_adapter_rejects_invalid_wallet_trade() -> None:
-    event, = project_runtime_event_to_durable(
+    (event,) = project_runtime_event_to_durable(
         uuid4(),
         DispatchCompleted(
             WalletStreamEvent(kind=StreamKind.WALLET, event=_wallet_trade()),
@@ -385,9 +411,7 @@ def test_durable_payloads_reject_invalid_orders_and_portfolio_positions() -> Non
         PortfolioSnapshotPayload(
             cash_usdc=Decimal("1"),
             cumulative_fees_usdc=Decimal("0"),
-            positions=(
-                PortfolioPositionSnapshot("", Decimal("1"), Decimal("0.5")),
-            ),
+            positions=(PortfolioPositionSnapshot("", Decimal("1"), Decimal("0.5")),),
         )
 
 
@@ -409,9 +433,7 @@ def test_chart_payloads_reject_inconsistent_values() -> None:
         PortfolioSnapshotPayload(
             cash_usdc=Decimal("1"),
             cumulative_fees_usdc=Decimal("0"),
-            positions=(
-                PortfolioPositionSnapshot("token", Decimal("1"), Decimal("2")),
-            ),
+            positions=(PortfolioPositionSnapshot("token", Decimal("1"), Decimal("2")),),
         )
 
 
@@ -773,8 +795,7 @@ def test_observer_publishes_wallet_points_and_persists_each_fill_marker_once() -
 
     assert len(wallet_events) == 1
     assert {
-        point.source_key: point.accepted
-        for point in wallet_events[0].payload.points
+        point.source_key: point.accepted for point in wallet_events[0].payload.points
     } == {
         _wallet_trade().source_key: True,
         skipped_trade.source_key: False,
@@ -799,7 +820,7 @@ def test_event_writer_publishes_only_after_committed_append(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, object]] = []
-    event, = project_runtime_event_to_durable(
+    (event,) = project_runtime_event_to_durable(
         uuid4(),
         RuntimeFailed("failure", 1.0),
     )
@@ -818,9 +839,7 @@ def test_event_writer_publishes_only_after_committed_append(
 
     monkeypatch.setattr(event_writer_module, "EventStore", Store)
 
-    stored = asyncio.run(
-        RunEventWriter(_SessionFactory(), Redis()).append(event)
-    )
+    stored = asyncio.run(RunEventWriter(_SessionFactory(), Redis()).append(event))
 
     assert stored.id == 7
     assert calls == [
@@ -854,7 +873,7 @@ def test_event_store_append_returns_a_persisted_event_without_mutating_input() -
 
 
 def test_event_store_rejects_an_id_outside_the_public_cursor_range() -> None:
-    event, = project_runtime_event_to_durable(
+    (event,) = project_runtime_event_to_durable(
         uuid4(),
         RuntimeFailed("failure", 1.0),
     )
@@ -989,3 +1008,31 @@ def _settlement(portfolio: PortfolioSnapshot) -> MarketSettled:
         portfolio,
         2.0,
     )
+
+
+@pytest.mark.parametrize("field", ["trade", "point"])
+def test_wallet_timeline_rejects_malformed_persisted_wallet(field):
+    event = DispatchCompleted(
+        WalletStreamEvent(StreamKind.WALLET, _wallet_trade()),
+        DispatchOutcome.accepted_event(),
+        1.0,
+    )
+    payload = WalletTimelinePayload.from_dispatch(event).model_dump(mode="json")
+    payload[field]["wallet"] = "not-a-wallet"
+    with pytest.raises(ValueError, match="wallet"):
+        WalletTimelinePayload.model_validate(payload)
+
+
+def test_wallet_timeline_normalizes_persisted_wallet_case():
+    event = DispatchCompleted(
+        WalletStreamEvent(
+            StreamKind.WALLET, replace(_wallet_trade(), wallet="0x" + "a" * 40)
+        ),
+        DispatchOutcome.accepted_event(),
+        1.0,
+    )
+    payload = WalletTimelinePayload.from_dispatch(event).model_dump(mode="json")
+    for field in ("trade", "point"):
+        payload[field]["wallet"] = "  0x" + "A" * 40 + "  "
+    decoded = WalletTimelinePayload.model_validate(payload)
+    assert decoded.trade.wallet == decoded.point.wallet == "0x" + "a" * 40

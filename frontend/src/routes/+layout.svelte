@@ -1,9 +1,9 @@
 <script lang="ts">
+  import { configureApiResponseValidation } from '$lib/api/responseValidation/index';
+  import { NAVIGATION_PATH } from '$lib/navigation';
   import '@fontsource-variable/geist';
   import '@fontsource-variable/geist-mono';
   import '../app.css';
-  import { NAVIGATION_PATH } from '$lib/navigation';
-  import { configureApiResponseValidation } from '$lib/api/responseValidation';
 
   configureApiResponseValidation();
 
@@ -12,10 +12,7 @@
 
 <svelte:head>
   <title>Polybot control plane</title>
-  <meta
-    name="description"
-    content="Private launch and run interface for Polybot paper trading."
-  />
+  <meta name="description" content="Private launch and run interface for Polybot paper trading." />
 </svelte:head>
 
 <a class="skip-link" href="#main-content">Skip to content</a>

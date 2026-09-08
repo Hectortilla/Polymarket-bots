@@ -12,11 +12,6 @@ from .prices import (
     is_outcome_payout,
 )
 from .resolution_fields import (
-    RESOLUTION_RESOLVED_AT_MS_FIELD,
-    RESOLUTION_SETTLED_AT_MS_FIELD,
-    RESOLUTION_SOURCE_FIELD,
-    RESOLUTION_WINNING_OUTCOME_FIELD,
-    RESOLUTION_WINNING_TOKEN_ID_FIELD,
     SETTLED_POSITION_CASH_PAYOUT_USDC_FIELD,
     SETTLED_POSITION_OWNER_FIELD,
     SETTLED_POSITION_PAYOUT_PER_TOKEN_FIELD,
@@ -28,6 +23,8 @@ from .resolution_tokens import normalize_resolution_tokens
 
 WINNING_PAYOUT_PER_TOKEN = OUTCOME_PRICE_CEILING
 LOSING_PAYOUT_PER_TOKEN = OUTCOME_PRICE_FLOOR
+
+
 @dataclass(frozen=True, slots=True)
 class MarketResolutionEvent:
     condition_id: str
@@ -53,7 +50,9 @@ class MarketResolutionEvent:
         )
         object.__setattr__(self, "token_ids", token_ids)
         object.__setattr__(self, "winning_token_id", winning_token_id)
-        require_nonnegative_timestamp(self.resolved_at_ms, "market resolution timestamp")
+        require_nonnegative_timestamp(
+            self.resolved_at_ms, "market resolution timestamp"
+        )
         if not self.source:
             raise ValueError("market resolution payload is incomplete")
 
@@ -112,6 +111,25 @@ class SettledPosition:
             and not self.realized_pnl_usdc.is_finite()
         ):
             raise ValueError("settled position realized P&L must be finite")
+
+    @classmethod
+    def from_payout(
+        cls,
+        *,
+        owner: str,
+        token_id: str,
+        size: Decimal,
+        payout_per_token: Decimal,
+        realized_pnl_usdc: Decimal | None = None,
+    ) -> SettledPosition:
+        return cls(
+            owner=owner,
+            token_id=token_id,
+            size=size,
+            payout_per_token=payout_per_token,
+            cash_payout_usdc=size * payout_per_token,
+            realized_pnl_usdc=realized_pnl_usdc,
+        )
 
     def to_payload(self) -> dict[str, Any]:
         return {

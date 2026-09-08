@@ -1,44 +1,46 @@
 """Deterministic event-by-event execution of validated paper strategy graphs."""
 
 import asyncio
+from dataclasses import replace
+
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest
+
+from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
 from api.catalog.graphs.comparisons import compare_non_null_values
-from api.catalog.graphs.contracts import (
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.contracts.nodes import (
     GraphBrokerActionNode,
     GraphComparisonNode,
     GraphConstantNode,
-    GraphParameterNode,
     GraphOperationNode,
+    GraphParameterNode,
     GraphTriggerNode,
-    NodeGraph,
 )
-from api.catalog.graphs.results import (
-    GraphNodeEvaluationRead,
-    GraphReason,
-    GraphValueStatus,
-)
+from api.catalog.graphs.evaluation_reasons import GraphActionSkipReason
+from api.catalog.graphs.reasons import GraphReason
+from api.catalog.graphs.results import GraphNodeEvaluationRead, GraphValueRead
+from api.catalog.graphs.types import GraphHookName
+from api.catalog.graphs.value_status import GraphValueStatus
 from api.catalog.graphs.values import (
-    GraphPort,
+    GRAPH_COMPARISON_RESULT_HANDLE_ID,
     GRAPH_CONTEXT_HANDLE_ID,
     GRAPH_VALUE_HANDLE_ID,
-    GRAPH_COMPARISON_RESULT_HANDLE_ID,
-    GraphOperation,
+    GraphPort,
 )
 from api.catalog.node_based.evaluator.actions import (
     GraphActionResolver,
 )
 from api.catalog.node_based.evaluator.compiler import CompiledGraph
+from api.catalog.node_based.evaluator.context_operations import (
+    DIAGNOSTIC_OPERATIONS,
+    PORTFOLIO_OPERATIONS,
+    portfolio_outputs,
+)
 from api.catalog.node_based.evaluator.contracts import (
     EvaluationFrame,
     GraphActionResult,
-    GraphActionSkipReason,
     GraphEvaluationResult,
-)
-from api.catalog.node_based.evaluator.context_operations import (
-    PORTFOLIO_OPERATIONS,
-    DIAGNOSTIC_OPERATIONS,
-    portfolio_outputs,
 )
 from api.catalog.node_based.evaluator.diagnostics import (
     GraphDiagnostics,
@@ -66,13 +68,17 @@ class GraphEvaluator:
         self._lock = asyncio.Lock()
 
     async def evaluate_and_execute(
-        self, hook_name: str, ctx: BotContext, payload: object | None = None
+        self, hook_name: GraphHookName, ctx: BotContext, payload: object | None = None
     ) -> GraphEvaluationResult:
+        if not any(
+            trigger.hook_name == hook_name for trigger in GRAPH_NODE_CATALOG.triggers
+        ):
+            raise ValueError(f"Unknown graph hook: {hook_name}")
         async with self._lock:
             return await self._evaluate(hook_name, ctx, payload)
 
     async def _evaluate(
-        self, hook_name: str, ctx: BotContext, payload: object | None
+        self, hook_name: GraphHookName, ctx: BotContext, payload: object | None
     ) -> GraphEvaluationResult:
         branch = self._compiled_graph.branches.get(hook_name, ())
         frame = EvaluationFrame(ctx, payload)
@@ -104,22 +110,11 @@ class GraphEvaluator:
                     )
                 }
             elif isinstance(node, GraphComparisonNode):
-                left, right = self._input(node.id, GraphPort.LEFT, frame), self._input(
-                    node.id, GraphPort.RIGHT, frame
+                left, right = (
+                    self._input(node.id, GraphPort.LEFT, frame),
+                    self._input(node.id, GraphPort.RIGHT, frame),
                 )
-                result = (
-                    left
-                    if not left.available
-                    else (
-                        right
-                        if not right.available
-                        else RuntimeValue(
-                            compare_non_null_values(
-                                node.data.operator, left.value, right.value
-                            )
-                        )
-                    )
-                )
+                result = _comparison_result(node.data.operator, left, right)
                 outputs = {GRAPH_COMPARISON_RESULT_HANDLE_ID: result}
             elif isinstance(node, GraphOperationNode):
                 outputs = await self._operation(node, frame)
@@ -127,8 +122,8 @@ class GraphEvaluator:
                 outputs = await self._action(node, frame, intended)
             else:
                 raise AssertionError(f"Unsupported compiled node: {node}")
-            for name, result in outputs.items():
-                frame.values[node.id, name] = result
+            for output_handle_id, result in outputs.items():
+                frame.values[node.id, output_handle_id] = result
             frame.evaluated_node_ids.append(node.id)
             unavailable = next(
                 (value for value in outputs.values() if not value.available), None
@@ -150,7 +145,10 @@ class GraphEvaluator:
             reads.append(
                 GraphNodeEvaluationRead(
                     node_id=node.id,
-                    outputs={name: value.read() for name, value in outputs.items()},
+                    outputs={
+                        output_handle_id: _read_value(value)
+                        for output_handle_id, value in outputs.items()
+                    },
                     status=status,
                     reason=reason,
                 )
@@ -226,7 +224,9 @@ class GraphEvaluator:
             decision = GraphActionResolver(
                 node,
                 self._compiled_graph.action_descriptors[node.id],
-                lambda name: self._available_input(node.id, name, frame),
+                lambda input_handle_id: self._available_input(
+                    node.id, input_handle_id, frame
+                ),
             ).resolve()
             if isinstance(decision, GraphActionResult):
                 result = decision
@@ -296,3 +296,19 @@ class GraphEvaluator:
     ) -> object | None:
         result = self._input(node_id, handle_id, frame)
         return result.value if result.available else None
+
+
+def _read_value(value: RuntimeValue):
+    if isinstance(value.value, BotContext):
+        value = replace(value, value="Context")
+    return GraphValueRead.from_runtime(value)
+
+
+def _comparison_result(
+    operator, left: RuntimeValue, right: RuntimeValue
+) -> RuntimeValue:
+    if not left.available:
+        return left
+    if not right.available:
+        return right
+    return RuntimeValue(compare_non_null_values(operator, left.value, right.value))

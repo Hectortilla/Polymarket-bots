@@ -7,7 +7,6 @@ from enum import StrEnum
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.timestamps import (
-    NONNEGATIVE_TIMESTAMP_FLOOR,
     require_nonnegative_timestamp,
 )
 
@@ -134,15 +133,16 @@ class FillEvent:
         if self.reject_reason is not None or self.reject_message is not None:
             raise ValueError("Only rejected fill events may include reject details.")
         if policy.execution is FillExecutionConstraint.NONE:
-            if self.filled_size != 0 or self.average_price is not None:
+            if (
+                self.filled_size != 0
+                or self.average_price is not None
+                or self.fee_usdc != 0
+            ):
                 raise ValueError(
                     "accepted and canceled fills cannot contain execution values"
                 )
             return
-        if (
-            self.filled_size <= FILL_EXECUTION_SIZE_FLOOR
-            or self.average_price is None
-        ):
+        if self.filled_size <= FILL_EXECUTION_SIZE_FLOOR or self.average_price is None:
             raise ValueError("filled and partial fills require execution values")
         if (
             policy.execution is FillExecutionConstraint.EXACT_REQUEST
@@ -157,13 +157,42 @@ class FillEvent:
 
     @property
     def has_execution(self) -> bool:
-        return FILL_STATUS_POLICIES[self.status].execution is not FillExecutionConstraint.NONE
+        return (
+            FILL_STATUS_POLICIES[self.status].execution
+            is not FillExecutionConstraint.NONE
+        )
 
     @property
     def execution_price(self) -> Decimal:
         if self.average_price is None:
             raise ValueError("fill has no execution price")
         return self.average_price
+
+    @classmethod
+    def rejected(
+        cls,
+        *,
+        order_id: str,
+        token_id: str,
+        side: Side,
+        requested_size: Decimal,
+        received_at_ms: int,
+        reject_reason: FillRejectReason,
+        reject_message: str,
+    ) -> FillEvent:
+        return cls(
+            order_id=order_id,
+            token_id=token_id,
+            side=side,
+            status=OrderStatus.REJECTED,
+            requested_size=requested_size,
+            filled_size=Decimal("0"),
+            average_price=None,
+            fee_usdc=Decimal("0"),
+            received_at_ms=received_at_ms,
+            reject_reason=reject_reason,
+            reject_message=reject_message,
+        )
 
     def _validate_identity(self) -> None:
         for name, value in (("order ID", self.order_id), ("token ID", self.token_id)):
@@ -198,29 +227,3 @@ class FillEvent:
                 raise ValueError(
                     "fill average price must be a finite Decimal between 0 and 1"
                 )
-
-    @classmethod
-    def rejected(
-        cls,
-        *,
-        order_id: str,
-        token_id: str,
-        side: Side,
-        requested_size: Decimal,
-        received_at_ms: int,
-        reject_reason: FillRejectReason,
-        reject_message: str,
-    ) -> FillEvent:
-        return cls(
-            order_id=order_id,
-            token_id=token_id,
-            side=side,
-            status=OrderStatus.REJECTED,
-            requested_size=requested_size,
-            filled_size=Decimal("0"),
-            average_price=None,
-            fee_usdc=Decimal("0"),
-            received_at_ms=received_at_ms,
-            reject_reason=reject_reason,
-            reject_message=reject_message,
-        )

@@ -1,19 +1,18 @@
-import type { GraphNode, GraphNodeCatalog, NodeGraph } from '$lib/api/generated';
-import { graphScalarValueIsValid } from './scalarValue';
-import catalogContract from './catalogContract.fixture.json';
+import type { GraphNodeCatalog, NodeGraph } from '$lib/api/generated';
 import {
-  operationForNode,
-  inputsForNode,
   brokerActionForNode,
-  canvasEdges,
-  canvasNodes,
   comparisonForNode,
-  connectionIsValid,
   constantForNode,
+  operationForNode,
   triggerForNode,
-  type CanvasNode
-} from './nodeGraph';
+} from '$lib/catalog/nodeGraph/catalog';
+import { connectionIsValid } from '$lib/catalog/nodeGraph/connections';
+import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
+import { inputsForNode } from '$lib/catalog/nodeGraph/ports';
+import { canvasEdges, canvasNodes } from '$lib/catalog/nodeGraph/projections';
+import catalogContract from './catalogContract.fixture.json';
 import { GRAPH_NODE_TYPE } from './graphContracts';
+import { graphScalarValueIsValid } from './scalarValue';
 
 const catalog = catalogContract.graphNodeCatalog as GraphNodeCatalog;
 
@@ -27,16 +26,32 @@ export function nodeGraphContractIsValid(graph: NodeGraph): boolean {
 
 function validateNodeGraphContract(graph: NodeGraph): boolean {
   const limits = catalogContract.nodeGraph;
-  if (graph.nodes.length > limits.maximumNodes
-    || (graph.edges ?? []).length > limits.maximumEdges
-    || !hasUnique(graph.nodes.map(({ id }) => id))
-    || !hasUnique((graph.edges ?? []).map(({ id }) => id))) return false;
+  if (
+    graph.nodes.length > limits.maximumNodes ||
+    (graph.edges ?? []).length > limits.maximumEdges ||
+    !hasUnique(graph.nodes.map(({ id }) => id)) ||
+    !hasUnique((graph.edges ?? []).map(({ id }) => id))
+  )
+    return false;
 
   const nodes = canvasNodes(graph);
   const parameters = graph.parameters ?? [];
-  if (parameters.length > catalogContract.maximumParameters || !hasUnique(parameters.map(p => p.id)) || !hasUnique(parameters.map(p => p.name))) return false;
-  if (!parameters.every(p => graphScalarValueIsValid(p.data.scalar_type, p.data.value))) return false;
-  if (nodes.some(node => node.type === GRAPH_NODE_TYPE.parameter && !parameters.some(p => p.id === node.data.parameter_id))) return false;
+  if (
+    parameters.length > catalogContract.maximumParameters ||
+    !hasUnique(parameters.map((p) => p.id)) ||
+    !hasUnique(parameters.map((p) => p.name))
+  )
+    return false;
+  if (!parameters.every((p) => graphScalarValueIsValid(p.data.scalar_type, p.data.value)))
+    return false;
+  if (
+    nodes.some(
+      (node) =>
+        node.type === GRAPH_NODE_TYPE.parameter &&
+        !parameters.some((p) => p.id === node.data.parameter_id),
+    )
+  )
+    return false;
   if (!nodes.every(nodeMatchesCatalog)) return false;
   const triggerHooks = nodes
     .filter((node) => node.type === GRAPH_NODE_TYPE.trigger)
@@ -46,7 +61,8 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
   const edges = canvasEdges(graph);
   const acceptedEdges = [];
   for (const edge of edges) {
-    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog, graph.parameters ?? [])) return false;
+    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog, graph.parameters ?? []))
+      return false;
     acceptedEdges.push(edge);
   }
 
@@ -67,9 +83,10 @@ function nodeMatchesCatalog(node: CanvasNode): boolean {
     case GRAPH_NODE_TYPE.operation: {
       const descriptor = operationForNode(catalog, node.data);
       const ids = node.data.input_ids ?? [];
-      return descriptor.expandable ? ids.length === 0 || ids.length >= (descriptor.minimum_inputs ?? 0) && ids.length <= (descriptor.maximum_inputs ?? Infinity) && hasUnique(ids) : ids.length === 0;
+      return operationInputsMatchCatalog(ids, descriptor);
     }
-    case GRAPH_NODE_TYPE.parameter: return true;
+    case GRAPH_NODE_TYPE.parameter:
+      return true;
     case GRAPH_NODE_TYPE.trigger:
       triggerForNode(catalog, node.data);
       return true;
@@ -87,32 +104,48 @@ function nodeMatchesCatalog(node: CanvasNode): boolean {
 
 function requiredInputsConnected(
   nodes: CanvasNode[],
-  edges: ReturnType<typeof canvasEdges>
+  edges: ReturnType<typeof canvasEdges>,
 ): boolean {
   for (const node of nodes) {
-    const inputs = nodeInputs(node);
+    const inputs = inputsForNode(node, catalog);
     for (const input of inputs) {
       const count = edges.filter(
-        (edge) => edge.target === node.id && edge.targetHandle === input.handle_id
+        (edge) => edge.target === node.id && edge.targetHandle === input.handle_id,
       ).length;
-      if (count > catalogContract.nodeGraph.maximumInputConnectionsPerHandle
-        || (input.required
-          && count === catalogContract.nodeGraph.noInputConnections)) return false;
+      if (
+        count > catalogContract.nodeGraph.maximumInputConnectionsPerHandle ||
+        (input.required && count === catalogContract.nodeGraph.noInputConnections)
+      )
+        return false;
     }
   }
   return true;
 }
 
-function nodeInputs(node: CanvasNode) { return inputsForNode(node, catalog); }
+function operationInputsMatchCatalog(
+  ids: string[],
+  descriptor: ReturnType<typeof operationForNode>,
+): boolean {
+  if (ids.length === 0) return true;
+  if (!descriptor.expandable) return false;
+  return (
+    ids.length >= (descriptor.minimum_inputs ?? 0) &&
+    ids.length <= (descriptor.maximum_inputs ?? Infinity) &&
+    hasUnique(ids)
+  );
+}
+
+function isTerminalNode(node: CanvasNode): boolean {
+  if (node.type === GRAPH_NODE_TYPE.brokerAction) return true;
+  return node.type === GRAPH_NODE_TYPE.operation && !!operationForNode(catalog, node.data).terminal;
+}
 
 function topologicalNodeOrder(
   nodes: CanvasNode[],
   incoming: Map<string, string[]>,
-  outgoing: Map<string, string[]>
+  outgoing: Map<string, string[]>,
 ): string[] | null {
-  const remainingIncoming = new Map(
-    [...incoming].map(([id, sources]) => [id, sources.length])
-  );
+  const remainingIncoming = new Map([...incoming].map(([id, sources]) => [id, sources.length]));
   const ready = nodes.filter(({ id }) => remainingIncoming.get(id) === 0).map(({ id }) => id);
   const order: string[] = [];
   while (ready.length) {
@@ -132,21 +165,20 @@ function branchesBelongToOneTrigger(
   nodes: CanvasNode[],
   topologicalOrder: string[],
   incoming: Map<string, string[]>,
-  outgoing: Map<string, string[]>
+  outgoing: Map<string, string[]>,
 ): boolean {
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const ancestors = transitiveRelations(topologicalOrder, incoming);
   const descendants = transitiveRelations([...topologicalOrder].reverse(), outgoing);
   const triggerIds = new Set(
-    nodes.filter(({ type }) => type === GRAPH_NODE_TYPE.trigger).map(({ id }) => id)
+    nodes.filter(({ type }) => type === GRAPH_NODE_TYPE.trigger).map(({ id }) => id),
   );
-  const actionIds = new Set(
-    nodes.filter(node => node.type === GRAPH_NODE_TYPE.brokerAction || node.type === GRAPH_NODE_TYPE.operation && operationForNode(catalog, node.data).terminal).map(({ id }) => id)
-  );
+  const actionIds = new Set(nodes.filter(isTerminalNode).map(({ id }) => id));
   for (const node of nodes) {
     if (node.type === GRAPH_NODE_TYPE.trigger) continue;
-    const descendantActions = [...(descendants.get(node.id) ?? [])]
-      .filter((id) => actionIds.has(id));
+    const descendantActions = [...(descendants.get(node.id) ?? [])].filter((id) =>
+      actionIds.has(id),
+    );
     if (descendantActions.length === 0) return false;
     if (node.type === GRAPH_NODE_TYPE.constant || node.type === GRAPH_NODE_TYPE.parameter) continue;
     const branchTriggers = new Set<string>();
@@ -155,15 +187,18 @@ function branchesBelongToOneTrigger(
         if (triggerIds.has(ancestorId)) branchTriggers.add(ancestorId);
       }
     }
-    if (branchTriggers.size !== catalogContract.nodeGraph.requiredTriggerBranchCount
-      || !nodesById.has(node.id)) return false;
+    if (
+      branchTriggers.size !== catalogContract.nodeGraph.requiredTriggerBranchCount ||
+      !nodesById.has(node.id)
+    )
+      return false;
   }
   return true;
 }
 
 function transitiveRelations(
   order: string[],
-  direct: Map<string, string[]>
+  direct: Map<string, string[]>,
 ): Map<string, Set<string>> {
   const relations = new Map<string, Set<string>>();
   for (const id of order) {

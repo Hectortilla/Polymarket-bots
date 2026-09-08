@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
+
+from polybot.recording.archive.columns import ArchiveColumn
 
 from ..contracts.gaps import CoverageGapPayload
 from ..contracts.kinds import PayloadKind
@@ -16,7 +19,7 @@ from .lifecycle import _open_readonly_connection
 from .models import RecordingEventBounds
 from .primitives import _nonnegative_int, _strict_int
 from .rows import _event_from_row
-from .selection import _event_query, _gap_affects
+from .selection import ArchiveSelection, _event_query, _gap_affects
 
 
 def stream_events(
@@ -24,29 +27,19 @@ def stream_events(
     path: Path,
     immutable: bool,
     replay_cutoff_sequence: int,
-    selection: Mapping[str, object],
+    selection: ArchiveSelection,
     allow_gaps: bool,
 ) -> Iterator[RecordedEvent]:
     """Stream validated canonical events from one immutable selection."""
 
-    connection = _open_readonly_connection(path, immutable=immutable)
+    connection, query, parameters = _prepare_event_query(
+        path,
+        immutable=immutable,
+        replay_cutoff_sequence=replay_cutoff_sequence,
+        selection=selection,
+        allow_gaps=allow_gaps,
+    )
     try:
-        connection.execute("BEGIN")
-        if not allow_gaps:
-            reject_known_gaps(
-                connection,
-                replay_cutoff_sequence=replay_cutoff_sequence,
-                start_at_ms=selection["start_at_ms"],
-                end_at_ms=selection["end_at_ms"],
-                session_id=selection["session_id"],
-                condition_ids=selection["condition_ids"],
-                market_slugs=selection["market_slugs"],
-                token_id=selection["token_id"],
-            )
-        query, parameters = _event_query(
-            selection,
-            replay_cutoff_sequence=replay_cutoff_sequence,
-        )
         cursor = connection.execute(query, parameters)
     except BaseException:
         connection.close()
@@ -58,17 +51,14 @@ def stream_events(
         try:
             for row in cursor:
                 event = _event_from_row(row)
-                if (
-                    isinstance(event.payload, CoverageGapPayload)
-                    and (
-                        event.payload.is_instantaneous
-                        or not _gap_affects(
-                            event.identity,
-                            event.payload,
-                            condition_ids=selection["condition_ids"],
-                            market_slugs=selection["market_slugs"],
-                            token_id=selection["token_id"],
-                        )
+                if isinstance(event.payload, CoverageGapPayload) and (
+                    event.payload.is_instantaneous
+                    or not _gap_affects(
+                        event.identity,
+                        event.payload,
+                        condition_ids=selection.condition_ids,
+                        market_slugs=selection.market_slugs,
+                        token_id=selection.token_id,
                     )
                 ):
                     continue
@@ -90,35 +80,25 @@ def event_bounds(
     path: Path,
     immutable: bool,
     replay_cutoff_sequence: int,
-    selection: Mapping[str, object],
+    selection: ArchiveSelection,
     allow_gaps: bool,
 ) -> RecordingEventBounds | None:
     """Return non-gap event bounds for one validated immutable selection."""
 
-    connection = _open_readonly_connection(path, immutable=immutable)
+    connection, query, parameters = _prepare_event_query(
+        path,
+        immutable=immutable,
+        replay_cutoff_sequence=replay_cutoff_sequence,
+        selection=selection,
+        allow_gaps=allow_gaps,
+        ordered=False,
+    )
     try:
-        connection.execute("BEGIN")
-        if not allow_gaps:
-            reject_known_gaps(
-                connection,
-                replay_cutoff_sequence=replay_cutoff_sequence,
-                start_at_ms=selection["start_at_ms"],
-                end_at_ms=selection["end_at_ms"],
-                session_id=selection["session_id"],
-                condition_ids=selection["condition_ids"],
-                market_slugs=selection["market_slugs"],
-                token_id=selection["token_id"],
-            )
-        query, parameters = _event_query(
-            selection,
-            replay_cutoff_sequence=replay_cutoff_sequence,
-            ordered=False,
-        )
         boundary_query = (
-            "SELECT sequence, observed_at_ms FROM ("
+            f"SELECT {ArchiveColumn.SEQUENCE}, {ArchiveColumn.OBSERVED_AT_MS} FROM ("
             + query
-            + ") AS selected_event WHERE payload_kind != ? "
-            "ORDER BY sequence {} LIMIT 1"
+            + f") AS selected_event WHERE {ArchiveColumn.PAYLOAD_KIND} != ? "
+            f"ORDER BY {ArchiveColumn.SEQUENCE} {{}} LIMIT 1"
         )
         boundary_parameters = (*parameters, PayloadKind.COVERAGE_GAP.value)
         first = connection.execute(
@@ -134,10 +114,18 @@ def event_bounds(
         if last is None:
             raise ArchiveIntegrityError("recording event bounds are inconsistent")
         return RecordingEventBounds(
-            first_sequence=_strict_int(first["sequence"], "first event sequence"),
-            last_sequence=_strict_int(last["sequence"], "last event sequence"),
-            start_at_ms=_strict_int(first["observed_at_ms"], "first event timestamp"),
-            end_at_ms=_strict_int(last["observed_at_ms"], "last event timestamp"),
+            first_sequence=_strict_int(
+                first[ArchiveColumn.SEQUENCE], "first event sequence"
+            ),
+            last_sequence=_strict_int(
+                last[ArchiveColumn.SEQUENCE], "last event sequence"
+            ),
+            start_at_ms=_strict_int(
+                first[ArchiveColumn.OBSERVED_AT_MS], "first event timestamp"
+            ),
+            end_at_ms=_strict_int(
+                last[ArchiveColumn.OBSERVED_AT_MS], "last event timestamp"
+            ),
         )
     finally:
         connection.close()
@@ -148,34 +136,24 @@ def event_count(
     path: Path,
     immutable: bool,
     replay_cutoff_sequence: int,
-    selection: Mapping[str, object],
+    selection: ArchiveSelection,
     allow_gaps: bool,
 ) -> int:
     """Count non-gap canonical events in one validated immutable selection."""
 
-    connection = _open_readonly_connection(path, immutable=immutable)
+    connection, query, parameters = _prepare_event_query(
+        path,
+        immutable=immutable,
+        replay_cutoff_sequence=replay_cutoff_sequence,
+        selection=selection,
+        allow_gaps=allow_gaps,
+        ordered=False,
+    )
     try:
-        connection.execute("BEGIN")
-        if not allow_gaps:
-            reject_known_gaps(
-                connection,
-                replay_cutoff_sequence=replay_cutoff_sequence,
-                start_at_ms=selection["start_at_ms"],
-                end_at_ms=selection["end_at_ms"],
-                session_id=selection["session_id"],
-                condition_ids=selection["condition_ids"],
-                market_slugs=selection["market_slugs"],
-                token_id=selection["token_id"],
-            )
-        query, parameters = _event_query(
-            selection,
-            replay_cutoff_sequence=replay_cutoff_sequence,
-            ordered=False,
-        )
         row = connection.execute(
             "SELECT COUNT(*) FROM ("
             + query
-            + ") AS selected_event WHERE payload_kind != ?",
+            + f") AS selected_event WHERE {ArchiveColumn.PAYLOAD_KIND} != ?",
             (*parameters, PayloadKind.COVERAGE_GAP.value),
         ).fetchone()
         if row is None:
@@ -183,3 +161,37 @@ def event_count(
         return _nonnegative_int(row[0], "recording event count")
     finally:
         connection.close()
+
+
+def _prepare_event_query(
+    path: Path,
+    *,
+    immutable: bool,
+    replay_cutoff_sequence: int,
+    selection: ArchiveSelection,
+    allow_gaps: bool,
+    ordered: bool = True,
+) -> tuple[sqlite3.Connection, str, tuple[object, ...]]:
+    connection = _open_readonly_connection(path, immutable=immutable)
+    try:
+        connection.execute("BEGIN")
+        if not allow_gaps:
+            reject_known_gaps(
+                connection,
+                replay_cutoff_sequence=replay_cutoff_sequence,
+                start_at_ms=selection.start_at_ms,
+                end_at_ms=selection.end_at_ms,
+                session_id=selection.session_id,
+                condition_ids=selection.condition_ids,
+                market_slugs=selection.market_slugs,
+                token_id=selection.token_id,
+            )
+        query, parameters = _event_query(
+            selection,
+            replay_cutoff_sequence=replay_cutoff_sequence,
+            ordered=ordered,
+        )
+        return connection, query, parameters
+    except BaseException:
+        connection.close()
+        raise

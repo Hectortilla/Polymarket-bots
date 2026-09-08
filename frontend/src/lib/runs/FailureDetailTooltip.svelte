@@ -1,4 +1,5 @@
 <script lang="ts">
+  import './failureDetail.css';
   let { id, detail }: { id: string; detail: string } = $props();
 </script>
 

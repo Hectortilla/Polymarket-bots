@@ -11,19 +11,19 @@ from polybot.framework.streams import StreamRule
 from polybot.framework.wallets import validate_wallet_address
 
 from .constants import (
-    DEFAULT_DATA_TRADES_BUDGET,
-    MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
-    MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
     DEFAULT_BOT_MODE,
+    DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
     DEFAULT_MAX_SLIPPAGE_PCT,
     DEFAULT_PAPER_LATENCY_JITTER_MS,
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
+    MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+    MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
 )
-from .mode import BotMode
 from .environment import config_values_from_env, parse_bool
+from .mode import BotMode
 from .stream_rules import parse_stream_rules_json
 
 CONFIG_OVERRIDE_KIND = "override_kind"
@@ -238,6 +238,20 @@ class BotConfig:
             return parse_bool(raw, key=key)
         return raw
 
+    @classmethod
+    def from_env(cls, name: str) -> BotConfig:
+        values = config_values_from_env()
+        values["mode"] = BotMode(values["mode"])
+        return cls(name=name, **values)
+
+    def configured_market_slugs(self) -> tuple[str, ...]:
+        """Return the unique static market slugs represented by paper artifacts."""
+        return tuple(
+            dict.fromkeys(
+                slug for rule in self.stream_rules for slug in rule.market_slugs
+            )
+        )
+
     @staticmethod
     def _configuration_json_value(value: object) -> object:
         if isinstance(value, StrEnum):
@@ -249,9 +263,3 @@ class BotConfig:
         if isinstance(value, tuple):
             return [BotConfig._configuration_json_value(item) for item in value]
         return value
-
-    @classmethod
-    def from_env(cls, name: str) -> BotConfig:
-        values = config_values_from_env()
-        values["mode"] = BotMode(values["mode"])
-        return cls(name=name, **values)

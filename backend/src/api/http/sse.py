@@ -1,7 +1,7 @@
 """Durable PostgreSQL replay with Redis-assisted SSE continuation."""
 
-from collections.abc import AsyncIterator, Iterator
 import logging
+from collections.abc import AsyncIterator, Iterator
 from uuid import UUID
 
 from fastapi import Request
@@ -21,7 +21,6 @@ from api.events.contracts import (
 from api.events.ids import require_persisted_event_id
 from api.events.pagination import MAX_EVENT_PAGE_LIMIT
 from api.events.store import EventStore
-
 
 SSE_IDLE_TIMEOUT_SECONDS = 15
 SSE_IDLE_COMMENT = ": keep-alive\n\n"

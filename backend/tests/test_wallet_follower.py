@@ -2,11 +2,13 @@ import asyncio
 from dataclasses import replace
 from decimal import Decimal
 
-from polybot.examples.example_wallet_follower import ExampleWalletFollower, WALLET_FOLLOW_REASON
+from polybot.examples.example_wallet_follower import (
+    WALLET_FOLLOW_REASON,
+    ExampleWalletFollower,
+)
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
-from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.events.wallet_trades import wallet_source_key
+from polybot.framework.events.wallet_trades import WalletTradeEvent, wallet_source_key
 
 
 def test_wallet_follower_carries_source_id(dummy_context: BotContext) -> None:
@@ -41,7 +43,9 @@ def test_wallet_follower_accepts_multiple_leaders(dummy_context: BotContext) -> 
     assert asyncio.run(run()) == 1
 
 
-def test_wallet_follower_exposes_leaders_for_runner_routing(dummy_context: BotContext) -> None:
+def test_wallet_follower_exposes_leaders_for_runner_routing(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> tuple[str, ...]:
         bot = ExampleWalletFollower("0xLeader", Decimal("0.5"))
         rules = await bot.current_stream_rules(dummy_context, 0)
@@ -50,10 +54,14 @@ def test_wallet_follower_exposes_leaders_for_runner_routing(dummy_context: BotCo
     assert asyncio.run(run()) == ("0xleader",)
 
 
-def test_wallet_follower_assumes_runner_validated_trade(dummy_context: BotContext) -> None:
+def test_wallet_follower_assumes_runner_validated_trade(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> int:
         bot = ExampleWalletFollower("0xLeader", Decimal("0.5"))
-        trade = replace(_wallet_trade(), market_slug=None, condition_id=None, size=Decimal("0"))
+        trade = replace(
+            _wallet_trade(), market_slug=None, condition_id=None, size=Decimal("0")
+        )
         await bot.on_wallet_trade(
             dummy_context,
             trade,

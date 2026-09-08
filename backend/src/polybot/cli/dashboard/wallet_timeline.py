@@ -5,16 +5,19 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from decimal import Decimal
 
+from polybot.dashboard.wallets import (
+    WalletTimelineEvent,
+    wallet_bucket_index,
+    wallet_notional_tier,
+)
+from polybot.framework.events import Side
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 from rich.console import Group
 from rich.text import Text
-
-from polybot.dashboard.wallets import wallet_bucket_index, wallet_notional_tier
-from polybot.framework.events import Side
 
 from .layout import WALLET_SUMMARY_MIN_WIDTH, primary_chart_available_height
 from .palette import side_text_style
 from .state import DashboardState
-from .wallet_state import WalletTimelineEvent
 
 WALLET_LANE_LABEL_WIDTH = 13
 WALLET_LANE_SUMMARY_WIDTH = 21
@@ -90,14 +93,14 @@ def wallet_timeline_buckets(
     end_epoch_seconds: float,
     columns: int,
 ) -> dict[str, dict[int, list[WalletTimelineEvent]]]:
-    events_by_wallet_and_bucket: dict[
-        str, dict[int, list[WalletTimelineEvent]]
-    ] = defaultdict(lambda: defaultdict(list))
+    events_by_wallet_and_bucket: dict[str, dict[int, list[WalletTimelineEvent]]] = (
+        defaultdict(lambda: defaultdict(list))
+    )
     lane_set = set(lanes)
     if end_epoch_seconds <= start_epoch_seconds:
         return events_by_wallet_and_bucket
-    start_ms = round(start_epoch_seconds * 1_000)
-    end_ms = round(end_epoch_seconds * 1_000)
+    start_ms = round(start_epoch_seconds * MILLISECONDS_PER_SECOND)
+    end_ms = round(end_epoch_seconds * MILLISECONDS_PER_SECOND)
     for event in events:
         if (
             event.wallet not in lane_set
@@ -123,9 +126,7 @@ def wallet_bucket_glyph(
         return " ", ""
     sides = {event.side for event in events}
     notional = sum((event.notional for event in events), Decimal("0"))
-    glyph = ("·", "●", "◆")[
-        wallet_notional_tier(notional, maximum_notional) - 1
-    ]
+    glyph = ("·", "●", "◆")[wallet_notional_tier(notional, maximum_notional) - 1]
     style = "yellow" if len(sides) > 1 else side_text_style(next(iter(sides)))
     if all(event.accepted is False for event in events):
         style = f"dim {style}"

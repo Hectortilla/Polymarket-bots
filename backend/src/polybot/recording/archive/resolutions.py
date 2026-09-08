@@ -6,6 +6,8 @@ import sqlite3
 from dataclasses import replace
 
 from polybot.polymarket.resolution_status import ResolutionStatus
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import EVENTS_TABLE
 
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketMetadataPayload
@@ -23,7 +25,9 @@ def resolution_event_at(
     sequence_cutoff: int,
     observed_at_ms: int | None,
 ) -> RecordedEvent | None:
-    time_clause = "" if observed_at_ms is None else "AND observed_at_ms <= ?"
+    time_clause = (
+        "" if observed_at_ms is None else f"AND {ArchiveColumn.OBSERVED_AT_MS} <= ?"
+    )
     parameters: list[object] = [
         condition_id,
         PayloadKind.RESOLUTION.value,
@@ -33,10 +37,10 @@ def resolution_event_at(
         parameters.append(observed_at_ms)
     row = connection.execute(
         f"""
-        SELECT * FROM events
-        WHERE condition_id = ? AND payload_kind = ? AND sequence <= ?
+        SELECT * FROM {EVENTS_TABLE}
+        WHERE {ArchiveColumn.CONDITION_ID} = ? AND {ArchiveColumn.PAYLOAD_KIND} = ? AND {ArchiveColumn.SEQUENCE} <= ?
           {time_clause}
-        ORDER BY observed_at_ms DESC, sequence DESC
+        ORDER BY {ArchiveColumn.OBSERVED_AT_MS} DESC, {ArchiveColumn.SEQUENCE} DESC
         LIMIT 1
         """,
         tuple(parameters),
@@ -71,9 +75,7 @@ def apply_recorded_resolution(
     return replace(
         market,
         resolution_status=(
-            market.resolution_status
-            if market.resolved
-            else ResolutionStatus.RESOLVED
+            market.resolution_status if market.resolved else ResolutionStatus.RESOLVED
         ),
         resolution_source=market.resolution_source or payload.source,
         resolved=True,

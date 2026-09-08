@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from polybot.framework.outcomes import YES_OUTCOME
 from polymarket.errors import PolymarketError
 
 from scripts import polymarket_wallet_api as api
@@ -9,7 +10,6 @@ from scripts.polymarket_wallet_api.activity_contracts import (
 )
 from scripts.polymarket_wallet_api.position_contracts import MARKET_POSITION_STATUS
 from scripts.wallet_payload_contracts import POSITION_SIZE_FIELD
-from polybot.framework.outcomes import YES_OUTCOME
 
 
 class FakePaginator:

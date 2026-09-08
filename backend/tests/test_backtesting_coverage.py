@@ -5,8 +5,8 @@ from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
 )
-from polybot.recording.contracts.records import CoverageGapRecord
 from polybot.recording.contracts.market import MarketIdentity
+from polybot.recording.contracts.records import CoverageGapRecord
 
 
 def test_replay_coverage_filters_and_unions_clipped_windows() -> None:
@@ -26,24 +26,15 @@ def test_replay_coverage_filters_and_unions_clipped_windows() -> None:
     assert coverage.next_start_at_ms == 100
     assert coverage.next_boundary_at_ms == 100
     assert [record.gap_id for record in coverage.next_start_records] == [1]
-    assert [
-        record.gap_id for record in coverage.pop_next_start_records()
-    ] == [1]
+    assert [record.gap_id for record in coverage.pop_next_start_records()] == [1]
     assert coverage.next_start_at_ms == 140
     assert coverage.next_boundary_at_ms == 140
-    assert [
-        record.gap_id
-        for record in coverage.pop_start_records_through(140)
-    ] == [2]
+    assert [record.gap_id for record in coverage.pop_start_records_through(140)] == [2]
     assert coverage.next_boundary_at_ms == 150
     assert coverage.pop_end_records_through(149) == ()
-    assert [
-        record.gap_id for record in coverage.pop_end_records_through(200)
-    ] == [1, 2]
+    assert [record.gap_id for record in coverage.pop_end_records_through(200)] == [1, 2]
     assert coverage.next_boundary_at_ms == 250
-    assert [
-        record.gap_id for record in coverage.pop_start_records_through(250)
-    ] == [4]
+    assert [record.gap_id for record in coverage.pop_start_records_through(250)] == [4]
     assert coverage.next_start_at_ms is None
     assert coverage.next_boundary_at_ms is None
 
@@ -77,12 +68,8 @@ def _gap_record(
             reason=CoverageGapReason.DISCONNECT,
             started_at_ms=started_at_ms,
             ended_at_ms=ended_at_ms,
-            affected_condition_ids=(
-                () if condition_id is None else (condition_id,)
-            ),
-            affected_market_slugs=(
-                () if market_slug is None else (market_slug,)
-            ),
+            affected_condition_ids=(() if condition_id is None else (condition_id,)),
+            affected_market_slugs=(() if market_slug is None else (market_slug,)),
             affected_token_ids=token_ids,
         ),
     )

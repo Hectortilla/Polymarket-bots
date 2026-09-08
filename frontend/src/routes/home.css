@@ -1,0 +1,223 @@
+.notice-with-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.notice-with-action .notice {
+  flex: 1;
+}
+
+.data-list {
+  border: 1px solid var(--line);
+}
+
+.data-list-header,
+.data-list-row {
+  padding-inline: 20px;
+  display: grid;
+  gap: 20px;
+  align-items: center;
+}
+
+.bot-list-header,
+.bot-list-row {
+  grid-template-columns:
+    minmax(240px, 2fr) minmax(84px, 0.64fr) minmax(84px, 0.68fr) minmax(112px, 0.9fr)
+    minmax(148px, 1fr);
+}
+
+.run-list-header,
+.run-list-row {
+  grid-template-columns:
+    minmax(180px, 1.4fr) minmax(110px, 0.7fr) minmax(140px, 0.85fr) minmax(180px, 1fr)
+    minmax(180px, 1fr);
+}
+
+.data-list-header {
+  min-height: 40px;
+  color: var(--text-muted);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.64rem;
+  font-weight: 560;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.bot-list-create-row {
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  text-decoration: none;
+  text-transform: none;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition),
+    transform var(--transition);
+}
+
+.bot-list-create-row:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 3.5%, transparent);
+}
+
+.bot-list-create-row:active {
+  background: color-mix(in srgb, var(--accent) 5.5%, transparent);
+}
+
+.data-list > .empty-state {
+  border-bottom: 0;
+}
+
+.data-list-row {
+  min-height: 88px;
+  border-top: 1px solid var(--line);
+  color: var(--text-soft);
+  text-decoration: none;
+  transition:
+    background-color var(--transition),
+    color var(--transition),
+    transform var(--transition);
+}
+
+.data-list-row:hover {
+  background: color-mix(in srgb, var(--accent) 3.5%, transparent);
+}
+
+.data-list-row:active {
+  transform: translateY(1px);
+}
+
+.data-list-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 620;
+  letter-spacing: -0.018em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--transition);
+}
+
+.data-list-row:hover .data-list-title {
+  color: var(--accent);
+}
+
+.bot-identity {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.bot-identity small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.69rem;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-list-value,
+.muted-value {
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.bots-section + .runs-section {
+  margin-top: 72px;
+}
+
+@media (max-width: 960px) {
+  .bot-list-header,
+  .bot-list-row {
+    grid-template-columns: minmax(220px, 1.65fr) minmax(80px, 0.55fr) minmax(92px, 0.65fr) minmax(
+        112px,
+        0.8fr
+      );
+  }
+
+  .bot-list-header > span:nth-child(5),
+  .bot-list-row > :nth-child(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .bot-list-header {
+    min-height: 40px;
+    display: block;
+  }
+
+  .bot-list-header > span {
+    display: none;
+  }
+
+  .bot-list-header > span:first-child {
+    display: block;
+  }
+
+  .run-list-header {
+    display: none;
+  }
+
+  .data-list-row {
+    position: relative;
+    min-height: 0;
+    padding: 20px 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 24px;
+    align-items: start;
+  }
+
+  .bot-identity,
+  .run-list-row > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .bot-identity {
+    gap: 5px;
+  }
+
+  .data-list-row > [data-label]:not(.bot-identity) {
+    display: grid;
+    gap: 6px;
+  }
+
+  .data-list-row > [data-label]:not(.bot-identity)::before {
+    color: var(--text-muted);
+    content: attr(data-label);
+    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+}
+
+@media (max-width: 420px) {
+  .data-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bot-identity,
+  .run-list-row > :first-child {
+    grid-column: auto;
+  }
+}

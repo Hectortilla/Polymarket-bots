@@ -15,9 +15,9 @@ from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
 from polybot.polymarket.recording_feed.feed import MarketRecordingFeed
-from polybot.polymarket.stream_diagnostics import require_monotonic_dropped_count
 from polybot.polymarket.recording_metadata.contracts import RecordingMarket
 from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
+from polybot.polymarket.stream_diagnostics import require_monotonic_dropped_count
 from polybot.recording.clock import ObservationClock
 from polybot.recording.contracts.gaps import CoverageGapReason
 from polybot.recording.contracts.payloads import ResolutionPayload
@@ -27,14 +27,12 @@ from polybot.recording.writer import AsyncRecordingWriter
 from .capture import CapturePump, PendingCaptureEvent
 from .persistence import RecordingPersistence
 from .state import (
-    CaptureStopped,
     ControlMessage,
     ReleasedResumedGap,
     ResolutionStored,
     ResumedGapRecovery,
     TrackedMarket,
 )
-
 
 CHECKPOINT_SECONDS = 60.0
 MAX_PENDING_CAPTURE_EVENTS = 64
@@ -54,9 +52,7 @@ class RecordingCoordinator:
         stop_when_terminal: bool,
         plan_refresh_seconds: float = STREAM_PLAN_REFRESH_INTERVAL_SECONDS,
         checkpoint_seconds: float = CHECKPOINT_SECONDS,
-        resolution_reconciliation_seconds: float = (
-            RESOLUTION_RECONCILIATION_SECONDS
-        ),
+        resolution_reconciliation_seconds: float = (RESOLUTION_RECONCILIATION_SECONDS),
         max_pending_capture_events: int = MAX_PENDING_CAPTURE_EVENTS,
         resumed_gap_conditions_by_id: dict[int, frozenset[str]] | None = None,
     ) -> None:
@@ -80,9 +76,7 @@ class RecordingCoordinator:
         self._stop_when_terminal = stop_when_terminal
         self._plan_refresh_seconds = plan_refresh_seconds
         self._checkpoint_seconds = checkpoint_seconds
-        self._resolution_reconciliation_seconds = (
-            resolution_reconciliation_seconds
-        )
+        self._resolution_reconciliation_seconds = resolution_reconciliation_seconds
         self._tracked: dict[str, TrackedMarket] = {}
         self._condition_by_slug: dict[str, str] = {}
         self._plan_slugs: set[str] = set()
@@ -98,9 +92,7 @@ class RecordingCoordinator:
         self._next_generation = 1
         self._stopping = False
         self._terminal_metadata_pending: set[str] = set()
-        self._gap_recovery = ResumedGapRecovery(
-            resumed_gap_conditions_by_id
-        )
+        self._gap_recovery = ResumedGapRecovery(resumed_gap_conditions_by_id)
         self._capture_pump = CapturePump(
             writer=writer,
             clock=clock,
@@ -155,9 +147,11 @@ class RecordingCoordinator:
         if self.terminal:
             return
         loop = asyncio.get_running_loop()
-        next_plan = loop.time() + self._plan_refresh_seconds
-        next_checkpoint = loop.time() + self._checkpoint_seconds
-        next_resolution = loop.time() + self._resolution_reconciliation_seconds
+        next_plan_deadline_seconds = loop.time() + self._plan_refresh_seconds
+        next_checkpoint_deadline_seconds = loop.time() + self._checkpoint_seconds
+        next_resolution_deadline_seconds = (
+            loop.time() + self._resolution_reconciliation_seconds
+        )
         control_message_task = asyncio.create_task(self._control.get())
         shutdown_wait_task = asyncio.create_task(shutdown.wait())
         try:
@@ -166,7 +160,11 @@ class RecordingCoordinator:
                 now_monotonic_seconds = loop.time()
                 timeout = max(
                     0.0,
-                    min(next_plan, next_checkpoint, next_resolution)
+                    min(
+                        next_plan_deadline_seconds,
+                        next_checkpoint_deadline_seconds,
+                        next_resolution_deadline_seconds,
+                    )
                     - now_monotonic_seconds,
                 )
                 done, _ = await asyncio.wait(
@@ -185,30 +183,30 @@ class RecordingCoordinator:
                     return
 
                 now_monotonic_seconds = loop.time()
-                if now_monotonic_seconds >= next_plan:
+                if now_monotonic_seconds >= next_plan_deadline_seconds:
                     await self._refresh_plan()
                     await self._detect_drops()
                     await self._ensure_captures()
-                    next_plan = advance_deadline_past(
-                        next_plan,
+                    next_plan_deadline_seconds = advance_deadline_past(
+                        next_plan_deadline_seconds,
                         self._plan_refresh_seconds,
                         now_monotonic_seconds,
                     )
                     if self.terminal:
                         return
-                if now_monotonic_seconds >= next_checkpoint:
+                if now_monotonic_seconds >= next_checkpoint_deadline_seconds:
                     await self._detect_drops()
                     await self._ensure_captures()
                     await self._write_checkpoints()
-                    next_checkpoint = advance_deadline_past(
-                        next_checkpoint,
+                    next_checkpoint_deadline_seconds = advance_deadline_past(
+                        next_checkpoint_deadline_seconds,
                         self._checkpoint_seconds,
                         now_monotonic_seconds,
                     )
-                if now_monotonic_seconds >= next_resolution:
+                if now_monotonic_seconds >= next_resolution_deadline_seconds:
                     await self._reconcile_resolutions()
-                    next_resolution = advance_deadline_past(
-                        next_resolution,
+                    next_resolution_deadline_seconds = advance_deadline_past(
+                        next_resolution_deadline_seconds,
                         self._resolution_reconciliation_seconds,
                         now_monotonic_seconds,
                     )
@@ -237,9 +235,7 @@ class RecordingCoordinator:
         await self._resolve_pending_slugs()
 
     def _set_plan(self, plan: StreamPlan) -> None:
-        self._plan_slugs = set(
-            (*plan.current_market_slugs, *plan.next_market_slugs)
-        )
+        self._plan_slugs = set((*plan.current_market_slugs, *plan.next_market_slugs))
 
     def _rebuild_pending_slugs(self) -> None:
         wanted = self._plan_slugs | self._retained_pending_slugs
@@ -281,9 +277,8 @@ class RecordingCoordinator:
             if recording.metadata.resolved and not existing.terminal_claimed:
                 await self._record_gamma_resolution(existing, recording)
                 await self._close_capture(existing)
-            elif (
-                recording.metadata != existing.recording.metadata
-                and (not existing.terminal_claimed or recording.metadata.resolved)
+            elif recording.metadata != existing.recording.metadata and (
+                not existing.terminal_claimed or recording.metadata.resolved
             ):
                 await self._persistence.record_metadata(existing, recording)
             return
@@ -300,9 +295,7 @@ class RecordingCoordinator:
             return
         except BaseException:
             self._tracked.pop(condition_id, None)
-            for slug, mapped_condition in tuple(
-                self._condition_by_slug.items()
-            ):
+            for slug, mapped_condition in tuple(self._condition_by_slug.items()):
                 if mapped_condition == condition_id:
                     self._condition_by_slug.pop(slug, None)
             raise
@@ -320,15 +313,19 @@ class RecordingCoordinator:
                 )
             except asyncio.CancelledError:
                 raise
-            except MarketDataTransportError:
+            except MarketDataTransportError as error:
+                await self._persistence.open_gap(
+                    tracked,
+                    reason=CoverageGapReason.CAPTURE_FAILURE,
+                    started_at_ms=tracked.last_observed_at_ms,
+                    details=str(error),
+                )
                 continue
             tracked.generation = generation
             tracked.capture = capture
             tracked.projector = BookDepthProjector((tracked.recording.market,))
             tracked.dropped_count = capture.dropped_count
-            tracked.pump = asyncio.create_task(
-                self._capture_pump.run(tracked, capture)
-            )
+            tracked.pump = asyncio.create_task(self._capture_pump.run(tracked, capture))
 
     async def _commit_capture_event(
         self,
@@ -373,17 +370,12 @@ class RecordingCoordinator:
         if isinstance(error, CaptureContinuityError):
             await self._persistence.record_capture_anomaly(tracked, error)
         await self._close_capture(tracked)
-        if (
-            tracked.coverage_started
-            and not self._condition_needs_gap_recovery(tracked)
-        ):
+        if not self._condition_needs_gap_recovery(tracked):
             await self._persistence.open_gap(
                 tracked,
                 reason=reason,
                 started_at_ms=tracked.last_observed_at_ms,
-                details=(
-                    None if error is None else f"{type(error).__name__}: {error}"
-                ),
+                details=(None if error is None else f"{type(error).__name__}: {error}"),
             )
         await self._ensure_captures()
 
@@ -455,9 +447,7 @@ class RecordingCoordinator:
                 if recording.metadata != tracked_market.recording.metadata:
                     await self._persistence.record_metadata(tracked_market, recording)
                 if recording.metadata.resolved:
-                    self._terminal_metadata_pending.discard(
-                        tracked_market.condition_id
-                    )
+                    self._terminal_metadata_pending.discard(tracked_market.condition_id)
                 continue
             if recording.metadata.resolved:
                 await self._record_gamma_resolution(tracked_market, recording)

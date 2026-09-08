@@ -8,7 +8,6 @@ from decimal import Decimal
 from .contracts.valuation_status import ValuationStatus, history_valuation_status
 from .valuation import PortfolioValuation
 
-
 ZERO_DRAWDOWN = Decimal("0")
 
 
@@ -34,6 +33,17 @@ class EquityCurveMetrics:
             raise ValueError("equity sample timestamps must be nondecreasing")
         return self._after_ordered_sample(timestamp_ms, valuation)
 
+    @property
+    def history_status(self) -> ValuationStatus:
+        return history_valuation_status(
+            stale_sample_count=self.stale_sample_count,
+            unavailable_sample_count=self.unavailable_sample_count,
+        )
+
+    @property
+    def drawdown_status(self) -> ValuationStatus:
+        return self.history_status
+
     def _after_ordered_sample(
         self,
         timestamp_ms: int,
@@ -48,9 +58,7 @@ class EquityCurveMetrics:
         available_count = self.available_sample_count + (
             valuation.equity_usdc is not None
         )
-        peak, max_drawdown, max_fraction = self._after_drawdown(
-            valuation.equity_usdc
-        )
+        peak, max_drawdown, max_fraction = self._after_drawdown(valuation.equity_usdc)
         return EquityCurveMetrics(
             sample_count=self.sample_count + 1,
             available_sample_count=available_count,
@@ -60,22 +68,13 @@ class EquityCurveMetrics:
             max_drawdown_usdc=max_drawdown,
             max_drawdown_fraction=max_fraction,
             first_timestamp_ms=(
-                timestamp_ms if self.first_timestamp_ms is None else self.first_timestamp_ms
+                timestamp_ms
+                if self.first_timestamp_ms is None
+                else self.first_timestamp_ms
             ),
             last_timestamp_ms=timestamp_ms,
             final_valuation=valuation,
         )
-
-    @property
-    def history_status(self) -> ValuationStatus:
-        return history_valuation_status(
-            stale_sample_count=self.stale_sample_count,
-            unavailable_sample_count=self.unavailable_sample_count,
-        )
-
-    @property
-    def drawdown_status(self) -> ValuationStatus:
-        return self.history_status
 
     def _after_drawdown(
         self,

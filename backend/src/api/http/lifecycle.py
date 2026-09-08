@@ -12,7 +12,6 @@ from api.runs.models import RunRow
 from api.runs.status import QUEUED_PREVIOUS_STATUSES, RunStatus
 from api.runs.store import RunStore
 
-
 type ApiRunTransition = tuple[RunRead, int | None]
 
 

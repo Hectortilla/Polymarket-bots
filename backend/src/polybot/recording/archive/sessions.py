@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import SESSIONS_TABLE
+
 from ..contracts.session import SessionIntegrityStatus, SessionState
 from .errors import ArchiveFormatError, RecordingArchiveError
 from .models import RecordingSession
@@ -23,30 +26,6 @@ from .snapshot import _last_session_observed_at_ms
 INTERRUPTED_SESSION_REASON = "recording process ended before a clean close"
 
 
-def _insert_session(connection: sqlite3.Connection, started_at_ms: int) -> int:
-    cursor = connection.execute(
-        """
-        INSERT INTO sessions (
-            started_at_ms, integrity_status, recorder_version, sdk_version
-        ) VALUES (?, ?, ?, ?)
-        """,
-        (
-            started_at_ms,
-            SessionState.active().integrity_status.value,
-            distribution_version(RECORDER_DISTRIBUTION),
-            distribution_version(SDK_DISTRIBUTION),
-        ),
-    )
-    return int(cursor.lastrowid)
-
-
-def _latest_session(connection: sqlite3.Connection) -> RecordingSession | None:
-    row = connection.execute(
-        "SELECT * FROM sessions ORDER BY session_id DESC LIMIT 1"
-    ).fetchone()
-    return None if row is None else _session_from_row(row)
-
-
 def select_session(
     sessions: tuple[RecordingSession, ...],
     session_id: int | None = None,
@@ -63,9 +42,31 @@ def select_session(
     for session in sessions:
         if session.session_id == normalized_session:
             return session
-    raise ArchiveFormatError(
-        f"recording session {normalized_session} does not exist"
+    raise ArchiveFormatError(f"recording session {normalized_session} does not exist")
+
+
+def _insert_session(connection: sqlite3.Connection, started_at_ms: int) -> int:
+    cursor = connection.execute(
+        f"""
+        INSERT INTO {SESSIONS_TABLE} (
+            {ArchiveColumn.STARTED_AT_MS}, {ArchiveColumn.INTEGRITY_STATUS}, {ArchiveColumn.RECORDER_VERSION}, {ArchiveColumn.SDK_VERSION}
+        ) VALUES (?, ?, ?, ?)
+        """,
+        (
+            started_at_ms,
+            SessionState.active().integrity_status.value,
+            distribution_version(RECORDER_DISTRIBUTION),
+            distribution_version(SDK_DISTRIBUTION),
+        ),
     )
+    return int(cursor.lastrowid)
+
+
+def _latest_session(connection: sqlite3.Connection) -> RecordingSession | None:
+    row = connection.execute(
+        f"SELECT * FROM {SESSIONS_TABLE} ORDER BY {ArchiveColumn.SESSION_ID} DESC LIMIT 1"
+    ).fetchone()
+    return None if row is None else _session_from_row(row)
 
 
 def _recover_interrupted_session(connection: sqlite3.Connection) -> None:
@@ -83,11 +84,11 @@ def _recover_interrupted_session(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(
-            """
-            UPDATE sessions
-            SET ended_at_ms = ?, clean_close = ?, integrity_status = ?,
-                failure_reason = ?
-            WHERE session_id = ?
+            f"""
+            UPDATE {SESSIONS_TABLE}
+            SET {ArchiveColumn.ENDED_AT_MS} = ?, {ArchiveColumn.CLEAN_CLOSE} = ?, {ArchiveColumn.INTEGRITY_STATUS} = ?,
+                {ArchiveColumn.FAILURE_REASON} = ?
+            WHERE {ArchiveColumn.SESSION_ID} = ?
             """,
             (
                 *SessionState.interrupted(
@@ -107,24 +108,30 @@ def _recover_interrupted_session(connection: sqlite3.Connection) -> None:
 
 def _session_from_row(row: sqlite3.Row) -> RecordingSession:
     try:
-        clean_close = row["clean_close"]
+        clean_close = row[ArchiveColumn.CLEAN_CLOSE]
         if clean_close not in (0, 1):
             raise ValueError("invalid clean-close state")
         return RecordingSession(
-            session_id=_strict_int(row["session_id"], "session ID"),
-            started_at_ms=_strict_int(row["started_at_ms"], "session start"),
-            ended_at_ms=_optional_strict_int(row["ended_at_ms"], "session end"),
+            session_id=_strict_int(row[ArchiveColumn.SESSION_ID], "session ID"),
+            started_at_ms=_strict_int(
+                row[ArchiveColumn.STARTED_AT_MS], "session start"
+            ),
+            ended_at_ms=_optional_strict_int(
+                row[ArchiveColumn.ENDED_AT_MS], "session end"
+            ),
             clean_close=bool(clean_close),
-            integrity_status=SessionIntegrityStatus(row["integrity_status"]),
+            integrity_status=SessionIntegrityStatus(
+                row[ArchiveColumn.INTEGRITY_STATUS]
+            ),
             recorder_version=_required_text(
-                row["recorder_version"],
+                row[ArchiveColumn.RECORDER_VERSION],
                 "recorder version",
             ),
-            sdk_version=_required_text(row["sdk_version"], "SDK version"),
+            sdk_version=_required_text(row[ArchiveColumn.SDK_VERSION], "SDK version"),
             failure_reason=(
                 None
-                if row["failure_reason"] is None
-                else _required_text(row["failure_reason"], "failure reason")
+                if row[ArchiveColumn.FAILURE_REASON] is None
+                else _required_text(row[ArchiveColumn.FAILURE_REASON], "failure reason")
             ),
         )
     except (TypeError, ValueError) as error:

@@ -2,27 +2,25 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
-from api.catalog.graphs.values import GraphScalarType
 
-from api.catalog.graphs.catalog import (
-    GRAPH_NODE_CATALOG,
-    GraphBrokerActionDescriptor,
-)
-from api.catalog.graphs.contracts import (
-    GraphOperationNode,
-    GraphComparisonNode,
-    GraphParameterNode,
+from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from api.catalog.graphs.catalog.functional import GraphBrokerActionDescriptor
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.contracts.edges import GraphEdge
+from api.catalog.graphs.contracts.nodes import (
     GraphBrokerActionNode,
+    GraphComparisonNode,
     GraphConstantNode,
-    GraphEdge,
     GraphNode,
+    GraphOperationNode,
+    GraphParameterNode,
     GraphTriggerNode,
-    NodeGraph,
 )
 from api.catalog.graphs.topology import GraphTopology
 from api.catalog.graphs.types import GraphHookName
-from api.catalog.node_based.evaluator.contracts import OutputKey
+from api.catalog.graphs.values import GraphScalarType
 from api.catalog.node_based.evaluator import capabilities
+from api.catalog.node_based.evaluator.contracts import OutputKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,8 +107,7 @@ class _GraphCompiler:
     def _index_inputs(self) -> dict[str, dict[str, OutputKey]]:
         return {
             node_id: {
-                edge.target_handle: (edge.source, edge.source_handle)
-                for edge in edges
+                edge.target_handle: (edge.source, edge.source_handle) for edge in edges
             }
             for node_id, edges in self._topology.incoming.items()
             if edges

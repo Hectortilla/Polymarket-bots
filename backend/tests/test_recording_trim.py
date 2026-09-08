@@ -8,15 +8,12 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import polybot.recording.trimming as trimming_module
+import pytest
 from polybot.backtesting.contracts import BacktestOptions
+from polybot.backtesting.selection import ReplaySelectionResolver
+from polybot.backtesting.selection.coverage import SelectionCoverage
 from polybot.backtesting.service.runner import run_backtest
-from polybot.backtesting.selection import (
-    resolve_backtest_selection,
-    validate_backtest_selection,
-)
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
@@ -36,10 +33,6 @@ from polybot.recording.contracts.book import (
     RecordedBookLevel,
     TickSizeChangePayload,
 )
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    RecordedEvent,
-)
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
@@ -53,15 +46,18 @@ from polybot.recording.contracts.payloads import (
     PublicTradePayload,
     ResolutionPayload,
 )
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    RecordedEvent,
+)
 from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.recording.serialization.entrypoints import payload_json
 from polybot.recording.trim_contracts import (
     DEFAULT_TRIM_BACKUP_SUFFIX,
     RecordingTrimError,
 )
-from polybot.recording.trim_planning import _clean_intervals
+from polybot.recording.trim_planning.intervals import clean_intervals
 from polybot.recording.trimming import trim_recording
-
 
 START_MS = 1_000
 GAP_START_MS = 1_010
@@ -490,11 +486,7 @@ def _staggered_recovery_archive(
 def _archive_with_checkpoint_shifted_past_event(
     path: Path,
     *,
-    payload: (
-        BookDeltaPayload
-        | MarketMetadataPayload
-        | TickSizeChangePayload
-    ),
+    payload: (BookDeltaPayload | MarketMetadataPayload | TickSizeChangePayload),
 ) -> Path:
     archive = RecordingArchive.create(
         path,
@@ -544,8 +536,7 @@ def _archive_with_checkpoint_shifted_past_event(
     connection = sqlite3.connect(path)
     try:
         connection.execute(
-            "UPDATE book_checkpoints SET observed_at_ms = ? "
-            "WHERE observed_at_ms = ?",
+            "UPDATE book_checkpoints SET observed_at_ms = ? WHERE observed_at_ms = ?",
             (GAP_END_MS, START_MS + 1),
         )
         connection.commit()
@@ -795,12 +786,11 @@ def test_trim_replaces_archive_with_self_contained_gap_free_session(
         assert session.started_at_ms == GAP_END_MS
         assert session.ended_at_ms == END_MS
         assert reader.coverage_gaps() == ()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
-        validate_backtest_selection(reader, selection)
+        SelectionCoverage(reader).validate_events(selection)
         assert selection.start_at_ms == GAP_END_MS
         assert selection.end_at_ms == END_MS
         assert selection.market_slugs == (MARKET_SLUG,)
@@ -817,8 +807,7 @@ def test_trim_discards_history_resolved_before_the_selected_interval(
     assert result.plan.market_slugs == (MARKET_SLUG,)
     with RecordingReader.for_replay(path) as reader:
         session = reader.select_session()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
@@ -887,12 +876,11 @@ def test_trim_bootstraps_unaffected_market_book_and_dynamic_metadata(
             OTHER_UP_TOKEN,
             OTHER_DOWN_TOKEN,
         }
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
-        validate_backtest_selection(reader, selection)
+        SelectionCoverage(reader).validate_events(selection)
         assert selection.market_slugs == (MARKET_SLUG, OTHER_MARKET_SLUG)
         assert reader.event_count(session_id=session.session_id) == 7
 
@@ -1001,9 +989,7 @@ def test_trim_reconstructs_bootstrap_without_trusting_source_checkpoint(
         }
     assert set(books) == {OTHER_UP_TOKEN, OTHER_DOWN_TOKEN}
     assert all(
-        book.bids == (
-            RecordedBookLevel(Decimal("0.4"), Decimal("10")),
-        )
+        book.bids == (RecordedBookLevel(Decimal("0.4"), Decimal("10")),)
         for book in books.values()
     )
 
@@ -1024,12 +1010,11 @@ def test_trim_uses_gap_end_checkpoint_after_staggered_recovery_baselines(
     )
     with RecordingReader.for_replay(path) as reader:
         session = reader.select_session()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
-        validate_backtest_selection(reader, selection)
+        SelectionCoverage(reader).validate_events(selection)
     assert (selection.start_at_ms, selection.end_at_ms) == (
         GAP_END_MS,
         END_MS,
@@ -1239,12 +1224,11 @@ def test_trim_uses_fresh_checkpoint_after_staggered_recovery_baselines(
     )
     with RecordingReader.for_replay(path) as reader:
         session = reader.select_session()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
-        validate_backtest_selection(reader, selection)
+        SelectionCoverage(reader).validate_events(selection)
     assert (selection.start_at_ms, selection.end_at_ms) == (
         checkpoint_at_ms,
         END_MS,
@@ -1268,12 +1252,11 @@ def test_trim_uses_recovery_checkpoint_when_a_later_baseline_pair_exists(
     )
     with RecordingReader.for_replay(path) as reader:
         session = reader.select_session()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
-        validate_backtest_selection(reader, selection)
+        SelectionCoverage(reader).validate_events(selection)
     assert (selection.start_at_ms, selection.end_at_ms) == (
         GAP_END_MS,
         END_MS,
@@ -1298,12 +1281,11 @@ def test_trim_uses_fresh_recovery_checkpoint_when_later_baselines_exist(
     )
     with RecordingReader.for_replay(path) as reader:
         session = reader.select_session()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
-        validate_backtest_selection(reader, selection)
+        SelectionCoverage(reader).validate_events(selection)
     assert (selection.start_at_ms, selection.end_at_ms) == (
         checkpoint_at_ms,
         END_MS,
@@ -1367,9 +1349,7 @@ def test_failed_temporary_validation_leaves_original_and_no_backup(
         trim_recording(path)
 
     assert _sha256(path) == before
-    assert not path.with_name(
-        f"{path.name}{DEFAULT_TRIM_BACKUP_SUFFIX}"
-    ).exists()
+    assert not path.with_name(f"{path.name}{DEFAULT_TRIM_BACKUP_SUFFIX}").exists()
     assert not tuple(tmp_path.glob(f".{path.name}.trim-*"))
 
 
@@ -1395,9 +1375,7 @@ def test_failed_atomic_replace_leaves_original_and_removes_new_backup(
         trim_recording(path)
 
     assert _sha256(path) == before
-    assert not path.with_name(
-        f"{path.name}{DEFAULT_TRIM_BACKUP_SUFFIX}"
-    ).exists()
+    assert not path.with_name(f"{path.name}{DEFAULT_TRIM_BACKUP_SUFFIX}").exists()
     assert not tuple(tmp_path.glob(f".{path.name}.trim-*"))
 
 
@@ -1881,8 +1859,7 @@ def test_clean_session_starts_trim_at_its_first_recorded_event(
     assert result.plan.start_at_ms == first_event_ms
     with RecordingReader.for_replay(path) as reader:
         session = reader.select_session()
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
@@ -1913,8 +1890,7 @@ def test_failed_source_becomes_complete_trim_with_exact_default_range(
         session = reader.select_session()
         assert session.clean_close is True
         assert session.integrity_status is SessionIntegrityStatus.COMPLETE
-        selection = resolve_backtest_selection(
-            reader,
+        selection = ReplaySelectionResolver(reader).resolve(
             session,
             BacktestOptions(archive_path=path),
         )
@@ -1960,7 +1936,7 @@ def test_clean_interval_boundaries_follow_half_open_gap_semantics() -> None:
         ),
     )
 
-    intervals = _clean_intervals(0, 40, records)
+    intervals = clean_intervals(0, 40, records)
 
     assert tuple(
         (interval.start_at_ms, interval.end_at_ms) for interval in intervals
@@ -1978,7 +1954,7 @@ def test_zero_duration_gap_does_not_split_a_clean_interval() -> None:
         ),
     )
 
-    intervals = _clean_intervals(0, 40, records)
+    intervals = clean_intervals(0, 40, records)
 
     assert tuple(
         (interval.start_at_ms, interval.end_at_ms) for interval in intervals

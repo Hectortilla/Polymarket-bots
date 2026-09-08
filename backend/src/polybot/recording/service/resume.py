@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from polybot.recording.archive.reader import RecordingReader
-from polybot.recording.contracts.records import CoverageGapRecord
 from polybot.recording.contracts.market import MarketMetadataPayload
+from polybot.recording.contracts.records import CoverageGapRecord
 from polybot.recording.coverage import CoverageScope
 
 
@@ -37,8 +37,7 @@ def read_resume_state(path: Path, target_identity: str) -> ResumeState:
         )
         open_gaps = reader.coverage_gaps(open_only=True)
         restored_by_condition = {
-            metadata.condition_id: metadata
-            for metadata in reader.unresolved_markets()
+            metadata.condition_id: metadata for metadata in reader.unresolved_markets()
         }
         lookup_at_ms = max(boundaries) if boundaries else 0
         for condition_id in explicit_gap_condition_ids(open_gaps):

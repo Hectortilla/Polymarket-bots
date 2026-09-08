@@ -4,32 +4,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
-from control_plane.catalog_contract_fixture import (
-    FRONTEND_CATALOG_CONTRACT_PATH,
-    frontend_catalog_contract,
-)
-from control_plane.graph_fixtures import threshold_buy_graph
-from control_plane.graph_validation_contract_fixture import (
-    FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH,
-    frontend_graph_validation_contract,
-)
-from polybot.execution.broker import Broker
-from polybot.framework.base import BaseBot
-from polybot.framework.config.mode import BotMode
-from polybot.framework.config.models import BotConfig
-from polybot.framework.context import BotContext
-from polybot.framework.events import OrderRequest, Side
-from polybot.framework.factories import bind_bot_factory
-from polybot.framework.graph import graph_output
-from polybot.framework.streams import StreamRelation
-from polybot.framework.wallets import WALLET_ADDRESS_SCHEMA_PATTERN
-from api.catalog.values import (
-    WIDGET_SCHEMA_KEY,
-    SelectionMode,
-    WidgetKind,
-)
 from api.bots.contracts import BotCreate
 from api.catalog.definitions import (
     CATALOG,
@@ -47,20 +21,24 @@ from api.catalog.graphs.catalog import (
     GraphNodeCatalog,
 )
 from api.catalog.graphs.comparisons import GRAPH_COMPARISON_SPECS
-from api.catalog.graphs.contracts import (
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.contracts.edges import GraphEdge
+from api.catalog.graphs.contracts.limits import (
     MAX_NODE_GRAPH_EDGES,
     MAX_NODE_GRAPH_NODES,
+)
+from api.catalog.graphs.contracts.nodes import (
     GraphBooleanConstantData,
     GraphNumberConstantData,
-    GraphEdge,
-    GraphNumberConstantData,
     GraphStringConstantData,
-    NodeGraph,
 )
 from api.catalog.graphs.starter import (
     STARTER_NODE_GRAPH,
     STARTER_TRIGGER_HOOK_NAME,
     STARTER_TRIGGER_NODE_ID,
+)
+from api.catalog.graphs.types import (
+    GraphFieldPath,
 )
 from api.catalog.graphs.values import (
     GRAPH_ACTION_ENABLED_HANDLE_ID,
@@ -76,13 +54,37 @@ from api.catalog.graphs.values import (
     GraphBrokerAction,
     GraphComparisonOperator,
     GraphNodeType,
+    GraphPort,
     GraphScalarType,
 )
-from api.catalog.graphs.types import (
-    GraphFieldPath,
-)
 from api.catalog.node_based.bot import NodeBasedBot
+from api.catalog.values import (
+    WIDGET_SCHEMA_KEY,
+    SelectionMode,
+    WidgetKind,
+)
 from api.runs.contracts import PaperRunConfig
+from polybot.execution.broker import Broker
+from polybot.framework.base import BaseBot
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
+from polybot.framework.context import BotContext
+from polybot.framework.events import OrderRequest, Side
+from polybot.framework.factories import bind_bot_factory
+from polybot.framework.graph import graph_output
+from polybot.framework.streams import StreamRelation
+from polybot.framework.wallets import WALLET_ADDRESS_SCHEMA_PATTERN
+from pydantic import ValidationError
+
+from control_plane.catalog_contract_fixture import (
+    FRONTEND_CATALOG_CONTRACT_PATH,
+    frontend_catalog_contract,
+)
+from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.graph_validation_contract_fixture import (
+    FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH,
+    frontend_graph_validation_contract,
+)
 
 CATALOG_DEFINITION_IDS = (
     WINNER_DEFINITION_ID,
@@ -133,13 +135,10 @@ def test_catalog_has_exact_initial_entries_and_generated_schemas() -> None:
         CATALOG_DEFINITION_IDS
     )
     assert all(
-        "name" in descriptor.input_schema["properties"]
-        for descriptor in descriptors
+        "name" in descriptor.input_schema["properties"] for descriptor in descriptors
     )
     assert all(
-        descriptor.input_schema["properties"]["max_order_size"][
-            WIDGET_SCHEMA_KEY
-        ]
+        descriptor.input_schema["properties"]["max_order_size"][WIDGET_SCHEMA_KEY]
         == WidgetKind.DECIMAL.value
         for descriptor in descriptors
     )
@@ -311,10 +310,30 @@ def test_graph_catalog_derives_base_bot_lifecycle_hooks_and_payload_fields() -> 
                 ("market_slug", "str", True, False),
                 ("condition_id", "str", True, False),
                 ("outcome", "str", True, False),
-                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")), "Decimal", True, False),
-                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "size")), "Decimal", True, False),
-                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "price")), "Decimal", True, False),
-                (GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "size")), "Decimal", True, False),
+                (
+                    GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "price")),
+                    "Decimal",
+                    True,
+                    False,
+                ),
+                (
+                    GRAPH_FIELD_PATH_SEPARATOR.join(("best_bid", "size")),
+                    "Decimal",
+                    True,
+                    False,
+                ),
+                (
+                    GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "price")),
+                    "Decimal",
+                    True,
+                    False,
+                ),
+                (
+                    GRAPH_FIELD_PATH_SEPARATOR.join(("best_ask", "size")),
+                    "Decimal",
+                    True,
+                    False,
+                ),
             ),
         ),
         (
@@ -380,10 +399,13 @@ def test_graph_catalog_derives_exact_payload_fields(
     trigger = GRAPH_NODE_CATALOG.trigger(hook_name)
 
     assert trigger is not None and trigger.payload is not None
-    assert tuple(
-        (field.path.dotted, field.value_type, field.nullable, field.collection)
-        for field in trigger.payload.fields
-    ) == expected_fields
+    assert (
+        tuple(
+            (field.path.dotted, field.value_type, field.nullable, field.collection)
+            for field in trigger.payload.fields
+        )
+        == expected_fields
+    )
 
 
 def test_graph_catalog_preserves_enum_schema() -> None:
@@ -554,9 +576,7 @@ def test_graph_field_handles_enforce_the_persisted_identifier_limit() -> None:
 
     with pytest.raises(ValidationError, match="identifier limit"):
         GraphFieldPath(
-            segments=(
-                "x" * (MAX_GRAPH_IDENTIFIER_LENGTH - prefix_length + 1),
-            )
+            segments=("x" * (MAX_GRAPH_IDENTIFIER_LENGTH - prefix_length + 1),)
         )
 
 
@@ -609,9 +629,7 @@ def test_graph_catalog_describes_constants_comparisons_and_submit_actions() -> N
         GraphComparisonOperator
     )
     for comparison in GRAPH_NODE_CATALOG.comparisons:
-        expected_scalar_types = GRAPH_COMPARISON_SPECS[
-            comparison.operator
-        ].scalar_types
+        expected_scalar_types = GRAPH_COMPARISON_SPECS[comparison.operator].scalar_types
         assert all(
             input_.scalar_types == expected_scalar_types
             and input_.required
@@ -646,15 +664,17 @@ def test_graph_catalog_describes_constants_comparisons_and_submit_actions() -> N
 
 
 def test_frontend_catalog_constants_match_backend_contract() -> None:
-    assert json.loads(
-        FRONTEND_CATALOG_CONTRACT_PATH.read_text(encoding="utf-8")
-    ) == frontend_catalog_contract()
+    assert (
+        json.loads(FRONTEND_CATALOG_CONTRACT_PATH.read_text(encoding="utf-8"))
+        == frontend_catalog_contract()
+    )
 
 
 def test_frontend_graph_validation_cases_match_backend_contract() -> None:
-    assert json.loads(
-        FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH.read_text(encoding="utf-8")
-    ) == frontend_graph_validation_contract()
+    assert (
+        json.loads(FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH.read_text(encoding="utf-8"))
+        == frontend_graph_validation_contract()
+    )
 
 
 def test_threshold_buy_graph_validates_and_preserves_exact_decimals() -> None:
@@ -705,9 +725,9 @@ def test_threshold_buy_graph_validates_and_preserves_exact_decimals() -> None:
         lambda graph: graph["nodes"].append(
             {
                 "id": "disconnected-constant",
-                "type": "constant",
+                "type": GraphNodeType.CONSTANT,
                 "position": {"x": 0, "y": 0},
-                "data": {"scalar_type": "string", "value": "unused"},
+                "data": {"scalar_type": GraphScalarType.STRING, "value": "unused"},
             }
         ),
     ],
@@ -727,7 +747,7 @@ def test_functional_graph_rejects_cross_trigger_joins() -> None:
     graph["nodes"].append(
         {
             "id": "wallet-trigger",
-            "type": "trigger",
+            "type": GraphNodeType.TRIGGER,
             "position": {"x": 0, "y": 500},
             "data": {"hook_name": "on_wallet_trade"},
         }
@@ -780,9 +800,7 @@ def test_functional_graph_rejects_mixed_comparison_scalar_types() -> None:
 
 def test_functional_graph_rejects_collection_sources() -> None:
     graph = threshold_buy_graph()
-    graph["edges"][0]["source_handle"] = GraphFieldPath(
-        segments=("bids",)
-    ).handle_id
+    graph["edges"][0]["source_handle"] = GraphFieldPath(segments=("bids",)).handle_id
 
     with pytest.raises(ValidationError, match="scalar trigger output"):
         NodeGraph.model_validate(graph)
@@ -837,9 +855,9 @@ def test_functional_graph_rejects_action_without_trigger_ancestry() -> None:
         }
         for edge_id, source, target_handle in (
             ("enabled", "constant-enabled", GRAPH_ACTION_ENABLED_HANDLE_ID),
-            ("token", "constant-token", "token_id"),
-            ("price", "constant-threshold", "price"),
-            ("size", "constant-size", "size"),
+            ("token", "constant-token", GraphPort.TOKEN_ID),
+            ("price", "constant-threshold", GraphPort.PRICE),
+            ("size", "constant-size", GraphPort.SIZE),
         )
     ]
 
@@ -969,9 +987,7 @@ def test_paper_config_preserves_decimal_strings_and_cannot_hold_credentials() ->
     assert PaperRunConfig.model_fields.keys().isdisjoint(prohibited_fields)
     for field_name in prohibited_fields:
         with pytest.raises(ValidationError):
-            PaperRunConfig.model_validate(
-                {**serialized, field_name: "not-accepted"}
-            )
+            PaperRunConfig.model_validate({**serialized, field_name: "not-accepted"})
     assert bot_config.mode is BotMode.PAPER
     assert bot_config.live_enabled is False
     assert all(
@@ -981,9 +997,11 @@ def test_paper_config_preserves_decimal_strings_and_cannot_hold_credentials() ->
 
 
 def test_persisted_config_rejects_untrusted_names_and_stream_rules() -> None:
-    serialized = CATALOG[WINNER_DEFINITION_ID].parse_config(
-        {"name": "valid"}
-    ).model_dump(mode="json")
+    serialized = (
+        CATALOG[WINNER_DEFINITION_ID]
+        .parse_config({"name": "valid"})
+        .model_dump(mode="json")
+    )
 
     with pytest.raises(ValidationError):
         PaperRunConfig.model_validate({**serialized, "name": "   "})
@@ -1100,16 +1118,16 @@ def _cyclic_graph() -> dict[str, object]:
             "on-book-trigger",
             GraphFieldPath(segments=("token_id",)).handle_id,
             "action-buy",
-            "token_id",
+            GraphPort.TOKEN_ID,
         ),
         (
             "price",
             "on-book-trigger",
             GraphFieldPath(segments=("best_ask", "price")).handle_id,
             "action-buy",
-            "price",
+            GraphPort.PRICE,
         ),
-        ("size", "constant-size", GRAPH_VALUE_HANDLE_ID, "action-buy", "size"),
+        ("size", "constant-size", GRAPH_VALUE_HANDLE_ID, "action-buy", GraphPort.SIZE),
     )
     graph["edges"] = [
         {

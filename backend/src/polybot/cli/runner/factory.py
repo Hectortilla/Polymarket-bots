@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.activity import ObserverActivitySink
+from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import PortfolioSnapshot
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.execution.paper import PaperBroker
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.polymarket.clob import ClobClient
-from polybot.polymarket.positions.client import PositionClient
 from polybot.polymarket.gamma import GammaClient
+from polybot.polymarket.positions.client import PositionClient
+from polybot.polymarket.public_data.runtime import RuntimePublicData
 from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
 from polybot.polymarket.ws_market import MarketStream
-from polybot.polymarket.public_data.runtime import RuntimePublicData
 
 from ..followed_wallets.tracker import FollowedWalletTracker
 from ..tracked_markets import TrackedMarketRegistry

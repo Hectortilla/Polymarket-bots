@@ -3,14 +3,17 @@
 from uuid import UUID
 
 from fastapi import APIRouter
+from polybot.framework.clock import system_now_utc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from polybot.framework.clock import system_now_utc
+from api.events.store import EventStore
+from api.events.writer import publish_durable_wake
 from api.http.dependencies import (
     RedisDependency,
     SessionFactoryDependency,
 )
 from api.http.lifecycle import ApiRunLifecycle
+from api.http.responses import NOT_FOUND_RESPONSE
 from api.http.routes.paths import (
     LIST_RUNS_OPERATION_ID,
     READ_RUN_OPERATION_ID,
@@ -23,13 +26,8 @@ from api.http.routes.run_lookup import (
     raise_run_not_found,
     require_run,
 )
-from api.http.responses import NOT_FOUND_RESPONSE
-from api.events.contracts import ChartSampleEvent, RunFailureEvent
-from api.events.store import EventStore
-from api.events.writer import publish_durable_wake
 from api.runs.contracts import RunRead
 from api.runs.store import RunStore
-
 
 router = APIRouter()
 
@@ -93,31 +91,17 @@ async def _with_event_summaries(
     event_store = EventStore(session)
     latest_chart_samples_by_run = await event_store.latest_chart_samples(run_ids)
     latest_run_failures_by_run = await event_store.latest_run_failures(run_ids)
-    return tuple(
-        _with_event_summary(
-            run,
-            latest_chart_samples_by_run.get(run.id),
-            latest_run_failures_by_run.get(run.id),
+    summaries: list[RunRead] = []
+    for run in runs:
+        sample = latest_chart_samples_by_run.get(run.id)
+        failure = latest_run_failures_by_run.get(run.id)
+        summaries.append(
+            run.with_event_summary(
+                latest_equity=None if sample is None else sample.payload.equity.value,
+                equity_status=None if sample is None else sample.payload.equity.status,
+                latest_runtime_failure=None
+                if failure is None
+                else failure.payload.error,
+            )
         )
-        for run in runs
-    )
-
-
-def _with_event_summary(
-    run: RunRead,
-    sample: ChartSampleEvent | None,
-    runtime_failure: RunFailureEvent | None,
-) -> RunRead:
-    if sample is None and runtime_failure is None:
-        return run
-    updates: dict[str, object] = {}
-    if sample is not None:
-        updates.update(
-            {
-                "latest_equity": sample.payload.equity.value,
-                "equity_status": sample.payload.equity.status,
-            }
-        )
-    if runtime_failure is not None:
-        updates["latest_runtime_failure"] = runtime_failure.payload.error
-    return run.model_copy(update=updates)
+    return tuple(summaries)

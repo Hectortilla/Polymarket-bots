@@ -6,6 +6,8 @@ import sqlite3
 from dataclasses import dataclass
 
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import BOOK_CHECKPOINTS_TABLE
 
 from ..contracts.records import BookCheckpoint
 from .checkpoint_rows import (
@@ -35,13 +37,13 @@ class _CheckpointBoundary:
     def from_row(cls, row: sqlite3.Row) -> _CheckpointBoundary:
         return cls(
             observed_at_ms=_strict_int(
-                row["observed_at_ms"],
+                row[ArchiveColumn.OBSERVED_AT_MS],
                 "checkpoint timestamp",
             ),
-            sequence=_strict_int(row["sequence"], "checkpoint sequence"),
-            session_id=_strict_int(row["session_id"], "checkpoint session"),
+            sequence=_strict_int(row[ArchiveColumn.SEQUENCE], "checkpoint sequence"),
+            session_id=_strict_int(row[ArchiveColumn.SESSION_ID], "checkpoint session"),
             subscription_generation=_strict_int(
-                row["subscription_generation"],
+                row[ArchiveColumn.SUBSCRIPTION_GENERATION],
                 "checkpoint generation",
             ),
         )
@@ -63,7 +65,9 @@ def checkpoint_before(
     normalized_session = (
         None if session_id is None else _positive_int(session_id, "session ID")
     )
-    session_clause = "" if normalized_session is None else "AND session_id = ?"
+    session_clause = (
+        "" if normalized_session is None else f"AND {ArchiveColumn.SESSION_ID} = ?"
+    )
     parameters: list[object] = [
         normalized_token,
         observed_at_ms,
@@ -74,10 +78,10 @@ def checkpoint_before(
     row = connection.execute(
         f"""
         SELECT *
-        FROM book_checkpoints
-        WHERE token_id = ? AND observed_at_ms <= ? AND sequence <= ?
+        FROM {BOOK_CHECKPOINTS_TABLE}
+        WHERE {ArchiveColumn.TOKEN_ID} = ? AND {ArchiveColumn.OBSERVED_AT_MS} <= ? AND {ArchiveColumn.SEQUENCE} <= ?
           {session_clause}
-        ORDER BY observed_at_ms DESC, sequence DESC
+        ORDER BY {ArchiveColumn.OBSERVED_AT_MS} DESC, {ArchiveColumn.SEQUENCE} DESC
         LIMIT 1
         """,
         tuple(parameters),
@@ -88,11 +92,11 @@ def checkpoint_before(
         reject_known_gaps(
             connection,
             replay_cutoff_sequence=replay_cutoff_sequence,
-            start_at_ms=int(row["observed_at_ms"]),
+            start_at_ms=int(row[ArchiveColumn.OBSERVED_AT_MS]),
             end_at_ms=observed_at_ms,
             session_id=normalized_session,
-            condition_ids=(row["condition_id"],),
-            market_slugs=(row["market_slug"],),
+            condition_ids=(row[ArchiveColumn.CONDITION_ID],),
+            market_slugs=(row[ArchiveColumn.MARKET_SLUG],),
             token_id=normalized_token,
         )
     return checkpoint_from_row(
@@ -185,7 +189,9 @@ def checkpoint_pair_at_or_after(
         return None
     token_ids = tuple(outcome.token_id for outcome in market.outcomes)
     token_placeholders = ", ".join("?" for _ in token_ids)
-    session_clause = "" if normalized_session is None else "AND session_id = ?"
+    session_clause = (
+        "" if normalized_session is None else f"AND {ArchiveColumn.SESSION_ID} = ?"
+    )
     parameters: list[object] = [
         normalized_condition,
         *token_ids,
@@ -198,16 +204,16 @@ def checkpoint_pair_at_or_after(
     parameters.append(MARKET_RESOLUTION_TOKEN_COUNT)
     row = connection.execute(
         f"""
-        SELECT observed_at_ms, sequence, session_id,
-               subscription_generation
-        FROM book_checkpoints
-        WHERE condition_id = ? AND token_id IN ({token_placeholders})
-          AND observed_at_ms >= ? AND observed_at_ms <= ?
-          AND sequence <= ? {session_clause}
-        GROUP BY observed_at_ms, sequence, session_id,
-                 subscription_generation
-        HAVING COUNT(DISTINCT token_id) = ?
-        ORDER BY observed_at_ms, sequence
+        SELECT {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE}, {ArchiveColumn.SESSION_ID},
+               {ArchiveColumn.SUBSCRIPTION_GENERATION}
+        FROM {BOOK_CHECKPOINTS_TABLE}
+        WHERE {ArchiveColumn.CONDITION_ID} = ? AND {ArchiveColumn.TOKEN_ID} IN ({token_placeholders})
+          AND {ArchiveColumn.OBSERVED_AT_MS} >= ? AND {ArchiveColumn.OBSERVED_AT_MS} <= ?
+          AND {ArchiveColumn.SEQUENCE} <= ? {session_clause}
+        GROUP BY {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE}, {ArchiveColumn.SESSION_ID},
+                 {ArchiveColumn.SUBSCRIPTION_GENERATION}
+        HAVING COUNT(DISTINCT {ArchiveColumn.TOKEN_ID}) = ?
+        ORDER BY {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE}
         LIMIT 1
         """,
         tuple(parameters),
@@ -254,7 +260,7 @@ def _checkpoint_pair_before(
         return None
     token_ids = tuple(outcome.token_id for outcome in market.outcomes)
     token_placeholders = ", ".join("?" for _ in token_ids)
-    session_clause = "" if session_id is None else "AND session_id = ?"
+    session_clause = "" if session_id is None else f"AND {ArchiveColumn.SESSION_ID} = ?"
     parameters: list[object] = [
         condition_id,
         *token_ids,
@@ -266,16 +272,16 @@ def _checkpoint_pair_before(
     parameters.append(MARKET_RESOLUTION_TOKEN_COUNT)
     boundary = connection.execute(
         f"""
-        SELECT observed_at_ms, sequence, session_id,
-               subscription_generation
-        FROM book_checkpoints
-        WHERE condition_id = ? AND token_id IN ({token_placeholders})
-          AND observed_at_ms <= ? AND sequence <= ?
+        SELECT {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE}, {ArchiveColumn.SESSION_ID},
+               {ArchiveColumn.SUBSCRIPTION_GENERATION}
+        FROM {BOOK_CHECKPOINTS_TABLE}
+        WHERE {ArchiveColumn.CONDITION_ID} = ? AND {ArchiveColumn.TOKEN_ID} IN ({token_placeholders})
+          AND {ArchiveColumn.OBSERVED_AT_MS} <= ? AND {ArchiveColumn.SEQUENCE} <= ?
           {session_clause}
-        GROUP BY observed_at_ms, sequence, session_id,
-                 subscription_generation
-        HAVING COUNT(DISTINCT token_id) = ?
-        ORDER BY observed_at_ms DESC, sequence DESC
+        GROUP BY {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE}, {ArchiveColumn.SESSION_ID},
+                 {ArchiveColumn.SUBSCRIPTION_GENERATION}
+        HAVING COUNT(DISTINCT {ArchiveColumn.TOKEN_ID}) = ?
+        ORDER BY {ArchiveColumn.OBSERVED_AT_MS} DESC, {ArchiveColumn.SEQUENCE} DESC
         LIMIT 1
         """,
         tuple(parameters),
@@ -314,10 +320,10 @@ def _checkpoint_pair_from_boundary(
     token_placeholders = ", ".join("?" for _ in token_ids)
     rows = connection.execute(
         f"""
-        SELECT * FROM book_checkpoints
-        WHERE condition_id = ? AND token_id IN ({token_placeholders})
-          AND observed_at_ms = ? AND sequence = ? AND session_id = ?
-          AND subscription_generation = ?
+        SELECT * FROM {BOOK_CHECKPOINTS_TABLE}
+        WHERE {ArchiveColumn.CONDITION_ID} = ? AND {ArchiveColumn.TOKEN_ID} IN ({token_placeholders})
+          AND {ArchiveColumn.OBSERVED_AT_MS} = ? AND {ArchiveColumn.SEQUENCE} = ? AND {ArchiveColumn.SESSION_ID} = ?
+          AND {ArchiveColumn.SUBSCRIPTION_GENERATION} = ?
         """,
         (
             condition_id,
@@ -328,7 +334,7 @@ def _checkpoint_pair_from_boundary(
             boundary.subscription_generation,
         ),
     ).fetchall()
-    rows_by_token = {row["token_id"]: row for row in rows}
+    rows_by_token = {row[ArchiveColumn.TOKEN_ID]: row for row in rows}
     if set(rows_by_token) != set(token_ids):
         raise ArchiveIntegrityError(
             "common book checkpoint does not contain both market tokens"

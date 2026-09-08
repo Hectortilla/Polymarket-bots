@@ -6,6 +6,8 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
+from polybot.recording.archive.columns import ArchiveColumn
+
 from ..contracts.anomalies import CaptureFailureKind
 from ..contracts.records import CaptureAnomalyRecord
 from .errors import ArchiveFormatError, CaptureAnomalyJournalUnavailableError
@@ -77,19 +79,13 @@ def iter_capture_anomalies(
         _nonnegative_timestamp(start_at_ms, "capture anomaly selection start")
     if end_at_ms is not None:
         _nonnegative_timestamp(end_at_ms, "capture anomaly selection end")
-    if (
-        start_at_ms is not None
-        and end_at_ms is not None
-        and end_at_ms < start_at_ms
-    ):
+    if start_at_ms is not None and end_at_ms is not None and end_at_ms < start_at_ms:
         raise ValueError("capture anomaly selection cannot end before it starts")
     normalized_session = (
         None if session_id is None else select_session(sessions, session_id).session_id
     )
     normalized_condition = (
-        None
-        if condition_id is None
-        else _required_text(condition_id, "condition ID")
+        None if condition_id is None else _required_text(condition_id, "condition ID")
     )
     normalized_slug = (
         None if market_slug is None else _required_text(market_slug, "market slug")
@@ -102,16 +98,16 @@ def iter_capture_anomalies(
         session_id=normalized_session,
     )
     require_capture_anomaly_journal(provenance, selected_sessions)
-    clauses = ["anomaly_id <= ?"]
+    clauses = [f"{ArchiveColumn.ANOMALY_ID} <= ?"]
     parameters: list[object] = [replay_cutoff_id]
     for column, value, operator in (
-        ("observed_at_ms", start_at_ms, ">="),
-        ("observed_at_ms", end_at_ms, "<="),
-        ("session_id", normalized_session, "="),
-        ("condition_id", normalized_condition, "="),
-        ("market_slug", normalized_slug, "="),
+        (ArchiveColumn.OBSERVED_AT_MS, start_at_ms, ">="),
+        (ArchiveColumn.OBSERVED_AT_MS, end_at_ms, "<="),
+        (ArchiveColumn.SESSION_ID, normalized_session, "="),
+        (ArchiveColumn.CONDITION_ID, normalized_condition, "="),
+        (ArchiveColumn.MARKET_SLUG, normalized_slug, "="),
         (
-            "failure_kind",
+            ArchiveColumn.FAILURE_KIND,
             normalized_failure,
             "=",
         ),
@@ -165,7 +161,7 @@ def stream_capture_anomalies(
         cursor = connection.execute(
             f"SELECT * FROM {CAPTURE_ANOMALIES_TABLE} WHERE "
             + " AND ".join(clauses)
-            + " ORDER BY anomaly_id",
+            + f" ORDER BY {ArchiveColumn.ANOMALY_ID}",
             parameters,
         )
     except sqlite3.Error as error:

@@ -6,6 +6,43 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from polybot.framework.events import Side
+from polybot.framework.events.books import BookSnapshot
+from polybot.polymarket.errors import (
+    MarketDataError,
+    MarketDataIssue,
+    MarketDataTransportError,
+)
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.normalization.recording_events.market_events import (
+    MARKET_WEBSOCKET_SOURCE,
+)
+from polybot.polymarket.recording_events import CapturedMarketEvent
+from polybot.polymarket.recording_feed.capture import (
+    MarketCapture,
+)
+from polybot.polymarket.recording_feed.continuity import (
+    CaptureContinuityError,
+)
+from polybot.polymarket.recording_feed.feed import MarketRecordingFeed
+from polybot.polymarket.recording_metadata.contracts import RecordingMarket
+from polybot.polymarket.recording_metadata.normalization import (
+    normalize_recording_market,
+)
+from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
+from polybot.recording.contracts.anomalies import (
+    CaptureFailureKind,
+    RevisionFingerprint,
+)
+from polybot.recording.contracts.book import (
+    BookBaselinePayload,
+    BookDeltaPayload,
+    TickSizeChangePayload,
+)
+from polybot.recording.contracts.payloads import (
+    PublicTradePayload,
+    ResolutionPayload,
+)
 from polymarket.errors import PolymarketError
 from polymarket.models.clob.market_events import (
     MarketBookEvent,
@@ -23,49 +60,20 @@ from polymarket.models.clob.market_events import (
 from polymarket.models.clob.order_book import OrderBookLevel
 from polymarket.models.gamma.market import (
     FeeSchedule,
-    Market as SdkMarket,
-    MarketEvent as SdkMarketEvent,
-    MarketOutcome as SdkMarketOutcome,
     MarketOutcomes,
     MarketResolution,
     MarketState,
     MarketTrading,
     UmaResolutionStatus,
 )
-
-from polybot.framework.events import Side
-from polybot.framework.events.books import BookSnapshot
-from polybot.polymarket.errors import (
-    MarketDataError,
-    MarketDataIssue,
-    MarketDataTransportError,
+from polymarket.models.gamma.market import (
+    Market as SdkMarket,
 )
-from polybot.polymarket.recording_events import CapturedMarketEvent
-from polybot.polymarket.recording_feed.capture import (
-    MarketCapture,
+from polymarket.models.gamma.market import (
+    MarketEvent as SdkMarketEvent,
 )
-from polybot.polymarket.recording_feed.continuity import (
-    CaptureContinuityError,
-)
-from polybot.polymarket.recording_feed.feed import MarketRecordingFeed
-from polybot.polymarket.recording_metadata.contracts import RecordingMarket
-from polybot.polymarket.recording_metadata.normalization import (
-    normalize_recording_market,
-)
-from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
-from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.recording.contracts.book import (
-    BookBaselinePayload,
-    BookDeltaPayload,
-    TickSizeChangePayload,
-)
-from polybot.recording.contracts.anomalies import (
-    CaptureFailureKind,
-    RevisionFingerprint,
-)
-from polybot.recording.contracts.payloads import (
-    PublicTradePayload,
-    ResolutionPayload,
+from polymarket.models.gamma.market import (
+    MarketOutcome as SdkMarketOutcome,
 )
 
 
@@ -279,7 +287,7 @@ def test_capture_preserves_typed_market_events_and_projects_full_depth() -> None
         token_ids=("up-token", "down-token"),
         winning_token_id="up-token",
         winning_outcome="Up",
-        source="market_websocket",
+        source=MARKET_WEBSOCKET_SOURCE,
         resolution_id="resolution-1",
     )
     assert [event.source_timestamp_ms for event in remaining] == [
@@ -336,8 +344,7 @@ def test_capture_combines_split_revision_before_validating_crossed_depth() -> No
     combined = captured[-1]
     assert isinstance(combined.payload, BookDeltaPayload)
     assert tuple(
-        (change.side, change.price, change.size)
-        for change in combined.payload.changes
+        (change.side, change.price, change.size) for change in combined.payload.changes
     ) == (
         (Side.BUY, Decimal("0.55"), Decimal("5")),
         (Side.SELL, Decimal("0.50"), Decimal("0")),
@@ -1001,15 +1008,11 @@ def test_recording_market_resolver_keeps_order_and_missing_entries() -> None:
     class Client:
         def list_markets(self, **kwargs: object) -> Paginator:
             requested = kwargs.get("slug", ())
-            return Paginator(
-                isinstance(requested, tuple) and "alpha" in requested
-            )
+            return Paginator(isinstance(requested, tuple) and "alpha" in requested)
 
     async def run() -> tuple[RecordingMarket | None, ...]:
         resolver = RecordingMarketResolver(Client())  # type: ignore[arg-type]
-        return await resolver.find_many(
-            ("alpha", "missing", "alpha")
-        )
+        return await resolver.find_many(("alpha", "missing", "alpha"))
 
     results = asyncio.run(run())
 

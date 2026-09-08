@@ -104,8 +104,7 @@ class DashboardProjection:
             ).equity_usdc,
         )
         markets = tuple(
-            self._market_chart_point(token_id)
-            for token_id in self.charts.chart_tokens
+            self._market_chart_point(token_id) for token_id in self.charts.chart_tokens
         )
         equity_value = self.charts.executable_equity_history[-1]
         return DashboardSample(
@@ -159,6 +158,8 @@ class DashboardProjection:
         return ProjectionChange()
 
     def _dispatch_completed(self, event: DispatchCompleted) -> ProjectionChange:
+        if event.outcome is not None and event.outcome.is_duplicate:
+            return ProjectionChange()
         accepted_book = None
         if self.markets.require_accepted_books and event.kind is StreamKind.BOOK:
             book = event.item.event

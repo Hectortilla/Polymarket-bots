@@ -1,5 +1,7 @@
 """Dependency-light timestamp preconditions shared across runtime domains."""
 
+MILLISECONDS_PER_SECOND = 1_000
+NANOSECONDS_PER_MILLISECOND = 1_000_000
 NONNEGATIVE_TIMESTAMP_FLOOR = 0
 
 

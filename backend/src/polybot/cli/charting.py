@@ -9,16 +9,13 @@ from math import isfinite, nan
 import asciichartpy
 from rich.text import Text
 
-from polybot.cli.dashboard.chart_contracts import (
-    MAX_TERMINAL_CHART_POINTS,
-    MIN_TERMINAL_CHART_POINTS,
-)
-
 VALUE_CHART_MARGIN_RATIO = 0.15
 VALUE_FLAT_CHART_MARGIN_RATIO = 0.001
 MIN_VALUE_CHART_MARGIN = 0.01
 CHART_Y_AXIS_WIDTH = 10
 DIMMED_VALUE_COLOR = f"\033[2m{asciichartpy.lightgreen}"
+
+
 def render_chart(
     series: list[list[float]],
     colors: tuple[str, ...],
@@ -70,17 +67,6 @@ def resample_indices(source_points: int, display_points: int) -> list[int]:
     return _resample_indices(source_points, display_points)
 
 
-def _resample_indices(source_points: int, display_points: int) -> list[int]:
-    if source_points == 0:
-        return []
-    if display_points == 1:
-        return [source_points - 1]
-    return [
-        round(index * (source_points - 1) / (display_points - 1))
-        for index in range(display_points)
-    ]
-
-
 def split_stale_samples(
     values: Sequence[float],
     stale_samples: Sequence[bool],
@@ -113,6 +99,17 @@ def chart_time_range(
     return label
 
 
+def _resample_indices(source_points: int, display_points: int) -> list[int]:
+    if source_points == 0:
+        return []
+    if display_points == 1:
+        return [source_points - 1]
+    return [
+        round(index * (source_points - 1) / (display_points - 1))
+        for index in range(display_points)
+    ]
+
+
 def _has_plottable_samples(series: Sequence[Sequence[float]]) -> bool:
     return any(_contains_finite_sample(values) for values in series)
 
@@ -122,10 +119,7 @@ def _contains_finite_sample(values: Sequence[float]) -> bool:
 
 
 def _sanitized_series(series: Sequence[Sequence[float]]) -> list[list[float]]:
-    return [
-        [_finite_chart_value(value) for value in values]
-        for values in series
-    ]
+    return [[_finite_chart_value(value) for value in values] for values in series]
 
 
 def _finite_chart_value(value: float) -> float:

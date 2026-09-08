@@ -6,42 +6,22 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
-from importlib.metadata import version
 from http import HTTPStatus
+from importlib.metadata import version
 from pathlib import Path
-from urllib.parse import urlencode
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from urllib.parse import urlencode
 
 import pytest
-from polymarket import PolymarketError, RequestRejectedError
-from polymarket.models.gamma.event import Event
-from polymarket.models.gamma.search import SearchResults
-from polymarket.pagination import Page
-from polymarket.models.clob.market_events import (
-    MarketBookEvent,
-    MarketBookPayload,
-    MarketPriceChangeEvent,
-    MarketPriceChangePayload,
-    PriceChange,
-)
-from polymarket.models.clob.order_book import OrderBook, OrderBookLevel
-from polymarket.models.gamma.market import (
-    FeeSchedule,
-    Market as SdkMarket,
-    MarketOutcome,
-    MarketOutcomes,
-    MarketState,
-    MarketTrading,
-)
-
 from polybot.framework.events.books import (
     BookGapEvent,
     BookGapReason,
     BookSnapshot,
 )
+from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.clob import ClobClient
 from polybot.polymarket.discovery import ACTIVE_SEARCH_EVENTS, MarketDiscovery
-from polybot.polymarket.normalization.discovery import normalize_suggestion
 from polybot.polymarket.errors import (
     MarketDataError,
     MarketDataIssue,
@@ -55,14 +35,40 @@ from polybot.polymarket.gamma import (
 )
 from polybot.polymarket.markets import (
     Market,
-    MarketOutcome as NormalizedMarketOutcome,
     index_markets_by_token,
 )
+from polybot.polymarket.markets import (
+    MarketOutcome as NormalizedMarketOutcome,
+)
+from polybot.polymarket.normalization.discovery import normalize_suggestion
+from polybot.polymarket.normalization.market import normalize_market
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
 from polybot.polymarket.public_data.recording import RecordingPublicData
 from polybot.polymarket.public_data.runtime import RuntimePublicData
+from polybot.polymarket.resolution_status import FINAL_RESOLUTION_STATUSES
 from polybot.polymarket.ws_market import MarketStream
-from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
+from polymarket import PolymarketError, RequestRejectedError
+from polymarket.models.clob.market_events import (
+    MarketBookEvent,
+    MarketBookPayload,
+    MarketPriceChangeEvent,
+    MarketPriceChangePayload,
+    PriceChange,
+)
+from polymarket.models.clob.order_book import OrderBook, OrderBookLevel
+from polymarket.models.gamma.event import Event
+from polymarket.models.gamma.market import (
+    FeeSchedule,
+    MarketOutcome,
+    MarketOutcomes,
+    MarketState,
+    MarketTrading,
+)
+from polymarket.models.gamma.market import (
+    Market as SdkMarket,
+)
+from polymarket.models.gamma.search import SearchResults
+from polymarket.pagination import Page
 
 
 def _search_client(markets: tuple[SdkMarket, ...], *, has_more: bool = False):
@@ -82,27 +88,46 @@ def test_search_flattens_deduplicates_limits_and_preserves_relevance() -> None:
     assert result.markets[0].event_title == "Event title"
     assert result.has_more is True
     client.search.assert_called_once_with(
-        q="typed topic", events_status=ACTIVE_SEARCH_EVENTS, search_profiles=False,
-        search_tags=False, keep_closed_markets=0, page_size=1,
+        q="typed topic",
+        events_status=ACTIVE_SEARCH_EVENTS,
+        search_profiles=False,
+        search_tags=False,
+        keep_closed_markets=0,
+        page_size=1,
     )
     client.search.return_value.first_page.assert_awaited_once()
 
 
 def test_pinned_sdk_parses_documented_search_payload_for_the_selector() -> None:
-    page = SearchResults.parse_page_response({
-        "events": [{
-            "id": "100", "title": "Election", "markets": [{
-                "id": "200", "slug": "election-winner", "question": "Who wins?",
-                "conditionId": "0x" + "ab" * 32,
-                "active": True, "closed": False, "archived": False,
-                "acceptingOrders": True, "enableOrderBook": True, "negRisk": False,
-                "feesEnabled": False,
-                "outcomes": '["Yes", "No"]', "clobTokenIds": '["101", "102"]',
-                "endDate": "2026-10-01T00:00:00Z",
-            }],
-        }],
-        "pagination": {"hasMore": True, "totalResults": 5},
-    })
+    page = SearchResults.parse_page_response(
+        {
+            "events": [
+                {
+                    "id": "100",
+                    "title": "Election",
+                    "markets": [
+                        {
+                            "id": "200",
+                            "slug": "election-winner",
+                            "question": "Who wins?",
+                            "conditionId": "0x" + "ab" * 32,
+                            "active": True,
+                            "closed": False,
+                            "archived": False,
+                            "acceptingOrders": True,
+                            "enableOrderBook": True,
+                            "negRisk": False,
+                            "feesEnabled": False,
+                            "outcomes": '["Yes", "No"]',
+                            "clobTokenIds": '["101", "102"]',
+                            "endDate": "2026-10-01T00:00:00Z",
+                        }
+                    ],
+                }
+            ],
+            "pagination": {"hasMore": True, "totalResults": 5},
+        }
+    )
     event = page.items.events[0]
     suggestion = normalize_suggestion(event.markets[0], event_title=event.title)
     assert suggestion.slug == "election-winner"
@@ -112,10 +137,17 @@ def test_pinned_sdk_parses_documented_search_payload_for_the_selector() -> None:
     assert page.has_more is True
 
 
-@pytest.mark.parametrize("state", [
-    {"active": False}, {"closed": True}, {"accepting_orders": False},
-    {"enable_order_book": False}, {"archived": True}, {"active": None},
-])
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"active": False},
+        {"closed": True},
+        {"accepting_orders": False},
+        {"enable_order_book": False},
+        {"archived": True},
+        {"active": None},
+    ],
+)
 def test_search_excludes_unavailable_markets(state) -> None:
     source = _sdk_market("closed")
     source = source.model_copy(update={"state": source.state.model_copy(update=state)})
@@ -127,15 +159,21 @@ def test_search_excludes_unavailable_markets(state) -> None:
 def test_search_skips_malformed_hits_but_rejects_conflicting_metadata() -> None:
     source = _sdk_market("alpha")
     malformed = _sdk_market("bad", no_token_id=None)
-    result = asyncio.run(MarketDiscovery(_search_client((malformed, source))).search("topic", 10))
+    result = asyncio.run(
+        MarketDiscovery(_search_client((malformed, source))).search("topic", 10)
+    )
     assert len(result.markets) == 1
     conflict = source.model_copy(update={"condition_id": "different"})
     with pytest.raises(MarketDataError) as failure:
-        asyncio.run(MarketDiscovery(_search_client((source, conflict))).search("topic", 10))
+        asyncio.run(
+            MarketDiscovery(_search_client((source, conflict))).search("topic", 10)
+        )
     assert failure.value.issue == MarketDataIssue.AMBIGUOUS_MARKET_METADATA
 
 
-@pytest.mark.parametrize("failure", [PolymarketError("upstream failure"), TimeoutError()])
+@pytest.mark.parametrize(
+    "failure", [PolymarketError("upstream failure"), TimeoutError()]
+)
 def test_search_wraps_upstream_errors(failure) -> None:
     client = _search_client(())
     client.search.return_value.first_page.side_effect = failure
@@ -144,15 +182,21 @@ def test_search_wraps_upstream_errors(failure) -> None:
 
 
 def test_search_preserves_upstream_pagination_hint() -> None:
-    result = asyncio.run(MarketDiscovery(_search_client((), has_more=True)).search("topic", 10))
+    result = asyncio.run(
+        MarketDiscovery(_search_client((), has_more=True)).search("topic", 10)
+    )
     assert result.markets == ()
     assert result.has_more is True
 
 
 def test_discovery_lookup_preserves_closed_and_omits_missing_markets() -> None:
     source = _sdk_market("closed")
-    source = source.model_copy(update={"state": source.state.model_copy(update={"closed": True})})
-    client = FakePublicClient(markets={"closed": [source]}, closed_markets=frozenset({"closed"}))
+    source = source.model_copy(
+        update={"state": source.state.model_copy(update={"closed": True})}
+    )
+    client = FakePublicClient(
+        markets={"closed": [source]}, closed_markets=frozenset({"closed"})
+    )
     discovery = MarketDiscovery(client)
     client.close = AsyncMock()
     result = asyncio.run(discovery.resolve(("closed", "missing")))
@@ -163,15 +207,15 @@ def test_discovery_lookup_preserves_closed_and_omits_missing_markets() -> None:
 
 
 def test_selected_polymarket_sdk_version_matches_project_pin() -> None:
-    project = tomllib.loads(
-        (Path(__file__).parents[2] / "pyproject.toml").read_text()
-    )
+    project = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
     dependency = next(
         dependency
         for dependency in project["project"]["dependencies"]
         if dependency.startswith("polymarket-client==")
     )
-    assert version("polymarket-client") == dependency.removeprefix("polymarket-client==")
+    assert version("polymarket-client") == dependency.removeprefix(
+        "polymarket-client=="
+    )
 
 
 def test_public_data_bundles_share_and_own_their_sdk_client(monkeypatch) -> None:
@@ -762,7 +806,13 @@ def test_gamma_resolves_multiple_slugs_and_retries_future_market() -> None:
             retry_delay_s=0.25,
             sleep=no_wait,
         )
-        return resolved, future, sleeps, fake.requested_slug_batches, fake.requested_slugs
+        return (
+            resolved,
+            future,
+            sleeps,
+            fake.requested_slug_batches,
+            fake.requested_slugs,
+        )
 
     resolved, future, sleeps, requested_batches, requested_slugs = asyncio.run(run())
 
@@ -1240,10 +1290,7 @@ def test_market_stream_gap_invalidates_every_token_in_the_condition() -> None:
             markets=(_market("alpha"),),
             now_ms=lambda: 2_000,
         )
-        return [
-            event
-            async for event in stream.books({"yes-alpha", "no-token"})
-        ]
+        return [event async for event in stream.books({"yes-alpha", "no-token"})]
 
     stream_events = asyncio.run(run())
 
@@ -1254,9 +1301,7 @@ def test_market_stream_gap_invalidates_every_token_in_the_condition() -> None:
         "no-token",
     ]
     assert [
-        event.reason
-        for event in stream_events
-        if isinstance(event, BookGapEvent)
+        event.reason for event in stream_events if isinstance(event, BookGapEvent)
     ] == [
         BookGapReason.INVALID_BOOK_SIDE,
     ]
@@ -1515,10 +1560,7 @@ def test_market_stream_requires_a_baseline_after_an_unrouteable_book_frame() -> 
     assert len(books) == 3
     assert tuple(level.price for level in books[1].bids) == (Decimal("0.35"),)
     assert stream.last_book_gap is not None
-    assert (
-        stream.last_book_gap.reason
-        is BookGapReason.INVALID_MARKET_PARAMETERS
-    )
+    assert stream.last_book_gap.reason is BookGapReason.INVALID_MARKET_PARAMETERS
     assert stream.last_book_gap.condition_id is None
 
 
@@ -1603,3 +1645,14 @@ def _book_snapshots(events: list[object]) -> list[BookSnapshot]:
 
 def _level(price: str, size: str) -> OrderBookLevel:
     return OrderBookLevel(price=price, size=size)
+
+
+@pytest.mark.parametrize("status", sorted(FINAL_RESOLUTION_STATUSES))
+def test_terminal_metadata_without_unambiguous_payouts_is_rejected(status):
+    market = _sdk_market("terminal")
+    market = market.model_copy(
+        update={"resolution": SimpleNamespace(uma_resolution_status=status)}
+    )
+    with pytest.raises(MarketDataError) as rejected:
+        normalize_market(market)
+    assert rejected.value.issue is MarketDataIssue.AMBIGUOUS_MARKET_METADATA

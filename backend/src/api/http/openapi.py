@@ -5,7 +5,6 @@ from pathlib import Path
 
 from api.http.app import app
 
-
 OPENAPI_OUTPUT_PATH = (
     Path(__file__).parents[3] / "contracts" / "openapi" / "control-plane.json"
 )

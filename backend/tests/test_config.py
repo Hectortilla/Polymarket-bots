@@ -2,7 +2,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from polybot.framework.config.constants import (
     BOT_API_KEY_ENV,
     BOT_API_PASSPHRASE_ENV,
@@ -10,7 +9,6 @@ from polybot.framework.config.constants import (
     BOT_EVENT_MAX_AGE_MS_ENV,
     BOT_FUNDER_ADDRESS_ENV,
     BOT_LIVE_ENABLED_ENV,
-    BOT_STREAM_RULES_ENV,
     BOT_MAX_ORDER_SIZE_ENV,
     BOT_MAX_SLIPPAGE_PCT_ENV,
     BOT_MODE_ENV,
@@ -18,6 +16,8 @@ from polybot.framework.config.constants import (
     BOT_PAPER_LATENCY_MS_ENV,
     BOT_PAPER_PORTFOLIO_USDC_ENV,
     BOT_PRIVATE_KEY_ENV,
+    BOT_STREAM_RULES_ENV,
+    DEFAULT_BOT_MODE,
     DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
     DEFAULT_MAX_SLIPPAGE_PCT,
@@ -25,14 +25,15 @@ from polybot.framework.config.constants import (
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
-from polybot.framework.config.constants import DEFAULT_BOT_MODE
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 
 FUNDER_ADDRESS = "0x00000000000000000000000000000000000000f0"
 
 
-def test_config_reads_env_and_per_bot_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_reads_env_and_per_bot_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
     monkeypatch.setenv(
         BOT_STREAM_RULES_ENV,

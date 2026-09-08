@@ -1,7 +1,6 @@
 """Environment loading for :mod:`polybot.framework.config`."""
 
 import os
-
 from decimal import Decimal
 from typing import Any
 
@@ -20,6 +19,7 @@ from .constants import (
     BOT_PAPER_LATENCY_MS_ENV,
     BOT_PAPER_PORTFOLIO_USDC_ENV,
     BOT_PRIVATE_KEY_ENV,
+    DEFAULT_BOT_MODE,
     DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
     DEFAULT_MAX_ORDER_SIZE,
@@ -27,7 +27,6 @@ from .constants import (
     DEFAULT_PAPER_LATENCY_JITTER_MS,
     DEFAULT_PAPER_LATENCY_MS,
     DEFAULT_PAPER_PORTFOLIO_USDC,
-    DEFAULT_BOT_MODE,
 )
 from .stream_rules import env_stream_rules
 

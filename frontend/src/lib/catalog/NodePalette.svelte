@@ -21,14 +21,12 @@
     GraphComparisonDescriptor,
     GraphConstantDescriptor,
     GraphNodeCatalog,
-    GraphTriggerDescriptor
+    GraphTriggerDescriptor,
   } from '$lib/api/generated';
-  import { SIDE } from '$lib/charts/contracts';
-  import {
-    GRAPH_NODE_TYPE,
-    triggerAlreadyExists,
-    type CanvasNode
-  } from './nodeGraph';
+  import { SIDE } from '$lib/sides';
+  import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
+  import { triggerAlreadyExists } from '$lib/catalog/nodeGraph/catalog';
+  import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
   import { GRAPH_SCALAR_TYPE } from './graphContracts';
 
   let {
@@ -41,7 +39,7 @@
     onaddaction,
     onaddoperation,
     onaddparameter,
-    parameters = []
+    parameters = [],
   }: {
     catalog: GraphNodeCatalog;
     parameters?: GraphParameter[];
@@ -56,14 +54,7 @@
   } = $props();
 
   type NodeCategory = (typeof GRAPH_NODE_TYPE)[keyof typeof GRAPH_NODE_TYPE];
-  type PaletteIcon =
-    | 'trigger'
-    | 'boolean'
-    | 'number'
-    | 'string'
-    | 'comparison'
-    | 'buy'
-    | 'sell';
+  type PaletteIcon = 'trigger' | 'boolean' | 'number' | 'string' | 'comparison' | 'buy' | 'sell';
 
   type PaletteItem = {
     id: string;
@@ -79,28 +70,36 @@
   };
 
   const categories = [
-    { id: GRAPH_NODE_TYPE.operation, label: "Operations", description: "Calculate, control signals, query your portfolio, and inspect results." },
-    { id: GRAPH_NODE_TYPE.parameter, label: "Parameters", description: "Reuse named strategy settings." },
+    {
+      id: GRAPH_NODE_TYPE.operation,
+      label: 'Operations',
+      description: 'Calculate, control signals, query your portfolio, and inspect results.',
+    },
+    {
+      id: GRAPH_NODE_TYPE.parameter,
+      label: 'Parameters',
+      description: 'Reuse named strategy settings.',
+    },
     {
       id: GRAPH_NODE_TYPE.trigger,
       label: 'Triggers',
-      description: 'Start a branch from a runtime event.'
+      description: 'Start a branch from a runtime event.',
     },
     {
       id: GRAPH_NODE_TYPE.constant,
       label: 'Values',
-      description: 'Supply a typed value to another node.'
+      description: 'Supply a typed value to another node.',
     },
     {
       id: GRAPH_NODE_TYPE.comparison,
       label: 'Comparisons',
-      description: 'Compare compatible values.'
+      description: 'Compare compatible values.',
     },
     {
       id: GRAPH_NODE_TYPE.brokerAction,
       label: 'Actions',
-      description: 'Submit a fixed-side paper order.'
-    }
+      description: 'Submit a fixed-side paper order.',
+    },
   ] as const satisfies ReadonlyArray<{
     id: NodeCategory;
     label: string;
@@ -116,9 +115,7 @@
   let opensAbove = $state(false);
   let panelMaxHeight = $state(544);
 
-  function comparisonPaletteItems(
-    comparisons: GraphComparisonDescriptor[]
-  ): PaletteItem[] {
+  function comparisonPaletteItems(comparisons: GraphComparisonDescriptor[]): PaletteItem[] {
     const defaultComparison = comparisons[0];
     if (!defaultComparison) return [];
     const operatorCount = comparisons.length;
@@ -134,14 +131,11 @@
         searchTerms: [
           'comparison',
           'logic',
-          ...comparisons.flatMap((comparison) => [
-            comparison.display_name,
-            comparison.operator
-          ])
+          ...comparisons.flatMap((comparison) => [comparison.display_name, comparison.operator]),
         ].join(' '),
         disabled: false,
-        select: () => onaddcomparison(defaultComparison)
-      }
+        select: () => onaddcomparison(defaultComparison),
+      },
     ];
   }
 
@@ -166,8 +160,29 @@
   }
 
   const paletteItems = $derived<PaletteItem[]>([
-    ...(catalog.operations ?? []).map(operation => ({ id: operation.operation, category: GRAPH_NODE_TYPE.operation, subgroup: operation.category, icon: 'comparison' as const, name: operation.display_name, description: operation.category, meta: operation.category, searchTerms: `${operation.display_name} ${operation.operation} ${operation.category}`, disabled: additionDisabled, select: () => onaddoperation(operation) })),
-    ...parameters.map(parameter => ({ id: parameter.id, category: GRAPH_NODE_TYPE.parameter, icon: 'number' as const, name: parameter.name, description: 'Named strategy parameter', meta: parameter.data.scalar_type, searchTerms: parameter.name, disabled: additionDisabled, select: () => onaddparameter(parameter) })),
+    ...(catalog.operations ?? []).map((operation) => ({
+      id: operation.operation,
+      category: GRAPH_NODE_TYPE.operation,
+      subgroup: operation.category,
+      icon: 'comparison' as const,
+      name: operation.display_name,
+      description: operation.category,
+      meta: operation.category,
+      searchTerms: `${operation.display_name} ${operation.operation} ${operation.category}`,
+      disabled: additionDisabled,
+      select: () => onaddoperation(operation),
+    })),
+    ...parameters.map((parameter) => ({
+      id: parameter.id,
+      category: GRAPH_NODE_TYPE.parameter,
+      icon: 'number' as const,
+      name: parameter.name,
+      description: 'Named strategy parameter',
+      meta: parameter.data.scalar_type,
+      searchTerms: parameter.name,
+      disabled: additionDisabled,
+      select: () => onaddparameter(parameter),
+    })),
     ...catalog.triggers.map((trigger) => ({
       id: `trigger-${trigger.hook_name}`,
       category: GRAPH_NODE_TYPE.trigger,
@@ -179,7 +194,7 @@
       meta: 'event',
       searchTerms: `${trigger.hook_name} ${trigger.payload?.type_name ?? ''}`,
       disabled: additionDisabled || triggerAlreadyExists(nodes, trigger),
-      select: () => onaddtrigger(trigger)
+      select: () => onaddtrigger(trigger),
     })),
     ...catalog.constants.map((constant) => ({
       id: `constant-${constant.scalar_type}`,
@@ -190,11 +205,11 @@
       meta: constant.scalar_type,
       searchTerms: `${constant.display_name} ${constant.scalar_type}`,
       disabled: additionDisabled,
-      select: () => onaddconstant(constant)
+      select: () => onaddconstant(constant),
     })),
     ...comparisonPaletteItems(catalog.comparisons).map((item) => ({
       ...item,
-      disabled: additionDisabled || item.disabled
+      disabled: additionDisabled || item.disabled,
     })),
     ...catalog.broker_actions.map((action) => ({
       id: `action-${action.action}`,
@@ -205,8 +220,8 @@
       meta: action.side,
       searchTerms: `${action.display_name} ${action.action} ${action.side} ${action.method_name}`,
       disabled: additionDisabled,
-      select: () => onaddaction(action)
-    }))
+      select: () => onaddaction(action),
+    })),
   ]);
 
   const normalizedQuery = $derived(query.trim().toLocaleLowerCase());
@@ -217,21 +232,21 @@
         items: paletteItems.filter(
           (item) =>
             item.category === category.id &&
-            item.searchTerms.toLocaleLowerCase().includes(normalizedQuery)
-        )
+            item.searchTerms.toLocaleLowerCase().includes(normalizedQuery),
+        ),
       }))
-      .filter((category) => category.items.length > 0)
+      .filter((category) => category.items.length > 0),
   );
   function operationGroups(items: PaletteItem[]) {
-    return [...new Set(items.map(item => item.subgroup!))].map(label => ({
+    return [...new Set(items.map((item) => item.subgroup!))].map((label) => ({
       id: `${GRAPH_NODE_TYPE.operation}-${encodeURIComponent(label)}`,
       label,
-      items: items.filter(item => item.subgroup === label)
+      items: items.filter((item) => item.subgroup === label),
     }));
   }
 
   function groupIsExpanded(id: string): boolean {
-    return normalizedQuery ? searchExpansion[id] ?? true : expandedGroups[id] ?? false;
+    return normalizedQuery ? (searchExpansion[id] ?? true) : (expandedGroups[id] ?? false);
   }
 
   function toggleGroup(id: string): void {
@@ -246,11 +261,15 @@
   });
 
   const visibleItemCount = $derived(
-    visibleGroups.reduce((count, group) => count + group.items.length, 0)
+    visibleGroups.reduce((count, group) => count + group.items.length, 0),
   );
 
   $effect(() => {
-    if (open) void tick().then(() => { positionPanel(); searchInput?.focus(); });
+    if (open)
+      void tick().then(() => {
+        positionPanel();
+        searchInput?.focus();
+      });
   });
 
   function positionPanel(): void {
@@ -285,45 +304,47 @@
 </script>
 
 {#snippet itemGrid(items: PaletteItem[])}
-            <div class="palette-grid">
-              {#each items as item (item.id)}
-                <button type="button"
-                  class="palette-item"
-                  aria-label={`Add ${item.name}`}
-                  disabled={item.disabled}
-                  onclick={() => addItem(item)}
-                >
-                  <span class="palette-icon" aria-hidden="true">
-                    {#if item.icon === 'trigger'}
-                      <LightningIcon aria-hidden="true" size={18} />
-                    {:else if item.icon === 'boolean'}
-                      <ToggleLeftIcon aria-hidden="true" size={18} />
-                    {:else if item.icon === 'number'}
-                      <HashStraightIcon aria-hidden="true" size={18} />
-                    {:else if item.icon === 'string'}
-                      <TextTIcon aria-hidden="true" size={18} />
-                    {:else if item.icon === 'comparison'}
-                      <ArrowsLeftRightIcon aria-hidden="true" size={18} />
-                    {:else if item.icon === 'buy'}
-                      <ShoppingCartSimpleIcon aria-hidden="true" size={18} />
-                    {:else}
-                      <TagIcon aria-hidden="true" size={18} />
-                    {/if}
-                  </span>
-                  <span class="item-heading">
-                    <strong>{item.name}</strong>
-                    <small>{item.disabled ? 'On canvas' : item.meta}</small>
-                  </span>
-                  <span>{item.description}</span>
-                </button>
-              {/each}
-            </div>
+  <div class="palette-grid">
+    {#each items as item (item.id)}
+      <button
+        type="button"
+        class="palette-item"
+        aria-label={`Add ${item.name}`}
+        disabled={item.disabled}
+        onclick={() => addItem(item)}
+      >
+        <span class="palette-icon" aria-hidden="true">
+          {#if item.icon === 'trigger'}
+            <LightningIcon aria-hidden="true" size={18} />
+          {:else if item.icon === 'boolean'}
+            <ToggleLeftIcon aria-hidden="true" size={18} />
+          {:else if item.icon === 'number'}
+            <HashStraightIcon aria-hidden="true" size={18} />
+          {:else if item.icon === 'string'}
+            <TextTIcon aria-hidden="true" size={18} />
+          {:else if item.icon === 'comparison'}
+            <ArrowsLeftRightIcon aria-hidden="true" size={18} />
+          {:else if item.icon === 'buy'}
+            <ShoppingCartSimpleIcon aria-hidden="true" size={18} />
+          {:else}
+            <TagIcon aria-hidden="true" size={18} />
+          {/if}
+        </span>
+        <span class="item-heading">
+          <strong>{item.name}</strong>
+          <small>{item.disabled ? 'On canvas' : item.meta}</small>
+        </span>
+        <span>{item.description}</span>
+      </button>
+    {/each}
+  </div>
 {/snippet}
 
 <svelte:window onkeydown={handleWindowKeydown} onresize={positionPanel} onscroll={positionPanel} />
 
 <div class="node-palette">
-  <button type="button"
+  <button
+    type="button"
     bind:this={triggerButton}
     class="palette-trigger"
     aria-label={ADD_NODE_LABEL}
@@ -360,20 +381,44 @@
       <div class="palette-results">
         {#each visibleGroups as group (group.id)}
           <section class="palette-group">
-            <button type="button" class="group-toggle" aria-label={group.label} aria-expanded={groupIsExpanded(group.id)} aria-controls={`palette-items-${group.id}`} onclick={() => toggleGroup(group.id)}>
-              <span class="group-chevron" class:expanded={groupIsExpanded(group.id)}><CaretRightIcon size={14} aria-hidden="true" /></span>
-              <span class="group-heading"><strong>{group.label}</strong><small>{group.description}</small></span>
+            <button
+              type="button"
+              class="group-toggle"
+              aria-label={group.label}
+              aria-expanded={groupIsExpanded(group.id)}
+              aria-controls={`palette-items-${group.id}`}
+              onclick={() => toggleGroup(group.id)}
+            >
+              <span class="group-chevron" class:expanded={groupIsExpanded(group.id)}
+                ><CaretRightIcon size={14} aria-hidden="true" /></span
+              >
+              <span class="group-heading"
+                ><strong>{group.label}</strong><small>{group.description}</small></span
+              >
               <span class="group-count">{group.items.length}</span>
             </button>
             <div id={`palette-items-${group.id}`} hidden={!groupIsExpanded(group.id)}>
               {#if group.id === GRAPH_NODE_TYPE.operation}
                 {#each operationGroups(group.items) as subgroup (subgroup.id)}
                   <section class="palette-subgroup">
-                    <button type="button" class="group-toggle subgroup-toggle" aria-label={subgroup.label} aria-expanded={groupIsExpanded(subgroup.id)} aria-controls={`palette-items-${subgroup.id}`} onclick={() => toggleGroup(subgroup.id)}>
-                      <span class="group-chevron" class:expanded={groupIsExpanded(subgroup.id)}><CaretRightIcon size={13} aria-hidden="true" /></span>
-                      <strong>{subgroup.label}</strong><span class="group-count">{subgroup.items.length}</span>
+                    <button
+                      type="button"
+                      class="group-toggle subgroup-toggle"
+                      aria-label={subgroup.label}
+                      aria-expanded={groupIsExpanded(subgroup.id)}
+                      aria-controls={`palette-items-${subgroup.id}`}
+                      onclick={() => toggleGroup(subgroup.id)}
+                    >
+                      <span class="group-chevron" class:expanded={groupIsExpanded(subgroup.id)}
+                        ><CaretRightIcon size={13} aria-hidden="true" /></span
+                      >
+                      <strong>{subgroup.label}</strong><span class="group-count"
+                        >{subgroup.items.length}</span
+                      >
                     </button>
-                    <div id={`palette-items-${subgroup.id}`} hidden={!groupIsExpanded(subgroup.id)}>{@render itemGrid(subgroup.items)}</div>
+                    <div id={`palette-items-${subgroup.id}`} hidden={!groupIsExpanded(subgroup.id)}>
+                      {@render itemGrid(subgroup.items)}
+                    </div>
                   </section>
                 {/each}
               {:else}
@@ -407,7 +452,10 @@
     font-size: 0.8rem;
   }
 
-  .palette-panel.above { top: auto; bottom: calc(100% + .65rem); }
+  .palette-panel.above {
+    top: auto;
+    bottom: calc(100% + 0.65rem);
+  }
 
   .palette-panel {
     display: flex;
@@ -467,28 +515,75 @@
     scrollbar-width: thin;
   }
 
-  .palette-group { margin: 0; padding: .35rem .75rem; }
-  .palette-group + .palette-group { border-top: 1px solid var(--line); }
+  .palette-group {
+    margin: 0;
+    padding: 0.35rem 0.75rem;
+  }
+  .palette-group + .palette-group {
+    border-top: 1px solid var(--line);
+  }
   .group-toggle {
-    width: 100%; padding: .8rem .35rem; display: flex; gap: .65rem;
-    align-items: center; justify-content: flex-start; border: 0;
-    background: transparent; color: var(--text-soft); text-align: left;
+    width: 100%;
+    padding: 0.8rem 0.35rem;
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    justify-content: flex-start;
+    border: 0;
+    background: transparent;
+    color: var(--text-soft);
+    text-align: left;
     white-space: normal;
   }
-  .group-toggle:hover { background: var(--surface-input); color: var(--text); }
-  .group-heading { display: grid; gap: .3rem; }
-  .group-toggle strong { font-size: .82rem; font-weight: 640; }
-  .group-heading small { color: var(--text-muted); font-size: .7rem; font-weight: 400; line-height: 1.5; }
-  .group-count { margin-left: auto; color: var(--text-muted); font-size: .7rem; }
-  .group-chevron { display: inline-flex; flex: none; transition: transform var(--transition); }
-  .group-chevron.expanded { transform: rotate(90deg); }
-  .palette-subgroup { margin: 0 0 .2rem .6rem; border-left: 1px solid var(--line); padding-left: .65rem; }
-  .subgroup-toggle { padding: .65rem .35rem; min-height: 2.5rem; }
-  .subgroup-toggle strong { font-size: .76rem; }
-  [hidden] { display: none !important; }
+  .group-toggle:hover {
+    background: var(--surface-input);
+    color: var(--text);
+  }
+  .group-heading {
+    display: grid;
+    gap: 0.3rem;
+  }
+  .group-toggle strong {
+    font-size: 0.82rem;
+    font-weight: 640;
+  }
+  .group-heading small {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .group-count {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+  }
+  .group-chevron {
+    display: inline-flex;
+    flex: none;
+    transition: transform var(--transition);
+  }
+  .group-chevron.expanded {
+    transform: rotate(90deg);
+  }
+  .palette-subgroup {
+    margin: 0 0 0.2rem 0.6rem;
+    border-left: 1px solid var(--line);
+    padding-left: 0.65rem;
+  }
+  .subgroup-toggle {
+    padding: 0.65rem 0.35rem;
+    min-height: 2.5rem;
+  }
+  .subgroup-toggle strong {
+    font-size: 0.76rem;
+  }
+  [hidden] {
+    display: none !important;
+  }
 
   .palette-grid {
-    padding: .25rem 0 .85rem;
+    padding: 0.25rem 0 0.85rem;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
@@ -596,27 +691,33 @@
   }
 
   @media (max-width: 560px) {
-    .palette-panel.above { top: auto; bottom: calc(100% + .65rem); }
+    .palette-panel.above {
+      top: auto;
+      bottom: calc(100% + 0.65rem);
+    }
 
-  .palette-panel {
-    display: flex;
-    flex-direction: column;
+    .palette-panel {
+      display: flex;
+      flex-direction: column;
       right: -0.25rem;
       width: min(31rem, calc(100vw - 2rem));
     }
 
     .palette-grid {
-    padding: .25rem 0 .85rem;
+      padding: 0.25rem 0 0.85rem;
       grid-template-columns: 1fr;
     }
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    .palette-panel.above { top: auto; bottom: calc(100% + .65rem); }
+    .palette-panel.above {
+      top: auto;
+      bottom: calc(100% + 0.65rem);
+    }
 
-  .palette-panel {
-    display: flex;
-    flex-direction: column;
+    .palette-panel {
+      display: flex;
+      flex-direction: column;
       background: var(--surface-raised);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;

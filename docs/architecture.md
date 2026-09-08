@@ -962,3 +962,58 @@ reader exposes existing paper accounting to both Python and graph bots. The grap
 evaluator owns bounded per-run signal state and per-event value status, supports
 diagnostic sinks and action-result outputs, and also runs isolated decision previews.
 The [implementation checklist](graph-mvp-plan.md) records both delivery phases.
+
+## Maintainability and correctness follow-up — September 2026
+
+Archive ownership is explicit. `RecordingArchive` remains the public writer and
+owns the connection, lease, sequence, admitted metadata, baseline generations,
+and write serialization. Its `archive/writer` package separates session setup,
+events, gaps, anomalies, and checkpoints. `ArchiveSelection` is the normalized
+selection contract; query preparation shares one snapshot policy while each
+reader operation retains responsibility for closing its connection. Durable
+column names live in `archive/columns.py` and are consumed by DDL, row decoders,
+and trim SQL without changing schema version or stored values.
+
+Replay selection uses `ReplaySelectionResolver`, `ReplayBootstrap`, and
+`SelectionCoverage` with an explicit source reader. Recording trim planning,
+coverage, candidates, recovery, and bootstrap similarly retain their reader.
+`TrimExporter` owns destination transaction setup, rollback, commit, and cleanup;
+row copying and provenance have focused collaborators. Trim validation separates
+session/range checks, timeline traversal, secondary indexes, and projected state.
+Archive priming is separate from async replay-start orchestration; replayability
+of a market is a query on `ArchiveMarketState`.
+
+SDK subscription lifetime remains inside `polymarket`. Market routing and gap
+diagnostics have separate owners. Recording captures share a source reader and
+depth state with split-revision recovery, so fragment coalescing does not open a
+second subscription or introduce another transport. Wallet normalization separates
+external field interpretation and canonical source identity from its public
+normalization entrypoints. Recording event normalization has book, market-event,
+and identity sections behind one dispatch boundary.
+
+Paper execution reads final metadata after the final book lookup, then rechecks
+book freshness at the current clock, locally known settlement, and book continuity
+without yielding before the fill calculation and portfolio mutation. Failed capture
+acquisition and unexpected capture termination before initial baselines record
+coverage gaps, so a clean timed stop cannot claim complete coverage after those
+failures. Duplicate-source wallet receipts preserve the original timeline object
+and outcome; duplicate dispatches create no durable timeline event. A fully closed
+followed-wallet position retains its realized P&L without requiring an executable
+mark or an entry basis; subsequent resolution archives that P&L without a
+zero-sized payout, and repeated resolution remains a no-op. Non-executing accepted
+and canceled fill events have zero filled size, no execution price, and zero fee.
+Fee calculations use an explicit Decimal context and rounding independent of the
+caller's precision and traps.
+
+Target contracts own conversions such as `WalletChartPoint.from_trade`,
+`ResolvedMarketPlan.from_stream_plan`, and event payload factories. Bot
+configuration owns its static market-slug query, and `BotRunner` owns waiting for
+a changed stream plan. Performance summary input owns validated serialization;
+recording inspection owns its readiness notes. These changes preserve dependency
+direction: the framework does not import application schemas or persistence.
+
+Graph arithmetic depends on small reason/status contracts without importing
+execution payload models. The response reason union joins graph and execution
+reasons at the API boundary. Integral count validation is a dependency-free
+primitive; replay and performance selections share recording coverage-selection
+normalization while retaining their own optional-policy requirements.

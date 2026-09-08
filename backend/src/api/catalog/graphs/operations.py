@@ -1,19 +1,24 @@
 """Code-owned operations and their discoverable graph ports."""
 
 from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
+
 from api.catalog.graphs.numbers import MAX_ROUND_DECIMAL_PLACES
 from api.catalog.graphs.ports import (
     GraphInputDescriptor,
     GraphOutputDescriptor,
 )
 from api.catalog.graphs.values import (
-    GraphPort,
-    GraphOperation,
-    GraphScalarType,
-    GraphNodeType,
     GRAPH_CONTEXT_PORT_TYPE,
+    GraphNodeType,
+    GraphOperation,
+    GraphPort,
+    GraphScalarType,
 )
+
+NONNEGATIVE_INPUT_MINIMUM = "0"
+
 
 DEFAULT_BOOLEAN_INPUT_IDS = ("input_1", "input_2")
 MIN_BOOLEAN_INPUTS = len(DEFAULT_BOOLEAN_INPUT_IDS)
@@ -33,39 +38,6 @@ class GraphOperationDescriptor(BaseModel):
     selectable_scalar_type: bool = False
     minimum_inputs: int | None = None
     maximum_inputs: int | None = None
-
-
-def input_port(
-    name: str,
-    *types: GraphScalarType | Literal[GraphPort.CONTEXT],
-    required: bool = True,
-    whole_number: bool = False,
-    minimum: str | None = None,
-    maximum: str | None = None,
-    description: str | None = None,
-) -> GraphInputDescriptor:
-    return GraphInputDescriptor(
-        handle_id=name,
-        display_name=name.replace("_", " ").title(),
-        scalar_types=types,
-        nullable=True,
-        required=required,
-        whole_number=whole_number,
-        minimum=minimum,
-        maximum=maximum,
-        description=description,
-    )
-
-
-def output_port(
-    name: str, kind: GraphScalarType | Literal[GraphPort.CONTEXT]
-) -> GraphOutputDescriptor:
-    return GraphOutputDescriptor(
-        handle_id=name,
-        display_name=name.replace("_", " ").title(),
-        scalar_type=kind,
-        nullable=True,
-    )
 
 
 def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
@@ -112,7 +84,10 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
         add(
             op,
             "Logic",
-            tuple(input_port(name, boolean) for name in DEFAULT_BOOLEAN_INPUT_IDS),
+            tuple(
+                input_port(input_handle_id, boolean)
+                for input_handle_id in DEFAULT_BOOLEAN_INPUT_IDS
+            ),
             result,
             expandable=True,
             minimum_inputs=MIN_BOOLEAN_INPUTS,
@@ -129,8 +104,12 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
         GraphOperation.BETWEEN,
         "Logic",
         tuple(
-            input_port(name, number)
-            for name in (GraphPort.VALUE, GraphPort.MINIMUM, GraphPort.MAXIMUM)
+            input_port(input_handle_id, number)
+            for input_handle_id in (
+                GraphPort.VALUE,
+                GraphPort.MINIMUM,
+                GraphPort.MAXIMUM,
+            )
         ),
         result,
     )
@@ -163,8 +142,12 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
         GraphOperation.CLAMP,
         "Math",
         tuple(
-            input_port(name, number)
-            for name in (GraphPort.VALUE, GraphPort.MINIMUM, GraphPort.MAXIMUM)
+            input_port(input_handle_id, number)
+            for input_handle_id in (
+                GraphPort.VALUE,
+                GraphPort.MINIMUM,
+                GraphPort.MAXIMUM,
+            )
         ),
         value,
     )
@@ -177,7 +160,7 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
                 GraphPort.PLACES,
                 number,
                 whole_number=True,
-                minimum="0",
+                minimum=NONNEGATIVE_INPUT_MINIMUM,
                 maximum=str(MAX_ROUND_DECIMAL_PLACES),
                 description="Nonnegative decimal places; ties round away from zero.",
             ),
@@ -200,7 +183,7 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
                     GraphPort.DURATION_MS,
                     number,
                     whole_number=True,
-                    minimum="0",
+                    minimum=NONNEGATIVE_INPUT_MINIMUM,
                     description="Nonnegative cooldown duration in milliseconds.",
                 ),
             )
@@ -232,6 +215,39 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
             terminal=True,
         )
     return tuple(descriptors)
+
+
+def input_port(
+    handle_id: str,
+    *scalar_types: GraphScalarType | Literal[GraphPort.CONTEXT],
+    required: bool = True,
+    whole_number: bool = False,
+    minimum: str | None = None,
+    maximum: str | None = None,
+    description: str | None = None,
+) -> GraphInputDescriptor:
+    return GraphInputDescriptor(
+        handle_id=handle_id,
+        display_name=handle_id.replace("_", " ").title(),
+        scalar_types=scalar_types,
+        nullable=True,
+        required=required,
+        whole_number=whole_number,
+        minimum=minimum,
+        maximum=maximum,
+        description=description,
+    )
+
+
+def output_port(
+    handle_id: str, scalar_type: GraphScalarType | Literal[GraphPort.CONTEXT]
+) -> GraphOutputDescriptor:
+    return GraphOutputDescriptor(
+        handle_id=handle_id,
+        display_name=handle_id.replace("_", " ").title(),
+        scalar_type=scalar_type,
+        nullable=True,
+    )
 
 
 OPERATION_DESCRIPTORS = {item.operation: item for item in operation_descriptors()}

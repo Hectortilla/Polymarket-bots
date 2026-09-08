@@ -6,13 +6,6 @@ from polybot.framework.events.prices import is_outcome_payout, is_outcome_price
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
 
-def _nested_value(source: object, *attributes: str) -> object:
-    current = source
-    for attribute in attributes:
-        current = getattr(current, attribute, None)
-    return current
-
-
 def require_text(
     value: object,
     field: str,
@@ -42,6 +35,13 @@ def validate_optional_text(
     if value is None:
         return None
     return require_text(value, field, issue=issue)
+
+
+def _nested_value(source: object, *attributes: str) -> object:
+    current = source
+    for attribute in attributes:
+        current = getattr(current, attribute, None)
+    return current
 
 
 def _optional_boolean(value: object, field: str) -> bool | None:

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChartSamplePayload } from '$lib/api/generated';
 
@@ -16,18 +16,19 @@ const echartsMocks = vi.hoisted(() => {
       const chart = {
         setOption: vi.fn(),
         resize: vi.fn(),
-        dispose: vi.fn()
+        dispose: vi.fn(),
       };
       instances.push(chart);
       return chart;
-    })
+    }),
   };
 });
 
 vi.mock('./echarts', () => ({ init: echartsMocks.init }));
 
+import { SIDE } from '$lib/sides';
 import DashboardCharts from './DashboardCharts.svelte';
-import { DASHBOARD_KEY, SIDE, VALUATION_STATUS } from './contracts';
+import { DASHBOARD_KEY, VALUATION_STATUS } from './contracts';
 import { DASHBOARD_COPY } from './copy';
 
 class FakeResizeObserver {
@@ -40,9 +41,7 @@ class FakeResizeObserver {
   }
 
   trigger(width: number, height = 520): void {
-    this.callback([
-      { contentRect: { width, height } }
-    ] as ResizeObserverEntry[], this as never);
+    this.callback([{ contentRect: { width, height } }] as ResizeObserverEntry[], this as never);
   }
 }
 
@@ -78,17 +77,19 @@ describe('dashboard controls and layout', () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
-      walletTimelinePoints: []
+      walletTimelinePoints: [],
     });
 
-    expect(screen.getByRole('button', {
-      name: `${DASHBOARD_KEY.view} · ${DASHBOARD_COPY.CONTROL_VIEW}`
-    })).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: `${DASHBOARD_KEY.view} · ${DASHBOARD_COPY.CONTROL_VIEW}`,
+      }),
+    ).toBeTruthy();
     const closer = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.closer}"]`
+      `button[title="Keyboard: ${DASHBOARD_KEY.closer}"]`,
     );
     const wider = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.wider}"]`
+      `button[title="Keyboard: ${DASHBOARD_KEY.wider}"]`,
     );
     if (!closer || !wider) throw new Error('zoom controls not rendered');
     for (let index = 0; index < 3; index += 1) await fireEvent.click(closer);
@@ -98,28 +99,28 @@ describe('dashboard controls and layout', () => {
     expect(wider.disabled).toBe(true);
     await fireEvent.keyDown(window, { key: DASHBOARD_KEY.view });
     expect(screen.getByRole('heading', { name: DASHBOARD_COPY.WALLET_ACTIVITY })).toBeTruthy();
-    const resetControlName =
-      `${DASHBOARD_KEY.reset} · ${DASHBOARD_COPY.CONTROL_RESET}`;
+    const resetControlName = `${DASHBOARD_KEY.reset} · ${DASHBOARD_COPY.CONTROL_RESET}`;
     await fireEvent.click(screen.getByRole('button', { name: resetControlName }));
-    expect(screen.getByRole<HTMLButtonElement>(
-      'button',
-      { name: resetControlName }
-    ).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: resetControlName }).disabled).toBe(
+      true,
+    );
   });
 
   it('stacks the market and executable-equity charts', async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
-      walletTimelinePoints: [{
-        source_key: 'wallet:trade',
-        wallet: '0x0000000000000000000000000000000000000001',
-        trade_timestamp_ms: 1_000,
-        side: SIDE.buy,
-        notional: '1',
-        market_label: 'market',
-        accepted: true
-      }]
+      walletTimelinePoints: [
+        {
+          source_key: 'wallet:trade',
+          wallet: '0x0000000000000000000000000000000000000001',
+          trade_timestamp_ms: 1_000,
+          side: SIDE.buy,
+          notional: '1',
+          market_label: 'market',
+          accepted: true,
+        },
+      ],
     });
     FakeIntersectionObserver.current.trigger(true);
     await tick();
@@ -133,7 +134,7 @@ describe('dashboard controls and layout', () => {
     const view = render(DashboardCharts, {
       samples: [chartSample(1_000, '100')],
       walletTimelinePoints: [],
-      terminal: true
+      terminal: true,
     });
     FakeIntersectionObserver.current.trigger(true);
     await tick();
@@ -148,22 +149,22 @@ describe('dashboard controls and layout', () => {
     const view = render(DashboardCharts, {
       samples: [],
       walletTimelinePoints: [],
-      configuredWallets: Array.from({ length: 7 }, (_, index) => `wallet-${index}`)
+      configuredWallets: Array.from({ length: 7 }, (_, index) => `wallet-${index}`),
     });
     FakeIntersectionObserver.current.trigger(true);
     await tick();
 
     const viewButton = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.view}"]`
+      `button[title="Keyboard: ${DASHBOARD_KEY.view}"]`,
     );
     if (!viewButton) throw new Error('view control not rendered');
     await fireEvent.click(viewButton);
 
     const nextButton = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.nextWalletPage}"]`
+      `button[title="Keyboard: ${DASHBOARD_KEY.nextWalletPage}"]`,
     );
     const previousButton = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.previousWalletPage}"]`
+      `button[title="Keyboard: ${DASHBOARD_KEY.previousWalletPage}"]`,
     );
     if (!nextButton || !previousButton) throw new Error('wallet controls not rendered');
     expect(nextButton.disabled).toBe(false);
@@ -174,13 +175,9 @@ describe('dashboard controls and layout', () => {
     expect(previousButton.disabled).toBe(true);
 
     expect(
-      view.container.querySelector(
-        `[aria-label="${DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL}"]`
-      )
+      view.container.querySelector(`[aria-label="${DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL}"]`),
     ).toBeTruthy();
-    expect(view.container.textContent).not.toContain(
-      DASHBOARD_COPY.NO_WALLETS
-    );
+    expect(view.container.textContent).not.toContain(DASHBOARD_COPY.NO_WALLETS);
   });
 
   it('freezes chart options offscreen and catches up once on re-entry', async () => {
@@ -189,7 +186,7 @@ describe('dashboard controls and layout', () => {
     const second = chartSample(1_250, '101');
     const view = render(DashboardCharts, {
       samples: [first],
-      walletTimelinePoints: []
+      walletTimelinePoints: [],
     });
 
     expect(echartsMocks.instances).toHaveLength(0);
@@ -197,24 +194,24 @@ describe('dashboard controls and layout', () => {
     await tick();
     expect(echartsMocks.instances).toHaveLength(2);
     const visibleUpdateCounts = echartsMocks.instances.map(
-      ({ setOption }) => setOption.mock.calls.length
+      ({ setOption }) => setOption.mock.calls.length,
     );
 
     FakeIntersectionObserver.current.trigger(false);
     await tick();
     await view.rerender({
       samples: [first, second],
-      walletTimelinePoints: []
+      walletTimelinePoints: [],
     });
-    expect(echartsMocks.instances.map(
-      ({ setOption }) => setOption.mock.calls.length
-    )).toEqual(visibleUpdateCounts);
+    expect(echartsMocks.instances.map(({ setOption }) => setOption.mock.calls.length)).toEqual(
+      visibleUpdateCounts,
+    );
 
     FakeIntersectionObserver.current.trigger(true);
     await tick();
-    expect(echartsMocks.instances.map(
-      ({ setOption }) => setOption.mock.calls.length
-    )).toEqual(visibleUpdateCounts.map((count) => count + 1));
+    expect(echartsMocks.instances.map(({ setOption }) => setOption.mock.calls.length)).toEqual(
+      visibleUpdateCounts.map((count) => count + 1),
+    );
   });
 });
 
@@ -235,13 +232,15 @@ function installBrowserObservers(): void {
 function chartSample(sampledAtMs: number, equity: string): ChartSamplePayload {
   return {
     sampled_at_ms: sampledAtMs,
-    markets: [{
-      token_id: 'token',
-      label: 'Market',
-      value: '0.5',
-      status: VALUATION_STATUS.fresh,
-      markers: []
-    }],
-    equity: { value: equity, status: VALUATION_STATUS.fresh }
+    markets: [
+      {
+        token_id: 'token',
+        label: 'Market',
+        value: '0.5',
+        status: VALUATION_STATUS.fresh,
+        markers: [],
+      },
+    ],
+    equity: { value: equity, status: VALUATION_STATUS.fresh },
   };
 }

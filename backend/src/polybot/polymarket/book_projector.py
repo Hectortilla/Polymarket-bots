@@ -5,21 +5,20 @@ from __future__ import annotations
 from collections.abc import Iterable
 from decimal import Decimal
 
-from polymarket.models.clob.order_book import OrderBookLevel
-
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.normalization.book import normalize_book
 from polybot.polymarket.markets import (
     Market,
     index_markets_by_token,
 )
+from polybot.polymarket.normalization.book import normalize_book
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookDeltaPayload,
 )
 
+from polymarket.models.clob.order_book import OrderBookLevel
 
 type _DepthSides = tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]
 

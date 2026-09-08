@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from polymarket.models.gamma.market import Market as SdkMarket
-
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.market import normalize_market
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
@@ -20,6 +18,8 @@ from polybot.recording.contracts.market import (
     MarketMetadataPayload,
     MarketOutcomeMetadata,
 )
+
+from polymarket.models.gamma.market import Market as SdkMarket
 
 from .contracts import RecordingMarket
 

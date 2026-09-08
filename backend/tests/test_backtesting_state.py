@@ -5,19 +5,14 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-
 from polybot.backtesting.contracts import BacktestError
 from polybot.backtesting.state import ArchiveMarketState
+from polybot.framework.events import Side
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
     BookDeltaPayload,
     RecordedBookLevel,
-)
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    CoverageGapRecord,
-    RecordedEvent,
 )
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
@@ -28,7 +23,11 @@ from polybot.recording.contracts.market import (
     MarketMetadataPayload,
     MarketOutcomeMetadata,
 )
-from polybot.framework.events import Side
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    CoverageGapRecord,
+    RecordedEvent,
+)
 
 
 def test_metadata_identity_conflict_does_not_partially_mutate_indexes() -> None:
@@ -98,9 +97,7 @@ def test_blackout_hides_partial_recovery_and_emits_fresh_pair_atomically() -> No
         _delta_event(sequence=11, observed_at_ms=18, generation=2)
     )
     assert missing_baseline_delta.books == ()
-    first = state.apply(
-        _book_event("up", sequence=12, observed_at_ms=19, generation=2)
-    )
+    first = state.apply(_book_event("up", sequence=12, observed_at_ms=19, generation=2))
     assert first.books == ()
     assert asyncio.run(state.latest("up")) is None
     staged_delta = state.apply(
@@ -144,12 +141,18 @@ def test_token_scoped_open_gap_invalidates_whole_market_and_never_recovers() -> 
     gap = _gap_record(ended_at_ms=None, affected_token_ids=("up",))
 
     assert state.begin_blackout(gap) == ("up", "down")
-    assert state.apply(
-        _book_event("up", sequence=11, observed_at_ms=20, generation=2)
-    ).books == ()
-    assert state.apply(
-        _book_event("down", sequence=12, observed_at_ms=20, generation=2)
-    ).books == ()
+    assert (
+        state.apply(
+            _book_event("up", sequence=11, observed_at_ms=20, generation=2)
+        ).books
+        == ()
+    )
+    assert (
+        state.apply(
+            _book_event("down", sequence=12, observed_at_ms=20, generation=2)
+        ).books
+        == ()
+    )
     assert state.is_blacked_out("market")
     assert not state.is_blacked_out("other-market")
     assert state.books == {}
@@ -166,12 +169,18 @@ def test_staged_pair_releases_atomically_at_closed_gap_end() -> None:
     )
     state.begin_blackout(_gap_record(ended_at_ms=20))
 
-    assert state.apply(
-        _book_event("up", sequence=11, observed_at_ms=18, generation=2)
-    ).books == ()
-    assert state.apply(
-        _book_event("down", sequence=12, observed_at_ms=19, generation=2)
-    ).books == ()
+    assert (
+        state.apply(
+            _book_event("up", sequence=11, observed_at_ms=18, generation=2)
+        ).books
+        == ()
+    )
+    assert (
+        state.apply(
+            _book_event("down", sequence=12, observed_at_ms=19, generation=2)
+        ).books
+        == ()
+    )
     assert state.recover_books_at(19) == ()
     assert state.books == {}
 
@@ -199,12 +208,18 @@ def test_overlapping_closed_gaps_wait_for_the_last_recovery_boundary() -> None:
         )
     )
 
-    assert state.apply(
-        _book_event("up", sequence=12, observed_at_ms=18, generation=2)
-    ).books == ()
-    assert state.apply(
-        _book_event("down", sequence=13, observed_at_ms=19, generation=2)
-    ).books == ()
+    assert (
+        state.apply(
+            _book_event("up", sequence=12, observed_at_ms=18, generation=2)
+        ).books
+        == ()
+    )
+    assert (
+        state.apply(
+            _book_event("down", sequence=13, observed_at_ms=19, generation=2)
+        ).books
+        == ()
+    )
     assert state.recover_books_at(20) == ()
 
     recovered = state.recover_books_at(25)

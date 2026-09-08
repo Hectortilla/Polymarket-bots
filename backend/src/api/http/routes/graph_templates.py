@@ -4,17 +4,23 @@ from collections.abc import Awaitable
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.http.dependencies import SessionFactoryDependency
-from api.http.routes.graph_template_lookup import (
-    require_graph_template,
+from api.graph_templates.contracts import (
+    GraphTemplateCreate,
+    GraphTemplateRead,
+    GraphTemplateUpdate,
 )
+from api.graph_templates.store import GraphTemplateStore
+from api.http.dependencies import SessionFactoryDependency
 from api.http.responses import (
     CONFLICT_RESPONSE,
     NOT_FOUND_AND_CONFLICT_RESPONSES,
     NOT_FOUND_RESPONSE,
+)
+from api.http.routes.graph_template_lookup import (
+    require_graph_template,
 )
 from api.http.routes.paths import (
     CREATE_GRAPH_TEMPLATE_OPERATION_ID,
@@ -24,13 +30,6 @@ from api.http.routes.paths import (
     READ_GRAPH_TEMPLATE_OPERATION_ID,
     UPDATE_GRAPH_TEMPLATE_OPERATION_ID,
 )
-from api.graph_templates.contracts import (
-    GraphTemplateCreate,
-    GraphTemplateRead,
-    GraphTemplateUpdate,
-)
-from api.graph_templates.store import GraphTemplateStore
-
 
 GRAPH_TEMPLATE_NAME_CONFLICT_DETAIL = "graph template name already exists"
 
@@ -99,6 +98,8 @@ async def update_graph_template(
             GraphTemplateStore(session).update(template_id, request),
         )
     return require_graph_template(template)
+
+
 async def _persist_template_write(
     session: AsyncSession,
     write: Awaitable[GraphTemplateRead | None],

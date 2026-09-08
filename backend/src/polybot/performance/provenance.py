@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from decimal import Decimal
 from enum import StrEnum
+
 from polybot.framework.config.models import BotConfig
 
 

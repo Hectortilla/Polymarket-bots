@@ -9,7 +9,6 @@ from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.factories import BotFactory, bind_bot_factory
 
-
 INVALID_BOT_FACTORY_PREFIX = "invalid bot factory"
 
 

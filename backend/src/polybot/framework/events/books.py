@@ -9,7 +9,7 @@ from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.graph import graph_output
 from polybot.framework.timestamps import (
-    NONNEGATIVE_TIMESTAMP_FLOOR,
+    is_nonnegative_timestamp,
     require_nonnegative_timestamp,
 )
 
@@ -150,11 +150,7 @@ class BookSnapshot:
         now_ms: int,
         max_age_ms: int,
     ) -> BookValidationIssue | None:
-        if (
-            not isinstance(self.received_at_ms, int)
-            or isinstance(self.received_at_ms, bool)
-            or self.received_at_ms < NONNEGATIVE_TIMESTAMP_FLOOR
-        ):
+        if not is_nonnegative_timestamp(self.received_at_ms):
             return BookValidationIssue.BAD_TIMESTAMP
         if self.received_at_ms > now_ms:
             return BookValidationIssue.FUTURE_DATED

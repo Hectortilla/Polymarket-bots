@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .archive.reader import RecordingReader
-from .archive.paths import SQLITE_SIDECAR_SUFFIXES
 from .archive.models import RecordingEventCounts, RecordingSessionStatistics
+from .archive.paths import SQLITE_SIDECAR_SUFFIXES
+from .archive.reader import RecordingReader
 from .contracts.records import CoverageGapRecord
+from .contracts.session import SessionIntegrityStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,9 +57,7 @@ class RecordingInspection:
 
     @property
     def checkpoint_count(self) -> int:
-        return sum(
-            session.statistics.checkpoint_count for session in self.sessions
-        )
+        return sum(session.statistics.checkpoint_count for session in self.sessions)
 
     @property
     def gap_count(self) -> int:
@@ -71,8 +70,7 @@ class RecordingInspection:
     @property
     def known_anomaly_count(self) -> int:
         return sum(
-            session.statistics.capture_anomaly_count or 0
-            for session in self.sessions
+            session.statistics.capture_anomaly_count or 0 for session in self.sessions
         )
 
     @property
@@ -100,6 +98,53 @@ class RecordingInspection:
         )
         return max(ends) if ends else None
 
+    def backtest_readiness_notes(
+        self,
+    ) -> tuple[str, ...]:
+        notes: list[str] = []
+        if len(self.sessions) > 1:
+            notes.append("Backtesting requires an explicit --session selection.")
+        active_sessions = tuple(
+            session.statistics.session.session_id
+            for session in self.sessions
+            if session.statistics.session.integrity_status
+            is SessionIntegrityStatus.ACTIVE
+        )
+        if active_sessions:
+            notes.append(
+                "Active session(s) "
+                + ", ".join(str(value) for value in active_sessions)
+                + " are snapshot-only here; stop the recorder before backtesting."
+            )
+        partial_sessions = tuple(
+            session.statistics.session.session_id
+            for session in self.sessions
+            if session.statistics.session.integrity_status
+            in (SessionIntegrityStatus.INCOMPLETE, SessionIntegrityStatus.FAILED)
+        )
+        if partial_sessions:
+            notes.append(
+                "Partial source session(s): "
+                + ", ".join(str(value) for value in partial_sessions)
+                + ". Replay defaults to each durable boundary."
+            )
+        if self.gap_count:
+            notes.append(
+                "Detected gaps require a clean selected range; use recording.trim to "
+                "retain the longest all-market clean interval."
+            )
+        else:
+            notes.append(
+                "No detected gaps. This does not prove exchange-complete capture."
+            )
+        if self.replay_event_count == 0:
+            notes.append("The archive has no replay events.")
+        notes.append(
+            "The backtester still validates metadata, two-token book bootstrap, "
+            "range, and selected-market coverage before running a bot."
+        )
+        return tuple(notes)
+
 
 def inspect_recording(path: str | Path) -> RecordingInspection:
     """Return a validated, immutable snapshot summary of one local archive."""
@@ -124,7 +169,9 @@ def inspect_recording(path: str | Path) -> RecordingInspection:
         sidecar_size_bytes=sum(
             sidecar.stat().st_size
             for suffix in SQLITE_SIDECAR_SUFFIXES
-            if (sidecar := archive_path.with_name(f"{archive_path.name}{suffix}")).is_file()
+            if (
+                sidecar := archive_path.with_name(f"{archive_path.name}{suffix}")
+            ).is_file()
         ),
         schema_version=schema_version,
         target_identity=target_identity,

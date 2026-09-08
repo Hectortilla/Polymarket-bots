@@ -1,8 +1,9 @@
 """Bounded, explicitly keyed signal consumption for one bot run."""
 
 from dataclasses import dataclass, field
+
 from api.catalog.graphs.numbers import whole_number
-from api.catalog.graphs.results import GraphReason
+from api.catalog.graphs.reasons import GraphReason
 from api.catalog.graphs.values import GraphOperation, GraphPort
 from api.catalog.node_based.evaluator.values import RuntimeValue
 
@@ -39,13 +40,13 @@ class EventControlState:
         key = key_value.value
         if not isinstance(key, str) or not key.strip():
             return RuntimeValue.invalid(GraphReason.INVALID_KEY)
-        duration = 0
+        duration_ms = 0
         if operation is GraphOperation.COOLDOWN:
             duration_value = inputs[GraphPort.DURATION_MS]
             if not duration_value.available:
                 return duration_value
             try:
-                duration = whole_number(duration_value.value, "Cooldown duration")
+                duration_ms = whole_number(duration_value.value, "Cooldown duration")
             except ValueError as error:
                 return RuntimeValue.invalid(
                     GraphReason.WHOLE_NUMBER_REQUIRED,
@@ -77,6 +78,6 @@ class EventControlState:
         if len(claims) >= MAX_STATE_KEYS_PER_NODE:
             return RuntimeValue.skipped(GraphReason.STATE_CAPACITY)
         claims[key] = (
-            now_ms + duration if operation is GraphOperation.COOLDOWN else None
+            now_ms + duration_ms if operation is GraphOperation.COOLDOWN else None
         )
         return RuntimeValue(True)

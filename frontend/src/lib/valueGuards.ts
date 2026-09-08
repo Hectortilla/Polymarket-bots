@@ -41,7 +41,32 @@ export function isFiniteDateTime(value: unknown): value is string {
 
 export function isOneOf<Value extends string>(
   value: unknown,
-  choices: readonly Value[]
+  choices: readonly Value[],
 ): value is Value {
   return typeof value === 'string' && choices.includes(value as Value);
+}
+
+export function isArrayOf(
+  data: unknown,
+  predicate: (value: Record<string, unknown>) => boolean,
+): boolean {
+  return Array.isArray(data) && data.every((value) => isRecord(value) && predicate(value));
+}
+
+export function isUuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  );
+}
+
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export function isOptionalNullable(
+  value: unknown,
+  predicate: (candidate: unknown) => boolean,
+): boolean {
+  return value === undefined || value === null || predicate(value);
 }

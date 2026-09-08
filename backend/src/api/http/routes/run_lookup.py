@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.runs.contracts import RunRead
 from api.runs.store import RunStore
 
-
 RUN_NOT_FOUND_DETAIL = "run not found"
 
 

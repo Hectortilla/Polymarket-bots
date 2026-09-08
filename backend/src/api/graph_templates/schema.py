@@ -2,7 +2,6 @@
 
 from enum import StrEnum
 
-
 GRAPH_TEMPLATES_TABLE_NAME = "graph_templates"
 GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME = "uq_graph_templates_name"
 

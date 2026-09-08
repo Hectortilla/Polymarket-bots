@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-
 OUTCOME_PRICE_FLOOR = Decimal("0")
 OUTCOME_PRICE_CEILING = Decimal("1")
 

@@ -18,7 +18,6 @@ from .contracts import (
     StreamCompletionRole,
     StreamEvent,
     StreamFailure,
-    StreamSource,
     StreamSourceSpec,
     WalletStreamEvent,
 )
@@ -70,8 +69,7 @@ class StreamMerger:
         self._started = False
         self._closed = False
         self._primary_stream_count = sum(
-            stream.completion_role is StreamCompletionRole.PRIMARY
-            for stream in streams
+            stream.completion_role is StreamCompletionRole.PRIMARY for stream in streams
         )
         self._resolution_only = self._primary_stream_count == 0
         self._resolution_completed = 0
@@ -174,9 +172,7 @@ class StreamMerger:
         except BaseException as error:
             await self._queue.put(StreamFailure(error))
         finally:
-            await self._queue.put(
-                StreamCompleted(stream_spec.completion_role)
-            )
+            await self._queue.put(StreamCompleted(stream_spec.completion_role))
 
     def _enqueue_book(self, event: BookSnapshot) -> None:
         token_id = getattr(event, "token_id", None)

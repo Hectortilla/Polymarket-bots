@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import select
 import sys
+from copy import deepcopy
 from threading import Event, Lock
 from traceback import format_exception
 
@@ -16,13 +16,16 @@ from rich.text import Text
 try:
     import termios
     import tty
-except ImportError:  # pragma: no cover - non-POSIX terminals do not support cbreak input.
+except (
+    ImportError
+):  # pragma: no cover - non-POSIX terminals do not support cbreak input.
     termios = None
     tty = None
 
-from polybot.cli.dashboard.render import render_dashboard, wallet_lane_capacity
 from polybot.async_io import run_blocking
+from polybot.cli.dashboard.render import render_dashboard
 from polybot.cli.dashboard.state import DashboardState
+from polybot.cli.dashboard.wallet_timeline import wallet_lane_capacity
 from polybot.cli.observability.events import RuntimeEvent
 from polybot.dashboard.contracts import CHART_SAMPLE_INTERVAL_SECONDS, DashboardKey
 from polybot.framework.config.models import BotConfig
@@ -186,9 +189,7 @@ class TerminalDashboard:
         width = self._console.size.width
         height = self._console.size.height
         with self._state_lock:
-            self._state.revalidate_wallet_page(
-                wallet_lane_capacity(width, height)
-            )
+            self._state.revalidate_wallet_page(wallet_lane_capacity(width, height))
             self._state.record_chart_sample()
             state = deepcopy(self._state)
         live.update(

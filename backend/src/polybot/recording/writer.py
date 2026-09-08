@@ -55,9 +55,7 @@ class AsyncRecordingWriter:
         if batch_size <= 0:
             raise ValueError("recording writer batch size must be positive")
         self._archive = archive
-        self._queue: asyncio.Queue[WriterCommand] = asyncio.Queue(
-            maxsize=queue_size
-        )
+        self._queue: asyncio.Queue[WriterCommand] = asyncio.Queue(maxsize=queue_size)
         self._batch_size = batch_size
         self._next_sequence = archive.next_sequence
         self._task: asyncio.Task[None] | None = None
@@ -136,32 +134,6 @@ class AsyncRecordingWriter:
         await asyncio.shield(completion)
         return events
 
-    def _enqueue_event_batch(
-        self,
-        writes: tuple[RecordingEventWrite, ...],
-    ) -> tuple[tuple[RecordedEvent, ...], asyncio.Future[None]]:
-        self._raise_if_unavailable()
-        if not writes:
-            raise ValueError("recording event batch must not be empty")
-        events = tuple(
-            RecordedEvent(
-                sequence=self._next_sequence + offset,
-                session_id=self.session_id,
-                subscription_generation=write.subscription_generation,
-                observed_at_ms=write.observed_at_ms,
-                source_timestamp_ms=write.source_timestamp_ms,
-                identity=write.identity,
-                payload=write.payload,
-            )
-            for offset, write in enumerate(writes)
-        )
-        completion: asyncio.Future[None] = (
-            asyncio.get_running_loop().create_future()
-        )
-        self._put_nowait(EventCommand(events, completion))
-        self._next_sequence += len(events)
-        return events, completion
-
     async def checkpoint(
         self,
         book: BookBaselinePayload,
@@ -203,9 +175,7 @@ class AsyncRecordingWriter:
             )
             for write in writes
         )
-        completion: asyncio.Future[None] = (
-            asyncio.get_running_loop().create_future()
-        )
+        completion: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._put_nowait(CheckpointCommand(checkpoints, completion))
         await asyncio.shield(completion)
         return checkpoints
@@ -219,9 +189,7 @@ class AsyncRecordingWriter:
         subscription_generation: int,
     ) -> OpenedCoverageGap:
         self._raise_if_unavailable()
-        completion: asyncio.Future[int] = (
-            asyncio.get_running_loop().create_future()
-        )
+        completion: asyncio.Future[int] = asyncio.get_running_loop().create_future()
         event = RecordedEvent(
             sequence=self._next_sequence,
             session_id=self.session_id,
@@ -238,9 +206,7 @@ class AsyncRecordingWriter:
 
     async def close_gap(self, gap_id: int, *, ended_at_ms: int) -> None:
         self._raise_if_unavailable()
-        completion: asyncio.Future[None] = (
-            asyncio.get_running_loop().create_future()
-        )
+        completion: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._put_nowait(CloseGapCommand(gap_id, ended_at_ms, completion))
         await asyncio.shield(completion)
 
@@ -306,6 +272,30 @@ class AsyncRecordingWriter:
             _set_exception(completion, self._failure)
         await asyncio.shield(completion)
         await asyncio.shield(self._task)
+
+    def _enqueue_event_batch(
+        self,
+        writes: tuple[RecordingEventWrite, ...],
+    ) -> tuple[tuple[RecordedEvent, ...], asyncio.Future[None]]:
+        self._raise_if_unavailable()
+        if not writes:
+            raise ValueError("recording event batch must not be empty")
+        events = tuple(
+            RecordedEvent(
+                sequence=self._next_sequence + offset,
+                session_id=self.session_id,
+                subscription_generation=write.subscription_generation,
+                observed_at_ms=write.observed_at_ms,
+                source_timestamp_ms=write.source_timestamp_ms,
+                identity=write.identity,
+                payload=write.payload,
+            )
+            for offset, write in enumerate(writes)
+        )
+        completion: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._put_nowait(EventCommand(events, completion))
+        self._next_sequence += len(events)
+        return events, completion
 
     def _put_nowait(self, command: WriterCommand) -> None:
         try:
@@ -373,11 +363,7 @@ class AsyncRecordingWriter:
         try:
             await run_blocking(
                 self._archive.append_events,
-                tuple(
-                    event
-                    for command in commands
-                    for event in command.events
-                ),
+                tuple(event for command in commands for event in command.events),
             )
         except BaseException as error:
             for command in commands:

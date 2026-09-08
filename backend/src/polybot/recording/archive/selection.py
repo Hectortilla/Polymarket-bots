@@ -3,51 +3,70 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
+
+from polybot.recording.archive.columns import ArchiveColumn
+from polybot.recording.archive.schema import EVENT_TOKENS_TABLE, EVENTS_TABLE
 
 from ..contracts.gaps import CoverageGapPayload
-from ..contracts.market import MarketIdentity
 from ..contracts.kinds import PayloadKind
+from ..contracts.market import MarketIdentity
 from ..coverage import CoverageScope
 from .primitives import _nonnegative_timestamp, _positive_int, _required_text
 
 
-def _selection(
-    *,
-    start_at_ms: int | None,
-    end_at_ms: int | None,
-    session_id: int | None,
-    condition_id: str | None,
-    condition_ids: Iterable[str] | None,
-    market_slug: str | None,
-    market_slugs: Iterable[str] | None,
-    token_id: str | None,
-) -> dict[str, object]:
-    if start_at_ms is not None:
-        _nonnegative_timestamp(start_at_ms, "selection start")
-    if end_at_ms is not None:
-        _nonnegative_timestamp(end_at_ms, "selection end")
-    if start_at_ms is not None and end_at_ms is not None and end_at_ms < start_at_ms:
-        raise ValueError("recording selection cannot end before it starts")
-    return {
-        "start_at_ms": start_at_ms,
-        "end_at_ms": end_at_ms,
-        "session_id": (
-            None if session_id is None else _positive_int(session_id, "session ID")
-        ),
-        "condition_ids": _text_selection(
-            singular=condition_id,
-            plural=condition_ids,
-            singular_name="condition ID",
-            plural_name="condition IDs",
-        ),
-        "market_slugs": _text_selection(
-            singular=market_slug,
-            plural=market_slugs,
-            singular_name="market slug",
-            plural_name="market slugs",
-        ),
-        "token_id": None if token_id is None else _required_text(token_id, "token ID"),
-    }
+@dataclass(frozen=True, slots=True)
+class ArchiveSelection:
+    start_at_ms: int | None
+    end_at_ms: int | None
+    session_id: int | None
+    condition_ids: tuple[str, ...] | None
+    market_slugs: tuple[str, ...] | None
+    token_id: str | None
+
+    @classmethod
+    def from_filters(
+        cls,
+        *,
+        start_at_ms: int | None,
+        end_at_ms: int | None,
+        session_id: int | None,
+        condition_id: str | None,
+        condition_ids: Iterable[str] | None,
+        market_slug: str | None,
+        market_slugs: Iterable[str] | None,
+        token_id: str | None,
+    ) -> ArchiveSelection:
+        if start_at_ms is not None:
+            _nonnegative_timestamp(start_at_ms, "selection start")
+        if end_at_ms is not None:
+            _nonnegative_timestamp(end_at_ms, "selection end")
+        if (
+            start_at_ms is not None
+            and end_at_ms is not None
+            and end_at_ms < start_at_ms
+        ):
+            raise ValueError("recording selection cannot end before it starts")
+        return cls(
+            start_at_ms=start_at_ms,
+            end_at_ms=end_at_ms,
+            session_id=(
+                None if session_id is None else _positive_int(session_id, "session ID")
+            ),
+            condition_ids=_text_selection(
+                singular=condition_id,
+                plural=condition_ids,
+                singular_name="condition ID",
+                plural_name="condition IDs",
+            ),
+            market_slugs=_text_selection(
+                singular=market_slug,
+                plural=market_slugs,
+                singular_name="market slug",
+                plural_name="market slugs",
+            ),
+            token_id=None if token_id is None else _required_text(token_id, "token ID"),
+        )
 
 
 def _text_selection(
@@ -74,55 +93,55 @@ def _text_selection(
 
 
 def _event_query(
-    selection: dict[str, object],
+    selection: ArchiveSelection,
     *,
     replay_cutoff_sequence: int,
     ordered: bool = True,
 ) -> tuple[str, tuple[object, ...]]:
-    clauses: list[str] = ["event.sequence <= ?"]
+    clauses: list[str] = [f"event.{ArchiveColumn.SEQUENCE} <= ?"]
     parameters: list[object] = [replay_cutoff_sequence]
-    start_at_ms = selection["start_at_ms"]
-    end_at_ms = selection["end_at_ms"]
-    session_id = selection["session_id"]
-    condition_ids = selection["condition_ids"]
-    market_slugs = selection["market_slugs"]
-    token_id = selection["token_id"]
+    start_at_ms = selection.start_at_ms
+    end_at_ms = selection.end_at_ms
+    session_id = selection.session_id
+    condition_ids = selection.condition_ids
+    market_slugs = selection.market_slugs
+    token_id = selection.token_id
     if start_at_ms is not None:
-        clauses.append("event.observed_at_ms >= ?")
+        clauses.append(f"event.{ArchiveColumn.OBSERVED_AT_MS} >= ?")
         parameters.append(start_at_ms)
     if end_at_ms is not None:
-        clauses.append("event.observed_at_ms <= ?")
+        clauses.append(f"event.{ArchiveColumn.OBSERVED_AT_MS} <= ?")
         parameters.append(end_at_ms)
     if session_id is not None:
-        clauses.append("event.session_id = ?")
+        clauses.append(f"event.{ArchiveColumn.SESSION_ID} = ?")
         parameters.append(session_id)
     if condition_ids is not None:
         placeholders = ", ".join("?" for _ in condition_ids)
         clauses.append(
-            f"(event.condition_id IN ({placeholders}) OR event.payload_kind = ?)"
+            f"(event.{ArchiveColumn.CONDITION_ID} IN ({placeholders}) OR event.{ArchiveColumn.PAYLOAD_KIND} = ?)"
         )
         parameters.extend((*condition_ids, PayloadKind.COVERAGE_GAP.value))
     if market_slugs is not None:
         placeholders = ", ".join("?" for _ in market_slugs)
         clauses.append(
-            f"(event.market_slug IN ({placeholders}) OR event.payload_kind = ?)"
+            f"(event.{ArchiveColumn.MARKET_SLUG} IN ({placeholders}) OR event.{ArchiveColumn.PAYLOAD_KIND} = ?)"
         )
         parameters.extend((*market_slugs, PayloadKind.COVERAGE_GAP.value))
     if token_id is not None:
         clauses.append(
-            """
+            f"""
             (EXISTS (
-                SELECT 1 FROM event_tokens AS selected_token
-                WHERE selected_token.sequence = event.sequence
-                  AND selected_token.token_id = ?
-            ) OR event.payload_kind = ?)
+                SELECT 1 FROM {EVENT_TOKENS_TABLE} AS selected_token
+                WHERE selected_token.{ArchiveColumn.SEQUENCE} = event.{ArchiveColumn.SEQUENCE}
+                  AND selected_token.{ArchiveColumn.TOKEN_ID} = ?
+            ) OR event.{ArchiveColumn.PAYLOAD_KIND} = ?)
             """
         )
         parameters.extend((token_id, PayloadKind.COVERAGE_GAP.value))
     where = "" if not clauses else "WHERE " + " AND ".join(clauses)
-    order_by = " ORDER BY event.sequence" if ordered else ""
+    order_by = f" ORDER BY event.{ArchiveColumn.SEQUENCE}" if ordered else ""
     return (
-        f"SELECT event.* FROM events AS event {where}{order_by}",
+        f"SELECT event.* FROM {EVENTS_TABLE} AS event {where}{order_by}",
         tuple(parameters),
     )
 

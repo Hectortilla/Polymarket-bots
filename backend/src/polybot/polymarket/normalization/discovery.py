@@ -1,10 +1,10 @@
 """Normalize SDK search metadata using the runtime's market boundary."""
 
-from polymarket.models.gamma.market import Market as SdkMarket
-
 from polybot.polymarket.discovery_contracts import MarketSuggestion
 from polybot.polymarket.normalization.market import normalize_market
 from polybot.polymarket.normalization.values import validate_optional_text
+
+from polymarket.models.gamma.market import Market as SdkMarket
 
 
 def normalize_suggestion(

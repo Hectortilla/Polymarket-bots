@@ -3,6 +3,11 @@ import random
 from dataclasses import replace
 from decimal import Decimal
 
+from polybot.examples.example_random_hold import (
+    RANDOM_HOLD_BUY_REASON,
+    RANDOM_HOLD_SELL_REASON,
+    ExampleRandomHoldBot,
+)
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import Side
@@ -14,11 +19,6 @@ from polybot.framework.events.books import (
 )
 from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.examples.example_random_hold import (
-    RANDOM_HOLD_BUY_REASON,
-    RANDOM_HOLD_SELL_REASON,
-    ExampleRandomHoldBot,
-)
 
 
 def test_random_hold_bot_buys_holds_then_sells_and_starts_again(
@@ -118,7 +118,9 @@ def test_random_hold_gap_preserves_the_open_position_identity(
     ]
 
 
-def _book(token_id: str, *, asks: tuple[str, ...], bids: tuple[str, ...]) -> BookSnapshot:
+def _book(
+    token_id: str, *, asks: tuple[str, ...], bids: tuple[str, ...]
+) -> BookSnapshot:
     return BookSnapshot(
         token_id=token_id,
         asks=tuple(BookLevel(Decimal(price), Decimal("10")) for price in asks),

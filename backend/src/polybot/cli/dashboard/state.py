@@ -7,8 +7,8 @@ from decimal import Decimal
 from typing import Generic, TypeVar, cast, overload
 
 from polybot.cli.observability.events import (
-    BrokerFailed,
     BootstrapProgress,
+    BrokerFailed,
     DispatchCompleted,
     FillCompleted,
     MarketSettled,
@@ -24,6 +24,9 @@ from polybot.cli.observability.events import (
 )
 from polybot.cli.observability.states import RuntimeState
 from polybot.cli.streams.kinds import StreamKind
+from polybot.dashboard.contracts import format_token_label
+from polybot.dashboard.projection import DashboardProjection
+from polybot.dashboard.wallets import WalletTimelineEvent, wallet_market_label
 from polybot.framework.activity import BotActivityEvent
 from polybot.framework.clock import system_now_ms
 from polybot.framework.config.mode import BotMode
@@ -31,21 +34,15 @@ from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.performance.contracts.valuation import PortfolioValuation
-from polybot.dashboard.projection import DashboardProjection
-from polybot.dashboard.contracts import format_token_label
 
 from .chart_history import DashboardCharts
+from .chart_state import chart_display_points
 from .event_ticker import DashboardTicker, TickerRow
 from .market_state import DashboardMarkets
 from .runtime_state import DashboardRuntime
 from .stream_health import DashboardStreamHealth
 from .view_state import DashboardView, DashboardViewState
-from .wallet_state import (
-    DashboardWalletTimeline,
-    WalletTimelineEvent,
-    wallet_market_label,
-)
-
+from .wallet_state import DashboardWalletTimeline
 
 ProjectionValueT = TypeVar("ProjectionValueT")
 
@@ -91,6 +88,7 @@ class _ProjectionAttribute(Generic[ProjectionValueT]):
     def __set__(self, instance: DashboardState, value: ProjectionValueT) -> None:
         setattr(getattr(instance, self.projection), self.name, value)
 
+
 class DashboardState:
     """Apply runtime events to the projections consumed by dashboard rendering.
 
@@ -125,7 +123,9 @@ class DashboardState:
     market_labels: dict[str, str] = _ProjectionAttribute("markets")
     pending_books: dict[str, BookSnapshot] = _ProjectionAttribute("markets")
     portfolio: PortfolioSnapshot | None = _ProjectionAttribute("markets")
-    market_ticker_at_monotonic_seconds: dict[str, float] = _ProjectionAttribute("markets")
+    market_ticker_at_monotonic_seconds: dict[str, float] = _ProjectionAttribute(
+        "markets"
+    )
     resolved_condition_ids: set[str] = _ProjectionAttribute("markets")
     resolved_market_count: int = _ProjectionAttribute("markets")
 
@@ -289,7 +289,7 @@ class DashboardState:
 
     @staticmethod
     def chart_display_points(width: int) -> int:
-        return DashboardCharts.chart_display_points(width)
+        return chart_display_points(width)
 
     def visible_epoch_seconds_range(self, width: int) -> tuple[float, float] | None:
         return self.charts.visible_epoch_seconds_range(width)
@@ -373,7 +373,9 @@ class DashboardState:
         accepted_book: BookSnapshot | None,
     ) -> None:
         kind = event.item.kind
-        self.stream_health.record_stream_received(kind, event.occurred_at_monotonic_seconds)
+        self.stream_health.record_stream_received(
+            kind, event.occurred_at_monotonic_seconds
+        )
         if kind is StreamKind.BOOK:
             if accepted_book is not None:
                 self._record_market_ticker(

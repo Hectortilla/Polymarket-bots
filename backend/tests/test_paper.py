@@ -1,14 +1,13 @@
 import asyncio
 from dataclasses import dataclass, replace
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal, Inexact, localcontext
 
 import pytest
-
-from polybot.execution.orders import taker_fee_usdc
+from polybot.execution.order_validation import validate_order
+from polybot.execution.orders import MINIMUM_FEE_PRECISION, taker_fee_usdc
 from polybot.execution.paper import (
     BACKTEST_COVERAGE_GAP_MESSAGE,
     BACKTEST_DATA_EXHAUSTED_MESSAGE,
-    MARKET_UNAVAILABLE_MESSAGE,
     NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
     PaperBroker,
 )
@@ -17,6 +16,7 @@ from polybot.execution.paper.latency import latency_ms
 from polybot.execution.paper.market_data import (
     MARKET_CONSTRAINTS_UNAVAILABLE_MESSAGE,
     MARKET_NOT_TRADABLE_MESSAGE,
+    MARKET_UNAVAILABLE_MESSAGE,
 )
 from polybot.framework.clock import ClockDataExhaustedError
 from polybot.framework.config.constants import (
@@ -31,8 +31,8 @@ from polybot.framework.events import (
     OrderStatus,
     Side,
 )
-from polybot.execution.paper.validation import validate_order
 from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.polymarket.markets import Market, MarketOutcome
 
 DEFAULT_MARKET_SLUG = "btc-up"
@@ -58,7 +58,11 @@ def test_order_validation_rejects_non_line_safe_source_ids(source_id: str) -> No
 @pytest.mark.parametrize(
     "changes",
     (
-        {"status": OrderStatus.FILLED, "filled_size": Decimal("0"), "average_price": None},
+        {
+            "status": OrderStatus.FILLED,
+            "filled_size": Decimal("0"),
+            "average_price": None,
+        },
         {
             "status": OrderStatus.PARTIAL,
             "filled_size": Decimal("1"),
@@ -405,7 +409,6 @@ def test_paper_broker_rejects_ambiguous_clock_overrides() -> None:
         )
 
 
-
 def test_larger_order_has_equal_or_worse_average_price() -> None:
     async def run() -> tuple[Decimal, Decimal]:
         broker = PaperBroker(
@@ -556,11 +559,17 @@ def test_fee_is_accumulated_across_multiple_levels() -> None:
                 market_slug=DEFAULT_MARKET_SLUG,
             )
         )
-        return fill.fee_usdc, broker.portfolio.cumulative_fees_usdc, broker.portfolio.cash_usdc
+        return (
+            fill.fee_usdc,
+            broker.portfolio.cumulative_fees_usdc,
+            broker.portfolio.cash_usdc,
+        )
 
     fill_fee, cumulative_fee, cash_usdc = asyncio.run(run())
 
-    expected_fee = taker_fee_usdc(Decimal("1"), Decimal("0.05"), Decimal("0.40")) + taker_fee_usdc(
+    expected_fee = taker_fee_usdc(
+        Decimal("1"), Decimal("0.05"), Decimal("0.40")
+    ) + taker_fee_usdc(
         Decimal("1"),
         Decimal("0.05"),
         Decimal("0.60"),
@@ -790,8 +799,12 @@ def test_paper_broker_rejects_missing_market_metadata() -> None:
     assert reject_message == MARKET_UNAVAILABLE_MESSAGE
 
 
-def test_paper_broker_rejects_fill_time_market_metadata_mismatch_without_mutation() -> None:
-    async def run() -> tuple[OrderStatus, FillRejectReason | None, Decimal, dict[str, object]]:
+def test_paper_broker_rejects_fill_time_market_metadata_mismatch_without_mutation() -> (
+    None
+):
+    async def run() -> tuple[
+        OrderStatus, FillRejectReason | None, Decimal, dict[str, object]
+    ]:
         broker = PaperBroker(
             BotConfig(name="paper", paper_latency_ms=0, paper_latency_jitter_ms=0),
             StaticBooks(
@@ -871,7 +884,7 @@ def test_paper_broker_rejects_invalid_market_fee_rate() -> None:
     assert reject_reason is FillRejectReason.MARKET_FEE_INVALID
 
 
-def test_paper_broker_revalidates_market_before_final_book_lookup() -> None:
+def test_paper_broker_revalidates_market_after_final_book_lookup() -> None:
     async def run() -> tuple[FillRejectReason | None, int]:
         initial_market = _market()
         final_market = replace(
@@ -1226,7 +1239,11 @@ def test_portfolio_state_tracks_exact_close() -> None:
             )
         )
         position = broker.portfolio.position("123")
-        return broker.portfolio.cash_usdc, broker.portfolio.positions, position.average_entry_price
+        return (
+            broker.portfolio.cash_usdc,
+            broker.portfolio.positions,
+            position.average_entry_price,
+        )
 
     cash_usdc, positions, average_entry_price = asyncio.run(run())
 
@@ -1274,7 +1291,11 @@ def test_portfolio_state_tracks_short_then_buy_close() -> None:
             )
         )
         position = broker.portfolio.position("123")
-        return broker.portfolio.cash_usdc, broker.portfolio.positions, position.average_entry_price
+        return (
+            broker.portfolio.cash_usdc,
+            broker.portfolio.positions,
+            position.average_entry_price,
+        )
 
     cash_usdc, positions, average_entry_price = asyncio.run(run())
 
@@ -1317,3 +1338,168 @@ def _levels(
 
 async def _noop_sleep(_: float) -> None:
     return None
+
+
+def test_resolution_during_final_book_read_cannot_reopen_position():
+    market = _market()
+    book = _book(
+        token_id="123",
+        ask_prices=(Decimal("0.40"),),
+        received_at_ms=1000,
+        market_slug=market.slug,
+    )
+    resolution = MarketResolutionEvent(
+        condition_id=market.condition_id,
+        market_slug=market.slug,
+        token_ids=market.token_ids,
+        winning_token_id=market.token_ids[0],
+        winning_outcome="Up",
+        resolved_at_ms=1000,
+        source="test-resolution",
+    )
+
+    class ResolvingBooks:
+        calls = 0
+
+        async def latest(self, token_id):
+            self.calls += 1
+            if self.calls == 2:
+                broker.settle_market(resolution)
+            return book
+
+    class Markets:
+        async def find_by_slug(self, slug):
+            return market
+
+    broker = PaperBroker(
+        BotConfig(
+            name="settlement-race", paper_latency_ms=0, paper_latency_jitter_ms=0
+        ),
+        ResolvingBooks(),
+        Markets(),
+        now_ms_fn=lambda: 1000,
+    )
+    fill = asyncio.run(
+        broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=market.slug,
+                condition_id=market.condition_id,
+            )
+        )
+    )
+    assert fill.reject_reason is FillRejectReason.MARKET_RESOLVED
+    assert broker.position_market_refs == {}
+    assert broker.settle_market(resolution) == ()
+
+
+@pytest.mark.parametrize("precision", [2, 4, MINIMUM_FEE_PRECISION, 60])
+def test_fee_has_explicit_precision_rounding_and_trap_policy(precision):
+    with localcontext() as context:
+        context.prec = precision
+        context.rounding = ROUND_DOWN
+        context.traps[Inexact] = True
+        assert taker_fee_usdc(
+            Decimal("1.23456789"), Decimal(".12345678"), Decimal(".87654321")
+        ) == Decimal(".01649")
+
+
+@pytest.mark.parametrize("blackout", [False, True])
+def test_continuity_change_during_final_book_read_rejects_without_mutation(blackout):
+    continuity = MutableContinuity(BookContinuity(revision=0, blackout=False))
+
+    class ChangingBooks:
+        calls = 0
+
+        async def latest(self, token_id):
+            self.calls += 1
+            if self.calls == 2:
+                continuity.value = BookContinuity(revision=1, blackout=blackout)
+            return _book(
+                token_id="123",
+                ask_prices=(Decimal("0.40"),),
+                received_at_ms=1000,
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+
+    broker = PaperBroker(
+        BotConfig(name="continuity", paper_latency_ms=0, paper_latency_jitter_ms=0),
+        ChangingBooks(),
+        StaticMarkets(_market()),
+        now_ms_fn=lambda: 1000,
+        continuity_source=continuity,
+    )
+    fill = asyncio.run(
+        broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+    )
+    assert fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP
+    assert broker.portfolio.cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
+    assert broker.position_market_refs == {}
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        (
+            {"resolved": True, "winning_token_id": "123", "winning_outcome": "Up"},
+            FillRejectReason.MARKET_RESOLVED,
+        ),
+        ({"closed": True}, FillRejectReason.MARKET_UNAVAILABLE),
+        ({"fee_rate": Decimal("NaN")}, FillRejectReason.MARKET_FEE_INVALID),
+    ],
+)
+def test_metadata_change_during_final_book_read_rejects_without_mutation(
+    change, reason
+):
+    market = _market()
+
+    class ChangingBooks:
+        calls = 0
+
+        async def latest(self, token_id):
+            nonlocal market
+            self.calls += 1
+            if self.calls == 2:
+                market = replace(market, **change)
+            return _book(
+                token_id="123",
+                ask_prices=(Decimal("0.40"),),
+                received_at_ms=1000,
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+
+    class CurrentMarkets:
+        async def find_by_slug(self, slug):
+            return market
+
+    broker = PaperBroker(
+        BotConfig(name="metadata-race", paper_latency_ms=0, paper_latency_jitter_ms=0),
+        ChangingBooks(),
+        CurrentMarkets(),
+        now_ms_fn=lambda: 1000,
+    )
+    fill = asyncio.run(
+        broker.submit(
+            OrderRequest(
+                token_id="123",
+                side=Side.BUY,
+                price=Decimal("0.50"),
+                size=Decimal("1"),
+                market_slug=DEFAULT_MARKET_SLUG,
+            )
+        )
+    )
+    assert fill.reject_reason is reason
+    assert broker.portfolio.cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
+    assert broker.position_market_refs == {}

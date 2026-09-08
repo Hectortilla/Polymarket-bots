@@ -7,6 +7,14 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
+from polybot.framework.config.constants import (
+    MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+    MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
+)
+from polybot.framework.config.mode import BotMode
+from polybot.framework.config.models import BotConfig
+from polybot.framework.streams import StreamRule
+from polybot.performance.contracts.valuation_status import ValuationStatus
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -16,17 +24,9 @@ from pydantic import (
     field_validator,
 )
 
-from polybot.framework.config.constants import (
-    MAX_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
-    MIN_DATA_TRADES_PER_RATE_LIMIT_WINDOW,
-)
-from polybot.framework.config.mode import BotMode
-from polybot.framework.config.models import BotConfig
-from polybot.framework.streams import StreamRule
-from polybot.performance.contracts.valuation_status import ValuationStatus
-from api.catalog.values import DefinitionId
-from api.catalog.graphs.contracts import NodeGraph
 from api.bots.revisions import GraphRevisionNumber
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.values import DefinitionId
 from api.runs import status as run_status
 
 type RunName = Annotated[
@@ -110,3 +110,19 @@ class RunRead(BaseModel):
     latest_runtime_failure: str | None = None
     latest_equity: Decimal | None = None
     equity_status: ValuationStatus | None = None
+
+    def with_event_summary(
+        self,
+        *,
+        latest_equity: Decimal | None = None,
+        equity_status: ValuationStatus | None = None,
+        latest_runtime_failure: str | None = None,
+    ) -> RunRead:
+        if equity_status is None and latest_runtime_failure is None:
+            return self
+        updates: dict[str, object] = {}
+        if equity_status is not None:
+            updates.update(latest_equity=latest_equity, equity_status=equity_status)
+        if latest_runtime_failure is not None:
+            updates["latest_runtime_failure"] = latest_runtime_failure
+        return self.model_copy(update=updates)

@@ -6,11 +6,11 @@ from typing import Protocol
 
 from polybot.execution.broker import Broker
 from polybot.framework.activity import ActivitySink, NullActivitySink
-from polybot.framework.portfolio import PortfolioReader
 from polybot.framework.clock import Clock, SystemClock
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.portfolio import PortfolioReader
 from polybot.polymarket.markets import Market
 from polybot.polymarket.positions.contracts import Position
 

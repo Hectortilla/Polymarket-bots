@@ -1,17 +1,10 @@
-import type { Side, ValuationStatus } from '$lib/api/generated';
+import type { ValuationStatus } from '$lib/api/generated';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
-type SideContract = {
-  [Key in keyof typeof runtimeContract.side]: Extract<Side, Key>;
-};
 type ValuationStatusContract = {
-  [Key in keyof typeof runtimeContract.valuationStatus]: Extract<
-    ValuationStatus,
-    Lowercase<Key>
-  >;
+  [Key in keyof typeof runtimeContract.valuationStatus]: Extract<ValuationStatus, Lowercase<Key>>;
 };
 
-const sideContract = runtimeContract.side as SideContract;
 const valuationStatusContract = runtimeContract.valuationStatus as ValuationStatusContract;
 
 export const MAX_CHART_HISTORY_POINTS = runtimeContract.dashboard.maxChartHistoryPoints;
@@ -24,15 +17,10 @@ export const OUTCOME_PRICE_FLOOR = Number(runtimeContract.outcomePrice.floor);
 export const OUTCOME_PRICE_CEILING = Number(runtimeContract.outcomePrice.ceiling);
 export const WALLET_NOTIONAL_TIER_COUNT = runtimeContract.dashboard.walletNotionalTierCount;
 
-export const SIDE = {
-  buy: sideContract.BUY,
-  sell: sideContract.SELL
-} as const satisfies Record<string, Side>;
-
 export const VALUATION_STATUS = {
   fresh: valuationStatusContract.FRESH,
   stale: valuationStatusContract.STALE,
-  unavailable: valuationStatusContract.UNAVAILABLE
+  unavailable: valuationStatusContract.UNAVAILABLE,
 } as const satisfies Record<string, ValuationStatus>;
 
 export type AvailableValuationStatus = Exclude<
@@ -46,5 +34,5 @@ export const DASHBOARD_KEY = {
   reset: runtimeContract.dashboard.keys.RESET,
   view: runtimeContract.dashboard.keys.VIEW,
   nextWalletPage: runtimeContract.dashboard.keys.NEXT_WALLET_PAGE,
-  previousWalletPage: runtimeContract.dashboard.keys.PREVIOUS_WALLET_PAGE
+  previousWalletPage: runtimeContract.dashboard.keys.PREVIOUS_WALLET_PAGE,
 } as const;

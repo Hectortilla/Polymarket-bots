@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Callable
 
 from polybot.framework.base import BaseBot
+from polybot.framework.cadence import STREAM_PLAN_REFRESH_INTERVAL_SECONDS
 from polybot.framework.clock import system_now_ms
 from polybot.framework.context import BotContext
 from polybot.framework.dedupe import SourceEventDeduper
 from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import FillEvent
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
-from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.events.resolutions import MarketResolutionEvent
+from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.runner.validation import (
     book_market_identity_skip_reason,
     book_skip_reason,
@@ -78,9 +80,7 @@ class BotRunner:
         try:
             market = await self.ctx.markets.find_by_slug(book.market_slug)
         except MarketDataTransportError:
-            return DispatchOutcome.skipped(
-                DispatchSkipReason.MARKET_METADATA_MISSING
-            )
+            return DispatchOutcome.skipped(DispatchSkipReason.MARKET_METADATA_MISSING)
         reason = book_market_identity_skip_reason(book, market)
         if reason is not None:
             return DispatchOutcome.skipped(reason)
@@ -136,6 +136,24 @@ class BotRunner:
         await self.bot.on_wallet_trade(self.ctx, trade)
         return DispatchOutcome.accepted_event()
 
+    async def refresh_stream_plan(self) -> StreamPlan:
+        now_ms = self._now_ms()
+        self.stream_plan = StreamPlan(
+            current=await self.bot.current_stream_rules(self.ctx, now_ms),
+            next=await self.bot.next_stream_rules(self.ctx, now_ms),
+        )
+        return self.stream_plan
+
+    async def wait_for_stream_plan_change(
+        self, current_stream_plan: StreamPlan
+    ) -> StreamPlan:
+        """Wait until a dynamic bot changes its active subscriptions."""
+        while True:
+            await asyncio.sleep(STREAM_PLAN_REFRESH_INTERVAL_SECONDS)
+            candidate = await self.refresh_stream_plan()
+            if candidate.current != current_stream_plan.current:
+                return candidate
+
     def _wallet_trade_plan_skip_reason(
         self,
         trade: WalletTradeEvent,
@@ -151,14 +169,6 @@ class BotRunner:
         ):
             return DispatchSkipReason.MARKET_NOT_TRACKED
         return DispatchSkipReason.WALLET_NOT_TRACKED
-
-    async def refresh_stream_plan(self) -> StreamPlan:
-        now_ms = self._now_ms()
-        self.stream_plan = StreamPlan(
-            current=await self.bot.current_stream_rules(self.ctx, now_ms),
-            next=await self.bot.next_stream_rules(self.ctx, now_ms),
-        )
-        return self.stream_plan
 
     def _now_ms(self) -> int:
         return self._now_ms_fn()

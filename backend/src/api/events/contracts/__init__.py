@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
+from polybot.cli.observability.events import PortfolioSnapshot, StreamHealth
+from polybot.dashboard.contracts import DashboardSample
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -14,7 +16,30 @@ from pydantic import (
     TypeAdapter,
 )
 
-from polybot.cli.observability.events import PortfolioSnapshot
+from api.events.contracts.payloads.broker import (
+    BrokerFailurePayload,
+    BrokerFillPayload,
+    BrokerOrderPayload,
+)
+from api.events.contracts.payloads.chart import (
+    ChartSamplePayload,
+    EquityChartPayload,
+    MarketChartPayload,
+    WalletChartPayload,
+    WalletTimelinePayload,
+)
+from api.events.contracts.payloads.lifecycle import (
+    BotActivityPayload,
+    RunBootstrapPayload,
+    RunFailurePayload,
+    RunStartedPayload,
+    RunStatusPayload,
+    StreamHealthPayload,
+)
+from api.events.contracts.payloads.portfolio import (
+    MarketSettlementPayload,
+    PortfolioSnapshotPayload,
+)
 from api.events.ids import (
     FIRST_DURABLE_EVENT_ID,
     MAX_DURABLE_EVENT_ID,
@@ -22,25 +47,6 @@ from api.events.ids import (
 from api.runs.status import TERMINAL_RUN_STATUSES, RunStatus
 
 from .. import kinds
-from .payloads import (
-    BotActivityPayload,
-    BrokerFailurePayload,
-    BrokerFillPayload,
-    BrokerOrderPayload,
-    ChartSamplePayload,
-    EquityChartPayload,
-    MarketSettlementPayload,
-    MarketChartPayload,
-    PortfolioSnapshotPayload,
-    RunBootstrapPayload,
-    RunFailurePayload,
-    RunStartedPayload,
-    RunStatusPayload,
-    StreamHealthPayload,
-    WalletChartPayload,
-    WalletTimelinePayload,
-)
-
 
 type DurableEventId = Annotated[
     int,
@@ -111,7 +117,9 @@ class MarketSettlementDurableEvent(DurableEventBase):
 
 
 class PortfolioSnapshotEvent(DurableEventBase):
-    kind: Literal[kinds.EventKind.PORTFOLIO_SNAPSHOT] = kinds.EventKind.PORTFOLIO_SNAPSHOT
+    kind: Literal[kinds.EventKind.PORTFOLIO_SNAPSHOT] = (
+        kinds.EventKind.PORTFOLIO_SNAPSHOT
+    )
     payload: PortfolioSnapshotPayload
 
     @classmethod
@@ -141,6 +149,18 @@ class StreamHealthEvent(DurableEventBase):
     kind: Literal[kinds.EventKind.STREAM_HEALTH] = kinds.EventKind.STREAM_HEALTH
     payload: StreamHealthPayload
 
+    @classmethod
+    def from_observation(
+        cls,
+        run_id: UUID,
+        event: StreamHealth,
+    ) -> StreamHealthEvent:
+        return StreamHealthEvent(
+            run_id=run_id,
+            occurred_at=datetime.now(UTC),
+            payload=StreamHealthPayload.from_observation(event),
+        )
+
 
 class RunFailureEvent(DurableEventBase):
     kind: Literal[kinds.EventKind.RUN_FAILURE] = kinds.EventKind.RUN_FAILURE
@@ -150,6 +170,20 @@ class RunFailureEvent(DurableEventBase):
 class ChartSampleEvent(DurableEventBase):
     kind: Literal[kinds.EventKind.CHART_SAMPLE] = kinds.EventKind.CHART_SAMPLE
     payload: ChartSamplePayload
+
+    @classmethod
+    def from_sample(
+        cls,
+        run_id: UUID,
+        sample: DashboardSample,
+        *,
+        occurred_at: datetime,
+    ) -> ChartSampleEvent:
+        return ChartSampleEvent(
+            run_id=run_id,
+            occurred_at=occurred_at,
+            payload=ChartSamplePayload.from_sample(sample),
+        )
 
 
 type DurableEvent = Annotated[
@@ -281,6 +315,20 @@ class LiveWalletChartEvent(LiveEventBase):
 class LiveStreamHealthEvent(LiveEventBase):
     kind: Literal[kinds.LiveEventKind.STREAM_HEALTH] = kinds.LiveEventKind.STREAM_HEALTH
     payload: StreamHealthPayload
+
+    @classmethod
+    def from_observation(
+        cls,
+        run_id: UUID,
+        event: StreamHealth,
+        *,
+        occurred_at: datetime,
+    ) -> LiveStreamHealthEvent:
+        return LiveStreamHealthEvent(
+            run_id=run_id,
+            occurred_at=occurred_at,
+            payload=StreamHealthPayload.from_observation(event),
+        )
 
 
 LIVE_EVENT_MODELS = (

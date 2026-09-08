@@ -6,19 +6,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from polybot.execution.order_validation import validate_order
 from polybot.framework.events import OrderRequest
+
+from api.catalog.graphs.evaluation_reasons import GraphActionSkipReason
 from api.catalog.graphs.values import GRAPH_ACTION_ENABLED_HANDLE_ID
-from api.catalog.node_based.evaluator.contracts import (
-    GraphActionResult,
-    GraphActionSkipReason,
-)
+from api.catalog.node_based.evaluator.contracts import GraphActionResult
 
 if TYPE_CHECKING:
+    from api.catalog.graphs.catalog.functional import GraphBrokerActionDescriptor
+    from api.catalog.graphs.contracts.nodes import GraphBrokerActionNode
     from api.catalog.graphs.ports import GraphInputDescriptor
-    from api.catalog.graphs.catalog import (
-        GraphBrokerActionDescriptor,
-    )
-    from api.catalog.graphs.contracts import GraphBrokerActionNode
 
 type InputValueResolver = Callable[[str], object | None]
 
@@ -58,9 +56,11 @@ class GraphActionResolver:
                 skip_reason=GraphActionSkipReason.REQUIRED_INPUT_UNAVAILABLE,
                 missing_input_handle_id=inputs.missing_required_input_handle_id,
             )
-        return ResolvedOrder(
-            OrderRequest(side=inputs.descriptor.side, **inputs.order_values)
-        )
+        order = OrderRequest(side=inputs.descriptor.side, **inputs.order_values)
+        rejection = validate_order(order)
+        if rejection is not None:
+            return GraphActionResult(self.node.id, skip_reason=rejection[0])
+        return ResolvedOrder(order)
 
     def _resolve_inputs(self) -> _ActionInputs:
         input_values = {
@@ -68,9 +68,7 @@ class GraphActionResolver:
             for input_ in self.descriptor.inputs
         }
         enabled = input_values.pop(GRAPH_ACTION_ENABLED_HANDLE_ID) is True
-        missing_handle_id = self._first_missing_required_input_handle_id(
-            input_values
-        )
+        missing_handle_id = self._first_missing_required_input_handle_id(input_values)
         return _ActionInputs(
             self.descriptor,
             enabled,

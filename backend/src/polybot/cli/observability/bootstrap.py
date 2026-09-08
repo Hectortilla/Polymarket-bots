@@ -22,8 +22,8 @@ from polybot.cli.observability.observer import (
 from polybot.polymarket.markets import Market
 from polybot.polymarket.positions.contracts import Position
 
+from ..followed_wallets.ports import FollowedWalletStore
 from ..markets import MarketResolver
-from ..tracking.wallets import FollowedWalletStore
 
 MarketProgressReporter = Callable[[tuple[str, ...], tuple[str, ...]], None]
 WalletProgressReporter = Callable[[int, int], None]

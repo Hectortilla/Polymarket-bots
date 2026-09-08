@@ -3,42 +3,49 @@ import type {
   PersistedDurableEvent as GeneratedPersistedDurableEvent,
   StreamRunEventsApiV1RunsRunIdEventsStreamGetData,
 } from '$lib/api/generated';
+
 import { client } from '$lib/api/generated/client.gen';
+
 import runtimeContract from '$lib/runtimeContract.fixture.json';
+
 import {
   isEquityChartPayload,
   isMarketChartPayload,
   isStreamHealthPayload,
-  isWalletChartPayload
+  isWalletChartPayload,
 } from './dashboardPayloads';
+
 import { isFiniteDateTime, isRecord } from '$lib/valueGuards';
+
 import {
   eventCursorQuery,
   isTerminalLifecycleEvent,
   persistedDurableEvent,
-  type PersistedDurableEvent
+  type PersistedDurableEvent,
 } from './durableEvents';
+
 import { LIVE_EVENT_KIND } from './eventKinds';
 
 export { LIVE_EVENT_KIND } from './eventKinds';
 
 type StreamRequest = StreamRunEventsApiV1RunsRunIdEventsStreamGetData;
+
 export type { LiveRunEvent } from '$lib/api/generated';
-const RUN_EVENTS_STREAM_PATH =
-  runtimeContract.apiPaths.runEventsStream as StreamRequest['url'];
+
+const RUN_EVENTS_STREAM_PATH = runtimeContract.apiPaths.runEventsStream as StreamRequest['url'];
 
 export type EventStreamOpener = (
   runId: string,
   afterEventId: number,
   onDurableEvent: (event: PersistedDurableEvent) => void,
-  onLiveEvent: (event: LiveRunEvent) => void
+  onLiveEvent: (event: LiveRunEvent) => void,
 ) => () => void;
 
 export const openRunEventStream: EventStreamOpener = (
   runId,
   afterEventId,
   onDurableEvent,
-  onLiveEvent
+  onLiveEvent,
 ) => {
   const url = runEventStreamUrl(runId, afterEventId);
   const source = new EventSource(url);
@@ -65,25 +72,11 @@ export function runEventStreamUrl(runId: string, afterEventId: number): string {
   return client.buildUrl({
     url: RUN_EVENTS_STREAM_PATH,
     path: { run_id: runId },
-    query: eventCursorQuery(afterEventId)
+    query: eventCursorQuery(afterEventId),
   });
 }
 
-function parseDurableEvent(
-  data: unknown,
-  runId: string
-): PersistedDurableEvent | null {
-  try {
-    return persistedDurableEvent(data as GeneratedPersistedDurableEvent, runId);
-  } catch {
-    return null;
-  }
-}
-
-export function liveRunEvent(
-  data: unknown,
-  runId: string
-): LiveRunEvent | null {
+export function liveRunEvent(data: unknown, runId: string): LiveRunEvent | null {
   if (!isRecord(data)) return null;
   const candidate = data;
   if (
@@ -91,7 +84,8 @@ export function liveRunEvent(
     candidate.id !== undefined ||
     !isFiniteDateTime(candidate.occurred_at) ||
     !isRecord(candidate.payload)
-  ) return null;
+  )
+    return null;
   const payload = candidate.payload;
   if (!isLiveKind(candidate.kind) || !isLivePayload(candidate.kind, payload)) {
     return null;
@@ -99,14 +93,19 @@ export function liveRunEvent(
   return candidate as unknown as LiveRunEvent;
 }
 
+function parseDurableEvent(data: unknown, runId: string): PersistedDurableEvent | null {
+  try {
+    return persistedDurableEvent(data as GeneratedPersistedDurableEvent, runId);
+  } catch {
+    return null;
+  }
+}
+
 function isLiveKind(kind: unknown): kind is LiveRunEvent['kind'] {
   return Object.values(LIVE_EVENT_KIND).includes(kind as never);
 }
 
-function isLivePayload(
-  kind: LiveRunEvent['kind'],
-  payload: Record<string, unknown>
-): boolean {
+function isLivePayload(kind: LiveRunEvent['kind'], payload: Record<string, unknown>): boolean {
   switch (kind) {
     case LIVE_EVENT_KIND.market:
       return isMarketChartPayload(payload);

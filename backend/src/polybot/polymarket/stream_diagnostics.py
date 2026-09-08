@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
-
 SDK_DROPPED_COUNT_ATTRIBUTE = "dropped"
 _MISSING = object()
 

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 from polybot.framework.wallets import normalize_wallet_address
 
 from .contracts import (
-    BucketRounding,
     FIRST_WALLET_NOTIONAL_TIER,
     MAX_WALLET_TIMELINE_EVENTS,
     NONPOSITIVE_MAX_NOTIONAL_THRESHOLD,
@@ -18,8 +17,9 @@ from .contracts import (
     WALLET_BUCKET_ROUNDING,
     WALLET_NOTIONAL_TIER_COUNT,
     WALLET_NOTIONAL_TIER_DENOMINATOR,
-    WALLET_NOTIONAL_TIER_UPPER_NUMERATORS,
     WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE,
+    WALLET_NOTIONAL_TIER_UPPER_NUMERATORS,
+    BucketRounding,
     WalletChartPoint,
     format_market_label,
 )
@@ -60,8 +60,11 @@ class DashboardWallets:
     )
 
     def record_trade(self, trade: WalletTradeEvent) -> WalletTimelineEvent:
+        existing = self.wallet_timeline_by_source.get(trade.source_key)
+        if existing is not None:
+            return existing
         self.activate_lane(trade.wallet)
-        point = wallet_chart_point(trade)
+        point = WalletChartPoint.from_trade(trade)
         timeline_event = WalletTimelineEvent(
             source_key=point.source_key,
             wallet=point.wallet,
@@ -98,22 +101,6 @@ class DashboardWallets:
 
 def wallet_market_label(trade: WalletTradeEvent) -> str:
     return format_market_label(trade.token_id, trade.market_slug, trade.outcome)
-
-
-def wallet_chart_point(
-    trade: WalletTradeEvent,
-    *,
-    accepted: bool | None = None,
-) -> WalletChartPoint:
-    return WalletChartPoint(
-        source_key=trade.source_key,
-        wallet=normalize_wallet_address(trade.wallet),
-        trade_timestamp_ms=trade.trade_timestamp_ms,
-        side=trade.side,
-        notional=trade.price * trade.size,
-        market_label=wallet_market_label(trade),
-        accepted=accepted,
-    )
 
 
 def wallet_bucket_index(

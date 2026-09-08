@@ -3,24 +3,25 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-
+from polybot.examples.btc_five_minute_market import BTC_FIVE_MINUTE_SLUG_PREFIX
 from polybot.examples.meh_trading_bot import (
     BREAKOUT_ENTRY_REASON,
     ENTRY_QUOTE_MAX_AGE_MS,
     ENTRY_QUOTE_MAX_SKEW_MS,
-    MAXIMUM_TRADES_PER_RUN,
     MAXIMUM_ENTRY_ASK,
+    MAXIMUM_TRADES_PER_RUN,
     MINIMUM_LEADER_BID,
     MINIMUM_PRICE_IMPROVEMENT,
     MOMENTUM_LOOKBACK_MS,
     PAPER_MAX_ORDER_SIZE,
-    Quote,
-    OpenPosition,
     TAKE_PROFIT,
     TAKE_PROFIT_EXIT_REASON,
+    OpenPosition,
+    Quote,
+)
+from polybot.examples.meh_trading_bot import (
     MehTradingBot as WinnerTradingBot,
 )
-from polybot.examples.btc_five_minute_market import BTC_FIVE_MINUTE_SLUG_PREFIX
 from polybot.examples.winner_trading_bot import WinnerTradingBot as LeaderWinnerBot
 from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
@@ -33,7 +34,6 @@ from polybot.framework.events.books import (
 )
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.polymarket.markets import Market, MarketOutcome
-
 
 NOW_MS = 240_000
 LEADER_TOKEN_ID = "up-token"

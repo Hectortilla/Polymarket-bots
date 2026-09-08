@@ -4,7 +4,6 @@ from typing import Annotated
 
 from pydantic import StringConstraints
 
-
 GRAPH_TEMPLATE_NAME_MAX_LENGTH = 200
 
 type GraphTemplateName = Annotated[

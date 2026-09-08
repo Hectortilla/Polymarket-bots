@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
+from polybot.backtesting.contracts import BacktestGapPolicy
 from polybot.cli.observability.events import (
     PortfolioPositionSnapshot,
     PortfolioSnapshot,
@@ -26,6 +26,19 @@ from polybot.performance.artifacts.errors import (
 )
 from polybot.performance.artifacts.lifecycle import (
     PerformanceArtifacts,
+)
+from polybot.performance.contracts.files import (
+    EQUITY_FILE_NAME,
+    ORDERS_FILE_NAME,
+    SUMMARY_FILE_NAME,
+    EquityField,
+    OrderField,
+    PerformanceMetricsField,
+    PerformancePositionField,
+    PerformanceProvenanceField,
+    PerformanceSelectionField,
+    PerformanceSummaryField,
+    PerformanceValuationField,
 )
 from polybot.performance.contracts.run import (
     PerformanceRunKind,
@@ -152,9 +165,7 @@ def test_performance_artifacts_stream_exact_rows_and_finalize_summary(
     after_fill = PaperPortfolio(
         cash_usdc=Decimal("98.90"),
         cumulative_fees_usdc=Decimal("0.10"),
-        positions={
-            "token": PaperPosition("token", Decimal("2.00"), Decimal("0.50"))
-        },
+        positions={"token": PaperPosition("token", Decimal("2.00"), Decimal("0.50"))},
     )
     artifacts.record_order_result(
         submitted_at_ms=2_900,
@@ -180,7 +191,7 @@ def test_performance_artifacts_stream_exact_rows_and_finalize_summary(
             requested_size=Decimal("1.00"),
             received_at_ms=3_100,
             reject_reason=FillRejectReason.BOOK_STALE,
-            reject_message="stale",
+            reject_message=ValuationStatus.STALE,
         ),
     )
     artifacts.record_book(_book("token", "0.30", "0.60", received_at_ms=4_000))
@@ -196,13 +207,13 @@ def test_performance_artifacts_stream_exact_rows_and_finalize_summary(
         portfolio=after_fill,
     )
 
-    with (results_dir / "equity.csv").open(newline="", encoding="utf-8") as source:
+    with (results_dir / EQUITY_FILE_NAME).open(newline="", encoding="utf-8") as source:
         equity_rows = list(csv.DictReader(source))
-    with (results_dir / "orders.csv").open(newline="", encoding="utf-8") as source:
+    with (results_dir / ORDERS_FILE_NAME).open(newline="", encoding="utf-8") as source:
         order_rows = list(csv.DictReader(source))
-    stored_summary = json.loads((results_dir / "summary.json").read_text())
+    stored_summary = json.loads((results_dir / SUMMARY_FILE_NAME).read_text())
 
-    assert [int(row["timestamp_ms"]) for row in equity_rows] == [
+    assert [int(row[EquityField.TIMESTAMP_MS]) for row in equity_rows] == [
         1_000,
         2_000,
         3_000,
@@ -212,62 +223,77 @@ def test_performance_artifacts_stream_exact_rows_and_finalize_summary(
         5_000,
     ]
     assert equity_rows[3] == {
-        "timestamp_ms": "3000",
-        "sample_reason": "fill",
-        "cash_usdc": "98.90",
-        "marked_position_value_usdc": "0.8000",
-        "equity_usdc": "99.7000",
-        "pnl_usdc": "-0.3000",
-        "fees_usdc": "0.10",
-        "exposure_usdc": "0.8000",
-        "position_count": "1",
-        "valuation_status": "fresh",
+        EquityField.TIMESTAMP_MS: "3000",
+        EquityField.SAMPLE_REASON: SampleReason.FILL,
+        EquityField.CASH_USDC: "98.90",
+        EquityField.MARKED_POSITION_VALUE_USDC: "0.8000",
+        EquityField.EQUITY_USDC: "99.7000",
+        EquityField.PNL_USDC: "-0.3000",
+        EquityField.FEES_USDC: "0.10",
+        EquityField.EXPOSURE_USDC: "0.8000",
+        EquityField.POSITION_COUNT: "1",
+        EquityField.VALUATION_STATUS: ValuationStatus.FRESH,
     }
-    assert order_rows[0]["requested_price"] == "0.60"
-    assert order_rows[0]["average_price"] == "0.50"
-    assert order_rows[0]["strategy_reason"] == "entry"
-    assert order_rows[1]["reject_reason"] == "book_stale"
+    assert order_rows[0][OrderField.REQUESTED_PRICE] == "0.60"
+    assert order_rows[0][OrderField.AVERAGE_PRICE] == "0.50"
+    assert order_rows[0][OrderField.STRATEGY_REASON] == "entry"
+    assert order_rows[1][OrderField.REJECT_REASON] == FillRejectReason.BOOK_STALE.value
     assert summary == stored_summary
-    assert summary["status"] == "completed"
-    assert summary["partial"] is False
-    assert summary["metrics"] == {
-        "initial_cash_usdc": "100.00",
-        "initial_equity_usdc": "100.00",
-        "final_cash_usdc": "98.90",
-        "final_marked_position_value_usdc": "0.6000",
-        "final_equity_usdc": "99.5000",
-        "gross_pnl_usdc": "-0.4000",
-        "net_pnl_usdc": "-0.5000",
-        "return": "-0.005",
-        "fees_usdc": "0.10",
-        "filled_notional_usdc": "1.0000",
-        "max_drawdown_usdc": "0.5000",
-        "max_drawdown_fraction": "0.005",
-        "order_count": 2,
-        "fill_count": 1,
-        "rejected_order_count": 1,
-        "coverage_gap_rejected_order_count": 0,
-        "resolution_count": 1,
-        "event_count": 3,
-        "dispatch_count": 3,
-        "accepted_dispatch_count": 1,
-        "skipped_dispatch_count": 1,
+    assert summary[PerformanceSummaryField.STATUS] == PerformanceRunStatus.COMPLETED
+    assert summary[PerformanceSummaryField.PARTIAL] is False
+    assert summary[PerformanceSummaryField.METRICS] == {
+        PerformanceMetricsField.INITIAL_CASH_USDC: "100.00",
+        PerformanceMetricsField.INITIAL_EQUITY_USDC: "100.00",
+        PerformanceMetricsField.FINAL_CASH_USDC: "98.90",
+        PerformanceMetricsField.FINAL_MARKED_POSITION_VALUE_USDC: "0.6000",
+        PerformanceMetricsField.FINAL_EQUITY_USDC: "99.5000",
+        PerformanceMetricsField.GROSS_PNL_USDC: "-0.4000",
+        PerformanceMetricsField.NET_PNL_USDC: "-0.5000",
+        PerformanceMetricsField.RETURN_FRACTION: "-0.005",
+        PerformanceMetricsField.FEES_USDC: "0.10",
+        PerformanceMetricsField.FILLED_NOTIONAL_USDC: "1.0000",
+        PerformanceMetricsField.MAX_DRAWDOWN_USDC: "0.5000",
+        PerformanceMetricsField.MAX_DRAWDOWN_FRACTION: "0.005",
+        PerformanceMetricsField.ORDER_COUNT: 2,
+        PerformanceMetricsField.FILL_COUNT: 1,
+        PerformanceMetricsField.REJECTED_ORDER_COUNT: 1,
+        PerformanceMetricsField.COVERAGE_GAP_REJECTED_ORDER_COUNT: 0,
+        PerformanceMetricsField.RESOLUTION_COUNT: 1,
+        PerformanceMetricsField.EVENT_COUNT: 3,
+        PerformanceMetricsField.DISPATCH_COUNT: 3,
+        PerformanceMetricsField.ACCEPTED_DISPATCH_COUNT: 1,
+        PerformanceMetricsField.SKIPPED_DISPATCH_COUNT: 1,
     }
-    assert summary["valuation"]["final_status"] == "fresh"
-    assert summary["open_positions"] == [
+    assert (
+        summary[PerformanceSummaryField.VALUATION][
+            PerformanceValuationField.FINAL_STATUS
+        ]
+        == ValuationStatus.FRESH
+    )
+    assert summary[PerformanceSummaryField.OPEN_POSITIONS] == [
         {
-            "token_id": "token",
-            "size": "2.00",
-            "average_entry_price": "0.50",
-            "executable_mark": "0.30",
-            "last_executable_mark": None,
-            "market_value_usdc": "0.6000",
-            "valuation_status": "fresh",
+            PerformancePositionField.TOKEN_ID: "token",
+            PerformancePositionField.SIZE: "2.00",
+            PerformancePositionField.AVERAGE_ENTRY_PRICE: "0.50",
+            PerformancePositionField.EXECUTABLE_MARK: "0.30",
+            PerformancePositionField.LAST_EXECUTABLE_MARK: None,
+            PerformancePositionField.MARKET_VALUE_USDC: "0.6000",
+            PerformancePositionField.VALUATION_STATUS: ValuationStatus.FRESH,
         }
     ]
-    assert "private_key" not in summary["provenance"]["configuration"]
-    assert "api_secret" not in summary["provenance"]["configuration"]
-    assert not tuple(results_dir.glob(".summary.json.*"))
+    assert (
+        "private_key"
+        not in summary[PerformanceSummaryField.PROVENANCE][
+            PerformanceProvenanceField.CONFIGURATION
+        ]
+    )
+    assert (
+        "api_secret"
+        not in summary[PerformanceSummaryField.PROVENANCE][
+            PerformanceProvenanceField.CONFIGURATION
+        ]
+    )
+    assert not tuple(results_dir.glob(f".{SUMMARY_FILE_NAME}.*"))
     with pytest.raises(PerformanceArtifactStateError, match="finalized"):
         artifacts.record_book(_book("token", "0.3", "0.6"))
 
@@ -317,23 +343,31 @@ def test_blackout_gap_provenance_and_effects_are_durable(tmp_path: Path) -> None
         portfolio=portfolio,
     )
 
-    assert summary["selection"] == {
-        "session_id": 1,
-        "start_ms": 1_000,
-        "end_ms": 2_000,
-        "market_slugs": ["market"],
-        "replay_cutoff_sequence": None,
-        "session_integrity_status": None,
-        "uses_partial_session": False,
-        "gap_policy": "blackout",
-        "coverage_gap_ids": [3, 9],
-        "coverage_gap_count": 2,
-        "coverage_gap_duration_ms": 125,
-        "coverage_gap_open_count": 1,
-        "coverage_gap_affected_position_token_ids": ["token-a", "token-b"],
-        "coverage_gap_affected_position_count": 2,
+    assert summary[PerformanceSummaryField.SELECTION] == {
+        PerformanceSelectionField.SESSION_ID: 1,
+        PerformanceSelectionField.START_MS: 1_000,
+        PerformanceSelectionField.END_MS: 2_000,
+        PerformanceSelectionField.MARKET_SLUGS: ["market"],
+        PerformanceSelectionField.REPLAY_CUTOFF_SEQUENCE: None,
+        PerformanceSelectionField.SESSION_INTEGRITY_STATUS: None,
+        PerformanceSelectionField.USES_PARTIAL_SESSION: False,
+        PerformanceSelectionField.GAP_POLICY: BacktestGapPolicy.BLACKOUT,
+        PerformanceSelectionField.COVERAGE_GAP_IDS: [3, 9],
+        PerformanceSelectionField.COVERAGE_GAP_COUNT: 2,
+        PerformanceSelectionField.COVERAGE_GAP_DURATION_MS: 125,
+        PerformanceSelectionField.COVERAGE_GAP_OPEN_COUNT: 1,
+        PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS: [
+            "token-a",
+            "token-b",
+        ],
+        PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_COUNT: 2,
     }
-    assert summary["metrics"]["coverage_gap_rejected_order_count"] == 1
+    assert (
+        summary[PerformanceSummaryField.METRICS][
+            PerformanceMetricsField.COVERAGE_GAP_REJECTED_ORDER_COUNT
+        ]
+        == 1
+    )
 
 
 def test_run_selection_rejects_gap_provenance_without_policy() -> None:
@@ -375,14 +409,14 @@ def test_partial_run_status_is_durable(
         error=error,
     )
 
-    assert summary["status"] == status.value
-    assert summary["partial"] is True
-    assert summary["error"] == error
+    assert summary[PerformanceSummaryField.STATUS] == status.value
+    assert summary[PerformanceSummaryField.PARTIAL] is True
+    assert summary[PerformanceSummaryField.ERROR] == error
 
 
 def test_stale_open_position_is_estimated_and_not_complete(tmp_path: Path) -> None:
     artifacts = PerformanceArtifacts(
-        tmp_path / "stale",
+        tmp_path / ValuationStatus.STALE,
         provenance=_provenance(),
         selection=_selection(end_ms=1_001),
         initial_cash_usdc=Decimal("100"),
@@ -391,9 +425,7 @@ def test_stale_open_position_is_estimated_and_not_complete(tmp_path: Path) -> No
     initial = PaperPortfolio(Decimal("100"))
     held = PaperPortfolio(
         cash_usdc=Decimal("99"),
-        positions={
-            "token": PaperPosition("token", Decimal("2"), Decimal("0.50"))
-        },
+        positions={"token": PaperPosition("token", Decimal("2"), Decimal("0.50"))},
     )
     artifacts.record_book(_book("token", "0.40", "0.60"))
     artifacts.start(1_000, initial)
@@ -405,11 +437,32 @@ def test_stale_open_position_is_estimated_and_not_complete(tmp_path: Path) -> No
         portfolio=held,
     )
 
-    assert summary["valuation"]["final_status"] == "stale"
-    assert summary["valuation"]["estimated"] is True
-    assert summary["valuation"]["complete"] is False
-    assert summary["open_positions"][0]["executable_mark"] is None
-    assert summary["open_positions"][0]["last_executable_mark"] == "0.40"
+    assert (
+        summary[PerformanceSummaryField.VALUATION][
+            PerformanceValuationField.FINAL_STATUS
+        ]
+        == ValuationStatus.STALE
+    )
+    assert (
+        summary[PerformanceSummaryField.VALUATION][PerformanceValuationField.ESTIMATED]
+        is True
+    )
+    assert (
+        summary[PerformanceSummaryField.VALUATION][PerformanceValuationField.COMPLETE]
+        is False
+    )
+    assert (
+        summary[PerformanceSummaryField.OPEN_POSITIONS][0][
+            PerformancePositionField.EXECUTABLE_MARK
+        ]
+        is None
+    )
+    assert (
+        summary[PerformanceSummaryField.OPEN_POSITIONS][0][
+            PerformancePositionField.LAST_EXECUTABLE_MARK
+        ]
+        == "0.40"
+    )
 
 
 def test_reused_idempotent_fill_is_not_double_counted(tmp_path: Path) -> None:
@@ -422,9 +475,7 @@ def test_reused_idempotent_fill_is_not_double_counted(tmp_path: Path) -> None:
     initial = PaperPortfolio(Decimal("100"))
     filled = PaperPortfolio(
         cash_usdc=Decimal("99.40"),
-        positions={
-            "token": PaperPosition("token", Decimal("1"), Decimal("0.60"))
-        },
+        positions={"token": PaperPosition("token", Decimal("1"), Decimal("0.60"))},
     )
     order = OrderRequest(
         token_id="token",
@@ -465,9 +516,20 @@ def test_reused_idempotent_fill_is_not_double_counted(tmp_path: Path) -> None:
         portfolio=filled,
     )
 
-    assert summary["metrics"]["order_count"] == 2
-    assert summary["metrics"]["fill_count"] == 1
-    assert summary["metrics"]["filled_notional_usdc"] == "0.60"
+    assert (
+        summary[PerformanceSummaryField.METRICS][PerformanceMetricsField.ORDER_COUNT]
+        == 2
+    )
+    assert (
+        summary[PerformanceSummaryField.METRICS][PerformanceMetricsField.FILL_COUNT]
+        == 1
+    )
+    assert (
+        summary[PerformanceSummaryField.METRICS][
+            PerformanceMetricsField.FILLED_NOTIONAL_USDC
+        ]
+        == "0.60"
+    )
 
 
 def test_existing_results_directory_is_refused(tmp_path: Path) -> None:

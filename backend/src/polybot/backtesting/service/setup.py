@@ -6,29 +6,28 @@ import random
 from dataclasses import dataclass, replace
 
 from polybot.async_io import run_blocking
-from polybot.backtesting.clock import ReplayClock
 from polybot.backtesting.clients import (
     RejectingPlanningBroker,
     RejectingPositionClient,
     RejectingWalletActivityClient,
 )
+from polybot.backtesting.clock import ReplayClock
 from polybot.backtesting.contracts import BacktestOptions, BacktestSelection
-from polybot.backtesting.selection import (
-    resolve_backtest_selection,
-    validate_backtest_selection,
-)
+from polybot.backtesting.seeding import derived_seed
+from polybot.backtesting.selection import ReplaySelectionResolver
+from polybot.backtesting.selection.coverage import SelectionCoverage
+from polybot.backtesting.service.priming import prime_to_start
 from polybot.backtesting.state import ArchiveMarketState
 from polybot.execution.paper import PaperBroker
+from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.recording.archive.reader import RecordingReader
 
 from ..coverage import ReplayCoverage
-from .bootstrap import advance_to_replayable_start, prime_to_start
+from .bootstrap import advance_to_replayable_start
 from .coverage import activate_bootstrap_blackouts, load_replay_coverage
-from .results import derived_seed
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,12 +49,11 @@ async def prepare_replay(
 ) -> PreparedReplay:
     session = await run_blocking(reader.select_session, options.session_id)
     selection = await run_blocking(
-        resolve_backtest_selection,
-        reader,
+        ReplaySelectionResolver(reader).resolve,
         session,
         options,
     )
-    await run_blocking(validate_backtest_selection, reader, selection)
+    await run_blocking(SelectionCoverage(reader).validate_events, selection)
     bootstrap_coverage = await load_replay_coverage(reader, selection)
     state = ArchiveMarketState()
     prime_sequence = await run_blocking(

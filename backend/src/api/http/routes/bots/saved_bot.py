@@ -4,9 +4,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
+from api.bots.contracts import (
+    BotCreate,
+    BotGraphRevisionCreate,
+    BotGraphRevisionRead,
+    BotRead,
+    BotUpdate,
+)
+from api.bots.store import BotStore
 from api.http.dependencies import (
     MarketDiscoveryDependency,
     SessionFactoryDependency,
+)
+from api.http.responses import (
+    NOT_FOUND_RESPONSE,
+    SERVICE_UNAVAILABLE_RESPONSE,
 )
 from api.http.routes.bots.market_validation import (
     validate_new_market_selections,
@@ -20,15 +32,11 @@ from api.http.routes.bots.validation import (
     require_graph_contract,
     resolve_bot_graph,
 )
-from api.http.responses import (
-    NOT_FOUND_RESPONSE,
-    SERVICE_UNAVAILABLE_RESPONSE,
-)
 from api.http.routes.paths import (
-    BOTS_PATH,
     BOT_GRAPH_REVISION_PATH,
     BOT_GRAPH_REVISIONS_PATH,
     BOT_PATH,
+    BOTS_PATH,
     CREATE_BOT_GRAPH_REVISION_OPERATION_ID,
     CREATE_BOT_OPERATION_ID,
     LIST_BOTS_OPERATION_ID,
@@ -36,15 +44,6 @@ from api.http.routes.paths import (
     READ_BOT_OPERATION_ID,
     UPDATE_BOT_OPERATION_ID,
 )
-from api.bots.contracts import (
-    BotCreate,
-    BotGraphRevisionCreate,
-    BotGraphRevisionRead,
-    BotRead,
-    BotUpdate,
-)
-from api.bots.store import BotStore
-
 
 BOT_GRAPH_REVISION_NOT_FOUND_DETAIL = "bot graph revision not found"
 

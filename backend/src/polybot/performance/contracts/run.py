@@ -7,6 +7,10 @@ from enum import StrEnum
 
 from polybot.backtesting.contracts import BacktestGapPolicy
 from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.integers import validate_positive_int
+from polybot.recording.contracts.coverage_selection import (
+    normalize_coverage_gap_selection,
+)
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
@@ -72,9 +76,7 @@ class RunProvenance:
             (self.archive_sha256, "archive checksum"),
             (self.archive_target_identity, "archive target identity"),
         ):
-            if value is not None and (
-                not isinstance(value, str) or not value.strip()
-            ):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} must be non-empty text or null")
         if self.kind is PerformanceRunKind.BACKTEST and (
             self.archive_sha256 is None
@@ -99,12 +101,8 @@ class RunSelection:
     coverage_gap_open_count: int = 0
 
     def __post_init__(self) -> None:
-        if self.session_id is not None and (
-            isinstance(self.session_id, bool)
-            or not isinstance(self.session_id, int)
-            or self.session_id <= 0
-        ):
-            raise ValueError("performance session ID must be positive")
+        if self.session_id is not None:
+            validate_positive_int(self.session_id, "performance session ID")
         require_nonnegative_timestamp(self.start_ms, "performance start timestamp")
         if self.end_ms is not None:
             require_nonnegative_timestamp(self.end_ms, "performance end timestamp")
@@ -128,34 +126,19 @@ class RunSelection:
             raise ValueError("performance partial-session marker must be boolean")
         if self.gap_policy is not None:
             try:
-                normalized_gap_policy = BacktestGapPolicy(
-                    str(self.gap_policy).strip()
-                )
+                normalized_gap_policy = BacktestGapPolicy(str(self.gap_policy).strip())
             except (TypeError, ValueError) as error:
                 raise ValueError("performance gap policy is invalid") from error
             object.__setattr__(self, "gap_policy", normalized_gap_policy)
-        if not isinstance(self.coverage_gap_ids, tuple) or any(
-            isinstance(gap_id, bool)
-            or not isinstance(gap_id, int)
-            or gap_id <= 0
-            for gap_id in self.coverage_gap_ids
-        ):
-            raise ValueError("performance coverage gap IDs must be positive integers")
         object.__setattr__(
             self,
             "coverage_gap_ids",
-            tuple(sorted(set(self.coverage_gap_ids))),
+            normalize_coverage_gap_selection(
+                self.coverage_gap_ids,
+                self.coverage_gap_duration_ms,
+                self.coverage_gap_open_count,
+            ),
         )
-        for value, name in (
-            (self.coverage_gap_duration_ms, "duration"),
-            (self.coverage_gap_open_count, "open count"),
-        ):
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ValueError(f"performance coverage gap {name} must be nonnegative")
-        if self.coverage_gap_open_count > len(self.coverage_gap_ids):
-            raise ValueError(
-                "performance open coverage gap count exceeds selected gaps"
-            )
         if self.gap_policy is None and (
             self.coverage_gap_ids
             or self.coverage_gap_duration_ms

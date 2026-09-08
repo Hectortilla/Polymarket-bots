@@ -5,22 +5,21 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
-from polymarket import PolymarketError
-
 from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.polymarket.wallet_activity.client import PolymarketWalletActivityClient
-from polybot.polymarket.wallet_activity.fields import TRADE_ACTIVITY_TYPE
 from polybot.polymarket.wallet_activity.contracts import (
     WalletActivityError,
     WalletActivityIssue,
     WalletTradeSelector,
 )
+from polybot.polymarket.wallet_activity.fields import TRADE_ACTIVITY_TYPE
 from polybot.polymarket.wallet_activity.normalization import (
     normalize_stream_event,
     normalize_wallet_trade,
 )
 from polybot.polymarket.wallet_activity.stream import WalletActivityStream
+from polymarket import PolymarketError
 
 
 class Page:
@@ -138,10 +137,11 @@ def _row(wallet: str, tx: str, timestamp: int = 1_700_000_000) -> dict[str, obje
 
 def test_normalize_trade_converts_public_row_and_preserves_latency() -> None:
     trade = normalize_wallet_trade(
-        _row("0xLeader", "tx-1"), observed_at_ms=1_700_000_001_250
+        _row("0xaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaB", "tx-1"),
+        observed_at_ms=1_700_000_001_250,
     )
     assert trade is not None
-    assert trade.wallet == "0xleader"
+    assert trade.wallet == "0xabababababababababababababababababababab"
     assert trade.side is Side.BUY
     assert trade.size == Decimal("2.5")
     assert trade.trade_timestamp_ms == 1_700_000_000_000
@@ -150,11 +150,11 @@ def test_normalize_trade_converts_public_row_and_preserves_latency() -> None:
 
 def test_transaction_hash_casing_has_one_canonical_trade_identity() -> None:
     uppercase = normalize_wallet_trade(
-        _row("0xLeader", "0xABCDEF"),
+        _row("0xaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaB", "0xABCDEF"),
         observed_at_ms=1_700_000_001_250,
     )
     lowercase = normalize_wallet_trade(
-        _row("0xLeader", "0xabcdef"),
+        _row("0xaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaB", "0xabcdef"),
         observed_at_ms=1_700_000_001_250,
     )
 
@@ -165,7 +165,10 @@ def test_transaction_hash_casing_has_one_canonical_trade_identity() -> None:
 
 def test_normalize_trade_preserves_arbitrary_outcome_label() -> None:
     trade = normalize_wallet_trade(
-        {**_row("0xLeader", "tx-1"), "outcome": "Candidate A"},
+        {
+            **_row("0xaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaB", "tx-1"),
+            "outcome": "Candidate A",
+        },
         observed_at_ms=1_700_000_001_250,
     )
 
@@ -174,10 +177,19 @@ def test_normalize_trade_preserves_arbitrary_outcome_label() -> None:
 
 
 def test_missing_required_trade_fields_are_rejected() -> None:
-    assert normalize_wallet_trade(_row("0xleader", ""), observed_at_ms=1) is None
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "asset": None}, observed_at_ms=1
+            _row("0xabababababababababababababababababababab", ""), observed_at_ms=1
+        )
+        is None
+    )
+    assert (
+        normalize_wallet_trade(
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "asset": None,
+            },
+            observed_at_ms=1,
         )
         is None
     )
@@ -186,7 +198,11 @@ def test_missing_required_trade_fields_are_rejected() -> None:
 def test_conflicting_trade_size_and_shares_are_rejected() -> None:
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "size": 0, "shares": "2.5"},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "size": 0,
+                "shares": "2.5",
+            },
             observed_at_ms=1,
         )
         is None
@@ -196,7 +212,7 @@ def test_conflicting_trade_size_and_shares_are_rejected() -> None:
 @pytest.mark.parametrize(
     ("field", "conflicting_value"),
     (
-        ("wallet", "0xother"),
+        ("wallet", "0x4444444444444444444444444444444444444444"),
         ("condition_id", "other-condition"),
         ("token_id", "other-token"),
         ("transaction_hash", "other-transaction"),
@@ -208,7 +224,10 @@ def test_conflicting_trade_identity_aliases_are_rejected(
 ) -> None:
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), field: conflicting_value},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                field: conflicting_value,
+            },
             observed_at_ms=1,
         )
         is None
@@ -218,7 +237,10 @@ def test_conflicting_trade_identity_aliases_are_rejected(
 def test_naive_wallet_trade_timestamp_is_rejected() -> None:
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "timestamp": datetime(2026, 1, 1)},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "timestamp": datetime(2026, 1, 1),
+            },
             observed_at_ms=1,
         )
         is None
@@ -229,7 +251,10 @@ def test_naive_wallet_trade_timestamp_is_rejected() -> None:
 def test_boolean_wallet_trade_timestamp_is_rejected(timestamp: bool) -> None:
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "timestamp": timestamp},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "timestamp": timestamp,
+            },
             observed_at_ms=1,
         )
         is None
@@ -239,21 +264,30 @@ def test_boolean_wallet_trade_timestamp_is_rejected(timestamp: bool) -> None:
 def test_non_trade_rows_and_unrepresentable_timestamps_are_rejected() -> None:
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "type": "REDEEM"},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "type": "REDEEM",
+            },
             observed_at_ms=1_700_000_001_000,
         )
         is None
     )
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "type": TRADE_ACTIVITY_TYPE},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "type": TRADE_ACTIVITY_TYPE,
+            },
             observed_at_ms=1_700_000_001_000,
         )
         is not None
     )
     assert (
         normalize_wallet_trade(
-            {**_row("0xleader", "tx-1"), "timestamp": 10**309},
+            {
+                **_row("0xabababababababababababababababababababab", "tx-1"),
+                "timestamp": 10**309,
+            },
             observed_at_ms=1,
         )
         is None
@@ -263,7 +297,7 @@ def test_non_trade_rows_and_unrepresentable_timestamps_are_rejected() -> None:
 @pytest.mark.parametrize("timestamp", (True, False))
 def test_typed_stream_events_reject_boolean_timestamps(timestamp: bool) -> None:
     event = WalletTradeEvent(
-        wallet="0xleader",
+        wallet="0xabababababababababababababababababababab",
         condition_id="condition",
         token_id="token",
         side=Side.BUY,
@@ -279,7 +313,7 @@ def test_typed_stream_events_reject_boolean_timestamps(timestamp: bool) -> None:
 
 def test_typed_stream_event_without_transaction_hash_is_rejected() -> None:
     event = WalletTradeEvent(
-        wallet="0xleader",
+        wallet="0xabababababababababababababababababababab",
         condition_id="condition",
         token_id="token",
         side=Side.BUY,
@@ -295,57 +329,101 @@ def test_typed_stream_event_without_transaction_hash_is_rejected() -> None:
 
 def test_many_wallet_reads_are_sorted_and_report_failures() -> None:
     async def run():
-        client = FakeClient((_row("0xfirst", "tx-1"),), {"0xfailing"})
+        client = FakeClient(
+            (_row("0x1111111111111111111111111111111111111111", "tx-1"),),
+            {"0xffffffffffffffffffffffffffffffffffffffff"},
+        )
         return await PolymarketWalletActivityClient(client).latest_trades_many(
-            ("0xfirst", "0xfailing")
+            (
+                "0x1111111111111111111111111111111111111111",
+                "0xffffffffffffffffffffffffffffffffffffffff",
+            )
         )
 
     result = asyncio.run(run())
     assert [trade.transaction_hash for trade in result.trades] == ["tx-1"]
-    assert result.failures[0].wallet == "0xfailing"
+    assert result.failures[0].wallet == "0xffffffffffffffffffffffffffffffffffffffff"
     assert result.failures[0].issue is WalletActivityIssue.WALLET_READ_FAILED
 
 
 def test_latest_activity_filters_trade_rows_and_marks_reconciliation() -> None:
     async def run():
-        client = FakeClient((_row("0xleader", "tx-1"),))
+        client = FakeClient(
+            (_row("0xabababababababababababababababababababab", "tx-1"),)
+        )
         trades = await PolymarketWalletActivityClient(
             client, now_ms=lambda: 1_700_000_001_000
         ).latest_activity(
-            "0xLEADER",
+            "0xABABABABABABABABABABABABABABABABABABABAB",
             limit=1,
         )
         return client, trades
 
     client, trades = asyncio.run(run())
-    assert client.activity_calls == [("0xleader", (TRADE_ACTIVITY_TYPE,))]
+    assert client.activity_calls == [
+        ("0xabababababababababababababababababababab", (TRADE_ACTIVITY_TYPE,))
+    ]
     assert len(trades) == 1
     assert trades[0].kind is WalletTradeKind.RECONCILIATION
 
 
 def test_many_wallet_reads_dedupe_per_wallet_but_not_across_wallets() -> None:
     async def run():
-        rows = (_row("0xfirst", "same"), _row("0xsecond", "same"))
-        return await PolymarketWalletActivityClient(FakeClient(rows)).latest_trades_many(
-            ("0xfirst", "0xsecond"),
+        rows = (
+            _row("0x1111111111111111111111111111111111111111", "same"),
+            _row("0x2222222222222222222222222222222222222222", "same"),
+        )
+        return await PolymarketWalletActivityClient(
+            FakeClient(rows)
+        ).latest_trades_many(
+            (
+                "0x1111111111111111111111111111111111111111",
+                "0x2222222222222222222222222222222222222222",
+            ),
         )
 
     result = asyncio.run(run())
     assert len(result.trades) == 2
-    assert {trade.wallet for trade in result.trades} == {"0xfirst", "0xsecond"}
+    assert {trade.wallet for trade in result.trades} == {
+        "0x1111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222",
+    }
 
 
 def test_many_wallet_reads_bound_concurrency_and_sort_results() -> None:
     async def run():
         client = ConcurrentClient(
             {
-                "0xfirst": (_row("0xfirst", "late", 1_700_000_002),),
-                "0xsecond": (_row("0xsecond", "early", 1_700_000_001),),
-                "0xthird": (_row("0xthird", "middle", 1_700_000_001),),
+                "0x1111111111111111111111111111111111111111": (
+                    _row(
+                        "0x1111111111111111111111111111111111111111",
+                        "late",
+                        1_700_000_002,
+                    ),
+                ),
+                "0x2222222222222222222222222222222222222222": (
+                    _row(
+                        "0x2222222222222222222222222222222222222222",
+                        "early",
+                        1_700_000_001,
+                    ),
+                ),
+                "0x3333333333333333333333333333333333333333": (
+                    _row(
+                        "0x3333333333333333333333333333333333333333",
+                        "middle",
+                        1_700_000_001,
+                    ),
+                ),
             }
         )
         result = await PolymarketWalletActivityClient(client).latest_trades_many(
-            ("0xfirst", "0xsecond", "0xthird"), max_concurrency=2
+            (
+                "0x1111111111111111111111111111111111111111",
+                "0x2222222222222222222222222222222222222222",
+                "0x3333333333333333333333333333333333333333",
+            ),
+            max_concurrency=2,
         )
         return client, result
 
@@ -362,11 +440,17 @@ def test_boundaries_reject_invalid_limits_and_concurrency() -> None:
     async def run():
         client = FakeClient(())
         with pytest.raises(ValueError, match="positive integer"):
-            await PolymarketWalletActivityClient(client).latest_trades("0xleader", 0)
+            await PolymarketWalletActivityClient(client).latest_trades(
+                "0xabababababababababababababababababababab", 0
+            )
         with pytest.raises(ValueError, match="positive integer"):
-            await PolymarketWalletActivityClient(client).latest_activity("0xleader", -1)
+            await PolymarketWalletActivityClient(client).latest_activity(
+                "0xabababababababababababababababababababab", -1
+            )
         try:
-            await PolymarketWalletActivityClient(client).latest_trades_many((), max_concurrency=0)
+            await PolymarketWalletActivityClient(client).latest_trades_many(
+                (), max_concurrency=0
+            )
         except ValueError:
             return
         raise AssertionError("invalid concurrency should be rejected")
@@ -414,11 +498,17 @@ def test_single_wallet_reads_normalize_sdk_transport_failures(
         reader = PolymarketWalletActivityClient(Client())
         with pytest.raises(WalletActivityError) as caught:
             if read_kind == "trades":
-                await reader.latest_trades("0xleader")
+                await reader.latest_trades("0xabababababababababababababababababababab")
             elif read_kind == "selector":
-                await reader.latest_selector(WalletTradeSelector(wallet="0xleader"))
+                await reader.latest_selector(
+                    WalletTradeSelector(
+                        wallet="0xabababababababababababababababababababab"
+                    )
+                )
             else:
-                await reader.latest_activity("0xleader")
+                await reader.latest_activity(
+                    "0xabababababababababababababababababababab"
+                )
         return caught.value
 
     error = asyncio.run(run())
@@ -429,27 +519,39 @@ def test_single_wallet_reads_normalize_sdk_transport_failures(
 
 
 def test_stream_normalizes_filters_and_validates_events() -> None:
-    invalid = {**_row("0xleader", "bad"), "price": "2"}
+    invalid = {
+        **_row("0xabababababababababababababababababababab", "bad"),
+        "price": "2",
+    }
 
     async def run():
         source = FakeStreamSource(
-            (_row("0xLEADER", "tx-1"), _row("0xother", "tx-2"), invalid)
+            (
+                _row("0xABABABABABABABABABABABABABABABABABABABAB", "tx-1"),
+                _row("0x4444444444444444444444444444444444444444", "tx-2"),
+                invalid,
+            )
         )
         stream = WalletActivityStream(
             source=source,
             now_ms=lambda: 1_700_000_001_000,
         )
-        trades = [trade async for trade in stream.trades({"0xLeAdEr"})]
+        trades = [
+            trade
+            async for trade in stream.trades(
+                {"0xaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaB"}
+            )
+        ]
         return source, trades
 
     source, trades = asyncio.run(run())
-    assert source.wallets == frozenset({"0xleader"})
+    assert source.wallets == frozenset({"0xabababababababababababababababababababab"})
     assert [trade.transaction_hash for trade in trades] == ["tx-1"]
 
 
 def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() -> None:
     valid = WalletTradeEvent(
-        wallet="0xLeAdEr",
+        wallet="0xaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaB",
         condition_id="condition",
         token_id="token",
         side=Side.BUY,
@@ -461,7 +563,7 @@ def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() ->
         observed_at_ms=1_100,
     )
     invalid = WalletTradeEvent(
-        wallet="0xleader",
+        wallet="0xabababababababababababababababababababab",
         condition_id="condition",
         token_id="token",
         side=Side.BUY,
@@ -476,18 +578,22 @@ def test_stream_accepts_valid_typed_events_and_rejects_invalid_typed_events() ->
         source = FakeStreamSource((valid, invalid))
         return [
             trade
-            async for trade in WalletActivityStream(source=source).trades({"0xleader"})
+            async for trade in WalletActivityStream(source=source).trades(
+                {"0xabababababababababababababababababababab"}
+            )
         ]
 
     trades = asyncio.run(run())
     assert len(trades) == 1
     assert len(trades[0].source_id) == 64
-    assert trades[0].wallet == "0xleader"
+    assert trades[0].wallet == "0xabababababababababababababababababababab"
 
 
 def test_stream_requires_an_explicit_supported_source() -> None:
     async def run():
-        async for _ in WalletActivityStream().trades({"0xleader"}):
+        async for _ in WalletActivityStream().trades(
+            {"0xabababababababababababababababababababab"}
+        ):
             pass
 
     try:
@@ -510,7 +616,11 @@ def test_stream_propagates_push_failure_while_polling_is_active() -> None:
     async def run() -> None:
         stream = WalletActivityStream(
             PolymarketWalletActivityClient(FakeClient(())),
-            selectors=(WalletTradeSelector(wallet="0xleader"),),
+            selectors=(
+                WalletTradeSelector(
+                    wallet="0xabababababababababababababababababababab"
+                ),
+            ),
             source=FailingSource(),  # type: ignore[arg-type]
         )
         with pytest.raises(RuntimeError, match="push failed"):
@@ -525,8 +635,12 @@ def test_polling_starts_at_the_freshness_window_and_discards_stale_rows() -> Non
     async def run() -> tuple[PollingClient, WalletTradeEvent]:
         client = PollingClient(
             (
-                _row("0xleader", "stale", 1_700_000_000),
-                _row("0xleader", "fresh", 1_700_000_009),
+                _row(
+                    "0xabababababababababababababababababababab", "stale", 1_700_000_000
+                ),
+                _row(
+                    "0xabababababababababababababababababababab", "fresh", 1_700_000_009
+                ),
             )
         )
         stream = WalletActivityStream(
@@ -536,7 +650,12 @@ def test_polling_starts_at_the_freshness_window_and_discards_stale_rows() -> Non
         )
         queue: asyncio.Queue[WalletTradeEvent] = asyncio.Queue()
         task = asyncio.create_task(
-            stream._poll(WalletTradeSelector(wallet="0xleader"), queue)
+            stream._poll(
+                WalletTradeSelector(
+                    wallet="0xabababababababababababababababababababab"
+                ),
+                queue,
+            )
         )
         try:
             return client, await asyncio.wait_for(queue.get(), timeout=0.1)
@@ -549,3 +668,25 @@ def test_polling_starts_at_the_freshness_window_and_discards_stale_rows() -> Non
     assert client.calls[0]["start"] == 1_700_000_004
     assert client.calls[0]["end"] == 1_700_000_010
     assert trade.transaction_hash == "fresh"
+
+
+@pytest.mark.parametrize("wallet", ("0xleader", "0x" + "g" * 40, "0x" + "1" * 39))
+def test_wallet_ingress_rejects_malformed_address(wallet):
+    assert (
+        normalize_wallet_trade(
+            _row(wallet, "transaction"), observed_at_ms=1_700_000_001_250
+        )
+        is None
+    )
+    event = WalletTradeEvent(
+        wallet=wallet,
+        condition_id="condition",
+        token_id="token",
+        side=Side.BUY,
+        price=Decimal("0.5"),
+        size=Decimal("1"),
+        trade_timestamp_ms=1,
+        observed_at_ms=2,
+        source_id="transaction",
+    )
+    assert normalize_stream_event(event, observed_at_ms=2) is None

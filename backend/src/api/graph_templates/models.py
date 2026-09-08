@@ -3,11 +3,12 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from polybot.framework.clock import system_now_utc
 from sqlalchemy import Column, DateTime, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgreSQLUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
-from polybot.framework.clock import system_now_utc
 from api.graph_templates.names import (
     GRAPH_TEMPLATE_NAME_MAX_LENGTH,
 )

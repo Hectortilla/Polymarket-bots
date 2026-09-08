@@ -5,23 +5,9 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import pytest
-
 import api.execution.worker.lifecycle as worker_lifecycle
 import api.execution.worker.runtime as worker_runtime
-from conftest import DummyBroker
-from control_plane.graph_fixtures import threshold_buy_graph
-from polybot.cli.observability.broker import ObservableBroker
-from polybot.cli.observability.events import PortfolioSnapshot, StreamHealth
-from polybot.execution.broker import Broker
-from polybot.execution.paper import PaperBroker
-from polybot.framework.base import BaseBot
-from polybot.framework.context import BotContext
-from polybot.framework.dispatch import DispatchOutcome
-from polybot.framework.events import FillRejectReason, OrderStatus
-from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.runner import BotRunner
-from polybot.polymarket.markets import Market, MarketOutcome
+import pytest
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.catalog.definitions import (
     CATALOG,
@@ -38,6 +24,20 @@ from api.execution.config import REDIS_URL_ENV, configured_redis_url
 from api.execution.worker.lifecycle import PAPER_RUN_FAILURE_REASON
 from api.runs.contracts import RunRead
 from api.runs.status import RunStatus
+from conftest import DummyBroker
+from polybot.cli.observability.broker import ObservableBroker
+from polybot.cli.observability.events import PortfolioSnapshot, StreamHealth
+from polybot.execution.broker import Broker
+from polybot.execution.paper import PaperBroker
+from polybot.framework.base import BaseBot
+from polybot.framework.context import BotContext
+from polybot.framework.dispatch import DispatchOutcome
+from polybot.framework.events import FillRejectReason, OrderStatus
+from polybot.framework.events.books import BookLevel, BookSnapshot
+from polybot.framework.runner import BotRunner
+from polybot.polymarket.markets import Market, MarketOutcome
+
+from control_plane.graph_fixtures import threshold_buy_graph
 
 
 def _coordinator(store, writer, session_factory=object()):
@@ -66,9 +66,7 @@ def test_worker_completes_normally_and_writes_terminal_event(
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
-    asyncio.run(
-        _coordinator(store, writer).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     assert store.transitions == [RunStatus.RUNNING, RunStatus.STOPPING]
     assert store.finished == [(RunStatus.STOPPED, None)]
@@ -95,9 +93,7 @@ def test_worker_writes_final_stream_health_before_terminal_lifecycle(
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
-    asyncio.run(
-        _coordinator(store, writer).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     assert [event.kind for event in writer.events] == [
         EventKind.CHART_SAMPLE,
@@ -130,9 +126,7 @@ def test_worker_cooperative_stop_finishes_stopped(
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
-    asyncio.run(
-        _coordinator(store, writer).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     assert store.finished == [(RunStatus.STOPPED, None)]
     assert writer.events[-1].payload.status is RunStatus.STOPPED
@@ -159,9 +153,7 @@ def test_worker_cancellation_finishes_interrupted_and_propagates(
         )
         store = _FakeRunStore(_run())
         writer = _CollectingEventWriter()
-        task = asyncio.create_task(
-            _coordinator(store, writer).execute(uuid4())
-        )
+        task = asyncio.create_task(_coordinator(store, writer).execute(uuid4()))
         await started.wait()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -194,9 +186,7 @@ def test_worker_failure_detail_is_sanitized(
     store = _FakeRunStore(_run())
     writer = _CollectingEventWriter()
 
-    asyncio.run(
-        _coordinator(store, writer).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     status, detail = store.finished[-1]
     assert status is RunStatus.FAILED
@@ -217,9 +207,7 @@ def test_worker_redelivery_does_not_restart_nonqueued_run(
     monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
     store = _FakeRunStore(None)
 
-    asyncio.run(
-        _coordinator(store, _CollectingEventWriter()).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, _CollectingEventWriter()).execute(uuid4()))
 
     assert called is False
     assert store.finished == []
@@ -229,9 +217,7 @@ def test_worker_claim_failure_records_sanitized_failure() -> None:
     store = _ClaimFailureStore()
     writer = _CollectingEventWriter()
 
-    asyncio.run(
-        _coordinator(store, writer).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     assert store.finished == [
         (RunStatus.FAILED, f"RuntimeError: {PAPER_RUN_FAILURE_REASON}")
@@ -243,9 +229,7 @@ def test_worker_completes_stop_that_wins_before_runtime_start() -> None:
     store = _PrestartStopStore(_run())
     writer = _CollectingEventWriter()
 
-    asyncio.run(
-        _coordinator(store, writer).execute(uuid4())
-    )
+    asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     assert store.transitions == [RunStatus.STOPPING]
     assert store.finished == [(RunStatus.STOPPED, None)]
@@ -544,9 +528,7 @@ def test_node_based_runtime_uses_paper_broker_and_durable_event_path(
         if event.kind in {EventKind.BROKER_ORDER, EventKind.BROKER_FILL}
     ]
     fills = [
-        event.payload
-        for event in broker_events
-        if event.kind is EventKind.BROKER_FILL
+        event.payload for event in broker_events if event.kind is EventKind.BROKER_FILL
     ]
 
     assert outcomes == [DispatchOutcome.accepted_event()] * 2
@@ -627,15 +609,16 @@ def test_worker_poll_heartbeats_while_run_is_owned(
         monkeypatch.setattr(worker_lifecycle.asyncio, "sleep", no_delay)
         monkeypatch.setattr(worker_lifecycle, "RunStore", lambda session: store)
         bot_task = asyncio.create_task(_wait_forever())
-        await _coordinator(
-            _FakeRunStore(None),
-            _CollectingEventWriter(),
-            _SessionFactory(),
-        )._poll_stop_request_and_heartbeat(
-            uuid4(),
-            bot_task,
-            asyncio.Event(),
-        )
+        with pytest.raises(RuntimeError, match="disappeared"):
+            await _coordinator(
+                _FakeRunStore(None),
+                _CollectingEventWriter(),
+                _SessionFactory(),
+            )._poll_stop_request_and_heartbeat(
+                uuid4(),
+                bot_task,
+                asyncio.Event(),
+            )
         bot_task.cancel()
         await asyncio.gather(bot_task, return_exceptions=True)
         return store.heartbeat_count
@@ -755,3 +738,33 @@ def _run() -> RunRead:
 
 async def _wait_forever() -> None:
     await asyncio.Future()
+
+
+def test_monitor_failure_stops_bot_and_records_failed_outcome(monkeypatch):
+    stopped = False
+
+    async def bot(run, observer):
+        nonlocal stopped
+        try:
+            await asyncio.Future()
+        finally:
+            stopped = True
+
+    async def failed_monitor(*args):
+        await asyncio.sleep(0)
+        raise RuntimeError("heartbeat unavailable")
+
+    monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", bot)
+    monkeypatch.setattr(
+        worker_lifecycle.RunLifecycleCoordinator,
+        "_poll_stop_request_and_heartbeat",
+        failed_monitor,
+    )
+    store = _FakeRunStore(_run())
+    writer = _CollectingEventWriter()
+    asyncio.run(
+        asyncio.wait_for(_coordinator(store, writer).execute(uuid4()), timeout=1)
+    )
+    assert stopped
+    assert store.finished[0][0] is RunStatus.FAILED
+    assert writer.events[-1].payload.status is RunStatus.FAILED

@@ -1,25 +1,33 @@
+import { lookupMarkets, searchMarkets, type MarketSuggestion } from '$lib/api/generated';
+import { MARKET_SELECTOR_COPY } from '$lib/catalog/copy';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { lookupMarkets, searchMarkets, type MarketSuggestion } from '$lib/api/generated';
 import catalogContract from './catalogContract.fixture.json';
 import MarketSelector from './MarketSelector.svelte';
 
 vi.mock('$lib/api/generated', () => ({ searchMarkets: vi.fn(), lookupMarkets: vi.fn() }));
 
 const market: MarketSuggestion = {
-  slug: 'bitcoin-above-100k', condition_id: 'bitcoin-condition',
-  question: 'Will Bitcoin reach $100,000?', event_title: 'Bitcoin in September',
-  end_date: '2026-09-30T00:00:00Z', is_open_for_trading: true
+  slug: 'bitcoin-above-100k',
+  condition_id: 'bitcoin-condition',
+  question: 'Will Bitcoin reach $100,000?',
+  event_title: 'Bitcoin in September',
+  end_date: '2026-09-30T00:00:00Z',
+  is_open_for_trading: true,
 };
 
 function results(markets = [market], hasMore = false) {
-  return { data: { markets, has_more: hasMore } } as Awaited<ReturnType<typeof searchMarkets<true>>>;
+  return { data: { markets, has_more: hasMore } } as Awaited<
+    ReturnType<typeof searchMarkets<true>>
+  >;
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(searchMarkets).mockResolvedValue(results());
-  vi.mocked(lookupMarkets).mockResolvedValue({ data: [] } as unknown as Awaited<ReturnType<typeof lookupMarkets>>);
+  vi.mocked(lookupMarkets).mockResolvedValue({ data: [] } as unknown as Awaited<
+    ReturnType<typeof lookupMarkets>
+  >);
 });
 afterEach(cleanup);
 
@@ -41,9 +49,11 @@ describe('MarketSelector', () => {
     expect(searchMarkets).not.toHaveBeenCalled();
     await screen.findByRole('option', { name: /Will Bitcoin/ });
     expect(searchMarkets).toHaveBeenCalledTimes(1);
-    expect(searchMarkets).toHaveBeenCalledWith(expect.objectContaining({
-      query: { q: 'Bitcoin', limit: catalogContract.marketSearch.defaultLimit }
-    }));
+    expect(searchMarkets).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: { q: 'Bitcoin', limit: catalogContract.marketSearch.defaultLimit },
+      }),
+    );
     expect(screen.getByText(market.event_title!)).toBeTruthy();
     await fireEvent.keyDown(input, { key: 'ArrowDown' });
     expect(input.getAttribute('aria-activedescendant')).toBeTruthy();
@@ -56,7 +66,9 @@ describe('MarketSelector', () => {
     const onchange = vi.fn();
     const other = { ...market, slug: 'other', question: 'Another market?' };
     vi.mocked(searchMarkets).mockResolvedValue(results([market, other]));
-    vi.mocked(lookupMarkets).mockResolvedValue({ data: [market] } as Awaited<ReturnType<typeof lookupMarkets>>);
+    vi.mocked(lookupMarkets).mockResolvedValue({ data: [market] } as Awaited<
+      ReturnType<typeof lookupMarkets>
+    >);
     const view = render(MarketSelector, { value: [market.slug], onchange, labelId: 'markets' });
     await search();
     const selected = await screen.findByRole('option', { name: /Will Bitcoin/ });
@@ -84,7 +96,12 @@ describe('MarketSelector', () => {
 
   it('aborts and ignores old responses after a new query', async () => {
     let completeOld!: (value: Awaited<ReturnType<typeof searchMarkets<true>>>) => void;
-    vi.mocked(searchMarkets).mockImplementationOnce(() => new Promise<Awaited<ReturnType<typeof searchMarkets<true>>>>((resolve) => completeOld = resolve));
+    vi.mocked(searchMarkets).mockImplementationOnce(
+      () =>
+        new Promise<Awaited<ReturnType<typeof searchMarkets<true>>>>(
+          (resolve) => (completeOld = resolve),
+        ),
+    );
     render(MarketSelector, { value: [], onchange: vi.fn(), labelId: 'markets' });
     await search('old query');
     await waitFor(() => expect(searchMarkets).toHaveBeenCalledTimes(1));
@@ -98,29 +115,38 @@ describe('MarketSelector', () => {
   });
 
   it('offers retry after a search failure and handles no matches', async () => {
-    vi.mocked(searchMarkets).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(results([]));
+    vi.mocked(searchMarkets)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(results([]));
     render(MarketSelector, { value: [], onchange: vi.fn(), labelId: 'markets' });
     await search();
-    await fireEvent.click(await screen.findByRole('button', { name: 'Retry search' }));
-    expect(await screen.findByText(/No available markets found/)).toBeTruthy();
+    await fireEvent.click(
+      await screen.findByRole('button', { name: MARKET_SELECTOR_COPY.RETRY_SEARCH }),
+    );
+    expect(await screen.findByText(MARKET_SELECTOR_COPY.NO_RESULTS)).toBeTruthy();
   });
 
   it('keeps unavailable saved selections visible and removable', async () => {
-    vi.mocked(lookupMarkets).mockResolvedValue({ data: [{ ...market, is_open_for_trading: false }] } as Awaited<ReturnType<typeof lookupMarkets>>);
+    vi.mocked(lookupMarkets).mockResolvedValue({
+      data: [{ ...market, is_open_for_trading: false }],
+    } as Awaited<ReturnType<typeof lookupMarkets>>);
     const onchange = vi.fn();
     render(MarketSelector, { value: [market.slug, 'missing'], onchange, labelId: 'markets' });
-    expect(await screen.findByText('No longer available for trading')).toBeTruthy();
-    expect(await screen.findByText(/Market not found/)).toBeTruthy();
+    expect(await screen.findByText(MARKET_SELECTOR_COPY.UNAVAILABLE)).toBeTruthy();
+    expect(await screen.findByText(MARKET_SELECTOR_COPY.MISSING)).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Remove missing' }));
     expect(onchange).toHaveBeenCalledWith([market.slug]);
   });
 
   it('preserves selections when lookup fails and retries hydration', async () => {
-    vi.mocked(lookupMarkets).mockRejectedValueOnce(new Error('offline'))
+    vi.mocked(lookupMarkets)
+      .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValue({ data: [market] } as Awaited<ReturnType<typeof lookupMarkets>>);
     const onchange = vi.fn();
     render(MarketSelector, { value: [market.slug], onchange, labelId: 'markets' });
-    await fireEvent.click(await screen.findByRole('button', { name: 'Retry details' }));
+    await fireEvent.click(
+      await screen.findByRole('button', { name: MARKET_SELECTOR_COPY.RETRY_DETAILS }),
+    );
     expect(await screen.findByText(market.question)).toBeTruthy();
     expect(onchange).not.toHaveBeenCalled();
   });
@@ -142,7 +168,10 @@ describe('MarketSelector', () => {
     const view = render(MarketSelector, { value: [], onchange: vi.fn(), labelId: 'markets' });
     await search();
     expect(await screen.findByText(/More matches available/)).toBeTruthy();
-    const selected = Array.from({ length: catalogContract.marketSearch.maximumSelections }, (_, index) => `market-${index}`);
+    const selected = Array.from(
+      { length: catalogContract.marketSearch.maximumSelections },
+      (_, index) => `market-${index}`,
+    );
     await view.rerender({ value: selected });
     expect((screen.getByRole('combobox') as HTMLInputElement).disabled).toBe(true);
     expect(screen.getAllByRole('button', { name: /^Remove/ })).toHaveLength(selected.length);

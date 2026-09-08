@@ -4,8 +4,25 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
-
-from control_plane.graph_fixtures import threshold_buy_graph
+from api.catalog.graphs.contracts import NodeGraph
+from api.catalog.graphs.evaluation_reasons import GraphActionSkipReason
+from api.catalog.graphs.reasons import GraphReason
+from api.catalog.graphs.types import (
+    GraphFieldPath,
+    GraphHookName,
+)
+from api.catalog.graphs.values import (
+    GRAPH_ACTION_ENABLED_HANDLE_ID,
+    GRAPH_FIELD_PATH_SEPARATOR,
+    GRAPH_VALUE_HANDLE_ID,
+    GraphBrokerAction,
+    GraphComparisonOperator,
+    GraphNodeType,
+    GraphPort,
+    GraphScalarType,
+)
+from api.catalog.node_based.bot import NodeBasedBot
+from api.catalog.node_based.evaluator import GraphEvaluator
 from polybot.execution.broker import Broker
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
@@ -27,25 +44,8 @@ from polybot.framework.events.books import (
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.markets import Market, MarketOutcome
-from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.values import (
-    GRAPH_ACTION_ENABLED_HANDLE_ID,
-    GRAPH_FIELD_PATH_SEPARATOR,
-    GRAPH_VALUE_HANDLE_ID,
-    GraphBrokerAction,
-    GraphComparisonOperator,
-    GraphNodeType,
-    GraphScalarType,
-)
-from api.catalog.graphs.types import (
-    GraphFieldPath,
-    GraphHookName,
-)
-from api.catalog.node_based.bot import NodeBasedBot
-from api.catalog.node_based.evaluator import GraphEvaluator
-from api.catalog.node_based.evaluator.contracts import (
-    GraphActionSkipReason,
-)
+
+from control_plane.graph_fixtures import threshold_buy_graph
 
 
 def _field_handle(path: str) -> str:
@@ -189,7 +189,7 @@ def test_null_comparison_input_remains_unavailable() -> None:
     )
 
     assert broker.orders == []
-    assert result.action_results[0].skip_reason == "value_unavailable"
+    assert result.action_results[0].skip_reason == GraphReason.MISSING
 
 
 def test_nullable_required_action_input_has_stable_skip_reason() -> None:
@@ -516,9 +516,7 @@ def test_runtime_book_guard_rejects_contradictory_market_identity(
     markets = {
         "missing": None,
         "slug-mismatch": replace(_market(), slug="other-market"),
-        "condition-mismatch": replace(
-            _market(), condition_id="other-condition"
-        ),
+        "condition-mismatch": replace(_market(), condition_id="other-condition"),
         "token-mismatch": _market(token_id="other-token"),
     }
     context.markets.find_by_slug.return_value = markets[market_case]
@@ -575,9 +573,9 @@ def _always_enabled_graph(
             GRAPH_VALUE_HANDLE_ID,
             GRAPH_ACTION_ENABLED_HANDLE_ID,
         ),
-        _edge("token-action", "trigger", _field_handle("token_id"), "token_id"),
-        _edge("price-action", "trigger", price_handle, "price"),
-        _edge("size-action", "size", GRAPH_VALUE_HANDLE_ID, "size"),
+        _edge("token-action", "trigger", _field_handle("token_id"), GraphPort.TOKEN_ID),
+        _edge("price-action", "trigger", price_handle, GraphPort.PRICE),
+        _edge("size-action", "size", GRAPH_VALUE_HANDLE_ID, GraphPort.SIZE),
     ]
     if optional_inputs:
         nodes.extend(
@@ -759,3 +757,19 @@ def _filled(order: OrderRequest) -> FillEvent:
         fee_usdc=Decimal(0),
         received_at_ms=1_001,
     )
+
+
+@pytest.mark.parametrize("size", ["0", "-1"])
+def test_invalid_computed_order_size_skips_before_broker(size):
+    graph = threshold_buy_graph()
+    next(node for node in graph["nodes"] if node["id"] == "constant-size")["data"][
+        "value"
+    ] = size
+    broker = _RecordingBroker()
+    result = asyncio.run(
+        GraphEvaluator(NodeGraph.model_validate(graph)).evaluate_and_execute(
+            BaseBot.on_book.__name__, _context(broker), _book(ask="0.50")
+        )
+    )
+    assert result.action_results[0].skip_reason is FillRejectReason.BAD_SIZE
+    assert broker.orders == []

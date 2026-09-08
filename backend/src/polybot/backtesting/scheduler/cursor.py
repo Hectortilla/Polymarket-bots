@@ -10,7 +10,6 @@ from threading import Event
 
 from polybot.recording.contracts.records import RecordedEvent
 
-
 REPLAY_QUEUE_POLL_INTERVAL_SECONDS = 0.1
 
 

@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from api.catalog.graphs.values import (
     GRAPH_FIELD_HANDLE_PREFIX,
-    GRAPH_FIELD_PATH_SEPARATOR,
     GRAPH_FIELD_PATH_SEGMENT_PATTERN,
+    GRAPH_FIELD_PATH_SEPARATOR,
     GRAPH_HOOK_NAME_PATTERN,
     MAX_GRAPH_EDGE_IDENTIFIER_LENGTH,
     MAX_GRAPH_IDENTIFIER_LENGTH,

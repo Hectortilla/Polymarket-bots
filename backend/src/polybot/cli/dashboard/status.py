@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from polybot.cli.observability.states import BootstrapPhase
+from polybot.cli.streams.kinds import StreamKind
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.console import Group
-
-from polybot.cli.observability.states import BootstrapPhase
-from polybot.cli.streams.kinds import StreamKind
 
 from .state import DashboardState
 
@@ -48,11 +47,7 @@ def ticker_panel(state: DashboardState) -> Panel:
     content = [*progress_rows, *rows]
     return Panel(
         Group(*content) if content else Text("Waiting for runtime events", style="dim"),
-        title=(
-            "Activity · m: market on"
-            if state.show_market_events
-            else "Activity · m: market off"
-        ),
+        title=activity_panel_title(state.show_market_events),
         border_style="bright_magenta",
     )
 
@@ -146,3 +141,8 @@ def optional_ms(value: int | None) -> str:
 
 def fixed_ms(value: int | None) -> str:
     return f"{value:6d}ms" if value is not None else f"{MISSING_METRIC:>8}"
+
+
+def activity_panel_title(show_market_events: bool) -> str:
+    state = "on" if show_market_events else "off"
+    return f"Activity · m: market {state}"

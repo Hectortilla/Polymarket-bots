@@ -1,48 +1,40 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { onMount } from 'svelte';
+  import { PRESENTATION_COPY } from '$lib/presentation';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
+  import { onMount } from 'svelte';
+  import './run.css';
 
   import {
     listBotDefinitionsApiV1BotDefinitionsGet,
     stopRunApiV1RunsRunIdStopPost,
     type GraphNodeCatalog,
-    type RunRead
+    type RunRead,
   } from '$lib/api/generated';
   import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
   import { hasGraphCapability } from '$lib/catalog/graphContracts';
-  import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
-  import {
-    EVENT_KIND,
-    type PersistedDurableEvent
-  } from '$lib/runs/durableEvents';
-  import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
   import DashboardCharts from '$lib/charts/DashboardCharts.svelte';
   import {
     emptyDashboardHistory,
     mergeDurableEvents,
     mergeLiveEvents,
-    type DashboardHistory
+    type DashboardHistory,
   } from '$lib/charts/history';
   import { createLiveDashboardBatcher } from '$lib/charts/liveBatch';
-  import {
-    loadAndContinueRunDetail,
-    loadOlderRunEvents
-  } from '$lib/runs/hydrate';
-  import {
-    RUN_STATUS_PRESENTATION
-  } from '$lib/runs/status';
-  import {
-    eventFailureDetail,
-    eventSummary
-  } from '$lib/runs/eventSummary';
+  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
+  import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
+  import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
+  import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
+  import { eventFailureDetail, eventSummary } from '$lib/runs/eventSummary';
+  import { loadAndContinueRunDetail, loadOlderRunEvents } from '$lib/runs/hydrate';
+  import { RUN_STATUS_PRESENTATION } from '$lib/runs/status';
   import { formatTime } from '$lib/time';
   import {
+    loadedEventsLabel,
     RUN_DETAIL_COPY,
     executedRunGraphRevisionLabel,
-    runGraphRevisionLabel
+    runGraphRevisionLabel,
   } from './copy';
-  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
@@ -57,11 +49,9 @@
   let executedGraphCatalogError = $state('');
   let closeStream = () => {};
 
-  const statusPresentation = $derived(
-    run ? RUN_STATUS_PRESENTATION[run.status] : undefined
-  );
+  const statusPresentation = $derived(run ? RUN_STATUS_PRESENTATION[run.status] : undefined);
   const configuredWallets = $derived(
-    run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? []
+    run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? [],
   );
 
   onMount(() => {
@@ -101,7 +91,7 @@
         }
       },
       appendDurableEvent,
-      liveBatcher.push
+      liveBatcher.push,
     )
       .then((close) => {
         if (disposed) close();
@@ -129,15 +119,11 @@
     }
   }
 
-  async function loadExecutedGraphCatalog(
-    definitionId: string
-  ): Promise<GraphNodeCatalog> {
+  async function loadExecutedGraphCatalog(definitionId: string): Promise<GraphNodeCatalog> {
     const response = await listBotDefinitionsApiV1BotDefinitionsGet({
-      throwOnError: true
+      throwOnError: true,
     });
-    const definition = response.data.find(
-      (candidate) => candidate.definition_id === definitionId
-    );
+    const definition = response.data.find((candidate) => candidate.definition_id === definitionId);
     if (!hasGraphCapability(definition)) {
       throw new Error('Executed graph definition is unavailable');
     }
@@ -151,11 +137,11 @@
     try {
       const response = await stopRunApiV1RunsRunIdStopPost({
         path: { run_id: run.id },
-        throwOnError: true
+        throwOnError: true,
       });
       run = response.data;
     } catch {
-      error = 'The stop request could not be sent.';
+      error = RUN_DETAIL_COPY.STOP_ERROR;
     } finally {
       stopping = false;
     }
@@ -171,7 +157,7 @@
       dashboard = mergeDurableEvents(dashboard, older.events);
       nextBeforeEventId = older.nextBeforeEventId;
     } catch {
-      error = 'Older durable events could not be loaded.';
+      error = RUN_DETAIL_COPY.LOAD_ERROR;
     } finally {
       loadingOlderEvents = false;
     }
@@ -180,7 +166,6 @@
   function displayValue(value: unknown): string {
     return typeof value === 'object' ? JSON.stringify(value) : String(value);
   }
-
 </script>
 
 <svelte:head>
@@ -204,7 +189,11 @@
 {:else}
   <section class="page-heading run-heading">
     <div>
-      <p class="route-meta"><a href={botPath(run.bot_id)}>Bot configuration</a>{run.graph_revision ? ` / ${runGraphRevisionLabel(run.graph_revision)}` : ''}</p>
+      <p class="route-meta">
+        <a href={botPath(run.bot_id)}>{RUN_DETAIL_COPY.BOT_CONFIGURATION}</a>{run.graph_revision
+          ? ` / ${runGraphRevisionLabel(run.graph_revision)}`
+          : ''}
+      </p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
         <RunStatusBadge status={run.status} />
@@ -217,7 +206,7 @@
         disabled={!statusPresentation.canStop || stopping}
         aria-busy={stopping}
       >
-        {stopping ? 'Sending…' : statusPresentation.stopLabel}
+        {stopping ? RUN_DETAIL_COPY.SENDING : statusPresentation.stopLabel}
       </button>
     {/if}
   </section>
@@ -234,10 +223,22 @@
     <article class="detail-section timing-panel">
       <div class="section-heading"><h2>Timing</h2></div>
       <dl>
-        <div><dt>Created</dt><dd>{formatTime(run.created_at)}</dd></div>
-        <div><dt>Started</dt><dd>{formatTime(run.started_at)}</dd></div>
-        <div><dt>Heartbeat</dt><dd>{formatTime(run.heartbeat_at)}</dd></div>
-        <div><dt>Ended</dt><dd>{formatTime(run.ended_at)}</dd></div>
+        <div>
+          <dt>Created</dt>
+          <dd>{formatTime(run.created_at)}</dd>
+        </div>
+        <div>
+          <dt>Started</dt>
+          <dd>{formatTime(run.started_at)}</dd>
+        </div>
+        <div>
+          <dt>Heartbeat</dt>
+          <dd>{formatTime(run.heartbeat_at)}</dd>
+        </div>
+        <div>
+          <dt>Ended</dt>
+          <dd>{formatTime(run.ended_at)}</dd>
+        </div>
       </dl>
     </article>
 
@@ -245,7 +246,10 @@
       <div class="section-heading"><h2>Immutable configuration</h2></div>
       <dl>
         {#each Object.entries(run.config) as [name, value] (name)}
-          <div><dt>{name.replaceAll('_', ' ')}</dt><dd>{displayValue(value)}</dd></div>
+          <div>
+            <dt>{name.replaceAll('_', ' ')}</dt>
+            <dd>{displayValue(value)}</dd>
+          </div>
         {/each}
       </dl>
     </article>
@@ -289,23 +293,39 @@
     <div class="section-heading">
       <h2>Stream health</h2>
       <span class:health-stale={dashboard.streamHealth?.book_stale} class="section-count">
-        {dashboard.streamHealth ? (dashboard.streamHealth.book_stale ? 'stale book input' : 'current') : 'awaiting telemetry'}
+        {dashboard.streamHealth
+          ? dashboard.streamHealth.book_stale
+            ? RUN_DETAIL_COPY.STALE_BOOK_INPUT
+            : 'current'
+          : 'awaiting telemetry'}
       </span>
     </div>
     {#if dashboard.streamHealth}
       <dl class="health-metrics">
-        <div><dt>Queue</dt><dd>{dashboard.streamHealth.queue_depth}</dd></div>
-        <div><dt>Peak</dt><dd>{dashboard.streamHealth.peak_queue_depth}</dd></div>
+        <div>
+          <dt>Queue</dt>
+          <dd>{dashboard.streamHealth.queue_depth}</dd>
+        </div>
+        <div>
+          <dt>Peak</dt>
+          <dd>{dashboard.streamHealth.peak_queue_depth}</dd>
+        </div>
         <div>
           <dt>Book lag</dt>
           <dd>
             {dashboard.streamHealth.book_dispatch_lag_ms === null
-              ? 'Not available'
+              ? PRESENTATION_COPY.NOT_AVAILABLE
               : `${dashboard.streamHealth.book_dispatch_lag_ms} ms`}
           </dd>
         </div>
-        <div><dt>Books</dt><dd>{dashboard.streamHealth.book_received_count}</dd></div>
-        <div><dt>Coalesced</dt><dd>{dashboard.streamHealth.book_coalesced_count}</dd></div>
+        <div>
+          <dt>Books</dt>
+          <dd>{dashboard.streamHealth.book_received_count}</dd>
+        </div>
+        <div>
+          <dt>Coalesced</dt>
+          <dd>{dashboard.streamHealth.book_coalesced_count}</dd>
+        </div>
       </dl>
     {/if}
   </section>
@@ -314,7 +334,7 @@
     <div class="section-heading">
       <h2>Durable progress</h2>
       <div class="section-actions">
-        <span class="section-count">{events.length} events loaded</span>
+        <span class="section-count">{loadedEventsLabel(events.length)}</span>
         {#if nextBeforeEventId !== null}
           <button
             class="secondary compact"
@@ -322,7 +342,7 @@
             disabled={loadingOlderEvents}
             aria-busy={loadingOlderEvents}
           >
-            {loadingOlderEvents ? 'Loading…' : 'Load earlier events'}
+            {loadingOlderEvents ? RUN_DETAIL_COPY.LOADING : RUN_DETAIL_COPY.LOAD_EARLIER}
           </button>
         {/if}
       </div>

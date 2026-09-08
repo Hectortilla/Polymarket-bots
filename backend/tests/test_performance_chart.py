@@ -6,24 +6,35 @@ from math import isnan
 from pathlib import Path
 
 import pytest
-from rich.console import Console
-from rich.text import Text
-
 from polybot.cli.performance_chart.artifacts import load_performance_chart_data
 from polybot.cli.performance_chart.command import main, print_performance_chart
 from polybot.cli.performance_chart.contracts import (
     PerformanceChartData,
     PerformanceChartError,
 )
-from polybot.cli.performance_chart.rendering import render_performance_chart
+from polybot.cli.performance_chart.rendering import (
+    PNL_UNAVAILABLE_LABEL,
+    render_performance_chart,
+)
 from polybot.performance.contracts.files import (
     EQUITY_FIELDS,
     EQUITY_FILE_NAME,
+    ORDERS_FILE_NAME,
+    RESULT_SCHEMA_VERSION,
     SUMMARY_FILE_NAME,
+    EquityField,
+    PerformanceArtifactField,
+    PerformanceMetricsField,
+    PerformanceProvenanceField,
+    PerformanceSelectionField,
+    PerformanceSummaryField,
+    PerformanceTimingField,
+    PerformanceValuationField,
 )
 from polybot.performance.contracts.run import (
     PerformanceRunKind,
     PerformanceRunStatus,
+    SampleReason,
 )
 from polybot.performance.contracts.summary import (
     PerformanceSummaryV1,
@@ -34,6 +45,8 @@ from polybot.performance.contracts.valuation_status import (
     ValuationStatus,
     history_valuation_status,
 )
+from rich.console import Console
+from rich.text import Text
 
 
 def _equity_row(
@@ -42,16 +55,16 @@ def _equity_row(
     valuation_status: str,
 ) -> dict[str, object]:
     return {
-        "timestamp_ms": timestamp_ms,
-        "sample_reason": "interval",
-        "cash_usdc": "100",
-        "marked_position_value_usdc": "0",
-        "equity_usdc": "100",
-        "pnl_usdc": pnl_usdc,
-        "fees_usdc": "0",
-        "exposure_usdc": "0",
-        "position_count": 0,
-        "valuation_status": valuation_status,
+        EquityField.TIMESTAMP_MS: timestamp_ms,
+        EquityField.SAMPLE_REASON: SampleReason.INTERVAL,
+        EquityField.CASH_USDC: "100",
+        EquityField.MARKED_POSITION_VALUE_USDC: "0",
+        EquityField.EQUITY_USDC: "100",
+        EquityField.PNL_USDC: pnl_usdc,
+        EquityField.FEES_USDC: "0",
+        EquityField.EXPOSURE_USDC: "0",
+        EquityField.POSITION_COUNT: 0,
+        EquityField.VALUATION_STATUS: valuation_status,
     }
 
 
@@ -62,9 +75,9 @@ def test_load_performance_chart_validates_and_projects_pnl_history(
     _write_equity(
         results_dir,
         (
-            _equity_row(1_000, "0", "fresh"),
-            _equity_row(1_000, "-1.25", "stale"),
-            _equity_row(2_000, "", "unavailable"),
+            _equity_row(1_000, "0", ValuationStatus.FRESH),
+            _equity_row(1_000, "-1.25", ValuationStatus.STALE),
+            _equity_row(2_000, "", ValuationStatus.UNAVAILABLE),
         ),
     )
 
@@ -78,9 +91,9 @@ def test_load_performance_chart_validates_and_projects_pnl_history(
 @pytest.mark.parametrize("value", ("NaN", "Infinity", "-Infinity", "invalid"))
 def test_performance_summary_rejects_nonfinite_metric_values(value: str) -> None:
     payload = _summary_payload()
-    metrics = dict(payload["metrics"])
-    metrics["net_pnl_usdc"] = value
-    payload["metrics"] = metrics
+    metrics = dict(payload[PerformanceSummaryField.METRICS])
+    metrics[PerformanceMetricsField.NET_PNL_USDC] = value
+    payload[PerformanceSummaryField.METRICS] = metrics
 
     with pytest.raises(ValueError, match="net_pnl_usdc must be a finite decimal"):
         PerformanceSummaryV1.from_dict(payload)
@@ -96,7 +109,11 @@ def test_performance_summary_normalizes_finite_state_fields() -> None:
 
 
 @pytest.mark.parametrize(
-    ("stale_sample_count", "unavailable_sample_count", "expected"),
+    (
+        PerformanceValuationField.STALE_SAMPLE_COUNT,
+        PerformanceValuationField.UNAVAILABLE_SAMPLE_COUNT,
+        "expected",
+    ),
     (
         (0, 0, ValuationStatus.FRESH),
         (1, 0, ValuationStatus.STALE),
@@ -121,11 +138,19 @@ def test_history_valuation_status_derives_aggregate_from_counts(
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     (
-        ("accepted_dispatch_count", 1, "dispatch outcomes exceed dispatch count"),
-        ("fill_count", 6, "fills exceed order count"),
-        ("rejected_order_count", 6, "rejected orders exceed order count"),
         (
-            "coverage_gap_rejected_order_count",
+            PerformanceMetricsField.ACCEPTED_DISPATCH_COUNT,
+            1,
+            "dispatch outcomes exceed dispatch count",
+        ),
+        (PerformanceMetricsField.FILL_COUNT, 6, "fills exceed order count"),
+        (
+            PerformanceMetricsField.REJECTED_ORDER_COUNT,
+            6,
+            "rejected orders exceed order count",
+        ),
+        (
+            PerformanceMetricsField.COVERAGE_GAP_REJECTED_ORDER_COUNT,
             2,
             "coverage-gap rejections exceed rejected orders",
         ),
@@ -136,7 +161,7 @@ def test_performance_metrics_reject_inconsistent_aggregates(
     value: int,
     message: str,
 ) -> None:
-    metrics = dict(_summary_payload()["metrics"])
+    metrics = dict(_summary_payload()[PerformanceSummaryField.METRICS])
     metrics[field] = value
 
     with pytest.raises(ValueError, match=message):
@@ -145,15 +170,15 @@ def test_performance_metrics_reject_inconsistent_aggregates(
 
 def test_performance_summary_rejects_inconsistent_derived_state() -> None:
     payload = _summary_payload()
-    payload["partial"] = True
+    payload[PerformanceSummaryField.PARTIAL] = True
 
     with pytest.raises(ValueError, match="partial status is inconsistent"):
         PerformanceSummaryV1.from_dict(payload)
 
     payload = _summary_payload()
-    valuation = dict(payload["valuation"])
-    valuation["estimated"] = True
-    payload["valuation"] = valuation
+    valuation = dict(payload[PerformanceSummaryField.VALUATION])
+    valuation[PerformanceValuationField.ESTIMATED] = True
+    payload[PerformanceSummaryField.VALUATION] = valuation
 
     with pytest.raises(ValueError, match="valuation estimate is inconsistent"):
         PerformanceSummaryV1.from_dict(payload)
@@ -163,29 +188,29 @@ def test_performance_summary_rejects_inconsistent_derived_state() -> None:
     ("field", "value", "complete", "estimated", "message"),
     (
         (
-            "available_sample_count",
+            PerformanceValuationField.AVAILABLE_SAMPLE_COUNT,
             0,
             True,
             False,
             "sample counts are inconsistent",
         ),
         (
-            "stale_sample_count",
+            PerformanceValuationField.STALE_SAMPLE_COUNT,
             2,
             True,
             True,
             "stale samples exceed available samples",
         ),
         (
-            "history_status",
-            "stale",
+            PerformanceValuationField.HISTORY_STATUS,
+            ValuationStatus.STALE,
             False,
             False,
             "history status is inconsistent",
         ),
         (
-            "drawdown_status",
-            "stale",
+            PerformanceValuationField.DRAWDOWN_STATUS,
+            ValuationStatus.STALE,
             True,
             False,
             "drawdown status is inconsistent",
@@ -200,18 +225,18 @@ def test_performance_summary_rejects_impossible_valuation_aggregates(
     message: str,
 ) -> None:
     payload = _summary_payload()
-    valuation = dict(payload["valuation"])
+    valuation = dict(payload[PerformanceSummaryField.VALUATION])
     valuation[field] = value
-    valuation["complete"] = complete
-    valuation["estimated"] = estimated
-    payload["valuation"] = valuation
+    valuation[PerformanceValuationField.COMPLETE] = complete
+    valuation[PerformanceValuationField.ESTIMATED] = estimated
+    payload[PerformanceSummaryField.VALUATION] = valuation
 
     with pytest.raises(ValueError, match=message):
         PerformanceSummaryV1.from_dict(payload)
 
 
 @pytest.mark.parametrize(
-    ("status", "partial", "error"),
+    ("status", PerformanceSummaryField.PARTIAL, "error"),
     (
         (PerformanceRunStatus.FAILED, True, None),
         (PerformanceRunStatus.COMPLETED, False, "unexpected failure"),
@@ -224,7 +249,7 @@ def test_performance_summary_rejects_invalid_terminal_error_contract(
     error: str | None,
 ) -> None:
     payload = _summary_payload(status=status, partial=partial)
-    payload["error"] = error
+    payload[PerformanceSummaryField.ERROR] = error
 
     with pytest.raises(ValueError, match="performance runs"):
         PerformanceSummaryV1.from_dict(payload)
@@ -232,13 +257,17 @@ def test_performance_summary_rejects_invalid_terminal_error_contract(
 
 @pytest.mark.parametrize(
     "field",
-    ("archive_sha256", "archive_schema_version", "archive_target_identity"),
+    (
+        PerformanceProvenanceField.ARCHIVE_SHA256,
+        PerformanceProvenanceField.ARCHIVE_SCHEMA_VERSION,
+        PerformanceProvenanceField.ARCHIVE_TARGET_IDENTITY,
+    ),
 )
 def test_performance_summary_requires_backtest_archive_identity(field: str) -> None:
     payload = _summary_payload()
-    provenance = dict(payload["provenance"])
+    provenance = dict(payload[PerformanceSummaryField.PROVENANCE])
     provenance[field] = None
-    payload["provenance"] = provenance
+    payload[PerformanceSummaryField.PROVENANCE] = provenance
 
     with pytest.raises(ValueError, match="provenance is invalid"):
         PerformanceSummaryV1.from_dict(payload)
@@ -247,9 +276,9 @@ def test_performance_summary_requires_backtest_archive_identity(field: str) -> N
 @pytest.mark.parametrize("value", ("1E309", "9" * 309))
 def test_performance_summary_rejects_unrenderable_decimal_metrics(value: str) -> None:
     payload = _summary_payload()
-    metrics = dict(payload["metrics"])
-    metrics["net_pnl_usdc"] = value
-    payload["metrics"] = metrics
+    metrics = dict(payload[PerformanceSummaryField.METRICS])
+    metrics[PerformanceMetricsField.NET_PNL_USDC] = value
+    payload[PerformanceSummaryField.METRICS] = metrics
 
     with pytest.raises(ValueError, match="outside renderable bounds"):
         PerformanceSummaryV1.from_dict(payload)
@@ -257,19 +286,24 @@ def test_performance_summary_rejects_unrenderable_decimal_metrics(value: str) ->
 
 def test_performance_summary_rejects_boolean_schema_version() -> None:
     payload = _summary_payload()
-    payload["schema_version"] = True
+    payload[PerformanceSummaryField.SCHEMA_VERSION] = True
 
-    with pytest.raises(ValueError, match="unsupported performance summary schema version"):
+    with pytest.raises(
+        ValueError, match="unsupported performance summary schema version"
+    ):
         PerformanceSummaryV1.from_dict(payload)
 
 
 @pytest.mark.parametrize(
     ("section", "value"),
     (
-        ("selection", {"start_ms": "bad"}),
-        ("timing", {"started_at_ms": "bad"}),
-        ("open_positions", [{}]),
-        ("artifacts", {"equity": ["bad"]}),
+        (
+            PerformanceSummaryField.SELECTION,
+            {PerformanceSelectionField.START_MS: "bad"},
+        ),
+        (PerformanceSummaryField.TIMING, {PerformanceTimingField.STARTED_AT_MS: "bad"}),
+        (PerformanceSummaryField.OPEN_POSITIONS, [{}]),
+        (PerformanceSummaryField.ARTIFACTS, {PerformanceArtifactField.EQUITY: ["bad"]}),
     ),
 )
 def test_performance_summary_rejects_malformed_nested_contracts(
@@ -288,16 +322,16 @@ def test_performance_summary_rejects_malformed_nested_contracts(
     [
         (
             (
-                _equity_row(2_000, "0", "fresh"),
-                _equity_row(1_000, "0", "fresh"),
+                _equity_row(2_000, "0", ValuationStatus.FRESH),
+                _equity_row(1_000, "0", ValuationStatus.FRESH),
             ),
             "timestamp moves backward",
         ),
-        ((_equity_row(1_000, "NaN", "fresh"),), "PnL is not finite"),
-        ((_equity_row(1_000, "", "fresh"),), "PnL is missing"),
+        ((_equity_row(1_000, "NaN", ValuationStatus.FRESH),), "PnL is not finite"),
+        ((_equity_row(1_000, "", ValuationStatus.FRESH),), "PnL is missing"),
         ((_equity_row(1_000, "0", "unknown"),), "valuation status is invalid"),
         (
-            (_equity_row(1 << 63, "0", "fresh"),),
+            (_equity_row(1 << 63, "0", ValuationStatus.FRESH),),
             "timestamp is outside chart range",
         ),
     ],
@@ -378,12 +412,11 @@ def test_render_performance_chart_handles_an_all_missing_series(tmp_path: Path) 
     )
 
     rendered = output.getvalue()
-    assert "PnL unavailable" in rendered
+    assert PNL_UNAVAILABLE_LABEL in rendered
     start_label = datetime.fromtimestamp(1).strftime("%H:%M:%S")
     end_label = datetime.fromtimestamp(2).strftime("%H:%M:%S")
     assert any(
-        start_label in line and end_label in line
-        for line in rendered.splitlines()
+        start_label in line and end_label in line for line in rendered.splitlines()
     )
     assert "Fills 4" in rendered
     assert "Orders 5" in rendered
@@ -401,7 +434,7 @@ def test_saved_run_command_labels_partial_results(tmp_path: Path) -> None:
         status=PerformanceRunStatus.FAILED,
         partial=True,
     )
-    _write_equity(results_dir, (_equity_row(1_000, "-2", "fresh"),))
+    _write_equity(results_dir, (_equity_row(1_000, "-2", ValuationStatus.FRESH),))
     output = StringIO()
 
     print_performance_chart(
@@ -440,7 +473,9 @@ def _write_equity(
     results_dir: Path,
     rows: tuple[dict[str, object], ...],
 ) -> None:
-    with (results_dir / EQUITY_FILE_NAME).open("w", newline="", encoding="utf-8") as output:
+    with (results_dir / EQUITY_FILE_NAME).open(
+        "w", newline="", encoding="utf-8"
+    ) as output:
         writer = csv.DictWriter(output, fieldnames=EQUITY_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
@@ -452,74 +487,79 @@ def _summary_payload(
     partial: bool = False,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
-        "status": status.value,
-        "partial": partial,
-        "error": "stopped" if status is PerformanceRunStatus.FAILED else None,
-        "provenance": {
-            "kind": "backtest",
-            "bot_spec": "tests:create",
-            "configuration": {},
-            "seed": 0,
-            "archive_sha256": "archive",
-            "archive_schema_version": 2,
-            "archive_target_identity": "target",
+        PerformanceSummaryField.SCHEMA_VERSION: RESULT_SCHEMA_VERSION,
+        PerformanceSummaryField.STATUS: status.value,
+        PerformanceSummaryField.PARTIAL: partial,
+        PerformanceSummaryField.ERROR: "stopped"
+        if status is PerformanceRunStatus.FAILED
+        else None,
+        PerformanceSummaryField.PROVENANCE: {
+            PerformanceProvenanceField.KIND: PerformanceRunKind.BACKTEST,
+            PerformanceProvenanceField.BOT_SPEC: "tests:create",
+            PerformanceProvenanceField.CONFIGURATION: {},
+            PerformanceProvenanceField.SEED: 0,
+            PerformanceProvenanceField.ARCHIVE_SHA256: "archive",
+            PerformanceProvenanceField.ARCHIVE_SCHEMA_VERSION: 2,
+            PerformanceProvenanceField.ARCHIVE_TARGET_IDENTITY: "target",
         },
-        "selection": {
-            "session_id": 1,
-            "start_ms": 1_000,
-            "end_ms": 2_000,
-            "market_slugs": ["market"],
-            "replay_cutoff_sequence": None,
-            "session_integrity_status": None,
-            "uses_partial_session": False,
-            "gap_policy": None,
-            "coverage_gap_ids": [],
-            "coverage_gap_count": 0,
-            "coverage_gap_duration_ms": 0,
-            "coverage_gap_open_count": 0,
-            "coverage_gap_affected_position_token_ids": [],
-            "coverage_gap_affected_position_count": 0,
+        PerformanceSummaryField.SELECTION: {
+            PerformanceSelectionField.SESSION_ID: 1,
+            PerformanceSelectionField.START_MS: 1_000,
+            PerformanceSelectionField.END_MS: 2_000,
+            PerformanceSelectionField.MARKET_SLUGS: ["market"],
+            PerformanceSelectionField.REPLAY_CUTOFF_SEQUENCE: None,
+            PerformanceSelectionField.SESSION_INTEGRITY_STATUS: None,
+            PerformanceSelectionField.USES_PARTIAL_SESSION: False,
+            PerformanceSelectionField.GAP_POLICY: None,
+            PerformanceSelectionField.COVERAGE_GAP_IDS: [],
+            PerformanceSelectionField.COVERAGE_GAP_COUNT: 0,
+            PerformanceSelectionField.COVERAGE_GAP_DURATION_MS: 0,
+            PerformanceSelectionField.COVERAGE_GAP_OPEN_COUNT: 0,
+            PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_TOKEN_IDS: [],
+            PerformanceSelectionField.COVERAGE_GAP_AFFECTED_POSITION_COUNT: 0,
         },
-        "timing": {
-            "started_at_ms": 1_000,
-            "ended_at_ms": 2_000,
-            "virtual_duration_ms": 1_000,
+        PerformanceSummaryField.TIMING: {
+            PerformanceTimingField.STARTED_AT_MS: 1_000,
+            PerformanceTimingField.ENDED_AT_MS: 2_000,
+            PerformanceTimingField.VIRTUAL_DURATION_MS: 1_000,
         },
-        "metrics": {
-            "initial_cash_usdc": "100",
-            "initial_equity_usdc": "100",
-            "final_cash_usdc": "100",
-            "final_marked_position_value_usdc": "0",
-            "final_equity_usdc": "112.34",
-            "gross_pnl_usdc": "12.59",
-            "net_pnl_usdc": "12.34",
-            "return": "0.1234",
-            "fees_usdc": "0.25",
-            "filled_notional_usdc": "50",
-            "max_drawdown_usdc": "2.5",
-            "max_drawdown_fraction": "0.025",
-            "order_count": 5,
-            "fill_count": 4,
-            "rejected_order_count": 1,
-            "coverage_gap_rejected_order_count": 0,
-            "resolution_count": 1,
-            "event_count": 0,
-            "dispatch_count": 0,
-            "accepted_dispatch_count": 0,
-            "skipped_dispatch_count": 0,
+        PerformanceSummaryField.METRICS: {
+            PerformanceMetricsField.INITIAL_CASH_USDC: "100",
+            PerformanceMetricsField.INITIAL_EQUITY_USDC: "100",
+            PerformanceMetricsField.FINAL_CASH_USDC: "100",
+            PerformanceMetricsField.FINAL_MARKED_POSITION_VALUE_USDC: "0",
+            PerformanceMetricsField.FINAL_EQUITY_USDC: "112.34",
+            PerformanceMetricsField.GROSS_PNL_USDC: "12.59",
+            PerformanceMetricsField.NET_PNL_USDC: "12.34",
+            PerformanceMetricsField.RETURN_FRACTION: "0.1234",
+            PerformanceMetricsField.FEES_USDC: "0.25",
+            PerformanceMetricsField.FILLED_NOTIONAL_USDC: "50",
+            PerformanceMetricsField.MAX_DRAWDOWN_USDC: "2.5",
+            PerformanceMetricsField.MAX_DRAWDOWN_FRACTION: "0.025",
+            PerformanceMetricsField.ORDER_COUNT: 5,
+            PerformanceMetricsField.FILL_COUNT: 4,
+            PerformanceMetricsField.REJECTED_ORDER_COUNT: 1,
+            PerformanceMetricsField.COVERAGE_GAP_REJECTED_ORDER_COUNT: 0,
+            PerformanceMetricsField.RESOLUTION_COUNT: 1,
+            PerformanceMetricsField.EVENT_COUNT: 0,
+            PerformanceMetricsField.DISPATCH_COUNT: 0,
+            PerformanceMetricsField.ACCEPTED_DISPATCH_COUNT: 0,
+            PerformanceMetricsField.SKIPPED_DISPATCH_COUNT: 0,
         },
-        "valuation": {
-            "final_status": "fresh",
-            "history_status": "fresh",
-            "drawdown_status": "fresh",
-            "complete": True,
-            "estimated": False,
-            "sample_count": 1,
-            "available_sample_count": 1,
-            "stale_sample_count": 0,
-            "unavailable_sample_count": 0,
+        PerformanceSummaryField.VALUATION: {
+            PerformanceValuationField.FINAL_STATUS: ValuationStatus.FRESH,
+            PerformanceValuationField.HISTORY_STATUS: ValuationStatus.FRESH,
+            PerformanceValuationField.DRAWDOWN_STATUS: ValuationStatus.FRESH,
+            PerformanceValuationField.COMPLETE: True,
+            PerformanceValuationField.ESTIMATED: False,
+            PerformanceValuationField.SAMPLE_COUNT: 1,
+            PerformanceValuationField.AVAILABLE_SAMPLE_COUNT: 1,
+            PerformanceValuationField.STALE_SAMPLE_COUNT: 0,
+            PerformanceValuationField.UNAVAILABLE_SAMPLE_COUNT: 0,
         },
-        "open_positions": [],
-        "artifacts": {"equity": EQUITY_FILE_NAME, "orders": "orders.csv"},
+        PerformanceSummaryField.OPEN_POSITIONS: [],
+        PerformanceSummaryField.ARTIFACTS: {
+            PerformanceArtifactField.EQUITY: EQUITY_FILE_NAME,
+            PerformanceArtifactField.ORDERS: ORDERS_FILE_NAME,
+        },
     }

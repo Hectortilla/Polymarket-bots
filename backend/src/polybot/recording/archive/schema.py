@@ -5,9 +5,10 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from polybot.recording.archive.columns import ArchiveColumn
+
 from ..contracts.kinds import payload_kind_sql_literals
 from ..contracts.session import session_status_sql_literals
-
 
 RECORDING_FEATURES_TABLE = "recording_features"
 CAPTURE_ANOMALIES_TABLE = "capture_anomalies"
@@ -36,146 +37,181 @@ class _TableSchema:
     def create_sql(self) -> str:
         members = [f"{name} {declaration}" for name, declaration in self.columns]
         members.extend(self.constraints)
-        return (
-            f"CREATE TABLE {self.name} (\n"
-            f"    {', '.join(members)}\n"
-            f") {self.suffix};"
-        )
+        return f"CREATE TABLE {self.name} (\n    {', '.join(members)}\n) {self.suffix};"
 
 
 _CORE_TABLES = (
     _TableSchema(
         ARCHIVE_META_TABLE,
         (
-            ("singleton", "INTEGER PRIMARY KEY CHECK (singleton = 1)"),
-            ("schema_version", "INTEGER NOT NULL"),
-            ("target_identity", "TEXT NOT NULL"),
-            ("created_at_ms", "INTEGER NOT NULL CHECK (created_at_ms >= 0)"),
+            (
+                ArchiveColumn.SINGLETON,
+                f"INTEGER PRIMARY KEY CHECK ({ArchiveColumn.SINGLETON} = 1)",
+            ),
+            (ArchiveColumn.SCHEMA_VERSION, "INTEGER NOT NULL"),
+            (ArchiveColumn.TARGET_IDENTITY, "TEXT NOT NULL"),
+            (
+                ArchiveColumn.CREATED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.CREATED_AT_MS} >= 0)",
+            ),
         ),
     ),
     _TableSchema(
         SESSIONS_TABLE,
         (
-            ("session_id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
-            ("started_at_ms", "INTEGER NOT NULL CHECK (started_at_ms >= 0)"),
+            (ArchiveColumn.SESSION_ID, "INTEGER PRIMARY KEY AUTOINCREMENT"),
             (
-                "ended_at_ms",
-                "INTEGER CHECK (ended_at_ms IS NULL OR ended_at_ms >= started_at_ms)",
+                ArchiveColumn.STARTED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.STARTED_AT_MS} >= 0)",
             ),
             (
-                "clean_close",
-                "INTEGER NOT NULL DEFAULT 0 CHECK (clean_close IN (0, 1))",
+                ArchiveColumn.ENDED_AT_MS,
+                f"INTEGER CHECK ({ArchiveColumn.ENDED_AT_MS} IS NULL OR {ArchiveColumn.ENDED_AT_MS} >= {ArchiveColumn.STARTED_AT_MS})",
             ),
             (
-                "integrity_status",
+                ArchiveColumn.CLEAN_CLOSE,
+                f"INTEGER NOT NULL DEFAULT 0 CHECK ({ArchiveColumn.CLEAN_CLOSE} IN (0, 1))",
+            ),
+            (
+                ArchiveColumn.INTEGRITY_STATUS,
                 "TEXT NOT NULL CHECK "
-                f"(integrity_status IN ({session_status_sql_literals()}))",
+                f"({ArchiveColumn.INTEGRITY_STATUS} IN ({session_status_sql_literals()}))",
             ),
-            ("recorder_version", "TEXT NOT NULL"),
-            ("sdk_version", "TEXT NOT NULL"),
-            ("failure_reason", "TEXT"),
+            (ArchiveColumn.RECORDER_VERSION, "TEXT NOT NULL"),
+            (ArchiveColumn.SDK_VERSION, "TEXT NOT NULL"),
+            (ArchiveColumn.FAILURE_REASON, "TEXT"),
         ),
     ),
     _TableSchema(
         EVENTS_TABLE,
         (
-            ("sequence", "INTEGER PRIMARY KEY CHECK (sequence > 0)"),
-            ("session_id", f"INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}(session_id)"),
             (
-                "subscription_generation",
-                "INTEGER NOT NULL CHECK (subscription_generation >= 0)",
+                ArchiveColumn.SEQUENCE,
+                f"INTEGER PRIMARY KEY CHECK ({ArchiveColumn.SEQUENCE} > 0)",
             ),
-            ("observed_at_ms", "INTEGER NOT NULL CHECK (observed_at_ms >= 0)"),
             (
-                "source_timestamp_ms",
+                ArchiveColumn.SESSION_ID,
+                f"INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}({ArchiveColumn.SESSION_ID})",
+            ),
+            (
+                ArchiveColumn.SUBSCRIPTION_GENERATION,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.SUBSCRIPTION_GENERATION} >= 0)",
+            ),
+            (
+                ArchiveColumn.OBSERVED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.OBSERVED_AT_MS} >= 0)",
+            ),
+            (
+                ArchiveColumn.SOURCE_TIMESTAMP_MS,
                 "INTEGER CHECK "
-                "(source_timestamp_ms IS NULL OR source_timestamp_ms >= 0)",
+                f"({ArchiveColumn.SOURCE_TIMESTAMP_MS} IS NULL OR {ArchiveColumn.SOURCE_TIMESTAMP_MS} >= 0)",
             ),
-            ("condition_id", "TEXT"),
-            ("market_slug", "TEXT"),
-            ("token_id", "TEXT"),
+            (ArchiveColumn.CONDITION_ID, "TEXT"),
+            (ArchiveColumn.MARKET_SLUG, "TEXT"),
+            (ArchiveColumn.TOKEN_ID, "TEXT"),
             (
-                "payload_kind",
+                ArchiveColumn.PAYLOAD_KIND,
                 "TEXT NOT NULL CHECK "
-                f"(payload_kind IN ({payload_kind_sql_literals()}))",
+                f"({ArchiveColumn.PAYLOAD_KIND} IN ({payload_kind_sql_literals()}))",
             ),
-            ("payload_json", "TEXT NOT NULL"),
+            (ArchiveColumn.PAYLOAD_JSON, "TEXT NOT NULL"),
         ),
     ),
     _TableSchema(
         EVENT_TOKENS_TABLE,
         (
             (
-                "sequence",
-                f"INTEGER NOT NULL REFERENCES {EVENTS_TABLE}(sequence) ON DELETE CASCADE",
+                ArchiveColumn.SEQUENCE,
+                f"INTEGER NOT NULL REFERENCES {EVENTS_TABLE}({ArchiveColumn.SEQUENCE}) ON DELETE CASCADE",
             ),
-            ("token_id", "TEXT NOT NULL"),
+            (ArchiveColumn.TOKEN_ID, "TEXT NOT NULL"),
         ),
-        ("PRIMARY KEY (sequence, token_id)",),
+        (f"PRIMARY KEY ({ArchiveColumn.SEQUENCE}, {ArchiveColumn.TOKEN_ID})",),
         "WITHOUT ROWID",
     ),
     _TableSchema(
         METADATA_REVISIONS_TABLE,
         (
-            ("condition_id", "TEXT NOT NULL"),
+            (ArchiveColumn.CONDITION_ID, "TEXT NOT NULL"),
             (
-                "sequence",
-                f"INTEGER NOT NULL UNIQUE REFERENCES {EVENTS_TABLE}(sequence)",
+                ArchiveColumn.SEQUENCE,
+                f"INTEGER NOT NULL UNIQUE REFERENCES {EVENTS_TABLE}({ArchiveColumn.SEQUENCE})",
             ),
-            ("observed_at_ms", "INTEGER NOT NULL CHECK (observed_at_ms >= 0)"),
-            ("payload_json", "TEXT NOT NULL"),
+            (
+                ArchiveColumn.OBSERVED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.OBSERVED_AT_MS} >= 0)",
+            ),
+            (ArchiveColumn.PAYLOAD_JSON, "TEXT NOT NULL"),
         ),
-        ("PRIMARY KEY (condition_id, sequence)",),
+        (f"PRIMARY KEY ({ArchiveColumn.CONDITION_ID}, {ArchiveColumn.SEQUENCE})",),
         "WITHOUT ROWID",
     ),
     _TableSchema(
         BOOK_CHECKPOINTS_TABLE,
         (
-            ("token_id", "TEXT NOT NULL"),
-            ("sequence", f"INTEGER NOT NULL REFERENCES {EVENTS_TABLE}(sequence)"),
-            ("session_id", f"INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}(session_id)"),
+            (ArchiveColumn.TOKEN_ID, "TEXT NOT NULL"),
             (
-                "subscription_generation",
-                "INTEGER NOT NULL CHECK (subscription_generation >= 0)",
+                ArchiveColumn.SEQUENCE,
+                f"INTEGER NOT NULL REFERENCES {EVENTS_TABLE}({ArchiveColumn.SEQUENCE})",
             ),
-            ("observed_at_ms", "INTEGER NOT NULL CHECK (observed_at_ms >= 0)"),
-            ("condition_id", "TEXT NOT NULL"),
-            ("market_slug", "TEXT NOT NULL"),
-            ("payload_json", "TEXT NOT NULL"),
+            (
+                ArchiveColumn.SESSION_ID,
+                f"INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}({ArchiveColumn.SESSION_ID})",
+            ),
+            (
+                ArchiveColumn.SUBSCRIPTION_GENERATION,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.SUBSCRIPTION_GENERATION} >= 0)",
+            ),
+            (
+                ArchiveColumn.OBSERVED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.OBSERVED_AT_MS} >= 0)",
+            ),
+            (ArchiveColumn.CONDITION_ID, "TEXT NOT NULL"),
+            (ArchiveColumn.MARKET_SLUG, "TEXT NOT NULL"),
+            (ArchiveColumn.PAYLOAD_JSON, "TEXT NOT NULL"),
         ),
-        ("PRIMARY KEY (token_id, observed_at_ms, sequence)",),
+        (
+            f"PRIMARY KEY ({ArchiveColumn.TOKEN_ID}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE})",
+        ),
         "WITHOUT ROWID",
     ),
     _TableSchema(
         COVERAGE_GAPS_TABLE,
         (
-            ("gap_id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+            (ArchiveColumn.GAP_ID, "INTEGER PRIMARY KEY AUTOINCREMENT"),
             (
-                "event_sequence",
-                f"INTEGER NOT NULL UNIQUE REFERENCES {EVENTS_TABLE}(sequence)",
+                ArchiveColumn.EVENT_SEQUENCE,
+                f"INTEGER NOT NULL UNIQUE REFERENCES {EVENTS_TABLE}({ArchiveColumn.SEQUENCE})",
             ),
-            ("session_id", f"INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}(session_id)"),
             (
-                "subscription_generation",
-                "INTEGER NOT NULL CHECK (subscription_generation >= 0)",
+                ArchiveColumn.SESSION_ID,
+                f"INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}({ArchiveColumn.SESSION_ID})",
             ),
-            ("observed_at_ms", "INTEGER NOT NULL CHECK (observed_at_ms >= 0)"),
-            ("condition_id", "TEXT"),
-            ("market_slug", "TEXT"),
-            ("started_at_ms", "INTEGER NOT NULL CHECK (started_at_ms >= 0)"),
             (
-                "ended_at_ms",
-                "INTEGER CHECK (ended_at_ms IS NULL OR ended_at_ms >= started_at_ms)",
+                ArchiveColumn.SUBSCRIPTION_GENERATION,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.SUBSCRIPTION_GENERATION} >= 0)",
             ),
-            ("reason", "TEXT NOT NULL"),
-            ("payload_json", "TEXT NOT NULL"),
+            (
+                ArchiveColumn.OBSERVED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.OBSERVED_AT_MS} >= 0)",
+            ),
+            (ArchiveColumn.CONDITION_ID, "TEXT"),
+            (ArchiveColumn.MARKET_SLUG, "TEXT"),
+            (
+                ArchiveColumn.STARTED_AT_MS,
+                f"INTEGER NOT NULL CHECK ({ArchiveColumn.STARTED_AT_MS} >= 0)",
+            ),
+            (
+                ArchiveColumn.ENDED_AT_MS,
+                f"INTEGER CHECK ({ArchiveColumn.ENDED_AT_MS} IS NULL OR {ArchiveColumn.ENDED_AT_MS} >= {ArchiveColumn.STARTED_AT_MS})",
+            ),
+            (ArchiveColumn.REASON, "TEXT NOT NULL"),
+            (ArchiveColumn.PAYLOAD_JSON, "TEXT NOT NULL"),
         ),
     ),
 )
 
-CORE_ARCHIVE_TABLE_COLUMNS = {
-    table.name: table.column_names for table in _CORE_TABLES
-}
+CORE_ARCHIVE_TABLE_COLUMNS = {table.name: table.column_names for table in _CORE_TABLES}
 
 
 def initialize_archive_schema(
@@ -196,22 +232,22 @@ def initialize_archive_schema(
         {core_table_ddl}
 
         CREATE INDEX events_observed_idx
-            ON {EVENTS_TABLE}(observed_at_ms, sequence);
+            ON {EVENTS_TABLE}({ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE});
         CREATE INDEX events_condition_idx
-            ON {EVENTS_TABLE}(condition_id, observed_at_ms, sequence);
+            ON {EVENTS_TABLE}({ArchiveColumn.CONDITION_ID}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE});
         CREATE INDEX events_slug_idx
-            ON {EVENTS_TABLE}(market_slug, observed_at_ms, sequence);
+            ON {EVENTS_TABLE}({ArchiveColumn.MARKET_SLUG}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE});
         CREATE INDEX event_tokens_token_idx
-            ON {EVENT_TOKENS_TABLE}(token_id, sequence);
+            ON {EVENT_TOKENS_TABLE}({ArchiveColumn.TOKEN_ID}, {ArchiveColumn.SEQUENCE});
         CREATE INDEX metadata_time_idx
-            ON {METADATA_REVISIONS_TABLE}(condition_id, observed_at_ms, sequence);
+            ON {METADATA_REVISIONS_TABLE}({ArchiveColumn.CONDITION_ID}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE});
         CREATE INDEX checkpoints_time_idx
-            ON {BOOK_CHECKPOINTS_TABLE}(token_id, observed_at_ms, sequence);
+            ON {BOOK_CHECKPOINTS_TABLE}({ArchiveColumn.TOKEN_ID}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.SEQUENCE});
         CREATE INDEX coverage_gaps_time_idx
-            ON {COVERAGE_GAPS_TABLE}(started_at_ms, ended_at_ms);
+            ON {COVERAGE_GAPS_TABLE}({ArchiveColumn.STARTED_AT_MS}, {ArchiveColumn.ENDED_AT_MS});
 
         INSERT INTO {ARCHIVE_META_TABLE} (
-            singleton, schema_version, target_identity, created_at_ms
+            {ArchiveColumn.SINGLETON}, {ArchiveColumn.SCHEMA_VERSION}, {ArchiveColumn.TARGET_IDENTITY}, {ArchiveColumn.CREATED_AT_MS}
         ) VALUES (
             1,
             {schema_version},
@@ -227,41 +263,41 @@ def ensure_capture_anomaly_schema(connection: sqlite3.Connection) -> None:
     connection.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {RECORDING_FEATURES_TABLE} (
-            feature_name TEXT PRIMARY KEY,
-            available_from_session_id INTEGER NOT NULL
-                REFERENCES sessions(session_id),
-            enabled_at_ms INTEGER NOT NULL CHECK (enabled_at_ms >= 0),
-            recorder_version TEXT NOT NULL
+            {ArchiveColumn.FEATURE_NAME} TEXT PRIMARY KEY,
+            {ArchiveColumn.AVAILABLE_FROM_SESSION_ID} INTEGER NOT NULL
+                REFERENCES {SESSIONS_TABLE}({ArchiveColumn.SESSION_ID}),
+            {ArchiveColumn.ENABLED_AT_MS} INTEGER NOT NULL CHECK ({ArchiveColumn.ENABLED_AT_MS} >= 0),
+            {ArchiveColumn.RECORDER_VERSION} TEXT NOT NULL
         ) STRICT
         """
     )
     connection.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {CAPTURE_ANOMALIES_TABLE} (
-            anomaly_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id INTEGER NOT NULL REFERENCES sessions(session_id),
-            subscription_generation INTEGER NOT NULL CHECK (
-                subscription_generation >= 0
+            {ArchiveColumn.ANOMALY_ID} INTEGER PRIMARY KEY AUTOINCREMENT,
+            {ArchiveColumn.SESSION_ID} INTEGER NOT NULL REFERENCES {SESSIONS_TABLE}({ArchiveColumn.SESSION_ID}),
+            {ArchiveColumn.SUBSCRIPTION_GENERATION} INTEGER NOT NULL CHECK (
+                {ArchiveColumn.SUBSCRIPTION_GENERATION} >= 0
             ),
-            observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
-            condition_id TEXT,
-            market_slug TEXT,
-            token_id TEXT,
-            failure_kind TEXT NOT NULL,
-            payload_json TEXT NOT NULL
+            {ArchiveColumn.OBSERVED_AT_MS} INTEGER NOT NULL CHECK ({ArchiveColumn.OBSERVED_AT_MS} >= 0),
+            {ArchiveColumn.CONDITION_ID} TEXT,
+            {ArchiveColumn.MARKET_SLUG} TEXT,
+            {ArchiveColumn.TOKEN_ID} TEXT,
+            {ArchiveColumn.FAILURE_KIND} TEXT NOT NULL,
+            {ArchiveColumn.PAYLOAD_JSON} TEXT NOT NULL
         ) STRICT
         """
     )
     connection.execute(
         f"""
         CREATE INDEX IF NOT EXISTS capture_anomalies_session_time_idx
-        ON {CAPTURE_ANOMALIES_TABLE}(session_id, observed_at_ms, anomaly_id)
+        ON {CAPTURE_ANOMALIES_TABLE}({ArchiveColumn.SESSION_ID}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.ANOMALY_ID})
         """
     )
     connection.execute(
         f"""
         CREATE INDEX IF NOT EXISTS capture_anomalies_condition_idx
-        ON {CAPTURE_ANOMALIES_TABLE}(condition_id, observed_at_ms, anomaly_id)
+        ON {CAPTURE_ANOMALIES_TABLE}({ArchiveColumn.CONDITION_ID}, {ArchiveColumn.OBSERVED_AT_MS}, {ArchiveColumn.ANOMALY_ID})
         """
     )
 

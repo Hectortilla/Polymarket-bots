@@ -1,16 +1,16 @@
 import asyncio
 from decimal import Decimal
 
-from polybot.framework.context import BotContext
+from polybot.examples.btc_five_minute_market import (
+    BTC_FIVE_MINUTE_BUCKET_SECONDS,
+    BTC_FIVE_MINUTE_SLUG_PREFIX,
+)
 from polybot.examples.example_dynamic_random_hold import (
     DYNAMIC_RANDOM_HOLD_ORDER_SIZE,
     ExampleDynamicRandomHoldBot,
     create,
 )
-from polybot.examples.btc_five_minute_market import (
-    BTC_FIVE_MINUTE_BUCKET_SECONDS,
-    BTC_FIVE_MINUTE_SLUG_PREFIX,
-)
+from polybot.framework.context import BotContext
 from polybot.framework.markets import market_bucket_slug
 
 

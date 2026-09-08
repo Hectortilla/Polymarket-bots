@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from polymarket import AsyncPublicClient, PolymarketError
-from polymarket.streams import MarketSpec
-
 from polybot.polymarket.client_lifecycle import (
     PublicClientLease,
 )
 from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.markets import Market
+
+from polymarket import AsyncPublicClient, PolymarketError
+from polymarket.streams import MarketSpec
 
 from .capture import MarketCapture
 

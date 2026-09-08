@@ -7,24 +7,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from polymarket import PolymarketError
-from polymarket.models.clob.market_events import (
-    MarketResolvedEvent as SdkMarketResolvedEvent,
-    MarketResolvedPayload,
-)
-
 from polybot.cli.dashboard.state import DashboardState
 from polybot.cli.followed_wallets.tracker import FollowedWalletTracker
 from polybot.cli.observability.events import StreamReceived
 from polybot.cli.observability.observer import RuntimeObserver
-from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
 from polybot.cli.resolution.reconciliation import reconcile_resolutions
 from polybot.cli.resolution.settlement import ResolutionSettlementService
-from polybot.cli.tracking.paper import track_paper_positions
-from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
-from polybot.framework.cadence import RESOLUTION_RECONCILIATION_SECONDS
-from polybot.framework.config.models import BotConfig
-from polybot.framework.dispatch import DispatchSkipReason
+from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
 from polybot.cli.streams.contracts import (
     ResolutionStreamEvent,
     StreamSourceSpec,
@@ -33,28 +22,41 @@ from polybot.cli.streams.contracts import (
 from polybot.cli.streams.kinds import StreamKind
 from polybot.cli.streams.merger import merge_streams
 from polybot.cli.tracked_markets import MarketInterest, TrackedMarketRegistry
-from polybot.execution.paper.portfolio import PaperPortfolio
+from polybot.cli.tracking.paper import track_paper_positions
+from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
 from polybot.execution.paper import PaperBroker
+from polybot.execution.paper.portfolio import PaperPortfolio
+from polybot.framework.base import BaseBot
+from polybot.framework.cadence import RESOLUTION_RECONCILIATION_SECONDS
+from polybot.framework.config.models import BotConfig
+from polybot.framework.dispatch import DispatchOutcome, DispatchSkipReason
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
-from polybot.framework.base import BaseBot
-from polybot.framework.runner import BotRunner
 from polybot.framework.events.resolutions import (
     LOSING_PAYOUT_PER_TOKEN,
-    WINNING_PAYOUT_PER_TOKEN,
     MarketResolutionEvent,
     MarketSettlementEvent,
-    SettledPosition,
 )
+from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
-from polybot.framework.events.wallet_trades import WalletTradeEvent, wallet_source_key
+from polybot.framework.runner import BotRunner
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-from polybot.polymarket.positions.client import PositionClient
-from polybot.polymarket.positions.contracts import Position
 from polybot.polymarket.errors import MarketDataTransportError
 from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.normalization.recording_events.market_events import (
+    MARKET_WEBSOCKET_SOURCE,
+)
+from polybot.polymarket.positions.client import PositionClient
+from polybot.polymarket.positions.contracts import Position
 from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
-from polybot.polymarket.ws_market import MARKET_WEBSOCKET_SOURCE, MarketStream
+from polybot.polymarket.ws_market import MarketStream
+from polymarket import PolymarketError
+from polymarket.models.clob.market_events import (
+    MarketResolvedEvent as SdkMarketResolvedEvent,
+)
+from polymarket.models.clob.market_events import (
+    MarketResolvedPayload,
+)
 
 WALLET = "0x0000000000000000000000000000000000000001"
 
@@ -88,7 +90,6 @@ class FakeStreamClient:
         return FakeSubscription(self.events)
 
 
-
 def test_registry_deduplicates_wallet_interests_and_batches_token_changes() -> None:
     async def run() -> tuple[int, int]:
         registry = TrackedMarketRegistry()
@@ -114,9 +115,7 @@ def test_registry_deduplicates_wallet_interests_and_batches_token_changes() -> N
 
 def test_registry_never_readmits_terminal_conditions() -> None:
     market = _market()
-    registry = TrackedMarketRegistry(
-        terminal_condition_ids=(market.condition_id,)
-    )
+    registry = TrackedMarketRegistry(terminal_condition_ids=(market.condition_id,))
 
     for interest in MarketInterest:
         assert not registry.add(market, interest)
@@ -234,12 +233,18 @@ def test_wallet_dispatch_rejects_conflicting_registry_metadata_before_execution(
             raise AssertionError("conflicting metadata must not reach CLOB routing")
 
     class Runner:
-        async def dispatch_wallet_trade(self, event: WalletTradeEvent) -> DispatchOutcome:
-            raise AssertionError("conflicting metadata must not reach strategy execution")
+        async def dispatch_wallet_trade(
+            self, event: WalletTradeEvent
+        ) -> DispatchOutcome:
+            raise AssertionError(
+                "conflicting metadata must not reach strategy execution"
+            )
 
     class FollowedWallets:
         def record_trade(self, event: WalletTradeEvent) -> bool:
-            raise AssertionError("conflicting metadata must not reach followed-wallet state")
+            raise AssertionError(
+                "conflicting metadata must not reach followed-wallet state"
+            )
 
     outcome = asyncio.run(
         dispatch_wallet_trade(
@@ -263,9 +268,7 @@ def test_wallet_dispatch_skips_terminal_market_before_metadata_or_routing(
     dummy_context,
 ) -> None:
     market = _market()
-    registry = TrackedMarketRegistry(
-        terminal_condition_ids=(market.condition_id,)
-    )
+    registry = TrackedMarketRegistry(terminal_condition_ids=(market.condition_id,))
 
     class Gamma:
         async def find_by_slug(self, slug):
@@ -321,11 +324,13 @@ def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> 
     class Clob:
         def __init__(self) -> None:
             self.requested: list[str] = []
+            self.markets: tuple[Market, ...] = ()
 
         def set_markets(self, markets) -> None:
-            return None
+            self.markets = tuple(markets)
 
         async def latest(self, token_id: str) -> BookSnapshot | None:
+            assert any(token_id in market.token_ids for market in self.markets)
             self.requested.append(token_id)
             if token_id == "yes-missing-book":
                 return None
@@ -352,10 +357,13 @@ def test_wallet_bootstrap_keeps_positions_without_executable_books(tmp_path) -> 
     assert clob.requested == ["yes-missing-book", "yes-booked"]
     assert state.baselines["yes-missing-book"].basis_price is None
     assert state.baselines["yes-booked"].basis_price == Decimal("0.4")
-    assert tracker.gross_pnl(
-        WALLET,
-        {"yes-missing-book": Decimal("0.5"), "yes-booked": Decimal("0.5")},
-    ) is None
+    assert (
+        tracker.gross_pnl(
+            WALLET,
+            {"yes-missing-book": Decimal("0.5"), "yes-booked": Decimal("0.5")},
+        )
+        is None
+    )
     assert tracker.mark_baseline("yes-missing-book", Decimal("0.3"))
     assert tracker.gross_pnl(
         WALLET,
@@ -432,7 +440,9 @@ def test_filtered_wallet_bootstrap_reads_only_rule_markets(tmp_path) -> None:
     assert tuple(state.baselines) == ("yes-allowed",)
 
 
-def test_filtered_wallet_scope_is_strict_while_independent_wallet_can_discover() -> None:
+def test_filtered_wallet_scope_is_strict_while_independent_wallet_can_discover() -> (
+    None
+):
     other_wallet = "0x0000000000000000000000000000000000000002"
     scopes = StreamPlan(
         current=(
@@ -850,8 +860,9 @@ def test_follow_unresolved_basis_remains_unrealized(tmp_path) -> None:
     assert tracker.gross_pnl(WALLET, {}) is None
 
 
-
-def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ignored() -> None:
+def test_resolution_identity_mismatch_fails_closed_and_unknown_resolution_is_ignored() -> (
+    None
+):
     registry = TrackedMarketRegistry()
     registry.add(_market(), MarketInterest.CONFIGURED)
     tracker = FollowedWalletTracker()
@@ -928,7 +939,9 @@ def test_resolution_is_idempotent_for_one_paper_run() -> None:
     assert registry.entries == ()
 
 
-def test_resolution_rolls_back_current_run_state_when_followed_settlement_fails() -> None:
+def test_resolution_rolls_back_current_run_state_when_followed_settlement_fails() -> (
+    None
+):
     registry = TrackedMarketRegistry()
     registry.add(_market(), MarketInterest.CONFIGURED)
     calls: list[str] = []
@@ -997,10 +1010,7 @@ def test_resolution_stream_events_are_not_coalesced_or_charted() -> None:
 
     async def run():
         return [
-            item
-            async for item in merge_streams(
-                (StreamSourceSpec.primary(source()),)
-            )
+            item async for item in merge_streams((StreamSourceSpec.primary(source()),))
         ]
 
     items = asyncio.run(run())
@@ -1107,7 +1117,9 @@ def test_data_client_normalizes_current_positions_and_rejects_malformed() -> Non
         },
     )()
     assert (
-        asyncio.run(PositionClient(Client((arbitrary_outcome,))).positions(WALLET))[0].outcome
+        asyncio.run(PositionClient(Client((arbitrary_outcome,))).positions(WALLET))[
+            0
+        ].outcome
         == "Up"
     )
 
@@ -1148,9 +1160,7 @@ def test_data_client_passes_filtered_market_condition_ids_to_sdk() -> None:
 
     client.requests.clear()
     asyncio.run(PositionClient(client).positions(WALLET))
-    assert client.requests == [
-        {"user": WALLET, "size_threshold": 0, "page_size": 100}
-    ]
+    assert client.requests == [{"user": WALLET, "size_threshold": 0, "page_size": 100}]
 
     mixed_case_wallet = "0x" + "Ab" * 20
     client.requests.clear()
@@ -1272,3 +1282,19 @@ async def _settle_resolved_markets(
         paper_broker=paper_broker,
         observer=observer,
     ).settle_existing()
+
+
+def test_fully_closed_followed_position_preserves_realized_pnl_at_resolution():
+    tracker = FollowedWalletTracker(now_ms=lambda: 1_000)
+    tracker.synchronize((WALLET,))
+    tracker.bootstrap(WALLET, ())
+    assert tracker.record_trade(_trade("buy", Side.BUY, "2", "0.2", 10))
+    assert tracker.record_trade(_trade("sell", Side.SELL, "2", "0.6", 20))
+    assert tracker.gross_pnl(WALLET, {}) == Decimal("0.8")
+    assert tracker.settle(_resolution()) == ()
+    state = tracker.state(WALLET)
+    assert state is not None
+    assert len(state.settlements) == 1
+    assert tracker.gross_pnl(WALLET, {}) == Decimal("0.8")
+    assert tracker.settle(_resolution()) == ()
+    assert len(state.settlements) == 1

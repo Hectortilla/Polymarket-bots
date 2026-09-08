@@ -10,9 +10,9 @@ from polybot.performance.contracts.valuation_status import ValuationStatus
 from ..files import PerformancePositionField
 from ..parsing import (
     optional_decimal_text,
+    require_exact_keys,
     required_decimal_text,
     required_text,
-    require_exact_keys,
 )
 
 
@@ -69,9 +69,7 @@ class PerformancePositionSummary:
             PerformancePositionField.SIZE: self.size,
             PerformancePositionField.AVERAGE_ENTRY_PRICE: self.average_entry_price,
             PerformancePositionField.EXECUTABLE_MARK: self.executable_mark,
-            PerformancePositionField.LAST_EXECUTABLE_MARK: (
-                self.last_executable_mark
-            ),
+            PerformancePositionField.LAST_EXECUTABLE_MARK: (self.last_executable_mark),
             PerformancePositionField.MARKET_VALUE_USDC: self.market_value_usdc,
             PerformancePositionField.VALUATION_STATUS: self.valuation_status.value,
         }

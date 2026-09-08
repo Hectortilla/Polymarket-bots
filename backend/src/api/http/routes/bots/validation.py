@@ -8,22 +8,23 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
-from api.http.routes.graph_template_lookup import (
-    require_graph_template,
-)
+
 from api.catalog.definitions import (
     CATALOG,
     GraphRequirementError,
 )
 from api.graph_templates.store import GraphTemplateStore
+from api.http.routes.graph_template_lookup import (
+    require_graph_template,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from api.bots.contracts import BotRead
-    from api.catalog.values import DefinitionId
     from api.catalog.definitions import CatalogEntry
     from api.catalog.graphs.contracts import NodeGraph
+    from api.catalog.values import DefinitionId
     from api.runs.contracts import PaperRunConfig
 
 
@@ -58,18 +59,6 @@ def parse_config(
             _input_validation_errors(error),
             body=body,
         ) from error
-
-
-def _input_validation_errors(
-    error: ValidationError,
-) -> list[dict[str, object]]:
-    return [
-        {
-            **issue,
-            "loc": (REQUEST_BODY_LOCATION, BOT_INPUTS_FIELD, *issue["loc"]),
-        }
-        for issue in error.errors()
-    ]
 
 
 def require_bot(bot: BotRead | None) -> BotRead:
@@ -119,3 +108,15 @@ def require_graph_contract(
     except GraphRequirementError as error:
         detail = required_detail if error.graph_required else forbidden_detail
         raise HTTPException(status_code, detail) from error
+
+
+def _input_validation_errors(
+    error: ValidationError,
+) -> list[dict[str, object]]:
+    return [
+        {
+            **issue,
+            "loc": (REQUEST_BODY_LOCATION, BOT_INPUTS_FIELD, *issue["loc"]),
+        }
+        for issue in error.errors()
+    ]

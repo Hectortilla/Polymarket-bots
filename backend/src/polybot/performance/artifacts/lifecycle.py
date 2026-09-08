@@ -14,13 +14,11 @@ from polybot.framework.events import (
 )
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.timestamps import require_nonnegative_timestamp
-from polybot.persistence.atomic_json import AtomicJsonFile
-
+from polybot.integers import validate_nonnegative_int
 from polybot.performance.contracts.files import (
-    OrderField,
     SUMMARY_FILE_NAME,
+    OrderField,
 )
-from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
 from polybot.performance.contracts.run import (
     PerformanceCounters,
     PerformanceRunStatus,
@@ -28,10 +26,15 @@ from polybot.performance.contracts.run import (
     RunSelection,
     SampleReason,
 )
+from polybot.performance.contracts.sampling import (
+    DEFAULT_REPORT_INTERVAL_MS,
+    validate_report_interval,
+)
 from polybot.performance.contracts.valuation import (
     PortfolioLike,
     PortfolioValuation,
 )
+from polybot.persistence.atomic_json import AtomicJsonFile
 
 from .csv_output import PerformanceCsvOutput
 from .errors import PerformanceArtifactStateError
@@ -42,9 +45,7 @@ from .serialization import (
     optional_decimal_text,
     validate_money,
 )
-from .summary import PerformanceSummaryInput, serialize_performance_summary
-
-
+from .summary import PerformanceSummaryInput
 
 
 class PerformanceArtifacts:
@@ -67,18 +68,9 @@ class PerformanceArtifacts:
         max_book_age_ms: int | None = None,
     ) -> None:
         validate_money(initial_cash_usdc, "initial cash", positive=True)
-        if (
-            isinstance(report_interval_ms, bool)
-            or not isinstance(report_interval_ms, int)
-            or report_interval_ms <= 0
-        ):
-            raise ValueError("performance report interval must be positive")
-        if max_book_age_ms is not None and (
-            isinstance(max_book_age_ms, bool)
-            or not isinstance(max_book_age_ms, int)
-            or max_book_age_ms < 0
-        ):
-            raise ValueError("performance book maximum age must be nonnegative")
+        validate_report_interval(report_interval_ms)
+        if max_book_age_ms is not None:
+            validate_nonnegative_int(max_book_age_ms, "maximum book age")
         self.results_dir = Path(results_dir)
         self.provenance = provenance
         self.selection = selection
@@ -139,9 +131,7 @@ class PerformanceArtifacts:
                     "performance coverage-gap position token IDs must be text"
                 )
             normalized_token_ids.add(token_id.strip())
-        self._coverage_gap_affected_position_token_ids.update(
-            normalized_token_ids
-        )
+        self._coverage_gap_affected_position_token_ids.update(normalized_token_ids)
 
     def record_events(self, count: int = 1) -> None:
         self._require_open()
@@ -156,7 +146,9 @@ class PerformanceArtifacts:
         if self.started:
             raise PerformanceArtifactStateError("performance run is already started")
         self._validate_timestamp(timestamp_ms)
-        valuation = self._write_equity_sample(timestamp_ms, SampleReason.START, portfolio)
+        valuation = self._write_equity_sample(
+            timestamp_ms, SampleReason.START, portfolio
+        )
         self._started_at_ms = timestamp_ms
         self._next_interval_ms = timestamp_ms + self.report_interval_ms
         self._initial_valuation = valuation
@@ -192,7 +184,9 @@ class PerformanceArtifacts:
         portfolio: PortfolioLike,
     ) -> PortfolioValuation:
         if reason not in {SampleReason.FILL, SampleReason.SETTLEMENT}:
-            raise ValueError("performance transaction reason must be fill or settlement")
+            raise ValueError(
+                "performance transaction reason must be fill or settlement"
+            )
         self.advance_to(timestamp_ms, portfolio)
         return self._write_equity_sample(timestamp_ms, reason, portfolio)
 
@@ -245,8 +239,7 @@ class PerformanceArtifacts:
         if fill.reject_reason is FillRejectReason.BACKTEST_COVERAGE_GAP:
             self._coverage_gap_rejected_order_count += 1
         is_new_fill = (
-            fill.has_execution
-            and fill.order_id not in self._recorded_fill_order_ids
+            fill.has_execution and fill.order_id not in self._recorded_fill_order_ids
         )
         if is_new_fill:
             self._recorded_fill_order_ids.add(fill.order_id)
@@ -270,7 +263,9 @@ class PerformanceArtifacts:
         )
         if not is_new_fill:
             return None
-        return self.record_transaction(fill.received_at_ms, SampleReason.FILL, portfolio)
+        return self.record_transaction(
+            fill.received_at_ms, SampleReason.FILL, portfolio
+        )
 
     def record_settlement(
         self,
@@ -339,32 +334,28 @@ class PerformanceArtifacts:
     ) -> dict[str, object]:
         if self._started_at_ms is None or self._initial_valuation is None:
             raise AssertionError("started performance run requires initial valuation")
-        return serialize_performance_summary(
-            PerformanceSummaryInput(
-                status=status,
-                ended_at_ms=ended_at_ms,
-                error=error,
-                provenance=self.provenance,
-                selection=self.selection,
-                initial_cash_usdc=self.initial_cash_usdc,
-                started_at_ms=self._started_at_ms,
-                initial_valuation=self._initial_valuation,
-                final_valuation=final_valuation,
-                final_fees_usdc=final_fees_usdc,
-                curve=self._sampler.curve,
-                counters=self.counters,
-                order_count=self._order_count,
-                fill_count=self._fill_count,
-                rejected_count=self._rejected_count,
-                coverage_gap_rejected_order_count=(
-                    self._coverage_gap_rejected_order_count
-                ),
-                filled_notional_usdc=self._filled_notional_usdc,
-                coverage_gap_affected_position_token_ids=tuple(
-                    sorted(self._coverage_gap_affected_position_token_ids)
-                ),
-            )
-        )
+        return PerformanceSummaryInput(
+            status=status,
+            ended_at_ms=ended_at_ms,
+            error=error,
+            provenance=self.provenance,
+            selection=self.selection,
+            initial_cash_usdc=self.initial_cash_usdc,
+            started_at_ms=self._started_at_ms,
+            initial_valuation=self._initial_valuation,
+            final_valuation=final_valuation,
+            final_fees_usdc=final_fees_usdc,
+            curve=self._sampler.curve,
+            counters=self.counters,
+            order_count=self._order_count,
+            fill_count=self._fill_count,
+            rejected_count=self._rejected_count,
+            coverage_gap_rejected_order_count=(self._coverage_gap_rejected_order_count),
+            filled_notional_usdc=self._filled_notional_usdc,
+            coverage_gap_affected_position_token_ids=tuple(
+                sorted(self._coverage_gap_affected_position_token_ids)
+            ),
+        ).to_schema_dict()
 
     def _validate_timestamp(self, timestamp_ms: int) -> None:
         require_nonnegative_timestamp(timestamp_ms, "performance timestamp")

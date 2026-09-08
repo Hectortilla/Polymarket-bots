@@ -11,12 +11,11 @@ from polybot.framework.events.prices import (
     is_outcome_price,
 )
 from polybot.framework.events.resolutions import (
-    MarketResolutionEvent,
     SettledPosition,
     realized_resolution_pnl,
 )
-from polybot.framework.position_transition import transition_signed_position
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.position_transition import transition_signed_position
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,9 +31,13 @@ class FollowBaseline:
         if not self.condition_id or not self.token_id or not self.market_slug:
             raise ValueError("followed-wallet baselines require market identity")
         if not self.size.is_finite() or self.size <= 0:
-            raise ValueError("followed-wallet baseline size must be positive and finite")
+            raise ValueError(
+                "followed-wallet baseline size must be positive and finite"
+            )
         if self.basis_price is not None and not is_outcome_payout(self.basis_price):
-            raise ValueError("followed-wallet baseline price must be between zero and one")
+            raise ValueError(
+                "followed-wallet baseline price must be between zero and one"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,15 +111,6 @@ class FollowPosition:
         return realized_resolution_pnl(self.size, self.average_basis, payout)
 
 
-def _add_realized_pnl(
-    current: Decimal | None,
-    delta: Decimal | None,
-) -> Decimal | None:
-    if current is None or delta is None:
-        return None
-    return current + delta
-
-
 @dataclass(frozen=True, slots=True)
 class SettlementCalculation:
     settled_positions: tuple[SettledPosition, ...]
@@ -151,3 +145,12 @@ class FollowSettlement:
     gross_realized_pnl_usdc: Decimal | None
     baselines: tuple[FollowBaseline, ...]
     movements: tuple[FollowMovement, ...]
+
+
+def _add_realized_pnl(
+    current: Decimal | None,
+    delta: Decimal | None,
+) -> Decimal | None:
+    if current is None or delta is None:
+        return None
+    return current + delta

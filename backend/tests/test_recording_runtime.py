@@ -7,9 +7,9 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
 from polybot.framework.config.models import BotConfig
 from polybot.framework.events import Side
 from polybot.framework.events.books import BookLevel, BookSnapshot
@@ -19,33 +19,31 @@ from polybot.polymarket.errors import (
     MarketDataIssue,
     MarketDataTransportError,
 )
+from polybot.polymarket.markets import Market, MarketOutcome
+from polybot.polymarket.normalization.recording_events.market_events import (
+    MARKET_WEBSOCKET_SOURCE,
+)
+from polybot.polymarket.public_data.recording import RecordingPublicData
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
 from polybot.polymarket.recording_metadata.contracts import RecordingMarket
-from polybot.polymarket.markets import Market, MarketOutcome
-from polybot.polymarket.public_data.recording import RecordingPublicData
 from polybot.recording import entrypoint
-from polybot.recording.service import recorder as service
 from polybot.recording.archive.errors import ArchiveExistsError
+from polybot.recording.archive.paths import RECORDING_ARCHIVE_SUFFIX
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.anomalies import (
+    CaptureAnomalyPayload,
+    CaptureFailureKind,
+    CaptureFragmentRole,
+    RevisionFingerprint,
+)
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
     BookDeltaPayload,
     RecordedBookLevel,
     TickSizeChangePayload,
-)
-from polybot.recording.contracts.records import (
-    BookCheckpoint,
-    CaptureAnomalyRecord,
-    RecordedEvent,
-)
-from polybot.recording.contracts.anomalies import (
-    CaptureAnomalyPayload,
-    CaptureFailureKind,
-    CaptureFragmentRole,
-    RevisionFingerprint,
 )
 from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
@@ -60,17 +58,24 @@ from polybot.recording.contracts.payloads import (
     PublicTradePayload,
     ResolutionPayload,
 )
+from polybot.recording.contracts.records import (
+    BookCheckpoint,
+    CaptureAnomalyRecord,
+    RecordedEvent,
+)
 from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.recording.coordinator import RecordingCoordinator
 from polybot.recording.coordinator.anomalies import (
     create_capture_anomaly_payload,
 )
+from polybot.recording.entrypoint import MARKET_RECORDER_TITLE
+from polybot.recording.service import recorder as service
+from polybot.recording.service.lifecycle import finish_recording
+from polybot.recording.service.markets import resolve_initial_markets
 from polybot.recording.service.recorder import (
     CANCELLED_RECORDING_REASON,
     record_markets,
 )
-from polybot.recording.service.lifecycle import finish_recording
-from polybot.recording.service.markets import resolve_initial_markets
 from polybot.recording.service.resume import read_resume_state
 from polybot.recording.writer import AsyncRecordingWriter
 from polybot.recording.writer_contracts import (
@@ -161,12 +166,10 @@ class FakeCapture:
             self._books[item.payload.token_id] = BookSnapshot(
                 token_id=item.payload.token_id,
                 bids=tuple(
-                    BookLevel(level.price, level.size)
-                    for level in item.payload.bids
+                    BookLevel(level.price, level.size) for level in item.payload.bids
                 ),
                 asks=tuple(
-                    BookLevel(level.price, level.size)
-                    for level in item.payload.asks
+                    BookLevel(level.price, level.size) for level in item.payload.asks
                 ),
                 received_at_ms=item.source_timestamp_ms or 0,
                 market_slug=self.market.slug,
@@ -607,7 +610,7 @@ def test_recorded_payloads_do_not_acknowledge_before_commit_returns(
                 recording.market.token_ids,
                 token_id,
                 recording.market.outcomes[0].label,
-                "market_websocket",
+                MARKET_WEBSOCKET_SOURCE,
             ),
         }
         payload = payloads[payload_kind]
@@ -619,11 +622,7 @@ def test_recorded_payloads_do_not_acknowledge_before_commit_returns(
                 identity=MarketIdentity(
                     recording.market.condition_id,
                     recording.market.slug,
-                    (
-                        None
-                        if payload_kind in {"metadata", "resolution"}
-                        else token_id
-                    ),
+                    (None if payload_kind in {"metadata", "resolution"} else token_id),
                 ),
                 subscription_generation=1,
             )
@@ -718,9 +717,7 @@ def test_gap_and_anomaly_mutations_do_not_acknowledge_before_commit_returns(
         else:
             mutation = asyncio.create_task(
                 writer.record_anomaly(
-                    create_capture_anomaly_payload(
-                        _capture_continuity_error(market)
-                    ),
+                    create_capture_anomaly_payload(_capture_continuity_error(market)),
                     observed_at_ms=10,
                     identity=identity,
                     subscription_generation=1,
@@ -811,7 +808,9 @@ def test_writer_commits_event_and_checkpoint_batches_atomically() -> None:
         [1, 2]
     ]
     assert len(archive.checkpoint_batches) == 1
-    assert [checkpoint.identity.token_id for checkpoint in archive.checkpoint_batches[0]] == [
+    assert [
+        checkpoint.identity.token_id for checkpoint in archive.checkpoint_batches[0]
+    ] == [
         "alpha-up",
         "alpha-down",
     ]
@@ -917,9 +916,9 @@ def test_cancelled_durable_write_does_not_fail_the_writer() -> None:
                 _baseline_payload("alpha-up"),
                 observed_at_ms=10,
                 source_timestamp_ms=9,
-                    identity=MarketIdentity("alpha", "alpha", "alpha-up"),
-                    subscription_generation=1,
-                )
+                identity=MarketIdentity("alpha", "alpha", "alpha-up"),
+                subscription_generation=1,
+            )
         )
         await _wait_for(archive.started.is_set)
         write.cancel()
@@ -994,9 +993,7 @@ def test_coordinator_records_all_interleaved_events_in_one_global_order() -> Non
         await coordinator.start(provider.current_plan, (alpha, beta))
         shutdown = asyncio.Event()
         task = asyncio.create_task(coordinator.run(shutdown))
-        captures = {
-            capture.market.condition_id: capture for capture in feed.captures
-        }
+        captures = {capture.market.condition_id: capture for capture in feed.captures}
 
         emitted = (
             (captures[alpha.market.condition_id], _baseline_event(alpha, 0, 10)),
@@ -1045,7 +1042,9 @@ def test_coordinator_records_all_interleaved_events_in_one_global_order() -> Non
     ] == [Decimal("0.44"), Decimal("0.45")]
 
 
-def test_coordinator_retries_next_market_deduplicates_and_retains_prior_market() -> None:
+def test_coordinator_retries_next_market_deduplicates_and_retains_prior_market() -> (
+    None
+):
     alpha = _recording_market("alpha")
     beta = _recording_market("beta")
 
@@ -1071,19 +1070,17 @@ def test_coordinator_retries_next_market_deduplicates_and_retains_prior_market()
         await coordinator.start(initial, (alpha,))
         shutdown = asyncio.Event()
         task = asyncio.create_task(coordinator.run(shutdown))
-        await _wait_for(
-            lambda: sum("beta" in call for call in resolver.calls) >= 2
-        )
+        await _wait_for(lambda: sum("beta" in call for call in resolver.calls) >= 2)
 
         resolver.markets["beta"] = beta
-        await _wait_for(lambda: beta.market.condition_id in coordinator.tracked_condition_ids)
+        await _wait_for(
+            lambda: beta.market.condition_id in coordinator.tracked_condition_ids
+        )
         await _wait_for(lambda: len(feed.captures) == 2)
 
         provider.current_plan = _plan(("beta",), ("beta-alias",))
         resolver.markets["beta-alias"] = beta
-        await _wait_for(
-            lambda: any("beta-alias" in call for call in resolver.calls)
-        )
+        await _wait_for(lambda: any("beta-alias" in call for call in resolver.calls))
         await _wait_for(lambda: "beta-alias" not in coordinator.pending_slugs)
 
         assert coordinator.tracked_condition_ids == {
@@ -1181,8 +1178,7 @@ def test_coordinator_requires_both_baselines_before_gap_close_and_checkpoints() 
         await capture.emit(_delta_event(market, "0.45", 12))
         await _wait_for(
             lambda: any(
-                isinstance(event.payload, BookDeltaPayload)
-                for event in writer.events
+                isinstance(event.payload, BookDeltaPayload) for event in writer.events
             )
         )
         await _wait_for(lambda: len(writer.checkpoints) >= checkpoint_count + 2)
@@ -1248,9 +1244,7 @@ def test_checkpoint_excludes_feed_projected_state_not_recorded_by_coordinator() 
         if checkpoint.book.token_id == market.market.token_ids[0]
     )
 
-    assert tuple(level.price for level in up_checkpoint.book.bids) == (
-        Decimal("0.40"),
-    )
+    assert tuple(level.price for level in up_checkpoint.book.bids) == (Decimal("0.40"),)
 
 
 def test_sdk_drop_reopens_only_affected_condition_until_fresh_baselines() -> None:
@@ -1388,8 +1382,10 @@ def test_capture_pump_uses_bounded_commit_pipeline_during_event_burst() -> None:
             await _wait_for(lambda: len(writer.events) > previous_count)
         writer.release_pending()
         await _wait_for(
-            lambda: coordinator._tracked[market.market.condition_id].last_observed_at_ms
-            == writer.events[-1].observed_at_ms
+            lambda: (
+                coordinator._tracked[market.market.condition_id].last_observed_at_ms
+                == writer.events[-1].observed_at_ms
+            )
         )
         shutdown.set()
         await task
@@ -1429,11 +1425,13 @@ def test_sdk_drop_gap_starts_at_last_known_good_event() -> None:
         await capture.emit(_baseline_event(market, 0, 10))
         await capture.emit(_baseline_event(market, 1, 11))
         await _wait_for(
-            lambda: sum(
-                isinstance(event.payload, BookBaselinePayload)
-                for event in writer.events
+            lambda: (
+                sum(
+                    isinstance(event.payload, BookBaselinePayload)
+                    for event in writer.events
+                )
+                == 2
             )
-            == 2
         )
         last_good_observed_at_ms = writer.events[-1].observed_at_ms
 
@@ -1495,11 +1493,13 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
         await first.emit(_baseline_event(market, 0, 10))
         await first.emit(_baseline_event(market, 1, 11))
         await _wait_for(
-            lambda: sum(
-                isinstance(event.payload, BookBaselinePayload)
-                for event in writer.events
+            lambda: (
+                sum(
+                    isinstance(event.payload, BookBaselinePayload)
+                    for event in writer.events
+                )
+                == 2
             )
-            == 2
         )
         await first.fail(RuntimeError("subscription disconnected"))
         await _wait_for(lambda: len(feed.captures) == 2)
@@ -1519,8 +1519,7 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
         assert writer.checkpoints == []
         await second.emit(_baseline_event(market, 1, 21))
         await _wait_for(
-            lambda: len(writer.closed_gaps) == 1
-            and len(writer.checkpoints) == 2
+            lambda: len(writer.closed_gaps) == 1 and len(writer.checkpoints) == 2
         )
         shutdown.set()
         await task
@@ -1536,9 +1535,7 @@ def test_capture_failure_reopens_condition_and_closes_gap_after_rebaseline() -> 
     assert {checkpoint.sequence for checkpoint in writer.checkpoints} == {
         writer.events[-1].sequence
     }
-    checkpoint_times = {
-        checkpoint.observed_at_ms for checkpoint in writer.checkpoints
-    }
+    checkpoint_times = {checkpoint.observed_at_ms for checkpoint in writer.checkpoints}
     assert len(checkpoint_times) == 1
     assert min(checkpoint_times) >= writer.closed_gaps[0][1]
 
@@ -1561,11 +1558,13 @@ def test_split_revision_failures_are_quarantined_and_each_journaled() -> None:
         await first.emit(_baseline_event(market, 0, 10))
         await first.emit(_baseline_event(market, 1, 11))
         await _wait_for(
-            lambda: sum(
-                isinstance(event.payload, BookBaselinePayload)
-                for event in writer.events
+            lambda: (
+                sum(
+                    isinstance(event.payload, BookBaselinePayload)
+                    for event in writer.events
+                )
+                == 2
             )
-            == 2
         )
         events_before_failures = len(writer.events)
 
@@ -1626,40 +1625,27 @@ def test_resumed_open_gap_checkpoints_all_markets_at_final_rebaseline() -> None:
             feed,
             writer,
             resumed_gap_conditions_by_id={
-                41: frozenset(
-                    (alpha.market.condition_id, beta.market.condition_id)
-                )
+                41: frozenset((alpha.market.condition_id, beta.market.condition_id))
             },
             checkpoint_seconds=60.0,
         )
         await coordinator.start(provider.current_plan, (alpha, beta))
-        captures = {
-            capture.market.condition_id: capture for capture in feed.captures
-        }
+        captures = {capture.market.condition_id: capture for capture in feed.captures}
         shutdown = asyncio.Event()
         task = asyncio.create_task(coordinator.run(shutdown))
 
-        await captures[alpha.market.condition_id].emit(
-            _baseline_event(alpha, 0, 10)
-        )
-        await captures[alpha.market.condition_id].emit(
-            _baseline_event(alpha, 1, 11)
-        )
+        await captures[alpha.market.condition_id].emit(_baseline_event(alpha, 0, 10))
+        await captures[alpha.market.condition_id].emit(_baseline_event(alpha, 1, 11))
         await asyncio.sleep(0.01)
         assert writer.closed_gaps == []
         assert writer.checkpoints == []
 
-        await captures[beta.market.condition_id].emit(
-            _baseline_event(beta, 0, 12)
-        )
+        await captures[beta.market.condition_id].emit(_baseline_event(beta, 0, 12))
         await asyncio.sleep(0.01)
         assert writer.checkpoints == []
-        await captures[beta.market.condition_id].emit(
-            _baseline_event(beta, 1, 13)
-        )
+        await captures[beta.market.condition_id].emit(_baseline_event(beta, 1, 13))
         await _wait_for(
-            lambda: len(writer.closed_gaps) == 1
-            and len(writer.checkpoints) == 4
+            lambda: len(writer.closed_gaps) == 1 and len(writer.checkpoints) == 4
         )
         shutdown.set()
         await task
@@ -1676,9 +1662,7 @@ def test_resumed_open_gap_checkpoints_all_markets_at_final_rebaseline() -> None:
     assert {checkpoint.sequence for checkpoint in writer.checkpoints} == {
         writer.events[-1].sequence
     }
-    checkpoint_times = {
-        checkpoint.observed_at_ms for checkpoint in writer.checkpoints
-    }
+    checkpoint_times = {checkpoint.observed_at_ms for checkpoint in writer.checkpoints}
     assert len(checkpoint_times) == 1
     assert min(checkpoint_times) >= ended_at_ms
 
@@ -1715,6 +1699,7 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
                 isinstance(payload, BookBaselinePayload)
                 and payload.token_id == alpha.market.token_ids[1]
             ):
+
                 async def complete_after_release() -> None:
                     self.alpha_final_started.set()
                     await self.release_alpha.wait()
@@ -1745,35 +1730,25 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
             feed,
             writer,
             resumed_gap_conditions_by_id={
-                41: frozenset(
-                    (alpha.market.condition_id, beta.market.condition_id)
-                )
+                41: frozenset((alpha.market.condition_id, beta.market.condition_id))
             },
             checkpoint_seconds=60.0,
         )
         await coordinator.start(provider.current_plan, (alpha, beta))
-        captures = {
-            capture.market.condition_id: capture for capture in feed.captures
-        }
+        captures = {capture.market.condition_id: capture for capture in feed.captures}
         shutdown = asyncio.Event()
         task = asyncio.create_task(coordinator.run(shutdown))
 
-        await captures[alpha.market.condition_id].emit(
-            _baseline_event(alpha, 0, 10)
-        )
-        await captures[beta.market.condition_id].emit(
-            _baseline_event(beta, 0, 11)
-        )
-        await captures[alpha.market.condition_id].emit(
-            _baseline_event(alpha, 1, 12)
-        )
+        await captures[alpha.market.condition_id].emit(_baseline_event(alpha, 0, 10))
+        await captures[beta.market.condition_id].emit(_baseline_event(beta, 0, 11))
+        await captures[alpha.market.condition_id].emit(_baseline_event(alpha, 1, 12))
         await writer.alpha_final_started.wait()
-        await captures[beta.market.condition_id].emit(
-            _baseline_event(beta, 1, 13)
-        )
+        await captures[beta.market.condition_id].emit(_baseline_event(beta, 1, 13))
         await _wait_for(
-            lambda: coordinator._gap_recovery.remaining_condition_ids(41)
-            == frozenset((alpha.market.condition_id,))
+            lambda: (
+                coordinator._gap_recovery.remaining_condition_ids(41)
+                == frozenset((alpha.market.condition_id,))
+            )
         )
         writer.release_alpha.set()
         await _wait_for(lambda: len(writer.checkpoints) == 4)
@@ -1785,13 +1760,9 @@ def test_recovery_checkpoint_batch_stays_monotonic_after_reverse_ack_order() -> 
 
     assert len(writer.checkpoint_batches) == 1
     assert len(writer.checkpoint_batches[0]) == 4
-    checkpoint_times = {
-        checkpoint.observed_at_ms for checkpoint in writer.checkpoints
-    }
+    checkpoint_times = {checkpoint.observed_at_ms for checkpoint in writer.checkpoints}
     assert len(checkpoint_times) == 1
-    assert min(checkpoint_times) >= max(
-        event.observed_at_ms for event in writer.events
-    )
+    assert min(checkpoint_times) >= max(event.observed_at_ms for event in writer.events)
 
 
 def test_resolution_closes_resumed_gap_without_fabricating_checkpoint() -> None:
@@ -1809,9 +1780,7 @@ def test_resolution_closes_resumed_gap_without_fabricating_checkpoint() -> None:
             feed,
             writer,
             checkpoint_seconds=60.0,
-            resumed_gap_conditions_by_id={
-                41: frozenset((market.market.condition_id,))
-            },
+            resumed_gap_conditions_by_id={41: frozenset((market.market.condition_id,))},
         )
         await coordinator.start(provider.current_plan, (market,))
         capture = feed.latest(market.market.condition_id)
@@ -1889,7 +1858,7 @@ def test_resume_state_restores_a_prior_open_condition_gap(tmp_path) -> None:
                 token_ids=market.market.token_ids,
                 winning_token_id=market.market.token_ids[0],
                 winning_outcome="Up",
-                source="market_websocket",
+                source=MARKET_WEBSOCKET_SOURCE,
             ),
         )
     )
@@ -2018,7 +1987,9 @@ def test_initially_resolved_restored_market_is_recorded_without_subscription() -
     ]
 
 
-def test_initial_resolution_requires_all_current_markets_but_not_future_market() -> None:
+def test_initial_resolution_requires_all_current_markets_but_not_future_market() -> (
+    None
+):
     current = _recording_market("current")
     resolver = MutableResolver({"current": current, "next": None})
 
@@ -2276,7 +2247,9 @@ def test_cancelled_recording_is_finalized_at_its_durable_boundary(
     assert feed.closed is True
 
 
-def test_finalization_still_marks_writer_failed_when_coordinator_cleanup_fails() -> None:
+def test_finalization_still_marks_writer_failed_when_coordinator_cleanup_fails() -> (
+    None
+):
     class FailingCoordinator:
         async def close(self) -> None:
             raise RuntimeError("capture cleanup failed")
@@ -2351,7 +2324,7 @@ def test_default_recording_output_path_uses_timestamped_directory() -> None:
         recordings_dir=Path("recordings"),
     )
 
-    assert path == Path("recordings/20260719-123456/markets.sqlite3")
+    assert path == Path(f"recordings/20260719-123456/markets{RECORDING_ARCHIVE_SUFFIX}")
 
     bot_path = entrypoint.default_output_path(
         bot_spec="polybot.examples.my_bot:create",
@@ -2359,7 +2332,8 @@ def test_default_recording_output_path_uses_timestamped_directory() -> None:
         now=datetime(2026, 7, 19, 12, 34, 56),
     )
     assert bot_path == (
-        entrypoint.DEFAULT_RECORDINGS_DIR / "20260719-123456/bot-my_bot.sqlite3"
+        entrypoint.DEFAULT_RECORDINGS_DIR
+        / f"20260719-123456/bot-my_bot{RECORDING_ARCHIVE_SUFFIX}"
     )
 
 
@@ -2437,7 +2411,7 @@ def test_recording_cli_forwards_normalized_static_request(
     assert isinstance(config, BotConfig)
     assert config.live_enabled is False
     output = capsys.readouterr().out
-    assert "Market recorder" in output
+    assert MARKET_RECORDER_TITLE in output
     assert "Static: alpha, beta" in output
     assert "Recording complete" in output
 
@@ -2699,7 +2673,7 @@ def _resolution_event(
             token_ids=recording.market.token_ids,
             winning_token_id=recording.market.token_ids[0],
             winning_outcome=recording.market.outcomes[0].label,
-            source="market_websocket",
+            source=MARKET_WEBSOCKET_SOURCE,
         ),
     )
 
@@ -2714,3 +2688,79 @@ async def _wait_for(
         if asyncio.get_running_loop().time() >= deadline:
             raise AssertionError("condition was not reached before test timeout")
         await asyncio.sleep(0.001)
+
+
+def test_capture_acquisition_failure_records_incomplete_coverage(tmp_path):
+    market = _recording_market("alpha")
+    resolver = MutableResolver({"alpha": market})
+
+    class UnavailableFeed:
+        async def open_capture(self, market, *, generation):
+            raise MarketDataTransportError("capture unavailable")
+
+    async def close_sources():
+        pass
+
+    sources = SimpleNamespace(
+        resolver=resolver,
+        feed=UnavailableFeed(),
+        gamma=object(),
+        clob=object(),
+        close=close_sources,
+    )
+    archive = tmp_path / "capture.sqlite3"
+    asyncio.run(
+        service.record_markets(
+            BotConfig(name="capture-failure"),
+            output_path=archive,
+            target_identity="alpha",
+            market_slugs=("alpha",),
+            duration_seconds=1,
+            public_data=sources,
+        )
+    )
+    with RecordingReader(archive) as reader:
+        (session,) = reader.sessions()
+        (gap,) = reader.coverage_gaps()
+        assert session.integrity_status is SessionIntegrityStatus.INCOMPLETE
+        assert session.clean_close is True
+        assert gap.gap.reason is CoverageGapReason.CAPTURE_FAILURE
+
+
+def test_capture_ending_before_baselines_records_incomplete_coverage(tmp_path):
+    market = _recording_market("alpha")
+    resolver = MutableResolver({"alpha": market})
+
+    class UnavailableFeed:
+        async def open_capture(self, market, *, generation):
+            capture = FakeCapture(market, generation, [])
+            await capture._queue.put(_CAPTURE_END)
+            return capture
+
+    async def close_sources():
+        pass
+
+    sources = SimpleNamespace(
+        resolver=resolver,
+        feed=UnavailableFeed(),
+        gamma=object(),
+        clob=object(),
+        close=close_sources,
+    )
+    archive = tmp_path / "capture.sqlite3"
+    asyncio.run(
+        service.record_markets(
+            BotConfig(name="capture-failure"),
+            output_path=archive,
+            target_identity="alpha",
+            market_slugs=("alpha",),
+            duration_seconds=1,
+            public_data=sources,
+        )
+    )
+    with RecordingReader(archive) as reader:
+        (session,) = reader.sessions()
+        (gap,) = reader.coverage_gaps()
+        assert session.integrity_status is SessionIntegrityStatus.INCOMPLETE
+        assert session.clean_close is True
+        assert gap.gap.reason is CoverageGapReason.CAPTURE_ENDED

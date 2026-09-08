@@ -5,11 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .validation import (
-    normalize_optional_text_fields,
-    normalize_text_tuple,
-    validate_nonnegative_int,
-)
+from polybot.integers import validate_nonnegative_int
+
+from .validation import normalize_optional_text_fields, normalize_text_tuple
 
 
 class CoverageGapReason(StrEnum):

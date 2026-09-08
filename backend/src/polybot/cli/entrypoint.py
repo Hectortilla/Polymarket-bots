@@ -17,13 +17,13 @@ from polybot.backtesting.validation import backtest_config_issue
 from polybot.framework.config.models import BotConfig
 from polybot.performance.artifacts.errors import PerformanceArtifactError
 from polybot.performance.contracts.sampling import DEFAULT_REPORT_INTERVAL_MS
+from polybot.runtime import run_bot
 
-from .backtest_command import execute_backtest
 from .arguments import positive_int
+from .backtest_command import execute_backtest
 from .config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from .dashboard.controller import TerminalDashboard
 from .factories import load_bot
-from polybot.runtime import run_bot
 
 INTERACTIVE_TERMINAL_REQUIRED_MESSAGE = (
     "dashboard requires an interactive terminal; use --no-dashboard for headless runs"
@@ -55,8 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.backtest is not None and (issue := backtest_config_issue(config)):
         parser.error(issue)
     if args.backtest is None and any(
-        value is not None
-        for value in (args.session, args.start_ms, args.end_ms)
+        value is not None for value in (args.session, args.start_ms, args.end_ms)
     ):
         parser.error(
             f"{SESSION_OPTION}, {START_MS_OPTION}, and {END_MS_OPTION} "
@@ -123,7 +122,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one Polymarket bot")
-    parser.add_argument(BOT_OPTION, required=True, help="bot factory as module:attribute")
+    parser.add_argument(
+        BOT_OPTION, required=True, help="bot factory as module:attribute"
+    )
     parser.add_argument(DOTENV_OPTION, default=DEFAULT_DOTENV_PATH)
     parser.add_argument(
         OVERRIDE_OPTION,
@@ -177,6 +178,8 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="equity sampling interval (default: 1000)",
     )
     return parser
+
+
 def _dashboard_enabled(value: bool) -> bool:
     interactive = (
         sys.stdout.isatty()

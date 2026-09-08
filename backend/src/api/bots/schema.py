@@ -2,7 +2,6 @@
 
 from enum import StrEnum
 
-
 BOTS_TABLE_NAME = "bots"
 BOT_GRAPH_REVISIONS_TABLE_NAME = "bot_graph_revisions"
 BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME = "ck_bot_graph_revision_positive"

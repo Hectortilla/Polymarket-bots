@@ -4,18 +4,19 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgreSQLUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
 from api.events.contracts import DurableEvent
 from api.events.kinds import EventKind
 from api.events.schema import (
-    EventColumn,
     RUN_EVENTS_CURSOR_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
+    EventColumn,
     event_kind_column_type,
 )
-from api.runs.schema import RunColumn, RUNS_TABLE_NAME
+from api.runs.schema import RUNS_TABLE_NAME, RunColumn
 
 
 class EventRow(SQLModel, table=True):

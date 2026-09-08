@@ -214,6 +214,18 @@ class ArchiveMarketState:
             return AppliedArchiveEvent(resolution=resolution)
         raise TypeError(f"unsupported recorded payload: {type(payload).__name__}")
 
+    def market_is_replayable(
+        self,
+        market_slug: str,
+        *,
+        allow_blackouts: bool,
+    ) -> bool:
+        return self.has_complete_book(market_slug) or (
+            allow_blackouts
+            and self.is_blacked_out(market_slug)
+            and self.has_bootstrap_evidence(market_slug)
+        )
+
     def _remember_complete_book(self, condition_id: str) -> None:
         market = self._catalog.require_market(condition_id)
         if self.has_complete_book(market.slug):

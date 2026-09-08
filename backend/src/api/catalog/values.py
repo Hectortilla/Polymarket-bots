@@ -5,7 +5,6 @@ from typing import Annotated
 
 from pydantic import StringConstraints
 
-
 WIDGET_SCHEMA_KEY = "x-widget"
 
 type DefinitionId = Annotated[

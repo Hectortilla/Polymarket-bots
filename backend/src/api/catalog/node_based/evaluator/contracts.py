@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from polybot.framework.events.book_validation import BookValidationIssue
-from polybot.framework.events.wallet_trades import WalletTradeValidationIssue
-from api.catalog.graphs.results import (
-    GraphNodeEvaluationRead,
-    GraphReason,
-)
-from api.catalog.node_based.evaluator.values import RuntimeValue
 from polybot.framework.portfolio import PortfolioSnapshot
+
+from api.catalog.graphs.evaluation_reasons import GraphEvaluationReason
+from api.catalog.graphs.results import GraphNodeEvaluationRead
 from api.catalog.graphs.types import GraphFieldPath
+from api.catalog.node_based.evaluator.values import RuntimeValue
 
 if TYPE_CHECKING:
     from polybot.framework.context import BotContext
@@ -23,21 +19,11 @@ if TYPE_CHECKING:
 type OutputKey = tuple[str, str]
 
 
-class GraphActionSkipReason(StrEnum):
-    DISABLED = GraphReason.DISABLED.value
-    REQUIRED_INPUT_UNAVAILABLE = "required_input_unavailable"
-    BOOK_GAP = "book_gap"
-    BOOK_STALE = BookValidationIssue.STALE.value
-    WALLET_TRADE_INVALID = WalletTradeValidationIssue.INVALID.value
-    WALLET_TRADE_FUTURE_DATED = WalletTradeValidationIssue.FUTURE_DATED.value
-    WALLET_TRADE_STALE = WalletTradeValidationIssue.STALE.value
-
-
 @dataclass(frozen=True, slots=True)
 class GraphActionResult:
     node_id: str
     fill: FillEvent | None = None
-    skip_reason: GraphActionSkipReason | str | None = None
+    skip_reason: GraphEvaluationReason | None = None
     missing_input_handle_id: str | None = None
 
 

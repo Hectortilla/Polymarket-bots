@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 import pytest
-
 from polybot.execution.paper.portfolio import PaperPortfolio, PaperPosition
 from polybot.framework.events import Side
 

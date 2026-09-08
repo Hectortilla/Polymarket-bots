@@ -10,8 +10,8 @@ from typing import TextIO
 from polybot.performance.contracts.files import (
     EQUITY_FIELDS,
     EQUITY_FILE_NAME,
-    ORDERS_FILE_NAME,
     ORDER_FIELDS,
+    ORDERS_FILE_NAME,
 )
 
 from .errors import PerformanceArtifactStateError, PerformanceOutputExistsError
@@ -60,8 +60,7 @@ class PerformanceCsvOutput:
             self._results_dir.mkdir(parents=True, exist_ok=False)
         except FileExistsError as error:
             raise PerformanceOutputExistsError(
-                "performance results directory already exists: "
-                f"{self._results_dir}"
+                f"performance results directory already exists: {self._results_dir}"
             ) from error
         try:
             self._equity_file = (self._results_dir / EQUITY_FILE_NAME).open(

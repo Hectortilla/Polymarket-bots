@@ -9,6 +9,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from polybot.persistence.fsync import fsync_path
+from polybot.recording.trim_planning import RecordingTrimPlanner
 
 from .archive.reader import RecordingReader
 from .trim_contracts import (
@@ -23,7 +24,6 @@ from .trim_files import (
     remove_sqlite_sidecars,
     temporary_archive_path,
 )
-from .trim_planning import plan_recording_trim
 from .trim_validation import validate_trimmed_archive
 
 
@@ -70,8 +70,7 @@ def trim_recording(
         stage = _TrimStage.OPEN_SOURCE
         reader = RecordingReader.for_replay(archive_path)
         stage = _TrimStage.SELECT_INTERVAL
-        plan = plan_recording_trim(
-            reader,
+        plan = RecordingTrimPlanner(reader).plan(
             archive_path=archive_path,
             session_id=session_id,
         )
@@ -103,9 +102,7 @@ def trim_recording(
             validate_trimmed_archive(
                 temporary_path,
                 plan,
-                expected_event_count=(
-                    plan.source_event_count + synthetic_event_count
-                ),
+                expected_event_count=(plan.source_event_count + synthetic_event_count),
             )
             stage = _TrimStage.PRESERVE_PERMISSIONS
             os.chmod(
@@ -157,10 +154,7 @@ def trim_recording(
                     cleanup_failures=cleanup_failures,
                 )
             ) from failure
-        if (
-            isinstance(failure, RuntimeError)
-            and stage is _TrimStage.RESOLVE_SOURCE
-        ):
+        if isinstance(failure, RuntimeError) and stage is _TrimStage.RESOLVE_SOURCE:
             raise RecordingTrimError(
                 _failure_message(
                     replacement_installed=False,

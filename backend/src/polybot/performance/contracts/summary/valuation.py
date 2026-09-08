@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from polybot.performance.contracts.valuation_status import ValuationStatus
-from polybot.performance.contracts.valuation_status import history_valuation_status
+from polybot.performance.contracts.valuation_status import (
+    ValuationStatus,
+    history_valuation_status,
+)
 
 from ..files import PerformanceValuationField
-from ..parsing import nonnegative_int, required_bool, required_text, require_exact_keys
+from ..parsing import nonnegative_int, require_exact_keys, required_bool, required_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,9 +29,7 @@ class PerformanceValuationSummary:
     unavailable_sample_count: int
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, object]
-    ) -> PerformanceValuationSummary:
+    def from_dict(cls, payload: Mapping[str, object]) -> PerformanceValuationSummary:
         """Decode and cross-check the persisted valuation aggregates."""
         require_exact_keys(payload, PerformanceValuationField, "valuation")
         final_status = ValuationStatus(

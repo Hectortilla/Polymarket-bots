@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
-from polybot.framework.events.books import BookSnapshot
-from polybot.framework.events.book_freshness import paired_observations_are_current
 from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_BUCKET_SECONDS,
 )
+from polybot.framework.events.book_freshness import paired_observations_are_current
+from polybot.framework.events.books import BookSnapshot
 
 
 class MomentumDirection(StrEnum):
@@ -73,11 +73,10 @@ class MomentumSettings:
             or self.paired_book_max_skew_ms < 0
             or self.paired_book_max_age_ms < 0
         ):
-            raise ValueError("sampling interval must be positive and book ages nonnegative")
-        if (
-            self.momentum_lookback <= 0
-            or self.warmup_samples <= self.momentum_lookback
-        ):
+            raise ValueError(
+                "sampling interval must be positive and book ages nonnegative"
+            )
+        if self.momentum_lookback <= 0 or self.warmup_samples <= self.momentum_lookback:
             raise ValueError("warmup_samples must exceed momentum_lookback")
         if not 0 < self.slow_ema_alpha < self.fast_ema_alpha <= 1:
             raise ValueError("EMA alphas must satisfy 0 < slow < fast <= 1")
@@ -85,12 +84,15 @@ class MomentumSettings:
             raise ValueError("entry prices must be ordered within (0, 1)")
         if self.force_exit_ms >= self.entry_cutoff_ms:
             raise ValueError("force_exit_ms must be earlier than the entry cutoff")
-        if min(
-            self.entry_delay_ms,
-            self.force_exit_ms,
-            self.maximum_hold_ms,
-            self.cooldown_ms,
-        ) < 0:
+        if (
+            min(
+                self.entry_delay_ms,
+                self.force_exit_ms,
+                self.maximum_hold_ms,
+                self.cooldown_ms,
+            )
+            < 0
+        ):
             raise ValueError("strategy time windows must be nonnegative")
         if self.entry_delay_ms + self.entry_cutoff_ms >= self.bucket_seconds * 1_000:
             raise ValueError("entry buffers must leave time for trading")
@@ -201,9 +203,7 @@ class BookQuote:
             best_bid=best_bid.price,
             best_ask=best_ask.price,
             best_ask_size=best_ask.size,
-            microprice=(
-                best_ask.price * best_bid.size + best_bid.price * best_ask.size
-            )
+            microprice=(best_ask.price * best_bid.size + best_bid.price * best_ask.size)
             / best_size,
             spread=best_ask.price - best_bid.price,
             bid_depth=bid_depth,
@@ -290,15 +290,17 @@ class ProbabilityTrend:
             return ProbabilityObservation(next_trend, None)
         recent = history[-(self.settings.momentum_lookback + 1) :]
         moves = tuple(
-            abs(current - previous)
-            for previous, current in zip(recent, recent[1:])
+            abs(current - previous) for previous, current in zip(recent, recent[1:])
         )
         assert fast_ema is not None and slow_ema is not None
-        return ProbabilityObservation(next_trend, TrendMetrics(
-            trend=fast_ema - slow_ema,
-            momentum=recent[-1] - recent[0],
-            noise=sum(moves, Decimal("0")) / len(moves),
-        ))
+        return ProbabilityObservation(
+            next_trend,
+            TrendMetrics(
+                trend=fast_ema - slow_ema,
+                momentum=recent[-1] - recent[0],
+                noise=sum(moves, Decimal("0")) / len(moves),
+            ),
+        )
 
     @staticmethod
     def _next_ema(previous: Decimal | None, value: Decimal, alpha: Decimal) -> Decimal:

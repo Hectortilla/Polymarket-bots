@@ -1,10 +1,10 @@
 import pytest
-
-from scripts import recreate_control_plane_database as database_recreation
 from api.database import (
     ASYNC_POSTGRESQL_DRIVER_NAME,
     DATABASE_URL_ENV,
 )
+
+from scripts import recreate_control_plane_database as database_recreation
 from scripts.recreate_control_plane_database import (
     _database_urls,
     _quoted_database_name,

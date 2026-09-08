@@ -6,7 +6,6 @@ from sqlalchemy import Enum
 
 from .kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
 
-
 RUN_EVENTS_TABLE_NAME = "run_events"
 RUN_EVENTS_RUN_ID_INDEX_NAME = "ix_run_events_run_id"
 RUN_EVENTS_CURSOR_INDEX_NAME = "ix_run_events_run_id_id"

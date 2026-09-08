@@ -10,9 +10,8 @@ from polybot.framework.events.prices import (
     OUTCOME_PRICE_FLOOR,
     is_outcome_price,
 )
-from polybot.framework.wallets import normalize_wallet_address
 from polybot.framework.timestamps import is_nonnegative_timestamp
-
+from polybot.framework.wallets import normalize_wallet_address
 
 WALLET_SOURCE_KEY_SEPARATOR: Final = "\0"
 
@@ -94,7 +93,9 @@ class WalletTradeEvent:
 
 def wallet_source_key(wallet: str, source_id: str) -> str:
     if not source_id or WALLET_SOURCE_KEY_SEPARATOR in source_id:
-        raise ValueError("wallet trade source ID must not contain the source-key separator")
+        raise ValueError(
+            "wallet trade source ID must not contain the source-key separator"
+        )
     return f"{normalize_wallet_address(wallet)}{WALLET_SOURCE_KEY_SEPARATOR}{source_id}"
 
 

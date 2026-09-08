@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from polybot.examples.wallet_copy import fixed_dollar_copy_order
 from polybot.framework.base import BaseBot
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.examples.wallet_copy import fixed_dollar_copy_order
 
 
 class FixedDollarWalletCopyBot(BaseBot):

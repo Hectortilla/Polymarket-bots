@@ -45,7 +45,9 @@ def normalize_text_tuple(value: object, name: str) -> tuple[str, ...]:
 
 def validate_book_price(value: Decimal, name: str = "book price") -> None:
     if not is_outcome_price(value):
-        raise ValueError(f"{name} must be a finite Decimal greater than 0 and at most 1")
+        raise ValueError(
+            f"{name} must be a finite Decimal greater than 0 and at most 1"
+        )
 
 
 def validate_outcome_payout(value: Decimal, name: str) -> None:
@@ -84,16 +86,6 @@ def validate_decimal(
             raise ValueError(f"{name} must be {qualifier} {minimum}")
     if maximum is not None and value > maximum:
         raise ValueError(f"{name} must be at most {maximum}")
-
-
-def validate_positive_int(value: int, name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"{name} must be a positive integer")
-
-
-def validate_nonnegative_int(value: int, name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{name} must be a nonnegative integer")
 
 
 def validate_bool(value: bool, name: str) -> None:

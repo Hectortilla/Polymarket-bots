@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
+
+from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.integers import validate_nonnegative_int, validate_positive_int
 
 from ..contracts.kinds import PayloadKind
 from ..contracts.session import SessionIntegrityStatus, SessionState
@@ -21,8 +24,10 @@ class RecordingSession:
     failure_reason: str | None
 
     def __post_init__(self) -> None:
-        if self.session_id <= 0 or self.started_at_ms < 0:
-            raise ValueError("recording session identity is invalid")
+        validate_positive_int(self.session_id, "recording session ID")
+        require_nonnegative_timestamp(self.started_at_ms, "recording session start")
+        if self.ended_at_ms is not None:
+            require_nonnegative_timestamp(self.ended_at_ms, "recording session end")
         if self.ended_at_ms is not None and self.ended_at_ms < self.started_at_ms:
             raise ValueError("recording session ends before it starts")
         if not self.recorder_version or not self.sdk_version:
@@ -64,11 +69,8 @@ class RecordingEventCounts:
     coverage_gap: int = 0
 
     def __post_init__(self) -> None:
-        if any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0
-            for value in self.as_tuple()
-        ):
-            raise ValueError("recording event counts must be nonnegative integers")
+        for value in self.as_tuple():
+            validate_nonnegative_int(value, "recording event count")
 
     @property
     def replay_event_count(self) -> int:
@@ -135,18 +137,11 @@ class RecordingSessionStatistics:
             raise ValueError("recording session statistics require a session")
         if not isinstance(self.event_counts, RecordingEventCounts):
             raise ValueError("recording session statistics require event counts")
-        if (
-            isinstance(self.checkpoint_count, bool)
-            or not isinstance(self.checkpoint_count, int)
-            or self.checkpoint_count < 0
-        ):
-            raise ValueError("recording checkpoint count must be nonnegative")
-        if self.capture_anomaly_count is not None and (
-            isinstance(self.capture_anomaly_count, bool)
-            or not isinstance(self.capture_anomaly_count, int)
-            or self.capture_anomaly_count < 0
-        ):
-            raise ValueError("recording anomaly count must be nonnegative")
+        validate_nonnegative_int(self.checkpoint_count, "recording checkpoint count")
+        if self.capture_anomaly_count is not None:
+            validate_nonnegative_int(
+                self.capture_anomaly_count, "recording anomaly count"
+            )
         if (self.event_bounds is None) != (self.event_counts.replay_event_count == 0):
             raise ValueError("recording event bounds disagree with event counts")
         if not isinstance(self.markets, tuple) or not all(

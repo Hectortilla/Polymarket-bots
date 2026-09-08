@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from polybot.recording.presentation import ARCHIVE_SIZE_LABEL
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -12,9 +13,8 @@ from rich.text import Text
 from .archive.errors import RecordingArchiveError
 from .contracts.records import CoverageGapRecord
 from .contracts.session import SessionIntegrityStatus
-from .inspection import RecordingInspection, inspect_recording
-from .inspection_notes import backtest_readiness_notes
 from .identity import describe_target_identity
+from .inspection import RecordingInspection, inspect_recording
 from .terminal import (
     ACCENT_STYLE,
     DANGER_STYLE,
@@ -26,6 +26,8 @@ from .terminal import (
     format_timestamp,
     recording_console,
 )
+
+RECORDING_INSPECTOR_TITLE = "Recording inspector"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,7 +70,7 @@ def _archive_panel(inspection: RecordingInspection) -> Panel:
     archive.add_row("Recording", str(inspection.archive_path))
     archive.add_row("Target", describe_target_identity(inspection.target_identity))
     archive.add_row("Schema", f"v{inspection.schema_version}")
-    archive.add_row("Archive size", format_bytes(inspection.archive_size_bytes))
+    archive.add_row(ARCHIVE_SIZE_LABEL, format_bytes(inspection.archive_size_bytes))
     if inspection.sidecar_size_bytes:
         archive.add_row("SQLite sidecars", format_bytes(inspection.sidecar_size_bytes))
     if inspection.event_start_at_ms is not None:
@@ -80,7 +82,7 @@ def _archive_panel(inspection: RecordingInspection) -> Panel:
     return Panel(
         archive,
         border_style=ACCENT_STYLE,
-        title="[bold bright_cyan]Recording inspector[/]",
+        title=f"[bold bright_cyan]{RECORDING_INSPECTOR_TITLE}[/]",
     )
 
 
@@ -219,9 +221,7 @@ def _coverage_gaps_panel(inspection: RecordingInspection) -> Panel | None:
         for record in session.coverage_gaps:
             gap = record.gap
             gap_end = (
-                "open"
-                if gap.ended_at_ms is None
-                else format_timestamp(gap.ended_at_ms)
+                "open" if gap.ended_at_ms is None else format_timestamp(gap.ended_at_ms)
             )
             gaps.add_row(
                 str(record.session_id),
@@ -235,9 +235,7 @@ def _coverage_gaps_panel(inspection: RecordingInspection) -> Panel | None:
 
 def _backtest_notes_panel(inspection: RecordingInspection) -> Panel:
     """Build the action-oriented replay-readiness notes."""
-    notes = "\n".join(
-        f"• {note}" for note in backtest_readiness_notes(inspection)
-    )
+    notes = "\n".join(f"• {note}" for note in inspection.backtest_readiness_notes())
     return Panel(
         notes,
         border_style=WARNING_STYLE if inspection.gap_count else SUCCESS_STYLE,

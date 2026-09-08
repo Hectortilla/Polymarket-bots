@@ -17,6 +17,7 @@ from polybot.cli.observability.observer import (
 )
 from polybot.execution.broker import Broker
 from polybot.framework.events import FillEvent, OrderRequest
+from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 
 
 class ObservableBroker(Broker):
@@ -56,11 +57,8 @@ class ObservableBroker(Broker):
                 fill=fill,
                 portfolio=portfolio,
                 latency_ms=round(
-                    (
-                        completed_at_monotonic_seconds
-                        - started_at_monotonic_seconds
-                    )
-                    * 1000
+                    (completed_at_monotonic_seconds - started_at_monotonic_seconds)
+                    * MILLISECONDS_PER_SECOND
                 ),
                 occurred_at_monotonic_seconds=completed_at_monotonic_seconds,
             ),

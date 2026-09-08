@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { BOT_BUILDER_COPY } from '$lib/bots/copy';
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
 
-  import type { BotRead, NodeGraph, GraphExample } from '$lib/api/generated';
+  import type { BotRead, GraphExample, NodeGraph } from '$lib/api/generated';
   import { cloneNodeGraph } from '$lib/catalog/graphContracts';
   import { GRAPH_SOURCE_COPY } from './graphSource';
 
@@ -10,7 +11,7 @@
     starterGraph,
     examples = [],
     excludeBotId,
-    onselect
+    onselect,
   }: {
     bots: BotRead[];
     starterGraph: NodeGraph;
@@ -22,9 +23,11 @@
   const START_FRESH = '__start_fresh__';
   const graphBots = $derived(
     bots.filter(
-      (bot) => bot.id !== excludeBotId && bot.latest_graph_revision !== null
-        && bot.latest_graph_revision !== undefined
-    )
+      (bot) =>
+        bot.id !== excludeBotId &&
+        bot.latest_graph_revision !== null &&
+        bot.latest_graph_revision !== undefined,
+    ),
   );
   let selectedSource = $state(START_FRESH);
 
@@ -34,7 +37,10 @@
       return;
     }
     const example = examples.find((item, index) => `example-${index}` === selectedSource);
-    if (example) { onselect(cloneNodeGraph(example.graph), example.name); return; }
+    if (example) {
+      onselect(cloneNodeGraph(example.graph), example.name);
+      return;
+    }
     const source = graphBots.find((bot) => bot.id === selectedSource);
     const graph = source?.latest_graph_revision?.graph;
     if (source && graph) {
@@ -51,7 +57,8 @@
     </span>
     <select id="graph-source" aria-describedby="graph-source-helper" bind:value={selectedSource}>
       <option value={START_FRESH}>Start fresh</option>
-      {#each examples as example, index}<option value={`example-${index}`}>{example.name}</option>{/each}
+      {#each examples as example, index}<option value={`example-${index}`}>{example.name}</option
+        >{/each}
       {#each graphBots as source (source.id)}
         <option value={source.id}>{source.config.name}</option>
       {/each}
@@ -59,6 +66,6 @@
   </div>
   <button class="secondary" type="button" onclick={applySource}>
     <CopySimpleIcon aria-hidden="true" size={17} />
-    {selectedSource === START_FRESH ? 'Reset graph' : 'Copy graph'}
+    {selectedSource === START_FRESH ? 'Reset graph' : BOT_BUILDER_COPY.COPY_GRAPH}
   </button>
 </div>

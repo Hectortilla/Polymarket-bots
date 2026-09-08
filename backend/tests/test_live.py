@@ -1,5 +1,4 @@
 import pytest
-
 from polybot.execution.live import LiveBroker
 from polybot.framework.config.constants import BOT_MODE_ENV
 from polybot.framework.config.mode import BotMode
@@ -46,4 +45,6 @@ def test_live_broker_accepts_explicit_live_gate() -> None:
 
 def test_live_broker_requires_credentials() -> None:
     with pytest.raises(RuntimeError, match="CLOB credentials"):
-        LiveBroker(BotConfig(name="missing-secrets", mode=BotMode.LIVE, live_enabled=True))
+        LiveBroker(
+            BotConfig(name="missing-secrets", mode=BotMode.LIVE, live_enabled=True)
+        )

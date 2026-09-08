@@ -1510,3 +1510,27 @@ operation set, arithmetic policy, context API, signal-consumption rules, bounds,
 preview isolation and example strategies. Existing development data is disposable;
 no compatibility decoder or version migration is introduced. Public deployment,
 tenancy and live execution are not part of this slice.
+
+## Main-module review follow-up — September 2026
+
+This maintenance pass applies the reconciled main-module style review across the
+existing framework, recording/replay, graph, worker, and frontend slices. It adds
+no product slice, database migration, archive-format version, live capability,
+or external transport. Generated contracts and supporting tests are updated only
+where those existing contracts changed.
+
+The implementation groups related fixes around shared contract owners, explicit
+archive/replay collaborators, adapter normalization, graph ingress, event
+projection, and presentation ownership. Correctness changes cover settlement and
+continuity during paper latency and final input reads, recording capture acquisition
+and pre-baseline termination gaps, failed worker
+monitoring, graph-save response validation, preview semantic validation, wallet
+identity, contradictory terminal metadata, duplicate timeline delivery, and
+Decimal-context-independent fees. Regression coverage also includes fully closed
+followed-wallet P&L, event/settlement invariants, selector cardinality and union,
+global-gap baseline invalidation, and run-page stop/stream/pagination behavior.
+
+Documentation-drift audit: architecture, API notes, control-plane architecture,
+and graph authoring now describe the changed owners and behavior. Numbered slices
+remain historical; their public entrypoints and paper/live parity are preserved.
+See the repository tests and generated contract checks for executable evidence.

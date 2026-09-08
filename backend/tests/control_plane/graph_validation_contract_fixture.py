@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 
-from pydantic import ValidationError
-
-from control_plane.graph_fixtures import threshold_buy_graph
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.graphs.examples import GRAPH_EXAMPLES
 from api.catalog.graphs.values import (
@@ -16,7 +13,9 @@ from api.catalog.graphs.values import (
     GraphOperation,
     GraphScalarType,
 )
+from pydantic import ValidationError
 
+from control_plane.graph_fixtures import threshold_buy_graph
 
 FRONTEND_GRAPH_VALIDATION_CONTRACT_PATH = (
     Path(__file__).parents[3]

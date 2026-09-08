@@ -5,19 +5,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from polybot.backtesting.contracts import BacktestError
+from polybot.cli.arguments import positive_int
+from polybot.recording.presentation import ARCHIVE_SIZE_LABEL
 from rich.panel import Panel
 from rich.table import Table
 
-from polybot.backtesting.contracts import BacktestError
-from polybot.cli.arguments import positive_int
-
 from .archive.errors import RecordingArchiveError
-from .trim_contracts import (
-    RecordingTrimError,
-    RecordingTrimPlan,
-    RecordingTrimResult,
-)
-from .trimming import trim_recording
 from .terminal import (
     ACCENT_STYLE,
     SUCCESS_STYLE,
@@ -26,6 +20,16 @@ from .terminal import (
     format_duration,
     recording_console,
 )
+from .trim_contracts import (
+    RecordingTrimError,
+    RecordingTrimPlan,
+    RecordingTrimResult,
+)
+from .trimming import trim_recording
+
+RECORDING_TRIM_COMPLETE_TITLE = "Recording trim complete"
+
+RECORDING_TRIM_TITLE = "Recording trim"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,6 +73,8 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="replace the archive without retaining the default backup",
     )
     return parser
+
+
 def _print_result(result: RecordingTrimResult) -> None:
     plan = result.plan
     console = recording_console()
@@ -78,7 +84,7 @@ def _print_result(result: RecordingTrimResult) -> None:
                 f"[bold {WARNING_STYLE}]Dry run complete[/]\n"
                 f"[dim]Archive unchanged[/]: {plan.archive_path}",
                 border_style=WARNING_STYLE,
-                title="[bold]Recording trim[/]",
+                title=f"[bold]{RECORDING_TRIM_TITLE}[/]",
             )
         )
         return
@@ -99,7 +105,7 @@ def _print_result(result: RecordingTrimResult) -> None:
         Panel(
             details,
             border_style=SUCCESS_STYLE,
-            title=f"[bold {SUCCESS_STYLE}]Recording trim complete[/]",
+            title=f"[bold {SUCCESS_STYLE}]{RECORDING_TRIM_COMPLETE_TITLE}[/]",
         )
     )
 
@@ -111,7 +117,7 @@ def _print_plan(plan: RecordingTrimPlan) -> None:
     table.add_column("Duration", justify="right")
     table.add_column("Retained events", justify="right")
     table.add_column("Source gaps", justify="right")
-    table.add_column("Archive size", justify="right")
+    table.add_column(ARCHIVE_SIZE_LABEL, justify="right")
     table.add_row(
         str(plan.source_session.session_id),
         f"{plan.start_at_ms} → {plan.end_at_ms}",

@@ -16,8 +16,8 @@ from polybot.recording.contracts.book import (
     BookDeltaPayload,
 )
 from polybot.recording.contracts.gaps import CoverageGapReason
-from polybot.recording.contracts.records import RecordedEvent
 from polybot.recording.contracts.payloads import ResolutionPayload
+from polybot.recording.contracts.records import RecordedEvent
 from polybot.recording.writer import AsyncRecordingWriter
 from polybot.recording.writer_contracts import PendingRecordingEvent
 
@@ -186,18 +186,13 @@ class CapturePump:
                 ):
                     await _cancel_task(capture_read)
                     capture_read = None
-                elif (
-                    capture_read is None
-                    and len(pending) < self._max_pending_events
-                ):
+                elif capture_read is None and len(pending) < self._max_pending_events:
                     capture_read = asyncio.create_task(anext(capture))
 
                 if pending:
                     continue
                 if resolution_queued:
-                    await self._control.put(
-                        ResolutionStored(condition_id, generation)
-                    )
+                    await self._control.put(ResolutionStored(condition_id, generation))
                     return
                 if capture_retired:
                     return
