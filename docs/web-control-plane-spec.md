@@ -1,6 +1,7 @@
 # Web Control Plane v0 Product Specification
 
-Status: implemented. This document owns product scope and user-visible outcomes.
+Status: v0 implemented; the Slice 15 users extension below is planned, not implemented.
+This document owns product scope and user-visible outcomes.
 `web-control-plane-architecture.md` owns technical contracts. The implementation
 plan references those contracts instead of restating them.
 
@@ -245,3 +246,47 @@ example strategies. See [Graph MVP authoring](graph-node-mvp.md) for the complet
 contract and [delivery checklist](graph-mvp-plan.md) for both implementation phases.
 These capabilities supersede earlier graph-MVP exclusions; public deployment and
 live trading remain outside this work.
+
+## Planned Slice 15: Users and Private Ownership
+
+This extension supersedes v0's single-operator, no-users, and no-authentication
+restrictions when Slice 15 is delivered. Until then, the existing private-network
+trust boundary still applies. Delivery and acceptance live in
+[Slice 15 of the implementation plan](implementation-plan.md#slice-15-users-authentication-and-resource-ownership).
+
+Agreed MVP scope:
+
+- Anyone who can reach the application can create an account with email and
+  password, then log in and log out. No invitation or administrator role is
+  required. Registration checks email syntax but sends no email and requires no
+  proof of mailbox ownership. Successful registration signs the user in.
+- Accounts have stable internal user IDs. An email is a login identifier, not a
+  verified identity, public profile, or resource-ownership key.
+- Each user sees and manages only their own saved bots, configurations, graphs,
+  runs, history, and event streams. The server assigns ownership from the
+  authenticated user; the browser cannot choose an owner.
+- Existing copy workflows copy only the user's own bot graph in this slice.
+  Code-owned starter/example graphs remain available to every signed-in user.
+  Internal graph templates are private to their creator too.
+- Runs and graph revisions inherit the owning bot's user. Bot ownership cannot
+  transfer, and bots referenced by historical runs remain present.
+- Login and registration are the only new account screens. The app restores
+  the signed-in user on reload and clears private state on logout or expiry.
+- Paper-only execution, immutable run snapshots, and framework isolation remain
+  unchanged. This slice does not itself authorize public deployment.
+
+Deferred: email verification/delivery, password recovery, email/password changes,
+Google/GitHub or other social login, account linking, MFA, account deletion,
+organizations, roles, billing, quotas, and marketplace browsing/publishing.
+There is no self-service forgotten-password recovery in this MVP; the UI must
+not offer a flow that does not exist.
+
+A later marketplace slice can publish a selected configuration/graph snapshot
+and copy it into a new bot owned by the copying user. Sharing must not expose
+private runs or make either bot track the other's edits. Visibility and
+provenance fields belong to that later slice, not this foundation.
+
+Future social login must attach to stable internal users through an explicitly
+designed account-linking flow. Matching an email supplied during unverified
+registration is not sufficient proof to link accounts. Existing email/password
+accounts must not become implicitly verified when those features arrive.

@@ -1542,3 +1542,141 @@ Documentation-drift audit: architecture, API notes, control-plane architecture,
 and graph authoring now describe the changed owners and behavior. Numbered slices
 remain historical; their public entrypoints and paper/live parity are preserved.
 See the repository tests and generated contract checks for executable evidence.
+
+## Slice 15: Users, Authentication, and Resource Ownership
+
+Status: planned; no authentication or ownership implementation is included in
+this planning change. Depends on the existing saved-bot/run workflows in
+Slices 13D-13F and preserves the current Slice 14 graph behavior.
+
+This slice adds a simple, application-wide user boundary to the paper control
+plane. Email/password registration without email verification is agreed scope.
+The [product extension](web-control-plane-spec.md#planned-slice-15-users-and-private-ownership)
+owns user-visible behavior; the
+[architecture extension](web-control-plane-architecture.md#planned-slice-15-identity-and-authorization)
+owns proposed technical contracts and the remaining implementation checkpoints.
+This slice supersedes the earlier control-plane exclusions of users and auth;
+historical slice descriptions remain historical scope.
+
+Implement 15A, then 15B, then 15C. These are incremental development units, not
+independently releasable multi-user products: retain the current private access
+boundary until all three pass. Do not scaffold marketplace or social-login
+features in any unit.
+
+### Slice 15A: Email/Password Accounts and Sessions
+
+Status: planned.
+
+Minimum deliverable:
+
+- Resolve and record the architecture's bounded auth-policy checkpoints before
+  runtime implementation. Use maintained password/email libraries and the
+  existing application database; keep identity out of `polybot`.
+- Add user/session persistence, migrations, and narrowly owned auth contracts.
+  Implement registration, login, logout, and current-user routes as specified
+  by the architecture. Registration signs in immediately without sending email.
+- Establish the shared current-user dependency and authentication gate for all
+  application routes except the architecture's explicit public allowlist.
+- Implement server expiry/revocation, cookie handling, CSRF protection,
+  throttling, safe errors/logging, and appropriate async password hashing.
+- Regenerate OpenAPI and the frontend client for the new auth surface.
+
+Acceptance:
+
+- Registration/login use the same email normalization; concurrent equivalent
+  registrations cannot create two accounts. Invalid and excessive inputs are
+  rejected without storing or leaking secrets.
+- Correct passwords authenticate; wrong passwords and unknown emails produce
+  the same login failure contract. Only password hashes and token digests are
+  persisted; public responses contain neither.
+- Registration sends no email, calls no identity provider, and grants no
+  verified-email claim. Successful signup requires no email service settings.
+- Sessions work across API instances; expired, revoked, missing, and malformed
+  tokens grant no access. Logout is idempotent. Auth infrastructure failure
+  fails closed, and CSRF/throttling cover signup and login too.
+- Route-inventory tests prove the public allowlist is explicit and all other
+  application routes require authentication. This unit alone does not claim
+  per-user resource isolation.
+
+### Slice 15B: Private Bot, Template, and Run Access
+
+Status: planned; depends on 15A.
+
+Minimum deliverable:
+
+- Resolve the existing-data checkpoint before migrations: an explicitly
+  authorized alpha reset or an explicit owner backfill, as defined in the
+  architecture. Preserve existing run/revision foreign-key invariants.
+- Add bot/template ownership, per-owner template-name uniqueness, and scoped
+  queries. Assign ownership only from the authenticated user; no owner-edit or
+  ownership-transfer endpoint exists.
+- Apply one ownership rule through all bot/template/revision/run and event
+  paths, including copy, reference lookup, launch, stop, summary, pagination,
+  and SSE. Authenticate catalogs, preview, and market endpoints too.
+- Keep trusted worker execution independent of user sessions and preserve
+  immutable run snapshots. Add bounded auth rechecks to SSE delivery without
+  changing the durable/live stream contract.
+- Regenerate affected contracts and update fixtures for private resources.
+
+Acceptance:
+
+- A two-user integration scenario proves private lists and denial of guessed
+  foreign IDs on every read/mutation/event path. Inaccessible IDs return the
+  same outcome as missing IDs; no private data or queued work escapes first.
+- A user cannot copy another user's bot/template, append/read its revisions,
+  launch/stop its runs, or subscribe/replay its events, including through a
+  valid owned target with a foreign nested reference.
+- Different users can reuse template names; same-owner uniqueness remains
+  enforced. Spoofed owner fields cannot assign or change ownership.
+- Runs/revisions/events inherit ownership correctly, without child user IDs.
+  Authorized background runs continue after logout, while stream access ends
+  within the specified bound and reconnects require a valid session.
+- Migration tests cover the selected existing-data policy; ownership is
+  non-null and never assigned by first signup. Historical config/graph
+  snapshots, transaction locking, and paper-only launch constraints still pass.
+
+### Slice 15C: Browser Account Flow and Complete Verification
+
+Status: planned; depends on 15B.
+
+Minimum deliverable:
+
+- Add email/password registration and login pages, current-user restoration,
+  and logout in the existing application shell using generated contracts.
+- Load private bots/runs only after authentication. Handle session expiry,
+  resource denial, and account switching consistently across forms, copies,
+  run pages, and streams. Keep account email private to the current-user UI.
+- Preserve the unified bot editor, starter graphs, saved-bot launches, and
+  historical run display within the user's owned resources.
+- Document local account creation, auth settings, chosen migration policy,
+  private deployment requirements, and the absence of password recovery.
+
+Acceptance:
+
+- Browser tests cover signup without a verification step, login errors,
+  reload restoration, logout/expiry, safe return paths, and switching between
+  two accounts without retaining private data or streams from the first.
+- A complete two-account API/browser scenario proves create/edit/copy/run/stop
+  and historical access stay private. Backend checks remain effective when
+  requests bypass the frontend.
+- Run `uv run pytest`, `npm --prefix frontend run generate:check`,
+  `npm --prefix frontend run check`, `npm --prefix frontend test`, and
+  `npm --prefix frontend run build`. Use disposable PostgreSQL and Redis test
+  services for service-dependent acceptance; skipped integration tests do not
+  establish multi-user isolation.
+- Complete the documentation-drift audit across README, control-plane spec,
+  architecture, this plan, and generated contracts before marking delivered.
+
+Explicit exclusions: verification mail, password recovery, account editing,
+social login/account linking, MFA, organizations, role/permission frameworks,
+billing, quotas, ownership transfer/deletion, marketplace tables/UI, new live
+capabilities, and public deployment. A later marketplace slice may publish and
+copy snapshots; it must not widen this slice's private-run access policy.
+
+Planning documentation-drift audit: README, control-plane product specification,
+technical architecture, and this plan consistently label Slice 15 as planned.
+Earlier no-auth statements describe implemented v0; this extension states when
+they are superseded. No runtime, schema, generated client, or Polymarket
+integration behavior changed. The PolymarketDocs MCP is not required for this
+application-identity planning work. Technical policy choices and existing-data
+treatment remain explicit implementation checkpoints, not implicit approvals.

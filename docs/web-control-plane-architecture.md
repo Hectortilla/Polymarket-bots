@@ -2,6 +2,8 @@
 
 Status: planned overall; Slices 12A through 12E and Slices 13A through 13F are
 implemented.
+Slice 15 below is a planned extension; its proposed technical defaults are not
+implemented behavior.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
@@ -53,7 +55,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F and Slices 13A-13F in `docs/implementation-plan.md`.
+  Slices 12A-12F, 13A-13F, 14, and 15 in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -651,6 +653,130 @@ Authentication, tenancy, payments, ECS, EventBridge, retention/deletion,
 scheduling, executable node programming, and live trading are later products. v0 creates
 no fields, tables, interfaces, routes, feature flags, or placeholder modules for
 them, except the explicitly required `RunLauncher` seam.
+
+Slice 15 supersedes the authentication and individual-user ownership exclusions
+above only when implemented. Its contract is specified below; organization
+tenancy and the other deferred products remain outside that slice.
+
+## Planned Slice 15: Identity and Authorization
+
+Product decisions are recorded in the specification's
+[users extension](web-control-plane-spec.md#planned-slice-15-users-and-private-ownership).
+The technical design below is the proposed MVP default for implementation
+review, not a claim that authentication exists today. Resolve the implementation
+checkpoints below before changing runtime code.
+
+### Identity and credentials
+
+- Keep identity, credentials, sessions, and HTTP authorization in `api`, with
+  focused owning modules. Do not introduce auth dependencies into `polybot`,
+  bot configuration JSON, graph evaluation, or CLI workflows.
+- Add `users` with a stable UUID primary key, unique normalized email,
+  password hash, and creation timestamp. Ownership references the UUID.
+  No provider registry, external-identity table, verification flag, role, or
+  account-profile scaffolding is needed yet.
+- Normalize emails at ingress using a maintained email-validation library,
+  with one documented case-insensitive login policy shared by registration and
+  login. Preserve dots and plus-tags; do not infer provider-specific aliases.
+  Enforce normalized uniqueness in PostgreSQL, including concurrent signups.
+  Syntax validation must not perform mailbox verification or send messages.
+- Hash passwords through a maintained Argon2id library; never store or log
+  plaintext passwords. Preserve password input exactly and reject oversized
+  input without truncation. Pin the selected dependency, document password
+  limits and hash settings, and keep expensive hashing off the async event loop.
+  Unknown-email login uses the same password-verification work pattern and
+  generic failure response as a wrong password.
+
+### Sessions and HTTP boundary
+
+- Use an opaque random session token in a host-only `HttpOnly`, `SameSite=Lax`
+  cookie, with `Secure` for HTTPS deployment. Store only a token digest, user
+  foreign key, and creation/expiry timestamps in PostgreSQL `sessions`.
+  A local HTTP development exception must be explicit. Do not put auth tokens
+  in browser storage, URL query parameters, or queue payloads.
+- Issue a fresh session after registration/login. Validate expiry on the
+  server; logout deletes the current session and clears its cookie. Sessions
+  work across API processes. Database failure must never grant anonymous or
+  fallback access. Auth responses and private API responses are not shared-cacheable.
+- Keep the existing same-origin frontend/API deployment. Apply CSRF protection
+  to all state-changing browser requests, including login and registration.
+  Proposed mechanism: enforce the configured application Origin and JSON content
+  type, rejecting missing/foreign origins for mutations; do not treat SameSite
+  alone as sufficient. Do not enable permissive credentialed CORS.
+- Add routes under the existing API prefix: `POST /auth/register`,
+  `POST /auth/login`, `POST /auth/logout`, and `GET /auth/me`. Successful
+  registration/login returns only the safe current-user view (`id`, `email`)
+  and sets the cookie. `/auth/me` returns that view or `401`; logout is
+  idempotent and clears even an expired cookie.
+- Keep registration, login, logout, and minimal health readiness reachable
+  without a valid session. Require authentication for every other application
+  endpoint, including catalogs, market lookup/search, graph preview, and streams.
+  Return `401` for absent/invalid sessions and `404` for inaccessible resource
+  IDs. Do not expose password hashes, session digests, other users' emails, or
+  credentials in response schemas, validation errors, or logs.
+- Bound login/registration attempts using the existing shared infrastructure,
+  not process-local counters; use `429` for throttling. Specify limits and the
+  trusted-proxy/client-address policy before implementation. Registration must
+  handle duplicate emails without a database error leak.
+
+The password and session recommendations follow current
+[OWASP password-storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+and [session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+The same-origin request policy follows
+[OWASP CSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
+Sources checked September 8, 2026; verify library APIs when implementing.
+
+### Resource ownership and execution
+
+- Add a non-null, indexed `bots.owner_user_id` foreign key to users and an
+  equivalent owner field on mutable `graph_templates`. Change template-name
+  uniqueness from global to per-owner. Assign owners server-side and exclude
+  ownership from accepted create/update bodies.
+- Runs inherit through `runs.bot_id`; graph revisions through their `bot_id`;
+  events and summaries through their run. Do not duplicate user ownership on
+  these child rows. Owner changes and bot deletion remain unsupported.
+- Scope list and resource queries by the current user inside owning stores.
+  Apply the same policy to bot config changes, revision reads/appends, template
+  CRUD/copy, run creation/read/stop, summaries, durable event pagination, and
+  SSE replay/live delivery. Authorize references as well as target IDs before
+  copying data or committing/enqueueing side effects. Existing row locking and
+  snapshot consistency still apply.
+- Worker access remains a trusted internal path from persisted run IDs. It
+  does not accept browser identity or session tokens. Login expiry/logout ends
+  user access, not already-authorized background runs. Keep the existing worker
+  lifecycle, paper broker, and live-execution gates unchanged.
+- Authenticate SSE connections before reading history or subscribing. Bound
+  the lifetime of an open stream with session rechecks so expiry/logout stops
+  further private delivery within a documented interval; reauthenticate every
+  reconnect. Browser logout closes its streams immediately. Preserve durable
+  replay and cursor semantics without leaking whether another user's run exists.
+- Continue exposing code-owned starter/example graphs as shared catalog data
+  to authenticated users. Do not convert user-created templates into shared
+  catalog entries or add public access paths yet.
+
+### Frontend and implementation checkpoints
+
+Keep static SvelteKit and the generated API client. Add registration/login,
+current-user loading, and logout to the existing shell. Wait for authentication
+before fetching private data. A `401` closes streams, clears private state, and
+returns to login; a `404` remains an unavailable-resource outcome. Switching
+accounts must not reuse the previous user's bot/run data or copy options. Any
+post-login return path must stay within the application origin.
+
+Before implementation, settle the proposed session/CSRF mechanism and concrete
+password bounds/hash settings, session lifetime, stream recheck interval, auth
+rate limits, and duplicate-registration response. These are the bounded
+security/performance decisions subject to the repository's implementation
+checkpoint; document the selected values here once, then reference their owning
+constants in code and tests.
+
+Existing development data is currently disposable, but this plan does not
+authorize deleting it. Confirm whether to recreate the alpha database or
+backfill all existing bots/templates to one explicitly selected user before
+applying a migration. Never assign old data to the first person who registers,
+leave ownerless resources accessible, or introduce an implicit shared user.
+After delivery, account data requires an explicit migration policy; do not
+carry the disposable pre-auth schema assumption forward silently.
 
 ## Review follow-up — September 2026
 

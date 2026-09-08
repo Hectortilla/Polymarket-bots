@@ -94,6 +94,13 @@ separately:
 - `docs/web-control-plane-spec.md`
 - `docs/web-control-plane-architecture.md`
 
+[Slice 15](docs/implementation-plan.md#slice-15-users-authentication-and-resource-ownership)
+plans email/password registration and login without email verification, plus
+private user ownership of bots and their runs. It is not implemented yet. The
+control-plane specification and architecture distinguish that planned extension
+from today's single-operator deployment. Email verification, social login, and
+a bot-configuration marketplace remain later work.
+
 The architecture document also defines strict field, abstraction, module,
 validation, safety, and test budgets for each implementation slice. A task that
 names one Slice 12 sub-slice must not scaffold later slices.
