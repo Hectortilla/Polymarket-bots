@@ -117,6 +117,16 @@ inputs and uses the same compiler and evaluator as paper runs. Each request star
 fresh transient state. The response shows each node's outputs, status and reason, plus
 intended orders. Decimal amounts in sample JSON should be quoted strings.
 
+Default event examples live in the backend's `catalog/graphs/preview_samples.py`.
+They construct real framework events with explicit scenario values and inherit
+contract defaults; the catalog serializes them for the frontend. Start/stop have
+no payload and use `null`. A test checks every catalog trigger's sample through
+preview validation and verifies that serialization preserves it, including default
+fields. New required fields or payload-bearing hooks require an example update;
+docstrings are not parsed and runtime defaults are not added for examples.
+The same backend catalog prefills Sample positions with two shares of the example
+token at an average entry price of `0.4`. Edit it or use `[]` for no holdings.
+
 Preview uses services that reject broker calls, network reads and sleeps. It does not
 create a run or persist state. Actions are marked planned; downstream fill-dependent
 values are unavailable. It is a decision preview, not a fill simulator. Use paper runs

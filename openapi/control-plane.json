@@ -1188,6 +1188,20 @@
             "title": "Operations",
             "type": "array"
           },
+          "sample_positions": {
+            "default": [
+              {
+                "average_entry_price": "0.4",
+                "size": "2",
+                "token_id": "example-token"
+              }
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPosition-Output"
+            },
+            "title": "Sample Positions",
+            "type": "array"
+          },
           "triggers": {
             "items": {
               "$ref": "#/components/schemas/GraphTriggerDescriptor"
@@ -3027,7 +3041,7 @@
         "title": "PersistedWalletTimelineEvent",
         "type": "object"
       },
-      "PortfolioPosition": {
+      "PortfolioPosition-Input": {
         "properties": {
           "average_entry_price": {
             "anyOf": [
@@ -3055,6 +3069,38 @@
               }
             ],
             "title": "Size"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "size",
+          "average_entry_price"
+        ],
+        "title": "PortfolioPosition",
+        "type": "object"
+      },
+      "PortfolioPosition-Output": {
+        "properties": {
+          "average_entry_price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Entry Price"
+          },
+          "size": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Size",
+            "type": "string"
           },
           "token_id": {
             "title": "Token Id",
@@ -3181,7 +3227,7 @@
           "positions": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/PortfolioPosition"
+              "$ref": "#/components/schemas/PortfolioPosition-Input"
             },
             "title": "Positions",
             "type": "array"

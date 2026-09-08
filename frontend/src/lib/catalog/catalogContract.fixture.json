@@ -70,6 +70,13 @@
     "requiredTriggerBranchCount": 1
   },
   "graphNodeCatalog": {
+    "sample_positions": [
+      {
+        "token_id": "example-token",
+        "size": "2",
+        "average_entry_price": "0.4"
+      }
+    ],
     "operations": [
       {
         "node_type": "operation",

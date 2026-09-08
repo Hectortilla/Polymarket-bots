@@ -6,13 +6,20 @@ import asyncio
 from decimal import Decimal
 from unittest.mock import AsyncMock
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
-from polybot_control_plane.catalog.graphs.catalog import GRAPH_NODE_CATALOG
+from polybot_control_plane.catalog.graphs.catalog import (
+    GRAPH_NODE_CATALOG,
+    GraphTriggerDescriptor,
+)
 from polybot_control_plane.catalog.graphs.contracts import NodeGraph
 from polybot_control_plane.catalog.graphs.operations import OPERATION_DESCRIPTORS
-from polybot_control_plane.catalog.graphs.values import GraphOperation, GraphScalarType
+from polybot_control_plane.catalog.graphs.values import (
+    GraphNodeType,
+    GraphOperation,
+    GraphScalarType,
+)
 from polybot_control_plane.catalog.node_based.evaluator import (
     GraphEvaluator,
     capabilities,
@@ -426,6 +433,41 @@ def test_portfolio_reads_use_immutable_paper_accounting():
         unavailable.outputs["available_cash"].reason
         == GraphReason.PORTFOLIO_UNAVAILABLE
     )
+
+
+@pytest.mark.parametrize(
+    "trigger", GRAPH_NODE_CATALOG.triggers, ids=lambda trigger: trigger.hook_name
+)
+def test_catalog_samples_match_preview_event_contracts(trigger: GraphTriggerDescriptor):
+    assert (trigger.sample_payload is None) == (trigger.payload is None)
+    request = GraphPreviewRequest.model_validate_json(
+        json.dumps(
+            dict(
+                graph=dict(
+                    nodes=[
+                        dict(
+                            id="trigger",
+                            type=GraphNodeType.TRIGGER,
+                            position=dict(x=0, y=0),
+                            data=dict(hook_name=trigger.hook_name),
+                        )
+                    ]
+                ),
+                hook_name=trigger.hook_name,
+                payload=trigger.sample_payload,
+                now_ms=trigger.sample_time_ms,
+                portfolio=dict(
+                    positions=GRAPH_NODE_CATALOG.model_dump(mode="json")[
+                        "sample_positions"
+                    ]
+                ),
+            )
+        )
+    )
+    assert TypeAdapter(type(request.event)).dump_python(
+        request.event, mode="json"
+    ) == trigger.sample_payload
+    assert request.portfolio.positions == GRAPH_NODE_CATALOG.sample_positions
 
 
 def test_preview_plans_orders_without_submitting_or_fabricating_fills():

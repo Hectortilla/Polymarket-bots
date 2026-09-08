@@ -11,6 +11,7 @@ from polybot_control_plane.catalog.graphs.ports import (
 from polybot_control_plane.catalog.graphs.preview_samples import (
     sample_payload,
     PREVIEW_SAMPLE_TIME_MS,
+    PREVIEW_SAMPLE_POSITIONS,
 )
 from polybot_control_plane.catalog.graphs.operations import (
     GraphOperationDescriptor,
@@ -28,6 +29,7 @@ from pydantic import (
 
 from polybot.framework.base import BaseBot
 from polybot.framework.events import Side
+from polybot.framework.portfolio import PortfolioPosition
 from polybot_control_plane.catalog.graphs._actions import (
     DiscoveredBrokerAction,
     discover_broker_actions,
@@ -256,6 +258,7 @@ class GraphBrokerActionDescriptor(BaseModel):
 class GraphNodeCatalog(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    sample_positions: tuple[PortfolioPosition, ...] = PREVIEW_SAMPLE_POSITIONS
     operations: tuple[GraphOperationDescriptor, ...] = ()
     triggers: tuple[GraphTriggerDescriptor, ...]
     constants: tuple[GraphConstantDescriptor, ...]

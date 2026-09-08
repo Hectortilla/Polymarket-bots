@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from pydantic import TypeAdapter
+from polybot.framework.base import BaseBot
 from polybot.framework.events import FillEvent, OrderStatus, Side
 from polybot.framework.events.books import (
     BookSnapshot,
@@ -11,45 +12,56 @@ from polybot.framework.events.books import (
 )
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
+from polybot.framework.portfolio import PortfolioPosition
 
 PREVIEW_SAMPLE_TIME_MS = 1000
+PREVIEW_SAMPLE_TOKEN_ID = "example-token"
+PREVIEW_SAMPLE_POSITIONS = (
+    PortfolioPosition(
+        token_id=PREVIEW_SAMPLE_TOKEN_ID,
+        size=Decimal("2"),
+        average_entry_price=Decimal("0.4"),
+    ),
+)
 
 
 def sample_payload(hook_name: str) -> dict | None:
     samples = {
-        "on_market_resolved": MarketResolutionEvent(
-            "example-condition",
-            "example-market",
-            ("example-token", "other-token"),
-            "example-token",
-            "Up",
-            PREVIEW_SAMPLE_TIME_MS,
-            "preview",
+        BaseBot.on_market_resolved.__name__: MarketResolutionEvent(
+            condition_id="example-condition",
+            market_slug="example-market",
+            token_ids=(PREVIEW_SAMPLE_TOKEN_ID, "other-token"),
+            winning_token_id=PREVIEW_SAMPLE_TOKEN_ID,
+            winning_outcome="Up",
+            resolved_at_ms=PREVIEW_SAMPLE_TIME_MS,
+            source="preview",
         ),
-        "on_book": BookSnapshot(
-            "example-token",
-            (BookLevel(Decimal("0.39"), Decimal("100")),),
-            (BookLevel(Decimal("0.40"), Decimal("100")),),
-            PREVIEW_SAMPLE_TIME_MS,
+        BaseBot.on_book.__name__: BookSnapshot(
+            token_id=PREVIEW_SAMPLE_TOKEN_ID,
+            bids=(BookLevel(price=Decimal("0.39"), size=Decimal("100")),),
+            asks=(BookLevel(price=Decimal("0.40"), size=Decimal("100")),),
+            received_at_ms=PREVIEW_SAMPLE_TIME_MS,
         ),
-        "on_book_gap": BookGapEvent(
-            None, PREVIEW_SAMPLE_TIME_MS, BookGapReason.BOOK_STREAM_GAP
+        BaseBot.on_book_gap.__name__: BookGapEvent(
+            condition_id=None,
+            observed_at_ms=PREVIEW_SAMPLE_TIME_MS,
+            reason=BookGapReason.BOOK_STREAM_GAP,
         ),
-        "on_fill": FillEvent(
-            "example-order",
-            "example-token",
-            Side.BUY,
-            OrderStatus.FILLED,
-            Decimal("1"),
-            Decimal("1"),
-            Decimal("0.4"),
-            Decimal("0"),
-            PREVIEW_SAMPLE_TIME_MS,
+        BaseBot.on_fill.__name__: FillEvent(
+            order_id="example-order",
+            token_id=PREVIEW_SAMPLE_TOKEN_ID,
+            side=Side.BUY,
+            status=OrderStatus.FILLED,
+            requested_size=Decimal("1"),
+            filled_size=Decimal("1"),
+            average_price=Decimal("0.4"),
+            fee_usdc=Decimal("0"),
+            received_at_ms=PREVIEW_SAMPLE_TIME_MS,
         ),
-        "on_wallet_trade": WalletTradeEvent(
+        BaseBot.on_wallet_trade.__name__: WalletTradeEvent(
             wallet="0x0000000000000000000000000000000000000001",
             condition_id="example-condition",
-            token_id="example-token",
+            token_id=PREVIEW_SAMPLE_TOKEN_ID,
             side=Side.BUY,
             price=Decimal("0.4"),
             size=Decimal("1"),

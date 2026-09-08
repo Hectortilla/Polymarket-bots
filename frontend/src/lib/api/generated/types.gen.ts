@@ -599,6 +599,10 @@ export type GraphNodeCatalog = {
      */
     operations?: Array<GraphOperationDescriptor>;
     /**
+     * Sample Positions
+     */
+    sample_positions?: Array<PortfolioPositionOutput>;
+    /**
      * Triggers
      */
     triggers: Array<GraphTriggerDescriptor>;
@@ -1574,7 +1578,7 @@ export type PersistedWalletTimelineEvent = {
 /**
  * PortfolioPosition
  */
-export type PortfolioPosition = {
+export type PortfolioPositionInput = {
     /**
      * Average Entry Price
      */
@@ -1583,6 +1587,24 @@ export type PortfolioPosition = {
      * Size
      */
     size: number | string;
+    /**
+     * Token Id
+     */
+    token_id: string;
+};
+
+/**
+ * PortfolioPosition
+ */
+export type PortfolioPositionOutput = {
+    /**
+     * Average Entry Price
+     */
+    average_entry_price: string | null;
+    /**
+     * Size
+     */
+    size: string;
     /**
      * Token Id
      */
@@ -1656,7 +1678,7 @@ export type PreviewPortfolio = {
     /**
      * Positions
      */
-    positions?: Array<PortfolioPosition>;
+    positions?: Array<PortfolioPositionInput>;
 };
 
 /**

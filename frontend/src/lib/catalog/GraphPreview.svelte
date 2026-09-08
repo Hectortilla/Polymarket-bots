@@ -9,7 +9,7 @@
   let payloadText = $state(JSON.stringify(initial?.sample_payload ?? null, null, 2));
   let now = $state(String(initial?.sample_time_ms ?? 0));
   let cash = $state('1000');
-  let positions = $state('[]');
+  let positions = $state(untrack(() => JSON.stringify(catalog.sample_positions ?? [], null, 2)));
   let busy = $state(false);
   let error = $state('');
   let result = $state<GraphPreviewResponse>();
@@ -48,7 +48,7 @@
   </div>
   <div class="sample-fields">
   <label>Sample event<textarea rows="9" bind:value={payloadText} spellcheck="false"></textarea></label>
-  <label>Sample positions<textarea rows="3" bind:value={positions} spellcheck="false" placeholder={JSON.stringify([{ token_id: "example-token", size: "2", average_entry_price: "0.4" }])}></textarea></label>
+  <label>Sample positions<textarea rows="3" bind:value={positions} spellcheck="false"></textarea></label>
   </div>
   <div class="preview-submit">
   <small>Keep exact numeric amounts in quotation marks in sample JSON. Timestamps use whole numbers.</small>
