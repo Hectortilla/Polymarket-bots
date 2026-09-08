@@ -8,6 +8,5 @@ build/
 frontend/.svelte-kit/
 frontend/node_modules/
 .env
-.bot-state/
-/recordings/
+/data/
 .DS_Store

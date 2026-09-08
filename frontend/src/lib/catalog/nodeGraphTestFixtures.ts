@@ -7,7 +7,7 @@ import type {
   NodeGraph
 } from '$lib/api/generated';
 import catalogContract from './catalogContract.fixture.json';
-import thresholdBuyGraph from '../../../../tests/fixtures/control_plane/threshold_buy_graph.json';
+import thresholdBuyGraph from '../../../../backend/tests/fixtures/control_plane/threshold_buy_graph.json';
 import { GRAPH_NODE_TYPE, GRAPH_SCALAR_TYPE } from './graphContracts';
 
 export const TEST_GRAPH_CATALOG = catalogContract.graphNodeCatalog as GraphNodeCatalog;

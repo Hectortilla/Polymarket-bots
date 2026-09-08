@@ -63,7 +63,7 @@ an independent shape or algorithm; this document controls if wording conflicts.
 
 - `polybot` remains independent of FastAPI, SQLModel, Taskiq, Redis, SvelteKit,
   and the new control-plane package.
-- `polybot_control_plane` may import `polybot`; the reverse import is forbidden.
+- `api` may import `polybot`; the reverse import is forbidden.
 - The static frontend and API are deployment peers. Python does not import the
   frontend.
 - API processes hold no sole reference to a bot task, cancellation primitive,
@@ -83,41 +83,41 @@ version according to repository policy.
 Public contracts use stable, discoverable modules. These names are required;
 supporting private modules are not prescribed:
 
-- `polybot_control_plane.catalog.values`: dependency-light `DefinitionId`,
+- `api.catalog.values`: dependency-light `DefinitionId`,
   `SelectionMode`, `WidgetKind`, label, and widget-key contracts;
-  `polybot_control_plane.catalog.contracts`: `BotDefinitionDescriptor`.
-- `polybot_control_plane.bots.contracts`: saved-bot request/read and immutable
+  `api.catalog.contracts`: `BotDefinitionDescriptor`.
+- `api.bots.contracts`: saved-bot request/read and immutable
   graph-revision contracts.
-- `polybot_control_plane.catalog.graphs.values`: dependency-light graph enums,
+- `api.catalog.graphs.values`: dependency-light graph enums,
   limits, and semantic handle values;
-  `polybot_control_plane.catalog.graphs.types`: constrained identifiers, field
+  `api.catalog.graphs.types`: constrained identifiers, field
   paths, and handle contracts.
-- `polybot_control_plane.catalog.graphs.catalog`: public node descriptors,
+- `api.catalog.graphs.catalog`: public node descriptors,
   framework-derived `GraphNodeCatalog`, and the code-owned catalog snapshot.
-- `polybot_control_plane.catalog.graphs.contracts`: validated `NodeGraph`, node,
+- `api.catalog.graphs.contracts`: validated `NodeGraph`, node,
   and edge contracts plus their validation limits. The browser consumes the
   generated limits and catalog, while backend-generated valid and invalid
   graph cases lock its runtime topology validator to the Python contract.
-- `polybot_control_plane.catalog.graphs.starter`: the starter graph snapshot.
+- `api.catalog.graphs.starter`: the starter graph snapshot.
   Focused private supporting modules discover `BaseBot` hook signatures,
   traverse dataclass and explicitly marked computed outputs, describe the
   trusted broker action, and share graph-validation primitives. The package
   initializer remains empty rather than re-exporting these owners.
-- `polybot_control_plane.catalog.node_based.bot`: concrete `NodeBasedBot` hook
+- `api.catalog.node_based.bot`: concrete `NodeBasedBot` hook
   handling.
-- `polybot_control_plane.catalog.node_based.evaluator`: orchestration for the
+- `api.catalog.node_based.evaluator`: orchestration for the
   compiled graph, with focused compiler, value, action, and result owners.
-- `polybot_control_plane.runs.status`: `RunStatus` and its lifecycle policy;
-  `polybot_control_plane.runs.contracts`: `PaperRunConfig` and `RunRead`.
-- `polybot_control_plane.events.kinds`: dependency-light durable and live event
-  discriminators; `polybot_control_plane.events.contracts`: `DurableEvent` plus
+- `api.runs.status`: `RunStatus` and its lifecycle policy;
+  `api.runs.contracts`: `PaperRunConfig` and `RunRead`.
+- `api.events.kinds`: dependency-light durable and live event
+  discriminators; `api.events.contracts`: `DurableEvent` plus
   their discriminated payloads. Slice 12E adds `LiveChartEvent`,
   `LiveStreamHealthEvent`, their `LiveRunEvent` union, and the `chart.sample`
   durable variant when it first implements live observability cadence.
-- `polybot_control_plane.execution.launcher`: the `RunLauncher` protocol.
-- `polybot_control_plane.graph_templates`: editable catalog contracts, row, and
+- `api.execution.launcher`: the `RunLauncher` protocol.
+- `api.graph_templates`: editable catalog contracts, row, and
   persistence operations.
-- `polybot_control_plane.bots`: saved-bot and immutable graph-revision
+- `api.bots`: saved-bot and immutable graph-revision
   contracts, rows, and persistence operations.
 
 Finite wire values are `StrEnum`s. The generated frontend types come from these
@@ -125,7 +125,7 @@ Pydantic models through FastAPI OpenAPI. Tests import the enums; they do not cop
 contract strings.
 
 Graph identifier limits are owned by
-`polybot_control_plane.catalog.graphs.values` and flow into the constrained
+`api.catalog.graphs.values` and flow into the constrained
 types and OpenAPI schema.
 Edge IDs intentionally have a larger bound so Svelte Flow's descriptive IDs
 can include both endpoint and handle identities without weakening every
@@ -325,8 +325,9 @@ The append-only event row has exactly:
 
 There is no second persistence timestamp, schema-version field, source-key
 column, generic metadata, or speculative dedupe key in v0. Pre-persistence
-writes use the optional-ID `DurableEvent` union; reads decode the committed row
-into the required, browser-safe-ID `PersistedDurableEvent` union.
+writes use the optional-ID `DurableEvent` union; append results and reads decode
+the committed row through the same persistence boundary into the required,
+browser-safe-ID `PersistedDurableEvent` union.
 
 The canonical durable event kinds are:
 
@@ -376,7 +377,7 @@ same worker entrypoint and add task-reference persistence then; no ECS code or
 fields exist in v0.
 
 The Taskiq task is a thin adapter calling
-`polybot_control_plane.execution.worker.execute_run(run_id: UUID)`. A class
+`api.execution.worker.execute_run(run_id: UUID)`. A class
 wrapper is unnecessary unless a later implementation creates a real second
 caller with additional owned state.
 
@@ -456,7 +457,7 @@ post-v0 scope.
 
 Slice 12E extracts only the pure pieces actually needed by both terminal and
 web from the current terminal implementation. Shared code belongs in a
-dependency-light module under `polybot`, never under `polybot_control_plane` or
+dependency-light module under `polybot`, never under `api` or
 a Rich/ECharts module. Keep the existing `polybot.performance` valuation owner.
 Move the stable token cap, cadence, bounds/resampling helpers, market projection,
 and wallet bucketing only as each gains its second consumer. Do not create a

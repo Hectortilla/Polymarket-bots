@@ -3,7 +3,7 @@ import Decimal from 'decimal.js';
 import runtimeContract from '$lib/runtimeContract.fixture.json';
 
 // This browser implementation is contract-driven and locked to the canonical
-// Python semantics by contracts/dashboard-wallet-bucket-parity.json.
+// Python semantics by backend/contracts/fixtures/dashboard-wallet-bucket-parity.json.
 export function walletBucketIndex(
   timestampMs: number,
   startMs: number,

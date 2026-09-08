@@ -1,8 +1,13 @@
 # Polymarket Bots Agent Instructions
 
-This directory is prepared to become a standalone repository. Keep it isolated:
-do not import from the Polyfollow app, database, workers, frontend, or repo-level
-configuration.
+This is a standalone repository. Keep it isolated: do not import from the
+parent Polyfollow app, database, workers, frontend, or configuration.
+
+Repository code lives in `backend/src/polybot` (independent framework),
+`backend/src/api` (application backend and worker), `frontend`, and `scripts`.
+Python tests, exported contracts, and migrations live under `backend`; local
+outputs live under the git-ignored `data` directory. Run Python commands from
+the repository root using the shared `pyproject.toml` and `uv.lock`.
 
 Before implementing a bot-framework task, read:
 

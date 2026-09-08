@@ -13,7 +13,7 @@ import {
 import { equityChartOption } from './EquityChart.svelte';
 import { marketChartOption } from './MarketChart.svelte';
 import { walletChartOption } from './WalletChart.svelte';
-import walletBucketParity from '../../../../contracts/dashboard-wallet-bucket-parity.json';
+import walletBucketParity from '../../../../backend/contracts/fixtures/dashboard-wallet-bucket-parity.json';
 
 describe('dashboard option builders', () => {
   it('keeps market stale spans and fill markers separate', () => {

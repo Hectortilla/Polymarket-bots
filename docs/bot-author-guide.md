@@ -228,7 +228,7 @@ uv run python -m polybot.recording \
 defaults to `DEFAULT_RECORDINGS_DIR/<local-timestamp>/<description>.sqlite3`,
 with simple target-labelled filenames. `DEFAULT_RECORDINGS_DIR` is read from
 the process environment or the selected `--dotenv` file and defaults to
-`recordings` when unset. `--duration` accepts a positive integer followed by
+`data/recordings` when unset. `--duration` accepts a positive integer followed by
 `s`, `m`, `h`, or `d`. Without a duration the process runs until graceful
 interruption. `--resume`
 requires an existing compatible SQLite recording archive with the same target
@@ -264,7 +264,7 @@ next slug is normal and is retried without interrupting the current stream.
 Before evaluating a strategy, inspect the archive:
 
 ```sh
-uv run python -m polybot.recording.inspect recordings/capture.sqlite3
+uv run python -m polybot.recording.inspect data/recordings/capture.sqlite3
 ```
 
 The read-only report includes total captured event time, session status, unique
@@ -309,7 +309,7 @@ When retaining only the largest usable portion is preferable to passing a
 manual range on every backtest, trim the archive locally:
 
 ```sh
-uv run python -m polybot.recording.trim recordings/capture.sqlite3
+uv run python -m polybot.recording.trim data/recordings/capture.sqlite3
 ```
 
 The utility considers all markets in one source session and chooses its longest
@@ -350,7 +350,7 @@ Use the regular bot CLI and add `--backtest`:
 BOT_MODE=paper \
 uv run python -m polybot.cli \
   --bot polybot.examples.example_btc_five_minute_momentum:create \
-  --backtest recordings/btc-five-minute.sqlite \
+  --backtest data/recordings/btc-five-minute.sqlite \
   --seed 0
 ```
 
@@ -382,7 +382,7 @@ portfolio state around known gaps is more useful than a strictly clean replay:
 BOT_MODE=paper \
 uv run python -m polybot.cli \
   --bot polybot.examples.example_btc_five_minute_momentum:create \
-  --backtest recordings/btc-five-minute.sqlite \
+  --backtest data/recordings/btc-five-minute.sqlite \
   --gap-policy blackout
 ```
 
@@ -449,7 +449,7 @@ explicit partial status when summary finalization succeeds.
 Render a finalized backtest result again without loading a bot or archive:
 
 ```sh
-uv run python -m polybot.cli.performance_chart results/backtest-run
+uv run python -m polybot.cli.performance_chart data/backtests/backtest-run
 ```
 
 The argument is the result directory containing `summary.json` and
@@ -463,7 +463,7 @@ To collect the same performance files during an ordinary paper run, pass only
 BOT_MODE=paper \
 uv run python -m polybot.cli \
   --bot polybot.my_bot:create \
-  --results-dir results/paper-experiment
+  --results-dir data/paper-experiment
 ```
 
 Normal paper runs create no artifacts without that flag. The dashboard remains

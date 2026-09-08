@@ -76,13 +76,13 @@ adapter behavior covered by contract tests, especially while
 - No application database or database-service integration inside `polybot`.
   Slice 9A's user-selected SQLite file is a standalone local artifact, while
   Slice 12A's PostgreSQL run store belongs only to the inward-dependent
-  `polybot_control_plane` package.
+  `api` package.
 - No mirror-follow app behavior.
 - No RFQ, combo, perps, bridge, or redemption support in v1.
 
 These statements describe the implemented `polybot` boundary. The paper-only
 Web Control Plane v0 changes those capabilities only in the separate
-`polybot_control_plane` package and does not connect this repository to the
+`api` package and does not connect this repository to the
 Polyfollow application. Slices 12A through 12E supply persistence, worker
 execution, the runs API, durable/live SSE, and a static SvelteKit dashboard peer;
 see `web-control-plane-spec.md` and `web-control-plane-architecture.md`.
@@ -90,106 +90,67 @@ see `web-control-plane-spec.md` and `web-control-plane-architecture.md`.
 ## Package Layout
 
 ```text
-polyfollow-polybot/
-  src/polybot/       # Installed and imported as `polybot`.
-    runtime/      # Public paper-runner lifecycle entrypoint and support modules.
-      __init__.py
-      performance/ # Optional paper-performance artifact wiring.
-        setup.py
-        recording.py
-        observer.py
-        broker.py
-      streams.py
-  docs/
-  framework/
-    base.py       # BaseBot event hooks.
-    cadence.py    # Shared planning and resolution timing policy.
-    clock.py      # System and replay-compatible clock contract.
-    coalescing.py # Shared latest-event-per-key behavior.
-    config/       # Config model, defaults, environment, and stream-rule parsing.
-    context.py    # Object passed to every bot hook.
-    dedupe.py     # Source event dedupe for wallet-following inputs.
-    dispatch.py   # Typed dispatch outcomes and stable skip reasons.
-    events/       # Orders/fills plus book, wallet-trade, and resolution contracts.
-    factories.py  # Public bot-factory typing contract.
-    markets.py    # Fixed-width market-slug and timing helpers.
-    wallets.py    # Wallet-address validation helpers.
-    runner/       # Dispatch orchestration plus owned validation policy.
-  cli/
-    runner/       # Runtime construction, stream planning, and event dispatch.
-      factory.py
-      streams.py
-      dispatch.py
-      book_dispatch.py
-      wallet_dispatch.py
-      resolution_dispatch.py
-    tracked_markets.py # Condition-keyed union market registry.
-    tracking/     # Wallet-discovery and paper-position registry workflows.
-    streams/      # CLI stream contracts, construction, merging, and telemetry.
-    followed_wallets/ # Current-run follow contracts, positions, and accounting.
-    performance_chart/ # Saved-artifact chart loading, rendering, and command.
-      contracts.py
-      artifacts.py
-      rendering.py
-      command.py
-    resolution/ # Gamma reconciliation and current-run settlement workflows.
-      reconciliation.py
-      settlement.py
-  persistence/      # Strict JSON decoding and atomic JSON file writes.
-  polymarket/       # Installed as polybot.polymarket; does not shadow the SDK.
-    gamma.py      # SDK-backed market discovery and future-slug retry.
-    discovery.py  # Bounded SDK-backed browser search and saved-selection lookup.
-    markets.py    # Normalized market and outcome contracts.
-    market_hints.py # Normalized market-trade wake hints.
-    public_data/ # Runtime/recording adapter assemblies and SDK lifecycle.
-      client.py
-      runtime.py
-      recording.py
-    normalization/ # Market, book, and scalar SDK-payload normalization.
-    positions/    # SDK-backed normalized current-position adapter.
-    recording_feed/ # SDK-backed recording feed and continuity boundary.
-    recording_metadata/ # Gamma-derived recording metadata boundary.
-    resolution.py # Shared Gamma resolution source identity.
-    clob.py       # Official-client-backed CLOB adapter.
-    wallet_activity/  # Wallet trades/activity stream and fallback.
-      fields.py
-    ws_market.py  # SDK-backed public market stream and depth state.
-    ws_user.py    # SDK-backed authenticated user stream adapter.
-  recording/        # Recorder, typed archive boundary, schema, and gap scope.
-    archive/        # Durable writer, reader lifecycle, semantic queries, schema.
-    coordinator/    # Dynamic capture planning, persistence, and recovery state.
-    contracts/      # Recording contracts plus session and payload-kind semantics.
-    serialization/  # Payload codecs and strict JSON parsing.
-    service/        # Public recorder assembly, resume, markets, and lifecycle.
-  backtesting/      # Archive validation, state projection, virtual replay.
-    state/          # Market catalog, projected books, and coverage blackouts.
-    scheduler/       # Replay cursor and scheduler event application.
-    service/        # Public replay assembly, bootstrap, coverage, and results.
-  performance/      # Shared valuation and result-artifact contracts.
-    artifacts/       # CSV output, sampling, lifecycle, and summary assembly.
-    contracts/       # Run state, persisted artifact schema, and strict decoding.
-  execution/
-    broker.py     # Broker protocol used by polybot.
-    paper/        # Orchestration, validation, fill math, market data, portfolio.
-    live.py       # Live broker.
-    orders.py     # Shared order and fee helpers.
-  examples/
-  src/polybot_control_plane/ # Inward-dependent private web control plane.
-    api/             # Thin FastAPI assembly plus HTTP contracts and lifecycle.
-      dependencies.py # Database, Redis, launcher injection, and cleanup.
-      routes/         # Catalog, run, event/SSE, and health endpoint owners.
-    catalog/         # Public catalog contracts, input models, definitions.
-      graphs/        # Graph types, catalog metadata, validation, and starter.
-      node_based/    # Compiled DAG evaluator and concrete paper bot.
-    graph_templates/ # Editable reusable graph-template persistence.
-    bots/            # Saved bots and immutable graph revisions.
-    runs/            # Paper-run contracts, SQLModel row, and async store.
-    events/          # Typed durable progress projection, persistence, Redis wake-up.
-    execution/       # RunLauncher, Taskiq adapter, and worker lifecycle.
-  migrations/       # Alembic-owned PostgreSQL schema history.
-  frontend/         # Static node-bot builder, saved-bot, and run UI.
-  tests/
+polyfollow-bots/
+  backend/
+    src/
+      polybot/                 # Installed and imported as polybot.
+        framework/             # Bot hooks, contracts, configuration, and dispatch.
+        execution/             # Broker contracts and paper/live execution.
+        polymarket/            # Official SDK adapters and ingress normalization.
+        runtime/               # Public paper-runner lifecycle and performance wiring.
+        recording/             # Recording, archive, coverage, and local maintenance.
+        backtesting/           # Archive validation, deterministic replay, and results.
+        performance/           # Valuation, metrics, artifact contracts, and output.
+        persistence/           # JSON decoding and atomic file persistence.
+        dashboard/             # Dashboard state and projections.
+        cli/                   # Terminal runner, dashboard, and commands.
+        examples/              # Example bot implementations.
+        my_bot.py              # Default bot factory.
+      api/                     # Inward-dependent private application backend.
+        http/                  # FastAPI assembly, routes, dependencies, SSE, OpenAPI.
+        bots/                  # Saved bots and immutable graph revisions.
+        catalog/               # Bot definitions, graph contracts, and node evaluator.
+        graph_templates/       # Editable graph-template contracts and persistence.
+        runs/                  # Run contracts, lifecycle state, and async store.
+        events/                # Durable/live event contracts, persistence, Redis wake-up.
+        execution/             # RunLauncher, Taskiq adapter, and worker lifecycle.
+          worker/              # Background run ownership and resource management.
+        database.py            # Application database setup.
+    tests/                     # Existing Python suite and local test fixtures.
+    contracts/
+      openapi/                 # Generated control-plane.json API schema.
+      fixtures/                # Shared Python/TypeScript contract scenarios.
+    migrations/                # Alembic-owned PostgreSQL schema history.
+    alembic.ini
+  frontend/                    # Svelte UI, colocated tests, and generated API client.
+  scripts/                     # Wallet analysis and maintenance tools.
+  docs/                        # Repository documentation and implementation plans.
+  data/                        # Git-ignored local outputs; not Python packages.
+    recordings/
+    backtests/
+    wallet-analysis/
+    bot-state/
+  pyproject.toml               # Root Python environment, packaging, and test settings.
+  uv.lock
 ```
+
+The framework and application retain their existing internal domain boundaries.
+`api` may import `polybot`; the reverse dependency is forbidden. The worker is a
+separate process within the application package, not a separate framework or
+service package. Its entrypoint is `api.execution.taskiq_app:broker`; HTTP starts
+at `api.http.app:app`.
+
+Run Python commands from the repository root and frontend commands from
+`frontend/`. Backend contracts own the generated OpenAPI artifact and shared
+chart fixtures; frontend generation and tests reference those files directly.
+Other existing test fixtures remain with their current test owners. Alembic
+resolves migration and source locations from `backend/alembic.ini`.
+
+Recording defaults to `data/recordings`, backtesting defaults to `data/backtests`,
+and wallet-analysis scripts write to `data/wallet-analysis`. Explicit recording
+and result paths remain configurable. Retained local state files live in
+`data/bot-state`; paper runs still start with process-local state and do not
+resume those files.
 
 ## Runtime Flow
 

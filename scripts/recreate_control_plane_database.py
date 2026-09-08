@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from polybot_control_plane.database import DATABASE_URL_ENV, async_database_url
+from api.database import DATABASE_URL_ENV, async_database_url
 
 MAINTENANCE_DATABASE = "postgres"
 PROTECTED_DATABASES = frozenset({MAINTENANCE_DATABASE, "template0", "template1"})
@@ -58,7 +58,7 @@ async def _recreate_database(target_url: URL, maintenance_url: URL) -> None:
 
 
 def _upgrade_to_head(target_url: URL) -> None:
-    config = Config(PROJECT_ROOT / "alembic.ini")
+    config = Config(PROJECT_ROOT / "backend" / "alembic.ini")
     rendered_url = target_url.render_as_string(hide_password=False).replace("%", "%%")
     config.set_main_option("sqlalchemy.url", rendered_url)
     command.upgrade(config, "head")

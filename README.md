@@ -1,15 +1,85 @@
 # Custom Polymarket Bots
 
-This package is an isolated workspace for custom Polymarket bots. It does not
-import from `backend/app` and it should not be wired into the FastAPI app,
-database models, workers, or frontend unless a future task explicitly changes
-that boundary.
+This standalone repository contains the `polybot` bot framework, a private
+paper-only API and worker, and a Svelte frontend. It has no dependency on the
+parent Polyfollow application, database, workers, frontend, or configuration.
+The `api` package may import `polybot`; the framework does not import the API.
 
-The package shares only:
+## Repository Layout
 
-- The backend Python environment and dependencies.
-- Process environment variables from `.env`.
-- The repository test runner.
+```text
+backend/
+  src/polybot/          # Independent bot framework, CLI, recording, and backtesting.
+  src/api/              # Application backend: HTTP, persistence, and worker.
+    http/               # FastAPI application and routes.
+    execution/worker/   # Background paper-run lifecycle.
+  tests/                # Python suite, including scripts and cross-language checks.
+  contracts/openapi/    # Generated API schema consumed by the frontend generator.
+  contracts/fixtures/   # Shared Python/TypeScript contract scenarios.
+  migrations/           # Alembic database migrations.
+  alembic.ini
+frontend/               # Svelte application, generated API client, and UI tests.
+scripts/                # Wallet analysis and database maintenance commands.
+docs/                   # Architecture, author guides, and implementation plans.
+data/                   # Git-ignored local outputs.
+  recordings/
+  backtests/
+  wallet-analysis/
+  bot-state/
+pyproject.toml          # Shared Python dependencies, packaging, and test configuration.
+uv.lock
+```
+
+Run Python commands from the repository root. The root `.env` supplies local
+configuration, and `uv sync --extra dev` installs both backend packages and the
+scripts into one environment. Frontend commands run from `frontend/`.
+Generated build products, virtual environments, and caches are not source folders.
+
+The API and worker use these entrypoints (with their database and Redis settings
+configured in `.env`):
+
+```sh
+uv run uvicorn api.http.app:app --env-file .env --reload
+uv run --env-file .env taskiq worker api.execution.taskiq_app:broker --workers 1 --max-async-tasks 4
+```
+
+Restart API and worker processes together after changing their Python package
+paths; drain an old worker queue before switching to the renamed task entrypoint.
+The VS Code development-stack configuration uses these same modules.
+
+Regenerate the backend schema from the root, then regenerate its frontend client:
+
+```sh
+uv run python -m api.http.openapi
+npm --prefix frontend run generate
+```
+
+Alembic configuration lives at `backend/alembic.ini`; direct Alembic commands
+must select it with `-c backend/alembic.ini`. The database recreation script
+selects it automatically. Migration paths resolve relative to the configuration
+file, independent of the current working directory.
+
+Existing local outputs belong under `data/`: recordings, backtests, wallet
+analysis, and retained bot-state files each have their own directory. Explicit
+CLI output paths and `DEFAULT_RECORDINGS_DIR` overrides remain supported.
+Historical result contents and provenance are preserved when moving directories.
+
+Verify the repository from its root:
+
+```sh
+uv run pytest
+npm --prefix frontend run generate:check
+npm --prefix frontend run check
+npm --prefix frontend test
+npm --prefix frontend run build
+uv build
+```
+
+PostgreSQL and Redis integration tests require `POLYBOT_TEST_POSTGRES_URL` and
+`POLYBOT_TEST_REDIS_URL` pointing to disposable test services; the database tests
+rebuild their schema. Without those settings the service-dependent tests skip.
+
+## Documentation and Current Status
 
 Start with:
 
@@ -185,7 +255,7 @@ uv run python -m polybot.recording \
 Without `--output`, recordings are written under
 `DEFAULT_RECORDINGS_DIR/<local-timestamp>/markets.sqlite3` (or a descriptive
 bot/market filename). `DEFAULT_RECORDINGS_DIR` is loaded from the same
-environment or `--dotenv` file as the bot and defaults to `recordings` when
+environment or `--dotenv` file as the bot and defaults to `data/recordings` when
 unset. The timestamped directory separates runs. Use an explicit
 `--output` path with `--resume` to append to an existing archive.
 
@@ -236,7 +306,7 @@ gaps but cannot guarantee that they never occur.
 Before choosing a recording for backtesting, inspect its contents locally:
 
 ```sh
-uv run python -m polybot.recording.inspect recordings/capture.sqlite3
+uv run python -m polybot.recording.inspect data/recordings/capture.sqlite3
 ```
 
 The report shows archive size and schema, target identity, total captured event
@@ -253,7 +323,7 @@ To replace a gapped archive with its longest clean, archive-level all-market
 interval, run the local trim utility:
 
 ```sh
-uv run python -m polybot.recording.trim recordings/capture.sqlite3
+uv run python -m polybot.recording.trim data/recordings/capture.sqlite3
 ```
 
 The sole session is selected by default; archives with multiple sessions require
@@ -294,7 +364,7 @@ live inputs with one schema-v2 recording archive:
 BOT_MODE=paper \
 uv run python -m polybot.cli \
   --bot polybot.examples.example_btc_five_minute_momentum:create \
-  --backtest recordings/btc-five-minute.sqlite \
+  --backtest data/recordings/btc-five-minute.sqlite \
   --seed 0
 ```
 
@@ -328,7 +398,7 @@ recording, opt into blackout handling:
 BOT_MODE=paper \
 uv run python -m polybot.cli \
   --bot polybot.examples.example_btc_five_minute_momentum:create \
-  --backtest recordings/btc-five-minute.sqlite \
+  --backtest data/recordings/btc-five-minute.sqlite \
   --gap-policy blackout
 ```
 
@@ -382,7 +452,7 @@ does not change a successfully completed backtest's exit status or artifacts.
 Display the same chart later by passing a saved result directory:
 
 ```sh
-uv run python -m polybot.cli.performance_chart backtest-results/<run>
+uv run python -m polybot.cli.performance_chart data/backtests/<run>
 ```
 
 The command validates `summary.json` and the exact `equity.csv` schema, works
@@ -396,7 +466,7 @@ The same performance artifacts are opt-in for an ordinary paper run:
 BOT_MODE=paper \
 uv run python -m polybot.cli \
   --bot polybot.my_bot:create \
-  --results-dir results/paper-run
+  --results-dir data/paper-run
 ```
 
 Without `--results-dir`, ordinary paper behavior is unchanged and the dashboard

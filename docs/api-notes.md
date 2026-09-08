@@ -37,7 +37,7 @@ The unified SDK's beta status requires version and compatibility discipline; it
 does not by itself justify bypassing the SDK.
 
 This package pins the `polymarket-client` version declared in `pyproject.toml`.
-Its adapters live in `src/polybot/polymarket/`, distinct from the official SDK's
+Its adapters live in `backend/src/polybot/polymarket/`, distinct from the official SDK's
 top-level `polymarket` import. Wallet-analysis scripts use synchronous `PublicClient`
 methods and normalize SDK models before analysis code sees them.
 

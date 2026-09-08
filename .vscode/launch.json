@@ -9,7 +9,7 @@
       },
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/scripts/wallets_finder/__init__.py",
+      "module": "scripts.wallets_finder",
       "args": [
         "--loop"
       ],
@@ -74,7 +74,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -90,7 +90,7 @@
       "request": "launch",
       "module": "uvicorn",
       "args": [
-        "polybot_control_plane.api.app:app",
+        "api.http.app:app",
         "--host",
         "127.0.0.1",
         "--port",
@@ -100,7 +100,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -118,7 +118,7 @@
       "module": "taskiq",
       "args": [
         "worker",
-        "polybot_control_plane.execution.taskiq_app:broker",
+        "api.execution.taskiq_app:broker",
         "--workers",
         "1",
         "--max-async-tasks",
@@ -127,7 +127,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -172,7 +172,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -193,7 +193,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -214,7 +214,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -235,7 +235,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "python": "${workspaceFolder}/.venv/bin/python",
       "console": "integratedTerminal",
@@ -266,7 +266,7 @@
       "args": {
         "canSelect": "files",
         "canSelectMany": false,
-        "defaultUri": "${workspaceFolder}${pathSeparator}recordings",
+        "defaultUri": "${workspaceFolder}${pathSeparator}data${pathSeparator}recordings",
         "openLabel": "Inspect recording",
         "title": "Select a recording SQLite archive to inspect"
       }
@@ -286,7 +286,7 @@
       "args": {
         "canSelect": "folders",
         "canSelectMany": false,
-        "defaultUri": "${workspaceFolder}${pathSeparator}backtest-results",
+        "defaultUri": "${workspaceFolder}${pathSeparator}data${pathSeparator}backtests",
         "openLabel": "Chart PnL",
         "title": "Select a saved backtest results directory"
       }

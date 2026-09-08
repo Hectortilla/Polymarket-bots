@@ -61,8 +61,8 @@ verification was required.
   index containing the new generated artifacts, so it checks regeneration without
   staging workspace changes.
 
-Focused backend tests: `uv run pytest tests/control_plane/test_graph_mvp.py`.
+Focused backend tests: `uv run pytest backend/tests/control_plane/test_graph_mvp.py`.
 Persistence test (with `POLYBOT_TEST_POSTGRES_URL` set to a disposable database):
-`uv run pytest tests/control_plane/test_postgres.py::test_graph_parameters_preserve_exact_values_and_run_revisions`.
+`uv run pytest backend/tests/control_plane/test_postgres.py::test_graph_parameters_preserve_exact_values_and_run_revisions`.
 Frontend checks run from `frontend/`: `npm run generate:check`, `npm run check`,
 `npm test`, and `npm run build`.

@@ -142,7 +142,7 @@ opened by that example; it is not a general short-position exit strategy.
 Run `uv run pytest`, and set `POLYBOT_TEST_POSTGRES_URL` to a disposable PostgreSQL
 instance for database integration tests. From `frontend/`, run `npm run generate:check`,
 `npm run check`, `npm test` and `npm run build`. Export changed schemas with
-`uv run python -m polybot_control_plane.api.openapi` before generating the client.
+`uv run python -m api.http.openapi` before generating the client.
 
 No new Polymarket transport, SDK integration, live execution, arbitrary code, loops,
 collection processing or cross-stream joining is introduced by this MVP.

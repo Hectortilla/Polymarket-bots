@@ -74,21 +74,21 @@ packages = [
   "polybot.recording.service",
   "polybot.runtime",
   "polybot.runtime.performance",
-  "polybot_control_plane",
-  "polybot_control_plane.api",
-  "polybot_control_plane.api.routes",
-  "polybot_control_plane.api.routes.bots",
-  "polybot_control_plane.bots",
-  "polybot_control_plane.catalog",
-  "polybot_control_plane.catalog.graphs",
-  "polybot_control_plane.catalog.node_based",
-  "polybot_control_plane.catalog.node_based.evaluator",
-  "polybot_control_plane.graph_templates",
-  "polybot_control_plane.runs",
-  "polybot_control_plane.events",
-  "polybot_control_plane.events.contracts",
-  "polybot_control_plane.execution",
-  "polybot_control_plane.execution.worker",
+  "api",
+  "api.http",
+  "api.http.routes",
+  "api.http.routes.bots",
+  "api.bots",
+  "api.catalog",
+  "api.catalog.graphs",
+  "api.catalog.node_based",
+  "api.catalog.node_based.evaluator",
+  "api.graph_templates",
+  "api.runs",
+  "api.events",
+  "api.events.contracts",
+  "api.execution",
+  "api.execution.worker",
   "scripts",
   "scripts.select_wallet_for_analysis",
   "scripts.polymarket_wallet_api",
@@ -97,7 +97,7 @@ packages = [
 ]
 
 [tool.setuptools.package-dir]
-"" = "src"
+"" = "backend/src"
 scripts = "scripts"
 "scripts.select_wallet_for_analysis" = "scripts/select_wallet_for_analysis"
 "scripts.polymarket_wallet_api" = "scripts/polymarket_wallet_api"
@@ -106,7 +106,7 @@ scripts = "scripts"
 
 [tool.pytest.ini_options]
 addopts = "-q"
-testpaths = ["tests"]
+testpaths = ["backend/tests"]
 markers = [
   "postgres: requires POLYBOT_TEST_POSTGRES_URL for an isolated PostgreSQL database",
 ]

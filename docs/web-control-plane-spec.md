@@ -83,7 +83,7 @@ The initial catalog is exactly:
 | `btc-five-minute-market-watcher` | `polybot.examples.btc_5m:create` | bot-managed | absent | non-trading |
 | `dynamic-random-hold-example` | `polybot.examples.example_dynamic_random_hold:create` | bot-managed | absent | example |
 | `dynamic-wallet-filter-copy-example` | `polybot.examples.example_dynamic_random_hold_wallet_filter_copy:create` | bot-managed | user-configured | example |
-| `node-based-bot` | `polybot_control_plane.catalog.node_based.bot:NodeBasedBot` | user-configured | absent | standard |
+| `node-based-bot` | `api.catalog.node_based.bot:NodeBasedBot` | user-configured | absent | standard |
 
 `polybot.my_bot:create` is an alias of the winner strategy and is not another
 catalog entry.

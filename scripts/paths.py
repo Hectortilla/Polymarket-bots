@@ -2,6 +2,6 @@
 
 from pathlib import Path
 
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
+RESULTS_DIR = Path(__file__).resolve().parents[1] / "data" / "wallet-analysis"
 GOOD_FILE = RESULTS_DIR / "good_wallets.txt"
 BAD_FILE = RESULTS_DIR / "bad_wallets.txt"

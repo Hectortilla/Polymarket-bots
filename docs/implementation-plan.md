@@ -10,6 +10,16 @@ fastest correct source available and document any fallback that is slower than
 the intended live path. Do not implement polling as the primary live signal path
 when a correct WebSocket/streaming source is available.
 
+## Repository Organization
+
+Source packages live at `backend/src/polybot` and `backend/src/api`; the HTTP
+layer is `api.http`, and the Taskiq entrypoint is
+`api.execution.taskiq_app:broker`. Python tests, migrations, and exported
+contracts live under `backend`. Python tooling and the lockfile stay at the
+repository root. Local output defaults live under `data`. This repository-wide
+relocation preserves implemented slice behavior and adds no new slice features;
+see `docs/architecture.md`, **Package Layout**, for the directory map.
+
 ## Network Implementation Rule
 
 Every network slice must first map its requirements against the current
@@ -314,7 +324,7 @@ Command contract:
   `--market-slug SLUG` values.
 - Accept optional `--output PATH` for the SQLite recording archive. When omitted,
   create `DEFAULT_RECORDINGS_DIR/<local-timestamp>/<description>.sqlite3`, using
-  `recordings` when that environment variable is unset; the timestamped directory
+  `data/recordings` when that environment variable is unset; the timestamped directory
   separates runs and the filename describes the target. `--resume`
   still requires an explicit existing output path.
 - Accept `--duration <number>[s|m|h|d]`; without it, run until graceful
@@ -874,7 +884,7 @@ Status: implemented.
 
 Minimum deliverable:
 
-- Add the inward-dependent `polybot_control_plane` package without changing
+- Add the inward-dependent `api` package without changing
   `polybot`.
 - Add only the Pydantic, SQLModel/SQLAlchemy async PostgreSQL, driver, and
   Alembic dependencies imported by this slice.
@@ -975,8 +985,8 @@ Minimum deliverable:
 - Keep `RunRead` at the exact durable run-row contract; Slice 12E first adds
   event-derived equity summary fields.
 - Export OpenAPI deterministically without starting a server. Running
-  `uv run python -m polybot_control_plane.api.openapi` writes the canonical
-  `openapi/control-plane.json` artifact.
+  `uv run python -m api.http.openapi` writes the canonical
+  `backend/contracts/openapi/control-plane.json` artifact.
 - Use FastAPI's built-in request errors and a small 404 detail.
 
 Do not add authentication, users, CORS for a separate production origin,
