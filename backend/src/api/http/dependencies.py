@@ -18,6 +18,11 @@ from sqlalchemy.ext.asyncio import (
 from api.auth.config import AuthSettings
 from api.deployment.settings import StartupSettings
 from api.execution.launcher import RunLauncher
+from api.io_policy import (
+    DATABASE_CONNECT_ARGS,
+    DEPENDENCY_TIMEOUT_SECONDS,
+    REDIS_SOCKET_OPTIONS,
+)
 
 
 @asynccontextmanager
@@ -32,6 +37,8 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         owned_engine = create_async_engine(
             app.state.startup_settings.database_url.get_secret_value(),
             hide_parameters=True,
+            connect_args=DATABASE_CONNECT_ARGS,
+            pool_timeout=DEPENDENCY_TIMEOUT_SECONDS,
         )
         app.state.session_factory = async_sessionmaker(
             owned_engine,
@@ -39,7 +46,8 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     if not hasattr(app.state, "redis"):
         owned_redis = Redis.from_url(
-            app.state.startup_settings.redis_url.get_secret_value()
+            app.state.startup_settings.redis_url.get_secret_value(),
+            **REDIS_SOCKET_OPTIONS,
         )
         app.state.redis = owned_redis
     if not hasattr(app.state, "launcher"):

@@ -9,16 +9,17 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-
 from api.auth.policy import LOGIN_PATH, LOGOUT_PATH, REGISTER_PATH
 from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
-from api.deployment.settings import DEFAULT_LEASE_SECONDS, DEFAULT_WORKER_CONCURRENCY
+from api.deployment.services import APPLICATION_SERVICES, DeploymentService
+from api.execution.policy import WORKER_STOP_GRACE_SECONDS
+from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.http.routes.events import LAST_EVENT_ID_HEADER
 from api.http.routes.paths import (
-    BOTS_PATH,
     BOT_PATH,
     BOT_RUNS_PATH,
+    BOTS_PATH,
     GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
     RUN_EVENTS_PATH,
@@ -27,8 +28,11 @@ from api.http.routes.paths import (
     RUN_STOP_PATH,
     api_route_path,
 )
+from api.limits.policy import PAPER_BETA
+from api.runs.lease_policy import DEFAULT_LEASE_SECONDS
 from api.runs.status import RunStatus
-from scripts.beta_release import BetaRelease, COMPOSE_FILE, REPOSITORY
+
+from scripts.beta_release import COMPOSE_FILE, REPOSITORY, BetaRelease
 
 STAGING_ORIGIN = "https://localhost:8443"
 TEST_PASSWORD = "disposable staging password 123"
@@ -152,14 +156,14 @@ class DeploymentSmoke:
             running = set(
                 self.compose("ps", "--status", "running", "--services").splitlines()
             )
-            assert not running.intersection({"entrypoint", "api", "worker"})
+            assert not running.intersection(set(APPLICATION_SERVICES))
         finally:
             path.write_text(original)
         release.activate(rollback=False)
         self.require_health()
 
     def install_runtime_fixture(self) -> None:
-        self.compose("stop", "entrypoint", "api", "worker")
+        self.compose("stop", *APPLICATION_SERVICES)
         tag = f"{self.project}-acceptance"
         self.command(
             "docker",
@@ -174,7 +178,9 @@ class DeploymentSmoke:
         )
         self.values["POLYBOT_BACKEND_IMAGE"] = self.image_id(tag)
         self.write_manifest()
-        self.compose("up", "-d", "--no-deps", "--wait", "api", "worker", fixture=True)
+        self.compose(
+            "up", "-d", "--no-deps", "--wait", *APPLICATION_SERVICES[1:], fixture=True
+        )
         self.compose("up", "-d", "--no-deps", "--wait", "entrypoint", fixture=True)
         self.require_health()
 
@@ -219,18 +225,24 @@ class DeploymentSmoke:
                 second.get(api_route_path(BOT_PATH, bot_id=bot_id)).status_code == 404
             )
             runs = []
-            for _ in range(DEFAULT_WORKER_CONCURRENCY + 1):
+            for _ in range(PAPER_BETA.active_runs + 1):
                 result = first.post(
                     api_route_path(BOT_RUNS_PATH, bot_id=bot_id), json={}
                 )
                 result.raise_for_status()
                 runs.append(result.json()["id"])
+                if len(runs) <= PAPER_BETA.active_runs:
+                    self.wait_for(
+                        lambda: self.run_status(first, runs[-1]) == RunStatus.RUNNING
+                    )
             self.wait_for(
-                lambda: sum(
-                    self.run_status(first, run_id) == RunStatus.RUNNING
-                    for run_id in runs
+                lambda: (
+                    sum(
+                        self.run_status(first, run_id) == RunStatus.RUNNING
+                        for run_id in runs
+                    )
+                    == PAPER_BETA.active_runs
                 )
-                == DEFAULT_WORKER_CONCURRENCY
             )
             queued = next(
                 run_id
@@ -259,13 +271,14 @@ class DeploymentSmoke:
                     for line in stream.iter_lines()
                     if line.startswith("data:")
                 )
+            first.post(
+                api_route_path(RUN_STOP_PATH, run_id=active), json={}
+            ).raise_for_status()
+            self.wait_for(lambda: self.run_status(first, active) == RunStatus.STOPPED)
             with first.stream(
                 "GET", stream_path, headers={LAST_EVENT_ID_HEADER: str(event["id"])}
             ) as stream:
                 stream.raise_for_status()
-                first.post(
-                    api_route_path(RUN_STOP_PATH, run_id=active), json={}
-                ).raise_for_status()
                 terminal = next(
                     json.loads(line.removeprefix("data:"))
                     for line in stream.iter_lines()
@@ -274,19 +287,55 @@ class DeploymentSmoke:
                 assert terminal["id"] > event["id"]
                 assert terminal["payload"]["status"] == RunStatus.STOPPED
             self.wait_for(lambda: self.run_status(first, active) == RunStatus.STOPPED)
-            lost = next(run_id for run_id in runs if run_id not in {queued, active})
-            self.compose("stop", "--timeout", "0", "worker", fixture=True)
-            time.sleep(DEFAULT_LEASE_SECONDS + 1)
+            result = first.post(api_route_path(BOT_RUNS_PATH, bot_id=bot_id), json={})
+            result.raise_for_status()
+            lost = result.json()["id"]
+            self.wait_for(lambda: self.run_status(first, lost) == RunStatus.RUNNING)
+            self.compose("stop", "postgres", fixture=True)
             self.compose(
-                "run", "--rm", "--no-deps", "worker", "reconcile", lost, fixture=True
+                "stop", "--timeout", "0", DeploymentService.WORKER, fixture=True
             )
-            assert self.run_status(first, lost) == RunStatus.INTERRUPTED
+            time.sleep(DEFAULT_LEASE_SECONDS + DELIVERY_RETRY_SECONDS)
+            self.compose("up", "-d", "--no-deps", "--wait", "postgres", fixture=True)
+            self.wait_for(lambda: self.run_status(first, lost) == RunStatus.INTERRUPTED)
             assert (
                 first.get(api_route_path(RUN_EVENTS_PATH, run_id=lost)).json()[
                     "events"
                 ][-1]["payload"]["status"]
                 == RunStatus.INTERRUPTED
             )
+
+            # A queued obligation survives Redis loss and a missing worker.
+            result = first.post(api_route_path(BOT_RUNS_PATH, bot_id=bot_id), json={})
+            result.raise_for_status()
+            stranded = result.json()["id"]
+            self.compose("stop", "redis", fixture=True)
+            time.sleep(DELIVERY_RETRY_SECONDS * 2)
+            self.compose(
+                "up",
+                "-d",
+                "--no-deps",
+                "--wait",
+                "redis",
+                DeploymentService.WORKER,
+                fixture=True,
+            )
+            self.wait_for(lambda: self.run_status(first, stranded) == RunStatus.RUNNING)
+            shutdown_started = time.monotonic()
+            self.compose("stop", DeploymentService.WORKER, fixture=True)
+            assert time.monotonic() - shutdown_started < WORKER_STOP_GRACE_SECONDS + 5
+            self.wait_for(
+                lambda: self.run_status(first, stranded) == RunStatus.INTERRUPTED
+            )
+            history = first.get(
+                api_route_path(RUN_EVENTS_PATH, run_id=stranded)
+            ).json()["events"]
+            terminal_events = [
+                event
+                for event in history
+                if event["payload"].get("status") == RunStatus.INTERRUPTED
+            ]
+            assert len(terminal_events) == 1
 
     def require_private_ports(self) -> None:
         entries = [
@@ -374,8 +423,11 @@ class DeploymentSmoke:
     def wait_for(predicate):
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            if predicate():
-                return
+            try:
+                if predicate():
+                    return
+            except httpx.HTTPError:
+                pass
             time.sleep(1)
         raise AssertionError("staging condition did not converge within 90 seconds")
 

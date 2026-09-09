@@ -6,6 +6,7 @@ from redis.asyncio import Redis
 
 from api.deployment.settings import StartupSettings
 from api.events.writer import RunEventWriter
+from api.io_policy import REDIS_SOCKET_OPTIONS
 from api.limits.admission import RunAdmission
 from api.runs.store import RunStore
 
@@ -18,13 +19,17 @@ async def drain_queued_runs_with_worker_resources() -> None:
     engine, session_factory = create_worker_database(
         settings.database_url.get_secret_value()
     )
-    redis = Redis.from_url(settings.redis_url.get_secret_value())
+    redis = Redis.from_url(
+        settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS
+    )
     event_writer = RunEventWriter(session_factory, redis)
     try:
         # Taskiq delivers a wake hint; PostgreSQL chooses the next fair queued run.
         while True:
             async with session_factory() as selection_session:
-                eligible_run_id = await RunAdmission(selection_session).next_eligible_queued_run_id()
+                eligible_run_id = await RunAdmission(
+                    selection_session
+                ).next_eligible_queued_run_id()
                 await selection_session.commit()
             if eligible_run_id is None:
                 return
@@ -34,6 +39,7 @@ async def drain_queued_runs_with_worker_resources() -> None:
                     session_factory,
                     event_writer,
                     heartbeat_seconds=settings.heartbeat_seconds,
+                    lease_seconds=settings.lease_seconds,
                 ).execute(eligible_run_id)
     finally:
         try:

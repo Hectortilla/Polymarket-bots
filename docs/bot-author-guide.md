@@ -721,3 +721,11 @@ The web paper beta passes the `PAPER_BETA.tracked_markets_per_run` allowance to
 conditions across configured subscriptions, followed wallets and broker positions.
 Dynamic plans that exceed it fail explicitly and close runtime resources; resolving
 a condition releases its slot. Standalone callers may omit the optional cap.
+
+
+Web paper runs now persist a launch retry identity and have a database execution
+lease. Lost workers end as interrupted with committed history preserved; a new
+run starts a new portfolio and graph instance. The optional `execution_scope`
+argument to `polybot.runtime.run_bot` is host-owned and defaults to no additional
+gate for standalone callers. The web worker supplies a database fence immediately
+before synchronous paper fills and resolution settlement; bot authors do not manage this lease.

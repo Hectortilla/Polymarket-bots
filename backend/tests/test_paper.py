@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from decimal import ROUND_DOWN, Decimal, Inexact, localcontext
 
@@ -1503,3 +1504,50 @@ def test_metadata_change_during_final_book_read_rejects_without_mutation(
     assert fill.reject_reason is reason
     assert broker.portfolio.cash_usdc == DEFAULT_PAPER_PORTFOLIO_USDC
     assert broker.position_market_refs == {}
+
+
+def test_host_execution_fence_prevents_fill_after_latency():
+
+    class LostOwnership(RuntimeError):
+        pass
+
+    checked = False
+
+    @asynccontextmanager
+    async def ownership():
+        nonlocal checked
+        checked = True
+        raise LostOwnership("execution lease lost")
+        yield
+
+    async def scenario():
+        broker = PaperBroker(
+            BotConfig(name="fenced", paper_latency_ms=0, paper_latency_jitter_ms=0),
+            StaticBooks(
+                _book(
+                    token_id="123",
+                    ask_prices=(Decimal("0.40"),),
+                    received_at_ms=1_000,
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            ),
+            StaticMarkets(_market()),
+            sleep_fn=_noop_sleep,
+            now_ms_fn=lambda: 1_000,
+            execution_scope=ownership,
+        )
+        before = broker.snapshot()
+        with pytest.raises(LostOwnership):
+            await broker.submit(
+                OrderRequest(
+                    token_id="123",
+                    side=Side.BUY,
+                    price=Decimal("0.85"),
+                    size=Decimal("1"),
+                    market_slug=DEFAULT_MARKET_SLUG,
+                )
+            )
+        assert checked
+        assert broker.snapshot() == before
+
+    asyncio.run(scenario())

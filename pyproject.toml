@@ -110,6 +110,7 @@ packages = [
   "api.events",
   "api.events.contracts",
   "api.execution",
+  "api.execution.recovery",
   "api.execution.worker",
   "scripts",
   "scripts.select_wallet_for_analysis",

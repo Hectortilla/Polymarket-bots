@@ -971,9 +971,10 @@ Minimum deliverable:
   call the injected `RunLauncher`.
 - Keep API workers stateless. Stop changes durable state; no API process reaches
   into a local worker task.
-- For queued stop and launch-delivery failure, commit the API-owned terminal
-  run transition and terminal lifecycle event atomically, then publish the
-  durable Redis wake-up. Idempotent stop must not append a second terminal event.
+- For queued stop, commit the API-owned terminal run transition and terminal
+  lifecycle event atomically, then publish the durable Redis wake-up. Idempotent
+  stop must not append a second terminal event. Slice 18 supersedes the original
+  launch-failure behavior: delivery outages leave a durable queued retry.
 - Implement the canonical durable-only replay/subscription/recheck SSE sequence.
   Decode the strict decimal durable-wake frame at the Redis adapter boundary and
   expose required-ID `PersistedDurableEvent` on the SSE route in OpenAPI. Keep
@@ -1000,8 +1001,8 @@ Acceptance:
   stop leaves terminal event ownership with the worker.
 - An ingress test proves requests violating the product-spec **Trust Boundary**
   are rejected without persisting a run.
-- A launcher failure leaves a visible durable failed run with one terminal
-  lifecycle event.
+- A launcher failure preserves the committed queued run for bounded recovery
+  (Slice 18 supersedes the original terminal launch-failure behavior).
 - One PostgreSQL+Redis integration scenario injects a durable event in the
   replay/subscribe handoff and proves the architecture-owned delivery guarantee,
   ending after the terminal event.
@@ -1153,7 +1154,7 @@ Delivered September 9, 2026: Compose provides the static same-origin frontend,
 multi-process API, bounded Taskiq concurrency, private PostgreSQL/Redis and a
 one-shot forward migration. Startup settings and the disposable Compose/browser
 rehearsal cover the acceptance above. Worker-loss acceptance invokes the existing
-lease reconciler explicitly; the recurring recovery scheduler remains Slice 18.
+lease reconciler explicitly at that checkpoint; Slice 18 now supplies the recurring recovery scheduler.
 Slice 16 owns the additional TLS/release work and the combined review record below.
 
 ## Slice 13A: Framework-Derived Trigger Nodes
@@ -1712,7 +1713,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slices 16–17 delivered; Slices 18–23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–18 delivered; Slices 19–23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -1830,7 +1831,7 @@ Acceptance:
 
 - Concurrent requests and multiple API processes cannot exceed per-user or
   global reservations; one account cannot occupy unbounded queue/worker capacity.
-- Stop, launch failure and normal completion release capacity exactly once.
+- Stop, invalid queued snapshots and normal completion release capacity exactly once; delivery outages preserve queued reservations (Slice 18).
   Duration limits work without an open browser.
 - Missing shared admission infrastructure fails closed. Responses distinguish
   invalid configuration, user allowance and temporary global capacity outcomes.
@@ -1890,13 +1891,13 @@ bot-author guide, API notes, deployment assumptions, this plan and exported
 contracts match the delivered behavior and single policy owner. PolymarketDocs
 verified the existing subscription boundary; no SDK/transport exception or live
 execution change was introduced. Existing accounts/history remain intact. Launch
-retry idempotency and worker-loss recovery remain Slice 18; retention/deletion
+retry idempotency and worker-loss recovery are delivered by Slice 18; retention/deletion
 remains Slice 21. Open signup stays gated by the remaining roadmap.
 
 
 ## Slice 18: Reliable Run Lifecycle
 
-Status: planned; depends on Slices 16–17 and the existing run/worker lifecycle.
+Status: delivered; builds on Slices 16–17 and the existing run/worker lifecycle.
 
 Minimum deliverable:
 
@@ -1929,6 +1930,29 @@ Acceptance:
 Explicit exclusions: transparent portfolio/graph-state restoration, automatic
 strategy restarts and live-trading recovery. The beta promises accurate
 interruption reporting, not uninterrupted execution.
+
+Delivered implementation and verification:
+
+- Migration 0006 preserves accounts/history while adding bot-scoped launch keys,
+  execution tokens and delivery-attempt timestamps. Browser launch identity survives
+  lost responses and reload; unkeyed legacy callers explicitly request a fresh run.
+- PostgreSQL queue obligations are retried by the separately deployed recovery
+  process. Conditional claims, lease-fenced writes/fills/settlements and one atomic
+  terminal writer preserve state/event/capacity consistency. Interrupted runs never
+  resume portfolio or graph state automatically.
+- Failure-injection tests cover launch/claim concurrency, missed delivery, terminal
+  rollback, expired ownership, Stop races, duration and cleanup bounds. Real database
+  tests exercise successful and rejected paper fills and settlements. Browser tests
+  exercise lost launch responses and deliberate subsequent launches.
+- The disposable HTTPS deployment rehearsal passed PostgreSQL outage plus worker
+  kill, Redis recovery, bounded graceful shutdown, single terminal history,
+  reconnect/reload, release, rollback and migration refusal. No public deployment
+  was performed. The complete Python and frontend suites and builds passed.
+- The explicit 51-rule code-style review was reconciled holistically, with focused
+  reruns after refinements. Final documentation drift audit synchronized the
+  roadmap, architecture, author guide, product spec and deployment runbook;
+  policy/service documentation is checked against code. No protocol behavior or
+  Polymarket adapter changed, so no protocol-sensitive MCP check was required.
 
 ## Slice 19: Account Recovery and Management
 

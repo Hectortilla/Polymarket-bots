@@ -71,7 +71,7 @@ continues to use README's Vite/Uvicorn commands and explicit HTTP opt-in.
 Run `uv run python -m scripts.beta_release /absolute/path/release.env`.
 The command validates immutable inputs, waits for infrastructure, closes the
 entrypoint and stops application processes, runs the one-shot forward migration,
-then starts API/worker and reopens private ingress only after API readiness.
+then starts `api`, `worker` and `recovery` and reopens private ingress only after API readiness.
 The application requires the exact migration head shipped in its image. An
 unsuccessful migration leaves ingress closed; diagnose and repair forward before
 retrying. Existing test CI remains in place; deployment checks are additional.
@@ -105,7 +105,7 @@ TLS certificate. Its market/runtime fixture is confined to a separate test
 image; production images contain no acceptance fixture. Identity, ownership,
 database, Redis, Taskiq delivery, lifecycle and reverse proxy are real. It must
 prove migration gating, shared multi-process reads, bounded worker concurrency,
-queued/active Stop, durable progress/reload, SSE reconnect and explicit lease
+queued/active Stop, durable progress/reload, SSE reconnect and scheduled lease
 reconciliation after worker loss. Rehearse release and same-schema rollback,
 then verify no service other than the loopback entrypoint publishes ports.
 The reconnect check sends the last durable event ID and observes a later terminal
@@ -122,3 +122,13 @@ destructive disposable harness for retained data. Deployment CI runs the same
 command in addition to existing account and frontend jobs.
 Install frontend dependencies and Chromium first with `npm --prefix frontend ci`
 and `npm --prefix frontend exec -- playwright install chromium`.
+
+
+Slice 18 adds the `recovery` service to release shutdown/startup. Local stacks must
+also run `uv run --env-file .env python -m api.execution.recovery`. It retries queue
+delivery and reconciles expired worker leases on the architecture policy cadence. Run history is
+preserved and interrupted runs require a new launch. Migration 0006 is forward-only
+in production and preserves accounts; older exact-head releases cannot roll back
+across this schema change. During a database outage recovery waits for the database,
+and Redis outages keep queue entries durable. See the architecture's Slice 18
+section for lease, I/O and shutdown bounds. Open signup remains gated.

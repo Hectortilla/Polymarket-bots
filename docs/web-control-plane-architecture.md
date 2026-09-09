@@ -5,7 +5,7 @@ This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
-continues with planned Slices 18–23 after the delivered deployment and resource-limit foundation. It covers production
+continues with planned Slices 19–23 after the delivered deployment, resource-limit and reliable-lifecycle foundation. It covers production
 operation, resource limits, reliability, recovery, data lifecycle and launch
 workflows. Adopt each slice's technical contracts here during implementation;
 current private access, ownership and paper execution remain unchanged until the
@@ -245,10 +245,9 @@ Starting a bot locks its row, copies the current config into a queued run,
 references its latest graph revision, commits, and only then calls
 `RunLauncher.launch(run_id)`.
 
-If delivery fails, atomically update the committed run to `failed` and append
-its terminal lifecycle event in one new PostgreSQL transaction, using a
-sanitized `failure_detail`. Publish the durable Redis wake-up only after that
-transaction commits. Do not invent a custom error taxonomy for v0.
+Delivery failures preserve the committed queued row for Slice 18 recovery.
+Queued Stop still commits its terminal state and lifecycle event atomically.
+A lost post-commit Redis wake is recovered by periodic PostgreSQL SSE replay.
 
 ## Persistence Contract
 
@@ -301,13 +300,17 @@ The final v0 run row has exactly:
 - `started_at` (nullable)
 - `ended_at` (nullable)
 - `heartbeat_at` (nullable)
+- `launch_key` (nullable UUID)
+- `execution_token` (nullable UUID)
+- `delivery_attempted_at` (nullable timestamp)
 - `failure_detail` (nullable, sanitized)
 
 The composite `(bot_id, bot_graph_revision_id)` foreign key prevents a run from
 using another bot's revision. Graph-capable definitions require a revision and
 other definitions require null; this rule is owned by the catalog. Do not add
 separate launch-input/config copies, updated/claimed/stop timestamps,
-latest-summary columns, execution-backend fields, user IDs, or idempotency keys.
+latest-summary columns, vendor execution-backend fields or user IDs. Slice 18
+adds only its internal launch identity, execution token and delivery timestamp.
 Current summaries come from durable events. ECS can add its own reference when
 an ECS slice actually exists.
 
@@ -418,8 +421,7 @@ The API owns terminal completion when it stops a queued run. That conditional
 transaction, followed by a Redis wake-up after commit. A repeated stop observes
 the existing terminal state and does not append another terminal event. A stop
 of an owned run changes only the durable status to `stop_requested`; the worker
-owns its later `stopping` and terminal transitions. Together with launch
-delivery failure, these are the only API-owned terminal transitions in v0.
+owns its later `stopping` and terminal transitions. Delivery failures preserve queued runs for scheduled recovery.
 
 The web observer preserves the existing synchronous, fail-open
 `RuntimeObserver.emit()` contract. `emit()` does bounded in-memory projection
@@ -925,7 +927,7 @@ Taskiq deliveries wake a database queue drain. Each process selects FIFO among
 accounts below their active allowance, claims conditionally, executes, and drains
 again on completion. PostgreSQL bounds active execution across worker instances;
 Taskiq concurrency remains a local ceiling. Recovery of delivery gaps and dead workers remains
-Slice 18; lost worker reservations fail closed until reconciliation.
+Slice 18; scheduled reconciliation now releases lost worker reservations.
 
 Redis server-time scripts atomically bound account and global request budgets and
 open-stream leases. Streams end before their lease expiry and release leases on
@@ -933,3 +935,61 @@ response completion or disconnect. Redis failures prevent admission; no in-memor
 fallback exists. The runtime's condition registry accepts an optional local cap,
 set by the web worker, and rejects additional unresolved conditions before any
 subscription grows. SDK transport and paper/live contracts remain unchanged.
+
+
+## Slice 18: durable launch and run recovery
+
+Launch accepts a UUID `Idempotency-Key` header scoped to the owned bot. Reusing
+it returns the original immutable run snapshot and outcome, even after edits or
+termination; a new key starts a deliberate new run. Omitting the header explicitly
+requests a fresh run for compatibility with existing callers. The browser persists
+a pending key in session storage before sending and keeps it through errors and
+reload, clearing it only after navigation to the confirmed run. Identities remain
+valid as long as their run row is retained; Slice 21 must preserve this contract.
+Migration 0006 adds nullable identity/delivery/claim columns and a unique bot/key
+constraint without resetting existing accounts or history.
+
+The queued row is the durable delivery obligation. The separate `recovery` process
+scans on the configured recovery cadence, serializes delivery attempts in PostgreSQL, and
+reissues bounded Taskiq wake hints. Redis stream trimming bounds retained hints;
+they carry no authoritative execution state. A lost hint is safe because the next
+scan retries it and the existing FIFO/allowance claim is conditional. Redis outages
+leave queued reservations intact. PostgreSQL outages prevent claims and progress;
+recovery retries when PostgreSQL returns. No active run is requeued or resumed.
+
+Every claim creates an internal execution token. Worker transitions, heartbeat
+renewal and durable/live publication check that token and a fresh database lease.
+Publication locks the run row so it serializes with terminal transitions; expired
+leases cannot be renewed before reconciliation. All terminal writers share
+`TerminalRunWriter`: the conditional state change, lifecycle event and capacity
+release commit together or roll back together. SSE periodically replays PostgreSQL
+even when a post-commit Redis wake was lost; reload uses the same durable outcome.
+The recovery scan interrupts expired active rows and preserves committed history.
+
+The policy defaults below are checked against their Python owners by the deployment
+contract test. A healthy scan recovers worker loss after lease expiry plus its next
+tick and bounded I/O; database visibility cannot be promised during an outage.
+Deployment starts/stops recovery with API and worker. Taskiq drains jobs before
+cancellation; runtime cleanup and final process shutdown have separate bounds.
+Unfinished paper runs report an interruption and require an explicit new launch.
+
+<!-- reliability-policy:start -->
+| Policy | Default seconds | Code owner |
+| --- | ---: | --- |
+| Worker heartbeat | 5 | `api.runs.lease_policy.DEFAULT_HEARTBEAT_SECONDS` |
+| Worker lease | 30 | `api.runs.lease_policy.DEFAULT_LEASE_SECONDS` |
+| Recovery retry | 5 | `api.execution.recovery.policy.DELIVERY_RETRY_SECONDS` |
+| Dependency operation | 5 | `api.io_policy.DEPENDENCY_TIMEOUT_SECONDS` |
+| Taskiq read block | 1 | `api.execution.policy.TASKIQ_READ_BLOCK_SECONDS` |
+| Taskiq job drain | 1 | `api.execution.policy.TASKIQ_DRAIN_SECONDS` |
+| Runtime cleanup | 10 | `api.execution.policy.RUNTIME_CLEANUP_SECONDS` |
+| Taskiq shutdown | 20 | `api.execution.policy.TASKIQ_SHUTDOWN_SECONDS` |
+| Worker process stop | 45 | `api.execution.policy.WORKER_STOP_GRACE_SECONDS` |
+| Recovery process stop | 15 | `api.execution.policy.RECOVERY_STOP_GRACE_SECONDS` |
+<!-- reliability-policy:end -->
+
+The framework accepts an optional host execution scope around final synchronous
+paper fills and resolution settlement, including portfolio and tracker mutation.
+The API supplies its database lease fence. Book checks repeat after fence acquisition;
+resolution callbacks run after releasing the fence to avoid nesting it with fills.
+Paper/live event shapes and Polymarket adapters are unchanged.

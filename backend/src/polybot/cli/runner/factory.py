@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 from polybot.cli.observability.activity import ObserverActivitySink
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.cli.observability.events import PortfolioSnapshot
 from polybot.cli.observability.observer import RuntimeObserver
+from polybot.execution.ownership import ExecutionScope
 from polybot.execution.paper import PaperBroker
 from polybot.execution.paper.portfolio_reader import PaperPortfolioReader
 from polybot.framework.config.models import BotConfig
@@ -44,6 +46,7 @@ async def create_runtime(
     *,
     public_data: RuntimePublicData | None,
     max_tracked_markets: int | None = None,
+    execution_scope: ExecutionScope = nullcontext,
 ) -> RuntimeComponents:
     owns_public_data = public_data is None
     sources = RuntimePublicData.create() if owns_public_data else public_data
@@ -55,7 +58,7 @@ async def create_runtime(
         position_client = sources.position_client
         followed_wallets = FollowedWalletTracker()
         registry = TrackedMarketRegistry(max_tracked_markets=max_tracked_markets)
-        paper_broker = PaperBroker(config, clob, gamma)
+        paper_broker = PaperBroker(config, clob, gamma, execution_scope=execution_scope)
         broker = ObservableBroker(
             paper_broker,
             observer,

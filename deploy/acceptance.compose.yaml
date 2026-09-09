@@ -5,3 +5,6 @@ services:
   worker:
     entrypoint: [python, -m, control_plane.deployment_fixture]
     command: [worker]
+  recovery:
+    entrypoint: [python, -m, control_plane.deployment_fixture]
+    command: [recovery]

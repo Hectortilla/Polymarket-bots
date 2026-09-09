@@ -138,7 +138,7 @@ def test_fifo_skips_busy_account_and_terminal_release_is_idempotent(limits_servi
     asyncio.run(scenario())
 
 
-def test_launch_failure_and_duration_expiry_release_capacity(
+def test_invalid_snapshot_and_duration_expiry_release_capacity(
     limits_services, monkeypatch
 ):
     async def scenario():
@@ -146,14 +146,14 @@ def test_launch_failure_and_duration_expiry_release_capacity(
             user, bot = await account_bot(sessions)
             failed = await queue_run(sessions, bot)
             async with sessions() as session:
-                await ApiRunLifecycle(session).fail_launch(
+                await RunStore(session).fail_queued(
                     failed.id,
                     now=system_now_utc(),
-                    failure_detail="fixture delivery failure",
+                    failure_detail="fixture invalid snapshot",
                 )
             expiring = await queue_run(sessions, bot)
 
-            async def runtime(*args):
+            async def runtime(*args, **kwargs):
                 await asyncio.Event().wait()
 
             monkeypatch.setattr(lifecycle, "run_claimed_bot", runtime)

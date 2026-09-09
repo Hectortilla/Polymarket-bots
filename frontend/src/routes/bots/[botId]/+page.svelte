@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { LaunchAttempt } from '$lib/bots/launchAttempt';
+  import { IDEMPOTENCY_KEY_HEADER } from '$lib/api/http';
   import { resourceLimitDetail } from '$lib/limits/validation';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -154,15 +156,18 @@
   }
 
   async function runBot(): Promise<void> {
-    if (!bot || hasUnsavedChanges) return;
+    if (!bot || hasUnsavedChanges || running) return;
     running = true;
     error = '';
     try {
+      const attempt = new LaunchAttempt(bot.id);
       const response = await launchBotRunApiV1BotsBotIdRunsPost({
         path: { bot_id: bot.id },
+        headers: { [IDEMPOTENCY_KEY_HEADER]: attempt.idempotencyKey() },
         throwOnError: true,
       });
       await goto(runPath(response.data.id));
+      attempt.complete();
     } catch (caught) {
       error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.RUN_ERROR;
     } finally {

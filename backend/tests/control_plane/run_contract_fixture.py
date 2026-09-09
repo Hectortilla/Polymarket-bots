@@ -38,7 +38,11 @@ from api.events.pagination import (
     NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX,
 )
 from api.http.contracts import HealthResponse
-from api.http.protocol import CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE
+from api.http.protocol import (
+    CONTENT_TYPE_HEADER,
+    IDEMPOTENCY_KEY_HEADER,
+    JSON_CONTENT_TYPE,
+)
 from api.http.routes.paths import (
     BOT_DEFINITIONS_PATH,
     BOT_GRAPH_REVISION_PATH,
@@ -50,7 +54,6 @@ from api.http.routes.paths import (
     GRAPH_TEMPLATE_PATH,
     GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
-    USAGE_PATH,
     MARKET_LOOKUP_PATH,
     MARKET_SEARCH_PATH,
     RUN_EVENTS_PATH,
@@ -58,8 +61,11 @@ from api.http.routes.paths import (
     RUN_PATH,
     RUN_STOP_PATH,
     RUNS_PATH,
+    USAGE_PATH,
     api_route_path,
 )
+from api.limits.errors import ResourceLimitCode
+from api.limits.policy import PAPER_BETA
 from api.runs.status import (
     INITIAL_RUN_STATUS,
     STOPPABLE_RUN_STATUSES,
@@ -129,9 +135,6 @@ from polybot.framework.events.wallet_trades import (
     WALLET_SOURCE_KEY_SEPARATOR,
     WalletTradeKind,
 )
-from api.limits.policy import PAPER_BETA
-from api.limits.errors import ResourceLimitCode
-
 from polybot.framework.streams import (
     STREAM_RULE_MINIMUM_SELECTOR_GROUPS,
     StreamRelation,
@@ -150,6 +153,7 @@ FRONTEND_RUN_CONTRACT_PATH = (
 
 def frontend_run_contract() -> dict[str, object]:
     return {
+        "idempotencyKeyHeader": IDEMPOTENCY_KEY_HEADER,
         "resourcePolicy": PAPER_BETA.model_dump(),
         "resourceLimitCodes": _enum_values(ResourceLimitCode),
         "httpStatus": {

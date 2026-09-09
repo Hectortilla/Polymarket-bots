@@ -32,7 +32,7 @@ class ServiceFailureMiddleware:
 
         try:
             await self.app(scope, receive, track_response_start)
-        except (SQLAlchemyError, RedisError, PasswordVerificationError):
+        except (SQLAlchemyError, RedisError, PasswordVerificationError, TimeoutError):
             LOGGER.error("request failed because a required service is unavailable")
             if response_started:
                 # Headers are immutable once streaming begins; end the failed response.

@@ -77,6 +77,11 @@ class RunEventStreamer:
                     timeout=SSE_IDLE_TIMEOUT_SECONDS,
                 )
                 if message is None:
+                    # Redis carries hints; replay also recovers lost post-commit wakes.
+                    async for frame, cursor, terminal in self._replay.frames_after(
+                        cursor
+                    ):
+                        yield frame, terminal
                     yield SSE_IDLE_COMMENT, False
                     continue
                 channel_frame = message.get("data")

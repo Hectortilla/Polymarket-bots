@@ -7,6 +7,7 @@ from sqlalchemy import Enum
 from api.runs.status import RunStatus
 
 RUNS_TABLE_NAME = "runs"
+RUN_LAUNCH_KEY_CONSTRAINT_NAME = "uq_runs_bot_launch_key"
 RUN_STATUS_CONSTRAINT_NAME = "run_status"
 RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME = "fk_runs_bot_graph_revision"
 
@@ -23,6 +24,14 @@ class RunColumn(StrEnum):
     ENDED_AT = "ended_at"
     HEARTBEAT_AT = "heartbeat_at"
     FAILURE_DETAIL = "failure_detail"
+    LAUNCH_KEY = "launch_key"
+    EXECUTION_TOKEN = "execution_token"
+    DELIVERY_ATTEMPTED_AT = "delivery_attempted_at"
+
+
+INTERNAL_RUN_COLUMNS = frozenset(
+    {RunColumn.LAUNCH_KEY, RunColumn.EXECUTION_TOKEN, RunColumn.DELIVERY_ATTEMPTED_AT}
+)
 
 
 def run_status_column_type() -> Enum:

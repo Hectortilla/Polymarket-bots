@@ -1,20 +1,20 @@
 """Saved-bot run snapshot and delivery endpoint."""
 
+import asyncio
+import logging
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, status
-from polybot.framework.clock import system_now_utc
+from fastapi import APIRouter, Header, status
 
 from api.auth.dependencies import CurrentUserDependency
 from api.bots.store import BotStore
-from api.events.writer import publish_durable_wake
 from api.http.contracts import ErrorResponse, RequestValidationFailure
 from api.http.dependencies import (
     LauncherDependency,
-    RedisDependency,
     SessionFactoryDependency,
 )
-from api.http.lifecycle import ApiRunLifecycle
+from api.http.protocol import IDEMPOTENCY_KEY_HEADER
 from api.http.responses import NOT_FOUND_AND_CONFLICT_RESPONSES
 from api.http.routes.bots.validation import (
     require_bot,
@@ -25,11 +25,11 @@ from api.http.routes.paths import (
     BOT_RUNS_PATH,
     LAUNCH_BOT_RUN_OPERATION_ID,
 )
+from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.runs.contracts import RunRead
-from api.runs.failures import sanitized_failure_detail
 from api.runs.store import RunStore
 
-RUN_LAUNCH_FAILURE_REASON = "run launch failed"
+LOGGER = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -50,29 +50,28 @@ async def launch_bot_run(
     bot_id: UUID,
     session_factory: SessionFactoryDependency,
     user: CurrentUserDependency,
-    redis: RedisDependency,
     launcher: LauncherDependency,
+    launch_key: Annotated[UUID | None, Header(alias=IDEMPOTENCY_KEY_HEADER)] = None,
 ) -> RunRead:
     async with session_factory() as session:
         # The lock makes the committed run snapshot atomic with config and
         # revision edits; delivery starts only after that transaction commits.
         bot = require_bot(await BotStore(session, user.id).read(bot_id, lock=True))
+        store = RunStore(session)
+        existing = (
+            None if launch_key is None else await store.read_launch(bot.id, launch_key)
+        )
+        if existing is not None:
+            return existing
         definition = require_catalog_entry(bot.definition_id)
         require_run_revision_contract(definition, bot)
         bot.config.require_subscription_allowance()
-        run = await RunStore(session).create_from_bot(bot)
+        run = await store.create_from_bot(bot, launch_key=launch_key)
     try:
-        await launcher.launch(run.id)
-    except Exception as error:
-        now = system_now_utc()
-        async with session_factory() as session:
-            run, event_id = await ApiRunLifecycle(session).fail_launch(
-                run.id,
-                now=now,
-                failure_detail=sanitized_failure_detail(
-                    error,
-                    RUN_LAUNCH_FAILURE_REASON,
-                ),
-            )
-        await publish_durable_wake(redis, run.id, event_id)
+        async with asyncio.timeout(DEPENDENCY_TIMEOUT_SECONDS):
+            await launcher.launch(run.id)
+    except Exception:
+        # The committed queue row is the delivery obligation, even if the API
+        # dies here or Redis accepted the hint before the response was lost.
+        LOGGER.warning("run delivery hint unavailable; queued run awaits recovery")
     return run

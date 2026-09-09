@@ -1,0 +1,11 @@
+"""Worker delivery and graceful process shutdown bounds."""
+
+from api.limits.policy import PAPER_BETA
+
+MAX_RETAINED_WAKE_HINTS = PAPER_BETA.global_queued_runs * 2
+TASKIQ_READ_BLOCK_SECONDS = 1.0
+TASKIQ_DRAIN_SECONDS = 1
+RUNTIME_CLEANUP_SECONDS = 10.0
+TASKIQ_SHUTDOWN_SECONDS = 20
+WORKER_STOP_GRACE_SECONDS = 45
+RECOVERY_STOP_GRACE_SECONDS = 15

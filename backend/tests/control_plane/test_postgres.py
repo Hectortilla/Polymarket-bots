@@ -64,7 +64,6 @@ from api.events.store import EventStore
 from api.events.writer import RunEventWriter
 from api.execution.config import REDIS_URL_ENV
 from api.execution.worker import execute_run
-from api.execution.worker.lease import reconcile_expired_run
 from api.graph_templates.contracts import (
     GraphTemplateCreate,
     GraphTemplateUpdate,
@@ -82,8 +81,10 @@ from api.http.routes.paths import (
     api_route_path,
 )
 from api.runs.contracts import RunRead
+from api.runs.failures import INTERRUPTION_DETAIL
 from api.runs.models import RunRow
 from api.runs.schema import (
+    INTERNAL_RUN_COLUMNS,
     RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
     RUN_STATUS_CONSTRAINT_NAME,
     RUNS_TABLE_NAME,
@@ -136,7 +137,9 @@ def _alembic_config(url: str) -> Config:
 
 
 def _run_insert_statement() -> TextClause:
-    columns = ", ".join(column.value for column in RunColumn)
+    columns = ", ".join(
+        column.value for column in RunColumn if column not in INTERNAL_RUN_COLUMNS
+    )
     values = ", ".join(
         (
             f"CAST(:{column.value} AS JSONB)"
@@ -144,6 +147,7 @@ def _run_insert_statement() -> TextClause:
             else f":{column.value}"
         )
         for column in RunColumn
+        if column not in INTERNAL_RUN_COLUMNS
     )
     return text(f"INSERT INTO {RUNS_TABLE_NAME} ({columns}) VALUES ({values})")
 
@@ -156,7 +160,9 @@ async def _create_run(
     graph: NodeGraph | None = None,
     owner_user_id: UUID | None = None,
 ) -> RunRead:
-    bot = await BotStore(session, owner_user_id or await ensure_test_user(session)).create(
+    bot = await BotStore(
+        session, owner_user_id or await ensure_test_user(session)
+    ).create(
         definition_id=definition_id,
         config=config,
         graph=graph,
@@ -248,7 +254,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
 
     slice_12a_schema = asyncio.run(inspect_schema())
     assert tuple(column["name"] for column in slice_12a_schema[1]) == tuple(
-        column.value for column in RunColumn
+        column.value for column in RunColumn if column not in INTERNAL_RUN_COLUMNS
     )
     assert RUN_EVENTS_TABLE_NAME not in slice_12a_schema[0]
 
@@ -272,7 +278,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         BOTS_TABLE_NAME,
         BOT_GRAPH_REVISIONS_TABLE_NAME,
     }.issubset(table_names)
-    assert tuple(column["name"] for column in columns) == tuple(
+    assert set(column["name"] for column in columns) == set(
         RunRow.__table__.columns.keys()
     )
     database_columns = {column["name"]: column for column in columns}
@@ -496,7 +502,7 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
     downgraded_schema = asyncio.run(inspect_schema())
     assert RUN_EVENTS_TABLE_NAME not in downgraded_schema[0]
     assert tuple(column["name"] for column in downgraded_schema[1]) == tuple(
-        column.value for column in RunColumn
+        column.value for column in RunColumn if column not in INTERNAL_RUN_COLUMNS
     )
     command.downgrade(config, "base")
 
@@ -941,7 +947,7 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
 
     class FakeRedis:
         @classmethod
-        def from_url(cls, configured_url: str) -> "FakeRedis":
+        def from_url(cls, configured_url: str, **kwargs) -> "FakeRedis":
             return cls()
 
         async def publish(self, channel: str, message: str) -> int:
@@ -973,7 +979,9 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
         async def sleep(self, seconds: float) -> None:
             return None
 
-    async def run_bot(bot, runtime_config, *, observer, max_tracked_markets) -> None:
+    async def run_bot(
+        bot, runtime_config, *, observer, max_tracked_markets, execution_scope
+    ) -> None:
         await observer.start(runtime_config)
         try:
             context = BotContext(
@@ -1062,7 +1070,7 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_revision(
 
     class FakeRedis:
         @classmethod
-        def from_url(cls, configured_url: str) -> "FakeRedis":
+        def from_url(cls, configured_url: str, **kwargs) -> "FakeRedis":
             return cls()
 
         async def publish(self, channel: str, message: str) -> int:
@@ -1247,22 +1255,18 @@ def test_expired_worker_lease_interrupts_once_and_never_relaunches(
             assert await store.mark_running(run.id)
 
         writer = RunEventWriter(session_factory, FakeRedis())
-        reconciliations = await asyncio.gather(
-            *(
-                reconcile_expired_run(
-                    run.id,
-                    expired_before=now - timedelta(seconds=5),
-                    now=now,
-                    session_factory=session_factory,
-                    event_writer=writer,
+
+        async def reconcile_once():
+            async with session_factory() as session:
+                return await RunStore(session).interrupt_expired(
+                    run.id, now=now, expired_before=now - timedelta(seconds=5)
                 )
-                for _ in range(2)
-            )
-        )
+
+        reconciliations = await asyncio.gather(reconcile_once(), reconcile_once())
 
         bot_starts = 0
 
-        async def run_claimed_bot(run, observer) -> None:
+        async def run_claimed_bot(run, observer, **kwargs) -> None:
             nonlocal bot_starts
             bot_starts += 1
 
@@ -1310,7 +1314,10 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
             return AsyncSession(engine, expire_on_commit=False)
 
         async with session_factory() as session:
-            owners = [UserRow(email=f"{uuid4()}@example.com", password_hash="fixture") for _ in range(5)]
+            owners = [
+                UserRow(email=f"{uuid4()}@example.com", password_hash="fixture")
+                for _ in range(5)
+            ]
             session.add_all(owners)
             await session.commit()
             queued = await _create_run(
@@ -1439,7 +1446,7 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         assert interrupted.status is RunStatus.INTERRUPTED
         assert interrupted.ended_at == now
         assert interrupted.heartbeat_at is not None
-        assert interrupted.failure_detail is None
+        assert interrupted.failure_detail == INTERRUPTION_DETAIL
 
         other_run_id = queued_stop.id
         first = RunLifecycleEvent(
@@ -1459,6 +1466,9 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         )
         async with session_factory() as session:
             event_store = EventStore(session)
+            terminal_history = await event_store.read(queued.id)
+            assert len(terminal_history) == 1
+            assert terminal_history[0].payload.status is RunStatus.INTERRUPTED
             stored_first = await event_store.append(first)
             await event_store.append(other)
             stored_last = await event_store.append(last)
@@ -1517,15 +1527,16 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
             )
 
         assert [event.id for event in restored] == [
+            terminal_history[0].id,
             stored_first.id,
             stored_last.id,
         ]
         assert after_first == (stored_last,)
-        assert bounded == (stored_first,)
+        assert bounded == terminal_history
         assert newest_page.events == (stored_last,)
         assert newest_page.next_before_event_id == stored_last.id
         assert older_page.events == (stored_first,)
-        assert older_page.next_before_event_id is None
+        assert older_page.next_before_event_id == stored_first.id
         assert latest_samples[queued.id].payload.equity.value == Decimal("102")
         assert latest_samples[other_run_id].payload.equity.value == Decimal("201")
         assert latest_failures[queued.id].payload.error == (
@@ -1555,7 +1566,7 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
 
     class FakeRedis:
         @classmethod
-        def from_url(cls, configured_url: str) -> "FakeRedis":
+        def from_url(cls, configured_url: str, **kwargs) -> "FakeRedis":
             return cls()
 
         async def publish(self, channel: str, message: str) -> int:
@@ -1564,7 +1575,7 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
         async def aclose(self) -> None:
             return None
 
-    async def run_claimed_bot(run: RunRead, observer: object) -> None:
+    async def run_claimed_bot(run: RunRead, observer: object, **kwargs) -> None:
         nonlocal bot_starts
         bot_starts += 1
 

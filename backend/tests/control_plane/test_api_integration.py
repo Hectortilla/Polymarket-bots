@@ -30,7 +30,6 @@ from api.events.contracts import (
 from api.events.ids import FIRST_EVENT_CURSOR
 from api.events.store import EventStore
 from api.http.lifecycle import ApiRunLifecycle
-from api.http.routes.bots.run_launch import RUN_LAUNCH_FAILURE_REASON
 from api.http.sse import RunEventStreamer
 from api.http.sse.frames import (
     SSE_FIELD_SEPARATOR,
@@ -70,7 +69,7 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
         graph_config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
             {"name": "graph-lifecycle", "market_slugs": ["market"]}
         )
-        launch_failure_detail = f"RuntimeError: {RUN_LAUNCH_FAILURE_REASON}"
+        snapshot_failure_detail = "fixture invalid snapshot"
         try:
             async with session_factory() as session:
                 queued = await _create_run(
@@ -135,12 +134,13 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
                     now=datetime.now(UTC),
                 )
             async with session_factory() as session:
-                failed_run, _ = await ApiRunLifecycle(session).fail_launch(
+                assert await RunStore(session).fail_queued(
                     failed.id,
                     now=datetime.now(UTC),
-                    failure_detail=launch_failure_detail,
+                    failure_detail=snapshot_failure_detail,
                 )
             async with session_factory() as session:
+                failed_run = await RunStore(session).read(failed.id)
                 failed_events = await EventStore(session).read(failed.id)
                 running_events = await EventStore(session).read(running.id)
 
@@ -151,7 +151,7 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
             assert stopped_running[1] is None
             assert running_events == ()
             assert failed_run.status is RunStatus.FAILED
-            assert failed_run.failure_detail == launch_failure_detail
+            assert failed_run.failure_detail == snapshot_failure_detail
             assert failed_run.graph_revision == failed.graph_revision
             assert failed_run.graph == failed.graph
             assert len(failed_events) == 1
@@ -187,15 +187,9 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
             assert len(stopped_events) == 1
 
             async with session_factory() as session:
-                with pytest.raises(
-                    RuntimeError,
-                    match="queued launch failure transition was lost",
-                ):
-                    await ApiRunLifecycle(session).fail_launch(
-                        failed.id,
-                        now=datetime.now(UTC),
-                        failure_detail="duplicate",
-                    )
+                assert not await RunStore(session).fail_queued(
+                    failed.id, now=datetime.now(UTC), failure_detail="duplicate"
+                )
             async with session_factory() as session:
                 assert (
                     await ApiRunLifecycle(session).request_stop(

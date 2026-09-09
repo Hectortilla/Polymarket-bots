@@ -298,7 +298,7 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-Slices 16–17 are delivered; Slices 18–23 remain planned extensions. Adopt their product
+Slices 16–18 are delivered; Slices 19–23 remain planned extensions. Adopt their product
 policies here during each slice and keep the current private boundary until the
 complete open-signup gate passes. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
@@ -339,3 +339,15 @@ delete history or promise that existing over-allowance history has been purged.
 Authenticated requests have shared rate limits, with a tighter budget for costly
 operations. Open streams have account/global caps and bounded lifetimes; normal
 SSE reconnection resumes from the durable cursor. Dependency outages fail closed.
+
+
+### Reliable paper-run lifecycle (Slice 18)
+
+Retrying a browser launch after a lost response or reload recovers the same run.
+A confirmed launch followed by Run bot creates a new run. API clients send a UUID
+`Idempotency-Key` for retry safety; omitting it requests a deliberate fresh launch.
+Delivery outages retain the queued run for scheduled retry. A lost worker becomes
+`interrupted`, keeps committed history and explains that a new run is required.
+No paper portfolio or graph execution is automatically restored. Browser reload
+and stream reconnect read authoritative PostgreSQL history. Recovery operations
+are internal process operations, with no public HTTP route.

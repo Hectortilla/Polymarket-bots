@@ -144,3 +144,4 @@ class RunRead(BaseModel):
 
 class ClaimedRunRead(RunRead):
     started_at: datetime
+    execution_token: UUID

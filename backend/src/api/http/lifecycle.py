@@ -5,12 +5,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.events.contracts import RunLifecycleEvent
-from api.events.models import EventRow
 from api.runs.contracts import RunRead
 from api.runs.models import RunRow
-from api.runs.status import QUEUED_PREVIOUS_STATUSES, RunStatus
+from api.runs.status import RunStatus
 from api.runs.store import RunStore
+from api.runs.terminal import TerminalRunWriter
 
 type ApiRunTransition = tuple[RunRead, int | None]
 
@@ -33,48 +32,16 @@ class ApiRunLifecycle:
             await self._session.commit()
             return None
         if transition.applied_status is RunStatus.STOPPED:
-            return await self._commit_terminal(transition.row, occurred_at=now)
+            return await self._commit_terminal(transition.row)
 
         run = await RunStore(self._session).read_row(transition.row)
         await self._session.commit()
         return run, None
 
-    async def fail_launch(
-        self,
-        run_id: UUID,
-        *,
-        now: datetime,
-        failure_detail: str,
-    ) -> tuple[RunRead, int]:
-        row = await RunStore(self._session).transition_row(
-            run_id,
-            RunStatus.FAILED,
-            expected_statuses=QUEUED_PREVIOUS_STATUSES,
-            ended_at=now,
-            failure_detail=failure_detail,
-        )
-        if row is None:
-            raise RuntimeError("queued launch failure transition was lost")
-        return await self._commit_terminal(row, occurred_at=now)
-
     async def _commit_terminal(
         self,
         row: RunRow,
-        *,
-        occurred_at: datetime,
     ) -> tuple[RunRead, int]:
-        try:
-            run = await RunStore(self._session).read_row(row)
-            event = RunLifecycleEvent.from_terminal_status(
-                row.id,
-                row.status,
-                occurred_at=occurred_at,
-            )
-            event_row = EventRow.from_event(event)
-            self._session.add(event_row)
-            await self._session.flush()
-        except Exception:
-            await self._session.rollback()
-            raise
-        await self._session.commit()
-        return run, event_row.id
+        run = await RunStore(self._session).read_row(row)
+        event_id = await TerminalRunWriter(self._session).commit(row)
+        return run, event_id

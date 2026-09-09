@@ -171,3 +171,32 @@ async function installStreamLifecycleCounters(page: Page): Promise<void> {
 function streamCount(page: Page, key: string): Promise<number> {
   return page.evaluate(storageKey => Number(sessionStorage.getItem(storageKey) ?? 0), key);
 }
+
+
+test('lost launch response and reload recover one private run', async ({ page }) => {
+  await authenticate(page, `retry-${Date.now()}@example.com`, true);
+  await configureBot(page, 'Recoverable launch');
+  await page.getByRole('button', { name: BOT_BUILDER_COPY.CREATE, exact: true }).click();
+  await expect(page).toHaveURL(/\/bots\/[a-f0-9-]+$/);
+  const botUrl = page.url();
+  const launchRoute = `**${contract.apiPaths.botRuns.replace('{bot_id}', botUrl.split('/').pop()!)}`;
+  let originalRunId = '';
+  await page.route(launchRoute, async route => {
+    const response = await route.fetch();
+    originalRunId = (await response.json()).id;
+    await route.abort('failed');
+  }, { times: 1 });
+  await page.getByRole('button', { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(BOT_DETAIL_COPY.RUN_ERROR);
+  await page.reload();
+  await page.getByRole('button', { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/runs/${originalRunId}$`));
+  const history = await page.request.get(contract.apiPaths.runs);
+  expect((await history.json()).filter((run: { bot_id: string }) => run.bot_id === botUrl.split('/').pop())).toHaveLength(1);
+  await page.getByRole('button', { name: RUN_STATUS_PRESENTATION[RUN_STATUS.QUEUED].stopLabel!, exact: true }).click();
+  await expect(page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first()).toBeVisible();
+  await page.goto(botUrl);
+  await page.getByRole('button', { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
+  await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
+  expect(page.url()).not.toContain(originalRunId);
+});

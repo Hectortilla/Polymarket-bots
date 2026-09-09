@@ -35,15 +35,16 @@ configuration, and `uv sync --extra dev` installs both backend packages and the
 scripts into one environment. Frontend commands run from `frontend/`.
 Generated build products, virtual environments, and caches are not source folders.
 
-The API and worker use these entrypoints (with their database and Redis settings
+The API, worker and recovery process use these entrypoints (with their database and Redis settings
 configured in `.env`):
 
 ```sh
 uv run uvicorn api.http.app:app --env-file .env --reload --no-proxy-headers
-uv run --env-file .env taskiq worker api.execution.taskiq_app:broker --workers 1 --max-async-tasks 4
+uv run --env-file .env taskiq worker api.execution.taskiq_app:broker --workers 1 --max-async-tasks 4 --wait-tasks-timeout 1 --shutdown-timeout 20
+uv run --env-file .env python -m api.execution.recovery
 ```
 
-Restart API and worker processes together after changing their Python package
+Restart API, worker and recovery processes together after changing their Python package
 paths; drain an old worker queue before switching to the renamed task entrypoint.
 The VS Code development-stack configuration uses these same modules.
 
@@ -155,8 +156,8 @@ not included; the application still requires a local/private access boundary.
 [Public paper-beta readiness](docs/implementation-plan.md#public-paper-trading-beta-roadmap)
 now includes the delivered Slice 12F deployment foundation and Slice 16 private
 HTTPS release workflow. Slice 17 adds per-account and global resource admission,
-browser usage, and server-side expiry. Slices 18–23 remain planned: run
-reliability, account recovery, operations, data lifecycle, onboarding and
+browser usage, and server-side expiry. Slice 18 adds durable launch retries and scheduled queue/worker recovery.
+Slices 19–23 remain planned: account recovery, operations, data lifecycle, onboarding and
 launch/support information. Open signup remains gated on their acceptance.
 Marketplace work is deferred.
 

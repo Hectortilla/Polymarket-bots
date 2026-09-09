@@ -19,8 +19,8 @@ class RunAdmission:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def reserve_queue(self, bot_id: UUID) -> None:
-        await self.lock_transaction()
+    async def require_queue_capacity(self, bot_id: UUID) -> None:
+        """Require room inside the caller's admission-locked transaction."""
         owner = await self._session.scalar(
             select(BotRow.owner_user_id).where(BotRow.id == bot_id)
         )

@@ -6,19 +6,24 @@ import os
 import sys
 
 from api.deployment.schema import DeploymentSchema
+from api.deployment.services import DeploymentService
 from api.deployment.settings import API_PORT, API_WORKERS, StartupSettings
+from api.execution.policy import TASKIQ_DRAIN_SECONDS, TASKIQ_SHUTDOWN_SECONDS
+from api.execution.recovery.__main__ import serve_recovery
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("service", choices=("api", "worker", "migrate", "check"))
+    parser.add_argument(
+        "service", type=DeploymentService, choices=tuple(DeploymentService)
+    )
     service = parser.parse_args().service
     try:
         settings = StartupSettings.from_env()
     except ValueError as error:
         sys.exit(f"deployment configuration invalid: {error}")
     schema = DeploymentSchema(settings)
-    if service == "migrate":
+    if service is DeploymentService.MIGRATE:
         try:
             schema.migrate()
         except Exception:
@@ -31,9 +36,12 @@ def main() -> None:
         sys.exit(
             "deployment schema check failed; verify database availability and release compatibility"
         )
-    if service == "check":
+    if service is DeploymentService.CHECK:
         return
-    if service == "api":
+    if service is DeploymentService.RECOVERY:
+        asyncio.run(serve_recovery(settings))
+        return
+    if service is DeploymentService.API:
         command = [
             sys.executable,
             "-m",
@@ -61,6 +69,10 @@ def main() -> None:
             "1",
             "--max-async-tasks",
             str(settings.worker_concurrency),
+            "--wait-tasks-timeout",
+            str(TASKIQ_DRAIN_SECONDS),
+            "--shutdown-timeout",
+            str(TASKIQ_SHUTDOWN_SECONDS),
         ]
     os.execvp(command[0], command)
 

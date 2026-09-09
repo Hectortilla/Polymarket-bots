@@ -22,8 +22,9 @@ from api.events.kinds import EventKind
 from api.events.observer import WebRuntimeObserver
 from api.execution.config import REDIS_URL_ENV, configured_redis_url
 from api.execution.worker.lifecycle import PAPER_RUN_FAILURE_REASON
-from api.runs.contracts import RunRead
 from api.limits.policy import PAPER_BETA
+from api.runs.contracts import ClaimedRunRead, RunRead
+from api.runs.failures import ExecutionOwnershipLost
 from api.runs.status import RunStatus
 from conftest import DummyBroker
 from polybot.cli.observability.broker import ObservableBroker
@@ -52,7 +53,7 @@ def _coordinator(store, writer, session_factory=object()):
 def test_worker_completes_normally_and_writes_terminal_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def run_claimed_bot(run, observer) -> None:
+    async def run_claimed_bot(run, observer, **kwargs) -> None:
         return None
 
     async def poll(*args) -> None:
@@ -71,13 +72,12 @@ def test_worker_completes_normally_and_writes_terminal_event(
 
     assert store.transitions == [RunStatus.RUNNING, RunStatus.STOPPING]
     assert store.finished == [(RunStatus.STOPPED, None)]
-    assert writer.events[-1].payload.status is RunStatus.STOPPED
 
 
 def test_worker_writes_final_stream_health_before_terminal_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def run_claimed_bot(run, observer) -> None:
+    async def run_claimed_bot(run, observer, **kwargs) -> None:
         await observer.start(run.config.to_bot_config())
         observer.emit(StreamHealth(1, 2, 3, False, 1.0, 4, 1))
         await observer.stop()
@@ -99,9 +99,7 @@ def test_worker_writes_final_stream_health_before_terminal_lifecycle(
     assert [event.kind for event in writer.events] == [
         EventKind.CHART_SAMPLE,
         EventKind.STREAM_HEALTH,
-        EventKind.RUN_LIFECYCLE,
     ]
-    assert writer.events[-1].payload.status is RunStatus.STOPPED
 
 
 def test_worker_cooperative_stop_finishes_stopped(
@@ -109,7 +107,7 @@ def test_worker_cooperative_stop_finishes_stopped(
 ) -> None:
     started = asyncio.Event()
 
-    async def run_claimed_bot(run, observer) -> None:
+    async def run_claimed_bot(run, observer, **kwargs) -> None:
         started.set()
         await asyncio.Future()
 
@@ -130,7 +128,6 @@ def test_worker_cooperative_stop_finishes_stopped(
     asyncio.run(_coordinator(store, writer).execute(uuid4()))
 
     assert store.finished == [(RunStatus.STOPPED, None)]
-    assert writer.events[-1].payload.status is RunStatus.STOPPED
 
 
 def test_worker_cancellation_finishes_interrupted_and_propagates(
@@ -139,7 +136,7 @@ def test_worker_cancellation_finishes_interrupted_and_propagates(
     async def scenario() -> tuple[_FakeRunStore, _CollectingEventWriter]:
         started = asyncio.Event()
 
-        async def run_claimed_bot(run, observer) -> None:
+        async def run_claimed_bot(run, observer, **kwargs) -> None:
             started.set()
             await asyncio.Future()
 
@@ -164,7 +161,6 @@ def test_worker_cancellation_finishes_interrupted_and_propagates(
     store, writer = asyncio.run(scenario())
 
     assert store.finished == [(RunStatus.INTERRUPTED, None)]
-    assert writer.events[-1].payload.status is RunStatus.INTERRUPTED
 
 
 def test_worker_failure_detail_is_sanitized(
@@ -172,7 +168,7 @@ def test_worker_failure_detail_is_sanitized(
 ) -> None:
     secret = "postgresql://user:secret@example.invalid/database"
 
-    async def run_claimed_bot(run, observer) -> None:
+    async def run_claimed_bot(run, observer, **kwargs) -> None:
         raise RuntimeError(secret)
 
     async def poll(*args) -> None:
@@ -193,7 +189,6 @@ def test_worker_failure_detail_is_sanitized(
     assert status is RunStatus.FAILED
     assert detail == f"RuntimeError: {PAPER_RUN_FAILURE_REASON}"
     assert secret not in detail
-    assert writer.events[-1].payload.status is RunStatus.FAILED
 
 
 def test_worker_redelivery_does_not_restart_nonqueued_run(
@@ -201,7 +196,7 @@ def test_worker_redelivery_does_not_restart_nonqueued_run(
 ) -> None:
     called = False
 
-    async def run_claimed_bot(run, observer) -> None:
+    async def run_claimed_bot(run, observer, **kwargs) -> None:
         nonlocal called
         called = True
 
@@ -214,16 +209,13 @@ def test_worker_redelivery_does_not_restart_nonqueued_run(
     assert store.finished == []
 
 
-def test_worker_claim_failure_records_sanitized_failure() -> None:
+def test_worker_infrastructure_claim_failure_propagates() -> None:
     store = _ClaimFailureStore()
     writer = _CollectingEventWriter()
 
-    asyncio.run(_coordinator(store, writer).execute(uuid4()))
-
-    assert store.finished == [
-        (RunStatus.FAILED, f"RuntimeError: {PAPER_RUN_FAILURE_REASON}")
-    ]
-    assert writer.events[-1].payload.status is RunStatus.FAILED
+    with pytest.raises(RuntimeError, match="sensitive database detail"):
+        asyncio.run(_coordinator(store, writer).execute(uuid4()))
+    assert store.finished == []
 
 
 def test_worker_completes_stop_that_wins_before_runtime_start() -> None:
@@ -234,36 +226,6 @@ def test_worker_completes_stop_that_wins_before_runtime_start() -> None:
 
     assert store.transitions == [RunStatus.STOPPING]
     assert store.finished == [(RunStatus.STOPPED, None)]
-    assert writer.events[-1].payload.status is RunStatus.STOPPED
-
-
-def test_terminal_event_failure_does_not_change_run_outcome() -> None:
-    store = _FakeRunStore(_run())
-    writer = _CollectingEventWriter(fail=True)
-
-    asyncio.run(
-        _coordinator(store, writer)._finish_run(
-            uuid4(),
-            RunStatus.FAILED,
-            failure_detail=PAPER_RUN_FAILURE_REASON,
-        )
-    )
-
-    assert store.finished == [(RunStatus.FAILED, PAPER_RUN_FAILURE_REASON)]
-
-
-def test_terminal_event_is_not_written_when_finish_loses_transition() -> None:
-    store = _RejectedFinishStore(_run())
-    writer = _CollectingEventWriter()
-
-    asyncio.run(
-        _coordinator(store, writer)._finish_run(
-            uuid4(),
-            RunStatus.FAILED,
-        )
-    )
-
-    assert writer.events == []
 
 
 def test_claimed_runtime_uses_exact_catalog_factory_and_observer(
@@ -277,7 +239,9 @@ def test_claimed_runtime_uses_exact_catalog_factory_and_observer(
         received.append(("factory", config, None))
         return BaseBot()
 
-    async def run_bot(bot, config, *, observer, max_tracked_markets) -> None:
+    async def run_bot(
+        bot, config, *, observer, max_tracked_markets, execution_scope
+    ) -> None:
         assert max_tracked_markets == PAPER_BETA.tracked_markets_per_run
         received.append((bot, config, observer))
 
@@ -301,7 +265,9 @@ def test_claimed_runtime_executes_an_actual_non_node_catalog_factory(
     run = _run()
     executed: list[BaseBot] = []
 
-    async def run_bot(bot, config, *, observer, max_tracked_markets) -> None:
+    async def run_bot(
+        bot, config, *, observer, max_tracked_markets, execution_scope
+    ) -> None:
         executed.append(bot)
         context = BotContext(
             config=config,
@@ -393,7 +359,9 @@ def test_node_based_action_graph_submits_each_matching_event(
     broker.submit.side_effect = DummyBroker([]).submit
     received: list[tuple[BaseBot, object]] = []
 
-    async def run_bot(bot, runtime_config, *, observer, max_tracked_markets) -> None:
+    async def run_bot(
+        bot, runtime_config, *, observer, max_tracked_markets, execution_scope
+    ) -> None:
         received.append((bot, runtime_config))
         context = BotContext(
             config=runtime_config,
@@ -481,7 +449,9 @@ def test_node_based_runtime_uses_paper_broker_and_durable_event_path(
                 accepting_orders=True,
             )
 
-    async def run_bot(bot, runtime_config, *, observer, max_tracked_markets) -> None:
+    async def run_bot(
+        bot, runtime_config, *, observer, max_tracked_markets, execution_scope
+    ) -> None:
         valid_book = BookSnapshot(
             token_id="token",
             bids=(BookLevel(Decimal("0.49"), Decimal(10)),),
@@ -582,7 +552,9 @@ def test_worker_poll_transitions_stop_before_cancelling_bot(
 
         store = _MonitorStore([RunStatus.STOP_REQUESTED])
         monkeypatch.setattr(worker_lifecycle.asyncio, "sleep", no_delay)
-        monkeypatch.setattr(worker_lifecycle, "RunStore", lambda session: store)
+        monkeypatch.setattr(
+            worker_lifecycle, "RunStore", lambda session, **kwargs: store
+        )
         bot_task = asyncio.create_task(_wait_forever())
         cooperative_stop = asyncio.Event()
         await _coordinator(
@@ -609,9 +581,11 @@ def test_worker_poll_heartbeats_while_run_is_owned(
 
         store = _MonitorStore([RunStatus.RUNNING, None])
         monkeypatch.setattr(worker_lifecycle.asyncio, "sleep", no_delay)
-        monkeypatch.setattr(worker_lifecycle, "RunStore", lambda session: store)
+        monkeypatch.setattr(
+            worker_lifecycle, "RunStore", lambda session, **kwargs: store
+        )
         bot_task = asyncio.create_task(_wait_forever())
-        with pytest.raises(RuntimeError, match="disappeared"):
+        with pytest.raises(ExecutionOwnershipLost, match="disappeared"):
             await _coordinator(
                 _FakeRunStore(None),
                 _CollectingEventWriter(),
@@ -629,13 +603,20 @@ def test_worker_poll_heartbeats_while_run_is_owned(
 
 
 class _FakeRunStore:
+    def owned_by(self, lease):
+        return self
+
     def __init__(self, run: RunRead | None) -> None:
         self.run = run
         self.transitions: list[RunStatus] = []
         self.finished: list[tuple[RunStatus, str | None]] = []
 
     async def claim(self, run_id, *, now):
-        return None if self.run is None else self.run.model_copy(update={"started_at": now})
+        return (
+            None
+            if self.run is None
+            else self.run.model_copy(update={"started_at": now})
+        )
 
     async def mark_running(self, run_id) -> bool:
         self.transitions.append(RunStatus.RUNNING)
@@ -654,6 +635,9 @@ class _CollectingEventWriter:
     def __init__(self, *, fail: bool = False) -> None:
         self.events: list[DurableEvent] = []
         self._fail = fail
+
+    def for_execution(self, execution_token, lease_seconds):
+        return self
 
     async def append(self, event):
         self.events.append(event)
@@ -693,11 +677,6 @@ class _PrestartStopStore(_FakeRunStore):
         return True
 
 
-class _RejectedFinishStore(_FakeRunStore):
-    async def finish(self, run_id, *, status, now, failure_detail=None) -> bool:
-        return False
-
-
 class _SessionFactory:
     def __call__(self):
         return self
@@ -710,6 +689,9 @@ class _SessionFactory:
 
 
 class _MonitorStore:
+    def owned_by(self, lease):
+        return self
+
     def __init__(self, statuses: list[RunStatus | None]) -> None:
         self._statuses = iter(statuses)
         self.stopping = False
@@ -728,7 +710,9 @@ class _MonitorStore:
 
 
 def _run() -> RunRead:
-    return RunRead(
+    return ClaimedRunRead(
+        execution_token=uuid4(),
+        started_at=datetime.now(UTC),
         id=uuid4(),
         bot_id=uuid4(),
         definition_id=WINNER_DEFINITION_ID,
@@ -745,7 +729,7 @@ async def _wait_forever() -> None:
 def test_monitor_failure_stops_bot_and_records_failed_outcome(monkeypatch):
     stopped = False
 
-    async def bot(run, observer):
+    async def bot(run, observer, **kwargs):
         nonlocal stopped
         try:
             await asyncio.Future()
@@ -769,4 +753,73 @@ def test_monitor_failure_stops_bot_and_records_failed_outcome(monkeypatch):
     )
     assert stopped
     assert store.finished[0][0] is RunStatus.FAILED
-    assert writer.events[-1].payload.status is RunStatus.FAILED
+
+
+def test_lease_loss_monitor_cancels_runtime_as_interrupted(monkeypatch):
+    async def scenario():
+        stopped = asyncio.Event()
+
+        async def runtime(run, observer, **kwargs):
+            try:
+                await asyncio.Future()
+            finally:
+                stopped.set()
+
+        monitor = _MonitorStore([RunStatus.RUNNING])
+        monitor.heartbeat = AsyncMock(return_value=False)
+        monkeypatch.setattr(worker_lifecycle, "RunStore", lambda session: monitor)
+        monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", runtime)
+        store = _FakeRunStore(_run())
+        coordinator = worker_lifecycle.RunLifecycleCoordinator(
+            store, _SessionFactory(), _CollectingEventWriter(), heartbeat_seconds=0.001
+        )
+        await asyncio.wait_for(coordinator.execute(uuid4()), timeout=1)
+        assert stopped.is_set()
+        assert store.finished == [(RunStatus.INTERRUPTED, None)]
+
+    asyncio.run(scenario())
+
+
+def test_stop_with_cancellation_resistant_cleanup_has_a_bound(monkeypatch):
+    async def scenario():
+        entered_cleanup = asyncio.Event()
+        release = asyncio.Event()
+        started = asyncio.Event()
+
+        async def runtime(run, observer, **kwargs):
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                entered_cleanup.set()
+                while not release.is_set():
+                    try:
+                        await release.wait()
+                    except asyncio.CancelledError:
+                        continue
+
+        async def stop(self, run_id, bot_task, cooperative_stop):
+            await started.wait()
+            cooperative_stop.set()
+            bot_task.cancel()
+
+        monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", runtime)
+        monkeypatch.setattr(
+            worker_lifecycle.RunLifecycleCoordinator,
+            "_poll_stop_request_and_heartbeat",
+            stop,
+        )
+        monkeypatch.setattr(worker_lifecycle, "RUNTIME_CLEANUP_SECONDS", 0.01)
+        store = _FakeRunStore(_run())
+        try:
+            await asyncio.wait_for(
+                _coordinator(store, _CollectingEventWriter()).execute(uuid4()),
+                timeout=1,
+            )
+            assert entered_cleanup.is_set()
+            assert store.finished == [(RunStatus.INTERRUPTED, None)]
+        finally:
+            release.set()
+            await asyncio.sleep(0)
+
+    asyncio.run(scenario())

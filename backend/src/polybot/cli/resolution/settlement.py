@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from time import monotonic
 
 from polybot.cli.followed_wallets.tracker import FollowedWalletTracker
@@ -12,6 +13,7 @@ from polybot.cli.observability.observer import (
     emit_observer_fail_open,
 )
 from polybot.cli.tracked_markets import TrackedMarketRegistry
+from polybot.execution.ownership import ExecutionScope
 from polybot.execution.paper import PaperBroker
 from polybot.framework.clock import system_now_ms
 from polybot.framework.events.resolutions import (
@@ -36,12 +38,14 @@ class ResolutionSettlementService:
         followed_wallets: FollowedWalletTracker,
         paper_broker: PaperBroker,
         observer: RuntimeObserver | None,
+        execution_scope: ExecutionScope = nullcontext,
     ) -> None:
         self._runner = runner
         self._registry = registry
         self._followed_wallets = followed_wallets
         self._paper_broker = paper_broker
         self._observer = observer
+        self._execution_scope = execution_scope
 
     async def settle_existing(self) -> None:
         """Settle Gamma markets already resolved before streams open."""
@@ -72,30 +76,31 @@ class ResolutionSettlementService:
                 )
         if tracked is None:
             return None
-        paper_snapshot = self._paper_broker.snapshot()
-        followed_snapshot = self._followed_wallets.snapshot()
-        try:
-            paper_positions = self._paper_broker.settle_market(event)
-            followed_wallet_positions = self._followed_wallets.settle(event)
-        except Exception:
-            self._paper_broker.restore(paper_snapshot)
-            self._followed_wallets.restore(followed_snapshot)
-            raise
-        settlement = MarketSettlementEvent(
-            resolution=event,
-            paper_positions=paper_positions,
-            followed_wallet_positions=followed_wallet_positions,
-            settled_at_ms=system_now_ms(),
-        )
-        self._registry.resolve(event.condition_id)
-        if self._observer is not None:
-            emit_observer_fail_open(
-                self._observer,
-                MarketSettled(
-                    settlement,
-                    PortfolioSnapshot.from_paper(self._paper_broker.portfolio),
-                    monotonic(),
-                ),
+        async with self._execution_scope():
+            paper_snapshot = self._paper_broker.snapshot()
+            followed_snapshot = self._followed_wallets.snapshot()
+            try:
+                paper_positions = self._paper_broker.settle_market(event)
+                followed_wallet_positions = self._followed_wallets.settle(event)
+            except Exception:
+                self._paper_broker.restore(paper_snapshot)
+                self._followed_wallets.restore(followed_snapshot)
+                raise
+            settlement = MarketSettlementEvent(
+                resolution=event,
+                paper_positions=paper_positions,
+                followed_wallet_positions=followed_wallet_positions,
+                settled_at_ms=system_now_ms(),
             )
+            self._registry.resolve(event.condition_id)
+            if self._observer is not None:
+                emit_observer_fail_open(
+                    self._observer,
+                    MarketSettled(
+                        settlement,
+                        PortfolioSnapshot.from_paper(self._paper_broker.portfolio),
+                        monotonic(),
+                    ),
+                )
         await self._runner.dispatch_market_resolution(event)
         return settlement

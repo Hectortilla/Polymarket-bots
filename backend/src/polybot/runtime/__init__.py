@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import warnings
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from time import monotonic
@@ -23,6 +24,7 @@ from polybot.cli.observability.observer import (
     stop_observer_fail_open,
 )
 from polybot.cli.runner.factory import create_runtime
+from polybot.execution.ownership import ExecutionScope
 from polybot.framework.base import BaseBot
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
@@ -51,6 +53,7 @@ async def run_bot(
     bot_spec: str | None = None,
     report_interval_ms: int = DEFAULT_REPORT_INTERVAL_MS,
     max_tracked_markets: int | None = None,
+    execution_scope: ExecutionScope = nullcontext,
 ) -> None:
     """Run one bot using public market data and the paper broker."""
     if config.mode is BotMode.LIVE:
@@ -65,6 +68,7 @@ async def run_bot(
         runtime_observer,
         public_data=public_data,
         max_tracked_markets=max_tracked_markets,
+        execution_scope=execution_scope,
     )
     paper_broker = runtime.paper_broker
     ctx = runtime.ctx
@@ -119,6 +123,7 @@ async def run_bot(
             runtime,
             wallet_source=wallet_source,
             observer=runtime_observer,
+            execution_scope=execution_scope,
         )
     except asyncio.CancelledError:
         if performance_recorder is not None:

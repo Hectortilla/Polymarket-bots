@@ -132,7 +132,7 @@ def process_drain_queue(settings):
     completed = []
     startup = StartupSettings(database_url=settings[0], redis_url=settings[1])
 
-    async def runtime(run, observer):
+    async def runtime(run, observer, **kwargs):
         completed.append(run.id)
         await asyncio.sleep(0.03)
 
@@ -147,7 +147,7 @@ def process_drain_queue(settings):
 def process_gated_queue_drain(settings, started, release):
     startup = StartupSettings(database_url=settings[0], redis_url=settings[1])
 
-    async def runtime(run, observer):
+    async def runtime(run, observer, **kwargs):
         await asyncio.to_thread(started.append, run.id)
         if not await asyncio.to_thread(release.wait, 15):
             raise TimeoutError("worker capacity test gate was not released")

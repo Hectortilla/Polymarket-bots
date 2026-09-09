@@ -1,5 +1,6 @@
 """Shared HTTP wire names and private cache policy."""
 
+IDEMPOTENCY_KEY_HEADER = "Idempotency-Key"
 CONTENT_TYPE_HEADER = "Content-Type"
 JSON_CONTENT_TYPE = "application/json"
 RETRY_AFTER_HEADER = "Retry-After"

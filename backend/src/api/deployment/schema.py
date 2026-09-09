@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from api.deployment.settings import StartupSettings
+from api.io_policy import DATABASE_CONNECT_ARGS, DEPENDENCY_TIMEOUT_SECONDS
 
 ALEMBIC_CONFIG = Path("backend/alembic.ini")
 
@@ -33,7 +34,10 @@ class DeploymentSchema:
     async def require_compatible(self) -> None:
         expected = await asyncio.to_thread(self.expected_revision)
         engine = create_async_engine(
-            self.settings.database_url.get_secret_value(), hide_parameters=True
+            self.settings.database_url.get_secret_value(),
+            hide_parameters=True,
+            connect_args=DATABASE_CONNECT_ARGS,
+            pool_timeout=DEPENDENCY_TIMEOUT_SECONDS,
         )
         try:
             async with engine.connect() as connection:

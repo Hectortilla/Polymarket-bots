@@ -134,7 +134,7 @@ def test_replay_recheck_and_wake_share_the_latest_cursor(
         2,
         3,
     )
-    assert SSE_IDLE_COMMENT in frames
+    assert SSE_IDLE_COMMENT not in frames
     assert cursors == [0, 1, 2]
 
 
@@ -315,7 +315,6 @@ def test_redis_failure_ends_stream_and_releases_subscription(monkeypatch, caplog
     assert pubsub.unsubscribed and pubsub.closed
     assert "required service is unavailable" in caplog.text
     assert "private infrastructure detail" not in caplog.text
-
 
 
 def test_database_replay_failure_is_sanitized_before_subscribing(monkeypatch, caplog):

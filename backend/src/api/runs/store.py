@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,12 @@ from api.bots.store import BotStore
 from api.limits.admission import RunAdmission
 from api.limits.policy import PAPER_BETA
 from api.runs.contracts import ClaimedRunRead, PaperRunConfig, RunRead
+from api.runs.failures import (
+    INTERRUPTION_DETAIL,
+    ExecutionOwnershipLost,
+    RunSnapshotError,
+)
+from api.runs.lease import ExecutionLease
 from api.runs.models import RunRow
 from api.runs.status import (
     INTERRUPTIBLE_RUN_STATUSES,
@@ -22,6 +28,7 @@ from api.runs.status import (
     TERMINAL_RUN_STATUSES,
     RunStatus,
 )
+from api.runs.terminal import TerminalRunWriter
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,11 +41,31 @@ class RunStore:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create_from_bot(self, bot: BotRead) -> RunRead:
-        await RunAdmission(self._session).reserve_queue(bot.id)
+    def owned_by(self, lease: ExecutionLease) -> "OwnedRunStore":
+        return OwnedRunStore(self._session, lease)
+
+    async def read_launch(self, bot_id: UUID, launch_key: UUID) -> RunRead | None:
+        row = await self._session.scalar(
+            select(RunRow).where(
+                RunRow.bot_id == bot_id, RunRow.launch_key == launch_key
+            )
+        )
+        return None if row is None else await self._read_row(row)
+
+    async def create_from_bot(
+        self, bot: BotRead, *, launch_key: UUID | None = None
+    ) -> RunRead:
+        await RunAdmission(self._session).lock_transaction()
+        if launch_key is not None:
+            existing = await self.read_launch(bot.id, launch_key)
+            if existing is not None:
+                await self._session.commit()
+                return existing
+        await RunAdmission(self._session).require_queue_capacity(bot.id)
         revision = bot.latest_graph_revision
         row = RunRow(
             bot_id=bot.id,
+            launch_key=launch_key,
             definition_id=bot.definition_id,
             config=bot.config.model_dump(mode="json"),
             bot_graph_revision_id=None if revision is None else revision.id,
@@ -99,7 +126,12 @@ class RunStore:
         statement = (
             update(RunRow)
             .where(RunRow.id == run_id, RunRow.status == RunStatus.QUEUED)
-            .values(status=RunStatus.STARTING, started_at=now, heartbeat_at=now)
+            .values(
+                status=RunStatus.STARTING,
+                started_at=now,
+                heartbeat_at=now,
+                execution_token=uuid4(),
+            )
             .returning(RunRow)
         )
         row = (await self._session.execute(statement)).scalar_one_or_none()
@@ -107,8 +139,9 @@ class RunStore:
             await self._session.commit()
             return None
         try:
-            claimed = ClaimedRunRead.model_validate(
-                await self._read_row(row), from_attributes=True
+            claimed = ClaimedRunRead(
+                **dict(await self._read_row(row)),
+                execution_token=row.execution_token,
             )
         except Exception:
             await self._session.rollback()
@@ -124,7 +157,10 @@ class RunStore:
 
     async def request_stop(self, run_id: UUID, *, now: datetime) -> RunStatus | None:
         transition = await self.request_stop_transition(run_id, now=now)
-        await self._session.commit()
+        if transition.applied_status is RunStatus.STOPPED:
+            await TerminalRunWriter(self._session).commit(transition.row)
+        else:
+            await self._session.commit()
         return None if transition.row is None else transition.row.status
 
     async def request_stop_transition(
@@ -168,6 +204,17 @@ class RunStore:
         row = await self._session.get(RunRow, run_id)
         return None if row is None else row.status
 
+    async def fail_queued(
+        self, run_id: UUID, *, now: datetime, failure_detail: str
+    ) -> bool:
+        return await self._transition(
+            run_id,
+            RunStatus.FAILED,
+            expected_statuses=QUEUED_PREVIOUS_STATUSES,
+            ended_at=now,
+            failure_detail=failure_detail,
+        )
+
     async def finish(
         self,
         run_id: UUID,
@@ -175,6 +222,7 @@ class RunStore:
         status: RunStatus,
         now: datetime,
         failure_detail: str | None = None,
+        execution_lease: ExecutionLease | None = None,
     ) -> bool:
         if status not in TERMINAL_RUN_STATUSES:
             raise ValueError("finish requires a terminal run status")
@@ -187,6 +235,7 @@ class RunStore:
             expected_statuses=expected_statuses,
             ended_at=now,
             failure_detail=failure_detail,
+            execution_lease=execution_lease,
         )
 
     async def interrupt_expired(
@@ -210,22 +259,36 @@ class RunStore:
         *,
         expected_statuses: frozenset[RunStatus] | None = None,
         expired_before: datetime | None = None,
+        execution_lease: ExecutionLease | None = None,
         **transition_updates: object,
     ) -> RunRow | None:
         if status in TERMINAL_RUN_STATUSES:
             await RunAdmission(self._session).lock_transaction()
+        if execution_lease is not None:
+            try:
+                await execution_lease.require(self._session, run_id)
+            except ExecutionOwnershipLost:
+                await self._session.rollback()
+                return None
+        if status is RunStatus.INTERRUPTED:
+            transition_updates["failure_detail"] = INTERRUPTION_DETAIL
         allowed_previous = status.previous_statuses()
         expected = expected_statuses or allowed_previous
         if not expected or not expected.issubset(allowed_previous):
             raise ValueError(f"invalid previous statuses for transition to {status}")
         statement = (
             update(RunRow)
-            .where(RunRow.id == run_id, RunRow.status.in_(expected))
+            .where(
+                RunRow.id == run_id,
+                RunRow.status.in_(expected),
+            )
             .values(status=status, **transition_updates)
             .returning(RunRow)
         )
         if expired_before is not None:
-            statement = statement.where(RunRow.heartbeat_at < expired_before)
+            statement = statement.where(
+                ExecutionLease.expired_predicate(expired_before)
+            )
         return (await self._session.execute(statement)).scalar_one_or_none()
 
     async def read_row(self, row: RunRow) -> RunRead:
@@ -263,7 +326,10 @@ class RunStore:
             expected_statuses=expected_statuses,
             **transition_updates,
         )
-        await self._session.commit()
+        if row is not None and status in TERMINAL_RUN_STATUSES:
+            await TerminalRunWriter(self._session).commit(row)
+        else:
+            await self._session.commit()
         return row is not None
 
     @staticmethod
@@ -293,7 +359,53 @@ class RunStore:
                 else BotStore.revision_from_row(revision_row)
             )
             if revision is None:
-                raise ValueError(
+                raise RunSnapshotError(
                     "run graph revision is missing or owned by another bot"
                 )
         return self.read_from_row(row, revision)
+
+
+class OwnedRunStore:
+    """Narrow worker capability: every mutation requires its immutable lease."""
+
+    def __init__(self, session: AsyncSession, lease: ExecutionLease) -> None:
+        self._session = session
+        self._store = RunStore(session)
+        self._lease = lease
+
+    async def status(self, run_id: UUID) -> RunStatus | None:
+        return await self._store.status(run_id)
+
+    async def mark_running(self, run_id: UUID) -> bool:
+        return await self._store._transition(
+            run_id, RunStatus.RUNNING, execution_lease=self._lease
+        )
+
+    async def begin_stopping(self, run_id: UUID) -> bool:
+        return await self._store._transition(
+            run_id, RunStatus.STOPPING, execution_lease=self._lease
+        )
+
+    async def heartbeat(self, run_id: UUID, *, now: datetime) -> bool:
+        try:
+            await self._lease.require(self._session, run_id)
+        except ExecutionOwnershipLost:
+            await self._session.rollback()
+            return False
+        return await self._store.heartbeat(run_id, now=now)
+
+    async def finish(
+        self,
+        run_id: UUID,
+        *,
+        status: RunStatus,
+        now: datetime,
+        failure_detail: str | None = None,
+    ) -> bool:
+        return await self._store.finish(
+            run_id,
+            status=status,
+            now=now,
+            failure_detail=failure_detail,
+            execution_lease=self._lease,
+        )

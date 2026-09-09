@@ -1,3 +1,4 @@
+import { IDEMPOTENCY_KEY_HEADER } from '$lib/api/http';
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from '$lib/limits/testFixtures';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -122,6 +123,7 @@ describe('saved-bot detail page', () => {
     });
     expect(mocks.launchRun).toHaveBeenCalledWith({
       path: { bot_id: BOT.id },
+      headers: { [IDEMPOTENCY_KEY_HEADER]: expect.any(String) },
       throwOnError: true
     });
     expect(mocks.goto).toHaveBeenCalledWith(

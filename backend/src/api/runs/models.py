@@ -4,7 +4,14 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from polybot.framework.clock import system_now_utc
-from sqlalchemy import Column, DateTime, ForeignKey, ForeignKeyConstraint, String
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
@@ -17,6 +24,7 @@ from api.bots.schema import (
 )
 from api.runs.schema import (
     RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
+    RUN_LAUNCH_KEY_CONSTRAINT_NAME,
     RUNS_TABLE_NAME,
     RunColumn,
     run_status_column_type,
@@ -27,6 +35,9 @@ from api.runs.status import RunStatus
 class RunRow(SQLModel, table=True):
     __tablename__ = RUNS_TABLE_NAME
     __table_args__ = (
+        UniqueConstraint(
+            RunColumn.BOT_ID, RunColumn.LAUNCH_KEY, name=RUN_LAUNCH_KEY_CONSTRAINT_NAME
+        ),
         ForeignKeyConstraint(
             [RunColumn.BOT_ID, RunColumn.BOT_GRAPH_REVISION_ID],
             [
@@ -95,6 +106,18 @@ class RunRow(SQLModel, table=True):
     heartbeat_at: datetime | None = Field(
         default=None,
         sa_column=Column(RunColumn.HEARTBEAT_AT, DateTime(timezone=True)),
+    )
+    launch_key: UUID | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.LAUNCH_KEY, PostgreSQLUUID(as_uuid=True)),
+    )
+    execution_token: UUID | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.EXECUTION_TOKEN, PostgreSQLUUID(as_uuid=True)),
+    )
+    delivery_attempted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(RunColumn.DELIVERY_ATTEMPTED_AT, DateTime(timezone=True)),
     )
     failure_detail: str | None = Field(
         default=None,

@@ -4,7 +4,7 @@ export const BOT_DETAIL_COPY = {
   LOAD_ERROR: 'The saved bot could not be loaded.',
   NOT_FOUND: 'Bot not found.',
   RUN: 'Run bot',
-  RUN_ERROR: 'The bot run could not be started.',
+  RUN_ERROR: 'The launch result could not be confirmed. Retry to recover the same run; reload also preserves this attempt.',
   SAVE_CHANGES: 'Save changes',
   SAVED: 'saved',
   SAVING_CHANGES: 'Saving changes',

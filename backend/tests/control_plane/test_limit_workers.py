@@ -104,6 +104,7 @@ def test_elapsed_startup_expires_immediately(limits_services, monkeypatch):
                     now=system_now_utc()
                     - timedelta(seconds=PAPER_BETA.run_duration_seconds + 1),
                 )
+                await store.heartbeat(queued.id, now=system_now_utc())
                 monkeypatch.setattr(store, "claim", AsyncMock(return_value=claimed))
 
                 runtime = AsyncMock(side_effect=AssertionError("expired run executed"))

@@ -7,13 +7,14 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from dotenv import dotenv_values
 from api.auth.config import AUTH_ORIGIN_ENV, AuthSettings
+from api.deployment.services import APPLICATION_SERVICES
 from api.deployment.settings import RELEASE_ID_ENV, RELEASE_ID_PATTERN
+from dotenv import dotenv_values
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 COMPOSE_FILE = REPOSITORY / "deploy" / "compose.yaml"
-APPLICATION_SERVICES = ("entrypoint", "api", "worker")
+
 IMAGE_VARIABLES = (
     "POLYBOT_BACKEND_IMAGE",
     "POLYBOT_FRONTEND_IMAGE",
@@ -34,12 +35,12 @@ class BetaRelease:
         self.compose("up", "-d", "--no-recreate", "--wait", "postgres", "redis")
         # Close ingress before quiescing application processes; migration failure
         # leaves the service closed and preserves the database for forward repair.
-        self.compose("stop", "entrypoint")
-        self.compose("stop", "api", "worker")
+        self.compose("stop", APPLICATION_SERVICES[0])
+        self.compose("stop", *APPLICATION_SERVICES[1:])
         self.compose(
             "run", "--rm", "--no-deps", "migrate", "check" if rollback else "migrate"
         )
-        self.compose("up", "-d", "--no-deps", "--wait", "api", "worker")
+        self.compose("up", "-d", "--no-deps", "--wait", *APPLICATION_SERVICES[1:])
         self.compose("up", "-d", "--no-deps", "--wait", "entrypoint")
 
     def compose(self, *arguments: str) -> None:

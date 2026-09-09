@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from itertools import count
 
 from polybot.execution.broker import Broker
 from polybot.execution.order_validation import validate_order
+from polybot.execution.ownership import ExecutionScope
 from polybot.framework.clock import Clock, ClockDataExhaustedError, SystemClock
 from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BookClient, MarketClient
@@ -69,10 +71,12 @@ class PaperBroker(Broker):
         sleep_fn: SleepFn | None = None,
         now_ms_fn: NowMsFn | None = None,
         continuity_source: BookContinuitySource | None = None,
+        execution_scope: ExecutionScope = nullcontext,
     ) -> None:
         if clock is not None and (sleep_fn is not None or now_ms_fn is not None):
             raise ValueError("clock cannot be combined with sleep_fn or now_ms_fn")
         runtime_clock = clock if clock is not None else SystemClock()
+        self._execution_scope = execution_scope
         self._config = config
         self._books = books
         self._markets = markets
@@ -237,74 +241,77 @@ class PaperBroker(Broker):
         final_market = await self._validated_market_data(order_id, order, final_book)
         if isinstance(final_market, FillEvent):
             return final_market
-        # Metadata may change during the book read, and its lookup may age the
-        # book. Reconcile both inputs at the current clock before any mutation.
-        final_book = self._validated_book_snapshot(
-            order_id,
-            order,
-            final_book.book,
-            fill_time_ms=max(start_ms + selected_latency_ms, self._now_ms()),
-        )
-        if isinstance(final_book, FillEvent):
-            return final_book
-        # The final lookup may yield to resolution or gap handling. Keep these
-        # local checks and the portfolio mutation in the same uninterrupted turn.
-        if self._is_settled(final_market.market.condition_id):
-            return self._rejected_fill(
+        # The host can fence ownership after all awaits and before the final
+        # book revalidation and synchronous portfolio mutation.
+        async with self._execution_scope():
+            # Metadata may change during the book read, and its lookup may age the
+            # book. Reconcile both inputs at the current clock before any mutation.
+            final_book = self._validated_book_snapshot(
                 order_id,
                 order,
-                received_at_ms=final_book.fill_time_ms,
-                reject_reason=FillRejectReason.MARKET_RESOLVED,
-                reject_message=MARKET_RESOLVED_MESSAGE,
+                final_book.book,
+                fill_time_ms=max(start_ms + selected_latency_ms, self._now_ms()),
             )
-        if initial_continuity is not None and initial_continuity.was_disrupted_by(
-            self._book_continuity(order.token_id)
-        ):
-            return self._coverage_gap_rejection(order_id, order)
-        final_market_reject = final_market.validate(order, final_book.book)
-        if final_market_reject is not None:
-            return self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=final_book.fill_time_ms,
-                reject_reason=final_market_reject[0],
-                reject_message=final_market_reject[1],
-            )
-        fill = simulate_fill(
-            order=order,
-            book=final_book.book,
-            fee_rate=final_market.fee_rate,
-            max_slippage_pct=self._config.max_slippage_pct,
-            order_id=order_id,
-            fill_time_ms=final_book.fill_time_ms,
-        )
-        if fill is None:
-            return self._rejected_fill(
-                order_id,
-                order,
-                received_at_ms=final_book.fill_time_ms,
-                reject_reason=FillRejectReason.NO_DEPTH_WITHIN_SLIPPAGE,
-                reject_message=NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
-            )
-
-        updated_position = self._portfolio.apply_fill(
-            token_id=order.token_id,
-            side=order.side,
-            filled_size=fill.filled_size,
-            average_price=fill.execution_price,
-            fee_usdc=fill.fee_usdc,
-        )
-        if updated_position.size == 0:
-            self._position_market_refs.pop(order.token_id, None)
-        else:
-            market_slug = order.market_slug or final_book.book.market_slug
-            condition_id = order.condition_id or final_book.book.condition_id
-            if market_slug and condition_id:
-                self._position_market_refs[order.token_id] = (
-                    market_slug,
-                    condition_id,
+            if isinstance(final_book, FillEvent):
+                return final_book
+            # The final lookup may yield to resolution or gap handling. Keep these
+            # local checks and the portfolio mutation in the same uninterrupted turn.
+            if self._is_settled(final_market.market.condition_id):
+                return self._rejected_fill(
+                    order_id,
+                    order,
+                    received_at_ms=final_book.fill_time_ms,
+                    reject_reason=FillRejectReason.MARKET_RESOLVED,
+                    reject_message=MARKET_RESOLVED_MESSAGE,
                 )
-        return fill
+            if initial_continuity is not None and initial_continuity.was_disrupted_by(
+                self._book_continuity(order.token_id)
+            ):
+                return self._coverage_gap_rejection(order_id, order)
+            final_market_reject = final_market.validate(order, final_book.book)
+            if final_market_reject is not None:
+                return self._rejected_fill(
+                    order_id,
+                    order,
+                    received_at_ms=final_book.fill_time_ms,
+                    reject_reason=final_market_reject[0],
+                    reject_message=final_market_reject[1],
+                )
+            fill = simulate_fill(
+                order=order,
+                book=final_book.book,
+                fee_rate=final_market.fee_rate,
+                max_slippage_pct=self._config.max_slippage_pct,
+                order_id=order_id,
+                fill_time_ms=final_book.fill_time_ms,
+            )
+            if fill is None:
+                return self._rejected_fill(
+                    order_id,
+                    order,
+                    received_at_ms=final_book.fill_time_ms,
+                    reject_reason=FillRejectReason.NO_DEPTH_WITHIN_SLIPPAGE,
+                    reject_message=NO_DEPTH_WITHIN_SLIPPAGE_MESSAGE,
+                )
+
+            updated_position = self._portfolio.apply_fill(
+                token_id=order.token_id,
+                side=order.side,
+                filled_size=fill.filled_size,
+                average_price=fill.execution_price,
+                fee_usdc=fill.fee_usdc,
+            )
+            if updated_position.size == 0:
+                self._position_market_refs.pop(order.token_id, None)
+            else:
+                market_slug = order.market_slug or final_book.book.market_slug
+                condition_id = order.condition_id or final_book.book.condition_id
+                if market_slug and condition_id:
+                    self._position_market_refs[order.token_id] = (
+                        market_slug,
+                        condition_id,
+                    )
+            return fill
 
     async def _validated_book_input(
         self,

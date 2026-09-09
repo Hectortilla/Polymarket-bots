@@ -56,7 +56,6 @@ from api.http.openapi import OPENAPI_OUTPUT_PATH
 from api.http.routes.bots.market_validation import (
     MARKET_SELECTION_UNAVAILABLE_DETAIL,
 )
-from api.http.routes.bots.run_launch import RUN_LAUNCH_FAILURE_REASON
 from api.http.routes.events import (
     DURABLE_EVENT_SCHEMA_REFERENCE,
     LAST_EVENT_ID_HEADER,
@@ -582,11 +581,11 @@ def test_launcher_failure_is_visible_and_sanitized(
 
     assert response.status_code == 202
     run = response.json()
-    assert run["status"] == RunStatus.FAILED
-    assert run["failure_detail"] == f"RuntimeError: {RUN_LAUNCH_FAILURE_REASON}"
-    assert secret not in run["failure_detail"]
-    assert state.terminal_event_count == 1
-    assert len(redis.published) == 1
+    assert run["status"] == RunStatus.QUEUED
+    assert run["failure_detail"] is None
+    assert secret not in response.text
+    assert state.terminal_event_count == 0
+    assert redis.published == []
 
 
 def test_graph_snapshot_survives_api_stop_and_launch_failure(
@@ -629,7 +628,7 @@ def test_graph_snapshot_survives_api_stop_and_launch_failure(
 
     for run, status in (
         (stopped, RunStatus.STOPPED),
-        (failed, RunStatus.FAILED),
+        (failed, RunStatus.QUEUED),
     ):
         assert run["status"] == status
         assert run["graph_revision"] == FIRST_GRAPH_REVISION_NUMBER
@@ -903,7 +902,7 @@ def test_application_lifespan_owns_default_resources(
     monkeypatch.setattr(
         dependencies_module.Redis,
         "from_url",
-        lambda url: redis,
+        lambda url, **kwargs: redis,
     )
     monkeypatch.setattr(dependencies_module, "_default_launcher", lambda: launcher)
     application = create_app()
@@ -944,7 +943,6 @@ def _client(
     monkeypatch.setattr(bot_validation, "GraphTemplateStore", _GraphTemplateStore)
     monkeypatch.setattr(bot_run_routes, "BotStore", _BotStore)
     monkeypatch.setattr(bot_run_routes, "RunStore", _RunStore)
-    monkeypatch.setattr(bot_run_routes, "ApiRunLifecycle", _ApiRunLifecycle)
     monkeypatch.setattr(
         graph_template_routes,
         "GraphTemplateStore",
@@ -1199,7 +1197,7 @@ class _RunStore:
     def __init__(self, session: _Session, owner_user_id=None) -> None:
         self.state = session.state
 
-    async def create_from_bot(self, bot: BotRead) -> RunRead:
+    async def create_from_bot(self, bot: BotRead, *, launch_key=None) -> RunRead:
         revision = bot.latest_graph_revision
         run = RunRead(
             id=uuid4(),
@@ -1292,18 +1290,6 @@ class _ApiRunLifecycle:
             run = run.model_copy(update={"status": RunStatus.STOP_REQUESTED})
         self.state.runs[key] = run
         return run, event_id
-
-    async def fail_launch(self, run_id, *, now, failure_detail):
-        key = str(run_id)
-        run = self.state.runs[key].model_copy(
-            update={
-                "status": RunStatus.FAILED,
-                "ended_at": now,
-                "failure_detail": failure_detail,
-            }
-        )
-        self.state.runs[key] = run
-        return run, self._terminal_event_id()
 
     def _terminal_event_id(self) -> int:
         event_id = self.state.next_event_id

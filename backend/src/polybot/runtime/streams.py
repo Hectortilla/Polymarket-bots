@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from time import monotonic
 
 from polybot.cli.markets import ResolvedMarketPlan
@@ -29,6 +30,7 @@ from polybot.cli.streams.telemetry import StreamTelemetry
 from polybot.cli.tracked_markets import MarketInterest
 from polybot.cli.tracking.paper import track_paper_positions
 from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
+from polybot.execution.ownership import ExecutionScope
 from polybot.framework.config.models import BotConfig
 from polybot.framework.runner import BotRunner
 from polybot.polymarket.wallet_activity.contracts import WalletTradeSource
@@ -42,6 +44,7 @@ async def run_runtime_streams(
     *,
     wallet_source: WalletTradeSource | None,
     observer: RuntimeObserver,
+    execution_scope: ExecutionScope = nullcontext,
 ) -> None:
     """Refresh dynamic subscriptions and dispatch events until the run ends."""
     telemetry = StreamTelemetry()
@@ -52,6 +55,7 @@ async def run_runtime_streams(
         followed_wallets=runtime.followed_wallets,
         paper_broker=runtime.paper_broker,
         observer=observer,
+        execution_scope=execution_scope,
     )
     while True:
         plan = await runner.refresh_stream_plan()

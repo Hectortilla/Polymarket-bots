@@ -2738,6 +2738,12 @@ export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetRespons
 
 export type LaunchBotRunApiV1BotsBotIdRunsPostData = {
     body?: never;
+    headers?: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key'?: string | null;
+    };
     path: {
         /**
          * Bot Id
