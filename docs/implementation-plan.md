@@ -1713,7 +1713,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slices 16–18 delivered; Slices 19–23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–19 delivered; Slices 20–23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -1956,7 +1956,13 @@ Delivered implementation and verification:
 
 ## Slice 19: Account Recovery and Management
 
-Status: planned; depends on Slice 15 and Slice 16's HTTPS/email-link origin.
+Status: delivered September 10, 2026; depends on Slice 15 and Slice 16's HTTPS/email-link origin.
+
+Approved September 10 policy: configurable SMTP relay; new accounts verify before
+launching runs; existing accounts retain access and remain unverified. Single-use links follow the checked account policy below; password reset/change
+revoke all sessions and require sign-in.
+See [the account runbook](account-recovery.md) and the Slice 19 contracts in the
+control-plane specification and architecture.
 
 Minimum deliverable:
 
@@ -1990,6 +1996,23 @@ Explicit exclusions: social login, account linking, organizations and MFA.
 Account deletion belongs to Slice 21. Follow the current
 [OWASP recovery guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
 when selecting the exact token and delivery policies.
+
+Delivered implementation: `api.auth` owns SMTP configuration/delivery, digest-only
+account links, user-serialized credential transactions and session revocation.
+Migration 0007 preserves existing accounts and requires verification for new-account
+launches. The browser supplies account settings and recovery/verification forms,
+erases link fragments before account restoration, and requires normal sign-in
+after credential replacement. Generated API/runtime contracts and deployment secrets
+remain synchronized. Explicit resends replace the old digest before SMTP, including
+when delivery fails; relay acceptance never promises inbox delivery.
+
+Validation: all 51 requested code-style reviewer roles completed; verified findings
+were reconciled and affected rules rechecked. The full Python suite, frontend unit
+and browser suites, type/build/generated-client checks, forward migration, and
+isolated HTTPS Compose release/rollback rehearsal passed. Documentation drift was
+audited across README, both architecture documents, the specification, deployment
+runbook and account policy. SMTP setup and mailbox access are documented external
+requirements; no Polymarket protocol behavior changed or MCP check was required.
 
 ## Slice 20: Operational Visibility and Controls
 

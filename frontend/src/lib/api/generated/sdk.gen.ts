@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateBotApiV1BotsPostData, CreateBotApiV1BotsPostErrors, CreateBotApiV1BotsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostData, CreateGraphTemplateApiV1GraphTemplatesPostErrors, CreateGraphTemplateApiV1GraphTemplatesPostResponses, CurrentUserData, CurrentUserErrors, CurrentUserResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetErrors, HealthApiV1HealthGetResponses, LaunchBotRunApiV1BotsBotIdRunsPostData, LaunchBotRunApiV1BotsBotIdRunsPostErrors, LaunchBotRunApiV1BotsBotIdRunsPostResponses, ListBotDefinitionsApiV1BotDefinitionsGetData, ListBotDefinitionsApiV1BotDefinitionsGetErrors, ListBotDefinitionsApiV1BotDefinitionsGetResponses, ListBotsApiV1BotsGetData, ListBotsApiV1BotsGetErrors, ListBotsApiV1BotsGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetData, ListGraphTemplatesApiV1GraphTemplatesGetErrors, ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListRunsApiV1RunsGetData, ListRunsApiV1RunsGetErrors, ListRunsApiV1RunsGetResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, LookupMarketsData, LookupMarketsErrors, LookupMarketsResponses, PreviewGraphData, PreviewGraphErrors, PreviewGraphResponses, ReadBotApiV1BotsBotIdGetData, ReadBotApiV1BotsBotIdGetErrors, ReadBotApiV1BotsBotIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadRunApiV1RunsRunIdGetData, ReadRunApiV1RunsRunIdGetErrors, ReadRunApiV1RunsRunIdGetResponses, ReadRunEventsApiV1RunsRunIdEventsGetData, ReadRunEventsApiV1RunsRunIdEventsGetErrors, ReadRunEventsApiV1RunsRunIdEventsGetResponses, ReadUsageData, ReadUsageErrors, ReadUsageResponses, RegisterData, RegisterErrors, RegisterResponses, SearchMarketsData, SearchMarketsErrors, SearchMarketsResponses, StopRunApiV1RunsRunIdStopPostData, StopRunApiV1RunsRunIdStopPostErrors, StopRunApiV1RunsRunIdStopPostResponses, StreamRunEventsApiV1RunsRunIdEventsStreamGetData, StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses, UpdateBotApiV1BotsBotIdPatchData, UpdateBotApiV1BotsBotIdPatchErrors, UpdateBotApiV1BotsBotIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses } from './types.gen';
+import type { AccountStatusData, AccountStatusErrors, AccountStatusResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CompleteEmailVerificationData, CompleteEmailVerificationErrors, CompleteEmailVerificationResponses, CompletePasswordResetData, CompletePasswordResetErrors, CompletePasswordResetResponses, CreateBotApiV1BotsPostData, CreateBotApiV1BotsPostErrors, CreateBotApiV1BotsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostData, CreateGraphTemplateApiV1GraphTemplatesPostErrors, CreateGraphTemplateApiV1GraphTemplatesPostResponses, CurrentUserData, CurrentUserErrors, CurrentUserResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetErrors, HealthApiV1HealthGetResponses, LaunchBotRunApiV1BotsBotIdRunsPostData, LaunchBotRunApiV1BotsBotIdRunsPostErrors, LaunchBotRunApiV1BotsBotIdRunsPostResponses, ListBotDefinitionsApiV1BotDefinitionsGetData, ListBotDefinitionsApiV1BotDefinitionsGetErrors, ListBotDefinitionsApiV1BotDefinitionsGetResponses, ListBotsApiV1BotsGetData, ListBotsApiV1BotsGetErrors, ListBotsApiV1BotsGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetData, ListGraphTemplatesApiV1GraphTemplatesGetErrors, ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListRunsApiV1RunsGetData, ListRunsApiV1RunsGetErrors, ListRunsApiV1RunsGetResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, LookupMarketsData, LookupMarketsErrors, LookupMarketsResponses, PreviewGraphData, PreviewGraphErrors, PreviewGraphResponses, ReadBotApiV1BotsBotIdGetData, ReadBotApiV1BotsBotIdGetErrors, ReadBotApiV1BotsBotIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadRunApiV1RunsRunIdGetData, ReadRunApiV1RunsRunIdGetErrors, ReadRunApiV1RunsRunIdGetResponses, ReadRunEventsApiV1RunsRunIdEventsGetData, ReadRunEventsApiV1RunsRunIdEventsGetErrors, ReadRunEventsApiV1RunsRunIdEventsGetResponses, ReadUsageData, ReadUsageErrors, ReadUsageResponses, RegisterData, RegisterErrors, RegisterResponses, RequestEmailVerificationData, RequestEmailVerificationErrors, RequestEmailVerificationResponses, RequestPasswordResetData, RequestPasswordResetErrors, RequestPasswordResetResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, SearchMarketsData, SearchMarketsErrors, SearchMarketsResponses, StopRunApiV1RunsRunIdStopPostData, StopRunApiV1RunsRunIdStopPostErrors, StopRunApiV1RunsRunIdStopPostResponses, StreamRunEventsApiV1RunsRunIdEventsStreamGetData, StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses, UpdateBotApiV1BotsBotIdPatchData, UpdateBotApiV1BotsBotIdPatchErrors, UpdateBotApiV1BotsBotIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,35 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Account Status
+ */
+export const accountStatus = <ThrowOnError extends boolean = false>(options?: Options<AccountStatusData, ThrowOnError>): RequestResult<AccountStatusResponses, AccountStatusErrors, ThrowOnError> => (options?.client ?? client).get<AccountStatusResponses, AccountStatusErrors, ThrowOnError>({ url: '/api/v1/auth/account', ...options });
+
+/**
+ * Complete Email Verification
+ */
+export const completeEmailVerification = <ThrowOnError extends boolean = false>(options: Options<CompleteEmailVerificationData, ThrowOnError>): RequestResult<CompleteEmailVerificationResponses, CompleteEmailVerificationErrors, ThrowOnError> => (options.client ?? client).post<CompleteEmailVerificationResponses, CompleteEmailVerificationErrors, ThrowOnError>({
+    url: '/api/v1/auth/email/verification/complete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Request Email Verification
+ */
+export const requestEmailVerification = <ThrowOnError extends boolean = false>(options: Options<RequestEmailVerificationData, ThrowOnError>): RequestResult<RequestEmailVerificationResponses, RequestEmailVerificationErrors, ThrowOnError> => (options.client ?? client).post<RequestEmailVerificationResponses, RequestEmailVerificationErrors, ThrowOnError>({
+    url: '/api/v1/auth/email/verification/request',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Login
@@ -41,10 +70,58 @@ export const logout = <ThrowOnError extends boolean = false>(options?: Options<L
 export const currentUser = <ThrowOnError extends boolean = false>(options?: Options<CurrentUserData, ThrowOnError>): RequestResult<CurrentUserResponses, CurrentUserErrors, ThrowOnError> => (options?.client ?? client).get<CurrentUserResponses, CurrentUserErrors, ThrowOnError>({ url: '/api/v1/auth/me', ...options });
 
 /**
+ * Change Password
+ */
+export const changePassword = <ThrowOnError extends boolean = false>(options: Options<ChangePasswordData, ThrowOnError>): RequestResult<ChangePasswordResponses, ChangePasswordErrors, ThrowOnError> => (options.client ?? client).post<ChangePasswordResponses, ChangePasswordErrors, ThrowOnError>({
+    url: '/api/v1/auth/password/change',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Complete Password Reset
+ */
+export const completePasswordReset = <ThrowOnError extends boolean = false>(options: Options<CompletePasswordResetData, ThrowOnError>): RequestResult<CompletePasswordResetResponses, CompletePasswordResetErrors, ThrowOnError> => (options.client ?? client).post<CompletePasswordResetResponses, CompletePasswordResetErrors, ThrowOnError>({
+    url: '/api/v1/auth/password/reset/complete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Request Password Reset
+ */
+export const requestPasswordReset = <ThrowOnError extends boolean = false>(options: Options<RequestPasswordResetData, ThrowOnError>): RequestResult<RequestPasswordResetResponses, RequestPasswordResetErrors, ThrowOnError> => (options.client ?? client).post<RequestPasswordResetResponses, RequestPasswordResetErrors, ThrowOnError>({
+    url: '/api/v1/auth/password/reset/request',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Register
  */
 export const register = <ThrowOnError extends boolean = false>(options: Options<RegisterData, ThrowOnError>): RequestResult<RegisterResponses, RegisterErrors, ThrowOnError> => (options.client ?? client).post<RegisterResponses, RegisterErrors, ThrowOnError>({
     url: '/api/v1/auth/register',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Revoke Sessions
+ */
+export const revokeSessions = <ThrowOnError extends boolean = false>(options: Options<RevokeSessionsData, ThrowOnError>): RequestResult<RevokeSessionsResponses, RevokeSessionsErrors, ThrowOnError> => (options.client ?? client).post<RevokeSessionsResponses, RevokeSessionsErrors, ThrowOnError>({
+    url: '/api/v1/auth/sessions/revoke',
     ...options,
     headers: {
         'Content-Type': 'application/json',

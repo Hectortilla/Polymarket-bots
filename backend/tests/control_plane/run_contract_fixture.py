@@ -16,6 +16,8 @@ from api.auth.policy import (
     REGISTER_PATH,
     SESSION_RECHECK_SECONDS,
 )
+from api.auth.recovery import policy as account_policy
+from api.auth.recovery.tokens import ACCOUNT_TOKEN_PATTERN
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.events.contracts.payloads.chart import (
     CHART_NULL_VALUE_STATUSES,
@@ -157,6 +159,7 @@ def frontend_run_contract() -> dict[str, object]:
         "resourcePolicy": PAPER_BETA.model_dump(),
         "resourceLimitCodes": _enum_values(ResourceLimitCode),
         "httpStatus": {
+            "BAD_REQUEST": status.HTTP_400_BAD_REQUEST,
             "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,
             "FORBIDDEN": status.HTTP_403_FORBIDDEN,
             "NOT_FOUND": status.HTTP_404_NOT_FOUND,
@@ -164,6 +167,19 @@ def frontend_run_contract() -> dict[str, object]:
             "TOO_MANY_REQUESTS": status.HTTP_429_TOO_MANY_REQUESTS,
             "INTERNAL_SERVER_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
+        },
+        "accountManagement": {
+            "accountPath": account_policy.BROWSER_ACCOUNT_PATH,
+            "forgotPath": account_policy.BROWSER_FORGOT_PATH,
+            "resetPath": account_policy.BROWSER_RESET_PATH,
+            "verifyPath": account_policy.BROWSER_VERIFY_PATH,
+            "tokenPattern": ACCOUNT_TOKEN_PATTERN,
+            "tokenLifetimeSeconds": account_policy.TOKEN_LIFETIME_SECONDS,
+            "sessionRevocation": _enum_values(account_policy.SessionRevocation),
+            "revokesCurrentSession": {
+                scope.value: scope.revokes_current
+                for scope in account_policy.SessionRevocation
+            },
         },
         "auth": {
             "csrfSafeMethods": list(CSRF_SAFE_METHODS),
@@ -176,6 +192,17 @@ def frontend_run_contract() -> dict[str, object]:
         },
         "activitySeverity": _enum_values(ActivitySeverity),
         "apiPaths": {
+            "accountStatus": api_route_path(account_policy.ACCOUNT_PATH),
+            "requestPasswordReset": api_route_path(account_policy.RESET_REQUEST_PATH),
+            "completePasswordReset": api_route_path(account_policy.RESET_COMPLETE_PATH),
+            "requestEmailVerification": api_route_path(
+                account_policy.VERIFY_REQUEST_PATH
+            ),
+            "completeEmailVerification": api_route_path(
+                account_policy.VERIFY_COMPLETE_PATH
+            ),
+            "changePassword": api_route_path(account_policy.PASSWORD_CHANGE_PATH),
+            "revokeSessions": api_route_path(account_policy.SESSIONS_REVOKE_PATH),
             "register": api_route_path(REGISTER_PATH),
             "login": api_route_path(LOGIN_PATH),
             "logout": api_route_path(LOGOUT_PATH),

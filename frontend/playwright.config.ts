@@ -12,7 +12,7 @@ export default defineConfig({
   testDir: './e2e',
   workers: 1,
   timeout: 90_000,
-  use: { baseURL: BROWSER_ORIGIN, trace: 'retain-on-failure' },
+  use: { baseURL: BROWSER_ORIGIN, trace: 'off' },
   webServer: [
     {
       command: `uv run --directory .. python -m control_plane.browser_server --origin ${BROWSER_ORIGIN} --api-host ${HOST} --api-port ${API_PORT}`,

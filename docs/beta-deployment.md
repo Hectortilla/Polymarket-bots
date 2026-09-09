@@ -42,7 +42,7 @@ For deployable releases, build a clean commit; local rehearsals may exercise
 uncommitted changes and must not be represented as release provenance.
 
 Supply an absolute runtime secret directory, kept outside the build context,
-containing `database_url`, `redis_url`, `postgres_password`, `tls_cert`, and
+containing `database_url`, `redis_url`, `postgres_password`, `smtp_username`, `smtp_password`, `tls_cert`, and
 `tls_key`. Use a host directory accessible only to the operator. Secret files
 must be readable by the receiving container user (backend UID 10001); Compose
 mounts only the declared individual secrets into each service. Backend URLs
@@ -132,3 +132,11 @@ in production and preserves accounts; older exact-head releases cannot roll back
 across this schema change. During a database outage recovery waits for the database,
 and Redis outages keep queue entries durable. See the architecture's Slice 18
 section for lease, I/O and shutdown bounds. Open signup remains gated.
+
+Slice 19 requires SMTP configuration in the release manifest and runtime SMTP
+credential files, available only to the API service. See [account recovery](account-recovery.md).
+Production API startup refuses missing or invalid mail configuration; relay outages
+produce a retryable generic delivery failure without blocking sign-in. The recovery
+migration preserves accounts and requires a matching schema-aware release. Browser
+acceptance captures mail in a short-lived disposable sink; traces are disabled so
+passwords and link tokens are not retained in test artifacts.

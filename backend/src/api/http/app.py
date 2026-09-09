@@ -9,15 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from api.auth.config import AuthSettings
 from api.auth.dependencies import application_authentication
 from api.auth.middleware import AuthBoundaryMiddleware
+from api.auth.recovery.routes import router as recovery_router
 from api.auth.responses import AUTH_REQUIRED_RESPONSES
 from api.auth.routes import router as auth_router
 from api.auth.validation import safe_validation_error
-from api.limits.errors import ResourceLimitError
-from api.limits.http import (
-    application_resource_limits,
-    resource_limit_response,
-    router as limits_router,
-)
 from api.execution.launcher import RunLauncher
 from api.http.dependencies import application_lifespan
 from api.http.middleware.private_cache import PrivateResponseMiddleware
@@ -35,6 +30,14 @@ from api.http.routes.health import router as health_router
 from api.http.routes.markets import router as markets_router
 from api.http.routes.paths import API_PREFIX
 from api.http.routes.runs import router as runs_router
+from api.limits.errors import ResourceLimitError
+from api.limits.http import (
+    application_resource_limits,
+    resource_limit_response,
+)
+from api.limits.http import (
+    router as limits_router,
+)
 
 
 def create_app(
@@ -76,6 +79,7 @@ def create_app(
         application.state.market_discovery = market_discovery
     for router in (
         auth_router,
+        recovery_router,
         limits_router,
         graph_preview_router,
         catalog_router,

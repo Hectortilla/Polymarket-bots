@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from api.auth.config import AuthSettings
-from api.deployment.settings import StartupSettings
+from api.auth.mail import AccountMailer
+from api.deployment.settings import Environment, StartupSettings
 from api.execution.launcher import RunLauncher
 from api.io_policy import (
     DATABASE_CONNECT_ARGS,
@@ -30,6 +31,12 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     AuthSettings.for_app(app)
     if not hasattr(app.state, "session_factory") or not hasattr(app.state, "redis"):
         app.state.startup_settings = await asyncio.to_thread(StartupSettings.from_env)
+    startup_settings = getattr(app.state, "startup_settings", None)
+    if (
+        startup_settings is not None
+        and startup_settings.environment is Environment.PRODUCTION
+    ):
+        await AccountMailer.for_app(app)
     owned_engine: AsyncEngine | None = None
     owned_redis: Redis | None = None
     owned_discovery: MarketDiscovery | None = None

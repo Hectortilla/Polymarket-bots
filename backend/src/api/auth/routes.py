@@ -70,7 +70,9 @@ async def login(
 ) -> CurrentUser:
     async with session_factory() as session:
         store = AuthStore(session)
-        user = await store.find_user(credentials.email)
+        # Serialize password verification and issuance with credential replacement.
+        # An old password must not mint a session that survives a concurrent reset.
+        user = await store.find_user(credentials.email, lock=True)
         valid = await verify_password(
             DUMMY_HASH if user is None else user.password_hash,
             credentials.password.get_secret_value(),

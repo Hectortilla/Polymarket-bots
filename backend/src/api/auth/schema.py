@@ -1,9 +1,11 @@
 """Identity and ownership schema identifiers, independent of ORM registration."""
 
-import hashlib
 from enum import StrEnum
 
-SESSION_DIGEST_HEX_LENGTH = hashlib.sha256().digest_size * 2
+from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
+
+# Migration 0005 imports this historical name.
+SESSION_DIGEST_HEX_LENGTH = AUTH_TOKEN_DIGEST_HEX_LENGTH
 
 USERS_TABLE = "users"
 SESSIONS_TABLE = "sessions"
@@ -18,6 +20,8 @@ class UserColumn(StrEnum):
     EMAIL = "email"
     PASSWORD_HASH = "password_hash"
     CREATED_AT = "created_at"
+    EMAIL_VERIFIED_AT = "email_verified_at"
+    VERIFICATION_REQUIRED = "verification_required"
 
 
 class SessionColumn(StrEnum):

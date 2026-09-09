@@ -349,6 +349,9 @@ def test_public_allowlist_is_complete_and_other_routes_are_gated(services):
 def test_two_accounts_isolate_every_resource_and_nested_reference(services):
     async def scenario(client, app, factory, redis, launcher):
         first = await signup(client)
+        async with factory() as session:
+            await session.execute(update(UserRow).values(verification_required=False))
+            await session.commit()
         first_token = client.cookies.get(SESSION_COOKIE)
         graph = STARTER_NODE_GRAPH.model_dump(mode="json")
         template = (
@@ -375,6 +378,11 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
             transport=ASGITransport(app=app), base_url=ORIGIN, headers=HEADERS
         ) as second:
             await signup(second, "second@example.com")
+            async with factory() as session:
+                await session.execute(
+                    update(UserRow).values(verification_required=False)
+                )
+                await session.commit()
             for path in [
                 api_route_path(BOTS_PATH),
                 api_route_path(RUNS_PATH),
@@ -487,7 +495,9 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
         # Authorized worker execution continues after logout.
         await client.post(api_route_path(LOGOUT_PATH))
         async with factory() as session:
-            claimed = await RunStore(session).claim(UUID(run["id"]), now=system_now_utc())
+            claimed = await RunStore(session).claim(
+                UUID(run["id"]), now=system_now_utc()
+            )
             assert claimed is not None and claimed.status is RunStatus.STARTING
         logged_in = await client.post(
             api_route_path(LOGIN_PATH),

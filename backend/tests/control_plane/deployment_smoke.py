@@ -9,7 +9,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+from api.auth.mail.config import SMTP_FROM_ENV, SMTP_HOST_ENV
 from api.auth.policy import LOGIN_PATH, LOGOUT_PATH, REGISTER_PATH
+from api.auth.recovery.policy import VERIFY_COMPLETE_PATH, VERIFY_REQUEST_PATH
 from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.deployment.services import APPLICATION_SERVICES, DeploymentService
@@ -32,6 +34,12 @@ from api.limits.policy import PAPER_BETA
 from api.runs.lease_policy import DEFAULT_LEASE_SECONDS
 from api.runs.status import RunStatus
 
+from control_plane.account_mail_fixture import (
+    MAILBOX_EMAIL_PARAMETER,
+    MAILBOX_LINK_FIELD,
+    MAILBOX_PATH,
+)
+from control_plane.browser_limits_fixture import CLEAR_LIMITS_PATH
 from scripts.beta_release import COMPOSE_FILE, REPOSITORY, BetaRelease
 
 STAGING_ORIGIN = "https://localhost:8443"
@@ -92,6 +100,8 @@ class DeploymentSmoke:
             "postgres_password": password,
             "database_url": f"postgresql://polybot:{password}@postgres:5432/polybot",
             "redis_url": "redis://redis:6379/0",
+            "smtp_username": "acceptance-user",
+            "smtp_password": "acceptance-password",
         }.items():
             (directory / name).write_text(value)
             (directory / name).chmod(0o644)
@@ -130,6 +140,8 @@ class DeploymentSmoke:
                 ["git", "rev-parse", "HEAD"], text=True
             ).strip(),
             "POLYBOT_AUTH_ORIGIN": STAGING_ORIGIN,
+            SMTP_HOST_ENV: "smtp.invalid",
+            SMTP_FROM_ENV: "accounts@example.com",
             "POLYBOT_HTTPS_PORT": "8443",
             "POLYBOT_SECRETS_DIR": str(directory),
         }
@@ -186,6 +198,7 @@ class DeploymentSmoke:
 
     def exercise_runs(self) -> None:
         with self.client() as first, self.client() as second:
+            first.post(CLEAR_LIMITS_PATH).raise_for_status()
             for client, suffix in ((first, "first"), (second, "second")):
                 credentials = {
                     "email": f"{suffix}-{self.identifier}@example.com",
@@ -196,6 +209,23 @@ class DeploymentSmoke:
                 self.sensitive_values.update(response.cookies.values())
                 cookie = response.headers["set-cookie"].lower()
                 assert "secure" in cookie and "httponly" in cookie
+                client.post(
+                    api_route_path(VERIFY_REQUEST_PATH),
+                    json={"email": credentials["email"]},
+                ).raise_for_status()
+                token = (
+                    client.get(
+                        MAILBOX_PATH,
+                        params={MAILBOX_EMAIL_PARAMETER: credentials["email"]},
+                    )
+                    .json()[MAILBOX_LINK_FIELD]
+                    .split("#")[1]
+                )
+                self.sensitive_values.add(token)
+                client.post(
+                    api_route_path(VERIFY_COMPLETE_PATH),
+                    json={"token": token, "new_password": TEST_PASSWORD},
+                ).raise_for_status()
                 client.post(api_route_path(LOGOUT_PATH), json={}).raise_for_status()
                 login = client.post(api_route_path(LOGIN_PATH), json=credentials)
                 login.raise_for_status()

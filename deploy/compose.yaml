@@ -8,7 +8,7 @@ x-application: &application
   tmpfs: [/tmp]
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
-  environment:
+  environment: &application_environment
     POLYBOT_ENVIRONMENT: production
     POLYBOT_RELEASE_ID: ${POLYBOT_RELEASE_ID:?release commit required}
     POLYBOT_AUTH_ORIGIN: ${POLYBOT_AUTH_ORIGIN:?HTTPS origin required}
@@ -51,6 +51,15 @@ services:
   api:
     <<: *application
     command: [api]
+    environment:
+      <<: *application_environment
+      POLYBOT_SMTP_HOST: ${POLYBOT_SMTP_HOST:?SMTP relay required}
+      POLYBOT_SMTP_PORT: ${POLYBOT_SMTP_PORT:-587}
+      POLYBOT_SMTP_SECURITY: ${POLYBOT_SMTP_SECURITY:-starttls}
+      POLYBOT_SMTP_FROM: ${POLYBOT_SMTP_FROM:?sender address required}
+      POLYBOT_SMTP_USERNAME_FILE: /run/secrets/smtp_username
+      POLYBOT_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets: [database_url, redis_url, smtp_username, smtp_password]
     networks:
       services: {}
       edge: {ipv4_address: 172.30.16.3}
@@ -122,3 +131,5 @@ secrets:
   postgres_password: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/postgres_password'}
   tls_cert: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/tls_cert'}
   tls_key: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/tls_key'}
+  smtp_username: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/smtp_username'}
+  smtp_password: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/smtp_password'}

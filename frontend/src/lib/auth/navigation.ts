@@ -1,7 +1,9 @@
+import contract from '$lib/runtimeContract.fixture.json' with { type: 'json' };
 import { NAVIGATION_PATH } from '$lib/navigation';
 
 export const LOGIN_PATH = '/login';
 export const REGISTER_PATH = '/register';
+export const ACCOUNT_UPDATED_QUERY_PARAM = 'accountUpdated';
 export const RETURN_TO_QUERY_PARAM = 'returnTo';
 const RETURN_PATH_ORIGIN = 'https://polybot.invalid';
 
@@ -18,5 +20,5 @@ export function safeReturnPath(value: string | null): string {
 }
 
 export function isAccountPath(path: string): boolean {
-  return path === LOGIN_PATH || path === REGISTER_PATH;
+  return [LOGIN_PATH, REGISTER_PATH, contract.accountManagement.forgotPath, contract.accountManagement.resetPath, contract.accountManagement.verifyPath].includes(path);
 }

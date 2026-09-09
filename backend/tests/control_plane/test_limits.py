@@ -288,7 +288,7 @@ def test_usage_ownership_and_http_capacity_feedback(limits_services):
                 )
 
                 async def identity(request: Request):
-                    request.state.user = CurrentUser(id=account.id, email=account.email)
+                    request.state.user = CurrentUser.from_model(account)
 
                 app.dependency_overrides[application_authentication] = identity
                 return app

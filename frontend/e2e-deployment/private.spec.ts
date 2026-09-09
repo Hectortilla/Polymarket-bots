@@ -1,3 +1,5 @@
+import accountContract from '../e2e/accountContract.fixture.json' with { type: 'json' };
+import { verifyNewAccount } from '../e2e/accountHelpers';
 import { test, expect } from '@playwright/test';
 import { AUTH_COPY } from '../src/lib/auth/copy';
 import { REGISTER_PATH, LOGIN_PATH } from '../src/lib/auth/navigation';
@@ -7,6 +9,7 @@ import { BOT_DETAIL_COPY } from '../src/routes/bots/[botId]/copy';
 import { RUN_STATUS, RUN_STATUS_PRESENTATION } from '../src/lib/runs/status';
 
 test('private HTTPS browser login, run, Stop, refresh and stream reconnect', async ({ page }) => {
+  await page.request.post(accountContract.clearLimitsPath);
   const email = `tls-browser-${Date.now()}@example.com`;
   const password = 'disposable browser password 123';
   await page.goto(REGISTER_PATH);
@@ -14,6 +17,7 @@ test('private HTTPS browser login, run, Stop, refresh and stream reconnect', asy
   await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(password);
   await page.getByRole('button', { name: AUTH_COPY.REGISTER, exact: true }).click();
   await expect(page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
+  await verifyNewAccount(page, email, password);
   await page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true }).click();
   await page.goto(LOGIN_PATH);
   await page.getByLabel(AUTH_COPY.EMAIL, { exact: true }).fill(email);

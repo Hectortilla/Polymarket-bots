@@ -19,10 +19,11 @@ class AuthStore:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def find_user(self, email: str) -> UserRow | None:
-        return (
-            await self._session.execute(select(UserRow).where(UserRow.email == email))
-        ).scalar_one_or_none()
+    async def find_user(self, email: str, *, lock: bool = False) -> UserRow | None:
+        query = select(UserRow).where(UserRow.email == email)
+        if lock:
+            query = query.with_for_update()
+        return (await self._session.execute(query)).scalar_one_or_none()
 
     async def register(self, email: str, password_hash: str) -> UserRow:
         user = UserRow(email=email, password_hash=password_hash)

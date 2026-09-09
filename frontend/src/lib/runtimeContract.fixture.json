@@ -26,6 +26,7 @@
     "INVALID_CONFIGURATION": "invalid_configuration"
   },
   "httpStatus": {
+    "BAD_REQUEST": 400,
     "UNAUTHORIZED": 401,
     "FORBIDDEN": 403,
     "NOT_FOUND": 404,
@@ -33,6 +34,22 @@
     "TOO_MANY_REQUESTS": 429,
     "INTERNAL_SERVER_ERROR": 500,
     "SERVICE_UNAVAILABLE": 503
+  },
+  "accountManagement": {
+    "accountPath": "/account",
+    "forgotPath": "/forgot-password",
+    "resetPath": "/reset-password",
+    "verifyPath": "/verify-email",
+    "tokenPattern": "[A-Za-z0-9_-]{43}",
+    "tokenLifetimeSeconds": 1800,
+    "sessionRevocation": {
+      "OTHER": "other",
+      "ALL": "all"
+    },
+    "revokesCurrentSession": {
+      "other": false,
+      "all": true
+    }
   },
   "auth": {
     "csrfSafeMethods": [
@@ -54,6 +71,13 @@
     "ERROR": "error"
   },
   "apiPaths": {
+    "accountStatus": "/api/v1/auth/account",
+    "requestPasswordReset": "/api/v1/auth/password/reset/request",
+    "completePasswordReset": "/api/v1/auth/password/reset/complete",
+    "requestEmailVerification": "/api/v1/auth/email/verification/request",
+    "completeEmailVerification": "/api/v1/auth/email/verification/complete",
+    "changePassword": "/api/v1/auth/password/change",
+    "revokeSessions": "/api/v1/auth/sessions/revoke",
     "register": "/api/v1/auth/register",
     "login": "/api/v1/auth/login",
     "logout": "/api/v1/auth/logout",

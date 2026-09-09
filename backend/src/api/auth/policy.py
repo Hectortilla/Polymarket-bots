@@ -2,6 +2,11 @@
 
 from http import HTTPMethod
 
+from api.auth.recovery.policy import (
+    CREDENTIAL_ATTEMPT_LIMIT,
+    CREDENTIAL_PATHS,
+    PUBLIC_RECOVERY_PATHS,
+)
 from api.http.routes.paths import API_PREFIX, HEALTH_PATH
 
 PASSWORD_MIN_LENGTH = 15
@@ -36,11 +41,13 @@ PUBLIC_ROUTES = frozenset(
         (HTTPMethod.POST, API_PREFIX + LOGIN_PATH),
         (HTTPMethod.POST, API_PREFIX + LOGOUT_PATH),
         (HTTPMethod.GET, API_PREFIX + HEALTH_PATH),
+        *((HTTPMethod.POST, API_PREFIX + path) for path in PUBLIC_RECOVERY_PATHS),
     }
 )
 AUTH_ATTEMPT_LIMITS = {
     API_PREFIX + REGISTER_PATH: REGISTER_ATTEMPT_LIMIT,
     API_PREFIX + LOGIN_PATH: LOGIN_ATTEMPT_LIMIT,
+    **{API_PREFIX + path: CREDENTIAL_ATTEMPT_LIMIT for path in CREDENTIAL_PATHS},
 }
 AUTH_CREDENTIAL_PATHS = frozenset(AUTH_ATTEMPT_LIMITS)
 AUTH_REQUIRED_DETAIL = "authentication required"

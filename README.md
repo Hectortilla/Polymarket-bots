@@ -85,9 +85,15 @@ rebuild their schema. Without those settings the service-dependent tests skip.
 Set `POLYBOT_AUTH_ORIGIN` in `.env` to the exact browser origin, for example
 `http://localhost:5173`, and set `POLYBOT_AUTH_ALLOW_HTTP=true` only for local HTTP
 development. Start the frontend with `npm --prefix frontend run dev`, then open
-`/register` to create your account. No email service is needed. Passwords contain
+`/register` to create your account. Password recovery and email verification require an SMTP relay. Passwords contain
 15–128 characters; emails are case-insensitive with dots and plus-tags retained.
-There is no password recovery, account editing, or email verification in this MVP.
+Account settings provide password changes, session revocation and email verification; the sign-in page links to forgotten-password recovery.
+
+New accounts must verify their mailbox before launching runs. Existing accounts retain
+access without being silently marked verified. Reset, verification and password change
+revoke all sessions and require sign-in; account settings can also revoke other or
+all sessions after password reauthentication. See [account recovery](docs/account-recovery.md)
+for SMTP configuration and ownership limits.
 
 Sessions expire after 7 days; signing out revokes the current session and
 closes browser streams. Already-authorized background runs continue. Each account
@@ -116,7 +122,7 @@ availability is required for signup/login, including invalid attempts. No public
 deployment is authorized by this slice.
 
 Browser acceptance uses real PostgreSQL, Redis, API sessions and Chromium. Only
-market discovery and execution delivery are fixtures; graph editing, ownership,
+market discovery, execution delivery and a disposable mail sink are fixtures; graph editing, ownership,
 persistence, SSE and stop transitions use application code. After installing
 Chromium with `npm --prefix frontend exec -- playwright install chromium`, run:
 
@@ -150,14 +156,15 @@ separately:
 [Slice 15](docs/implementation-plan.md#slice-15-users-authentication-and-resource-ownership)
 adds email/password accounts, server-side sessions, and private ownership of bots,
 templates, revisions, runs, and event streams. Registration signs in immediately
-without verification mail. Social login, password recovery and a marketplace are
-not included; the application still requires a local/private access boundary.
+at the Slice 15 checkpoint. Slice 19 adds verification and password recovery;
+social login and a marketplace remain excluded. The application still requires a
+local/private access boundary until the remaining beta-readiness slices are delivered.
 
 [Public paper-beta readiness](docs/implementation-plan.md#public-paper-trading-beta-roadmap)
 now includes the delivered Slice 12F deployment foundation and Slice 16 private
 HTTPS release workflow. Slice 17 adds per-account and global resource admission,
 browser usage, and server-side expiry. Slice 18 adds durable launch retries and scheduled queue/worker recovery.
-Slices 19–23 remain planned: account recovery, operations, data lifecycle, onboarding and
+Slice 19 adds account recovery and management. Slices 20–23 remain planned: operations, data lifecycle, onboarding and
 launch/support information. Open signup remains gated on their acceptance.
 Marketplace work is deferred.
 

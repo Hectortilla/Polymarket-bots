@@ -8,6 +8,6 @@ export default defineConfig({
     baseURL: 'https://localhost:8443',
     // The disposable Compose harness generates its own local certificate.
     ignoreHTTPSErrors: true,
-    trace: 'retain-on-failure',
+    trace: 'off',
   },
 });

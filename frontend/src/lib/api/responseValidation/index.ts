@@ -1,3 +1,4 @@
+import { isAccountAction, isAccountStatus } from '$lib/auth/recovery/validation';
 import { isCurrentUser, isLogoutResponse } from '$lib/auth/validation';
 import { client } from '$lib/api/generated/client.gen';
 
@@ -51,6 +52,8 @@ function isListItem(value: unknown): boolean {
 
 function isObjectResponse(value: Record<string, unknown>): boolean {
   return (
+    isAccountAction(value) ||
+    isAccountStatus(value) ||
     isAccountUsage(value) ||
     isCurrentUser(value) ||
     isLogoutResponse(value) ||

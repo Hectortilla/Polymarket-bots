@@ -1,6 +1,7 @@
 # Web Control Plane v0 Product Specification
 
-Status: v0 and Slice 15 accounts/private ownership are implemented.
+Status: v0 and Slice 15 accounts/private ownership are implemented. Slice 19 extends
+the historical account policy below with recovery and verification.
 This document owns product scope and user-visible outcomes.
 `web-control-plane-architecture.md` owns technical contracts. The implementation
 plan references those contracts instead of restating them.
@@ -277,7 +278,7 @@ Agreed MVP scope:
 Deferred: email verification/delivery, password recovery, email/password changes,
 Google/GitHub or other social login, account linking, MFA, account deletion,
 organizations, roles, billing, quotas, and marketplace browsing/publishing.
-There is no self-service forgotten-password recovery in this MVP; the UI must
+At the Slice 15 checkpoint there was no self-service forgotten-password recovery (superseded by Slice 19 below); the UI must
 not offer a flow that does not exist.
 
 A later marketplace slice can publish a selected configuration/graph snapshot
@@ -351,3 +352,40 @@ Delivery outages retain the queued run for scheduled retry. A lost worker become
 No paper portfolio or graph execution is automatically restored. Browser reload
 and stream reconnect read authoritative PostgreSQL history. Recovery operations
 are internal process operations, with no public HTTP route.
+
+## Slice 19: Account recovery and management
+
+Approved September 10, 2026: use a configurable SMTP relay; new accounts must
+verify their mailbox before launching runs. Registration still signs in so users
+can edit bots, inspect their account and request verification. Existing accounts
+retain access without being marked verified; the account page prompts them to
+verify. Verification and password reset use a single-use email link with the lifetime in the
+[runtime-checked account policy](account-recovery.md),
+ask the mailbox owner to choose a new password, revoke every browser session,
+and require ordinary sign-in. This also removes credentials chosen by someone
+who registered another person's email before ownership was proved.
+
+Account settings provide authenticated password change and revocation of other
+or all sessions. Each requires the current password again. Password change and
+all-session revocation sign out the current browser; other-session revocation
+retains it. Revocation prevents subsequent requests immediately and active SSE
+access within the recheck interval in that account policy. Authorized paper runs
+continue; explicit Stop remains a separate operation.
+
+Forgot-password and verification requests return the same result for existing,
+unknown and already-verified addresses. Each sends the same conditional email
+link to the requested address; an ineligible address receives an unusable link.
+The interface says to check email without claiming recovery has completed.
+Delivery failures return a generic retryable service failure independent of
+account eligibility. A relay accepting a message does not guarantee inbox delivery.
+Verification is requested explicitly from account settings after registration;
+resend uses the same request form and commits a new digest, invalidating the
+previous same-purpose link before attempting SMTP. That replacement remains even
+if SMTP fails. Requesting a link cannot change password or verification state.
+
+Links are usable only on the configured application origin. The browser removes
+the fragment before rendering the form and keeps its token in memory only; reload
+requires reopening the email. Missing, invalid, expired and used links have clear
+recovery instructions. Passwords and tokens are never saved in browser storage.
+Without access to the registered mailbox, forgotten-password recovery is unavailable;
+there is no support override, email change, account linking or identity transfer.

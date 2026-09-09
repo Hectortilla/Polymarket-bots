@@ -71,7 +71,11 @@ async def resource_services(settings):
 
 async def account_bot(sessions):
     async with sessions() as session:
-        user = UserRow(email=f"{uuid4()}@example.com", password_hash="fixture")
+        user = UserRow(
+            email=f"{uuid4()}@example.com",
+            password_hash="fixture",
+            verification_required=False,
+        )
         session.add(user)
         await session.commit()
         bot = await BotStore(session, user.id).create(
@@ -120,7 +124,7 @@ def account_app(sessions, redis, account):
     )
 
     async def identity(request: Request):
-        request.state.user = CurrentUser(id=account.id, email=account.email)
+        request.state.user = CurrentUser.from_model(account)
         request.state.session_token = "fixture-token"
 
     app.dependency_overrides[application_authentication] = identity

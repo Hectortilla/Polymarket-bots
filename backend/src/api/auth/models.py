@@ -4,13 +4,21 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from polybot.framework.clock import system_now_utc
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    true,
+)
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
 from api.auth.policy import EMAIL_MAX_LENGTH
 from api.auth.schema import (
-    SESSION_DIGEST_HEX_LENGTH,
     SESSION_EXPIRY_INDEX,
     SESSION_USER_INDEX,
     SESSIONS_TABLE,
@@ -20,6 +28,7 @@ from api.auth.schema import (
     SessionColumn,
     UserColumn,
 )
+from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
 
 
 class UserRow(SQLModel, table=True):
@@ -44,6 +53,26 @@ class UserRow(SQLModel, table=True):
             UserColumn.CREATED_AT, DateTime(timezone=True), nullable=False
         ),
     )
+    email_verified_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(UserColumn.EMAIL_VERIFIED_AT, DateTime(timezone=True)),
+    )
+    verification_required: bool = Field(
+        default=True,
+        sa_column=Column(
+            UserColumn.VERIFICATION_REQUIRED,
+            Boolean,
+            nullable=False,
+            server_default=true(),
+        ),
+    )
+
+    def mark_email_verified(self) -> None:
+        self.email_verified_at = system_now_utc()
+
+    @property
+    def can_launch_runs(self) -> bool:
+        return self.email_verified_at is not None or not self.verification_required
 
 
 class SessionRow(SQLModel, table=True):
@@ -56,7 +85,7 @@ class SessionRow(SQLModel, table=True):
         repr=False,
         sa_column=Column(
             SessionColumn.TOKEN_DIGEST,
-            String(SESSION_DIGEST_HEX_LENGTH),
+            String(AUTH_TOKEN_DIGEST_HEX_LENGTH),
             primary_key=True,
         ),
     )

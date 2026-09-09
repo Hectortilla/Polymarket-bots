@@ -42,7 +42,9 @@ async def ensure_test_user(session) -> UUID:
 
 async def regression_identity(request: Request) -> None:
     request.state.session_token = SessionToken.issue()
-    request.state.user = CurrentUser(id=TEST_USER_ID, email="regression@example.com")
+    request.state.user = CurrentUser(
+        id=TEST_USER_ID, email="regression@example.com", can_launch_runs=True
+    )
 
 
 async def regression_stream_lease(

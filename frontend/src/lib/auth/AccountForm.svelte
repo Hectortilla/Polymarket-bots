@@ -2,9 +2,10 @@
   import runtimeContract from '$lib/runtimeContract.fixture.json';
   import { page } from '$app/state';
   import { AUTH_COPY } from './copy';
+  import { ACCOUNT_COPY } from './recovery/copy';
   import { ACCOUNT_ACTION, CREDENTIAL_OUTCOME, submitCredentials } from './credentials';
   import { accountSession } from './session';
-  import { LOGIN_PATH, REGISTER_PATH, accountPath, RETURN_TO_QUERY_PARAM } from './navigation';
+  import { ACCOUNT_UPDATED_QUERY_PARAM, LOGIN_PATH, REGISTER_PATH, accountPath, RETURN_TO_QUERY_PARAM } from './navigation';
   import './account.css';
 
   let { registering = false }: { registering?: boolean } = $props();
@@ -22,7 +23,7 @@
     try {
       const outcome = await submitCredentials(registering ? ACCOUNT_ACTION.REGISTER : ACCOUNT_ACTION.LOGIN, { email, password });
       if (outcome === CREDENTIAL_OUTCOME.AUTHENTICATED) {
-        accountSession.acceptLogin(page.url.searchParams.get(RETURN_TO_QUERY_PARAM));
+        accountSession.acceptLogin(registering ? runtimeContract.accountManagement.accountPath : page.url.searchParams.get(RETURN_TO_QUERY_PARAM));
       } else if (outcome === CREDENTIAL_OUTCOME.RATE_LIMITED) {
         error = AUTH_COPY.RATE_LIMIT_ERROR;
       } else if (outcome === CREDENTIAL_OUTCOME.UNAVAILABLE) {
@@ -41,15 +42,18 @@
 <section class="account-panel">
   <p class="eyebrow">Your private workspace</p>
   <h1>{title}</h1>
-  <p>{registering ? 'Save your bots and follow your paper runs in one place. Registration signs you in immediately; no verification email is sent.' : 'Sign in to your bots, graphs, and run history.'}</p>
+  {#if !registering}<p><a href={runtimeContract.accountManagement.forgotPath}>{ACCOUNT_COPY.FORGOT}</a></p>{/if}
+  <p>{registering ? 'Save your bots and follow your paper runs in one place. Registration signs you in immediately. Verify your email in Account settings before launching a run.' : 'Sign in to your bots, graphs, and run history.'}</p>
+  {#if page.url.searchParams.has(ACCOUNT_UPDATED_QUERY_PARAM)}<p role="status">{ACCOUNT_COPY.DONE}</p>{/if}
   <form onsubmit={submit}>
     <label for="account-email">{AUTH_COPY.EMAIL}</label>
     <input id="account-email" type="email" autocomplete="username" maxlength={runtimeContract.auth.emailMaxLength} bind:value={email} required />
     <label for="account-password">{AUTH_COPY.PASSWORD}</label>
     <input id="account-password" type="password" autocomplete={registering ? 'new-password' : 'current-password'} minlength={runtimeContract.auth.passwordMinLength} maxlength={runtimeContract.auth.passwordMaxLength} bind:value={password} required />
-    <p class="field-help">Use {runtimeContract.auth.passwordMinLength}–{runtimeContract.auth.passwordMaxLength} characters. Password recovery is not available.</p>
+    <p class="field-help">Use {runtimeContract.auth.passwordMinLength}–{runtimeContract.auth.passwordMaxLength} characters.</p>
     {#if error}<p role="alert" class="notice error">{error}</p>{/if}
     <button class="primary" type="submit" disabled={busy}>{busy ? AUTH_COPY.BUSY : registering ? AUTH_COPY.REGISTER : AUTH_COPY.SIGN_IN}</button>
   </form>
+  {#if !registering}<p><a href={runtimeContract.accountManagement.forgotPath}>{ACCOUNT_COPY.FORGOT}</a></p>{/if}
   <p>{registering ? 'Already have an account?' : 'New to Polybot?'} <a href={accountPath(registering ? LOGIN_PATH : REGISTER_PATH, page.url.searchParams.get(RETURN_TO_QUERY_PARAM))}>{registering ? AUTH_COPY.SIGN_IN : AUTH_COPY.REGISTER}</a></p>
 </section>

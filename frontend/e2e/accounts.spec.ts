@@ -1,3 +1,5 @@
+import accountContract from './accountContract.fixture.json' with { type: 'json' };
+import { verifyNewAccount } from './accountHelpers';
 import { test, expect, type Page } from '@playwright/test';
 import contract from '../src/lib/runtimeContract.fixture.json' with { type: 'json' };
 
@@ -9,6 +11,8 @@ import { BOT_BUILDER_COPY } from '../src/lib/bots/copy';
 import { BOT_DETAIL_COPY } from '../src/routes/bots/[botId]/copy';
 import { RUN_STATUS, RUN_STATUS_PRESENTATION } from '../src/lib/runs/status';
 import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from '../src/lib/api/http';
+
+test.beforeEach(async ({ request }) => { await request.post(accountContract.clearLimitsPath); });
 
 const STREAM_COUNTERS = { opened: 'test-stream-opened', closed: 'test-stream-closed' };
 
@@ -22,6 +26,7 @@ async function authenticate(page: Page, email: string, registration = false) {
   await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: registration ? AUTH_COPY.REGISTER : AUTH_COPY.SIGN_IN, exact: true }).click();
   await expect(page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
+  if (registration) await verifyNewAccount(page, email, PASSWORD);
   await expect(page).toHaveURL(NAVIGATION_PATH.HOME);
 }
 

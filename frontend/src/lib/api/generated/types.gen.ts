@@ -5,6 +5,30 @@ export type ClientOptions = {
 };
 
 /**
+ * AccountActionResponse
+ */
+export type AccountActionResponse = {
+    /**
+     * Accepted
+     */
+    accepted: true;
+};
+
+/**
+ * AccountStatus
+ */
+export type AccountStatus = {
+    /**
+     * Email Verified
+     */
+    email_verified: boolean;
+    /**
+     * Verification Required
+     */
+    verification_required: boolean;
+};
+
+/**
  * AccountUsage
  */
 export type AccountUsage = {
@@ -206,6 +230,20 @@ export type BrokerOrderPayload = {
 };
 
 /**
+ * ChangePasswordRequest
+ */
+export type ChangePasswordRequest = {
+    /**
+     * Current Password
+     */
+    current_password: string;
+    /**
+     * New Password
+     */
+    new_password: string;
+};
+
+/**
  * ChartSamplePayload
  */
 export type ChartSamplePayload = {
@@ -265,6 +303,16 @@ export type DispatchOutcome = {
 export type DispatchSkipReason = 'market_metadata_missing' | 'book_identity_mismatch' | 'market_not_tracked' | 'market_resolved' | 'wallet_not_tracked' | 'book_stale' | 'book_future_dated' | 'bad_book_timestamp' | 'bad_book_level' | 'book_crossed' | 'wallet_trade_invalid' | 'wallet_trade_future_dated' | 'wallet_trade_stale' | 'duplicate_source_event';
 
 export type DurableEventId = number;
+
+/**
+ * EmailRequest
+ */
+export type EmailRequest = {
+    /**
+     * Email
+     */
+    email: string;
+};
 
 /**
  * EquityChartPayload
@@ -1833,6 +1881,20 @@ export type PreviewPortfolio = {
 };
 
 /**
+ * RedeemRequest
+ */
+export type RedeemRequest = {
+    /**
+     * New Password
+     */
+    new_password: string;
+    /**
+     * Token
+     */
+    token: string;
+};
+
+/**
  * RequestValidationFailure
  */
 export type RequestValidationFailure = {
@@ -1864,6 +1926,13 @@ export type RequestValidationIssue = {
  * ResourceLimitCode
  */
 export type ResourceLimitCode = 'user_allowance' | 'global_capacity' | 'invalid_configuration';
+
+/**
+ * RevokeSessionsRequest
+ */
+export type RevokeSessionsRequest = {
+    scope: SessionRevocation;
+};
 
 /**
  * RunBootstrapPayload
@@ -1990,6 +2059,11 @@ export type RunStatusPayload = {
  * SelectionMode
  */
 export type SelectionMode = 'user_configured' | 'bot_managed' | 'absent';
+
+/**
+ * SessionRevocation
+ */
+export type SessionRevocation = 'other' | 'all';
 
 /**
  * SettledPosition
@@ -2241,6 +2315,152 @@ export type CredentialsWritable = {
 
 export type GraphEvaluationReasonWritable = GraphReason | GraphActionSkipReason | BookValidationIssue | WalletTradeValidationIssue | FillRejectReason;
 
+/**
+ * RevokeSessionsRequest
+ */
+export type RevokeSessionsRequestWritable = {
+    /**
+     * Current Password
+     */
+    current_password: string;
+    scope: SessionRevocation;
+};
+
+export type AccountStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/account';
+};
+
+export type AccountStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type AccountStatusError = AccountStatusErrors[keyof AccountStatusErrors];
+
+export type AccountStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountStatus;
+};
+
+export type AccountStatusResponse = AccountStatusResponses[keyof AccountStatusResponses];
+
+export type CompleteEmailVerificationData = {
+    body: RedeemRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/email/verification/complete';
+};
+
+export type CompleteEmailVerificationErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CompleteEmailVerificationError = CompleteEmailVerificationErrors[keyof CompleteEmailVerificationErrors];
+
+export type CompleteEmailVerificationResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountActionResponse;
+};
+
+export type CompleteEmailVerificationResponse = CompleteEmailVerificationResponses[keyof CompleteEmailVerificationResponses];
+
+export type RequestEmailVerificationData = {
+    body: EmailRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/email/verification/request';
+};
+
+export type RequestEmailVerificationErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type RequestEmailVerificationError = RequestEmailVerificationErrors[keyof RequestEmailVerificationErrors];
+
+export type RequestEmailVerificationResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountActionResponse;
+};
+
+export type RequestEmailVerificationResponse = RequestEmailVerificationResponses[keyof RequestEmailVerificationResponses];
+
 export type LoginData = {
     body: CredentialsWritable;
     path?: never;
@@ -2360,6 +2580,145 @@ export type CurrentUserResponses = {
 
 export type CurrentUserResponse = CurrentUserResponses[keyof CurrentUserResponses];
 
+export type ChangePasswordData = {
+    body: ChangePasswordRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/password/change';
+};
+
+export type ChangePasswordErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ChangePasswordError = ChangePasswordErrors[keyof ChangePasswordErrors];
+
+export type ChangePasswordResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountActionResponse;
+};
+
+export type ChangePasswordResponse = ChangePasswordResponses[keyof ChangePasswordResponses];
+
+export type CompletePasswordResetData = {
+    body: RedeemRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/password/reset/complete';
+};
+
+export type CompletePasswordResetErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CompletePasswordResetError = CompletePasswordResetErrors[keyof CompletePasswordResetErrors];
+
+export type CompletePasswordResetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountActionResponse;
+};
+
+export type CompletePasswordResetResponse = CompletePasswordResetResponses[keyof CompletePasswordResetResponses];
+
+export type RequestPasswordResetData = {
+    body: EmailRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/password/reset/request';
+};
+
+export type RequestPasswordResetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type RequestPasswordResetError = RequestPasswordResetErrors[keyof RequestPasswordResetErrors];
+
+export type RequestPasswordResetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountActionResponse;
+};
+
+export type RequestPasswordResetResponse = RequestPasswordResetResponses[keyof RequestPasswordResetResponses];
+
 export type RegisterData = {
     body: CredentialsWritable;
     path?: never;
@@ -2408,6 +2767,51 @@ export type RegisterResponses = {
 };
 
 export type RegisterResponse = RegisterResponses[keyof RegisterResponses];
+
+export type RevokeSessionsData = {
+    body: RevokeSessionsRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/sessions/revoke';
+};
+
+export type RevokeSessionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Request Entity Too Large
+     */
+    413: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type RevokeSessionsError = RevokeSessionsErrors[keyof RevokeSessionsErrors];
+
+export type RevokeSessionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountActionResponse;
+};
+
+export type RevokeSessionsResponse = RevokeSessionsResponses[keyof RevokeSessionsResponses];
 
 export type ListBotDefinitionsApiV1BotDefinitionsGetData = {
     body?: never;

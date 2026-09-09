@@ -6,6 +6,7 @@ import os
 
 import api.execution.worker.lifecycle as lifecycle
 import uvicorn
+from api.auth.config import AuthSettings
 from api.deployment.schema import DeploymentSchema
 from api.deployment.services import DeploymentService
 from api.deployment.settings import API_PORT, API_WORKERS, StartupSettings
@@ -22,6 +23,8 @@ from polybot.polymarket.discovery_contracts import MarketSearchResults
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from control_plane.account_mail_fixture import install_browser_mailbox
+from control_plane.browser_limits_fixture import install_browser_limit_control
 from control_plane.market_fixtures import market_discovery, market_suggestion
 
 
@@ -62,7 +65,10 @@ def create_app():
         markets=(market_suggestion("browser-market"),),
         has_more=False,
     )
-    return application(market_discovery=discovery)
+    app = application(market_discovery=discovery)
+    install_browser_limit_control(app)
+    install_browser_mailbox(app, AuthSettings.from_env().origin)
+    return app
 
 
 def main():

@@ -1,0 +1,26 @@
+import contract from '$lib/runtimeContract.fixture.json' with { type: 'json' };
+
+export const ACCOUNT_COPY = {
+  SETTINGS: 'Account settings',
+  FORGOT: 'Forgot password?',
+  SEND_RESET: 'Send reset link',
+  SEND_VERIFICATION: 'Send verification link',
+  SENT: `Check your email. If your account is eligible, the link will work for ${contract.accountManagement.tokenLifetimeSeconds / 60} minutes. Inbox delivery may take a few minutes; you can retry if it does not arrive.`,
+  DELIVERY_FAILED: 'Email delivery is unavailable. Please try again later.',
+  INVALID_LINK: 'This link is missing, invalid, expired or already used. Request a new link.',
+  CURRENT_PASSWORD: 'Current password',
+  NEW_PASSWORD: 'New password',
+  CONFIRM_PASSWORD: 'Confirm new password',
+  PASSWORD_MISMATCH: 'The new passwords do not match.',
+  COMPLETE_RESET: 'Reset password',
+  COMPLETE_VERIFICATION: 'Verify email and set password',
+  CHANGE_PASSWORD: 'Change password',
+  REVOKE_OTHER: 'Sign out other sessions',
+  REVOKE_ALL: 'Sign out all sessions',
+  REAUTH_FAILED: 'Current password or session is invalid. Sign in and try again.',
+  DONE: 'Your account was updated. Sign in with your password to continue.',
+  OTHERS_DONE: 'Other sessions have been signed out. This session remains active.',
+  VERIFIED: 'Your email is verified.',
+  VERIFICATION_REQUIRED: 'Verify your email before launching a paper run. You can still edit bots and use account settings.',
+  LEGACY_ACCOUNT: 'Your existing account keeps its access. Verify your email to establish mailbox ownership.',
+} as const;

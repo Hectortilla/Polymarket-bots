@@ -5,9 +5,10 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from api.auth.dependencies import CurrentUserDependency
+from api.auth.recovery.policy import VERIFICATION_REQUIRED_DETAIL
 from api.bots.store import BotStore
 from api.http.contracts import ErrorResponse, RequestValidationFailure
 from api.http.dependencies import (
@@ -40,6 +41,7 @@ router = APIRouter()
     status_code=status.HTTP_202_ACCEPTED,
     operation_id=LAUNCH_BOT_RUN_OPERATION_ID,
     responses={
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
         **NOT_FOUND_AND_CONFLICT_RESPONSES,
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "model": ErrorResponse | RequestValidationFailure
@@ -54,6 +56,8 @@ async def launch_bot_run(
     launch_key: Annotated[UUID | None, Header(alias=IDEMPOTENCY_KEY_HEADER)] = None,
 ) -> RunRead:
     async with session_factory() as session:
+        if not user.can_launch_runs:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, VERIFICATION_REQUIRED_DETAIL)
         # The lock makes the committed run snapshot atomic with config and
         # revision edits; delivery starts only after that transaction commits.
         bot = require_bot(await BotStore(session, user.id).read(bot_id, lock=True))

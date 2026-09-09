@@ -1,0 +1,6 @@
+{
+  "mailboxPath": "/api/v1/__test/account-mail",
+  "clearLimitsPath": "/api/v1/__test/account-limits",
+  "mailboxEmailParameter": "email",
+  "mailboxLinkField": "link"
+}

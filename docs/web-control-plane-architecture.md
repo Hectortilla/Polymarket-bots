@@ -523,10 +523,17 @@ type.
 
 ## HTTP API
 
-- `POST /auth/register` — create an account and sign in, without email verification.
+- `POST /auth/register` — create an unverified account and sign in; email verification is required before launching runs for new accounts.
 - `POST /auth/login` — sign in with email and password.
 - `POST /auth/logout` — revoke the current session and clear its cookie.
 - `GET /auth/me` — restore the current user's safe account view.
+- `GET /auth/account` — read verification status.
+- `POST /auth/password/reset/request` — request a conditional reset link.
+- `POST /auth/password/reset/complete` — redeem a reset link and replace credentials.
+- `POST /auth/email/verification/request` — request or resend a verification link.
+- `POST /auth/email/verification/complete` — prove mailbox ownership and replace credentials.
+- `POST /auth/password/change` — reauthenticate, change password and revoke all sessions.
+- `POST /auth/sessions/revoke` — reauthenticate and revoke other/all sessions.
 
 All remaining routes require a session except minimal health readiness.
 Resource IDs are scoped to the current owner and return 404 when inaccessible.
@@ -993,3 +1000,47 @@ paper fills and resolution settlement, including portfolio and tracker mutation.
 The API supplies its database lease fence. Book checks repeat after fence acquisition;
 resolution callbacks run after releasing the fence to avoid nesting it with fills.
 Paper/live event shapes and Polymarket adapters are unchanged.
+
+## Slice 19: Recovery, verification and credential lifecycle
+
+The September 10 approved policy extends Slice 15. `api.auth` owns all new identity
+state. A forward migration adds nullable `email_verified_at`, a
+`verification_required` flag and digest-only purpose-scoped account tokens.
+Existing rows receive `verification_required=false` and remain unverified; new
+rows default to true. The HTTP launch boundary rejects an unverified required
+account before reserving capacity; history, editing, Stop and authentication stay
+available. No framework or execution-domain dependency on identity is added.
+
+Random tokens use SHA-256 digests and a reset/verification purpose. Entropy,
+expiry, response floor and attempt budgets are defined by the
+[runtime-checked account policy](account-recovery.md). Requests replace the prior same-purpose token
+under the user lock. Redemption locks the user then token, checks expiry after
+waiting, updates credentials, removes all account tokens and sessions in one
+transaction. Verification also records mailbox proof; reset alone does not mark
+verification. Login and authenticated credential operations take the same user
+lock so an old password cannot race a reset and issue a surviving session.
+Authenticated changes recheck the current session under that lock as well as
+verifying the current password. Reset/verification never issue a browser session.
+
+SMTP uses Python's standard client behind `asyncio.to_thread`, certificate-checked
+STARTTLS or implicit TLS, a bounded socket timeout and runtime-only configuration.
+Only explicit local development permits a plaintext loopback test relay. SMTP
+credentials support secret files. No provider purchase is required. Reset and
+verification requests attempt the same mail delivery for eligible and ineligible
+addresses, using an unpersisted random token for ineligible requests. HTTP responses and SMTP errors are generic. The configured minimum response time
+reduces ordinary eligibility timing differences; slow database, quota or relay
+operations can exceed that floor, so exact latency equality is not guaranteed.
+No plaintext token is stored in a database, queue or log. Failed delivery does not
+redeem a token and returns a generic 503; retry issues a fresh link. SMTP responses
+and exceptions are sanitized at the adapter boundary.
+
+Redis enforces the account policy attempt budgets per credential endpoint/IP
+and additionally per normalized email across mail requests, including unknown addresses. Limits never lock an account. Request bodies
+retain the 4 KiB limit, secret-safe validation and same-origin JSON CSRF boundary.
+Links derive from `POLYBOT_AUTH_ORIGIN`, use URL fragments and a no-referrer browser
+page that immediately erases the fragment with history replacement. No automatic
+GET redemption, open redirect, token response or browser persistence is allowed.
+
+This policy follows the current [OWASP recovery guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html),
+checked for this slice. SMTP is an application account dependency; no Polymarket
+protocol, SDK or endpoint behavior changes.

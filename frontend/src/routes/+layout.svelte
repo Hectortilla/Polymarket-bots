@@ -8,12 +8,15 @@
 
   import { isAccountPath } from '$lib/auth/navigation';
   import '$lib/auth/account.css';
+  import { captureAccountLink } from '$lib/auth/recovery/link';
+  import { ACCOUNT_COPY } from '$lib/auth/recovery/copy';
   import { configureApiResponseValidation } from '$lib/api/responseValidation/index';
   import { NAVIGATION_PATH } from '$lib/navigation';
   import '@fontsource-variable/geist';
   import '@fontsource-variable/geist-mono';
   import '../app.css';
 
+  captureAccountLink();
   const { account, ready: accountReady, error: accountError } = accountSession;
   configureApiResponseValidation();
   configureAccountBoundary();
@@ -42,7 +45,7 @@
     </a>
     <span class="environment-label">paper trading</span>
     {#if $account}
-      <div class="account-controls"><span>{$account.email}</span><button onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button></div>
+      <div class="account-controls"><span>{$account.email}</span><a href={runtimeContract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a><button onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button></div>
     {/if}
   </div>
 </header>

@@ -9,8 +9,8 @@ from api.auth.contracts import LogoutResponse
 from api.auth.middleware.body import AuthRequestBody
 from api.auth.passwords import PasswordVerificationError, verify_password
 from api.auth.policy import AUTH_BODY_MAX_BYTES
-from api.auth.schema import SESSION_DIGEST_HEX_LENGTH
 from api.auth.store.tokens import SESSION_TOKEN_LENGTH, SessionToken
+from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
 from api.http.app import create_app
 from api.http.dependencies import application_lifespan
 from fastapi import HTTPException, status
@@ -74,7 +74,7 @@ def test_invalid_auth_environment_prevents_application_startup(
 def test_session_token_generation_and_ingress_share_the_policy():
     token = SessionToken.issue()
     assert len(token.value) == SESSION_TOKEN_LENGTH
-    assert len(token.digest) == SESSION_DIGEST_HEX_LENGTH
+    assert len(token.digest) == AUTH_TOKEN_DIGEST_HEX_LENGTH
     assert SessionToken.parse(token.value) == token
     assert token.value not in repr(token)
     for malformed in (None, "", "!" * SESSION_TOKEN_LENGTH, token.value + "x"):

@@ -1,6 +1,6 @@
 import { derived, get, writable } from 'svelte/store';
 import { AUTH_COPY } from '../copy';
-import { accountPath, isAccountPath, LOGIN_PATH, safeReturnPath } from '../navigation';
+import { ACCOUNT_UPDATED_QUERY_PARAM, accountPath, isAccountPath, LOGIN_PATH, safeReturnPath } from '../navigation';
 import { AccountChannel } from './crossTab';
 import { ACCOUNT_LOOKUP, lookupCurrentAccount, revokeCurrentSession } from './requests';
 import { ACCOUNT_FAILURE, ACCOUNT_SESSION_STATUS, type AccountSessionState } from './state';
@@ -55,6 +55,12 @@ export class AccountSession {
     this.clear();
     this.channel.announce();
     window.location.replace(safeReturnPath(returnPath));
+  }
+
+  credentialsRevoked(): void {
+    this.clear();
+    this.channel.announce();
+    window.location.replace(`${LOGIN_PATH}?${ACCOUNT_UPDATED_QUERY_PARAM}=1`);
   }
 
   expire(): void {

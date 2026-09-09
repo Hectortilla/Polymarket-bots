@@ -32,7 +32,8 @@ configuration and HTTPS release/rollback workflow described in
 the standalone framework still requires none of them. Slice 17 adds
 application-owned allowances, shared PostgreSQL run admission,
 Redis request/stream bounds and optional runtime market caps. Slice 18 adds durable launch identities, transactional terminal events and
-scheduled queue/lease recovery. Slices 19–23 and
+scheduled queue/lease recovery. Slice 19 adds SMTP account links, verification,
+password changes and session revocation inside `api.auth`. Slices 20–23 and
 public signup remain outside the delivered scope.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
