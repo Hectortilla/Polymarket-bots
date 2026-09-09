@@ -1,5 +1,6 @@
 """FastAPI dependency and resource-lifecycle wiring."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -15,30 +16,34 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from api.auth.config import AuthSettings
-from api.database import configured_database_url
-from api.execution.config import configured_redis_url
+from api.deployment.settings import StartupSettings
 from api.execution.launcher import RunLauncher
 
 
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     AuthSettings.for_app(app)
+    if not hasattr(app.state, "session_factory") or not hasattr(app.state, "redis"):
+        app.state.startup_settings = await asyncio.to_thread(StartupSettings.from_env)
     owned_engine: AsyncEngine | None = None
     owned_redis: Redis | None = None
     owned_discovery: MarketDiscovery | None = None
     if not hasattr(app.state, "session_factory"):
         owned_engine = create_async_engine(
-            configured_database_url(), hide_parameters=True
+            app.state.startup_settings.database_url.get_secret_value(),
+            hide_parameters=True,
         )
         app.state.session_factory = async_sessionmaker(
             owned_engine,
             expire_on_commit=False,
         )
     if not hasattr(app.state, "redis"):
-        owned_redis = Redis.from_url(configured_redis_url())
+        owned_redis = Redis.from_url(
+            app.state.startup_settings.redis_url.get_secret_value()
+        )
         app.state.redis = owned_redis
     if not hasattr(app.state, "launcher"):
-        app.state.launcher = _default_launcher()
+        app.state.launcher = await asyncio.to_thread(_default_launcher)
     if not hasattr(app.state, "market_discovery"):
         owned_discovery = MarketDiscovery()
         app.state.market_discovery = owned_discovery

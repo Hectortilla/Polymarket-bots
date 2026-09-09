@@ -110,7 +110,9 @@ describe('run reload', () => {
   });
 
   it('does not open SSE past a terminal event committed during hydration', async () => {
-    vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
+    vi.mocked(readRunApiV1RunsRunIdGet)
+      .mockResolvedValueOnce({ data: RUN } as never)
+      .mockResolvedValueOnce({ data: { ...RUN, status: RUN_STATUS.STOPPED } } as never);
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: {
         events: [{ ...EVENT, payload: { status: RUN_STATUS.STOPPED } }],
@@ -118,10 +120,26 @@ describe('run reload', () => {
       },
     } as never);
     const openStream = vi.fn();
+    const hydrated = vi.fn();
 
-    await loadAndContinueRunDetail(RUN.id, vi.fn(), vi.fn(), vi.fn(), openStream);
+    await loadAndContinueRunDetail(RUN.id, hydrated, vi.fn(), vi.fn(), openStream);
 
     expect(openStream).not.toHaveBeenCalled();
+    expect(hydrated.mock.calls[0][0].run.status).toBe(RUN_STATUS.STOPPED);
+  });
+
+  it('refreshes a queued snapshot when the running event is already in the SSE cursor', async () => {
+    vi.mocked(readRunApiV1RunsRunIdGet)
+      .mockResolvedValueOnce({ data: { ...RUN, status: RUN_STATUS.QUEUED } } as never)
+      .mockResolvedValueOnce({ data: RUN } as never);
+    vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
+      data: { events: [EVENT], next_before_event_id: null },
+    } as never);
+    const hydrated = vi.fn();
+    const openStream = vi.fn(() => () => {});
+    await loadAndContinueRunDetail(RUN.id, hydrated, vi.fn(), vi.fn(), openStream);
+    expect(hydrated.mock.calls[0][0].run.status).toBe(RUN_STATUS.RUNNING);
+    expect(openStream).toHaveBeenCalledWith(RUN.id, EVENT.id, expect.any(Function), expect.any(Function), undefined);
   });
 
   it('loads only the older page selected by the server cursor', async () => {

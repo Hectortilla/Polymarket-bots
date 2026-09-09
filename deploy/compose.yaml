@@ -1,0 +1,120 @@
+name: polybot
+
+x-application: &application
+  image: ${POLYBOT_BACKEND_IMAGE:?immutable backend image required}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  environment:
+    POLYBOT_ENVIRONMENT: production
+    POLYBOT_RELEASE_ID: ${POLYBOT_RELEASE_ID:?release commit required}
+    POLYBOT_AUTH_ORIGIN: ${POLYBOT_AUTH_ORIGIN:?HTTPS origin required}
+    POLYBOT_AUTH_ALLOW_HTTP: 'false'
+    POLYBOT_DATABASE_URL_FILE: /run/secrets/database_url
+    POLYBOT_REDIS_URL_FILE: /run/secrets/redis_url
+    POLYBOT_PROXY_ADDRESS: &proxy_address 172.30.16.2
+    BOT_MODE: paper
+    BOT_LIVE_ENABLED: 'false'
+  secrets: [database_url, redis_url]
+  networks: [services]
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    migrate: {condition: service_completed_successfully}
+  logging: &logging
+    driver: json-file
+    options: {max-size: 10m, max-file: '3'}
+
+services:
+  entrypoint:
+    image: ${POLYBOT_FRONTEND_IMAGE:?immutable frontend image required}
+    restart: unless-stopped
+    environment:
+      POLYBOT_AUTH_ORIGIN: ${POLYBOT_AUTH_ORIGIN:?HTTPS origin required}
+    # Public binding remains unavailable until the final beta acceptance gate.
+    ports: ['127.0.0.1:${POLYBOT_HTTPS_PORT:-8443}:${POLYBOT_HTTPS_PORT:-8443}']
+    networks:
+      edge: {ipv4_address: *proxy_address}
+    secrets: [tls_cert, tls_key]
+    volumes: [caddy_data:/data, caddy_config:/config]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, 'http://127.0.0.1:8080/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging: *logging
+  api:
+    <<: *application
+    command: [api]
+    networks:
+      services: {}
+      edge: {ipv4_address: 172.30.16.3}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  worker:
+    <<: *application
+    command: [worker]
+    stop_grace_period: 45s
+    # Worker market-data connections require outbound access too.
+    networks: [services, outbound]
+  migrate:
+    <<: *application
+    restart: 'no'
+    command: [migrate]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  postgres:
+    image: ${POLYBOT_POSTGRES_IMAGE:?pinned PostgreSQL image required}
+    environment:
+      POSTGRES_DB: polybot
+      POSTGRES_USER: polybot
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [services]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U polybot -d polybot]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging: *logging
+  redis:
+    image: ${POLYBOT_REDIS_IMAGE:?pinned Redis image required}
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [redis_data:/data]
+    networks: [services]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging: *logging
+
+networks:
+  services: {internal: true}
+  edge:
+    ipam:
+      config: [{subnet: 172.30.16.0/28}]
+  outbound: {}
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+secrets:
+  database_url: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/database_url'}
+  redis_url: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/redis_url'}
+  postgres_password: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/postgres_password'}
+  tls_cert: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/tls_cert'}
+  tls_key: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/tls_key'}

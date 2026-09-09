@@ -89,6 +89,7 @@ packages = [
   "polybot.runtime",
   "polybot.runtime.performance",
   "api",
+  "api.deployment",
   "api.auth",
   "api.auth.store",
   "api.auth.middleware",

@@ -1117,7 +1117,7 @@ Acceptance:
 
 ## Slice 12F: Compose Deployment and End-to-End Handoff
 
-Status: planned; depends on Slices 12A through 12E.
+Status: implemented alongside Slice 16; depends on Slices 12A through 12E.
 
 Minimum deliverable:
 
@@ -1148,6 +1148,13 @@ Acceptance:
 - Existing CLI, recorder, backtester, and terminal dashboard tests remain
   independent of all control-plane services.
 - The documented standalone extraction checks pass.
+
+Delivered September 9, 2026: Compose provides the static same-origin frontend,
+multi-process API, bounded Taskiq concurrency, private PostgreSQL/Redis and a
+one-shot forward migration. Startup settings and the disposable Compose/browser
+rehearsal cover the acceptance above. Worker-loss acceptance invokes the existing
+lease reconciler explicitly; the recurring recovery scheduler remains Slice 18.
+Slice 16 owns the additional TLS/release work and the combined review record below.
 
 ## Slice 13A: Framework-Derived Trigger Nodes
 
@@ -1705,7 +1712,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: planned. The user approved the eight readiness areas below as the next
+Status: Slice 16 delivered; Slices 17–23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -1731,7 +1738,7 @@ Use forward migrations that preserve existing accounts and history.
 
 ## Slice 16: Production Deployment
 
-Status: planned; depends on Slice 12F and Slice 15.
+Status: implemented; depends on Slice 12F and Slice 15.
 
 Minimum deliverable:
 
@@ -1762,6 +1769,42 @@ Explicit exclusions: Kubernetes, autoscaling and multi-region deployment unless
 a demonstrated requirement is approved. Backups belong to Slice 21; operational
 alerts to Slice 20. This slice extends 12F's intentionally private deployment
 scope without rewriting its original deliverable.
+
+Delivered September 9, 2026. The selected single-host Compose topology and
+capacity assumptions, runtime secret files, exact schema compatibility policy,
+immutable release manifests, private TLS entrypoint, release/rollback procedure
+and local development separation are recorded in `beta-deployment.md`.
+Release activation waits for API and proxy readiness. A failed migration keeps
+application processes and ingress stopped; rollback checks compatibility and
+never downgrades the database. Existing infrastructure containers are preserved.
+No hosting provider was purchased and no public or production deployment occurred.
+
+Verification: disposable PostgreSQL/Redis, real Taskiq delivery and Caddy TLS
+passed release/rollback and migration-failure rehearsals, multi-user isolation,
+worker concurrency/queueing, queued and active Stop, reload, monotonic SSE
+reconnection, worker-loss interruption and credential-log checks. The separate
+acceptance image replaces only market discovery/runtime inputs. Chromium also
+passed the private HTTPS workflow. The ordinary Python, frontend, generated
+contract, package build and multi-account browser checks passed. Test commands
+remain in README and the deployment runbook.
+
+The rehearsal exposed and fixed a hydration race: a lifecycle event committed
+between the run read and event-page read could leave stale status behind the
+reconnect cursor. A focused browser-state regression covers the refreshed status.
+
+Review exception explicitly approved by the user: all 51 reviewer roles were
+launched; 15 completed and 36 failed when workspace credits ran out. The user
+authorized finishing with parent review and tests without further subagents.
+Both reported findings were fixed (blocking secret-file IO and the duplicated
+heartbeat test literal), and the parent completed the remaining review and
+documentation/contract audit. The full 51-agent review is not claimed complete.
+
+Final documentation-drift audit: README, product specification, both architecture
+references, this plan and the deployment runbook match the delivered private
+behavior. API/exported contract shapes did not change and generated-client checks
+passed. No Polymarket protocol, transport or SDK boundary changed, so no new
+PolymarketDocs check was required. At the user's request this implementation
+stops here; Slices 17–23 remain unchanged planned work and open signup stays gated.
 
 ## Slice 17: Per-User Resource Limits
 

@@ -1,8 +1,8 @@
 """Shared control-plane PostgreSQL configuration boundary."""
 
-import os
-
 from sqlalchemy.engine import URL, make_url
+
+from api.deployment.secrets import configured_secret
 
 DATABASE_URL_ENV = "POLYBOT_DATABASE_URL"
 POSTGRESQL_BACKEND_NAME = "postgresql"
@@ -10,7 +10,7 @@ ASYNC_POSTGRESQL_DRIVER_NAME = "postgresql+asyncpg"
 
 
 def configured_database_url() -> URL:
-    raw_url = os.getenv(DATABASE_URL_ENV)
+    raw_url = configured_secret(DATABASE_URL_ENV)
     if raw_url is None:
         raise ValueError(f"{DATABASE_URL_ENV} is not configured")
     return async_database_url(raw_url)

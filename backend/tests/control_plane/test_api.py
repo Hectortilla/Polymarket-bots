@@ -887,8 +887,10 @@ def test_application_lifespan_owns_default_resources(
     launcher = _Launcher()
     discovery = market_discovery()
     monkeypatch.setattr(dependencies_module, "MarketDiscovery", lambda: discovery)
-    monkeypatch.setattr(dependencies_module, "configured_database_url", lambda: "db")
-    monkeypatch.setattr(dependencies_module, "configured_redis_url", lambda: "redis")
+    settings = dependencies_module.StartupSettings(database_url="db", redis_url="redis")
+    monkeypatch.setattr(
+        dependencies_module.StartupSettings, "from_env", lambda: settings
+    )
     monkeypatch.setattr(
         dependencies_module, "create_async_engine", lambda url, **kwargs: engine
     )

@@ -298,7 +298,14 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-These are planned extensions, not delivered behavior. Adopt the relevant product
-policies here during each slice; keep the current private boundary until the
+Slice 16 is delivered; Slices 17–23 remain planned extensions. Adopt their product
+policies here during each slice and keep the current private boundary until the
 complete open-signup gate passes. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
+
+Slice 16 implementation uses a private HTTPS staging entrypoint. Browser
+authentication and resource ownership have the same behavior through the proxy;
+release maintenance may briefly make the service unavailable. Failed migrations
+keep it unavailable until an operator repairs the release. This infrastructure
+does not enable public signup. Recovery from interrupted workers is owned by
+Slice 18 and never resumes a paper portfolio automatically.

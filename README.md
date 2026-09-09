@@ -153,10 +153,19 @@ without verification mail. Social login, password recovery and a marketplace are
 not included; the application still requires a local/private access boundary.
 
 [Public paper-beta readiness](docs/implementation-plan.md#public-paper-trading-beta-roadmap)
-is planned next. After Slice 12F, Slices 16–23 cover production deployment,
-resource limits, run reliability, account recovery, operations, data lifecycle,
-onboarding and launch/support information. All are planned work; open signup
-remains gated on their acceptance. Marketplace work is deferred.
+now includes the delivered Slice 12F deployment foundation and Slice 16 private
+HTTPS release workflow. Slices 17–23 remain planned: resource limits, run
+reliability, account recovery, operations, data lifecycle, onboarding and
+launch/support information. Open signup remains gated on their acceptance.
+Marketplace work is deferred.
+
+Private HTTPS deployment work and the repeatable release procedure are documented
+in [the deployment runbook](docs/beta-deployment.md). Run its disposable Compose
+acceptance from the root with
+`PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke`.
+It builds isolated images/volumes, uses local TLS, and removes only its own test
+volumes afterward. Docker, Compose and OpenSSL are required. This does not deploy
+a public service or alter the configured development database.
 
 
 The architecture document also defines strict field, abstraction, module,

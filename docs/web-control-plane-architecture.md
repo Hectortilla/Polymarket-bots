@@ -1,12 +1,11 @@
 # Web Control Plane v0 Architecture and API
 
-Status: Slices 12A–12E, 13A–13F, 14 and 15 are implemented.
-Slice 12F deployment remains separate planned work.
+Status: Slices 12A–12F, 13A–13F, 14, 15 and 16 are implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
-plans Slices 16–23 after the Slice 12F deployment foundation. It covers production
+continues with planned Slices 17–23 after the delivered deployment foundation. It covers production
 operation, resource limits, reliability, recovery, data lifecycle and launch
 workflows. Adopt each slice's technical contracts here during implementation;
 current private access, ownership and paper execution remain unchanged until the
@@ -60,7 +59,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F, 13A-13F, 14, and 15 in `docs/implementation-plan.md`.
+  Slices 12A-12F, 13A-13F, 14, 15 and 16 in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -655,6 +654,19 @@ owner.
 
 Multiple Uvicorn workers are supported because ownership and events are not
 process-local. Scaling API workers does not change bot capacity.
+
+Slice 16 extends this deployment boundary with runtime-only secret files, exact
+schema compatibility, immutable release manifests and a TLS Caddy entrypoint.
+The selected topology and release/rollback contracts live in
+[`beta-deployment.md`](beta-deployment.md). Startup settings are owned by
+`api.deployment.settings`; database/Redis adapters retain URL parsing ownership.
+Public ingress remains closed pending all readiness slices.
+
+Secret-file IO runs outside the API/worker event loop and each resource lifetime
+reuses its parsed settings. The browser refreshes an older run snapshot when the
+initial event page already includes a different lifecycle state, preventing that
+state from being lost behind the SSE cursor. This also restores terminal status
+correctly when a run ends during page hydration.
 
 ## Proportional Test Contract
 

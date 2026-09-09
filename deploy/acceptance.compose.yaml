@@ -1,0 +1,7 @@
+services:
+  api:
+    entrypoint: [python, -m, control_plane.deployment_fixture]
+    command: [api]
+  worker:
+    entrypoint: [python, -m, control_plane.deployment_fixture]
+    command: [worker]

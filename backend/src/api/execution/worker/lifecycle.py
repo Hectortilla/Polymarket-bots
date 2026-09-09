@@ -9,13 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from api.events.contracts import RunLifecycleEvent
 from api.events.observer import WebRuntimeObserver
 from api.events.writer import RunEventWriter
+from api.deployment.settings import DEFAULT_HEARTBEAT_SECONDS
 from api.runs.failures import sanitized_failure_detail
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
 
 from .runtime import run_claimed_bot
 
-WORKER_POLL_INTERVAL_SECONDS = 5
+WORKER_POLL_INTERVAL_SECONDS = DEFAULT_HEARTBEAT_SECONDS
 PAPER_RUN_FAILURE_REASON = "paper run failed"
 
 
@@ -27,10 +28,12 @@ class RunLifecycleCoordinator:
         store: RunStore,
         session_factory: async_sessionmaker[AsyncSession],
         event_writer: RunEventWriter,
+        heartbeat_seconds: float = WORKER_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._store = store
         self._session_factory = session_factory
         self._event_writer = event_writer
+        self._heartbeat_seconds = heartbeat_seconds
 
     async def execute(self, run_id: UUID) -> None:
         try:
@@ -114,7 +117,7 @@ class RunLifecycleCoordinator:
         cooperative_stop: asyncio.Event,
     ) -> None:
         while not bot_task.done():
-            await asyncio.sleep(WORKER_POLL_INTERVAL_SECONDS)
+            await asyncio.sleep(self._heartbeat_seconds)
             async with self._session_factory() as session:
                 store = RunStore(session)
                 status = await store.status(run_id)

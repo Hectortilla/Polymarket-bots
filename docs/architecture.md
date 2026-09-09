@@ -26,6 +26,11 @@ alpha graph contract with framework-derived triggers, typed constants,
 comparisons, event-driven fixed-side paper broker actions, editable reusable
 templates, saved bots, immutable bot-owned graph revisions, email/password
 accounts, server-side sessions, and private resource ownership.
+Slices 12F and 16 add the private Compose deployment, runtime secret-file
+configuration and HTTPS release/rollback workflow described in
+[the deployment runbook](beta-deployment.md). These are application services;
+the standalone framework still requires none of them. Slices 17–23 and public
+signup remain outside the delivered scope.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade

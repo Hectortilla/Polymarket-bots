@@ -5,6 +5,7 @@ import {
   type RunRead
 } from '$lib/api/generated';
 import {
+  EVENT_KIND,
   isTerminalLifecycleEvent,
   latestEventCursor,
   requirePersistedEventPage,
@@ -27,14 +28,7 @@ export type RunHydration = PersistedEventPage & {
 };
 
 export async function hydrateRunDetail(runId: string): Promise<RunHydration> {
-  const runResponse = await readRunApiV1RunsRunIdGet({
-    path: { run_id: runId },
-  });
-  if (!runResponse.data) {
-    if (runResponse.response?.status === HTTP_STATUS.NOT_FOUND) throw new RunNotFoundError();
-    throw new Error('Run unavailable');
-  }
-  const run = runResponse.data;
+  let run = await readRun(runId);
   const eventsResponse = await readRunEventsApiV1RunsRunIdEventsGet({
     path: { run_id: run.id },
     throwOnError: true
@@ -42,6 +36,13 @@ export async function hydrateRunDetail(runId: string): Promise<RunHydration> {
   const page = requirePersistedEventPage(eventsResponse.data, run.id);
   const events = page.events;
   const cursor = latestEventCursor(events);
+  // A transition can commit between the run read and the event-page read. Once
+  // included in this cursor it will not replay over SSE, so refresh its state.
+  if (!isTerminalRunStatus(run.status) && events.some((event) =>
+    event.kind === EVENT_KIND.runLifecycle && event.payload.status !== run.status
+  )) {
+    run = await readRun(run.id);
+  }
   return {
     run,
     events,
@@ -85,4 +86,13 @@ export async function loadAndContinueRunDetail(
     onLiveEvent,
     onConnectionState
   );
+}
+
+async function readRun(runId: string): Promise<RunRead> {
+  const response = await readRunApiV1RunsRunIdGet({ path: { run_id: runId } });
+  if (!response.data) {
+    if (response.response?.status === HTTP_STATUS.NOT_FOUND) throw new RunNotFoundError();
+    throw new Error('Run unavailable');
+  }
+  return response.data;
 }
