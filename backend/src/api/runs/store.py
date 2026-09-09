@@ -4,14 +4,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import update
+from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from api.bots.contracts import BotRead
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.store import BotStore
-from api.runs.contracts import PaperRunConfig, RunRead
+from api.limits.admission import RunAdmission
+from api.limits.policy import PAPER_BETA
+from api.runs.contracts import ClaimedRunRead, PaperRunConfig, RunRead
 from api.runs.models import RunRow
 from api.runs.status import (
     INTERRUPTIBLE_RUN_STATUSES,
@@ -33,6 +35,7 @@ class RunStore:
         self._session = session
 
     async def create_from_bot(self, bot: BotRead) -> RunRead:
+        await RunAdmission(self._session).reserve_queue(bot.id)
         revision = bot.latest_graph_revision
         row = RunRow(
             bot_id=bot.id,
@@ -58,9 +61,22 @@ class RunStore:
         return None if row is None else await self._read_row(row)
 
     async def list_owned(self, owner_user_id: UUID) -> tuple[RunRead, ...]:
+        recent_history = (
+            self._owned_runs_statement(owner_user_id)
+            .with_only_columns(RunRow.id)
+            .where(RunRow.status.in_(TERMINAL_RUN_STATUSES))
+            .order_by(RunRow.created_at.desc(), RunRow.id.desc())
+            .limit(PAPER_BETA.retained_runs)
+        )
         rows = (
             await self._session.execute(
                 self._owned_runs_statement(owner_user_id)
+                .where(
+                    or_(
+                        RunRow.status.not_in(TERMINAL_RUN_STATUSES),
+                        RunRow.id.in_(recent_history),
+                    )
+                )
                 .order_by(RunRow.created_at.desc(), RunRow.id.desc())
             )
         ).scalars()
@@ -74,9 +90,12 @@ class RunStore:
         rows = (await self._session.execute(statement)).scalars()
         return tuple([await self._read_row(row) for row in rows])
 
-    async def claim(self, run_id: UUID, *, now: datetime) -> RunRead | None:
-        # The status predicate makes duplicate Taskiq deliveries race on one
-        # database write; only the winner receives a typed run to execute.
+    async def claim(self, run_id: UUID, *, now: datetime) -> ClaimedRunRead | None:
+        if await RunAdmission(self._session).next_eligible_queued_run_id() != run_id:
+            await self._session.commit()
+            return None
+        # The advisory lock serializes claims; the status predicate is the final
+        # guard against stale deliveries.
         statement = (
             update(RunRow)
             .where(RunRow.id == run_id, RunRow.status == RunStatus.QUEUED)
@@ -88,7 +107,9 @@ class RunStore:
             await self._session.commit()
             return None
         try:
-            claimed = await self._read_row(row)
+            claimed = ClaimedRunRead.model_validate(
+                await self._read_row(row), from_attributes=True
+            )
         except Exception:
             await self._session.rollback()
             raise
@@ -98,19 +119,8 @@ class RunStore:
     async def mark_running(self, run_id: UUID) -> bool:
         return await self._transition(run_id, RunStatus.RUNNING)
 
-    async def begin_completion(self, run_id: UUID) -> bool:
-        return await self._transition(
-            run_id,
-            RunStatus.STOPPING,
-            expected_statuses=frozenset({RunStatus.RUNNING}),
-        )
-
     async def begin_stopping(self, run_id: UUID) -> bool:
-        return await self._transition(
-            run_id,
-            RunStatus.STOPPING,
-            expected_statuses=frozenset({RunStatus.STOP_REQUESTED}),
-        )
+        return await self._transition(run_id, RunStatus.STOPPING)
 
     async def request_stop(self, run_id: UUID, *, now: datetime) -> RunStatus | None:
         transition = await self.request_stop_transition(run_id, now=now)
@@ -186,17 +196,12 @@ class RunStore:
         expired_before: datetime,
         now: datetime,
     ) -> bool:
-        result = await self._session.execute(
-            update(RunRow)
-            .where(
-                RunRow.id == run_id,
-                RunRow.status.in_(INTERRUPTIBLE_RUN_STATUSES),
-                RunRow.heartbeat_at < expired_before,
-            )
-            .values(status=RunStatus.INTERRUPTED, ended_at=now)
+        return await self._transition(
+            run_id,
+            RunStatus.INTERRUPTED,
+            expired_before=expired_before,
+            ended_at=now,
         )
-        await self._session.commit()
-        return result.rowcount == 1
 
     async def transition_row(
         self,
@@ -204,8 +209,11 @@ class RunStore:
         status: RunStatus,
         *,
         expected_statuses: frozenset[RunStatus] | None = None,
+        expired_before: datetime | None = None,
         **transition_updates: object,
     ) -> RunRow | None:
+        if status in TERMINAL_RUN_STATUSES:
+            await RunAdmission(self._session).lock_transaction()
         allowed_previous = status.previous_statuses()
         expected = expected_statuses or allowed_previous
         if not expected or not expected.issubset(allowed_previous):
@@ -216,6 +224,8 @@ class RunStore:
             .values(status=status, **transition_updates)
             .returning(RunRow)
         )
+        if expired_before is not None:
+            statement = statement.where(RunRow.heartbeat_at < expired_before)
         return (await self._session.execute(statement)).scalar_one_or_none()
 
     async def read_row(self, row: RunRow) -> RunRead:

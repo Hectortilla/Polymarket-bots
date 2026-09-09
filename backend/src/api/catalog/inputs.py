@@ -21,6 +21,7 @@ from polybot.framework.wallets import (
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 from api.catalog.values import WIDGET_SCHEMA_KEY, WidgetKind
+from api.limits.policy import PAPER_BETA
 from api.market_selection import MAX_SELECTED_MARKETS, MarketSlug
 from api.runs.contracts import (
     DataTradesBudget,
@@ -91,6 +92,7 @@ class PaperLaunchInputs(BaseModel):
 class WalletPaperLaunchInputs(PaperLaunchInputs):
     wallet_addresses: tuple[WalletAddress, ...] = Field(
         min_length=1,
+        max_length=PAPER_BETA.followed_wallets_per_run,
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.WALLET_ADDRESSES.value},
     )
 

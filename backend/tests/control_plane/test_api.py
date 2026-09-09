@@ -712,16 +712,17 @@ def test_missing_run_event_routes_and_pagination_bounds(
         ).status_code
         == 404
     )
+    owned_run_id = _create_run(client)["id"]
     assert (
         client.get(
-            api_route_path(RUN_EVENTS_PATH, run_id=missing_id),
+            api_route_path(RUN_EVENTS_PATH, run_id=owned_run_id),
             params={"before_event_id": FIRST_EVENT_CURSOR - 1},
         ).status_code
         == 422
     )
     assert (
         client.get(
-            api_route_path(RUN_EVENTS_PATH, run_id=missing_id),
+            api_route_path(RUN_EVENTS_PATH, run_id=owned_run_id),
             params={"before_event_id": MAX_DURABLE_EVENT_ID + 1},
         ).status_code
         == 422
@@ -729,14 +730,14 @@ def test_missing_run_event_routes_and_pagination_bounds(
     for invalid_limit in (MIN_EVENT_PAGE_LIMIT - 1, MAX_EVENT_PAGE_LIMIT + 1):
         assert (
             client.get(
-                api_route_path(RUN_EVENTS_PATH, run_id=missing_id),
+                api_route_path(RUN_EVENTS_PATH, run_id=owned_run_id),
                 params={"limit": invalid_limit},
             ).status_code
             == 422
         )
     assert (
         client.get(
-            api_route_path(RUN_EVENTS_STREAM_PATH, run_id=missing_id),
+            api_route_path(RUN_EVENTS_STREAM_PATH, run_id=owned_run_id),
             headers={LAST_EVENT_ID_HEADER: str(MAX_DURABLE_EVENT_ID + 1)},
         ).status_code
         == 422

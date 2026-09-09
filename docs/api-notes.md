@@ -113,7 +113,7 @@ The API bounds the trimmed query to 2–200 characters and result limit to 1–2
 `has_more` signals upstream or flattened-result truncation and the UI asks for
 a more specific query instead of scanning further pages. Exact saved-selection
 lookup reuses batched Gamma resolution, including its closed-market fallback,
-and accepts at most 100 slugs. Upstream errors/timeouts produce a safe HTTP 503.
+and accepts at most `api.market_selection.MAX_SELECTED_MARKETS` slugs. Upstream errors/timeouts produce a safe HTTP 503.
 The frontend uses same-origin generated API calls, never a Polymarket JS client.
 
 A live SDK request could not be verified from this environment due to a TLS
@@ -495,3 +495,12 @@ also applies to positions discovered during bootstrap. Missing or rejected books
 continue to produce unknown baseline marks. The refactor retains official SDK
 subscription, pagination, error conversion, and lifecycle ownership; no direct
 transport or protocol exception was introduced.
+
+### Slice 17 subscription allowance verification (2026-09-09)
+
+PolymarketDocs MCP confirmed that Python realtime uses the official async
+`subscribe(MarketSpec(token_ids=[...]))` path and accepts multiple token IDs
+([official Python subscriptions](https://docs.polymarket.com/getting-started/python#realtime-subscriptions)).
+The web beta caps its existing condition-keyed registry before growing that
+subscription. No endpoint, SDK model, transport, authentication or fee behavior
+changes; no direct-integration exception is needed.

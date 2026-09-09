@@ -50,6 +50,7 @@ async def run_bot(
     results_dir: str | Path | None = None,
     bot_spec: str | None = None,
     report_interval_ms: int = DEFAULT_REPORT_INTERVAL_MS,
+    max_tracked_markets: int | None = None,
 ) -> None:
     """Run one bot using public market data and the paper broker."""
     if config.mode is BotMode.LIVE:
@@ -63,6 +64,7 @@ async def run_bot(
         config,
         runtime_observer,
         public_data=public_data,
+        max_tracked_markets=max_tracked_markets,
     )
     paper_broker = runtime.paper_broker
     ctx = runtime.ctx
@@ -127,7 +129,7 @@ async def run_bot(
             failed = True
             emit_observer_fail_open(
                 runtime_observer,
-                RuntimeFailed(f"{type(error).__name__}: {error}", monotonic()),
+                RuntimeFailed.from_exception(error),
             )
         raise
     finally:
@@ -146,7 +148,7 @@ async def run_bot(
             if not isinstance(error, asyncio.CancelledError):
                 emit_observer_fail_open(
                     runtime_observer,
-                    RuntimeFailed(f"{type(error).__name__}: {error}", monotonic()),
+                    RuntimeFailed.from_exception(error),
                 )
             raise
         finally:

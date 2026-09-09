@@ -455,7 +455,7 @@ def test_paper_artifact_startup_failure_warns_and_still_invokes_bot(
         },
     )()
 
-    async def fake_create_runtime(config, observer, *, public_data):
+    async def fake_create_runtime(config, observer, *, public_data, max_tracked_markets):
         return runtime
 
     monkeypatch.setattr("polybot.runtime.create_runtime", fake_create_runtime)

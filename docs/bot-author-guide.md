@@ -714,3 +714,10 @@ See [Graph MVP authoring](graph-node-mvp.md) for Number ports, custom parameters
 logic/math operations, `ctx.portfolio` snapshots, keyed signal controls, diagnostic
 outputs and the isolated decision preview. Python-authored bots may use the same
 read-only `ctx.portfolio.snapshot()` API; `ctx.positions` queries external wallets.
+
+
+The web paper beta passes the `PAPER_BETA.tracked_markets_per_run` allowance to
+`polybot.runtime.run_bot(max_tracked_markets=...)`. The registry counts unresolved
+conditions across configured subscriptions, followed wallets and broker positions.
+Dynamic plans that exceed it fail explicitly and close runtime resources; resolving
+a condition releases its slot. Standalone callers may omit the optional cap.

@@ -23,6 +23,7 @@ from api.events.observer import WebRuntimeObserver
 from api.execution.config import REDIS_URL_ENV, configured_redis_url
 from api.execution.worker.lifecycle import PAPER_RUN_FAILURE_REASON
 from api.runs.contracts import RunRead
+from api.limits.policy import PAPER_BETA
 from api.runs.status import RunStatus
 from conftest import DummyBroker
 from polybot.cli.observability.broker import ObservableBroker
@@ -276,7 +277,8 @@ def test_claimed_runtime_uses_exact_catalog_factory_and_observer(
         received.append(("factory", config, None))
         return BaseBot()
 
-    async def run_bot(bot, config, *, observer) -> None:
+    async def run_bot(bot, config, *, observer, max_tracked_markets) -> None:
+        assert max_tracked_markets == PAPER_BETA.tracked_markets_per_run
         received.append((bot, config, observer))
 
     monkeypatch.setitem(CATALOG, run.definition_id, replace(entry, factory=factory))
@@ -299,7 +301,7 @@ def test_claimed_runtime_executes_an_actual_non_node_catalog_factory(
     run = _run()
     executed: list[BaseBot] = []
 
-    async def run_bot(bot, config, *, observer) -> None:
+    async def run_bot(bot, config, *, observer, max_tracked_markets) -> None:
         executed.append(bot)
         context = BotContext(
             config=config,
@@ -391,7 +393,7 @@ def test_node_based_action_graph_submits_each_matching_event(
     broker.submit.side_effect = DummyBroker([]).submit
     received: list[tuple[BaseBot, object]] = []
 
-    async def run_bot(bot, runtime_config, *, observer) -> None:
+    async def run_bot(bot, runtime_config, *, observer, max_tracked_markets) -> None:
         received.append((bot, runtime_config))
         context = BotContext(
             config=runtime_config,
@@ -479,7 +481,7 @@ def test_node_based_runtime_uses_paper_broker_and_durable_event_path(
                 accepting_orders=True,
             )
 
-    async def run_bot(bot, runtime_config, *, observer) -> None:
+    async def run_bot(bot, runtime_config, *, observer, max_tracked_markets) -> None:
         valid_book = BookSnapshot(
             token_id="token",
             bids=(BookLevel(Decimal("0.49"), Decimal(10)),),
@@ -633,13 +635,13 @@ class _FakeRunStore:
         self.finished: list[tuple[RunStatus, str | None]] = []
 
     async def claim(self, run_id, *, now):
-        return self.run
+        return None if self.run is None else self.run.model_copy(update={"started_at": now})
 
     async def mark_running(self, run_id) -> bool:
         self.transitions.append(RunStatus.RUNNING)
         return True
 
-    async def begin_completion(self, run_id) -> bool:
+    async def begin_stopping(self, run_id) -> bool:
         self.transitions.append(RunStatus.STOPPING)
         return True
 

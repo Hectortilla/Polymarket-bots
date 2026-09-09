@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resourceLimitDetail } from '$lib/limits/validation';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import '$lib/bots/builder.css';
@@ -137,14 +138,14 @@
     } catch (caught) {
       if (phase === 'config') {
         configServerIssues = launchRequestValidationIssues(caught);
-        if (configServerIssues.length === 0) error = BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
+        if (configServerIssues.length === 0) error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
       } else if (graphToSave) {
         graphServerIssues = graphValidationIssues(caught, graphToSave);
         if (graphServerIssues.length > 0) {
           await tick();
           document.getElementById('bot-graph-validation')?.focus();
         } else {
-          error = BOT_DETAIL_COPY.GRAPH_SAVE_ERROR;
+          error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.GRAPH_SAVE_ERROR;
         }
       }
     } finally {
@@ -162,8 +163,8 @@
         throwOnError: true,
       });
       await goto(runPath(response.data.id));
-    } catch {
-      error = BOT_DETAIL_COPY.RUN_ERROR;
+    } catch (caught) {
+      error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.RUN_ERROR;
     } finally {
       running = false;
     }

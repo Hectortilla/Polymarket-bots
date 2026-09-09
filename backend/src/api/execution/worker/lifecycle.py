@@ -3,14 +3,16 @@
 import asyncio
 from uuid import UUID
 
+from polybot.cli.tracked_markets import TrackedMarketLimitExceeded
 from polybot.framework.clock import system_now_utc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api.deployment.settings import DEFAULT_HEARTBEAT_SECONDS
 from api.events.contracts import RunLifecycleEvent
 from api.events.observer import WebRuntimeObserver
 from api.events.writer import RunEventWriter
-from api.deployment.settings import DEFAULT_HEARTBEAT_SECONDS
-from api.runs.failures import sanitized_failure_detail
+from api.limits.policy import PAPER_BETA
+from api.runs.failures import RunFailureReason, sanitized_failure_detail
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
 
@@ -18,6 +20,9 @@ from .runtime import run_claimed_bot
 
 WORKER_POLL_INTERVAL_SECONDS = DEFAULT_HEARTBEAT_SECONDS
 PAPER_RUN_FAILURE_REASON = "paper run failed"
+DURATION_EXPIRED_DETAIL = (
+    "Paper-run duration allowance reached. Start a new run to continue."
+)
 
 
 class RunLifecycleCoordinator:
@@ -63,6 +68,15 @@ class RunLifecycleCoordinator:
                     await self._store.begin_stopping(run_id)
                     await self._finish_run(run_id, RunStatus.STOPPED)
                 return
+            remaining_seconds = PAPER_BETA.remaining_run_seconds(
+                run.started_at, system_now_utc()
+            )
+            if remaining_seconds == 0:
+                await self._store.begin_stopping(run_id)
+                await self._finish_run(
+                    run_id, RunStatus.STOPPED, failure_detail=DURATION_EXPIRED_DETAIL
+                )
+                return
             bot_task = asyncio.create_task(run_claimed_bot(run, observer))
             cooperative_stop = asyncio.Event()
             monitor_task = asyncio.create_task(
@@ -74,8 +88,15 @@ class RunLifecycleCoordinator:
             )
             try:
                 done, _ = await asyncio.wait(
-                    (bot_task, monitor_task), return_when=asyncio.FIRST_COMPLETED
+                    (bot_task, monitor_task),
+                    timeout=remaining_seconds,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
+                if not done:
+                    await self._store.begin_stopping(run_id)
+                    cooperative_stop.set()
+                    bot_task.cancel()
+                    failure_detail = DURATION_EXPIRED_DETAIL
                 if monitor_task in done:
                     # Monitoring owns the stop lease; its failure must stop execution.
                     await monitor_task
@@ -83,8 +104,8 @@ class RunLifecycleCoordinator:
                         raise RuntimeError("owned run monitoring ended unexpectedly")
                 await bot_task
             except asyncio.CancelledError:
-                # Only the durable stop monitor owns a graceful STOPPED cancellation;
-                # cancellation from Taskiq/process shutdown records lease interruption.
+                # Manual stop and duration expiry record cooperative cancellation;
+                # Taskiq/process shutdown records lease interruption.
                 if not cooperative_stop.is_set():
                     terminal_status = RunStatus.INTERRUPTED
                     propagate_cancellation = True
@@ -95,12 +116,15 @@ class RunLifecycleCoordinator:
         except asyncio.CancelledError:
             terminal_status = RunStatus.INTERRUPTED
             propagate_cancellation = True
+        except TrackedMarketLimitExceeded:
+            terminal_status = RunStatus.FAILED
+            failure_detail = RunFailureReason.TRACKED_MARKET_ALLOWANCE
         except Exception as error:
             terminal_status = RunStatus.FAILED
             failure_detail = sanitized_failure_detail(error, PAPER_RUN_FAILURE_REASON)
         else:
             if terminal_status is RunStatus.STOPPED:
-                await self._store.begin_completion(run_id)
+                await self._store.begin_stopping(run_id)
 
         await self._finish_run(
             run_id,

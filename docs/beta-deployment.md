@@ -4,7 +4,9 @@ Slice 16 adopts the architecture's single-host Docker Compose topology. It adds
 no hosting account, paid provider, public binding, or production deployment.
 The staging baseline is Linux/arm64 or Linux/amd64 with Docker Compose v2,
 four CPU cores, 8 GiB RAM and 40 GiB free disk. These are rehearsal assumptions,
-not a measured public capacity promise; Slice 17 owns the load-derived limits.
+not a measured public capacity promise. Slice 17's `api.limits.policy.PAPER_BETA`
+owns the initial limits; its bounded synthetic rehearsal is recorded in the
+implementation plan and must be repeated on the target host.
 
 `deploy/compose.yaml` contains the static Caddy frontend, two-process API,
 Taskiq worker, PostgreSQL, Redis and a one-shot forward migration. Only Caddy
@@ -59,7 +61,7 @@ files, invalid proxy addresses and invalid numeric settings. Startup failure
 reports configuration/dependency/schema failure without logging input values.
 
 `StartupSettings` owns database/Redis configuration, worker concurrency,
-heartbeat and lease settings. The architecture owns the concurrency default.
+heartbeat and lease settings. `PAPER_BETA.global_active_runs` owns the worker-concurrency default.
 Intervals must be finite and positive, with lease greater than heartbeat.
 API startup also validates settings when launched directly. Local development
 continues to use README's Vite/Uvicorn commands and explicit HTTP opt-in.
@@ -93,8 +95,8 @@ data. Database/schema preservation applies to existing Slice 15 accounts too.
 ## Capacity and acceptance
 
 The current durable dashboard cadence is at most one sample per active run per
-second. At four runs this is up to 345,600 chart rows per day, plus lifecycle,
-activity and order/fill events; measure payload and index bytes before expanding
+second. Multiply `PAPER_BETA.global_active_runs` by the seconds in the observation
+window to estimate chart rows, then add lifecycle, activity and order/fill events; measure payload and index bytes before expanding
 capacity. No indefinite history promise is made. Slice 17 owns admission policy,
 Slice 18 the recovery scheduler, Slice 20 alerts and Slice 21 retention/backups.
 

@@ -18,6 +18,8 @@ RUN_PATH = "/runs/{run_id}"
 RUN_STOP_PATH = "/runs/{run_id}/stop"
 RUN_EVENTS_PATH = "/runs/{run_id}/events"
 RUN_EVENTS_STREAM_PATH = "/runs/{run_id}/events/stream"
+USAGE_PATH = "/usage"
+READ_USAGE_OPERATION_ID = "read_usage"
 HEALTH_PATH = "/health"
 
 LIST_BOT_DEFINITIONS_OPERATION_ID = "list_bot_definitions_api_v1_bot_definitions_get"

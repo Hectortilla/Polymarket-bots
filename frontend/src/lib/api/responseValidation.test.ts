@@ -23,6 +23,7 @@ import { client } from './generated/client.gen';
 import {
   createBotApiV1BotsPost,
   lookupMarkets,
+  readUsage,
   readRunEventsApiV1RunsRunIdEventsGet,
   searchMarkets,
 } from './generated/sdk.gen';
@@ -596,4 +597,16 @@ it('validates graph revision save as an updated bot and detail as a revision', a
       ...transport(revision),
     }),
   ).rejects.toThrow('failed operation validation');
+});
+
+
+it('validates usage through both configured generated-client boundaries', async () => {
+  configureApiResponseValidation();
+  const usage = { policy: runtimeContract.resourcePolicy, active_runs: 0, queued_runs: 1, saved_bots: 2, saved_templates: 3, retained_runs: 4 };
+  const request = (data: unknown) => ({
+    baseUrl: 'http://control-plane.test', throwOnError: true as const,
+    fetch: async () => new Response(JSON.stringify(data), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
+  });
+  await expect(readUsage(request(usage))).resolves.toHaveProperty('data', usage);
+  await expect(readUsage(request({ ...usage, queued_runs: '1' }))).rejects.toThrow('failed operation validation');
 });

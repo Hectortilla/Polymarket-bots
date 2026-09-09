@@ -11,6 +11,10 @@ from polybot.polymarket.markets import Market
 MARKET_ADDITION_BATCH_SECONDS = 0.1
 
 
+class TrackedMarketLimitExceeded(RuntimeError):
+    """Adding an unresolved condition would exceed the caller's runtime cap."""
+
+
 class MarketInterest(StrEnum):
     CONFIGURED = "configured"
     FOLLOWED_WALLET = "followed_wallet"
@@ -27,7 +31,19 @@ class TrackedMarket:
 class TrackedMarketRegistry:
     """Runtime-owned, condition-keyed union of every unresolved market interest."""
 
-    def __init__(self, *, terminal_condition_ids: Iterable[str] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        terminal_condition_ids: Iterable[str] = (),
+        max_tracked_markets: int | None = None,
+    ) -> None:
+        if max_tracked_markets is not None and (
+            isinstance(max_tracked_markets, bool)
+            or not isinstance(max_tracked_markets, int)
+            or max_tracked_markets < 1
+        ):
+            raise ValueError("max_tracked_markets must be a positive integer")
+        self._max_tracked_markets = max_tracked_markets
         self._entries: dict[str, TrackedMarket] = {}
         self._terminal_condition_ids = frozenset(
             condition_id for condition_id in terminal_condition_ids if condition_id
@@ -75,6 +91,15 @@ class TrackedMarketRegistry:
                 f"condition ID maps to conflicting token pairs: {market.condition_id}",
             )
 
+    def require_capacity(self, market: Market) -> None:
+        if (
+            market.condition_id not in self._entries
+            and not self.is_terminal(market.condition_id)
+            and self._max_tracked_markets is not None
+            and len(self._entries) >= self._max_tracked_markets
+        ):
+            raise TrackedMarketLimitExceeded("tracked-market allowance reached")
+
     def add(
         self,
         market: Market,
@@ -87,6 +112,7 @@ class TrackedMarketRegistry:
         entry = self._entries.get(market.condition_id)
         subscription_changed = False
         if entry is None:
+            self.require_capacity(market)
             entry = TrackedMarket(market)
             self._entries[market.condition_id] = entry
             changed = True

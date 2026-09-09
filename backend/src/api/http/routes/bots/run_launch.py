@@ -8,6 +8,7 @@ from polybot.framework.clock import system_now_utc
 from api.auth.dependencies import CurrentUserDependency
 from api.bots.store import BotStore
 from api.events.writer import publish_durable_wake
+from api.http.contracts import ErrorResponse, RequestValidationFailure
 from api.http.dependencies import (
     LauncherDependency,
     RedisDependency,
@@ -38,7 +39,12 @@ router = APIRouter()
     response_model=RunRead,
     status_code=status.HTTP_202_ACCEPTED,
     operation_id=LAUNCH_BOT_RUN_OPERATION_ID,
-    responses=NOT_FOUND_AND_CONFLICT_RESPONSES,
+    responses={
+        **NOT_FOUND_AND_CONFLICT_RESPONSES,
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "model": ErrorResponse | RequestValidationFailure
+        },
+    },
 )
 async def launch_bot_run(
     bot_id: UUID,
@@ -53,6 +59,7 @@ async def launch_bot_run(
         bot = require_bot(await BotStore(session, user.id).read(bot_id, lock=True))
         definition = require_catalog_entry(bot.definition_id)
         require_run_revision_contract(definition, bot)
+        bot.config.require_subscription_allowance()
         run = await RunStore(session).create_from_bot(bot)
     try:
         await launcher.launch(run.id)

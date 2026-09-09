@@ -4,6 +4,7 @@ from polybot.runtime import run_bot
 
 from api.catalog.definitions import CATALOG
 from api.events.observer import WebRuntimeObserver
+from api.limits.policy import PAPER_BETA
 from api.runs.contracts import RunRead
 
 
@@ -16,4 +17,5 @@ async def run_claimed_bot(run: RunRead, observer: WebRuntimeObserver) -> None:
         entry.create_bot(bot_config, run.graph),
         bot_config,
         observer=observer,
+        max_tracked_markets=PAPER_BETA.tracked_markets_per_run,
     )

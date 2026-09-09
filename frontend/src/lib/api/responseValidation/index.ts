@@ -1,6 +1,7 @@
 import { isCurrentUser, isLogoutResponse } from '$lib/auth/validation';
 import { client } from '$lib/api/generated/client.gen';
 
+import { isAccountUsage } from '$lib/limits/validation';
 import { isRecord } from '$lib/valueGuards';
 
 import { validateOperationResponse } from '$lib/api/responseValidation/operations';
@@ -50,6 +51,7 @@ function isListItem(value: unknown): boolean {
 
 function isObjectResponse(value: Record<string, unknown>): boolean {
   return (
+    isAccountUsage(value) ||
     isCurrentUser(value) ||
     isLogoutResponse(value) ||
     isDefinition(value) ||

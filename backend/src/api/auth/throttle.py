@@ -7,8 +7,8 @@ from redis.asyncio import Redis
 from api.auth.policy import (
     AUTH_RATE_LIMIT_KEY_PREFIX,
     AUTH_RATE_WINDOW_SECONDS,
-    MIN_RETRY_AFTER_SECONDS,
 )
+from api.http.protocol import MIN_RETRY_AFTER_SECONDS
 
 RATE_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])

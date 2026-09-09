@@ -154,7 +154,8 @@ not included; the application still requires a local/private access boundary.
 
 [Public paper-beta readiness](docs/implementation-plan.md#public-paper-trading-beta-roadmap)
 now includes the delivered Slice 12F deployment foundation and Slice 16 private
-HTTPS release workflow. Slices 17–23 remain planned: resource limits, run
+HTTPS release workflow. Slice 17 adds per-account and global resource admission,
+browser usage, and server-side expiry. Slices 18–23 remain planned: run
 reliability, account recovery, operations, data lifecycle, onboarding and
 launch/support information. Open signup remains gated on their acceptance.
 Marketplace work is deferred.

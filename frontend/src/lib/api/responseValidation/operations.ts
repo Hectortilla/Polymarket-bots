@@ -1,4 +1,5 @@
 import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from '$lib/api/http';
+import { isAccountUsage } from '$lib/limits/validation';
 import { isCurrentUser, isLogoutResponse } from '$lib/auth/validation';
 import { isArrayOf } from '$lib/valueGuards';
 
@@ -53,6 +54,7 @@ function isExpectedOperationResponse(
   data: unknown,
 ): boolean {
   const paths = runtimeContract.apiPaths;
+  if (url === paths.usage) return isAccountUsage(data);
   if (url === paths.logout) return isLogoutResponse(data);
   if ([paths.currentUser, paths.login, paths.register].includes(url)) return isCurrentUser(data);
   if (url === paths.graphPreview) return isRecord(data) && isGraphPreviewResponse(data);

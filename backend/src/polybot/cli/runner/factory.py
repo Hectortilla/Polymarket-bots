@@ -43,6 +43,7 @@ async def create_runtime(
     observer: RuntimeObserver,
     *,
     public_data: RuntimePublicData | None,
+    max_tracked_markets: int | None = None,
 ) -> RuntimeComponents:
     owns_public_data = public_data is None
     sources = RuntimePublicData.create() if owns_public_data else public_data
@@ -53,7 +54,7 @@ async def create_runtime(
         wallet_activity_client = sources.wallet_activity_client
         position_client = sources.position_client
         followed_wallets = FollowedWalletTracker()
-        registry = TrackedMarketRegistry()
+        registry = TrackedMarketRegistry(max_tracked_markets=max_tracked_markets)
         paper_broker = PaperBroker(config, clob, gamma)
         broker = ObservableBroker(
             paper_broker,

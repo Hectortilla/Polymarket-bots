@@ -15,6 +15,9 @@ from api.bots.revisions import (
 )
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.values import DefinitionId
+from api.limits.errors import ResourceLimitCode, ResourceLimitError
+from api.limits.policy import PAPER_BETA
+from api.limits.resources import SavedResourceAllowance
 from api.runs.contracts import PaperRunConfig
 
 
@@ -36,6 +39,7 @@ class BotStore:
         config: PaperRunConfig,
         graph: NodeGraph | None,
     ) -> BotRead:
+        await SavedResourceAllowance(self._session, self._owner_user_id).reserve_bot()
         row = BotRow(
             owner_user_id=self._owner_user_id,
             definition_id=definition_id,
@@ -114,6 +118,14 @@ class BotStore:
                 BotGraphRevisionRow.bot_id == bot_id
             )
         )
+        if (
+            latest_revision_number is not None
+            and latest_revision_number >= PAPER_BETA.revisions_per_bot
+        ):
+            raise ResourceLimitError(
+                ResourceLimitCode.USER_ALLOWANCE,
+                "This bot has reached its graph-revision allowance. Create another bot.",
+            )
         row = BotGraphRevisionRow(
             bot_id=bot_id,
             revision=next_graph_revision_number(latest_revision_number),

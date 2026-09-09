@@ -1712,7 +1712,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slice 16 delivered; Slices 17–23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–17 delivered; Slices 18–23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -1803,12 +1803,12 @@ Final documentation-drift audit: README, product specification, both architectur
 references, this plan and the deployment runbook match the delivered private
 behavior. API/exported contract shapes did not change and generated-client checks
 passed. No Polymarket protocol, transport or SDK boundary changed, so no new
-PolymarketDocs check was required. At the user's request this implementation
-stops here; Slices 17–23 remain unchanged planned work and open signup stays gated.
+PolymarketDocs check was required. At the end of Slice 16, Slices 17–23 remained planned work and open signup
+stayed gated; subsequent delivery is recorded in each slice below.
 
 ## Slice 17: Per-User Resource Limits
 
-Status: planned; depends on Slice 15 and the capacity settings from Slice 16.
+Status: implemented; depends on Slice 15 and the capacity settings from Slice 16.
 
 Minimum deliverable:
 
@@ -1839,6 +1839,60 @@ Acceptance:
 
 Explicit exclusions: subscriptions, billing, enterprise plans and a generic
 entitlements framework. Resource controls are required even for a free beta.
+
+The user approved initial policy values on September 9, conditional on a bounded
+load test. `api.limits.policy.PAPER_BETA` owns all numeric allowances and exports
+them through `/usage`; the product and architecture describe their semantics.
+Queued status consumes queue capacity, and starting/running/stop-requested/stopping
+statuses consume active capacity. PostgreSQL lifecycle rows are the reservations;
+FIFO among eligible accounts avoids head-of-line blocking. Existing accounts and
+history are preserved without a schema change. History cleanup remains Slice 21.
+
+Bounded load rehearsal: `PYTHONPATH=backend/tests uv run python -m
+control_plane.limits_load` with the disposable test-service variables. The initial
+15-second run exercised the approved active-run/market/stream ceilings, synthetic
+graph book hooks, real PostgreSQL durable writes/readback and Redis delivery.
+It processed 22,100 books, 221 durable writes, 235 reads and 1,768 stream frames.
+P95 I/O was 171.51 ms and event-loop lag 8.44 ms, both below the acceptance
+thresholds owned by `control_plane.limits_load`,
+and process peak RSS was 112,672,768 bytes on macOS arm64. PostgreSQL was limited
+to two CPUs/1 GiB and Redis to one CPU/256 MiB; the Python process ran on the host.
+This is a bounded synthetic acceptance test, not a measured vendor or production
+throughput guarantee. Rehearse on the actual host before broadening these limits.
+The runtime duration and future history age/count in `PAPER_BETA` remain conservative product
+allowances rather than conclusions from a short throughput benchmark.
+
+
+Delivered September 9, 2026. PostgreSQL lifecycle rows provide atomic account and
+global reservations, with FIFO admission among eligible accounts. Shared Redis
+budgets bound requests and authorized stream leases; bounded response cleanup
+covers expiry, disconnect and slow clients. Run duration includes startup time;
+already-expired claims cannot invoke bot hooks. Dynamic wallet-market admission
+precedes strategy execution, and runtime cap failures expose a stable explanation.
+The browser shows private usage and specific admission failures; bot-save retries
+reuse the already-saved graph draft. Owned history reads preserve active/queued
+runs alongside bounded terminal history; no history deletion was added.
+
+Verification: all 51 registered read-only reviewers completed, reports were
+reconciled holistically, and affected rules received focused follow-up reviews.
+The full suite passed 1,203 Python tests, 234 frontend tests and both multi-account
+browser scenarios. Type checks, generated-client consistency and Python/frontend
+builds passed. The repeated bounded load rehearsal also passed (p95 I/O 163.25 ms,
+event-loop lag 5.98 ms). Tests include synchronized worker processes beyond the
+active ceiling, duplicate delivery, terminal release, startup expiry, dynamic
+market/position caps, service failures, stream lease cleanup and browser feedback.
+Use README's disposable service settings with `uv run pytest`; frontend checks
+are `npm --prefix frontend test`, `npm --prefix frontend run check` and the
+configured `npm --prefix frontend run test:e2e` acceptance harness.
+
+Final documentation-drift audit: README, product specification, architecture,
+bot-author guide, API notes, deployment assumptions, this plan and exported
+contracts match the delivered behavior and single policy owner. PolymarketDocs
+verified the existing subscription boundary; no SDK/transport exception or live
+execution change was introduced. Existing accounts/history remain intact. Launch
+retry idempotency and worker-loss recovery remain Slice 18; retention/deletion
+remains Slice 21. Open signup stays gated by the remaining roadmap.
+
 
 ## Slice 18: Reliable Run Lifecycle
 

@@ -5,6 +5,33 @@ export type ClientOptions = {
 };
 
 /**
+ * AccountUsage
+ */
+export type AccountUsage = {
+    /**
+     * Active Runs
+     */
+    active_runs: number;
+    policy: PaperBetaPolicy;
+    /**
+     * Queued Runs
+     */
+    queued_runs: number;
+    /**
+     * Retained Runs
+     */
+    retained_runs: number;
+    /**
+     * Saved Bots
+     */
+    saved_bots: number;
+    /**
+     * Saved Templates
+     */
+    saved_templates: number;
+};
+
+/**
  * ActivitySeverity
  */
 export type ActivitySeverity = 'info' | 'success' | 'warning' | 'error';
@@ -265,6 +292,7 @@ export type EquityChartPointPayload = {
  * ErrorResponse
  */
 export type ErrorResponse = {
+    code?: ResourceLimitCode | null;
     /**
      * Detail
      */
@@ -1334,6 +1362,84 @@ export type OrderRequest = {
 export type OrderStatus = 'accepted' | 'filled' | 'partial' | 'rejected' | 'canceled';
 
 /**
+ * PaperBetaPolicy
+ */
+export type PaperBetaPolicy = {
+    /**
+     * Active Runs
+     */
+    active_runs: number;
+    /**
+     * Expensive Requests Per Minute
+     */
+    expensive_requests_per_minute: number;
+    /**
+     * Followed Wallets Per Run
+     */
+    followed_wallets_per_run: number;
+    /**
+     * Global Active Runs
+     */
+    global_active_runs: number;
+    /**
+     * Global Expensive Requests Per Minute
+     */
+    global_expensive_requests_per_minute: number;
+    /**
+     * Global Open Streams
+     */
+    global_open_streams: number;
+    /**
+     * Global Queued Runs
+     */
+    global_queued_runs: number;
+    /**
+     * Global Requests Per Minute
+     */
+    global_requests_per_minute: number;
+    /**
+     * History Retention Days
+     */
+    history_retention_days: number;
+    /**
+     * Open Streams
+     */
+    open_streams: number;
+    /**
+     * Queued Runs
+     */
+    queued_runs: number;
+    /**
+     * Requests Per Minute
+     */
+    requests_per_minute: number;
+    /**
+     * Retained Runs
+     */
+    retained_runs: number;
+    /**
+     * Revisions Per Bot
+     */
+    revisions_per_bot: number;
+    /**
+     * Run Duration Seconds
+     */
+    run_duration_seconds: number;
+    /**
+     * Saved Bots
+     */
+    saved_bots: number;
+    /**
+     * Saved Templates
+     */
+    saved_templates: number;
+    /**
+     * Tracked Markets Per Run
+     */
+    tracked_markets_per_run: number;
+};
+
+/**
  * PaperRunConfig
  */
 export type PaperRunConfig = {
@@ -1725,6 +1831,39 @@ export type PreviewPortfolio = {
      */
     positions?: Array<PortfolioPositionInput>;
 };
+
+/**
+ * RequestValidationFailure
+ */
+export type RequestValidationFailure = {
+    /**
+     * Detail
+     */
+    detail: Array<RequestValidationIssue>;
+};
+
+/**
+ * RequestValidationIssue
+ */
+export type RequestValidationIssue = {
+    /**
+     * Loc
+     */
+    loc: Array<string | number>;
+    /**
+     * Msg
+     */
+    msg: string;
+    /**
+     * Type
+     */
+    type: string;
+};
+
+/**
+ * ResourceLimitCode
+ */
+export type ResourceLimitCode = 'user_allowance' | 'global_capacity' | 'invalid_configuration';
 
 /**
  * RunBootstrapPayload
@@ -2164,6 +2303,10 @@ export type LogoutErrors = {
      */
     403: ErrorResponse;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2196,6 +2339,10 @@ export type CurrentUserErrors = {
      * Forbidden
      */
     403: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2279,6 +2426,10 @@ export type ListBotDefinitionsApiV1BotDefinitionsGetErrors = {
      */
     403: ErrorResponse;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2313,6 +2464,10 @@ export type ListBotsApiV1BotsGetErrors = {
      * Forbidden
      */
     403: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2356,6 +2511,10 @@ export type CreateBotApiV1BotsPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2403,6 +2562,10 @@ export type ReadBotApiV1BotsBotIdGetErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2449,6 +2612,10 @@ export type UpdateBotApiV1BotsBotIdPatchErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2494,6 +2661,10 @@ export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2545,6 +2716,10 @@ export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors 
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2591,9 +2766,15 @@ export type LaunchBotRunApiV1BotsBotIdRunsPostErrors = {
      */
     409: ErrorResponse;
     /**
-     * Validation Error
+     * Response 422 Launch Bot Run Api V1 Bots  Bot Id  Runs Post
+     *
+     * Unprocessable Entity
      */
-    422: HttpValidationError;
+    422: ErrorResponse | RequestValidationFailure;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2627,6 +2808,10 @@ export type ListGraphTemplatesApiV1GraphTemplatesGetErrors = {
      * Forbidden
      */
     403: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2670,6 +2855,10 @@ export type CreateGraphTemplateApiV1GraphTemplatesPostErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2716,6 +2905,10 @@ export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2767,6 +2960,10 @@ export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2804,6 +3001,10 @@ export type PreviewGraphErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2836,6 +3037,10 @@ export type HealthApiV1HealthGetErrors = {
      * Forbidden
      */
     403: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2873,6 +3078,10 @@ export type LookupMarketsErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -2922,6 +3131,10 @@ export type SearchMarketsErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -2954,6 +3167,10 @@ export type ListRunsApiV1RunsGetErrors = {
      * Forbidden
      */
     403: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -3002,6 +3219,10 @@ export type ReadRunApiV1RunsRunIdGetErrors = {
      * Validation Error
      */
     422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
     /**
      * Service Unavailable
      */
@@ -3058,6 +3279,10 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -3112,6 +3337,10 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -3158,6 +3387,10 @@ export type StopRunApiV1RunsRunIdStopPostErrors = {
      */
     422: HttpValidationError;
     /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
      * Service Unavailable
      */
     503: ErrorResponse;
@@ -3173,3 +3406,40 @@ export type StopRunApiV1RunsRunIdStopPostResponses = {
 };
 
 export type StopRunApiV1RunsRunIdStopPostResponse = StopRunApiV1RunsRunIdStopPostResponses[keyof StopRunApiV1RunsRunIdStopPostResponses];
+
+export type ReadUsageData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/usage';
+};
+
+export type ReadUsageErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ReadUsageError = ReadUsageErrors[keyof ReadUsageErrors];
+
+export type ReadUsageResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountUsage;
+};
+
+export type ReadUsageResponse = ReadUsageResponses[keyof ReadUsageResponses];

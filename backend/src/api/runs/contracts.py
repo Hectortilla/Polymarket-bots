@@ -13,7 +13,7 @@ from polybot.framework.config.constants import (
 )
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
-from polybot.framework.streams import StreamRule
+from polybot.framework.streams import StreamPlan, StreamRule
 from polybot.performance.contracts.valuation_status import ValuationStatus
 from pydantic import (
     BaseModel,
@@ -27,6 +27,8 @@ from pydantic import (
 from api.bots.revisions import GraphRevisionNumber
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.values import DefinitionId
+from api.limits.errors import ResourceLimitCode, ResourceLimitError
+from api.limits.policy import PAPER_BETA
 from api.runs import status as run_status
 
 type RunName = Annotated[
@@ -67,6 +69,18 @@ class PaperRunConfig(BaseModel):
             rule if isinstance(rule, StreamRule) else StreamRule.from_dict(rule)
             for rule in value
         )
+
+    def require_subscription_allowance(self) -> None:
+        subscriptions = StreamPlan(self.stream_rules)
+        if (
+            len(subscriptions.current_market_slugs) > PAPER_BETA.tracked_markets_per_run
+            or len(subscriptions.current_wallet_addresses)
+            > PAPER_BETA.followed_wallets_per_run
+        ):
+            raise ResourceLimitError(
+                ResourceLimitCode.INVALID_CONFIGURATION,
+                f"Run configuration exceeds the beta allowance of {PAPER_BETA.tracked_markets_per_run} markets or {PAPER_BETA.followed_wallets_per_run} followed wallets. Edit the bot before launching.",
+            )
 
     def to_bot_config(self) -> BotConfig:
         # The web boundary is paper-only: persisted input cannot select live
@@ -126,3 +140,7 @@ class RunRead(BaseModel):
         if latest_runtime_failure is not None:
             updates["latest_runtime_failure"] = latest_runtime_failure
         return self.model_copy(update=updates)
+
+
+class ClaimedRunRead(RunRead):
+    started_at: datetime

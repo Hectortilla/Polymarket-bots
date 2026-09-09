@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import contract from '../src/lib/runtimeContract.fixture.json' with { type: 'json' };
 
+import { ALLOWANCE_COPY } from '../src/lib/limits/copy';
 import { AUTH_COPY } from '../src/lib/auth/copy';
 import { LOGIN_PATH, REGISTER_PATH, RETURN_TO_QUERY_PARAM } from '../src/lib/auth/navigation';
 import { NAVIGATION_PATH } from '../src/lib/navigation';
@@ -38,6 +39,7 @@ test('two accounts keep editor, copies, runs and history private across reload a
   await expect(page).toHaveURL(url => url.pathname === LOGIN_PATH && url.searchParams.has(RETURN_TO_QUERY_PARAM));
   expect(privateRequests).toEqual([]);
   await authenticate(page, FIRST_EMAIL, true);
+  await expect(page.getByRole('region', { name: ALLOWANCE_COPY.HEADING })).toContainText(`0 / ${contract.resourcePolicy.active_runs} active`);
   await page.reload();
   await expect(page.getByText(FIRST_EMAIL, { exact: true })).toBeVisible();
   await configureBot(page, 'First private bot');
@@ -109,8 +111,15 @@ test('active streams close on logout, external revocation, and cross-tab account
   await installStreamLifecycleCounters(page);
 
   await authenticate(page, firstActiveEmail, true);
+  let previousRunId: string | undefined;
   for (const transition of ['logout', 'revocation', 'switch'] as const) {
-    if (transition !== 'logout') await authenticate(page, firstActiveEmail);
+    if (transition !== 'logout') {
+      await authenticate(page, firstActiveEmail);
+      const stopped = await page.context().request.post(contract.apiPaths.runStop.replace('{run_id}', previousRunId!), {
+        headers: { Origin: new URL(page.url()).origin, [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
+      });
+      expect(stopped.ok()).toBe(true);
+    }
     const opened = await streamCount(page, STREAM_COUNTERS.opened);
     const closed = await streamCount(page, STREAM_COUNTERS.closed);
     await configureBot(page, `Active ${transition} bot`);
@@ -118,6 +127,7 @@ test('active streams close on logout, external revocation, and cross-tab account
     await expect(page).toHaveURL(/\/bots\/[a-f0-9-]+$/);
     await page.getByRole('button', { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
     await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
+    previousRunId = page.url().split('/').pop()!;
     await expect.poll(() => streamCount(page, STREAM_COUNTERS.opened)).toBeGreaterThan(opened);
 
     if (transition === 'logout') {

@@ -1,3 +1,4 @@
+import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from '$lib/limits/testFixtures';
 import { lookupMarkets, searchMarkets, type MarketSuggestion } from '$lib/api/generated';
 import { MARKET_SELECTOR_COPY } from '$lib/catalog/copy';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
@@ -114,12 +115,13 @@ describe('MarketSelector', () => {
     expect(screen.queryByText('Stale result')).toBeNull();
   });
 
-  it('offers retry after a search failure and handles no matches', async () => {
+  it.each(RESOURCE_LIMIT_CASES)('offers retry after a search failure and handles no matches (%s)', async (code) => {
     vi.mocked(searchMarkets)
-      .mockRejectedValueOnce(new Error('offline'))
+      .mockRejectedValueOnce(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error('offline'))
       .mockResolvedValue(results([]));
     render(MarketSelector, { value: [], onchange: vi.fn(), labelId: 'markets' });
     await search();
+    if (code) expect(await screen.findByText(RESOURCE_LIMIT_DETAIL)).toBeTruthy();
     await fireEvent.click(
       await screen.findByRole('button', { name: MARKET_SELECTOR_COPY.RETRY_SEARCH }),
     );

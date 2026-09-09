@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resourceLimitDetail } from "$lib/limits/validation";
   import { lookupMarkets, searchMarkets, type MarketSuggestion } from '$lib/api/generated';
   import { MARKET_SELECTOR_COPY } from '$lib/catalog/copy';
   import { Check, MagnifyingGlass, Plus, X } from 'phosphor-svelte';
@@ -29,7 +30,7 @@
   let open = $state(false);
   let loading = $state(false);
   let searched = $state(false);
-  let searchError = $state(false);
+  let searchError = $state('');
   let retry = $state(0);
   let results = $state<MarketSuggestion[]>([]);
   let hasMore = $state(false);
@@ -47,7 +48,7 @@
     results = [];
     activeIndex = -1;
     searched = false;
-    searchError = false;
+    searchError = '';
     hasMore = false;
     loading = text.length >= limits.minimumQueryLength;
     if (text.length < limits.minimumQueryLength) return;
@@ -63,8 +64,8 @@
         results = data.markets;
         hasMore = data.has_more;
         searched = true;
-      } catch {
-        if (!controller.signal.aborted) searchError = true;
+      } catch (caught) {
+        if (!controller.signal.aborted) searchError = resourceLimitDetail(caught) ?? MARKET_SELECTOR_COPY.SEARCH_ERROR;
       } finally {
         if (!controller.signal.aborted) loading = false;
       }
@@ -182,7 +183,7 @@
     <div class="suggestions">
       <div class="search-status" role="status" aria-live="polite">
         {#if searchError}
-          <span>{MARKET_SELECTOR_COPY.SEARCH_ERROR}</span>
+          <span>{searchError}</span>
           <button type="button" class="text-button" onclick={() => (retry += 1)}
             >{MARKET_SELECTOR_COPY.RETRY_SEARCH}</button
           >

@@ -35,6 +35,8 @@ from api.http.routes.paths import (
 )
 from api.http.routes.run_lookup import require_stored_run
 from api.http.sse import RunEventStreamer
+from api.limits.http import StreamLeaseDependency
+from api.limits.streams import LimitedStreamResponse
 
 SSE_MEDIA_TYPE = "text/event-stream"
 LAST_EVENT_ID_HEADER = "Last-Event-ID"
@@ -105,14 +107,13 @@ async def stream_run_events(
     session_factory: SessionFactoryDependency,
     user: CurrentUserDependency,
     redis: RedisDependency,
+    lease: StreamLeaseDependency,
     after_event_id: Annotated[EventCursorValue, Query()] = FIRST_EVENT_CURSOR,
     last_event_id: Annotated[
         EventCursorValue | None,
         Header(alias=LAST_EVENT_ID_HEADER),
     ] = None,
 ) -> StreamingResponse:
-    async with session_factory() as session:
-        await require_stored_run(session, run_id, user.id)
     cursor = last_event_id if last_event_id is not None else after_event_id
     streamer = RunEventStreamer(
         run_id,
@@ -123,7 +124,8 @@ async def stream_run_events(
             session_factory, request.state.session_token, user.id
         ),
     )
-    return StreamingResponse(
+    return LimitedStreamResponse(
         streamer.stream(cursor),
+        lease,
         media_type=SSE_MEDIA_TYPE,
     )

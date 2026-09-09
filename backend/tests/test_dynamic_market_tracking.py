@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from polybot.cli.dashboard.state import DashboardState
@@ -21,7 +22,11 @@ from polybot.cli.streams.contracts import (
 )
 from polybot.cli.streams.kinds import StreamKind
 from polybot.cli.streams.merger import merge_streams
-from polybot.cli.tracked_markets import MarketInterest, TrackedMarketRegistry
+from polybot.cli.tracked_markets import (
+    MarketInterest,
+    TrackedMarketLimitExceeded,
+    TrackedMarketRegistry,
+)
 from polybot.cli.tracking.paper import track_paper_positions
 from polybot.cli.tracking.wallets import FollowedWalletSynchronizer
 from polybot.execution.paper import PaperBroker
@@ -1298,3 +1303,23 @@ def test_fully_closed_followed_position_preserves_realized_pnl_at_resolution():
     assert tracker.gross_pnl(WALLET, {}) == Decimal("0.8")
     assert tracker.settle(_resolution()) == ()
     assert len(state.settlements) == 1
+
+
+def test_wallet_cap_is_checked_before_clob_mutation_or_bot_dispatch():
+    async def scenario():
+        registry = TrackedMarketRegistry(max_tracked_markets=1)
+        registry.add(_market("existing"), MarketInterest.CONFIGURED)
+        market = _market()
+        gamma = AsyncMock()
+        gamma.find_by_slug.return_value = market
+        clob = Mock()
+        runner = AsyncMock()
+        event = _trade("capacity", Side.BUY, "1", "0.4", 1_000)
+        with pytest.raises(TrackedMarketLimitExceeded):
+            await dispatch_wallet_trade(
+                runner, WalletStreamEvent(StreamKind.WALLET, event), gamma=gamma, clob=clob,
+                registry=registry, followed_wallets=None,
+            )
+        runner.dispatch_wallet_trade.assert_not_awaited()
+        clob.add_market.assert_not_called()
+    asyncio.run(scenario())

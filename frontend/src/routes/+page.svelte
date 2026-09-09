@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AccountUsage from '$lib/limits/AccountUsage.svelte';
   import { PRESENTATION_COPY } from '$lib/presentation';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import { onMount } from 'svelte';
@@ -79,6 +80,7 @@
 </svelte:head>
 
 <h1 class="sr-only">{NAVIGATION_LABEL.BOTS}</h1>
+<AccountUsage />
 
 {#if error}
   <div class="notice-with-action">

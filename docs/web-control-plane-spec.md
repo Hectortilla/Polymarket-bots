@@ -298,7 +298,7 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-Slice 16 is delivered; Slices 17–23 remain planned extensions. Adopt their product
+Slices 16–17 are delivered; Slices 18–23 remain planned extensions. Adopt their product
 policies here during each slice and keep the current private boundary until the
 complete open-signup gate passes. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
@@ -309,3 +309,33 @@ release maintenance may briefly make the service unavailable. Failed migrations
 keep it unavailable until an operator repairs the release. This infrastructure
 does not enable public signup. Recovery from interrupted workers is owned by
 Slice 18 and never resumes a paper portfolio automatically.
+
+## Slice 17: Paper-beta allowances
+
+Each account has the same free allowance returned with its private usage by
+`GET /api/v1/usage`. The owning numeric contract is `api.limits.policy.PAPER_BETA`;
+there are no paid tiers or account-supplied limit overrides. The approved initial
+values are conditional on the bounded load rehearsal documented in the plan.
+
+New runs enter a bounded queue. Workers select the oldest queued run whose
+account has a free active slot (creation time, then run ID). A busy account does
+not block eligible accounts behind it. Starting and stopping runs occupy active
+capacity until their terminal transition commits. Queue saturation distinguishes
+an account allowance from temporary shared capacity; invalid subscription
+configuration is a validation failure. The browser displays these explanations
+and the account's own usage, never other users' details.
+
+The duration allowance starts at worker claim, includes startup, and expires
+without a browser. Expiry stops the paper run with an explanation. The unresolved
+market union is capped throughout execution, including dynamic discoveries and
+positions; exceeding it ends the run explicitly instead of silently dropping
+portfolio interests. CLI users retain their existing unlimited default.
+
+Saved bots, templates and immutable revisions have hard creation allowances;
+existing data is preserved. Run lists return a bounded recent window. The policy
+also declares the future retained-history allowance: retain only runs within both
+the count and age allowances when Slice 21 implements cleanup. Slice 17 does not
+delete history or promise that existing over-allowance history has been purged.
+Authenticated requests have shared rate limits, with a tighter budget for costly
+operations. Open streams have account/global caps and bounded lifetimes; normal
+SSE reconnection resumes from the durable cursor. Dependency outages fail closed.

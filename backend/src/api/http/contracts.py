@@ -16,6 +16,7 @@ from api.events.pagination import (
     MAX_EVENT_PAGE_LIMIT,
     MIN_EVENT_PAGE_LIMIT,
 )
+from api.limits.errors import ResourceLimitCode
 
 type EventCursorValue = Annotated[
     int,
@@ -48,3 +49,14 @@ class ErrorResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     detail: str
+    code: ResourceLimitCode | None = None
+
+
+class RequestValidationIssue(BaseModel):
+    loc: list[str | int]
+    msg: str
+    type: str
+
+
+class RequestValidationFailure(BaseModel):
+    detail: list[RequestValidationIssue]

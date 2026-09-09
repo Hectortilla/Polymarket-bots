@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from enum import StrEnum
 from time import monotonic
 from typing import TYPE_CHECKING
 
+from polybot.cli.tracked_markets import TrackedMarketLimitExceeded
 from polybot.framework.activity import BotActivityEvent
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
@@ -162,10 +164,25 @@ class MarketSettled:
     occurred_at_monotonic_seconds: float
 
 
+class RuntimeFailureReason(StrEnum):
+    TRACKED_MARKET_LIMIT = "tracked_market_limit"
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeFailed:
     error: str
     occurred_at_monotonic_seconds: float
+    reason: RuntimeFailureReason | None = None
+
+    @classmethod
+    def from_exception(cls, error: BaseException) -> RuntimeFailed:
+        return cls(
+            f"{type(error).__name__}: {error}",
+            monotonic(),
+            RuntimeFailureReason.TRACKED_MARKET_LIMIT
+            if isinstance(error, TrackedMarketLimitExceeded)
+            else None,
+        )
 
 
 RuntimeEvent = (

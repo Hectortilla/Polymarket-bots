@@ -50,6 +50,7 @@ from api.http.routes.paths import (
     GRAPH_TEMPLATE_PATH,
     GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
+    USAGE_PATH,
     MARKET_LOOKUP_PATH,
     MARKET_SEARCH_PATH,
     RUN_EVENTS_PATH,
@@ -128,6 +129,9 @@ from polybot.framework.events.wallet_trades import (
     WALLET_SOURCE_KEY_SEPARATOR,
     WalletTradeKind,
 )
+from api.limits.policy import PAPER_BETA
+from api.limits.errors import ResourceLimitCode
+
 from polybot.framework.streams import (
     STREAM_RULE_MINIMUM_SELECTOR_GROUPS,
     StreamRelation,
@@ -146,6 +150,8 @@ FRONTEND_RUN_CONTRACT_PATH = (
 
 def frontend_run_contract() -> dict[str, object]:
     return {
+        "resourcePolicy": PAPER_BETA.model_dump(),
+        "resourceLimitCodes": _enum_values(ResourceLimitCode),
         "httpStatus": {
             "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,
             "FORBIDDEN": status.HTTP_403_FORBIDDEN,
@@ -180,6 +186,7 @@ def frontend_run_contract() -> dict[str, object]:
             "graphTemplate": api_route_path(GRAPH_TEMPLATE_PATH),
             "graphTemplates": api_route_path(GRAPH_TEMPLATES_PATH),
             "health": api_route_path(HEALTH_PATH),
+            "usage": api_route_path(USAGE_PATH),
             "marketSearch": api_route_path(MARKET_SEARCH_PATH),
             "marketLookup": api_route_path(MARKET_LOOKUP_PATH),
             "runEvents": api_route_path(RUN_EVENTS_PATH),

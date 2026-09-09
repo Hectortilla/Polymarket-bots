@@ -1,4 +1,29 @@
 {
+  "resourcePolicy": {
+    "active_runs": 1,
+    "queued_runs": 2,
+    "global_active_runs": 4,
+    "global_queued_runs": 8,
+    "run_duration_seconds": 3600,
+    "tracked_markets_per_run": 10,
+    "followed_wallets_per_run": 2,
+    "saved_bots": 20,
+    "saved_templates": 20,
+    "revisions_per_bot": 100,
+    "retained_runs": 100,
+    "history_retention_days": 30,
+    "requests_per_minute": 120,
+    "global_requests_per_minute": 1200,
+    "expensive_requests_per_minute": 20,
+    "global_expensive_requests_per_minute": 120,
+    "open_streams": 3,
+    "global_open_streams": 32
+  },
+  "resourceLimitCodes": {
+    "USER_ALLOWANCE": "user_allowance",
+    "GLOBAL_CAPACITY": "global_capacity",
+    "INVALID_CONFIGURATION": "invalid_configuration"
+  },
   "httpStatus": {
     "UNAUTHORIZED": 401,
     "FORBIDDEN": 403,
@@ -42,6 +67,7 @@
     "graphTemplate": "/api/v1/graph-templates/{template_id}",
     "graphTemplates": "/api/v1/graph-templates",
     "health": "/api/v1/health",
+    "usage": "/api/v1/usage",
     "marketSearch": "/api/v1/markets/search",
     "marketLookup": "/api/v1/markets/lookup",
     "runEvents": "/api/v1/runs/{run_id}/events",

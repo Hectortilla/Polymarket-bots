@@ -8,6 +8,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from api.limits.policy import PAPER_BETA
 from api.auth.config import AuthSettings
 from api.database import DATABASE_URL_ENV, configured_database_url
 from api.execution.config import REDIS_URL_ENV, configured_redis_url
@@ -25,7 +26,7 @@ WORKER_CONCURRENCY_ENV = "POLYBOT_WORKER_CONCURRENCY"
 HEARTBEAT_SECONDS_ENV = "POLYBOT_HEARTBEAT_SECONDS"
 LEASE_SECONDS_ENV = "POLYBOT_LEASE_SECONDS"
 PROXY_ADDRESS_ENV = "POLYBOT_PROXY_ADDRESS"
-DEFAULT_WORKER_CONCURRENCY = 4
+DEFAULT_WORKER_CONCURRENCY = PAPER_BETA.global_active_runs
 DEFAULT_HEARTBEAT_SECONDS = 5.0
 DEFAULT_LEASE_SECONDS = 30.0
 API_WORKERS = 2

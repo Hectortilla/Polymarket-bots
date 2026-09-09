@@ -487,7 +487,7 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
         # Authorized worker execution continues after logout.
         await client.post(api_route_path(LOGOUT_PATH))
         async with factory() as session:
-            claimed = await RunStore(session).claim(run["id"], now=system_now_utc())
+            claimed = await RunStore(session).claim(UUID(run["id"]), now=system_now_utc())
             assert claimed is not None and claimed.status is RunStatus.STARTING
         logged_in = await client.post(
             api_route_path(LOGIN_PATH),

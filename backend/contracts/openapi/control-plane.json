@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "AccountUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "active_runs": {
+            "minimum": 0.0,
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/PaperBetaPolicy"
+          },
+          "queued_runs": {
+            "minimum": 0.0,
+            "title": "Queued Runs",
+            "type": "integer"
+          },
+          "retained_runs": {
+            "minimum": 0.0,
+            "title": "Retained Runs",
+            "type": "integer"
+          },
+          "saved_bots": {
+            "minimum": 0.0,
+            "title": "Saved Bots",
+            "type": "integer"
+          },
+          "saved_templates": {
+            "minimum": 0.0,
+            "title": "Saved Templates",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy",
+          "active_runs",
+          "queued_runs",
+          "saved_bots",
+          "saved_templates",
+          "retained_runs"
+        ],
+        "title": "AccountUsage",
+        "type": "object"
+      },
       "ActivitySeverity": {
         "enum": [
           "info",
@@ -519,6 +562,16 @@
       "ErrorResponse": {
         "additionalProperties": false,
         "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceLimitCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
@@ -2306,7 +2359,7 @@
             "items": {
               "$ref": "#/components/schemas/MarketSlug"
             },
-            "maxItems": 100,
+            "maxItems": 10,
             "minItems": 1,
             "title": "Slugs",
             "type": "array"
@@ -2628,6 +2681,141 @@
         ],
         "title": "OrderStatus",
         "type": "string"
+      },
+      "PaperBetaPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "active_runs": {
+            "default": 1,
+            "exclusiveMinimum": 0.0,
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "expensive_requests_per_minute": {
+            "default": 20,
+            "exclusiveMinimum": 0.0,
+            "title": "Expensive Requests Per Minute",
+            "type": "integer"
+          },
+          "followed_wallets_per_run": {
+            "default": 2,
+            "exclusiveMinimum": 0.0,
+            "title": "Followed Wallets Per Run",
+            "type": "integer"
+          },
+          "global_active_runs": {
+            "default": 4,
+            "exclusiveMinimum": 0.0,
+            "title": "Global Active Runs",
+            "type": "integer"
+          },
+          "global_expensive_requests_per_minute": {
+            "default": 120,
+            "exclusiveMinimum": 0.0,
+            "title": "Global Expensive Requests Per Minute",
+            "type": "integer"
+          },
+          "global_open_streams": {
+            "default": 32,
+            "exclusiveMinimum": 0.0,
+            "title": "Global Open Streams",
+            "type": "integer"
+          },
+          "global_queued_runs": {
+            "default": 8,
+            "exclusiveMinimum": 0.0,
+            "title": "Global Queued Runs",
+            "type": "integer"
+          },
+          "global_requests_per_minute": {
+            "default": 1200,
+            "exclusiveMinimum": 0.0,
+            "title": "Global Requests Per Minute",
+            "type": "integer"
+          },
+          "history_retention_days": {
+            "default": 30,
+            "exclusiveMinimum": 0.0,
+            "title": "History Retention Days",
+            "type": "integer"
+          },
+          "open_streams": {
+            "default": 3,
+            "exclusiveMinimum": 0.0,
+            "title": "Open Streams",
+            "type": "integer"
+          },
+          "queued_runs": {
+            "default": 2,
+            "exclusiveMinimum": 0.0,
+            "title": "Queued Runs",
+            "type": "integer"
+          },
+          "requests_per_minute": {
+            "default": 120,
+            "exclusiveMinimum": 0.0,
+            "title": "Requests Per Minute",
+            "type": "integer"
+          },
+          "retained_runs": {
+            "default": 100,
+            "exclusiveMinimum": 0.0,
+            "title": "Retained Runs",
+            "type": "integer"
+          },
+          "revisions_per_bot": {
+            "default": 100,
+            "exclusiveMinimum": 0.0,
+            "title": "Revisions Per Bot",
+            "type": "integer"
+          },
+          "run_duration_seconds": {
+            "default": 3600,
+            "exclusiveMinimum": 0.0,
+            "title": "Run Duration Seconds",
+            "type": "integer"
+          },
+          "saved_bots": {
+            "default": 20,
+            "exclusiveMinimum": 0.0,
+            "title": "Saved Bots",
+            "type": "integer"
+          },
+          "saved_templates": {
+            "default": 20,
+            "exclusiveMinimum": 0.0,
+            "title": "Saved Templates",
+            "type": "integer"
+          },
+          "tracked_markets_per_run": {
+            "default": 10,
+            "exclusiveMinimum": 0.0,
+            "title": "Tracked Markets Per Run",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_runs",
+          "queued_runs",
+          "global_active_runs",
+          "global_queued_runs",
+          "run_duration_seconds",
+          "tracked_markets_per_run",
+          "followed_wallets_per_run",
+          "saved_bots",
+          "saved_templates",
+          "revisions_per_bot",
+          "retained_runs",
+          "history_retention_days",
+          "requests_per_minute",
+          "global_requests_per_minute",
+          "expensive_requests_per_minute",
+          "global_expensive_requests_per_minute",
+          "open_streams",
+          "global_open_streams"
+        ],
+        "title": "PaperBetaPolicy",
+        "type": "object"
       },
       "PaperRunConfig": {
         "additionalProperties": false,
@@ -3357,6 +3545,64 @@
         },
         "title": "PreviewPortfolio",
         "type": "object"
+      },
+      "RequestValidationFailure": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/RequestValidationIssue"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "RequestValidationFailure",
+        "type": "object"
+      },
+      "RequestValidationIssue": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "RequestValidationIssue",
+        "type": "object"
+      },
+      "ResourceLimitCode": {
+        "enum": [
+          "user_allowance",
+          "global_capacity",
+          "invalid_configuration"
+        ],
+        "title": "ResourceLimitCode",
+        "type": "string"
       },
       "RunBootstrapPayload": {
         "additionalProperties": false,
@@ -4153,7 +4399,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Login"
@@ -4193,6 +4448,25 @@
             },
             "description": "Forbidden"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4201,7 +4475,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Logout"
@@ -4241,6 +4524,25 @@
             },
             "description": "Forbidden"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4249,7 +4551,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Me"
@@ -4356,7 +4667,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Register"
@@ -4400,6 +4720,25 @@
             },
             "description": "Forbidden"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4408,7 +4747,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "List Bot Definitions"
@@ -4452,6 +4800,25 @@
             },
             "description": "Forbidden"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4460,7 +4827,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "List Bots"
@@ -4527,6 +4903,25 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -4608,6 +5003,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4616,7 +5030,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Read Bot"
@@ -4695,6 +5118,25 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -4786,6 +5228,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4794,7 +5255,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Create Bot Graph Revision"
@@ -4876,6 +5346,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -4884,7 +5373,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Read Bot Graph Revision"
@@ -4960,11 +5458,38 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationFailure"
+                    }
+                  ],
+                  "title": "Response 422 Launch Bot Run Api V1 Bots  Bot Id  Runs Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -4974,7 +5499,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Launch Bot Run"
@@ -5018,6 +5552,25 @@
             },
             "description": "Forbidden"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5026,7 +5579,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "List Graph Templates"
@@ -5094,6 +5656,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5102,7 +5683,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Create Graph Template"
@@ -5174,6 +5764,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5182,7 +5791,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Read Graph Template"
@@ -5272,6 +5890,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5280,7 +5917,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Update Graph Template"
@@ -5340,6 +5986,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5348,7 +6013,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Preview Graph"
@@ -5387,6 +6061,25 @@
               }
             },
             "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -5459,6 +6152,25 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -5543,6 +6255,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5595,6 +6326,25 @@
             },
             "description": "Forbidden"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5603,7 +6353,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "List Runs"
@@ -5675,6 +6434,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5683,7 +6461,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Read Run"
@@ -5783,6 +6570,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5791,7 +6597,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Read Run Events"
@@ -5904,6 +6719,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5912,7 +6746,16 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Stream Run Events"
@@ -5984,6 +6827,25 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -5992,10 +6854,95 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Stop Run"
+      }
+    },
+    "/api/v1/usage": {
+      "get": {
+        "operationId": "read_usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "headers": {
+              "Retry-After": {
+                "description": "Suggested seconds before retrying temporary resource admission",
+                "schema": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read Usage"
       }
     }
   }

@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import api.execution.worker.lifecycle as worker_lifecycle
 import api.execution.worker.resources as worker_resources
@@ -15,6 +15,7 @@ import api.execution.worker.runtime as worker_runtime
 import pytest
 from alembic import command
 from alembic.config import Config
+from api.auth.models import UserRow
 from api.bots.contracts import BotRead
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
@@ -92,6 +93,7 @@ from api.runs.status import RunStatus
 from api.runs.store import RunStore
 from httpx import ASGITransport, AsyncClient
 from polybot.cli.observability.broker import ObservableBroker
+from polybot.framework.clock import system_now_utc
 from polybot.framework.context import BotContext
 from polybot.framework.events import FillEvent, FillRejectReason
 from polybot.framework.events.books import BookLevel, BookSnapshot
@@ -152,8 +154,9 @@ async def _create_run(
     definition_id: str,
     config,
     graph: NodeGraph | None = None,
+    owner_user_id: UUID | None = None,
 ) -> RunRead:
-    bot = await BotStore(session, await ensure_test_user(session)).create(
+    bot = await BotStore(session, owner_user_id or await ensure_test_user(session)).create(
         definition_id=definition_id,
         config=config,
         graph=graph,
@@ -633,6 +636,7 @@ def test_template_bot_revision_and_run_snapshots_are_isolated() -> None:
             )
             assert revised_bot is not None
             second_run = await RunStore(session).create_from_bot(revised_bot)
+            await RunStore(session).request_stop(first_run.id, now=system_now_utc())
             third_run = await RunStore(session).create_from_bot(revised_bot)
 
             current_template = await template_store.read(template.id)
@@ -969,7 +973,7 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
         async def sleep(self, seconds: float) -> None:
             return None
 
-    async def run_bot(bot, runtime_config, *, observer) -> None:
+    async def run_bot(bot, runtime_config, *, observer, max_tracked_markets) -> None:
         await observer.start(runtime_config)
         try:
             context = BotContext(
@@ -1306,28 +1310,36 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
             return AsyncSession(engine, expire_on_commit=False)
 
         async with session_factory() as session:
+            owners = [UserRow(email=f"{uuid4()}@example.com", password_hash="fixture") for _ in range(5)]
+            session.add_all(owners)
+            await session.commit()
             queued = await _create_run(
                 session,
+                owner_user_id=owners[0].id,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config,
             )
             queued_stop = await _create_run(
                 session,
+                owner_user_id=owners[1].id,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "queued-stop"}),
             )
             starting_stop = await _create_run(
                 session,
+                owner_user_id=owners[2].id,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "starting-stop"}),
             )
             failed_run = await _create_run(
                 session,
+                owner_user_id=owners[3].id,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "failed"}),
             )
             interrupted_run = await _create_run(
                 session,
+                owner_user_id=owners[4].id,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
                 config=config.model_copy(update={"name": "interrupted"}),
             )

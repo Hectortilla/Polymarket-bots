@@ -1,3 +1,4 @@
+import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from '$lib/limits/testFixtures';
 import { BOT_BUILDER_COPY } from '$lib/bots/copy';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -136,16 +137,39 @@ describe('unified bot creation page', () => {
     expect(screen.queryByLabelText('Name')).toBeNull();
   });
 
-  it('preserves the entered configuration when creation fails', async () => {
+  it.each(RESOURCE_LIMIT_CASES)('preserves the entered configuration when creation fails', async (code) => {
     loadBuilder();
-    mocks.createBot.mockRejectedValue(new Error('write failed'));
+    mocks.createBot.mockRejectedValue(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error('write failed'));
     render(Page);
 
     const name = await screen.findByLabelText('Name');
     await fireEvent.input(name, { target: { value: 'Keep my draft' } });
     await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('The bot could not be saved.');
+    expect((await screen.findByRole('alert')).textContent).toContain(code ? RESOURCE_LIMIT_DETAIL : BOT_BUILDER_COPY.SAVE_ERROR);
     expect((name as HTMLInputElement).value).toBe('Keep my draft');
   });
+});
+
+it('reuses a saved draft when retrying a bot allowance failure', async () => {
+  loadBuilder();
+  mocks.createBot.mockRejectedValueOnce({ code: RESOURCE_LIMIT_CASES[1], detail: RESOURCE_LIMIT_DETAIL });
+  render(Page);
+  await fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'Retry setup' } });
+  await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(RESOURCE_LIMIT_DETAIL);
+  await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
+  await waitFor(() => expect(mocks.goto).toHaveBeenCalled());
+  expect(mocks.createTemplate).toHaveBeenCalledTimes(1);
+  expect(mocks.createBot).toHaveBeenCalledTimes(2);
+});
+
+it('explains template admission failure without attempting to save a bot', async () => {
+  loadBuilder();
+  mocks.createTemplate.mockRejectedValueOnce({ code: RESOURCE_LIMIT_CASES[1], detail: RESOURCE_LIMIT_DETAIL });
+  render(Page);
+  await fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'No template capacity' } });
+  await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(RESOURCE_LIMIT_DETAIL);
+  expect(mocks.createBot).not.toHaveBeenCalled();
 });

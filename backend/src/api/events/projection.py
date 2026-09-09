@@ -12,6 +12,7 @@ from polybot.cli.observability.events import (
     OrderSubmitted,
     RuntimeEvent,
     RuntimeFailed,
+    RuntimeFailureReason,
     RuntimeStarted,
     RuntimeStateChanged,
     StreamHealth,
@@ -22,6 +23,7 @@ from polybot.dashboard.contracts import DashboardSample, WalletChartPoint
 from polybot.framework.activity import BotActivityEvent
 
 from api.events.contracts.payloads.chart import WalletChartPointPayload
+from api.runs.failures import RunFailureReason
 from api.runs.status import RunStatus
 
 from .contracts import (
@@ -170,7 +172,11 @@ def project_runtime_event_to_durable(
             RunFailureEvent(
                 run_id=run_id,
                 occurred_at=occurred_at,
-                payload=RunFailurePayload(error=event.error),
+                payload=RunFailurePayload(
+                    error=RunFailureReason.TRACKED_MARKET_ALLOWANCE
+                    if event.reason is RuntimeFailureReason.TRACKED_MARKET_LIMIT
+                    else event.error
+                ),
             ),
         )
     if isinstance(event, DispatchCompleted) and isinstance(

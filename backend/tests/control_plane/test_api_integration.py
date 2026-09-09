@@ -105,12 +105,6 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
             assert events[0].payload.status is RunStatus.STOPPED
 
             async with session_factory() as session:
-                failed = await _create_run(
-                    session,
-                    definition_id=NODE_BASED_DEFINITION_ID,
-                    config=graph_config,
-                    graph=STARTER_NODE_GRAPH,
-                )
                 running = await _create_run(
                     session,
                     definition_id=NODE_BASED_DEFINITION_ID,
@@ -128,6 +122,12 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
                 )
                 assert claimed is not None
                 assert await RunStore(session).mark_running(running.id)
+                failed = await _create_run(
+                    session,
+                    definition_id=NODE_BASED_DEFINITION_ID,
+                    config=graph_config,
+                    graph=STARTER_NODE_GRAPH,
+                )
 
             async with session_factory() as session:
                 stopped_running = await ApiRunLifecycle(session).request_stop(

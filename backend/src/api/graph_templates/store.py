@@ -13,6 +13,7 @@ from api.graph_templates.contracts import (
     GraphTemplateUpdate,
 )
 from api.graph_templates.models import GraphTemplateRow
+from api.limits.resources import SavedResourceAllowance
 
 
 class GraphTemplateStore:
@@ -24,6 +25,7 @@ class GraphTemplateStore:
         )
 
     async def create(self, request: GraphTemplateCreate) -> GraphTemplateRead:
+        await SavedResourceAllowance(self._session, self._owner_user_id).reserve_template()
         row = GraphTemplateRow(
             owner_user_id=self._owner_user_id,
             name=request.name,

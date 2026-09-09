@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resourceLimitDetail } from '$lib/limits/validation';
   import { goto } from '$app/navigation';
   import { BOT_BUILDER_COPY } from '$lib/bots/copy';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
@@ -34,6 +35,7 @@
   let graphSourceName = $state<string>(GRAPH_SOURCE_COPY.FRESH);
   let loading = $state(true);
   let saving = $state(false);
+  let savedDraft: { id: string; graphJson: string } | undefined;
   let error = $state('');
   let configServerIssues = $state<LaunchValidationIssue[]>([]);
   let graphServerIssues = $state<GraphValidationIssue[]>([]);
@@ -83,15 +85,19 @@
     configServerIssues = [];
     graphServerIssues = [];
     try {
-      const templateResponse = await createGraphTemplateApiV1GraphTemplatesPost({
-        body: { name: privateTemplateName(), graph: graphToSave },
-        throwOnError: true,
-      });
+      const graphJson = JSON.stringify(graphToSave);
+      if (savedDraft?.graphJson !== graphJson) {
+        const templateResponse = await createGraphTemplateApiV1GraphTemplatesPost({
+          body: { name: privateTemplateName(), graph: graphToSave },
+          throwOnError: true,
+        });
+        savedDraft = { id: templateResponse.data.id, graphJson };
+      }
       const botResponse = await createBotApiV1BotsPost({
         body: {
           definition_id: descriptor.definition_id,
           inputs,
-          graph_template_id: templateResponse.data.id,
+          graph_template_id: savedDraft.id,
         },
         throwOnError: true,
       });
@@ -103,7 +109,7 @@
         await tick();
         document.getElementById('new-bot-graph-validation')?.focus();
       } else if (configServerIssues.length === 0) {
-        error = BOT_BUILDER_COPY.SAVE_ERROR;
+        error = resourceLimitDetail(caught) ?? BOT_BUILDER_COPY.SAVE_ERROR;
       }
     } finally {
       saving = false;

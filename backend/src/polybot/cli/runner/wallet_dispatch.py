@@ -39,6 +39,7 @@ async def dispatch_wallet_trade(
             registry.ensure_compatible(market)
         except MarketDataError:
             return DispatchOutcome.skipped(DispatchSkipReason.MARKET_METADATA_MISSING)
+        registry.require_capacity(market)
     if not clob.has_market_slug(event.market_slug):
         try:
             clob.add_market(market)

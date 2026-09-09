@@ -1,3 +1,4 @@
+import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from '$lib/limits/testFixtures';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -196,7 +197,7 @@ describe('saved-bot detail page', () => {
     expect(screen.getByText(botGraphRevisionLabel(2))).toBeTruthy();
   });
 
-  it('keeps a failed graph revision dirty and blocks running', async () => {
+  it.each(RESOURCE_LIMIT_CASES)('keeps a failed graph revision dirty and blocks running (%s)', async (code) => {
     const graphBot = {
       ...BOT,
       latest_graph_revision: {
@@ -217,7 +218,7 @@ describe('saved-bot detail page', () => {
         }
       ]
     });
-    mocks.createRevision.mockRejectedValue(new Error('write failed'));
+    mocks.createRevision.mockRejectedValue(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error('write failed'));
     render(Page);
 
     await fireEvent.click(await screen.findByRole('button', { name: ADD_NODE_LABEL }));
@@ -232,7 +233,7 @@ describe('saved-bot detail page', () => {
     await fireEvent.click(saveGraphButton);
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      BOT_DETAIL_COPY.GRAPH_SAVE_ERROR
+      code ? RESOURCE_LIMIT_DETAIL : BOT_DETAIL_COPY.GRAPH_SAVE_ERROR
     );
     expect(saveGraphButton.disabled).toBe(false);
     expect(runButton.disabled).toBe(true);
@@ -311,10 +312,10 @@ describe('saved-bot detail page', () => {
     expect(screen.queryByLabelText('Name')).toBeNull();
   });
 
-  it('keeps unsaved configuration after a failed save', async () => {
+  it.each(RESOURCE_LIMIT_CASES)('keeps unsaved configuration after a failed save (%s)', async (code) => {
     mocks.readBot.mockResolvedValue({ data: BOT });
     mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
-    mocks.updateBot.mockRejectedValue(new Error('write failed'));
+    mocks.updateBot.mockRejectedValue(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error('write failed'));
     render(Page);
 
     const name = await screen.findByLabelText('Name');
@@ -324,7 +325,7 @@ describe('saved-bot detail page', () => {
     );
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      BOT_DETAIL_COPY.CONFIG_SAVE_ERROR
+      code ? RESOURCE_LIMIT_DETAIL : BOT_DETAIL_COPY.CONFIG_SAVE_ERROR
     );
     expect((name as HTMLInputElement).value).toBe('Unsaved setup');
     expect(
@@ -374,4 +375,16 @@ describe('saved-bot detail page', () => {
     );
     expect(mocks.goto).not.toHaveBeenCalled();
   });
+});
+
+
+it.each(Object.values(runtimeContract.resourceLimitCodes))('explains %s without navigating away from the bot', async (code) => {
+  mocks.readBot.mockResolvedValue({ data: BOT });
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  const detail = RESOURCE_LIMIT_DETAIL;
+  mocks.launchRun.mockRejectedValue({ code, detail });
+  render(Page);
+  await fireEvent.click(await screen.findByRole('button', { name: BOT_DETAIL_COPY.RUN }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(detail);
+  expect(mocks.goto).not.toHaveBeenCalled();
 });

@@ -12,6 +12,12 @@ from api.auth.middleware import AuthBoundaryMiddleware
 from api.auth.responses import AUTH_REQUIRED_RESPONSES
 from api.auth.routes import router as auth_router
 from api.auth.validation import safe_validation_error
+from api.limits.errors import ResourceLimitError
+from api.limits.http import (
+    application_resource_limits,
+    resource_limit_response,
+    router as limits_router,
+)
 from api.execution.launcher import RunLauncher
 from api.http.dependencies import application_lifespan
 from api.http.middleware.private_cache import PrivateResponseMiddleware
@@ -41,7 +47,10 @@ def create_app(
 ) -> FastAPI:
     application = FastAPI(
         title="Polybot Control Plane",
-        dependencies=[Depends(application_authentication)],
+        dependencies=[
+            Depends(application_authentication),
+            Depends(application_resource_limits),
+        ],
         responses=AUTH_REQUIRED_RESPONSES,
         version="0.1.0",
         docs_url=None,
@@ -54,6 +63,7 @@ def create_app(
     # Keep cache protection outside errors so generated 503 responses are private too.
     application.add_middleware(PrivateResponseMiddleware)
     application.add_exception_handler(RequestValidationError, safe_validation_error)
+    application.add_exception_handler(ResourceLimitError, resource_limit_response)
     if auth_settings is not None:
         application.state.auth_settings = auth_settings
     if session_factory is not None:
@@ -66,6 +76,7 @@ def create_app(
         application.state.market_discovery = market_discovery
     for router in (
         auth_router,
+        limits_router,
         graph_preview_router,
         catalog_router,
         markets_router,

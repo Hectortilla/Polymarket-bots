@@ -1,11 +1,11 @@
 # Web Control Plane v0 Architecture and API
 
-Status: Slices 12A–12F, 13A–13F, 14, 15 and 16 are implemented.
+Status: Slices 12A–12F, 13A–13F, 14, 15, 16 and 17 are implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
-continues with planned Slices 17–23 after the delivered deployment foundation. It covers production
+continues with planned Slices 18–23 after the delivered deployment and resource-limit foundation. It covers production
 operation, resource limits, reliability, recovery, data lifecycle and launch
 workflows. Adopt each slice's technical contracts here during implementation;
 current private access, ownership and paper execution remain unchanged until the
@@ -59,7 +59,7 @@ before expanding product or architecture scope.
 - Existing dashboard behavior: `docs/architecture.md`, **Terminal
   Observability**.
 - Slice scope, minimum deliverables, explicit exclusions, and acceptance:
-  Slices 12A-12F, 13A-13F, 14, 15 and 16 in `docs/implementation-plan.md`.
+  Slices 12A-12F, 13A-13F, 14, 15, 16 and 17 in `docs/implementation-plan.md`.
 
 The implementation plan assigns architecture-owned work and acceptance to a
 slice. It may use canonical contract terms when doing so, but it does not define
@@ -389,11 +389,12 @@ The Taskiq task is a thin adapter calling
 wrapper is unnecessary unless a later implementation creates a real second
 caller with additional owned state.
 
-The run store's atomic claim is one conditional database update. It returns the
-typed claimed run or `None`; it does not expose a hierarchy of claim-result
-types. `None` means duplicate, stopped, or terminal delivery and the task exits.
-Taskiq worker concurrency, not a second database capacity algorithm, limits
-simultaneous runs.
+The run store serializes admission with a PostgreSQL transaction advisory lock,
+then conditionally claims the oldest queued run whose account has active capacity.
+Lifecycle rows are the shared reservations; `PAPER_BETA` owns account/global caps.
+A successful claim returns `ClaimedRunRead` with its required start timestamp.
+Taskiq deliveries wake the database queue drain; stale deliveries are harmless.
+Taskiq concurrency is a separate local process ceiling.
 
 After a successful claim, `execute_run`:
 
@@ -534,6 +535,7 @@ Resource IDs are scoped to the current owner and return 404 when inaccessible.
 The route prefix `/api/v1` is defined here once. The current API has only:
 
 - `GET /bot-definitions` — all public descriptors in display order.
+- `GET /usage` — authenticated account allowances and current owned resource counts.
 - `GET /markets/search?q=&limit=` — bounded active market suggestions via the official SDK.
 - `POST /markets/lookup` — read-only exact metadata lookup for selected slugs.
 - `POST /graph-templates` — create a reusable graph template.
@@ -564,7 +566,7 @@ Market discovery uses a lifespan-owned async SDK adapter. Search accepts a
 trimmed 2–200 character query and 1–20 results (default 12), fetches one upstream
 page with a five-second timeout, and returns `{markets, has_more}`. Each market
 contains `slug`, `condition_id`, `question`, nullable `event_title` and
-`end_date`, and `is_open_for_trading`. Lookup accepts `{slugs: [...]}` (1–100),
+`end_date`, and `is_open_for_trading`. Lookup accepts a nonempty `{slugs: [...]}` bounded by `MAX_SELECTED_MARKETS`,
 deduplicates trimmed slugs, omits missing markets, and retains unavailable
 markets for saved-selection display. Malformed requests return 422; upstream
 failures return a safe 503. Newly selected slugs are resolved again on create
@@ -618,7 +620,7 @@ dependency error.
 - Render the market-slug widget as a multi-market combobox in create and edit
   forms: 300ms debounce, cancellation and stale-result protection, keyboard
   navigation, event/question/slug/date metadata, removable selected rows,
-  loading/empty/error/retry states, and a 100-selection cap. Query and selection
+  loading/empty/error/retry states, and the policy-derived `MAX_SELECTED_MARKETS` selection cap. Query and selection
   limits come from generated backend fixtures. Existing selections hydrate by
   exact lookup and remain removable if closed, missing, or temporarily offline.
 - Present the generated FastAPI validation response without duplicating its
@@ -649,8 +651,8 @@ the same-origin entrypoint is exposed.
 One typed settings model parses the database URL, Redis URL, worker concurrency,
 heartbeat interval, and lease interval at process startup. Concurrency and
 numeric intervals must be positive, and the lease must exceed the heartbeat.
-The worker-concurrency default is four; this paragraph is its sole documentation
-owner.
+The worker-concurrency default derives from `PAPER_BETA.global_active_runs`
+through `DEFAULT_WORKER_CONCURRENCY`.
 
 Multiple Uvicorn workers are supported because ownership and events are not
 process-local. Scaling API workers does not change bot capacity.
@@ -907,3 +909,27 @@ check that the point matches its source trade and outcome.
 Portfolio snapshots, settlements and their validation policies have a dedicated
 payload owner. Broker payloads share its public portfolio validator without
 owning standalone portfolio event contracts.
+
+## Slice 17: Shared resource accounting
+
+`api.limits.policy` owns the paper-beta allowance values, exported through the
+private usage endpoint. `RunAdmission` serializes queue admission, active claims
+and terminal release with one PostgreSQL transaction advisory lock. Run lifecycle
+rows are the reservations; terminal states release capacity atomically without a
+second counter or reservation table. Bot ownership supplies the account, including
+worker claims. Saved-resource creation locks the owning account row; graph
+revision limits share the existing bot-row lock. Existing rows count toward
+allowances and are never reset by this slice.
+
+Taskiq deliveries wake a database queue drain. Each process selects FIFO among
+accounts below their active allowance, claims conditionally, executes, and drains
+again on completion. PostgreSQL bounds active execution across worker instances;
+Taskiq concurrency remains a local ceiling. Recovery of delivery gaps and dead workers remains
+Slice 18; lost worker reservations fail closed until reconciliation.
+
+Redis server-time scripts atomically bound account and global request budgets and
+open-stream leases. Streams end before their lease expiry and release leases on
+response completion or disconnect. Redis failures prevent admission; no in-memory
+fallback exists. The runtime's condition registry accepts an optional local cap,
+set by the web worker, and rejects additional unresolved conditions before any
+subscription grows. SDK transport and paper/live contracts remain unchanged.
