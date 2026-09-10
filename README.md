@@ -228,7 +228,14 @@ hooks, CI requirements, or format-on-save settings.
 
 For local UI development, run the FastAPI control plane on port `8000` and then
 run `npm run dev` from `frontend/`; Vite proxies same-origin `/api` requests to
-that API. Run detail combines bounded durable reload history with live market,
+that API. The `Control plane: Run frontend` launch configuration runs in the
+integrated terminal. Workspace settings disable Python terminal auto-activation
+to prevent activation commands from interrupting frontend commands. Python launch
+configurations select `.venv/bin/python` explicitly, and `uv run` selects the
+project environment. Close existing terminals and reload the editor window after
+changing terminal activation settings.
+
+Run detail combines bounded durable reload history with live market,
 executable-equity, followed-wallet, and stream-health updates. Its visible
 controls mirror the terminal dashboard's `z`/`x`/`r`/`v`/`j`/`k` keys.
 Failed rows in Recent Runs show the latest durable runtime error together with
