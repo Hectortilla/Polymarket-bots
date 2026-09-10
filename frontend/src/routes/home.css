@@ -11,7 +11,7 @@
 .data-list {
   min-width: 0;
   border-radius: 0;
-  border: 1px solid var(--line);
+  border: 0;
 }
 
 .data-list-header,
@@ -145,8 +145,14 @@
   overflow-wrap: anywhere;
 }
 
-.bots-section + .runs-section {
-  margin-top: var(--section-gap);
+.home-section + .home-section {
+  margin-top: 24px;
+}
+
+.home-section-content > .empty-state {
+  margin: 0;
+  padding-inline: 20px;
+  border: 0;
 }
 
 @media (max-width: 960px) {

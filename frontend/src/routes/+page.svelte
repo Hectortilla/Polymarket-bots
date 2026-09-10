@@ -4,6 +4,9 @@
   import AccountUsage from "$lib/limits/AccountUsage.svelte";
   import { PRESENTATION_COPY } from "$lib/presentation";
   import PlusIcon from "phosphor-svelte/lib/PlusIcon";
+  import FlowArrowIcon from "phosphor-svelte/lib/FlowArrowIcon";
+  import ClockCounterClockwiseIcon from "phosphor-svelte/lib/ClockCounterClockwiseIcon";
+  import HomeSection from "./HomeSection.svelte";
   import { onMount } from "svelte";
   import "./home.css";
 
@@ -81,10 +84,8 @@
     <div class="skeleton skeleton-panel" aria-hidden="true"></div>
   </div>
 {:else}
-  <section class="bots-section" aria-labelledby="configured-bots-heading">
-    <div class="section-heading">
-      <h2 id="configured-bots-heading">{HOME_COPY.CONFIGURED_BOTS}</h2>
-    </div>
+  <HomeSection title={HOME_COPY.CONFIGURED_BOTS} headingId="configured-bots-heading" count={visibleBots.length}>
+    {#snippet icon()}<FlowArrowIcon size={20} />{/snippet}
     <div class="data-list bot-list">
       <div class="data-list-header bot-list-header">
         <span aria-hidden="true">{HOME_COLUMN_LABEL.BOT_AND_MARKETS}</span>
@@ -132,12 +133,10 @@
         {NAVIGATION_LABEL.NEW_BOT}
       </a>
     </div>
-  </section>
+  </HomeSection>
 
-  <section class="runs-section" aria-labelledby="recent-runs-heading">
-    <div class="section-heading">
-      <h2 id="recent-runs-heading">{HOME_COPY.RECENT_RUNS}</h2>
-    </div>
+  <HomeSection title={HOME_COPY.RECENT_RUNS} headingId="recent-runs-heading" count={visibleRuns.length}>
+    {#snippet icon()}<ClockCounterClockwiseIcon size={20} />{/snippet}
     {#if visibleRuns.length === 0}
       <p class="empty-state">Run a configured bot to see its history here.</p>
     {:else}
@@ -185,5 +184,5 @@
         {/each}
       </div>
     {/if}
-  </section>
+  </HomeSection>
 {/if}

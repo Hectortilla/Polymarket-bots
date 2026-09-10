@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BotRead, RunRead, StreamRelation } from "$lib/api/generated";
@@ -117,6 +117,46 @@ describe("bots home", () => {
     expect(runTimes).toHaveLength(2);
     expect(runTimes[0]?.textContent).toBe(formatTime(RUN.created_at));
     expect(runTimes[1]?.textContent).toBe(formatTime(RUN.ended_at));
+  });
+
+  it("opens both sections by default and lets each collapse independently", async () => {
+    loadHome({ bots: [BOT], runs: [RUN] });
+    render(Page);
+
+    const botsToggle = await screen.findByRole("button", { name: HOME_COPY.CONFIGURED_BOTS });
+    const runsToggle = screen.getByRole("button", { name: HOME_COPY.RECENT_RUNS });
+    const botLink = screen.getByRole("link", { name: botRowLabel(BOT.config.name) });
+    const runLink = screen.getByRole("link", { name: runRowLabel(RUN.config.name, formatTime(RUN.created_at)) });
+    expect(botsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(runsToggle).toHaveAttribute("aria-expanded", "true");
+
+    await fireEvent.click(botsToggle);
+    expect(botsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(botLink).not.toBeVisible();
+    expect(runLink).toBeVisible();
+
+    await fireEvent.click(runsToggle);
+    expect(runLink).not.toBeVisible();
+    await fireEvent.click(botsToggle);
+    expect(botLink).toBeVisible();
+    expect(runsToggle).toHaveAttribute("aria-expanded", "false");
+    await fireEvent.click(runsToggle);
+    expect(runLink).toBeVisible();
+  });
+
+  it("counts the displayed bots and recent runs after filtering and the history limit", async () => {
+    const legacyBot = { ...BOT, id: "legacy", latest_graph_revision: null } satisfies BotRead;
+    const runs = Array.from({ length: 12 }, (_, index) => ({ ...RUN, id: `run-${index}` }));
+    loadHome({ bots: [BOT, legacyBot], runs: [{ ...RUN, id: "legacy-run", bot_id: legacyBot.id }, ...runs] });
+    render(Page);
+
+    expect(await screen.findByRole("button", { name: HOME_COPY.CONFIGURED_BOTS })).toHaveAccessibleDescription(
+      "1 item",
+    );
+    expect(screen.getByRole("button", { name: HOME_COPY.RECENT_RUNS })).toHaveAccessibleDescription("10 items");
+    expect(
+      screen.getAllByRole("link", { name: runRowLabel(RUN.config.name, formatTime(RUN.created_at)) }),
+    ).toHaveLength(10);
   });
 
   it("keeps a never-run bot navigable and labels its state", async () => {

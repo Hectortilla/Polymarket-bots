@@ -280,7 +280,10 @@ artifacts, Slice 9B.1 opt-in coverage-gap blackout replay, Slice 10 terminal
 dashboard, Slice 11 dynamic market tracking and resolution processing, and the
 isolated Slices 12A through 12E and Slices 13A through 13F control-plane
 foundation, worker, durable progress path, runs API, mixed durable/live SSE
-stream, and browser dashboard. The dashboard has market-price and
+stream, and browser dashboard. The bots home keeps configured bots and the ten
+most recent runs visible together.
+Each section has a count of its displayed items and an independent collapse control;
+both sections start expanded on each visit. The dashboard has market-price and
 followed-wallet timeline views, plus one Svelte Flow bot editor that combines
 paper configuration and graph editing. Its trigger outputs, Number/Boolean/Text constants, comparisons, operations,
 portfolio queries, signal controls, and fixed-side submit actions come from one

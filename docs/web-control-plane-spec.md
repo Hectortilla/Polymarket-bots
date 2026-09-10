@@ -127,7 +127,11 @@ starting | running | stop_requested | stopping -> interrupted
 ### Home and bot creation
 
 The home page is an operator workspace with one primary **New bot** action, a
-structured list of configured node-based bots, and recent runs. Bot rows expose
+structured list of configured node-based bots, and recent runs. Both lists start
+expanded, with integrated section headers, displayed-item counts, and independent
+keyboard-accessible collapse controls. Collapsing a section is local to the page
+visit; returning home shows both lists again. Recent runs shows up to ten rows.
+Bot rows expose
 the information needed for comparison: name, market scope, max order size,
 latest graph revision, run status, and last update. The frontend does not expose
 other definition types or a graph-template page. A failed Recent Runs row
@@ -312,6 +316,10 @@ does not enable public signup. Recovery from interrupted workers is owned by
 Slice 18 and never resumes a paper portfolio automatically.
 
 ## Slice 17: Paper-beta allowances
+
+The allowance heading includes an information icon for run limits and history
+retention. Its details appear on hover or keyboard focus and can be pinned by
+tapping; Escape or an outside tap dismisses them.
 
 Each account has the same free allowance returned with its private usage by
 `GET /api/v1/usage`. The owning numeric contract is `api.limits.policy.PAPER_BETA`;
