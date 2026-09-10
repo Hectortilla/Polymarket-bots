@@ -1,4 +1,4 @@
-"""Retry-safe removal follows event -> run -> revision -> bot -> identity order."""
+"""Retry-safe removal follows event -> run -> bot -> identity order."""
 
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -7,8 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth.access import AccountAccessStore
-from api.bots.models import BotGraphRevisionRow, BotRow
-from api.graph_templates.models import GraphTemplateRow
+from api.bots.models import BotRow
 from api.lifecycle.deletion.models import DeletionRequestRow
 from api.lifecycle.history.purge import TerminalHistoryPurger
 from api.lifecycle.policy import (
@@ -73,15 +72,7 @@ class AccountPurger:
         ):
             return False
         await self._session.execute(
-            delete(BotGraphRevisionRow).where(
-                BotGraphRevisionRow.bot_id.in_(owned_bot_ids_query)
-            )
-        )
-        await self._session.execute(
             delete(BotRow).where(BotRow.owner_user_id == user_id)
-        )
-        await self._session.execute(
-            delete(GraphTemplateRow).where(GraphTemplateRow.owner_user_id == user_id)
         )
         await AccountAccessStore(self._session).invalidate_credentials(user_id)
         await self._session.delete(account)

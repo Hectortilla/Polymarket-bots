@@ -51,9 +51,6 @@ from api.catalog.values import (
     SelectionMode,
     WidgetKind,
 )
-from api.graph_templates.names import (
-    GRAPH_TEMPLATE_NAME_MAX_LENGTH,
-)
 from api.http.market_contracts import (
     DEFAULT_MARKET_SEARCH_LIMIT,
     MAX_MARKET_SEARCH_LENGTH,
@@ -96,9 +93,6 @@ def frontend_catalog_contract() -> dict[str, object]:
             "defaultLimit": DEFAULT_MARKET_SEARCH_LIMIT,
             "maximumLimit": MAX_MARKET_SEARCH_LIMIT,
             "maximumSelections": MAX_SELECTED_MARKETS,
-        },
-        "graphTemplate": {
-            "maximumNameLength": GRAPH_TEMPLATE_NAME_MAX_LENGTH,
         },
         "widgetSchemaKey": WIDGET_SCHEMA_KEY,
         "graphFieldPathSeparator": GRAPH_FIELD_PATH_SEPARATOR,

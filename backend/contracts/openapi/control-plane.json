@@ -60,11 +60,6 @@
             "minimum": 0.0,
             "title": "Saved Bots",
             "type": "integer"
-          },
-          "saved_templates": {
-            "minimum": 0.0,
-            "title": "Saved Templates",
-            "type": "integer"
           }
         },
         "required": [
@@ -72,7 +67,6 @@
           "active_runs",
           "queued_runs",
           "saved_bots",
-          "saved_templates",
           "retained_runs"
         ],
         "title": "AccountUsage",
@@ -133,17 +127,15 @@
           "definition_id": {
             "$ref": "#/components/schemas/DefinitionId"
           },
-          "graph_template_id": {
+          "graph": {
             "anyOf": [
               {
-                "format": "uuid",
-                "type": "string"
+                "$ref": "#/components/schemas/NodeGraph"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Graph Template Id"
+            ]
           },
           "inputs": {
             "additionalProperties": true,
@@ -236,54 +228,6 @@
         "title": "BotDefinitionLabel",
         "type": "string"
       },
-      "BotGraphRevisionCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "graph": {
-            "$ref": "#/components/schemas/NodeGraph"
-          }
-        },
-        "required": [
-          "graph"
-        ],
-        "title": "BotGraphRevisionCreate",
-        "type": "object"
-      },
-      "BotGraphRevisionRead": {
-        "additionalProperties": false,
-        "properties": {
-          "bot_id": {
-            "format": "uuid",
-            "title": "Bot Id",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "graph": {
-            "$ref": "#/components/schemas/NodeGraph"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "revision": {
-            "$ref": "#/components/schemas/GraphRevisionNumber"
-          }
-        },
-        "required": [
-          "id",
-          "bot_id",
-          "revision",
-          "graph",
-          "created_at"
-        ],
-        "title": "BotGraphRevisionRead",
-        "type": "object"
-      },
       "BotMode": {
         "enum": [
           "paper",
@@ -311,16 +255,6 @@
             "title": "Id",
             "type": "string"
           },
-          "latest_graph_revision": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BotGraphRevisionRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -340,6 +274,16 @@
       "BotUpdate": {
         "additionalProperties": false,
         "properties": {
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "inputs": {
             "additionalProperties": true,
             "title": "Inputs",
@@ -1884,10 +1828,6 @@
         "title": "GraphReason",
         "type": "string"
       },
-      "GraphRevisionNumber": {
-        "minimum": 1.0,
-        "type": "integer"
-      },
       "GraphScalarType": {
         "enum": [
           "boolean",
@@ -1915,90 +1855,6 @@
           "value"
         ],
         "title": "GraphStringConstantData",
-        "type": "object"
-      },
-      "GraphTemplateCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "graph": {
-            "$ref": "#/components/schemas/NodeGraph"
-          },
-          "name": {
-            "$ref": "#/components/schemas/GraphTemplateName"
-          }
-        },
-        "required": [
-          "name",
-          "graph"
-        ],
-        "title": "GraphTemplateCreate",
-        "type": "object"
-      },
-      "GraphTemplateName": {
-        "maxLength": 200,
-        "minLength": 1,
-        "type": "string"
-      },
-      "GraphTemplateRead": {
-        "additionalProperties": false,
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "graph": {
-            "$ref": "#/components/schemas/NodeGraph"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "$ref": "#/components/schemas/GraphTemplateName"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "graph",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "GraphTemplateRead",
-        "type": "object"
-      },
-      "GraphTemplateUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "graph": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NodeGraph"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "name": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GraphTemplateName"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "title": "GraphTemplateUpdate",
         "type": "object"
       },
       "GraphTriggerDescriptor": {
@@ -2865,12 +2721,6 @@
             "title": "Retained Runs",
             "type": "integer"
           },
-          "revisions_per_bot": {
-            "default": 100,
-            "exclusiveMinimum": 0.0,
-            "title": "Revisions Per Bot",
-            "type": "integer"
-          },
           "run_duration_seconds": {
             "default": 3600,
             "exclusiveMinimum": 0.0,
@@ -2881,12 +2731,6 @@
             "default": 20,
             "exclusiveMinimum": 0.0,
             "title": "Saved Bots",
-            "type": "integer"
-          },
-          "saved_templates": {
-            "default": 20,
-            "exclusiveMinimum": 0.0,
-            "title": "Saved Templates",
             "type": "integer"
           },
           "tracked_markets_per_run": {
@@ -2905,8 +2749,6 @@
           "tracked_markets_per_run",
           "followed_wallets_per_run",
           "saved_bots",
-          "saved_templates",
-          "revisions_per_bot",
           "retained_runs",
           "history_retention_days",
           "requests_per_minute",
@@ -2927,6 +2769,16 @@
           },
           "event_max_age_ms": {
             "$ref": "#/components/schemas/NonnegativeMilliseconds"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "max_order_size": {
             "$ref": "#/components/schemas/PositiveDecimal"
@@ -3853,18 +3705,6 @@
             "title": "Bot Deleted",
             "type": "boolean"
           },
-          "bot_graph_revision_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bot Graph Revision Id"
-          },
           "bot_id": {
             "format": "uuid",
             "title": "Bot Id",
@@ -3913,26 +3753,6 @@
               }
             ],
             "title": "Failure Detail"
-          },
-          "graph": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NodeGraph"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "graph_revision": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GraphRevisionNumber"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "heartbeat_at": {
             "anyOf": [
@@ -6283,242 +6103,6 @@
         "summary": "Update Bot"
       }
     },
-    "/api/v1/bots/{bot_id}/graph-revisions": {
-      "post": {
-        "operationId": "create_bot_graph_revision_api_v1_bots__bot_id__graph_revisions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "bot_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Bot Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BotGraphRevisionCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BotRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Create Bot Graph Revision"
-      }
-    },
-    "/api/v1/bots/{bot_id}/graph-revisions/{revision_id}": {
-      "get": {
-        "operationId": "read_bot_graph_revision_api_v1_bots__bot_id__graph_revisions__revision_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "bot_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Bot Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "revision_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Revision Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BotGraphRevisionRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Read Bot Graph Revision"
-      }
-    },
     "/api/v1/bots/{bot_id}/runs": {
       "post": {
         "operationId": "launch_bot_run_api_v1_bots__bot_id__runs_post",
@@ -6680,424 +6264,6 @@
           }
         },
         "summary": "Launch Bot Run"
-      }
-    },
-    "/api/v1/graph-templates": {
-      "get": {
-        "operationId": "list_graph_templates_api_v1_graph_templates_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/GraphTemplateRead"
-                  },
-                  "title": "Response List Graph Templates Api V1 Graph Templates Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1.0,
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1.0,
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        },
-        "summary": "List Graph Templates"
-      },
-      "post": {
-        "operationId": "create_graph_template_api_v1_graph_templates_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GraphTemplateCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GraphTemplateRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1.0,
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1.0,
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Create Graph Template"
-      }
-    },
-    "/api/v1/graph-templates/{template_id}": {
-      "get": {
-        "operationId": "read_graph_template_api_v1_graph_templates__template_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "template_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Template Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GraphTemplateRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Read Graph Template"
-      },
-      "patch": {
-        "operationId": "update_graph_template_api_v1_graph_templates__template_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "template_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Template Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GraphTemplateUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GraphTemplateRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable",
-            "headers": {
-              "Retry-After": {
-                "description": "Suggested seconds before retrying temporary resource admission",
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Update Graph Template"
       }
     },
     "/api/v1/graphs/preview": {

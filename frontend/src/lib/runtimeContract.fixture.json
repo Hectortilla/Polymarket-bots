@@ -11,8 +11,6 @@
     "tracked_markets_per_run": 10,
     "followed_wallets_per_run": 2,
     "saved_bots": 20,
-    "saved_templates": 20,
-    "revisions_per_bot": 100,
     "retained_runs": 100,
     "history_retention_days": 30,
     "requests_per_minute": 120,
@@ -98,13 +96,9 @@
     "currentUser": "/api/v1/auth/me",
     "graphPreview": "/api/v1/graphs/preview",
     "botDefinitions": "/api/v1/bot-definitions",
-    "botGraphRevision": "/api/v1/bots/{bot_id}/graph-revisions/{revision_id}",
-    "botGraphRevisions": "/api/v1/bots/{bot_id}/graph-revisions",
     "bot": "/api/v1/bots/{bot_id}",
     "botRuns": "/api/v1/bots/{bot_id}/runs",
     "bots": "/api/v1/bots",
-    "graphTemplate": "/api/v1/graph-templates/{template_id}",
-    "graphTemplates": "/api/v1/graph-templates",
     "health": "/api/v1/health",
     "usage": "/api/v1/usage",
     "marketSearch": "/api/v1/markets/search",
@@ -269,7 +263,6 @@
     }
   },
   "healthStatus": "ok",
-  "minimumGraphRevisionNumber": 1,
   "marketResolution": {
     "tokenCount": 2
   },

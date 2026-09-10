@@ -22,7 +22,7 @@ async def run_claimed_bot(
         raise RuntimeError("catalog definition is no longer available")
     bot_config = run.config.to_bot_config()
     await run_bot(
-        entry.create_bot(bot_config, run.graph),
+        entry.create_bot(bot_config, run.config.graph),
         bot_config,
         observer=observer,
         max_tracked_markets=PAPER_BETA.tracked_markets_per_run,

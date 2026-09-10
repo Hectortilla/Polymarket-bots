@@ -49,10 +49,6 @@ export type AccountUsage = {
      * Saved Bots
      */
     saved_bots: number;
-    /**
-     * Saved Templates
-     */
-    saved_templates: number;
 };
 
 /**
@@ -86,10 +82,7 @@ export type BotActivityPayload = {
  */
 export type BotCreate = {
     definition_id: DefinitionId;
-    /**
-     * Graph Template Id
-     */
-    graph_template_id?: string | null;
+    graph?: NodeGraph | null;
     /**
      * Inputs
      */
@@ -134,33 +127,6 @@ export type BotDefinitionDescriptor = {
 export type BotDefinitionLabel = 'standard' | 'example' | 'non_trading';
 
 /**
- * BotGraphRevisionCreate
- */
-export type BotGraphRevisionCreate = {
-    graph: NodeGraph;
-};
-
-/**
- * BotGraphRevisionRead
- */
-export type BotGraphRevisionRead = {
-    /**
-     * Bot Id
-     */
-    bot_id: string;
-    /**
-     * Created At
-     */
-    created_at: string;
-    graph: NodeGraph;
-    /**
-     * Id
-     */
-    id: string;
-    revision: GraphRevisionNumber;
-};
-
-/**
  * BotMode
  */
 export type BotMode = 'paper' | 'live';
@@ -179,7 +145,6 @@ export type BotRead = {
      * Id
      */
     id: string;
-    latest_graph_revision?: BotGraphRevisionRead | null;
     /**
      * Updated At
      */
@@ -190,6 +155,7 @@ export type BotRead = {
  * BotUpdate
  */
 export type BotUpdate = {
+    graph?: NodeGraph | null;
     /**
      * Inputs
      */
@@ -940,8 +906,6 @@ export type GraphPreviewResponse = {
  */
 export type GraphReason = 'value_unavailable' | 'invalid_number' | 'division_by_zero' | 'invalid_bounds' | 'whole_number_required' | 'portfolio_unavailable' | 'cooldown_active' | 'already_consumed' | 'reset' | 'state_capacity_exceeded' | 'invalid_key' | 'disabled' | 'planned';
 
-export type GraphRevisionNumber = number;
-
 /**
  * GraphScalarType
  */
@@ -959,44 +923,6 @@ export type GraphStringConstantData = {
      * Value
      */
     value: string;
-};
-
-/**
- * GraphTemplateCreate
- */
-export type GraphTemplateCreate = {
-    graph: NodeGraph;
-    name: GraphTemplateName;
-};
-
-export type GraphTemplateName = string;
-
-/**
- * GraphTemplateRead
- */
-export type GraphTemplateRead = {
-    /**
-     * Created At
-     */
-    created_at: string;
-    graph: NodeGraph;
-    /**
-     * Id
-     */
-    id: string;
-    name: GraphTemplateName;
-    /**
-     * Updated At
-     */
-    updated_at: string;
-};
-
-/**
- * GraphTemplateUpdate
- */
-export type GraphTemplateUpdate = {
-    graph?: NodeGraph | null;
-    name?: GraphTemplateName | null;
 };
 
 /**
@@ -1476,10 +1402,6 @@ export type PaperBetaPolicy = {
      */
     retained_runs: number;
     /**
-     * Revisions Per Bot
-     */
-    revisions_per_bot: number;
-    /**
      * Run Duration Seconds
      */
     run_duration_seconds: number;
@@ -1487,10 +1409,6 @@ export type PaperBetaPolicy = {
      * Saved Bots
      */
     saved_bots: number;
-    /**
-     * Saved Templates
-     */
-    saved_templates: number;
     /**
      * Tracked Markets Per Run
      */
@@ -1503,6 +1421,7 @@ export type PaperBetaPolicy = {
 export type PaperRunConfig = {
     data_trades_budget_per_10s: DataTradesBudget;
     event_max_age_ms: NonnegativeMilliseconds;
+    graph?: NodeGraph | null;
     max_order_size: PositiveDecimal;
     max_slippage_pct: NonnegativeDecimal;
     name: RunName;
@@ -2001,10 +1920,6 @@ export type RunRead = {
      */
     bot_deleted?: boolean;
     /**
-     * Bot Graph Revision Id
-     */
-    bot_graph_revision_id?: string | null;
-    /**
      * Bot Id
      */
     bot_id: string;
@@ -2023,8 +1938,6 @@ export type RunRead = {
      * Failure Detail
      */
     failure_detail?: string | null;
-    graph?: NodeGraph | null;
-    graph_revision?: GraphRevisionNumber | null;
     /**
      * Heartbeat At
      */
@@ -3169,110 +3082,6 @@ export type UpdateBotApiV1BotsBotIdPatchResponses = {
 
 export type UpdateBotApiV1BotsBotIdPatchResponse = UpdateBotApiV1BotsBotIdPatchResponses[keyof UpdateBotApiV1BotsBotIdPatchResponses];
 
-export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData = {
-    body: BotGraphRevisionCreate;
-    path: {
-        /**
-         * Bot Id
-         */
-        bot_id: string;
-    };
-    query?: never;
-    url: '/api/v1/bots/{bot_id}/graph-revisions';
-};
-
-export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Not Found
-     */
-    404: ErrorResponse;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-    /**
-     * Too Many Requests
-     */
-    429: ErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: ErrorResponse;
-};
-
-export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostError = CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors[keyof CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors];
-
-export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses = {
-    /**
-     * Successful Response
-     */
-    201: BotRead;
-};
-
-export type CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponse = CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses[keyof CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses];
-
-export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData = {
-    body?: never;
-    path: {
-        /**
-         * Bot Id
-         */
-        bot_id: string;
-        /**
-         * Revision Id
-         */
-        revision_id: string;
-    };
-    query?: never;
-    url: '/api/v1/bots/{bot_id}/graph-revisions/{revision_id}';
-};
-
-export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Not Found
-     */
-    404: ErrorResponse;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-    /**
-     * Too Many Requests
-     */
-    429: ErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: ErrorResponse;
-};
-
-export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetError = ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors[keyof ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors];
-
-export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: BotGraphRevisionRead;
-};
-
-export type ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponse = ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses[keyof ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses];
-
 export type LaunchBotRunApiV1BotsBotIdRunsPostData = {
     body?: never;
     headers?: {
@@ -3342,194 +3151,6 @@ export type LaunchBotRunApiV1BotsBotIdRunsPostResponses = {
 };
 
 export type LaunchBotRunApiV1BotsBotIdRunsPostResponse = LaunchBotRunApiV1BotsBotIdRunsPostResponses[keyof LaunchBotRunApiV1BotsBotIdRunsPostResponses];
-
-export type ListGraphTemplatesApiV1GraphTemplatesGetData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/graph-templates';
-};
-
-export type ListGraphTemplatesApiV1GraphTemplatesGetErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Too Many Requests
-     */
-    429: ErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: ErrorResponse;
-};
-
-export type ListGraphTemplatesApiV1GraphTemplatesGetError = ListGraphTemplatesApiV1GraphTemplatesGetErrors[keyof ListGraphTemplatesApiV1GraphTemplatesGetErrors];
-
-export type ListGraphTemplatesApiV1GraphTemplatesGetResponses = {
-    /**
-     * Response List Graph Templates Api V1 Graph Templates Get
-     *
-     * Successful Response
-     */
-    200: Array<GraphTemplateRead>;
-};
-
-export type ListGraphTemplatesApiV1GraphTemplatesGetResponse = ListGraphTemplatesApiV1GraphTemplatesGetResponses[keyof ListGraphTemplatesApiV1GraphTemplatesGetResponses];
-
-export type CreateGraphTemplateApiV1GraphTemplatesPostData = {
-    body: GraphTemplateCreate;
-    path?: never;
-    query?: never;
-    url: '/api/v1/graph-templates';
-};
-
-export type CreateGraphTemplateApiV1GraphTemplatesPostErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Conflict
-     */
-    409: ErrorResponse;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-    /**
-     * Too Many Requests
-     */
-    429: ErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: ErrorResponse;
-};
-
-export type CreateGraphTemplateApiV1GraphTemplatesPostError = CreateGraphTemplateApiV1GraphTemplatesPostErrors[keyof CreateGraphTemplateApiV1GraphTemplatesPostErrors];
-
-export type CreateGraphTemplateApiV1GraphTemplatesPostResponses = {
-    /**
-     * Successful Response
-     */
-    201: GraphTemplateRead;
-};
-
-export type CreateGraphTemplateApiV1GraphTemplatesPostResponse = CreateGraphTemplateApiV1GraphTemplatesPostResponses[keyof CreateGraphTemplateApiV1GraphTemplatesPostResponses];
-
-export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData = {
-    body?: never;
-    path: {
-        /**
-         * Template Id
-         */
-        template_id: string;
-    };
-    query?: never;
-    url: '/api/v1/graph-templates/{template_id}';
-};
-
-export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Not Found
-     */
-    404: ErrorResponse;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-    /**
-     * Too Many Requests
-     */
-    429: ErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: ErrorResponse;
-};
-
-export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetError = ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors[keyof ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors];
-
-export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: GraphTemplateRead;
-};
-
-export type ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponse = ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses[keyof ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses];
-
-export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData = {
-    body: GraphTemplateUpdate;
-    path: {
-        /**
-         * Template Id
-         */
-        template_id: string;
-    };
-    query?: never;
-    url: '/api/v1/graph-templates/{template_id}';
-};
-
-export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Not Found
-     */
-    404: ErrorResponse;
-    /**
-     * Conflict
-     */
-    409: ErrorResponse;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-    /**
-     * Too Many Requests
-     */
-    429: ErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: ErrorResponse;
-};
-
-export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchError = UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors[keyof UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors];
-
-export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses = {
-    /**
-     * Successful Response
-     */
-    200: GraphTemplateRead;
-};
-
-export type UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponse = UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses[keyof UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses];
 
 export type PreviewGraphData = {
     body: GraphPreviewRequest;

@@ -1,4 +1,4 @@
-import runtimeContract from "$lib/runtimeContract.fixture.json";
+import runtimeContract from "$lib/runtimeContract.fixture.json" with { type: "json" };
 
 export const BOT_DETAIL_COPY = {
   EXPIRED_LAUNCH:
@@ -12,7 +12,6 @@ export const BOT_DETAIL_COPY = {
   DELETE_ACTIVE_RUNS: runtimeContract.botDeletion.activeRunsDetail,
   DELETE_ERROR: "The bot could not be deleted. Please try again.",
   CONFIG_SAVE_ERROR: "The bot configuration could not be saved.",
-  GRAPH_SAVE_ERROR: "The graph revision could not be saved.",
   LOAD_ERROR: "The saved bot could not be loaded.",
   NOT_FOUND: "Bot not found.",
   RUN: "Run bot",
@@ -25,7 +24,3 @@ export const BOT_DETAIL_COPY = {
   UNSAVED: "unsaved changes",
   UNSAVED_RUN_BLOCK: "Save your changes before starting a run.",
 } as const;
-
-export function botGraphRevisionLabel(revision: number | null | undefined): string {
-  return `Bot graph revision ${revision}`;
-}

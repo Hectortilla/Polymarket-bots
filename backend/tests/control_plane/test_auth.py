@@ -50,13 +50,9 @@ from api.http.protocol import (
     RETRY_AFTER_HEADER,
 )
 from api.http.routes.paths import (
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
     BOT_PATH,
     BOT_RUNS_PATH,
     BOTS_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
     RUN_EVENTS_PATH,
     RUN_EVENTS_STREAM_PATH,
@@ -338,21 +334,14 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
             await session.commit()
         first_token = client.cookies.get(SESSION_COOKIE)
         graph = STARTER_NODE_GRAPH.model_dump(mode="json")
-        template = (
-            await client.post(
-                api_route_path(GRAPH_TEMPLATES_PATH),
-                json={"name": "Private graph", "graph": graph},
-            )
-        ).json()
         bot_body = {
             "definition_id": NODE_BASED_DEFINITION_ID,
             "inputs": {"name": "Private bot", "market_slugs": ["market"]},
-            "graph_template_id": template["id"],
+            "graph": graph,
         }
         response = await client.post(api_route_path(BOTS_PATH), json=bot_body)
         assert response.status_code == status.HTTP_201_CREATED, response.text
         bot = response.json()
-        revision = bot["latest_graph_revision"]
         run = (
             await client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"]))
         ).json()
@@ -370,52 +359,20 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
             for path in [
                 api_route_path(BOTS_PATH),
                 api_route_path(RUNS_PATH),
-                api_route_path(GRAPH_TEMPLATES_PATH),
             ]:
                 assert (await second.get(path)).json() == []
-            own_template = await second.post(
-                api_route_path(GRAPH_TEMPLATES_PATH),
-                json={"name": template["name"], "graph": graph},
-            )
-            assert own_template.status_code == status.HTTP_201_CREATED
-            assert (
-                await second.post(
-                    api_route_path(GRAPH_TEMPLATES_PATH),
-                    json={"name": template["name"], "graph": graph},
-                )
-            ).status_code == status.HTTP_409_CONFLICT
             foreign_paths = [
                 ("GET", api_route_path(BOT_PATH, bot_id=bot["id"]), None),
                 (
                     "PATCH",
                     api_route_path(BOT_PATH, bot_id=bot["id"]),
-                    {"inputs": {"name": "stolen", "market_slugs": ["market"]}},
+                    {
+                        "inputs": {"name": "stolen", "market_slugs": ["market"]},
+                        "graph": graph,
+                    },
                 ),
-                (
-                    "GET",
-                    api_route_path(
-                        BOT_GRAPH_REVISION_PATH,
-                        bot_id=bot["id"],
-                        revision_id=revision["id"],
-                    ),
-                    None,
-                ),
-                (
-                    "POST",
-                    api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=bot["id"]),
-                    {"graph": graph},
-                ),
+                ("DELETE", api_route_path(BOT_PATH, bot_id=bot["id"]), None),
                 ("POST", api_route_path(BOT_RUNS_PATH, bot_id=bot["id"]), None),
-                (
-                    "GET",
-                    api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"]),
-                    None,
-                ),
-                (
-                    "PATCH",
-                    api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"]),
-                    {"name": "stolen"},
-                ),
                 ("GET", api_route_path(RUN_PATH, run_id=run["id"]), None),
                 ("POST", api_route_path(RUN_STOP_PATH, run_id=run["id"]), None),
                 ("GET", api_route_path(RUN_EVENTS_PATH, run_id=run["id"]), None),
@@ -427,19 +384,14 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
                     path,
                     denied.text,
                 )
-                missing_path = (
-                    path.replace(bot["id"], str(uuid4()))
-                    .replace(template["id"], str(uuid4()))
-                    .replace(run["id"], str(uuid4()))
+                missing_path = path.replace(bot["id"], str(uuid4())).replace(
+                    run["id"], str(uuid4())
                 )
                 missing = await second.request(method, missing_path, json=body)
                 assert (denied.status_code, denied.json()) == (
                     missing.status_code,
                     missing.json(),
                 )
-            assert (
-                await second.post(api_route_path(BOTS_PATH), json=bot_body)
-            ).status_code == status.HTTP_404_NOT_FOUND
             spoof = await second.post(
                 api_route_path(BOTS_PATH),
                 json={**bot_body, "owner_user_id": first.json()["id"]},
@@ -448,31 +400,21 @@ def test_two_accounts_isolate_every_resource_and_nested_reference(services):
             own_bot = (
                 await second.post(
                     api_route_path(BOTS_PATH),
-                    json={**bot_body, "graph_template_id": own_template.json()["id"]},
+                    json=bot_body,
                 )
             ).json()
-            assert (
-                await second.get(
-                    api_route_path(
-                        BOT_GRAPH_REVISION_PATH,
-                        bot_id=own_bot["id"],
-                        revision_id=revision["id"],
-                    )
-                )
-            ).status_code == status.HTTP_404_NOT_FOUND
+            assert own_bot["id"] != bot["id"]
+            assert own_bot["config"] == bot["config"]
             assert len(launcher.launch.call_args_list) == 1
         assert (
             await client.patch(
                 api_route_path(BOT_PATH, bot_id=bot["id"]),
-                json={"inputs": {"name": "edited", "market_slugs": ["market"]}},
+                json={
+                    "inputs": {"name": "edited", "market_slugs": ["market"]},
+                    "graph": graph,
+                },
             )
         ).status_code == status.HTTP_200_OK
-        assert (
-            await client.post(
-                api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=bot["id"]),
-                json={"graph": graph},
-            )
-        ).status_code == status.HTTP_201_CREATED
         assert (await client.get(api_route_path(RUN_PATH, run_id=run["id"]))).json()[
             "config"
         ]["name"] == "Private bot"

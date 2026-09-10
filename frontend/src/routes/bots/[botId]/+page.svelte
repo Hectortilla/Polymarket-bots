@@ -14,7 +14,6 @@
   import { onMount, tick } from "svelte";
 
   import {
-    createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
     deleteBotApiV1BotsBotIdDelete,
     launchBotRunApiV1BotsBotIdRunsPost,
     listBotDefinitionsApiV1BotDefinitionsGet,
@@ -39,7 +38,7 @@
   } from "$lib/catalog/schema";
   import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from "$lib/navigation";
   import { formatTime } from "$lib/time";
-  import { BOT_DETAIL_COPY, botGraphRevisionLabel } from "./copy";
+  import { BOT_DETAIL_COPY } from "./copy";
 
   let bot = $state<BotRead>();
   let bots = $state<BotRead[]>([]);
@@ -86,9 +85,9 @@
       if (!descriptor) throw new Error("definition missing");
       savedInputs = launchInputsFromConfig(descriptor, bot.config);
       editedInputs = savedInputs;
-      savedGraph = bot.latest_graph_revision?.graph;
+      savedGraph = bot.config.graph ?? undefined;
       editedGraph = savedGraph;
-      graphEditorResetKey = bot.latest_graph_revision?.id ?? "";
+      graphEditorResetKey = JSON.stringify(bot.config.graph);
     } catch (caught) {
       error = caught instanceof BotNotFoundError ? BOT_DETAIL_COPY.NOT_FOUND : BOT_DETAIL_COPY.LOAD_ERROR;
     } finally {
@@ -114,44 +113,28 @@
     error = "";
     configServerIssues = [];
     graphServerIssues = [];
-    let phase: "config" | "graph" = "config";
     try {
-      if (shouldSaveConfig) {
-        const response = await updateBotApiV1BotsBotIdPatch({
-          path: { bot_id: bot.id },
-          body: { inputs },
-          throwOnError: true,
-        });
-        bot = response.data;
-        savedInputs = inputs;
-        editedInputs = inputs;
-      }
-
-      if (shouldSaveGraph && graphToSave) {
-        phase = "graph";
-        const response = await createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
-          path: { bot_id: bot.id },
-          body: { graph: graphToSave },
-          throwOnError: true,
-        });
-        bot = response.data;
-        savedGraph = response.data.latest_graph_revision?.graph;
-        editedGraph = savedGraph;
-        graphSourceName = GRAPH_SOURCE_COPY.CURRENT;
-        graphEditorResetKey = response.data.latest_graph_revision?.id ?? "";
-      }
+      const response = await updateBotApiV1BotsBotIdPatch({
+        path: { bot_id: bot.id },
+        body: { inputs, graph: graphToSave },
+        throwOnError: true,
+      });
+      bot = response.data;
+      savedInputs = inputs;
+      editedInputs = inputs;
+      savedGraph = bot.config.graph ?? undefined;
+      editedGraph = savedGraph;
+      graphSourceName = GRAPH_SOURCE_COPY.CURRENT;
+      graphEditorResetKey = JSON.stringify(savedGraph);
     } catch (caught) {
-      if (phase === "config") {
-        configServerIssues = launchRequestValidationIssues(caught);
-        if (configServerIssues.length === 0) error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
-      } else if (graphToSave) {
-        graphServerIssues = graphValidationIssues(caught, graphToSave);
-        if (graphServerIssues.length > 0) {
-          await tick();
-          document.getElementById("bot-graph-validation")?.focus();
-        } else {
-          error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.GRAPH_SAVE_ERROR;
-        }
+      configServerIssues = launchRequestValidationIssues(caught);
+      graphServerIssues = graphToSave ? graphValidationIssues(caught, graphToSave) : [];
+      if (graphServerIssues.length > 0) {
+        await tick();
+        document.getElementById("bot-graph-validation")?.focus();
+      }
+      if (configServerIssues.length === 0 && graphServerIssues.length === 0) {
+        error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
       }
     } finally {
       saving = false;
@@ -311,7 +294,6 @@
           <div>
             <h2 id="bot-graph-editor-label">
               {BOT_BUILDER_COPY.STRATEGY_GRAPH}
-              <span class="revision-label">{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</span>
             </h2>
             <p>
               Edit the current graph or replace it with the latest graph from another bot. Current source: {graphSourceName}.

@@ -14,14 +14,11 @@ from api.auth.contracts import CurrentUser
 from api.auth.dependencies import application_authentication
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
-from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.events.writer import RunEventWriter
 from api.execution.worker.lifecycle import (
     DURATION_EXPIRED_DETAIL,
     RunLifecycleCoordinator,
 )
-from api.graph_templates.contracts import GraphTemplateCreate
-from api.graph_templates.store import GraphTemplateStore
 from api.http.app import create_app
 from api.http.lifecycle import ApiRunLifecycle
 from api.http.routes.paths import BOT_RUNS_PATH, USAGE_PATH, api_route_path
@@ -179,7 +176,7 @@ def test_invalid_snapshot_and_duration_expiry_release_capacity(
     asyncio.run(scenario())
 
 
-def test_saved_resources_and_revisions_are_bounded(limits_services):
+def test_saved_bots_are_bounded_but_config_edits_are_not(limits_services):
     async def scenario():
         async with resource_services(limits_services) as (sessions, redis):
             user, bot = await account_bot(sessions)
@@ -187,9 +184,7 @@ def test_saved_resources_and_revisions_are_bounded(limits_services):
             async def create():
                 async with sessions() as session:
                     return await BotStore(session, user.id).create(
-                        definition_id=bot.definition_id,
-                        config=bot.config,
-                        graph=STARTER_NODE_GRAPH,
+                        definition_id=bot.definition_id, config=bot.config
                     )
 
             results = await asyncio.gather(
@@ -201,32 +196,13 @@ def test_saved_resources_and_revisions_are_bounded(limits_services):
                 == PAPER_BETA.saved_bots - 1
             )
 
-            async def template(index):
+            # Saving an existing configuration has no template or edit allowance.
+            for index in range(105):
                 async with sessions() as session:
-                    return await GraphTemplateStore(session, user.id).create(
-                        GraphTemplateCreate(
-                            name=f"template-{index}", graph=STARTER_NODE_GRAPH
-                        )
+                    updated = await BotStore(session, user.id).update_config(
+                        bot.id, bot.config.model_copy(update={"name": f"edit-{index}"})
                     )
-
-            results = await asyncio.gather(
-                *(template(index) for index in range(PAPER_BETA.saved_templates + 5)),
-                return_exceptions=True,
-            )
-            assert (
-                sum(not isinstance(result, Exception) for result in results)
-                == PAPER_BETA.saved_templates
-            )
-            for _ in range(PAPER_BETA.revisions_per_bot):
-                async with sessions() as session:
-                    await BotStore(session, user.id).append_revision(
-                        bot.id, STARTER_NODE_GRAPH
-                    )
-            async with sessions() as session:
-                with pytest.raises(ResourceLimitError):
-                    await BotStore(session, user.id).append_revision(
-                        bot.id, STARTER_NODE_GRAPH
-                    )
+                    assert updated.config.name == f"edit-{index}"
 
     asyncio.run(scenario())
 

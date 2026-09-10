@@ -8,7 +8,6 @@ import type { LiveRunEvent } from "$lib/api/generated";
 import { LIVE_EVENT_KIND } from "$lib/runs/eventKinds";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { BotDefinitionDescriptor, RunRead } from "$lib/api/generated";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
 import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
@@ -17,14 +16,12 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { formatTime } from "$lib/time";
 import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
 import { RUN_STATUS } from "$lib/runs/status";
-
 const mocks = vi.hoisted(() => ({
   listDefinitions: vi.fn(),
   loadRun: vi.fn(),
   loadOlderEvents: vi.fn(),
   stopRun: vi.fn(),
 }));
-
 vi.mock("$app/state", () => ({
   page: { params: { runId: "aaaaaaaa-0000-0000-0000-000000000001" } },
 }));
@@ -36,17 +33,12 @@ vi.mock("$lib/api/generated", () => ({
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
   stopRunApiV1RunsRunIdStopPost: mocks.stopRun,
 }));
-
 import Page from "./+page.svelte";
-import { loadedEventsLabel, RUN_DETAIL_COPY, executedRunGraphRevisionLabel } from "./copy";
-
+import { loadedEventsLabel, RUN_DETAIL_COPY } from "./copy";
 const RUN = {
   id: "aaaaaaaa-0000-0000-0000-000000000001",
   bot_id: "bbbbbbbb-0000-0000-0000-000000000001",
   definition_id: "node-based-bot",
-  bot_graph_revision_id: "cccccccc-0000-0000-0000-000000000001",
-  graph_revision: 3,
-  graph: TEST_GRAPH,
   config: {
     name: "Historical graph run",
     stream_rules: [],
@@ -57,18 +49,18 @@ const RUN = {
     paper_latency_jitter_ms: 100,
     event_max_age_ms: 5000,
     paper_portfolio_usdc: "1000",
+    graph: TEST_GRAPH,
   },
   status: RUN_STATUS.STOPPED,
   created_at: "2026-08-30T00:00:00Z",
 } satisfies RunRead;
-
 const GRAPHLESS_RUN = {
   ...RUN,
-  bot_graph_revision_id: null,
-  graph_revision: null,
-  graph: null,
+  config: {
+    ...RUN.config,
+    graph: null,
+  },
 } satisfies RunRead;
-
 const GRAPH_DEFINITION = {
   definition_id: RUN.definition_id,
   display_name: "Node-based bot",
@@ -80,15 +72,12 @@ const GRAPH_DEFINITION = {
   graph_catalog: TEST_GRAPH_CATALOG,
   starter_graph: TEST_GRAPH,
 } satisfies BotDefinitionDescriptor;
-
 class PassiveIntersectionObserver {
   observe(): void {}
   disconnect(): void {}
 }
-
 class FlowResizeObserver implements ResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
-
   observe(target: Element): void {
     this.callback(
       [
@@ -100,11 +89,9 @@ class FlowResizeObserver implements ResizeObserver {
       this,
     );
   }
-
   disconnect(): void {}
   unobserve(): void {}
 }
-
 beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", PassiveIntersectionObserver);
   vi.stubGlobal("ResizeObserver", FlowResizeObserver);
@@ -122,14 +109,12 @@ beforeEach(() => {
     return () => {};
   });
 });
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-
 describe("run detail page", () => {
   it("shows stream reconnection until transport is connected again", async () => {
     let connectionState: (state: StreamConnectionState) => void = () => {};
@@ -145,62 +130,51 @@ describe("run detail page", () => {
     connectionState(STREAM_CONNECTION_STATE.CONNECTED);
     await waitFor(() => expect(screen.queryByText(RUN_DETAIL_COPY.STREAM_RECONNECTING)).toBeNull());
   });
-
   it("renders the saved-bot link and immutable historical graph snapshot", async () => {
     render(Page);
-
     const botLink = await screen.findByRole("link", {
       name: RUN_DETAIL_COPY.BOT_CONFIGURATION,
     });
     expect(botLink.getAttribute("href")).toBe(botPath(RUN.bot_id));
     expect(
       screen.getByRole("heading", {
-        name: executedRunGraphRevisionLabel(RUN.graph_revision),
+        name: RUN_DETAIL_COPY.EXECUTED_GRAPH,
       }),
     ).toBeTruthy();
-
     const graphSection = screen
       .getByRole("heading", {
-        name: executedRunGraphRevisionLabel(RUN.graph_revision),
+        name: RUN_DETAIL_COPY.EXECUTED_GRAPH,
       })
       .closest("section");
     expect(graphSection).not.toBeNull();
     const graphCanvas = await screen.findByRole("group", {
-      name: executedRunGraphRevisionLabel(RUN.graph_revision),
+      name: RUN_DETAIL_COPY.EXECUTED_GRAPH,
     });
     expect(graphCanvas.getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByLabelText("on_book trigger node")).toBeTruthy();
     expect(graphSection?.querySelector("pre")).toBeNull();
     expect(screen.queryByRole("button", { name: ADD_NODE_LABEL })).toBeNull();
   });
-
   it("omits historical graph details for an ordinary run", async () => {
     mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
       hydrate({ run: GRAPHLESS_RUN, events: [], nextBeforeEventId: null });
       return () => {};
     });
-
     render(Page);
-
     await screen.findByRole("heading", { name: GRAPHLESS_RUN.config.name });
     expect(
       screen.queryByRole("heading", {
-        name: new RegExp(RUN_DETAIL_COPY.EXECUTED_GRAPH_REVISION),
+        name: new RegExp(RUN_DETAIL_COPY.EXECUTED_GRAPH),
       }),
     ).toBeNull();
-    expect(screen.queryByText(new RegExp(RUN_DETAIL_COPY.GRAPH_REVISION))).toBeNull();
     expect(mocks.listDefinitions).not.toHaveBeenCalled();
   });
-
   it("reports when the executed graph catalog cannot be loaded", async () => {
     mocks.listDefinitions.mockRejectedValue(new Error("catalog unavailable"));
-
     render(Page);
-
     expect((await screen.findByRole("alert")).textContent).toContain(RUN_DETAIL_COPY.GRAPH_LOAD_ERROR);
     expect(document.querySelector(".historical-graph pre")).toBeNull();
   });
-
   it("attaches recorded failure detail to the failed lifecycle row", async () => {
     const failureDetail = "RuntimeError: run launch failed";
     const failedLifecycle: PersistedDurableEvent = {
@@ -222,18 +196,14 @@ describe("run detail page", () => {
       });
       return () => {};
     });
-
     render(Page);
-
     const row = (await screen.findByText(eventSummary(failedLifecycle))).closest("tr");
     expect(row?.getAttribute("tabindex")).toBe("0");
     expect(row?.getAttribute("aria-describedby")).toBe(`event-failure-detail-${failedLifecycle.id}`);
     expect(row?.querySelector('[role="tooltip"]')?.textContent).toContain(failureDetail);
   });
 });
-
 const ACTIVE_RUN = { ...GRAPHLESS_RUN, status: RUN_STATUS.RUNNING };
-
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -243,17 +213,15 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-
 function lifecycleEvent(id: number, status: RunRead["status"]): PersistedDurableEvent {
   return {
     id,
     run_id: RUN.id,
-    occurred_at: new Date(Date.parse(RUN.created_at) + id * 1_000).toISOString(),
+    occurred_at: new Date(Date.parse(RUN.created_at) + id * 1000).toISOString(),
     kind: EVENT_KIND.runLifecycle,
     payload: { status },
   };
 }
-
 function chartSampleEvent(id: number): PersistedDurableEvent {
   return {
     id,
@@ -261,26 +229,22 @@ function chartSampleEvent(id: number): PersistedDurableEvent {
     occurred_at: RUN.created_at,
     kind: EVENT_KIND.chartSample,
     payload: {
-      sampled_at_ms: id * 1_000,
+      sampled_at_ms: id * 1000,
       markets: [],
       equity: { value: "1000", status: VALUATION_STATUS.fresh },
     },
   };
 }
-
 function hydrateActive(events: PersistedDurableEvent[] = [], cursor: number | null = null) {
   mocks.loadRun.mockImplementation(async (_id, hydrate) => {
     hydrate({ run: ACTIVE_RUN, events, nextBeforeEventId: cursor });
     return vi.fn();
   });
 }
-
 const EVENT_PAGE_SIZE = runtimeContract.eventPagination.defaultLimit;
-
 function progressPage(firstId: number, count = EVENT_PAGE_SIZE): PersistedDurableEvent[] {
   return Array.from({ length: count }, (_, index) => lifecycleEvent(firstId + index, RUN_STATUS.RUNNING));
 }
-
 function expectProgressWindow(firstId: number, count: number): void {
   const rows = [...document.querySelectorAll(".event-table tbody tr")];
   expect(rows).toHaveLength(count);
@@ -288,17 +252,14 @@ function expectProgressWindow(firstId: number, count: number): void {
     progressPage(firstId, count).map((event) => formatTime(event.occurred_at)),
   );
 }
-
 describe("run detail interactions", () => {
   it("bounds streaming to one page, including hidden samples, and reloads evicted history", async () => {
     hydrateActive(progressPage(1));
     render(Page);
     await screen.findByText(loadedEventsLabel(EVENT_PAGE_SIZE));
     const durable = mocks.loadRun.mock.calls[0][2];
-
     durable(chartSampleEvent(EVENT_PAGE_SIZE + 1));
     await waitFor(() => expectProgressWindow(2, EVENT_PAGE_SIZE - 1));
-
     mocks.loadOlderEvents.mockResolvedValue({
       events: progressPage(1, 1),
       nextBeforeEventId: null,
@@ -308,45 +269,41 @@ describe("run detail interactions", () => {
     await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
     expect(screen.queryByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
   });
-
   it("lets an initially empty window fill before evicting events", async () => {
     hydrateActive();
     render(Page);
     await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS);
     const durable = mocks.loadRun.mock.calls[0][2];
-
     progressPage(1).forEach(durable);
     await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
     expect(screen.queryByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
-
     durable(lifecycleEvent(EVENT_PAGE_SIZE + 1, RUN_STATUS.RUNNING));
     await waitFor(() => expectProgressWindow(2, EVENT_PAGE_SIZE));
     expect(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
   });
-
   it.each([1, EVENT_PAGE_SIZE * 3])(
     "keeps two contiguous pages when %i events stream during an older-page request",
     async (streamedCount) => {
       const firstId = EVENT_PAGE_SIZE + 1;
       hydrateActive(progressPage(firstId), firstId);
-      const request = deferred<{ events: PersistedDurableEvent[]; nextBeforeEventId: null }>();
+      const request = deferred<{
+        events: PersistedDurableEvent[];
+        nextBeforeEventId: null;
+      }>();
       mocks.loadOlderEvents.mockReturnValue(request.promise);
       render(Page);
       const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
       const durable = mocks.loadRun.mock.calls[0][2];
       await fireEvent.click(button);
-
       progressPage(EVENT_PAGE_SIZE * 2 + 1, streamedCount).forEach(durable);
       request.resolve({ events: progressPage(1), nextBeforeEventId: null });
       await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
       await waitFor(() => expectProgressWindow(streamedCount + 1, EVENT_PAGE_SIZE * 2));
-
       mocks.loadOlderEvents.mockResolvedValue({ events: [], nextBeforeEventId: null });
       await fireEvent.click(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
       expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, streamedCount + 1);
     },
   );
-
   it("releases reserved page capacity and preserves the advanced cursor after a failed fetch", async () => {
     const firstId = EVENT_PAGE_SIZE + 1;
     hydrateActive(progressPage(firstId), firstId);
@@ -358,30 +315,27 @@ describe("run detail interactions", () => {
     await fireEvent.click(button);
     progressPage(EVENT_PAGE_SIZE * 2 + 1).forEach(durable);
     request.reject(new Error("unavailable"));
-
     await screen.findByText(RUN_DETAIL_COPY.LOAD_ERROR);
     expectProgressWindow(EVENT_PAGE_SIZE * 2 + 1, EVENT_PAGE_SIZE);
     durable(lifecycleEvent(EVENT_PAGE_SIZE * 3 + 1, RUN_STATUS.RUNNING));
     await waitFor(() => expectProgressWindow(EVENT_PAGE_SIZE * 2 + 2, EVENT_PAGE_SIZE));
-
     mocks.loadOlderEvents.mockResolvedValue({ events: [], nextBeforeEventId: null });
     await fireEvent.click(button);
     expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, EVENT_PAGE_SIZE * 2 + 2);
   });
-
   it("shows an empty progress state for a page containing only chart samples", async () => {
     hydrateActive([chartSampleEvent(2)], 2);
     render(Page);
-
     expect(await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS)).toBeTruthy();
     expect(screen.getByText(loadedEventsLabel(0))).toBeTruthy();
     expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
     expect(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
   });
-
   it("shows a pending stop request and applies the returned status", async () => {
     hydrateActive();
-    const request = deferred<{ data: RunRead }>();
+    const request = deferred<{
+      data: RunRead;
+    }>();
     mocks.stopRun.mockReturnValue(request.promise);
     render(Page);
     const stop = await screen.findByRole("button", {
@@ -401,7 +355,6 @@ describe("run detail interactions", () => {
       ).hasAttribute("disabled"),
     ).toBe(true);
   });
-
   it("clears busy state after a failed stop so the request can be retried", async () => {
     hydrateActive();
     mocks.stopRun.mockRejectedValue(new Error("unavailable"));
@@ -415,7 +368,6 @@ describe("run detail interactions", () => {
     expect(stop.getAttribute("aria-busy")).not.toBe("true");
     expect(stop.textContent).toContain(RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!);
   });
-
   it("applies durable and live stream callbacks and closes the stream on unmount", async () => {
     let durable!: (event: PersistedDurableEvent) => void;
     let live!: (event: LiveRunEvent) => void;
@@ -477,7 +429,6 @@ describe("run detail interactions", () => {
     view.unmount();
     expect(close).toHaveBeenCalledOnce();
   });
-
   it("keeps the older-event cursor for retries and merges a successful page", async () => {
     hydrateActive([lifecycleEvent(2, RUN_STATUS.RUNNING), chartSampleEvent(3)], 7);
     mocks.loadOlderEvents.mockRejectedValueOnce(new Error("unavailable"));
@@ -511,7 +462,6 @@ describe("run detail interactions", () => {
     expect(rows[1].textContent).toContain(eventSummary(lifecycleEvent(2, RUN_STATUS.RUNNING)));
   });
 });
-
 it("keeps the historical graph visible after its bot is deleted and removes the configuration link", async () => {
   mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
     hydrate({ run: { ...RUN, bot_deleted: true }, events: [], nextBeforeEventId: null });
@@ -521,5 +471,5 @@ it("keeps the historical graph visible after its bot is deleted and removes the 
   expect(await screen.findByRole("heading", { name: RUN.config.name })).toBeTruthy();
   expect(await screen.findByText(RUN_DETAIL_COPY.BOT_DELETED)).toBeTruthy();
   expect(screen.queryByRole("link", { name: RUN_DETAIL_COPY.BOT_CONFIGURATION })).toBeNull();
-  expect(screen.getByText(executedRunGraphRevisionLabel(RUN.graph_revision))).toBeTruthy();
+  expect(screen.getByText(RUN_DETAIL_COPY.EXECUTED_GRAPH)).toBeTruthy();
 });

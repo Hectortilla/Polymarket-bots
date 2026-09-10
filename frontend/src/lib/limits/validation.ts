@@ -6,7 +6,6 @@ const USAGE_COUNT_FIELDS = [
   "active_runs",
   "queued_runs",
   "saved_bots",
-  "saved_templates",
   "retained_runs",
 ] as const satisfies readonly (keyof AccountUsage)[];
 

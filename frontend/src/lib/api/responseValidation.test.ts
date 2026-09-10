@@ -1,10 +1,5 @@
 import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
-  readBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGet,
-} from "./generated/sdk.gen";
-
 import { configureApiResponseValidation, validateControlPlaneResponse } from "$lib/api/responseValidation/index";
 import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 import {
@@ -25,7 +20,6 @@ import {
   readRunEventsApiV1RunsRunIdEventsGet,
   searchMarkets,
 } from "./generated/sdk.gen";
-
 const RUN_ID = "00000000-0000-4000-8000-000000000001";
 const BOT_ID = "00000000-0000-4000-8000-000000000002";
 const CREATED_AT = "2026-09-02T00:00:00Z";
@@ -49,7 +43,6 @@ const DEFINITION = {
   market_selection: catalogContract.selectionMode.USER_CONFIGURED,
   wallet_selection: catalogContract.selectionMode.ABSENT,
 };
-
 describe("control-plane response validation", () => {
   it("validates market suggestions for the exact discovery operation", async () => {
     configureApiResponseValidation();
@@ -101,7 +94,6 @@ describe("control-plane response validation", () => {
       }),
     ).rejects.toThrow("failed operation validation");
   });
-
   it("accepts a valid run response", async () => {
     await expect(
       validateControlPlaneResponse({
@@ -114,29 +106,16 @@ describe("control-plane response validation", () => {
       }),
     ).resolves.toBeUndefined();
   });
-
   it("accepts every REST response family and installs the client validator", async () => {
-    const graphRevision = {
-      id: RUN_ID,
-      bot_id: BOT_ID,
-      revision: 1,
-      created_at: CREATED_AT,
-      graph: THRESHOLD_BUY_GRAPH,
-    };
     const bot = {
       id: BOT_ID,
       definition_id: "winner",
       created_at: CREATED_AT,
       updated_at: CREATED_AT,
-      config: PAPER_CONFIG,
-      latest_graph_revision: graphRevision,
-    };
-    const template = {
-      id: RUN_ID,
-      name: "Starter",
-      created_at: CREATED_AT,
-      updated_at: CREATED_AT,
-      graph: TEST_GRAPH,
+      config: {
+        ...PAPER_CONFIG,
+        graph: THRESHOLD_BUY_GRAPH,
+      },
     };
     const eventPage = {
       events: [
@@ -163,27 +142,22 @@ describe("control-plane response validation", () => {
         book_coalesced_count: 0,
       },
     };
-
     for (const response of [
       DEFINITION,
       bot,
-      template,
-      graphRevision,
       eventPage,
       liveEvent,
       { status: runtimeContract.healthStatus },
-      [DEFINITION, bot, template],
+      [DEFINITION, bot],
     ]) {
       await expect(validateControlPlaneResponse(response)).resolves.toBeUndefined();
     }
-
     const setConfig = vi.spyOn(client, "setConfig");
     configureApiResponseValidation();
     expect(setConfig).toHaveBeenCalledWith({
       responseValidator: validateControlPlaneResponse,
     });
   });
-
   it("enforces the exact generated operation response and JSON transport", async () => {
     configureApiResponseValidation();
     const request = {
@@ -221,7 +195,6 @@ describe("control-plane response validation", () => {
           }),
       }),
     ).rejects.toThrow("must not be empty");
-
     const wrongRunPage = {
       events: [
         {
@@ -247,7 +220,6 @@ describe("control-plane response validation", () => {
       }),
     ).rejects.toThrow("failed operation validation");
   });
-
   it("rejects malformed data before generated types are trusted", async () => {
     await expect(
       validateControlPlaneResponse({
@@ -271,15 +243,6 @@ describe("control-plane response validation", () => {
             },
           ],
         },
-      }),
-    ).rejects.toThrow("failed runtime validation");
-    await expect(
-      validateControlPlaneResponse({
-        id: RUN_ID,
-        name: "x".repeat(catalogContract.graphTemplate.maximumNameLength + 1),
-        created_at: CREATED_AT,
-        updated_at: CREATED_AT,
-        graph: TEST_GRAPH,
       }),
     ).rejects.toThrow("failed runtime validation");
     await expect(validateControlPlaneResponse([{ definition_id: "" }])).rejects.toThrow("failed runtime validation");
@@ -363,12 +326,8 @@ describe("control-plane response validation", () => {
         definition_id: "winner",
         created_at: CREATED_AT,
         updated_at: CREATED_AT,
-        config: PAPER_CONFIG,
-        latest_graph_revision: {
-          id: RUN_ID,
-          bot_id: BOT_ID,
-          revision: 1,
-          created_at: CREATED_AT,
+        config: {
+          ...PAPER_CONFIG,
           graph: { ...TEST_GRAPH, edges: [{ id: "incomplete" }] },
         },
       }),
@@ -387,7 +346,6 @@ describe("control-plane response validation", () => {
         next_before_event_id: null,
       }),
     ).rejects.toThrow("failed runtime validation");
-
     for (const streamRule of [
       {
         relation: runtimeContract.streamRelation.FILTERED,
@@ -410,10 +368,7 @@ describe("control-plane response validation", () => {
         }),
       ).rejects.toThrow("failed runtime validation");
     }
-
     for (const invalidOptionalField of [
-      { bot_graph_revision_id: "not-a-uuid" },
-      { graph_revision: 0 },
       { started_at: "not-a-date" },
       { ended_at: 42 },
       { heartbeat_at: "not-a-date" },
@@ -433,8 +388,7 @@ describe("control-plane response validation", () => {
         }),
       ).rejects.toThrow("failed runtime validation");
     }
-
-    const template = {
+    const bot = {
       id: RUN_ID,
       name: "Malformed graph",
       created_at: CREATED_AT,
@@ -469,9 +423,10 @@ describe("control-plane response validation", () => {
         ],
       },
     ]) {
-      await expect(validateControlPlaneResponse({ ...template, graph })).rejects.toThrow("failed runtime validation");
+      await expect(
+        validateControlPlaneResponse({ ...bot, definition_id: "node-based-bot", config: { ...PAPER_CONFIG, graph } }),
+      ).rejects.toThrow("failed runtime validation");
     }
-
     const cyclicGraph = {
       nodes: [
         {
@@ -541,55 +496,12 @@ describe("control-plane response validation", () => {
       ),
     };
     for (const graph of [cyclicGraph, missingRequiredInputGraph, crossTriggerGraph]) {
-      await expect(validateControlPlaneResponse({ ...template, graph })).rejects.toThrow("failed runtime validation");
+      await expect(
+        validateControlPlaneResponse({ ...bot, definition_id: "node-based-bot", config: { ...PAPER_CONFIG, graph } }),
+      ).rejects.toThrow("failed runtime validation");
     }
   });
 });
-
-it("validates graph revision save as an updated bot and detail as a revision", async () => {
-  configureApiResponseValidation();
-  const revision = {
-    id: RUN_ID,
-    bot_id: BOT_ID,
-    revision: 1,
-    created_at: CREATED_AT,
-    graph: TEST_GRAPH,
-  };
-  const bot = {
-    id: BOT_ID,
-    definition_id: "winner",
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
-    config: PAPER_CONFIG,
-    latest_graph_revision: revision,
-  };
-  const transport = (data: unknown) => ({
-    baseUrl: "http://control-plane.test",
-    throwOnError: true as const,
-    fetch: async () => new Response(JSON.stringify(data), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
-  });
-  await expect(
-    createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
-      path: { bot_id: BOT_ID },
-      body: { graph: TEST_GRAPH },
-      ...transport(bot),
-    }),
-  ).resolves.toHaveProperty("data.latest_graph_revision", revision);
-  await expect(
-    readBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGet({
-      path: { bot_id: BOT_ID, revision_id: RUN_ID },
-      ...transport(revision),
-    }),
-  ).resolves.toHaveProperty("data.graph", TEST_GRAPH);
-  await expect(
-    createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
-      path: { bot_id: BOT_ID },
-      body: { graph: TEST_GRAPH },
-      ...transport(revision),
-    }),
-  ).rejects.toThrow("failed operation validation");
-});
-
 it("validates usage through both configured generated-client boundaries", async () => {
   configureApiResponseValidation();
   const usage = {
@@ -597,7 +509,6 @@ it("validates usage through both configured generated-client boundaries", async 
     active_runs: 0,
     queued_runs: 1,
     saved_bots: 2,
-    saved_templates: 3,
     retained_runs: 4,
   };
   const request = (data: unknown) => ({
@@ -608,7 +519,6 @@ it("validates usage through both configured generated-client boundaries", async 
   await expect(readUsage(request(usage))).resolves.toHaveProperty("data", usage);
   await expect(readUsage(request({ ...usage, queued_runs: "1" }))).rejects.toThrow("failed operation validation");
 });
-
 it("accepts the empty deletion response through the configured generated client", async () => {
   configureApiResponseValidation();
   const result = await deleteBotApiV1BotsBotIdDelete({
@@ -619,7 +529,6 @@ it("accepts the empty deletion response through the configured generated client"
   });
   expect(result.response.status).toBe(HTTP_STATUS.NO_CONTENT);
 });
-
 it("rejects an unexpected successful bot response for deletion", async () => {
   configureApiResponseValidation();
   await expect(

@@ -11,18 +11,9 @@ export const RUN_DETAIL_COPY = {
 
   BOT_DELETED: "Bot configuration deleted",
   BOT_CONFIGURATION: "Bot configuration",
-  EXECUTED_GRAPH_REVISION: "Executed graph revision",
-  GRAPH_REVISION: "graph revision",
+  EXECUTED_GRAPH: "Executed graph",
   GRAPH_LOAD_ERROR: "The executed graph could not be displayed.",
 } as const;
-
-export function runGraphRevisionLabel(revision: number | null | undefined): string {
-  return `${RUN_DETAIL_COPY.GRAPH_REVISION} ${revision}`;
-}
-
-export function executedRunGraphRevisionLabel(revision: number | null | undefined): string {
-  return `${RUN_DETAIL_COPY.EXECUTED_GRAPH_REVISION} ${revision}`;
-}
 
 export function loadedEventsLabel(count: number): string {
   return `${count} events loaded`;

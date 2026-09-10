@@ -10,8 +10,6 @@ import { validateOperationResponse } from "$lib/api/responseValidation/operation
 import {
   isBot,
   isDefinition,
-  isGraphRevision,
-  isGraphTemplate,
   isHealthResponse,
   isMarketSearchResults,
   isMarketSuggestion,
@@ -38,10 +36,7 @@ export async function validateControlPlaneResponse(data: unknown): Promise<void>
 }
 
 function isListItem(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    (isDefinition(value) || isBot(value) || isRun(value) || isGraphTemplate(value) || isMarketSuggestion(value))
-  );
+  return isRecord(value) && (isDefinition(value) || isBot(value) || isRun(value) || isMarketSuggestion(value));
 }
 
 function isObjectResponse(value: Record<string, unknown>): boolean {
@@ -54,8 +49,6 @@ function isObjectResponse(value: Record<string, unknown>): boolean {
     isDefinition(value) ||
     isRun(value) ||
     isBot(value) ||
-    isGraphTemplate(value) ||
-    isGraphRevision(value) ||
     isEventPage(value) ||
     isRunEvent(value) ||
     isHealthResponse(value) ||

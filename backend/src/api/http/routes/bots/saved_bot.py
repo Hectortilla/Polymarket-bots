@@ -1,4 +1,4 @@
-"""Saved-bot CRUD and graph-revision endpoints."""
+"""Atomic saved-bot configuration endpoints."""
 
 from uuid import UUID
 
@@ -7,8 +7,6 @@ from fastapi import APIRouter, HTTPException, Response, status
 from api.auth.dependencies import CurrentUserDependency
 from api.bots.contracts import (
     BotCreate,
-    BotGraphRevisionCreate,
-    BotGraphRevisionRead,
     BotRead,
     BotUpdate,
 )
@@ -28,29 +26,20 @@ from api.http.routes.bots.market_validation import (
 )
 from api.http.routes.bots.validation import (
     BOT_NOT_FOUND_DETAIL,
-    GRAPH_REVISION_FORBIDDEN_DETAIL,
-    GRAPH_REVISION_REQUIRED_DETAIL,
     parse_config,
     require_bot,
     require_catalog_entry,
-    require_graph_contract,
-    resolve_bot_graph,
 )
 from api.http.routes.paths import (
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
     BOT_PATH,
     BOTS_PATH,
-    CREATE_BOT_GRAPH_REVISION_OPERATION_ID,
     CREATE_BOT_OPERATION_ID,
     DELETE_BOT_OPERATION_ID,
     LIST_BOTS_OPERATION_ID,
-    READ_BOT_GRAPH_REVISION_OPERATION_ID,
     READ_BOT_OPERATION_ID,
     UPDATE_BOT_OPERATION_ID,
 )
 
-BOT_GRAPH_REVISION_NOT_FOUND_DETAIL = "bot graph revision not found"
 
 router = APIRouter()
 
@@ -69,19 +58,14 @@ async def create_bot(
     discovery: MarketDiscoveryDependency,
 ) -> BotRead:
     definition = require_catalog_entry(request.definition_id)
-    config = parse_config(definition, request.inputs, request.model_dump())
+    config = parse_config(
+        definition, request.inputs, request.graph, request.model_dump()
+    )
     async with session_factory() as session:
-        graph = await resolve_bot_graph(
-            session,
-            definition,
-            request.graph_template_id,
-            user.id,
-        )
         await validate_new_market_selections(config, discovery)
         return await BotStore(session, user.id).create(
             definition_id=request.definition_id,
             config=config,
-            graph=graph,
         )
 
 
@@ -154,57 +138,9 @@ async def update_bot(
         store = BotStore(session, user.id)
         bot = require_bot(await store.read(bot_id, lock=True))
         definition = require_catalog_entry(bot.definition_id)
-        config = parse_config(definition, request.inputs, request.model_dump())
+        config = parse_config(
+            definition, request.inputs, request.graph, request.model_dump()
+        )
         await validate_new_market_selections(config, discovery, previous=bot.config)
         updated = await store.update_config(bot_id, config)
     return require_bot(updated)
-
-
-@router.post(
-    BOT_GRAPH_REVISIONS_PATH,
-    response_model=BotRead,
-    status_code=status.HTTP_201_CREATED,
-    operation_id=CREATE_BOT_GRAPH_REVISION_OPERATION_ID,
-    responses=NOT_FOUND_RESPONSE,
-)
-async def create_bot_graph_revision(
-    bot_id: UUID,
-    request: BotGraphRevisionCreate,
-    session_factory: SessionFactoryDependency,
-    user: CurrentUserDependency,
-) -> BotRead:
-    async with session_factory() as session:
-        store = BotStore(session, user.id)
-        bot = require_bot(await store.read(bot_id))
-        definition = require_catalog_entry(bot.definition_id)
-        require_graph_contract(
-            definition,
-            request.graph,
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            required_detail=GRAPH_REVISION_REQUIRED_DETAIL,
-            forbidden_detail=GRAPH_REVISION_FORBIDDEN_DETAIL,
-        )
-        updated = await store.append_revision(bot_id, request.graph)
-    return require_bot(updated)
-
-
-@router.get(
-    BOT_GRAPH_REVISION_PATH,
-    response_model=BotGraphRevisionRead,
-    operation_id=READ_BOT_GRAPH_REVISION_OPERATION_ID,
-    responses=NOT_FOUND_RESPONSE,
-)
-async def read_bot_graph_revision(
-    bot_id: UUID,
-    revision_id: UUID,
-    session_factory: SessionFactoryDependency,
-    user: CurrentUserDependency,
-) -> BotGraphRevisionRead:
-    async with session_factory() as session:
-        revision = await BotStore(session, user.id).read_revision(bot_id, revision_id)
-    if revision is None:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            BOT_GRAPH_REVISION_NOT_FOUND_DETAIL,
-        )
-    return revision

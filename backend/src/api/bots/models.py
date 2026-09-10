@@ -1,32 +1,22 @@
-"""SQLModel rows for reusable bots and immutable graph revisions."""
+"""SQLModel rows for saved bots with complete editable configurations."""
 
 from datetime import datetime
 from uuid import UUID, uuid4
 
 from polybot.framework.clock import system_now_utc
 from sqlalchemy import (
-    CheckConstraint,
     Column,
     DateTime,
-    ForeignKey,
-    Integer,
     String,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 
 from api.auth.ownership import UserOwnedRow
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.bots.schema import (
-    BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISION_SEQUENCE_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISIONS_TABLE_NAME,
     BOTS_TABLE_NAME,
     BotColumn,
-    BotGraphRevisionColumn,
 )
 
 
@@ -61,59 +51,3 @@ class BotRow(UserOwnedRow, table=True):
         default=None,
         sa_column=Column(BotColumn.DELETED_AT, DateTime(timezone=True)),
     )
-
-
-class BotGraphRevisionRow(SQLModel, table=True):
-    __tablename__ = BOT_GRAPH_REVISIONS_TABLE_NAME
-    __table_args__ = (
-        CheckConstraint(
-            f"{BotGraphRevisionColumn.REVISION} >= {FIRST_GRAPH_REVISION_NUMBER}",
-            name=BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
-        ),
-        UniqueConstraint(
-            BotGraphRevisionColumn.BOT_ID,
-            BotGraphRevisionColumn.REVISION,
-            name=BOT_GRAPH_REVISION_SEQUENCE_CONSTRAINT_NAME,
-        ),
-        UniqueConstraint(
-            BotGraphRevisionColumn.BOT_ID,
-            BotGraphRevisionColumn.ID,
-            name=BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
-        ),
-    )
-
-    id: UUID = Field(
-        default_factory=uuid4,
-        sa_column=Column(
-            BotGraphRevisionColumn.ID,
-            PostgreSQLUUID(as_uuid=True),
-            primary_key=True,
-            nullable=False,
-        ),
-    )
-    bot_id: UUID = Field(
-        sa_column=Column(
-            BotGraphRevisionColumn.BOT_ID,
-            PostgreSQLUUID(as_uuid=True),
-            ForeignKey(f"{BOTS_TABLE_NAME}.{BotColumn.ID}"),
-            nullable=False,
-        ),
-    )
-    revision: int = Field(
-        sa_column=Column(BotGraphRevisionColumn.REVISION, Integer, nullable=False)
-    )
-    graph: dict[str, object] = Field(
-        sa_column=Column(BotGraphRevisionColumn.GRAPH, JSONB, nullable=False)
-    )
-    created_at: datetime = Field(
-        default_factory=system_now_utc,
-        sa_column=Column(
-            BotGraphRevisionColumn.CREATED_AT,
-            DateTime(timezone=True),
-            nullable=False,
-        ),
-    )
-
-    @classmethod
-    def matches_bot_revision(cls, bot_id: UUID, revision_id: UUID):
-        return (cls.bot_id == bot_id) & (cls.id == revision_id)

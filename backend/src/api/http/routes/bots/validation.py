@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from fastapi import HTTPException, status
 from fastapi.exceptions import RequestValidationError
@@ -13,14 +12,8 @@ from api.catalog.definitions import (
     CATALOG,
     GraphRequirementError,
 )
-from api.graph_templates.store import GraphTemplateStore
-from api.http.routes.graph_template_lookup import (
-    require_graph_template,
-)
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from api.bots.contracts import BotRead
     from api.catalog.definitions import CatalogEntry
     from api.catalog.graphs.contracts import NodeGraph
@@ -30,12 +23,8 @@ if TYPE_CHECKING:
 
 BOT_NOT_FOUND_DETAIL = "bot not found"
 DEFINITION_NOT_FOUND_DETAIL = "bot definition not found"
-GRAPH_TEMPLATE_REQUIRED_DETAIL = "graph template is required for this bot definition"
-GRAPH_TEMPLATE_FORBIDDEN_DETAIL = (
-    "graph template is not accepted by this bot definition"
-)
-GRAPH_REVISION_REQUIRED_DETAIL = "bot graph revision is required"
-GRAPH_REVISION_FORBIDDEN_DETAIL = "bot graph revision is not accepted"
+GRAPH_REQUIRED_DETAIL = "bot graph is required"
+GRAPH_FORBIDDEN_DETAIL = "bot graph is not accepted"
 REQUEST_BODY_LOCATION = "body"
 BOT_INPUTS_FIELD = "inputs"
 
@@ -50,15 +39,25 @@ def require_catalog_entry(definition_id: DefinitionId) -> CatalogEntry:
 def parse_config(
     definition: CatalogEntry,
     inputs: object,
+    graph: NodeGraph | None,
     body: dict[str, object],
 ) -> PaperRunConfig:
     try:
-        return definition.parse_config(inputs)
+        config = definition.parse_config(inputs)
     except ValidationError as error:
         raise RequestValidationError(
             _input_validation_errors(error),
             body=body,
         ) from error
+
+    require_graph_contract(
+        definition,
+        graph,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        required_detail=GRAPH_REQUIRED_DETAIL,
+        forbidden_detail=GRAPH_FORBIDDEN_DETAIL,
+    )
+    return config.model_copy(update={"graph": graph}, deep=True)
 
 
 def require_bot(bot: BotRead | None) -> BotRead:
@@ -67,32 +66,13 @@ def require_bot(bot: BotRead | None) -> BotRead:
     return bot
 
 
-async def resolve_bot_graph(
-    session: AsyncSession,
-    definition: CatalogEntry,
-    template_id: UUID | None,
-    owner_user_id: UUID,
-) -> NodeGraph | None:
+def require_run_graph_contract(definition: CatalogEntry, bot: BotRead) -> None:
     require_graph_contract(
         definition,
-        template_id,
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        required_detail=GRAPH_TEMPLATE_REQUIRED_DETAIL,
-        forbidden_detail=GRAPH_TEMPLATE_FORBIDDEN_DETAIL,
-    )
-    if template_id is None:
-        return None
-    template = await GraphTemplateStore(session, owner_user_id).read(template_id)
-    return require_graph_template(template).graph
-
-
-def require_run_revision_contract(definition: CatalogEntry, bot: BotRead) -> None:
-    require_graph_contract(
-        definition,
-        bot.latest_graph_revision,
+        bot.config.graph,
         status_code=status.HTTP_409_CONFLICT,
-        required_detail=GRAPH_REVISION_REQUIRED_DETAIL,
-        forbidden_detail=GRAPH_REVISION_FORBIDDEN_DETAIL,
+        required_detail=GRAPH_REQUIRED_DETAIL,
+        forbidden_detail=GRAPH_FORBIDDEN_DETAIL,
     )
 
 

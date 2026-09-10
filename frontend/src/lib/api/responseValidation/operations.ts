@@ -13,8 +13,6 @@ import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph";
 import {
   isBot,
   isDefinition,
-  isGraphRevision,
-  isGraphTemplate,
   isHealthResponse,
   isMarketSearchResults,
   isMarketSuggestion,
@@ -84,18 +82,8 @@ function isExpectedOperationResponse(
   if (url === paths.bots) {
     return method === "GET" ? isArrayOf(data, isBot) : isRecord(data) && isBot(data);
   }
-  if (url === paths.botGraphRevisions) return isRecord(data) && isBot(data);
-  if (url === paths.botGraphRevision) {
-    return isRecord(data) && isGraphRevision(data);
-  }
   if (url === paths.bot) return isRecord(data) && isBot(data);
   if (url === paths.botRuns) return isRecord(data) && isRun(data);
-  if (url === paths.graphTemplates) {
-    return method === "GET" ? isArrayOf(data, isGraphTemplate) : isRecord(data) && isGraphTemplate(data);
-  }
-  if (url === paths.graphTemplate) {
-    return isRecord(data) && isGraphTemplate(data);
-  }
   if (url === paths.health) return isRecord(data) && isHealthResponse(data);
   if (url === paths.runs) return isArrayOf(data, isRun);
   if (url === paths.run || url === paths.runStop) {

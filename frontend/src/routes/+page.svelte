@@ -17,21 +17,17 @@
   import RunStatusBadge from "$lib/runs/RunStatusBadge.svelte";
   import { RUN_STATUS } from "$lib/runs/status";
   import { formatTime } from "$lib/time";
-  import { HOME_COLUMN_LABEL, HOME_COPY, botRowLabel, graphRevisionLabel, runRowLabel } from "./homeCopy";
+  import { HOME_COLUMN_LABEL, HOME_COPY, botRowLabel, runRowLabel } from "./homeCopy";
 
   let runs = $state<RunRead[]>([]);
   let bots = $state<BotRead[]>([]);
   let loading = $state(true);
   let error = $state("");
 
-  const visibleBots = $derived(
-    bots.filter((bot) => bot.latest_graph_revision !== null && bot.latest_graph_revision !== undefined),
-  );
+  const visibleBots = $derived(bots.filter((bot) => bot.config.graph !== null && bot.config.graph !== undefined));
   const visibleBotIds = $derived(new Set(visibleBots.map((bot) => bot.id)));
   const visibleRuns = $derived(
-    runs
-      .filter((run) => visibleBotIds.has(run.bot_id) || (run.bot_deleted && run.bot_graph_revision_id != null))
-      .slice(0, 10),
+    runs.filter((run) => visibleBotIds.has(run.bot_id) || (run.bot_deleted && run.config.graph != null)).slice(0, 10),
   );
 
   onMount(() => {
@@ -115,9 +111,7 @@
               <span class="data-list-value" data-label={HOME_COLUMN_LABEL.MAX_ORDER}>
                 {bot.config.max_order_size}
               </span>
-              <span class="data-list-value" data-label={HOME_COLUMN_LABEL.GRAPH}>
-                {graphRevisionLabel(bot.latest_graph_revision?.revision ?? 1)}
-              </span>
+              <span class="data-list-value" data-label={HOME_COLUMN_LABEL.GRAPH}> Saved configuration </span>
               <span class="bot-status" data-label={HOME_COLUMN_LABEL.LATEST_RUN}>
                 {#if recentRun}
                   <RunStatusBadge status={recentRun.status} />

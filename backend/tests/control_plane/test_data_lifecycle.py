@@ -12,7 +12,7 @@ from api.auth.recovery.models import AccountTokenRow
 from api.auth.recovery.policy import TokenPurpose
 from api.auth.recovery.store import AccountCredentialStore
 from api.auth.store import AuthStore
-from api.bots.models import BotGraphRevisionRow, BotRow
+from api.bots.models import BotRow
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
@@ -20,7 +20,6 @@ from api.events.contracts import RunLifecycleEvent, RunStatusPayload
 from api.events.kinds import EventKind
 from api.events.models import EventRow
 from api.events.writer import RunEventWriter
-from api.graph_templates.models import GraphTemplateRow
 from api.lifecycle.audit import AuditRetention
 from api.lifecycle.deletion.models import DeletionRequestRow
 from api.lifecycle.deletion.purge import AccountPurger
@@ -83,7 +82,7 @@ def test_retention_preserves_active_runs_account_boundaries_and_bots(limits_serv
                 old = RunRow(
                     bot_id=first_bot.id,
                     definition_id=first_bot.definition_id,
-                    config=first_bot.config.model_dump(mode="json"),
+                    config_snapshot=first_bot.config.model_dump(mode="json"),
                     status=RunStatus.STOPPED,
                     created_at=cutoff - timedelta(hours=1),
                     ended_at=cutoff,
@@ -91,7 +90,7 @@ def test_retention_preserves_active_runs_account_boundaries_and_bots(limits_serv
                 fresh = RunRow(
                     bot_id=second_bot.id,
                     definition_id=second_bot.definition_id,
-                    config=second_bot.config.model_dump(mode="json"),
+                    config_snapshot=second_bot.config.model_dump(mode="json"),
                     status=RunStatus.STOPPED,
                     ended_at=cutoff + timedelta(seconds=1),
                 )
@@ -121,7 +120,7 @@ def test_history_count_allowance_is_partitioned_by_account(limits_services):
                     RunRow(
                         bot_id=first_bot.id,
                         definition_id=first_bot.definition_id,
-                        config=first_bot.config.model_dump(mode="json"),
+                        config_snapshot=first_bot.config.model_dump(mode="json"),
                         status=RunStatus.STOPPED,
                         created_at=now - timedelta(seconds=index),
                         ended_at=now,
@@ -131,7 +130,7 @@ def test_history_count_allowance_is_partitioned_by_account(limits_services):
                 other = RunRow(
                     bot_id=second_bot.id,
                     definition_id=second_bot.definition_id,
-                    config=second_bot.config.model_dump(mode="json"),
+                    config_snapshot=second_bot.config.model_dump(mode="json"),
                     status=RunStatus.STOPPED,
                     created_at=now - timedelta(hours=1),
                     ended_at=now,
@@ -158,7 +157,7 @@ def test_partial_history_cleanup_is_hidden_atomic_and_retryable(limits_services)
                 run = RunRow(
                     bot_id=bot.id,
                     definition_id=bot.definition_id,
-                    config=bot.config.model_dump(mode="json"),
+                    config_snapshot=bot.config.model_dump(mode="json"),
                     status=RunStatus.STOPPED,
                     ended_at=now,
                 )
@@ -419,7 +418,7 @@ def test_history_batch_boundaries_fallback_age_visibility_and_usage(limits_servi
                     RunRow(
                         bot_id=bot.id,
                         definition_id=bot.definition_id,
-                        config=bot.config.model_dump(mode="json"),
+                        config_snapshot=bot.config.model_dump(mode="json"),
                         status=RunStatus.STOPPED,
                         created_at=cutoff - timedelta(seconds=index),
                     )
@@ -428,7 +427,7 @@ def test_history_batch_boundaries_fallback_age_visibility_and_usage(limits_servi
                 fresh = RunRow(
                     bot_id=bot.id,
                     definition_id=bot.definition_id,
-                    config=bot.config.model_dump(mode="json"),
+                    config_snapshot=bot.config.model_dump(mode="json"),
                     status=RunStatus.STOPPED,
                     created_at=cutoff + timedelta(hours=1),
                 )
@@ -472,7 +471,7 @@ def test_account_purge_batches_and_missing_identity_retry(limits_services):
                         RunRow(
                             bot_id=bot.id,
                             definition_id=bot.definition_id,
-                            config=bot.config.model_dump(mode="json"),
+                            config_snapshot=bot.config.model_dump(mode="json"),
                             status=RunStatus.STOPPED,
                         )
                         for _ in range(CLEANUP_RUN_BATCH_SIZE + 1)
@@ -502,24 +501,17 @@ def test_maintenance_erases_every_owned_dependency_and_preserves_foreign_rows(
         async with resource_services(limits_services) as (sessions, redis):
             owner, _, token = await account_credentials(sessions)
             other, _, other_token = await account_credentials(sessions)
-            graphs, templates, links = {}, {}, {}
+            graphs, links = {}, {}
             for user in (owner, other):
                 async with sessions() as session:
                     graphs[user.id] = await BotStore(session, user.id).create(
                         definition_id=NODE_BASED_DEFINITION_ID,
-                        config=CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+                        config=CATALOG[NODE_BASED_DEFINITION_ID]
+                        .parse_config(
                             {"name": "deletion graph", "market_slugs": ["fixture"]}
-                        ),
-                        graph=STARTER_NODE_GRAPH,
+                        )
+                        .model_copy(update={"graph": STARTER_NODE_GRAPH}, deep=True),
                     )
-                    template = GraphTemplateRow(
-                        owner_user_id=user.id,
-                        name="private fixture",
-                        graph=STARTER_NODE_GRAPH.model_dump(mode="json"),
-                    )
-                    session.add(template)
-                    await session.commit()
-                    templates[user.id] = template.id
                     links[user.id] = await AccountCredentialStore(session).issue_link(
                         user.email, TokenPurpose.RESET
                     )
@@ -539,26 +531,13 @@ def test_maintenance_erases_every_owned_dependency_and_preserves_foreign_rows(
                 assert await session.get(UserRow, owner.id) is None
                 assert await session.get(BotRow, graphs[owner.id].id) is None
                 assert (
-                    await session.get(
-                        BotGraphRevisionRow, graphs[owner.id].latest_graph_revision.id
-                    )
-                    is None
-                )
-                assert await session.get(GraphTemplateRow, templates[owner.id]) is None
-                assert (
                     await session.get(AccountTokenRow, links[owner.id].digest) is None
                 )
                 assert await session.get(SessionRow, token.digest) is None
                 assert await session.get(UserRow, other.id) is not None
                 assert (
-                    await session.get(
-                        BotGraphRevisionRow, graphs[other.id].latest_graph_revision.id
-                    )
-                    is not None
-                )
-                assert (
-                    await session.get(GraphTemplateRow, templates[other.id]) is not None
-                )
+                    await session.get(BotRow, graphs[other.id].id)
+                ).config == graphs[other.id].config.model_dump(mode="json")
                 assert (
                     await session.get(AccountTokenRow, links[other.id].digest)
                     is not None
@@ -614,7 +593,7 @@ def test_terminal_launch_recovery_uses_unmarked_history_policy(
                 row = RunRow(
                     bot_id=bot.id,
                     definition_id=bot.definition_id,
-                    config=bot.config.model_dump(mode="json"),
+                    config_snapshot=bot.config.model_dump(mode="json"),
                     status=RunStatus.STOPPED,
                     launch_key=key,
                     created_at=now - timedelta(seconds=1),
@@ -631,7 +610,7 @@ def test_terminal_launch_recovery_uses_unmarked_history_policy(
                             RunRow(
                                 bot_id=bot.id,
                                 definition_id=bot.definition_id,
-                                config=bot.config.model_dump(mode="json"),
+                                config_snapshot=bot.config.model_dump(mode="json"),
                                 status=RunStatus.STOPPED,
                                 created_at=now,
                                 ended_at=now,

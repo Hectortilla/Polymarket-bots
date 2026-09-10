@@ -2,7 +2,7 @@ import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
 
 import type { GraphNode, NodeGraph } from "$lib/api/generated";
 
-import { readableValidationMessage, requestValidationIssues } from "$lib/api/requestErrors";
+import { GRAPH_REQUEST_FIELD, readableValidationMessage, requestValidationIssues } from "$lib/api/requestErrors";
 
 import { GRAPH_COLLECTION_FIELD, GRAPH_NODE_TYPE } from "./graphContracts";
 
@@ -36,6 +36,7 @@ export function graphValidationIssues(error: unknown, graph: NodeGraph): GraphVa
   const uniqueIssues = new Map<string, GraphValidationIssue>();
 
   for (const issue of requestValidationIssues(error)) {
+    if (!issue.loc.includes(GRAPH_REQUEST_FIELD)) continue;
     const presented = {
       location: graphIssueLocation(issue.loc, graph),
       message: readableValidationMessage(issue.msg),

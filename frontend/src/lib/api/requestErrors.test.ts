@@ -14,9 +14,7 @@ describe("request error presentation", () => {
   });
 
   it("reads small HTTP details without confusing them with validation arrays", () => {
-    expect(requestErrorDetail({ detail: "graph template name already exists" })).toBe(
-      "graph template name already exists",
-    );
+    expect(requestErrorDetail({ detail: "bot graph is required" })).toBe("bot graph is required");
     expect(requestValidationIssues({ detail: "not an array" })).toEqual([]);
   });
 

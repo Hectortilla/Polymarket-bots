@@ -1,7 +1,7 @@
 import Ajv, { type AnySchemaObject, type ErrorObject, type ValidateFunction } from "ajv";
 
 import type { BotDefinitionDescriptor, BotDefinitionLabel, PaperRunConfig, SelectionMode } from "$lib/api/generated";
-import { readableValidationMessage, requestValidationIssues } from "$lib/api/requestErrors";
+import { GRAPH_REQUEST_FIELD, readableValidationMessage, requestValidationIssues } from "$lib/api/requestErrors";
 import catalogContract from "./catalogContract.fixture.json";
 
 const ajv = new Ajv({ allErrors: true });
@@ -114,10 +114,12 @@ export function launchValidationIssues(
 }
 
 export function launchRequestValidationIssues(error: unknown): LaunchValidationIssue[] {
-  return requestValidationIssues(error).map((issue) => ({
-    field: requestInputField(issue.loc),
-    message: readableValidationMessage(issue.msg),
-  }));
+  return requestValidationIssues(error)
+    .filter((issue) => !issue.loc.includes(GRAPH_REQUEST_FIELD))
+    .map((issue) => ({
+      field: requestInputField(issue.loc),
+      message: readableValidationMessage(issue.msg),
+    }));
 }
 
 export function widgetKind(field: AnySchemaObject): WidgetKind | undefined {

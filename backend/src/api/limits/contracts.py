@@ -12,5 +12,4 @@ class AccountUsage(BaseModel):
     active_runs: NonNegativeInt
     queued_runs: NonNegativeInt
     saved_bots: NonNegativeInt
-    saved_templates: NonNegativeInt
     retained_runs: NonNegativeInt

@@ -220,7 +220,7 @@ def test_node_based_definition_owns_graph_catalog_starter_and_market_rule() -> N
     assert "graph" not in descriptor.input_schema["properties"]
     assert descriptor.graph_catalog == GRAPH_NODE_CATALOG
     assert descriptor.starter_graph == STARTER_NODE_GRAPH
-    assert "graph" not in config.model_dump(mode="json")
+    assert config.graph is None
     assert config.stream_rules[0].market_slugs == ("example-market",)
     assert isinstance(
         entry.create_bot(config.to_bot_config(), STARTER_NODE_GRAPH),

@@ -117,12 +117,15 @@ for SMTP configuration and ownership limits.
 
 Sessions expire after 7 days; signing out revokes the current session and
 closes browser streams. Already-authorized background runs continue. Each account
-sees only its own bots, templates and run history. Code-owned starter graphs remain
+sees only its own bots and run history. Code-owned starter graphs remain
 available to every signed-in account. The full policy lives in
 [the identity architecture](docs/web-control-plane-architecture.md#slice-15-identity-and-authorization).
 
 The September 10 approved consolidation replaces the undeployed, disposable migration
-history with one initial revision (`0001`), including saved-bot soft deletion.
+history with one initial revision (`0001`), including saved-bot soft deletion and complete configuration snapshots.
+There are no template or graph-revision tables or allowances. The September 10
+configuration simplification rewrites `0001` with explicit user authorization to
+discard undeployed local data; recreate existing databases before restarting.
 Recreate local databases built from the previous schema or migration chain,
 including the former `0002` head; do not stamp them or expect an upgrade to
 rebuild an already-applied initial revision:
@@ -178,7 +181,7 @@ separately:
 
 [Slice 15](docs/implementation-plan.md#slice-15-users-authentication-and-resource-ownership)
 adds email/password accounts, server-side sessions, and private ownership of bots,
-templates, revisions, runs, and event streams. Registration signs in immediately
+configurations, runs, and event streams. Registration signs in immediately
 at the Slice 15 checkpoint. Slice 19 adds verification and password recovery;
 social login and a marketplace remain excluded. The application still requires a
 local/private access boundary until the operational public-opening gates are completed.
@@ -215,7 +218,7 @@ deterministic OpenAPI artifact, static client-rendered dashboard UI, and a
 validated alpha graph contract with framework-derived triggers, typed constants,
 comparisons, generic operations, portfolio queries, signal controls, decision preview,
 event-driven fixed-side paper broker actions, editable graph
-storage, reusable saved bots, and immutable bot-owned graph revisions. The
+storage, reusable saved bots, and complete immutable run snapshots. The
 browser presents one node-based bot workspace: configuration and graph editing
 live in the same form, and a new graph can start fresh or copy another bot.
 Its Markets field searches through the backend and supports multiple removable
@@ -297,8 +300,8 @@ portfolio queries, signal controls, and fixed-side submit actions come from one
 backend catalog. See [graph MVP authoring](docs/graph-node-mvp.md) and its
 [two-phase checklist](docs/graph-mvp-plan.md). New
 bots start from the catalog graph or a copy of another bot's latest graph. The
-frontend uses the existing template-copy API as an internal persistence detail,
-then snapshots the bot-owned revision for each run and executes it as an
+frontend saves settings and graph together in one request. Each run deep-copies
+the full configuration into `runs.config_snapshot` before queueing and executes it as an
 event-driven paper-trading `NodeBasedBot`;
 enabled actions submit through the existing paper
 broker and observability path. Press `v` to switch between chart views. Gamma

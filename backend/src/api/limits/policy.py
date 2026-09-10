@@ -18,8 +18,6 @@ class PaperBetaPolicy(BaseModel):
     tracked_markets_per_run: PositiveInt = 10
     followed_wallets_per_run: PositiveInt = 2
     saved_bots: PositiveInt = 20
-    saved_templates: PositiveInt = 20
-    revisions_per_bot: PositiveInt = 100
     retained_runs: PositiveInt = 100
     history_retention_days: PositiveInt = 30
     requests_per_minute: PositiveInt = 120

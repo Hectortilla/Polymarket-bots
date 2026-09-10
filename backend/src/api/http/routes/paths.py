@@ -6,12 +6,8 @@ MARKET_LOOKUP_PATH = "/markets/lookup"
 SEARCH_MARKETS_OPERATION_ID = "search_markets"
 LOOKUP_MARKETS_OPERATION_ID = "lookup_markets"
 BOT_DEFINITIONS_PATH = "/bot-definitions"
-GRAPH_TEMPLATES_PATH = "/graph-templates"
-GRAPH_TEMPLATE_PATH = "/graph-templates/{template_id}"
 BOTS_PATH = "/bots"
 BOT_PATH = "/bots/{bot_id}"
-BOT_GRAPH_REVISIONS_PATH = "/bots/{bot_id}/graph-revisions"
-BOT_GRAPH_REVISION_PATH = "/bots/{bot_id}/graph-revisions/{revision_id}"
 BOT_RUNS_PATH = "/bots/{bot_id}/runs"
 RUNS_PATH = "/runs"
 RUN_PATH = "/runs/{run_id}"
@@ -23,25 +19,11 @@ READ_USAGE_OPERATION_ID = "read_usage"
 HEALTH_PATH = "/health"
 
 LIST_BOT_DEFINITIONS_OPERATION_ID = "list_bot_definitions_api_v1_bot_definitions_get"
-CREATE_GRAPH_TEMPLATE_OPERATION_ID = "create_graph_template_api_v1_graph_templates_post"
-LIST_GRAPH_TEMPLATES_OPERATION_ID = "list_graph_templates_api_v1_graph_templates_get"
-READ_GRAPH_TEMPLATE_OPERATION_ID = (
-    "read_graph_template_api_v1_graph_templates__template_id__get"
-)
-UPDATE_GRAPH_TEMPLATE_OPERATION_ID = (
-    "update_graph_template_api_v1_graph_templates__template_id__patch"
-)
 CREATE_BOT_OPERATION_ID = "create_bot_api_v1_bots_post"
 LIST_BOTS_OPERATION_ID = "list_bots_api_v1_bots_get"
 READ_BOT_OPERATION_ID = "read_bot_api_v1_bots__bot_id__get"
 DELETE_BOT_OPERATION_ID = "delete_bot_api_v1_bots__bot_id__delete"
 UPDATE_BOT_OPERATION_ID = "update_bot_api_v1_bots__bot_id__patch"
-CREATE_BOT_GRAPH_REVISION_OPERATION_ID = (
-    "create_bot_graph_revision_api_v1_bots__bot_id__graph_revisions_post"
-)
-READ_BOT_GRAPH_REVISION_OPERATION_ID = (
-    "read_bot_graph_revision_api_v1_bots__bot_id__graph_revisions__revision_id__get"
-)
 LAUNCH_BOT_RUN_OPERATION_ID = "launch_bot_run_api_v1_bots__bot_id__runs_post"
 LIST_RUNS_OPERATION_ID = "list_runs_api_v1_runs_get"
 READ_RUN_OPERATION_ID = "read_run_api_v1_runs__run_id__get"

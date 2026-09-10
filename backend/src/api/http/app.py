@@ -23,9 +23,6 @@ from api.http.routes.events import router as events_router
 from api.http.routes.graph_preview import (
     router as graph_preview_router,
 )
-from api.http.routes.graph_templates import (
-    router as graph_templates_router,
-)
 from api.http.routes.health import router as health_router
 from api.http.routes.markets import router as markets_router
 from api.http.routes.paths import API_PREFIX
@@ -88,7 +85,6 @@ def create_app(
         graph_preview_router,
         catalog_router,
         markets_router,
-        graph_templates_router,
         bots_router,
         runs_router,
         events_router,

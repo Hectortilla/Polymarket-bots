@@ -8,7 +8,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
-    ForeignKeyConstraint,
     String,
     UniqueConstraint,
 )
@@ -17,13 +16,10 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlmodel import Field, SQLModel
 
 from api.bots.schema import (
-    BOT_GRAPH_REVISIONS_TABLE_NAME,
     BOTS_TABLE_NAME,
     BotColumn,
-    BotGraphRevisionColumn,
 )
 from api.runs.schema import (
-    RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
     RUN_LAUNCH_KEY_CONSTRAINT_NAME,
     RUNS_TABLE_NAME,
     RunColumn,
@@ -38,14 +34,6 @@ class RunRow(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint(
             RunColumn.BOT_ID, RunColumn.LAUNCH_KEY, name=RUN_LAUNCH_KEY_CONSTRAINT_NAME
-        ),
-        ForeignKeyConstraint(
-            [RunColumn.BOT_ID, RunColumn.BOT_GRAPH_REVISION_ID],
-            [
-                f"{BOT_GRAPH_REVISIONS_TABLE_NAME}.{BotGraphRevisionColumn.BOT_ID}",
-                f"{BOT_GRAPH_REVISIONS_TABLE_NAME}.{BotGraphRevisionColumn.ID}",
-            ],
-            name=RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
         ),
     )
 
@@ -69,16 +57,8 @@ class RunRow(SQLModel, table=True):
     definition_id: str = Field(
         sa_column=Column(RunColumn.DEFINITION_ID, String, nullable=False)
     )
-    config: dict[str, object] = Field(
-        sa_column=Column(RunColumn.CONFIG, JSONB, nullable=False)
-    )
-    bot_graph_revision_id: UUID | None = Field(
-        default=None,
-        sa_column=Column(
-            RunColumn.BOT_GRAPH_REVISION_ID,
-            PostgreSQLUUID(as_uuid=True),
-            nullable=True,
-        ),
+    config_snapshot: dict[str, object] = Field(
+        sa_column=Column(RunColumn.CONFIG_SNAPSHOT, JSONB, nullable=False)
     )
     status: RunStatus = Field(
         default=RunStatus.QUEUED,

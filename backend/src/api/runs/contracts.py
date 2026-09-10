@@ -24,7 +24,6 @@ from pydantic import (
     field_validator,
 )
 
-from api.bots.revisions import GraphRevisionNumber
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.values import DefinitionId
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
@@ -50,6 +49,7 @@ type NonnegativeMilliseconds = Annotated[StrictInt, Field(ge=0)]
 class PaperRunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    graph: NodeGraph | None = None
     name: RunName
     stream_rules: tuple[StreamRule, ...]
     data_trades_budget_per_10s: DataTradesBudget
@@ -113,9 +113,6 @@ class RunRead(BaseModel):
     bot_deleted: bool = False
     definition_id: DefinitionId
     config: PaperRunConfig
-    bot_graph_revision_id: UUID | None = None
-    graph_revision: GraphRevisionNumber | None = None
-    graph: NodeGraph | None = None
     status: run_status.RunStatus
     created_at: datetime
     started_at: datetime | None = None

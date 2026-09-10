@@ -2,17 +2,13 @@ import { IDEMPOTENCY_KEY_HEADER, IDEMPOTENCY_RECOVERY_HEADER, HTTP_STATUS } from
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from "$lib/limits/testFixtures";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { BotDefinitionDescriptor, BotRead } from "$lib/api/generated";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
-
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
 import { GRAPH_VALIDATION_COPY } from "$lib/catalog/graphValidation";
 import { ADD_NODE_LABEL } from "$lib/catalog/NodePalette.svelte";
 import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
-
 const mocks = vi.hoisted(() => ({
-  createRevision: vi.fn(),
   deleteBot: vi.fn(),
   goto: vi.fn(),
   launchRun: vi.fn(),
@@ -21,13 +17,11 @@ const mocks = vi.hoisted(() => ({
   readBot: vi.fn(),
   updateBot: vi.fn(),
 }));
-
 vi.mock("$app/navigation", () => ({ goto: mocks.goto }));
 vi.mock("$app/state", () => ({
   page: { params: { botId: "aaaaaaaa-0000-0000-0000-000000000001" } },
 }));
 vi.mock("$lib/api/generated", () => ({
-  createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost: mocks.createRevision,
   deleteBotApiV1BotsBotIdDelete: mocks.deleteBot,
   launchBotRunApiV1BotsBotIdRunsPost: mocks.launchRun,
   listBotsApiV1BotsGet: mocks.listBots,
@@ -35,10 +29,8 @@ vi.mock("$lib/api/generated", () => ({
   readBotApiV1BotsBotIdGet: mocks.readBot,
   updateBotApiV1BotsBotIdPatch: mocks.updateBot,
 }));
-
 import Page from "./+page.svelte";
-import { BOT_DETAIL_COPY, botGraphRevisionLabel } from "./copy";
-
+import { BOT_DETAIL_COPY } from "./copy";
 const BOT = {
   id: "aaaaaaaa-0000-0000-0000-000000000001",
   definition_id: "plain-definition",
@@ -70,16 +62,13 @@ const DEFINITION = {
     properties: { name: { type: "string", minLength: 1 } },
   },
 } satisfies BotDefinitionDescriptor;
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
-
 beforeEach(() => {
   mocks.listBots.mockResolvedValue({ data: [BOT] });
 });
-
 describe("saved-bot detail page", () => {
   it("blocks runs while dirty, saves settings, then reruns the saved bot", async () => {
     mocks.readBot.mockResolvedValue({ data: BOT });
@@ -91,24 +80,20 @@ describe("saved-bot detail page", () => {
       data: { id: "bbbbbbbb-0000-0000-0000-000000000001" },
     });
     render(Page);
-
     const name = await screen.findByLabelText("Name");
     const runButton = await screen.findByRole<HTMLButtonElement>("button", {
       name: BOT_DETAIL_COPY.RUN,
     });
     expect(runButton.disabled).toBe(false);
-
     await fireEvent.input(name, { target: { value: "Edited setup" } });
     expect(runButton.disabled).toBe(true);
     expect(screen.getByText(BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK)).toBeTruthy();
-
     await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.SAVE_CHANGES }));
     await waitFor(() => expect(runButton.disabled).toBe(false));
     await fireEvent.click(runButton);
-
     expect(mocks.updateBot).toHaveBeenCalledWith({
       path: { bot_id: BOT.id },
-      body: { inputs: { name: "Edited setup" } },
+      body: { inputs: { name: "Edited setup" }, graph: undefined },
       throwOnError: true,
     });
     expect(mocks.launchRun).toHaveBeenCalledWith({
@@ -117,16 +102,12 @@ describe("saved-bot detail page", () => {
     });
     expect(mocks.goto).toHaveBeenCalledWith("/runs/bbbbbbbb-0000-0000-0000-000000000001");
   });
-
-  it("appends an explicit graph revision before allowing the newest graph to run", async () => {
+  it("saves the complete configuration atomically before allowing the newest graph to run", async () => {
     const graphBot = {
       ...BOT,
-      latest_graph_revision: {
-        id: "cccccccc-0000-0000-0000-000000000001",
-        bot_id: BOT.id,
-        revision: 1,
+      config: {
+        ...BOT.config,
         graph: TEST_GRAPH,
-        created_at: BOT.created_at,
       },
     };
     const graphCapableDefinition = {
@@ -136,21 +117,17 @@ describe("saved-bot detail page", () => {
     };
     mocks.readBot.mockResolvedValue({ data: graphBot });
     mocks.listDefinitions.mockResolvedValue({ data: [graphCapableDefinition] });
-    mocks.createRevision.mockImplementation(async ({ body }) => ({
+    mocks.updateBot.mockImplementation(async ({ body }) => ({
       data: {
         ...graphBot,
         updated_at: "2026-08-30T00:01:00Z",
-        latest_graph_revision: {
-          id: "dddddddd-0000-0000-0000-000000000001",
-          bot_id: BOT.id,
-          revision: 2,
+        config: {
+          ...graphBot.config,
           graph: body.graph,
-          created_at: "2026-08-30T00:01:00Z",
         },
       },
     }));
     render(Page);
-
     const runButton = await screen.findByRole<HTMLButtonElement>("button", {
       name: BOT_DETAIL_COPY.RUN,
     });
@@ -160,19 +137,17 @@ describe("saved-bot detail page", () => {
     await waitFor(() => expect(runButton.disabled).toBe(false));
     expect(saveGraphButton.disabled).toBe(true);
     expect(screen.queryByText(BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK)).toBeNull();
-
     await fireEvent.click(await screen.findByRole("button", { name: ADD_NODE_LABEL }));
     await fireEvent.input(screen.getByRole("searchbox"), { target: { value: "on_start" } });
     await fireEvent.click(screen.getByRole("button", { name: "Add on_start" }));
     expect(runButton.disabled).toBe(true);
     expect(saveGraphButton.disabled).toBe(false);
-
     await fireEvent.click(saveGraphButton);
-
     await waitFor(() => {
-      expect(mocks.createRevision).toHaveBeenCalledWith({
+      expect(mocks.updateBot).toHaveBeenCalledWith({
         path: { bot_id: BOT.id },
         body: {
+          inputs: { name: BOT.config.name },
           graph: expect.objectContaining({
             nodes: expect.arrayContaining([expect.objectContaining({ data: { hook_name: "on_start" } })]),
           }),
@@ -181,18 +156,13 @@ describe("saved-bot detail page", () => {
       });
       expect(runButton.disabled).toBe(false);
     });
-    expect(screen.getByText(botGraphRevisionLabel(2))).toBeTruthy();
   });
-
-  it.each(RESOURCE_LIMIT_CASES)("keeps a failed graph revision dirty and blocks running (%s)", async (code) => {
+  it.each(RESOURCE_LIMIT_CASES)("keeps a failed configuration dirty and blocks running (%s)", async (code) => {
     const graphBot = {
       ...BOT,
-      latest_graph_revision: {
-        id: "cccccccc-0000-0000-0000-000000000001",
-        bot_id: BOT.id,
-        revision: 1,
+      config: {
+        ...BOT.config,
         graph: TEST_GRAPH,
-        created_at: BOT.created_at,
       },
     } satisfies BotRead;
     mocks.readBot.mockResolvedValue({ data: graphBot });
@@ -205,9 +175,8 @@ describe("saved-bot detail page", () => {
         },
       ],
     });
-    mocks.createRevision.mockRejectedValue(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error("write failed"));
+    mocks.updateBot.mockRejectedValue(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error("write failed"));
     render(Page);
-
     await fireEvent.click(await screen.findByRole("button", { name: ADD_NODE_LABEL }));
     await fireEvent.input(screen.getByRole("searchbox"), { target: { value: "on_start" } });
     await fireEvent.click(screen.getByRole("button", { name: "Add on_start" }));
@@ -218,23 +187,18 @@ describe("saved-bot detail page", () => {
       name: BOT_DETAIL_COPY.RUN,
     });
     await fireEvent.click(saveGraphButton);
-
     expect((await screen.findByRole("alert")).textContent).toContain(
-      code ? RESOURCE_LIMIT_DETAIL : BOT_DETAIL_COPY.GRAPH_SAVE_ERROR,
+      code ? RESOURCE_LIMIT_DETAIL : BOT_DETAIL_COPY.CONFIG_SAVE_ERROR,
     );
     expect(saveGraphButton.disabled).toBe(false);
     expect(runButton.disabled).toBe(true);
   });
-
   it("shows authoritative graph validation details beside the editor", async () => {
     const graphBot = {
       ...BOT,
-      latest_graph_revision: {
-        id: "cccccccc-0000-0000-0000-000000000001",
-        bot_id: BOT.id,
-        revision: 1,
+      config: {
+        ...BOT.config,
         graph: TEST_GRAPH,
-        created_at: BOT.created_at,
       },
     } satisfies BotRead;
     mocks.readBot.mockResolvedValue({ data: graphBot });
@@ -247,7 +211,7 @@ describe("saved-bot detail page", () => {
         },
       ],
     });
-    mocks.createRevision.mockRejectedValue({
+    mocks.updateBot.mockRejectedValue({
       detail: [
         {
           loc: ["body", "graph"],
@@ -257,48 +221,39 @@ describe("saved-bot detail page", () => {
       ],
     });
     render(Page);
-
     await fireEvent.click(await screen.findByRole("button", { name: ADD_NODE_LABEL }));
     await fireEvent.input(screen.getByRole("searchbox"), { target: { value: "on_start" } });
     await fireEvent.click(screen.getByRole("button", { name: "Add on_start" }));
     await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.SAVE_CHANGES }));
-
     const summary = await screen.findByRole("alert");
     expect(screen.getByRole("heading", { name: GRAPH_VALIDATION_COPY.TITLE })).toBeTruthy();
     expect(summary.textContent).toContain(GRAPH_VALIDATION_COPY.STRUCTURE);
     expect(summary.textContent).toContain("Graph input cardinality is invalid.");
     expect(document.activeElement).toBe(summary);
-    expect(screen.queryByText(BOT_DETAIL_COPY.GRAPH_SAVE_ERROR)).toBeNull();
+    expect(screen.queryByText(BOT_DETAIL_COPY.CONFIG_SAVE_ERROR)).toBeNull();
   });
-
   it("reports a saved-bot load failure", async () => {
     mocks.readBot.mockRejectedValue(new Error("missing"));
     mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
     render(Page);
-
     expect((await screen.findByRole("alert")).textContent).toContain(BOT_DETAIL_COPY.LOAD_ERROR);
   });
-
   it("rejects a saved bot whose definition is absent from the catalog", async () => {
     mocks.readBot.mockResolvedValue({ data: BOT });
     mocks.listDefinitions.mockResolvedValue({ data: [] });
     render(Page);
-
     expect((await screen.findByRole("alert")).textContent).toContain(BOT_DETAIL_COPY.LOAD_ERROR);
     expect(screen.queryByRole("button", { name: BOT_DETAIL_COPY.RUN })).toBeNull();
     expect(screen.queryByLabelText("Name")).toBeNull();
   });
-
   it.each(RESOURCE_LIMIT_CASES)("keeps unsaved configuration after a failed save (%s)", async (code) => {
     mocks.readBot.mockResolvedValue({ data: BOT });
     mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
     mocks.updateBot.mockRejectedValue(code ? { code, detail: RESOURCE_LIMIT_DETAIL } : new Error("write failed"));
     render(Page);
-
     const name = await screen.findByLabelText("Name");
     await fireEvent.input(name, { target: { value: "Unsaved setup" } });
     await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.SAVE_CHANGES }));
-
     expect((await screen.findByRole("alert")).textContent).toContain(
       code ? RESOURCE_LIMIT_DETAIL : BOT_DETAIL_COPY.CONFIG_SAVE_ERROR,
     );
@@ -309,7 +264,6 @@ describe("saved-bot detail page", () => {
       }).disabled,
     ).toBe(true);
   });
-
   it("shows backend configuration validation under its field", async () => {
     mocks.readBot.mockResolvedValue({ data: BOT });
     mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
@@ -323,29 +277,23 @@ describe("saved-bot detail page", () => {
       ],
     });
     render(Page);
-
     const name = await screen.findByLabelText("Name");
     await fireEvent.input(name, { target: { value: "Reserved name" } });
     await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.SAVE_CHANGES }));
-
     expect(await screen.findByText("This bot name is reserved.")).toBeTruthy();
     expect(name.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByText(BOT_DETAIL_COPY.CONFIG_SAVE_ERROR)).toBeNull();
   });
-
   it("reports a failed run launch", async () => {
     mocks.readBot.mockResolvedValue({ data: BOT });
     mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
     mocks.launchRun.mockRejectedValue(new Error("delivery failed"));
     render(Page);
-
     await fireEvent.click(await screen.findByRole("button", { name: BOT_DETAIL_COPY.RUN }));
-
     expect((await screen.findByRole("alert")).textContent).toContain(BOT_DETAIL_COPY.RUN_ERROR);
     expect(mocks.goto).not.toHaveBeenCalled();
   });
 });
-
 it.each(Object.values(runtimeContract.resourceLimitCodes))(
   "explains %s without navigating away from the bot",
   async (code) => {
@@ -359,7 +307,6 @@ it.each(Object.values(runtimeContract.resourceLimitCodes))(
     expect(mocks.goto).not.toHaveBeenCalled();
   },
 );
-
 it("does not launch automatically when an old attempt is unavailable", async () => {
   sessionStorage.clear();
   mocks.readBot.mockResolvedValue({ data: BOT });
@@ -376,7 +323,6 @@ it("does not launch automatically when an old attempt is unavailable", async () 
   expect(mocks.launchRun.mock.calls[1][0].headers[IDEMPOTENCY_KEY_HEADER]).not.toBe(firstKey);
   expect(mocks.launchRun.mock.calls[1][0].headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(false));
 });
-
 it.each([
   [HTTP_STATUS.TOO_MANY_REQUESTS, false],
   [HTTP_STATUS.UNPROCESSABLE_CONTENT, false],
@@ -401,7 +347,6 @@ it.each([
   expect(headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(recovery));
   expect(mocks.goto).not.toHaveBeenCalled();
 });
-
 it("shows returned capacity detail and clears its rejected launch key", async () => {
   sessionStorage.clear();
   mocks.readBot.mockResolvedValue({ data: BOT });
@@ -421,7 +366,6 @@ it("shows returned capacity detail and clears its rejected launch key", async ()
   expect(headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(false));
   expect(mocks.goto).not.toHaveBeenCalled();
 });
-
 it("requires confirmation, supports cancellation, and disables launches during deletion", async () => {
   mocks.readBot.mockResolvedValue({ data: BOT });
   mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
@@ -449,7 +393,6 @@ it("requires confirmation, supports cancellation, and disables launches during d
   finishDelete({ response: { status: HTTP_STATUS.NO_CONTENT } });
   await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith("/"));
 });
-
 it.each([HTTP_STATUS.CONFLICT, HTTP_STATUS.SERVICE_UNAVAILABLE])(
   "keeps the editor after deletion is rejected with %s",
   async (status) => {
@@ -466,7 +409,6 @@ it.each([HTTP_STATUS.CONFLICT, HTTP_STATUS.SERVICE_UNAVAILABLE])(
     expect(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM })).toBeEnabled();
   },
 );
-
 it("recovers a lost deletion response through an explicit retry", async () => {
   mocks.readBot.mockResolvedValue({ data: BOT });
   mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });

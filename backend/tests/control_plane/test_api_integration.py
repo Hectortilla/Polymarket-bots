@@ -95,10 +95,8 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
 
             assert first is not None and first[0].status is RunStatus.STOPPED
             assert second is not None and second[0].status is RunStatus.STOPPED
-            assert first[0].graph_revision == queued.graph_revision
-            assert first[0].graph == queued.graph
-            assert second[0].graph_revision == queued.graph_revision
-            assert second[0].graph == queued.graph
+            assert first[0].config.graph == queued.config.graph
+            assert second[0].config.graph == queued.config.graph
             assert sum(result[1] is not None for result in (first, second)) == 1
             assert len(events) == 1
             assert events[0].payload.status is RunStatus.STOPPED
@@ -146,14 +144,12 @@ def test_api_owned_terminal_transitions_store_one_event_atomically() -> None:
 
             assert stopped_running is not None
             assert stopped_running[0].status is RunStatus.STOP_REQUESTED
-            assert stopped_running[0].graph_revision == running.graph_revision
-            assert stopped_running[0].graph == running.graph
+            assert stopped_running[0].config.graph == running.config.graph
             assert stopped_running[1] is None
             assert running_events == ()
             assert failed_run.status is RunStatus.FAILED
             assert failed_run.failure_detail == snapshot_failure_detail
-            assert failed_run.graph_revision == failed.graph_revision
-            assert failed_run.graph == failed.graph
+            assert failed_run.config.graph == failed.config.graph
             assert len(failed_events) == 1
             assert failed_events[0].payload.status is RunStatus.FAILED
 
@@ -285,8 +281,7 @@ async def _create_run(
 ):
     bot = await BotStore(session, await ensure_test_user(session)).create(
         definition_id=definition_id,
-        config=config,
-        graph=graph,
+        config=config.model_copy(update={"graph": graph}, deep=True),
     )
     return await RunStore(session).create_from_bot(bot)
 

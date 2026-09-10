@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { PersistedDurableEvent, RunRead } from "$lib/api/generated";
 import { readRunApiV1RunsRunIdGet, readRunEventsApiV1RunsRunIdEventsGet } from "$lib/api/generated";
 import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
@@ -9,7 +8,6 @@ import { EVENT_KIND } from "./durableEvents";
 import { hydrateRunDetail, RunNotFoundError, loadAndContinueRunDetail, loadOlderRunEvents } from "./hydrate";
 import { HTTP_STATUS } from "$lib/api/http";
 import { RUN_STATUS } from "./status";
-
 vi.mock("$lib/api/generated", async (importOriginal) => {
   const original = await importOriginal<typeof import("$lib/api/generated")>();
   return {
@@ -18,24 +16,10 @@ vi.mock("$lib/api/generated", async (importOriginal) => {
     readRunEventsApiV1RunsRunIdEventsGet: vi.fn(),
   };
 });
-
 const RUN: RunRead = {
   id: "aaaaaaaa-0000-0000-0000-000000000001",
   bot_id: "bbbbbbbb-0000-0000-0000-000000000001",
   definition_id: "test-definition",
-  bot_graph_revision_id: "cccccccc-0000-0000-0000-000000000001",
-  graph_revision: 3,
-  graph: {
-    nodes: [
-      {
-        id: "on-start",
-        type: GRAPH_NODE_TYPE.trigger,
-        position: { x: 0, y: 0 },
-        data: { hook_name: ON_START_TRIGGER.hook_name },
-      },
-    ],
-    edges: [],
-  },
   config: {
     name: "Hydrated run",
     stream_rules: [],
@@ -46,11 +30,21 @@ const RUN: RunRead = {
     paper_latency_jitter_ms: 100,
     event_max_age_ms: 5000,
     paper_portfolio_usdc: "1000",
+    graph: {
+      nodes: [
+        {
+          id: "on-start",
+          type: GRAPH_NODE_TYPE.trigger,
+          position: { x: 0, y: 0 },
+          data: { hook_name: ON_START_TRIGGER.hook_name },
+        },
+      ],
+      edges: [],
+    },
   },
   status: RUN_STATUS.RUNNING,
   created_at: "2026-08-23T00:00:00Z",
 };
-
 const EVENT: PersistedDurableEvent = {
   id: 7,
   kind: EVENT_KIND.runLifecycle,
@@ -58,10 +52,8 @@ const EVENT: PersistedDurableEvent = {
   occurred_at: "2026-08-23T00:00:01Z",
   payload: { status: RUN_STATUS.RUNNING },
 };
-
 describe("run reload", () => {
   beforeEach(() => vi.clearAllMocks());
-
   it("hydrates ordinary HTTP state before opening SSE from the durable cursor", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
@@ -72,7 +64,6 @@ describe("run reload", () => {
       calls.push("stream");
       return () => {};
     });
-
     await loadAndContinueRunDetail(
       RUN.id.toUpperCase(),
       (hydration) => {
@@ -85,7 +76,6 @@ describe("run reload", () => {
       vi.fn(),
       openStream,
     );
-
     expect(calls).toEqual(["hydrated", "stream"]);
     expect(openStream).toHaveBeenCalledWith(RUN.id, 7, expect.any(Function), expect.any(Function), undefined);
     expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
@@ -93,7 +83,6 @@ describe("run reload", () => {
       throwOnError: true,
     });
   });
-
   it("does not open SSE when the hydrated run is terminal", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({
       data: { ...RUN, status: RUN_STATUS.STOPPED },
@@ -102,13 +91,10 @@ describe("run reload", () => {
       data: { events: [EVENT], next_before_event_id: null },
     } as never);
     const openStream = vi.fn();
-
     const close = await loadAndContinueRunDetail(RUN.id, vi.fn(), vi.fn(), vi.fn(), openStream);
-
     expect(openStream).not.toHaveBeenCalled();
     expect(close()).toBeUndefined();
   });
-
   it("does not open SSE past a terminal event committed during hydration", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet)
       .mockResolvedValueOnce({ data: RUN } as never)
@@ -121,13 +107,10 @@ describe("run reload", () => {
     } as never);
     const openStream = vi.fn();
     const hydrated = vi.fn();
-
     await loadAndContinueRunDetail(RUN.id, hydrated, vi.fn(), vi.fn(), openStream);
-
     expect(openStream).not.toHaveBeenCalled();
     expect(hydrated.mock.calls[0][0].run.status).toBe(RUN_STATUS.STOPPED);
   });
-
   it("refreshes a queued snapshot when the running event is already in the SSE cursor", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet)
       .mockResolvedValueOnce({ data: { ...RUN, status: RUN_STATUS.QUEUED } } as never)
@@ -141,29 +124,24 @@ describe("run reload", () => {
     expect(hydrated.mock.calls[0][0].run.status).toBe(RUN_STATUS.RUNNING);
     expect(openStream).toHaveBeenCalledWith(RUN.id, EVENT.id, expect.any(Function), expect.any(Function), undefined);
   });
-
   it("loads only the older page selected by the server cursor", async () => {
     const olderEvent = { ...EVENT, id: 3 };
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: { events: [olderEvent], next_before_event_id: null },
     } as never);
-
     const page = await loadOlderRunEvents(RUN.id, 7);
-
     expect(page).toEqual({ events: [olderEvent], nextBeforeEventId: null });
     expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
       path: { run_id: RUN.id },
       query: { before_event_id: 7 },
       throwOnError: true,
     });
-
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: { events: [olderEvent], next_before_event_id: 4 },
     } as never);
     await expect(loadOlderRunEvents(RUN.id, 7)).rejects.toThrow("Invalid run event page cursor");
   });
 });
-
 it("keeps run denial distinct from infrastructure failure", async () => {
   vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ response: { status: HTTP_STATUS.NOT_FOUND } } as never);
   await expect(hydrateRunDetail(RUN.id)).rejects.toBeInstanceOf(RunNotFoundError);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { RUN_DETAIL_COPY, loadedEventsLabel } from "./copy";
   import { SERVICE_NAME } from "$lib/serviceIdentity";
   import { hasReportedUsableBook, RUN_GUIDE_COPY } from "$lib/runs/runGuide";
   import RunGuide from "$lib/runs/RunGuide.svelte";
@@ -35,7 +36,6 @@
   import { loadAndContinueRunDetail, loadOlderRunEvents } from "$lib/runs/hydrate";
   import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
   import { formatTime } from "$lib/time";
-  import { loadedEventsLabel, RUN_DETAIL_COPY, executedRunGraphRevisionLabel, runGraphRevisionLabel } from "./copy";
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
@@ -75,7 +75,7 @@
           events = hydration.events;
           dashboard = mergeDurableEvents(emptyDashboardHistory(), hydration.events);
           nextBeforeEventId = hydration.nextBeforeEventId;
-          if (hydration.run.graph) {
+          if (hydration.run.config.graph) {
             executedGraphCatalogLoading = true;
             void loadExecutedGraphCatalog(hydration.run.definition_id)
               .then((catalog) => {
@@ -218,7 +218,7 @@
           <span>{RUN_DETAIL_COPY.BOT_DELETED}</span>
         {:else}
           <a href={botPath(run.bot_id)}>{RUN_DETAIL_COPY.BOT_CONFIGURATION}</a>
-        {/if}{run.graph_revision ? ` / ${runGraphRevisionLabel(run.graph_revision)}` : ""}
+        {/if}
       </p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
@@ -283,20 +283,20 @@
     </article>
   </section>
 
-  {#if run.graph}
+  {#if run.config.graph}
     <section class="historical-graph">
       <div class="section-heading">
         <h2 id="executed-graph-heading">
-          {executedRunGraphRevisionLabel(run.graph_revision)}
+          {RUN_DETAIL_COPY.EXECUTED_GRAPH}
         </h2>
         <span class="section-count">immutable run snapshot</span>
       </div>
       <p id="executed-graph-description">
-        This is the exact bot graph used by this run. Later revisions do not change it.
+        This is the exact bot graph used by this run. Later bot edits do not change it.
       </p>
       {#if executedGraphCatalog}
         <NodeGraphInput
-          initialGraph={run.graph}
+          initialGraph={run.config.graph}
           graphCatalog={executedGraphCatalog}
           labelledby="executed-graph-heading"
           describedby="executed-graph-description"

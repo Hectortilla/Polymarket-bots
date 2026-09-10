@@ -82,10 +82,9 @@ async def account_bot(sessions):
         await session.commit()
         bot = await BotStore(session, user.id).create(
             definition_id=WINNER_DEFINITION_ID,
-            config=CATALOG[WINNER_DEFINITION_ID].parse_config(
-                {"name": "capacity test"}
-            ),
-            graph=None,
+            config=CATALOG[WINNER_DEFINITION_ID]
+            .parse_config({"name": "capacity test"})
+            .model_copy(update={"graph": None}, deep=True),
         )
         return user, bot
 

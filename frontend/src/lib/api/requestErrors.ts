@@ -1,4 +1,6 @@
-import type { ValidationError } from "./generated";
+import type { BotCreate, ValidationError } from "./generated";
+
+export const GRAPH_REQUEST_FIELD = "graph" satisfies keyof BotCreate;
 
 export type RequestValidationIssue = Pick<ValidationError, "loc" | "msg" | "type">;
 

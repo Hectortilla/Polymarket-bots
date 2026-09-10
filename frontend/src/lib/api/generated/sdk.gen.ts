@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AccountStatusData, AccountStatusErrors, AccountStatusResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CompleteEmailVerificationData, CompleteEmailVerificationErrors, CompleteEmailVerificationResponses, CompletePasswordResetData, CompletePasswordResetErrors, CompletePasswordResetResponses, CreateBotApiV1BotsPostData, CreateBotApiV1BotsPostErrors, CreateBotApiV1BotsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostData, CreateGraphTemplateApiV1GraphTemplatesPostErrors, CreateGraphTemplateApiV1GraphTemplatesPostResponses, CurrentUserData, CurrentUserErrors, CurrentUserResponses, DeleteBotApiV1BotsBotIdDeleteData, DeleteBotApiV1BotsBotIdDeleteErrors, DeleteBotApiV1BotsBotIdDeleteResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetErrors, HealthApiV1HealthGetResponses, LaunchBotRunApiV1BotsBotIdRunsPostData, LaunchBotRunApiV1BotsBotIdRunsPostErrors, LaunchBotRunApiV1BotsBotIdRunsPostResponses, ListBotDefinitionsApiV1BotDefinitionsGetData, ListBotDefinitionsApiV1BotDefinitionsGetErrors, ListBotDefinitionsApiV1BotDefinitionsGetResponses, ListBotsApiV1BotsGetData, ListBotsApiV1BotsGetErrors, ListBotsApiV1BotsGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetData, ListGraphTemplatesApiV1GraphTemplatesGetErrors, ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListRunsApiV1RunsGetData, ListRunsApiV1RunsGetErrors, ListRunsApiV1RunsGetResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, LookupMarketsData, LookupMarketsErrors, LookupMarketsResponses, PreviewGraphData, PreviewGraphErrors, PreviewGraphResponses, ReadBotApiV1BotsBotIdGetData, ReadBotApiV1BotsBotIdGetErrors, ReadBotApiV1BotsBotIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadRunApiV1RunsRunIdGetData, ReadRunApiV1RunsRunIdGetErrors, ReadRunApiV1RunsRunIdGetResponses, ReadRunEventsApiV1RunsRunIdEventsGetData, ReadRunEventsApiV1RunsRunIdEventsGetErrors, ReadRunEventsApiV1RunsRunIdEventsGetResponses, ReadUsageData, ReadUsageErrors, ReadUsageResponses, RegisterData, RegisterErrors, RegisterResponses, RequestAccountDeletionData, RequestAccountDeletionErrors, RequestAccountDeletionResponses, RequestEmailVerificationData, RequestEmailVerificationErrors, RequestEmailVerificationResponses, RequestPasswordResetData, RequestPasswordResetErrors, RequestPasswordResetResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, SearchMarketsData, SearchMarketsErrors, SearchMarketsResponses, StopRunApiV1RunsRunIdStopPostData, StopRunApiV1RunsRunIdStopPostErrors, StopRunApiV1RunsRunIdStopPostResponses, StreamRunEventsApiV1RunsRunIdEventsStreamGetData, StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses, UpdateBotApiV1BotsBotIdPatchData, UpdateBotApiV1BotsBotIdPatchErrors, UpdateBotApiV1BotsBotIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses } from './types.gen';
+import type { AccountStatusData, AccountStatusErrors, AccountStatusResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CompleteEmailVerificationData, CompleteEmailVerificationErrors, CompleteEmailVerificationResponses, CompletePasswordResetData, CompletePasswordResetErrors, CompletePasswordResetResponses, CreateBotApiV1BotsPostData, CreateBotApiV1BotsPostErrors, CreateBotApiV1BotsPostResponses, CurrentUserData, CurrentUserErrors, CurrentUserResponses, DeleteBotApiV1BotsBotIdDeleteData, DeleteBotApiV1BotsBotIdDeleteErrors, DeleteBotApiV1BotsBotIdDeleteResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetErrors, HealthApiV1HealthGetResponses, LaunchBotRunApiV1BotsBotIdRunsPostData, LaunchBotRunApiV1BotsBotIdRunsPostErrors, LaunchBotRunApiV1BotsBotIdRunsPostResponses, ListBotDefinitionsApiV1BotDefinitionsGetData, ListBotDefinitionsApiV1BotDefinitionsGetErrors, ListBotDefinitionsApiV1BotDefinitionsGetResponses, ListBotsApiV1BotsGetData, ListBotsApiV1BotsGetErrors, ListBotsApiV1BotsGetResponses, ListRunsApiV1RunsGetData, ListRunsApiV1RunsGetErrors, ListRunsApiV1RunsGetResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, LookupMarketsData, LookupMarketsErrors, LookupMarketsResponses, PreviewGraphData, PreviewGraphErrors, PreviewGraphResponses, ReadBotApiV1BotsBotIdGetData, ReadBotApiV1BotsBotIdGetErrors, ReadBotApiV1BotsBotIdGetResponses, ReadRunApiV1RunsRunIdGetData, ReadRunApiV1RunsRunIdGetErrors, ReadRunApiV1RunsRunIdGetResponses, ReadRunEventsApiV1RunsRunIdEventsGetData, ReadRunEventsApiV1RunsRunIdEventsGetErrors, ReadRunEventsApiV1RunsRunIdEventsGetResponses, ReadUsageData, ReadUsageErrors, ReadUsageResponses, RegisterData, RegisterErrors, RegisterResponses, RequestAccountDeletionData, RequestAccountDeletionErrors, RequestAccountDeletionResponses, RequestEmailVerificationData, RequestEmailVerificationErrors, RequestEmailVerificationResponses, RequestPasswordResetData, RequestPasswordResetErrors, RequestPasswordResetResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, SearchMarketsData, SearchMarketsErrors, SearchMarketsResponses, StopRunApiV1RunsRunIdStopPostData, StopRunApiV1RunsRunIdStopPostErrors, StopRunApiV1RunsRunIdStopPostResponses, StreamRunEventsApiV1RunsRunIdEventsStreamGetData, StreamRunEventsApiV1RunsRunIdEventsStreamGetErrors, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse, StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses, UpdateBotApiV1BotsBotIdPatchData, UpdateBotApiV1BotsBotIdPatchErrors, UpdateBotApiV1BotsBotIdPatchResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -186,60 +186,9 @@ export const updateBotApiV1BotsBotIdPatch = <ThrowOnError extends boolean = fals
 });
 
 /**
- * Create Bot Graph Revision
- */
-export const createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost = <ThrowOnError extends boolean = false>(options: Options<CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostData, ThrowOnError>): RequestResult<CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, ThrowOnError> => (options.client ?? client).post<CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostResponses, CreateBotGraphRevisionApiV1BotsBotIdGraphRevisionsPostErrors, ThrowOnError>({
-    url: '/api/v1/bots/{bot_id}/graph-revisions',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Read Bot Graph Revision
- */
-export const readBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGet = <ThrowOnError extends boolean = false>(options: Options<ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetData, ThrowOnError>): RequestResult<ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ThrowOnError> => (options.client ?? client).get<ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetResponses, ReadBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGetErrors, ThrowOnError>({ url: '/api/v1/bots/{bot_id}/graph-revisions/{revision_id}', ...options });
-
-/**
  * Launch Bot Run
  */
 export const launchBotRunApiV1BotsBotIdRunsPost = <ThrowOnError extends boolean = false>(options: Options<LaunchBotRunApiV1BotsBotIdRunsPostData, ThrowOnError>): RequestResult<LaunchBotRunApiV1BotsBotIdRunsPostResponses, LaunchBotRunApiV1BotsBotIdRunsPostErrors, ThrowOnError> => (options.client ?? client).post<LaunchBotRunApiV1BotsBotIdRunsPostResponses, LaunchBotRunApiV1BotsBotIdRunsPostErrors, ThrowOnError>({ url: '/api/v1/bots/{bot_id}/runs', ...options });
-
-/**
- * List Graph Templates
- */
-export const listGraphTemplatesApiV1GraphTemplatesGet = <ThrowOnError extends boolean = false>(options?: Options<ListGraphTemplatesApiV1GraphTemplatesGetData, ThrowOnError>): RequestResult<ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetErrors, ThrowOnError> => (options?.client ?? client).get<ListGraphTemplatesApiV1GraphTemplatesGetResponses, ListGraphTemplatesApiV1GraphTemplatesGetErrors, ThrowOnError>({ url: '/api/v1/graph-templates', ...options });
-
-/**
- * Create Graph Template
- */
-export const createGraphTemplateApiV1GraphTemplatesPost = <ThrowOnError extends boolean = false>(options: Options<CreateGraphTemplateApiV1GraphTemplatesPostData, ThrowOnError>): RequestResult<CreateGraphTemplateApiV1GraphTemplatesPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostErrors, ThrowOnError> => (options.client ?? client).post<CreateGraphTemplateApiV1GraphTemplatesPostResponses, CreateGraphTemplateApiV1GraphTemplatesPostErrors, ThrowOnError>({
-    url: '/api/v1/graph-templates',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Read Graph Template
- */
-export const readGraphTemplateApiV1GraphTemplatesTemplateIdGet = <ThrowOnError extends boolean = false>(options: Options<ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetData, ThrowOnError>): RequestResult<ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ThrowOnError> => (options.client ?? client).get<ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetResponses, ReadGraphTemplateApiV1GraphTemplatesTemplateIdGetErrors, ThrowOnError>({ url: '/api/v1/graph-templates/{template_id}', ...options });
-
-/**
- * Update Graph Template
- */
-export const updateGraphTemplateApiV1GraphTemplatesTemplateIdPatch = <ThrowOnError extends boolean = false>(options: Options<UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchData, ThrowOnError>): RequestResult<UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, ThrowOnError> => (options.client ?? client).patch<UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchResponses, UpdateGraphTemplateApiV1GraphTemplatesTemplateIdPatchErrors, ThrowOnError>({
-    url: '/api/v1/graph-templates/{template_id}',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
 
 /**
  * Preview Graph

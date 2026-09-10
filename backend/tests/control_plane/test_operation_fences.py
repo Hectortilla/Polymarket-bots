@@ -7,13 +7,12 @@ from uuid import uuid4
 
 import pytest
 from api.catalog.definitions import WINNER_DEFINITION_ID
-from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.events.contracts import LiveStreamHealthEvent
 from api.events.health.store import FeedHealthStore
 from api.events.store import EventStore
 from api.events.writer import RunEventWriter
 from api.http.protocol import RETRY_AFTER_HEADER
-from api.http.routes.paths import BOTS_PATH, GRAPH_TEMPLATES_PATH, api_route_path
+from api.http.routes.paths import BOTS_PATH, api_route_path
 from api.limits.admission import RunAdmission
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.operations.control import OperatorControl
@@ -159,7 +158,7 @@ def test_health_sink_refuses_lost_execution_ownership(limits_services, ownership
     asyncio.run(scenario())
 
 
-def test_suspended_write_boundary_rejects_already_authenticated_bot_and_template_requests(
+def test_suspended_write_boundary_rejects_already_authenticated_bot_requests(
     limits_services,
 ):
     async def scenario():
@@ -172,7 +171,6 @@ def test_suspended_write_boundary_rejects_already_authenticated_bot_and_template
                 await OperatorControl(session, ACTOR).apply(
                     OperatorAction.SUSPEND, user.id
                 )
-            graph = STARTER_NODE_GRAPH.model_dump(mode="json")
             requests = [
                 (
                     BOTS_PATH,
@@ -181,7 +179,6 @@ def test_suspended_write_boundary_rejects_already_authenticated_bot_and_template
                         "inputs": {"name": "forbidden bot"},
                     },
                 ),
-                (GRAPH_TEMPLATES_PATH, {"name": "forbidden template", "graph": graph}),
             ]
             async with AsyncClient(
                 transport=ASGITransport(app), base_url=TEST_ORIGIN, headers=TEST_HEADERS

@@ -14,7 +14,6 @@ const usage = {
   active_runs: 1,
   queued_runs: 2,
   saved_bots: 3,
-  saved_templates: 4,
   retained_runs: 5,
 };
 afterEach(() => {
@@ -26,6 +25,9 @@ it("shows private usage and refreshes after capacity changes", async () => {
   mocks.read.mockResolvedValueOnce({ data: usage }).mockResolvedValueOnce({ data: { ...usage, queued_runs: 0 } });
   render(AccountUsage);
   expect(await screen.findByText(new RegExp(`${usage.queued_runs} / ${usage.policy.queued_runs} queued`))).toBeTruthy();
+  expect(screen.queryByText(/saved templates/i)).toBeNull();
+  expect(usage.policy).not.toHaveProperty("saved_templates");
+  expect(usage.policy).not.toHaveProperty("revisions_per_bot");
   await fireEvent.click(screen.getByRole("button", { name: ALLOWANCE_COPY.REFRESH }));
   await waitFor(() => expect(screen.getByText(new RegExp(`0 / ${usage.policy.queued_runs} queued`))).toBeTruthy());
 });

@@ -23,8 +23,7 @@ control plane's contracts, catalog, PostgreSQL run row, Taskiq worker, durable
 progress events, migrations, async stores, FastAPI runs API, mixed durable/live
 SSE path, deterministic OpenAPI artifact, browser dashboard, and the
 alpha graph contract with framework-derived triggers, typed constants,
-comparisons, event-driven fixed-side paper broker actions, editable reusable
-templates, saved bots, immutable bot-owned graph revisions, email/password
+comparisons, event-driven fixed-side paper broker actions, saved bots with complete editable configurations and immutable run snapshots, email/password
 accounts, server-side sessions, and private resource ownership. Saved bots support
 soft deletion after all their runs are terminal: configurations disappear from
 user access while the rows, graphs and owned run history remain. The sole initial
@@ -126,9 +125,8 @@ polyfollow-bots/
         my_bot.py              # Default bot factory.
       api/                     # Inward-dependent private application backend.
         http/                  # FastAPI assembly, routes, dependencies, SSE, OpenAPI.
-        bots/                  # Saved bots and immutable graph revisions.
+        bots/                  # Complete editable saved-bot configurations.
         catalog/               # Bot definitions, graph contracts, and node evaluator.
-        graph_templates/       # Editable graph-template contracts and persistence.
         runs/                  # Run contracts, lifecycle state, and async store.
         events/                # Durable/live event contracts, persistence, Redis wake-up.
         execution/             # RunLauncher, Taskiq adapter, and worker lifecycle.
@@ -1041,7 +1039,7 @@ normalization while retaining their own optional-policy requirements.
 The `api.auth` package owns local email/password accounts, PostgreSQL sessions,
 CSRF protection, Redis attempt limits and bounded stream authorization. Identity
 never enters `polybot`, bot configuration, graph evaluation or CLI flows. Bots and
-mutable graph templates have required user owners; graph revisions, runs and events
+their complete configurations have required user owners; runs and events
 inherit ownership. Trusted workers execute already-authorized persisted run IDs
 independently of browser session lifetime. See the
 [control-plane identity contract](web-control-plane-architecture.md#slice-15-identity-and-authorization)

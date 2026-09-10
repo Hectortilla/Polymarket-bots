@@ -20,7 +20,6 @@ from api.auth.policy import (
 from api.auth.recovery import policy as account_policy
 from api.auth.recovery.tokens import ACCOUNT_TOKEN_PATTERN
 from api.bots.errors import BOT_ACTIVE_RUNS_DETAIL
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.events.contracts.payloads.chart import (
     CHART_NULL_VALUE_STATUSES,
     CHART_VALUE_REQUIRED_STATUSES,
@@ -50,14 +49,10 @@ from api.http.protocol import (
 )
 from api.http.routes.paths import (
     BOT_DEFINITIONS_PATH,
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
     BOT_PATH,
     BOT_RUNS_PATH,
     BOTS_PATH,
     GRAPH_PREVIEW_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
     MARKET_LOOKUP_PATH,
     MARKET_SEARCH_PATH,
@@ -229,13 +224,9 @@ def frontend_run_contract() -> dict[str, object]:
             "currentUser": api_route_path(ME_PATH),
             "graphPreview": api_route_path(GRAPH_PREVIEW_PATH),
             "botDefinitions": api_route_path(BOT_DEFINITIONS_PATH),
-            "botGraphRevision": api_route_path(BOT_GRAPH_REVISION_PATH),
-            "botGraphRevisions": api_route_path(BOT_GRAPH_REVISIONS_PATH),
             "bot": api_route_path(BOT_PATH),
             "botRuns": api_route_path(BOT_RUNS_PATH),
             "bots": api_route_path(BOTS_PATH),
-            "graphTemplate": api_route_path(GRAPH_TEMPLATE_PATH),
-            "graphTemplates": api_route_path(GRAPH_TEMPLATES_PATH),
             "health": api_route_path(HEALTH_PATH),
             "usage": api_route_path(USAGE_PATH),
             "marketSearch": api_route_path(MARKET_SEARCH_PATH),
@@ -325,7 +316,6 @@ def frontend_run_contract() -> dict[str, object]:
             for status, policy in FILL_STATUS_POLICIES.items()
         },
         "healthStatus": HealthResponse().status,
-        "minimumGraphRevisionNumber": FIRST_GRAPH_REVISION_NUMBER,
         "marketResolution": {
             "tokenCount": MARKET_RESOLUTION_TOKEN_COUNT,
         },

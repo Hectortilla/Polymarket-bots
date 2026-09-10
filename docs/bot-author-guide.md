@@ -693,22 +693,21 @@ The private control plane presents configuration and graph design as one bot:
 2. Start from the catalog-provided graph or copy the latest graph from another
    configured bot. Copying creates an independent draft; later edits never
    propagate between bots.
-3. Save the form to create immutable bot graph revision 1. The frontend uses
-   the existing graph-template copy endpoint internally, but templates are not
-   a user-facing resource or workflow.
-4. Edit an existing bot's configuration and graph in one workspace. Saving
-   graph changes appends revision 2, 3, and so on.
-5. Run the bot only after all configuration and graph changes are saved. Each
-   run copies the current `PaperRunConfig` and references the exact latest graph
-   revision.
+3. Save the form to create one bot with its complete configuration, including
+   the graph. No intermediate template is created.
+4. Edit settings and graph in the same workspace; Save replaces both atomically.
+5. Run only after changes are saved. Each run deep-copies the complete configuration
+   into its own `config_snapshot` before queueing work. The public run response
+   exposes it as `config`, with the executed graph in `config.graph`.
 6. To remove a saved configuration, stop its active runs and wait until all runs
    finish, then select **Delete bot** and confirm. Queued and stopping runs also
    block deletion. The bot disappears from configurations and graph-copy choices,
    but its saved data stays in the system and past runs remain available under
    the existing history-retention policy. Deleted bots cannot be edited or run.
 
-Rerunning the bot uses its latest saved revision. Earlier runs continue to show
-and execute the revision they originally referenced after the bot changes.
+Rerunning the bot uses its latest saved configuration. Earlier runs retain their
+original settings and graph after the bot changes. Edit history between runs is
+not retained. Only saved bots count toward the saved-resource allowance.
 On the home page, failed Runs rows expose the latest durable runtime
 error and the recorded failure outcome on hover or keyboard focus.
 

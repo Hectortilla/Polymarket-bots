@@ -6,7 +6,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.bots.models import BotRow
-from api.graph_templates.models import GraphTemplateRow
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.limits.policy import PAPER_BETA
 from api.operations.admission import OperationAdmission
@@ -28,17 +27,6 @@ class SavedResourceAllowance:
                 "Your saved-bot allowance is full. Edit an existing bot.",
             )
 
-    async def reserve_template(self) -> None:
-        await OperationAdmission(self._session).require_active_account(
-            self._owner_user_id
-        )
-        count = await self.count_templates()
-        if count >= PAPER_BETA.saved_templates:
-            raise ResourceLimitError(
-                ResourceLimitCode.USER_ALLOWANCE,
-                "Your saved-template allowance is full. Edit an existing template.",
-            )
-
     async def count_bots(self) -> int:
         return await self._session.scalar(
             select(func.count())
@@ -46,11 +34,4 @@ class SavedResourceAllowance:
             .where(
                 BotRow.owner_user_id == self._owner_user_id, BotRow.deleted_at.is_(None)
             )
-        )
-
-    async def count_templates(self) -> int:
-        return await self._session.scalar(
-            select(func.count())
-            .select_from(GraphTemplateRow)
-            .where(GraphTemplateRow.owner_user_id == self._owner_user_id)
         )

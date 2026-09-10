@@ -69,10 +69,7 @@ export function isBot(value: Record<string, unknown>): boolean {
     isFiniteDateTime(value.created_at) &&
     isFiniteDateTime(value.updated_at) &&
     isRecord(value.config) &&
-    isPaperConfig(value.config) &&
-    (value.latest_graph_revision === null ||
-      value.latest_graph_revision === undefined ||
-      isGraphRevision(value.latest_graph_revision))
+    isPaperConfig(value.config)
   );
 }
 
@@ -86,11 +83,6 @@ export function isRun(value: Record<string, unknown>): boolean {
     isOneOf(value.status, RUN_STATUSES) &&
     isRecord(value.config) &&
     isPaperConfig(value.config) &&
-    isOptionalNullable(value.bot_graph_revision_id, isUuid) &&
-    isOptionalNullable(
-      value.graph_revision,
-      (revision) => isNonnegativeInteger(revision) && revision >= runtimeContract.minimumGraphRevisionNumber,
-    ) &&
     isOptionalNullable(value.started_at, isFiniteDateTime) &&
     isOptionalNullable(value.ended_at, isFiniteDateTime) &&
     isOptionalNullable(value.heartbeat_at, isFiniteDateTime) &&
@@ -99,31 +91,7 @@ export function isRun(value: Record<string, unknown>): boolean {
     isOptionalNullable(value.latest_equity, isDecimal) &&
     (value.equity_status === null ||
       value.equity_status === undefined ||
-      isOneOf(value.equity_status, VALUATION_STATUSES)) &&
-    (value.graph === null || value.graph === undefined || isNodeGraph(value.graph))
-  );
-}
-
-export function isGraphTemplate(value: Record<string, unknown>): boolean {
-  return (
-    isUuid(value.id) &&
-    isNonemptyString(value.name) &&
-    value.name.length <= catalogContract.graphTemplate.maximumNameLength &&
-    isFiniteDateTime(value.created_at) &&
-    isFiniteDateTime(value.updated_at) &&
-    isNodeGraph(value.graph)
-  );
-}
-
-export function isGraphRevision(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    isUuid(value.id) &&
-    isUuid(value.bot_id) &&
-    isNonnegativeInteger(value.revision) &&
-    value.revision >= runtimeContract.minimumGraphRevisionNumber &&
-    isFiniteDateTime(value.created_at) &&
-    isNodeGraph(value.graph)
+      isOneOf(value.equity_status, VALUATION_STATUSES))
   );
 }
 
@@ -133,6 +101,7 @@ export function isHealthResponse(value: Record<string, unknown>): boolean {
 
 function isPaperConfig(value: Record<string, unknown>): boolean {
   return (
+    (value.graph === null || value.graph === undefined || isNodeGraph(value.graph)) &&
     isNonemptyString(value.name) &&
     isPositiveDecimal(value.paper_portfolio_usdc) &&
     isPositiveDecimal(value.max_order_size) &&

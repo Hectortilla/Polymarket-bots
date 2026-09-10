@@ -14,7 +14,7 @@ from api.bots.errors import (
     BotHasActiveRunsError,
     BotUnavailableError,
 )
-from api.bots.models import BotRow, BotGraphRevisionRow
+from api.bots.models import BotRow
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
@@ -24,8 +24,6 @@ from api.http.routes.paths import (
     BOT_PATH,
     BOTS_PATH,
     BOT_RUNS_PATH,
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
     RUN_PATH,
     RUNS_PATH,
     RUN_EVENTS_PATH,
@@ -37,11 +35,11 @@ from api.runs.status import RunStatus, TERMINAL_RUN_STATUSES
 from api.runs.store import RunStore
 from polybot.framework.clock import system_now_utc
 
+from control_plane.limits_fixtures import limits_services as limits_services
 from control_plane.auth_fixtures import TEST_HEADERS
 from control_plane.limits_fixtures import (
     account_app,
     account_bot,
-    limits_services,
     queue_run,
     resource_services,
 )
@@ -88,10 +86,11 @@ def test_deleted_bot_is_hidden_but_owned_history_and_graph_survive(limits_servic
             async with sessions() as session:
                 bot = await BotStore(session, user.id).create(
                     definition_id=NODE_BASED_DEFINITION_ID,
-                    config=CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
+                    config=CATALOG[NODE_BASED_DEFINITION_ID]
+                    .parse_config(
                         {"name": "retained graph", "market_slugs": ["fixture"]}
-                    ),
-                    graph=STARTER_NODE_GRAPH,
+                    )
+                    .model_copy(update={"graph": STARTER_NODE_GRAPH}, deep=True),
                 )
             run = await queue_run(sessions, bot)
             async with sessions() as session:
@@ -136,21 +135,6 @@ def test_deleted_bot_is_hidden_but_owned_history_and_graph_survive(limits_servic
                 assert (
                     await client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot.id))
                 ).status_code == status.HTTP_404_NOT_FOUND
-                assert (
-                    await client.post(
-                        api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=bot.id),
-                        json={"graph": STARTER_NODE_GRAPH.model_dump(mode="json")},
-                    )
-                ).status_code == status.HTTP_404_NOT_FOUND
-                assert (
-                    await client.get(
-                        api_route_path(
-                            BOT_GRAPH_REVISION_PATH,
-                            bot_id=bot.id,
-                            revision_id=bot.latest_graph_revision.id,
-                        )
-                    )
-                ).status_code == status.HTTP_404_NOT_FOUND
                 assert [
                     item["id"]
                     for item in (await client.get(api_route_path(BOTS_PATH))).json()
@@ -160,9 +144,9 @@ def test_deleted_bot_is_hidden_but_owned_history_and_graph_survive(limits_servic
                 assert history[0]["bot_deleted"] is True
                 detail = await client.get(api_route_path(RUN_PATH, run_id=run.id))
                 assert detail.status_code == status.HTTP_200_OK
-                assert detail.json()["graph"] == STARTER_NODE_GRAPH.model_dump(
-                    mode="json"
-                )
+                assert detail.json()["config"][
+                    "graph"
+                ] == STARTER_NODE_GRAPH.model_dump(mode="json")
                 assert detail.json()["config"] == run.config.model_dump(mode="json")
                 assert detail.json()["bot_deleted"] is True
                 assert (
@@ -183,20 +167,10 @@ def test_deleted_bot_is_hidden_but_owned_history_and_graph_survive(limits_servic
                 assert (
                     await session.get(BotRow, bot.id)
                 ).config == bot.config.model_dump(mode="json")
-                assert (
-                    await session.get(BotGraphRevisionRow, bot.latest_graph_revision.id)
-                    is not None
-                )
                 assert await EventStore(session).read(run.id) == events_before
                 assert await SavedResourceAllowance(session, user.id).count_bots() == 1
                 assert (
                     await BotStore(session, user.id).update_config(bot.id, bot.config)
-                    is None
-                )
-                assert (
-                    await BotStore(session, user.id).append_revision(
-                        bot.id, STARTER_NODE_GRAPH
-                    )
                     is None
                 )
                 with pytest.raises(BotUnavailableError):

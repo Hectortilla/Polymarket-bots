@@ -28,7 +28,6 @@ from api.http.routes.paths import (
     BOT_PATH,
     BOT_RUNS_PATH,
     BOTS_PATH,
-    GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
     RUN_EVENTS_PATH,
     RUN_EVENTS_STREAM_PATH,
@@ -240,19 +239,11 @@ class DeploymentSmoke:
                 login = client.post(api_route_path(LOGIN_PATH), json=credentials)
                 login.raise_for_status()
                 self.sensitive_values.update(login.cookies.values())
-            template = first.post(
-                api_route_path(GRAPH_TEMPLATES_PATH),
-                json={
-                    "name": "TLS acceptance graph",
-                    "graph": STARTER_NODE_GRAPH.model_dump(mode="json"),
-                },
-            )
-            template.raise_for_status()
             response = first.post(
                 api_route_path(BOTS_PATH),
                 json={
                     "definition_id": NODE_BASED_DEFINITION_ID,
-                    "graph_template_id": template.json()["id"],
+                    "graph": STARTER_NODE_GRAPH.model_dump(mode="json"),
                     "inputs": {
                         "name": "TLS acceptance",
                         "market_slugs": ["browser-market"],

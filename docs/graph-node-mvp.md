@@ -37,9 +37,9 @@ includes both endpoints. Select has an explicit result type, inferred by its sel
 node setting rather than a user-inserted cast. Its alternatives must have that type.
 
 Custom parameters have a stable ID, a name and a typed value. Parameter nodes refer
-to the graph-level definition, so the value is stored once per revision. Saving a
-parameter change creates a new bot graph revision. Active runs retain the exact
-revision and parameter values they were launched with.
+to the graph-level definition, so the value is stored once in the configuration graph. Saving a parameter change
+updates the bot configuration. Each run retains the exact graph and parameter
+values copied into its configuration snapshot at launch.
 
 ## Unavailable data and graph execution
 

@@ -92,8 +92,7 @@ supporting private modules are not prescribed:
 - `api.catalog.values`: dependency-light `DefinitionId`,
   `SelectionMode`, `WidgetKind`, label, and widget-key contracts;
   `api.catalog.contracts`: `BotDefinitionDescriptor`.
-- `api.bots.contracts`: saved-bot request/read and immutable
-  graph-revision contracts.
+- `api.bots.contracts`: saved-bot request/read contracts.
 - `api.catalog.graphs.values`: dependency-light graph enums,
   limits, and semantic handle values;
   `api.catalog.graphs.types`: constrained identifiers, field
@@ -121,10 +120,7 @@ supporting private modules are not prescribed:
   `LiveStreamHealthEvent`, their `LiveRunEvent` union, and the `chart.sample`
   durable variant when it first implements live observability cadence.
 - `api.execution.launcher`: the `RunLauncher` protocol.
-- `api.graph_templates`: editable catalog contracts, row, and
-  persistence operations.
-- `api.bots`: saved-bot and immutable graph-revision
-  contracts, rows, and persistence operations.
+- `api.bots`: complete saved-bot configurations and atomic persistence operations.
 
 Finite wire values are `StrEnum`s. The generated frontend types come from these
 Pydantic models through FastAPI OpenAPI. Tests import the enums; they do not copy
@@ -147,8 +143,7 @@ plain Pydantic models.
 `SelectionMode` has exactly `user_configured`, `bot_managed`, and `absent`.
 `WidgetKind` contains only schema-driven form widgets: decimal, market slugs,
 wallet addresses, and stream rules. Graph canvases use the separate
-`graph_catalog` and `starter_graph` descriptor fields rather than pretending a
-graph is part of `PaperRunConfig`.
+`graph_catalog` and `starter_graph` descriptor fields for authoring; the saved graph itself lives inside `PaperRunConfig`.
 
 `BotDefinitionDescriptor` has exactly:
 
@@ -167,13 +162,14 @@ graph is part of `PaperRunConfig`.
 
 - `definition_id`
 - `inputs`
-- `graph_template_id` (nullable)
+- `graph`
 
-Graph-capable definitions require the template ID; other definitions forbid it.
+Graph-capable definitions require a graph; other definitions forbid one.
 
 `BotUpdate` has exactly:
 
-- `inputs` (the complete non-graph launch inputs)
+- `inputs`
+- `graph`
 
 The bot name remains a field in the definition's schema rather than a second
 top-level copy. External request and definition launch models reject unknown
@@ -190,9 +186,9 @@ Python imports, enum construction, and Pydantic model construction provide the
 checks; do not add a second startup-validation framework. Definition IDs are
 unique by construction in one code-owned mapping.
 
-`PaperRunConfig` is the complete persisted paper snapshot and contains only the
-non-sensitive `BotConfig` inputs used by web runs:
+`PaperRunConfig` is the complete saved configuration and run snapshot:
 
+- `graph`
 - `name`
 - `stream_rules`
 - `data_trades_budget_per_10s`
@@ -203,8 +199,8 @@ non-sensitive `BotConfig` inputs used by web runs:
 - `event_max_age_ms`
 - `paper_portfolio_usdc`
 
-Graph JSON is deliberately absent. Templates and immutable bot-owned revisions
-are the only graph persistence owners.
+The graph is stored inside this same document. Each bot owns one editable
+configuration, and each run owns an independent immutable copy.
 
 Decimal values serialize as canonical decimal strings. Fields prohibited by the
 product specification's **Trust Boundary** are absent rather than accepted and
@@ -212,10 +208,11 @@ then rejected. Conversion to the existing `BotConfig` supplies paper mode and
 credential-free values itself.
 
 During alpha, bot definitions and node graphs have no public version field. The
-code-owned catalog and generated client move together. Slice 15 ends the implicit
-disposable-database policy: databases containing accounts require explicit forward
-migrations and preservation of owned resource snapshots. The approved pre-auth
-reset is a one-time transition, not a standing authorization to delete account data. A future stabilization slice may deliberately
+code-owned catalog and generated client move together. The September 10 user-approved
+configuration simplification updates the original `0001` migration because nothing
+has been deployed and local data is disposable. Existing local databases must be
+recreated; no backfill or compatibility layer is provided. Future retained deployments
+require forward migrations. A future stabilization slice may deliberately
 introduce versioning when persisted compatibility becomes a product requirement.
 
 The current graph MVP contract and execution semantics are specified in
@@ -237,12 +234,11 @@ The saved-bot boundary performs the only request normalization:
 1. Parse `BotCreate` or `BotUpdate`.
 2. Resolve its code-owned definition ID.
 3. Parse `inputs` with that definition's launch model.
-4. Convert once to `PaperRunConfig`.
-5. For a graph-capable create, copy the selected template into revision 1 in
-   the same transaction as the new bot.
+4. Validate the graph against the definition and include it in `PaperRunConfig`.
+5. Save settings and graph together in one transaction, for both creation and edits.
 
-Starting a bot locks its row, copies the current config into a queued run,
-references its latest graph revision, commits, and only then calls
+Starting a bot locks its row, deep-copies the complete current JSON document into
+`runs.config_snapshot`, commits, and only then calls
 `RunLauncher.launch(run_id)`.
 
 Delivery failures preserve the committed queued row for Slice 18 recovery.
@@ -251,68 +247,43 @@ A lost post-commit Redis wake is recovered by periodic PostgreSQL SSE replay.
 
 ## Persistence Contract
 
-### Graph template row
-
-`graph_templates` has exactly:
-
-- `owner_user_id` (required, indexed user foreign key)
-- `id` (UUID primary key)
-- `name` (unique per owner, trimmed)
-- `graph` (validated `NodeGraph` JSON)
-- `created_at`
-- `updated_at`
-
-Templates are mutable and are never referenced by bots or runs.
-
-### Saved bot and graph revision rows
+### Saved bot row
 
 `bots` has exactly:
 
-- `owner_user_id` (required, indexed user foreign key)
-- `id` (UUID primary key)
-- `definition_id` (immutable)
-- `config` (editable resolved `PaperRunConfig` JSON)
+- `owner_user_id`
+- `id`
+- `definition_id`
+- `config`
 - `created_at`
 - `updated_at`
-- `deleted_at` (nullable soft-deletion timestamp)
-
-`bot_graph_revisions` has exactly:
-
-- `id` (UUID primary key)
-- `bot_id` (owning saved-bot foreign key)
-- `revision` (positive and sequential per bot)
-- `graph` (exact validated `NodeGraph` JSON)
-- `created_at`
-
-`(bot_id, revision)` is unique. Revisions are append-only and may be referenced
-by many runs of their one owning bot. No template provenance is retained.
+- `deleted_at`
 
 ### Run row
 
 The final v0 run row has exactly:
 
-- `id` (UUID primary key)
-- `bot_id` (required saved-bot foreign key)
+- `id`
+- `bot_id`
 - `definition_id`
-- `config` (`PaperRunConfig` JSON)
-- `bot_graph_revision_id` (nullable)
-- `status` (`RunStatus`)
+- `config_snapshot`
+- `status`
 - `created_at`
-- `started_at` (nullable)
-- `ended_at` (nullable)
-- `heartbeat_at` (nullable)
-- `launch_key` (nullable UUID)
-- `execution_token` (nullable UUID)
-- `delivery_attempted_at` (nullable timestamp)
-- `failure_detail` (nullable, sanitized)
-- `history_expired_at` (nullable timestamp; hidden, partially purged terminal history)
+- `started_at`
+- `ended_at`
+- `heartbeat_at`
+- `launch_key`
+- `execution_token`
+- `delivery_attempted_at`
+- `failure_detail`
+- `history_expired_at`
 
-The composite `(bot_id, bot_graph_revision_id)` foreign key prevents a run from
-using another bot's revision. Graph-capable definitions require a revision and
-other definitions require null; this rule is owned by the catalog. Do not add
-separate launch-input/config copies, updated/claimed/stop timestamps,
-latest-summary columns, vendor execution-backend fields or user IDs. Slice 18
-adds only its internal launch identity, execution token and delivery timestamp.
+The run owns its configuration snapshot, including the graph. Graph-capable
+definitions require a graph and other definitions require null; the catalog owns
+this rule. Workers validate the stored snapshot and never load the current bot
+configuration for execution. Bot edits therefore cannot affect queued or active
+runs. The bot foreign key remains for ownership and history after soft deletion.
+Do not persist a second copy of launch inputs or duplicate graph fields.
 Current summaries come from durable events. ECS can add its own reference when
 an ECS slice actually exists.
 
@@ -409,7 +380,7 @@ Taskiq concurrency is a separate local process ceiling.
 
 After a successful claim, `execute_run`:
 
-1. resolves and validates the run's exact owned graph revision once;
+1. validates the run's complete configuration snapshot, including its graph;
 2. converts the already-decoded `PaperRunConfig` to the existing `BotConfig`;
 3. resolves the code-owned factory by definition ID and creates the bot with
    the decoded run config and resolved graph;
@@ -556,20 +527,14 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 - `GET /usage` — authenticated account allowances and current owned resource counts.
 - `GET /markets/search?q=&limit=` — bounded active market suggestions via the official SDK.
 - `POST /markets/lookup` — read-only exact metadata lookup for selected slugs.
-- `POST /graph-templates` — create a reusable graph template.
-- `GET /graph-templates` — list graph templates by name.
-- `GET /graph-templates/{template_id}` — read one template.
-- `PATCH /graph-templates/{template_id}` — update its name and/or graph.
-- `POST /bots` — validate and save a bot; graph-capable bots copy a template.
+- `POST /bots` — validate and atomically save settings and graph.
 - `GET /bots` — list non-deleted saved bots, newest updated first.
-- `GET /bots/{bot_id}` — read one saved bot and its latest graph revision.
-- `PATCH /bots/{bot_id}` — replace its validated non-graph configuration.
+- `GET /bots/{bot_id}` — read one saved bot and its complete configuration.
+- `PATCH /bots/{bot_id}` — atomically replace its validated settings and graph.
 - `DELETE /bots/{bot_id}` — soft-delete an owned bot; return empty `204`, `409`
   while any run is nonterminal, or the normal `404` for missing, deleted or
   foreign-owned bots. All configuration/revision endpoints and new launches
   exclude deleted bots.
-- `POST /bots/{bot_id}/graph-revisions` — append an immutable graph revision.
-- `GET /bots/{bot_id}/graph-revisions/{revision_id}` — read an owned revision.
 - `POST /bots/{bot_id}/runs` — snapshot and launch the latest saved bot.
 - `GET /runs` — active runs plus retained terminal history from `HistorySelection`, newest first.
 - `GET /runs/{run_id}` — one run; Slice 12E adds its event-derived summary.
@@ -603,8 +568,9 @@ generic pagination framework, status filtering, or links in v0. Durable events
 use only the cursor page contract above because their append-only history can be
 unbounded.
 
-`RunRead` exposes the row fields, the parent bot’s `bot_deleted` flag, and the resolved graph revision number and
-exact graph for historical display. It also carries nullable `latest_equity`
+`RunRead` exposes public lifecycle fields, the parent bot’s `bot_deleted` flag,
+and the persisted `config_snapshot` under its public `config` field. That document
+contains the exact historical graph in `config.graph`. It also carries nullable `latest_equity`
 and `equity_status`, derived from the latest durable `chart.sample`, plus
 nullable `latest_runtime_failure`, derived from the latest durable
 `run.failure`. None of these computed views are persisted on the run row.
@@ -651,13 +617,11 @@ dependency error.
 - The new-bot page selects the graph-capable server definition internally and
   presents configuration plus graph editing as one form. It starts from the
   descriptor's starter graph or another bot's latest graph.
-- Bot creation uses the existing graph-template endpoint as an internal
-  compatibility step before `POST /bots` copies revision 1. The frontend does
-  not expose template selection or management, and the legacy template route
-  redirects to the new-bot page.
-- The bot detail page saves settings and graph changes from one workspace,
-  appends graph revisions when needed, and runs only when there are no unsaved
-  changes. Run detail always shows the exact historical revision.
+- Bot creation sends settings and graph directly to `POST /bots`; there is no
+  intermediate template resource or template allowance.
+- Bot detail saves settings and graph together with one `PATCH /bots/{bot_id}`
+  request. Run is disabled while changes are unsaved. Run detail displays the
+  executed graph from its configuration snapshot, without revision numbers.
 - Wrap Apache ECharts in one thin `EChart.svelte` component that owns init,
   option updates, resize, and dispose. Pages and domain components do not call
   ECharts lifecycle APIs.
@@ -767,7 +731,7 @@ explicitly trust only a controlled reverse proxy that overwrites forwarded heade
 Never configure wildcard forwarded-address trust. Duplicate signup returns a
 generic 409; wrong/unknown login shares a generic 401 and Argon2 work pattern.
 
-The initial migration creates mandatory bot/template ownership on a fresh schema.
+The initial migration creates mandatory bot ownership on a fresh schema.
 The September 10 local history consolidation and disposable-data reset are approved;
 old databases use the explicit recreation script, never an implicit owner backfill.
 Future resets of retained account data require explicit authorization.
@@ -834,11 +798,9 @@ Sources and the pinned password/email library APIs were checked September 8, 202
 
 ### Resource ownership and execution
 
-- Add a non-null, indexed `bots.owner_user_id` foreign key to users and an
-  equivalent owner field on mutable `graph_templates`. Change template-name
-  uniqueness from global to per-owner. Assign owners server-side and exclude
-  ownership from accepted create/update bodies.
-- Runs inherit through `runs.bot_id`; graph revisions through their `bot_id`;
+- `bots.owner_user_id` is a required indexed foreign key to users. Assign owners
+  server-side and exclude ownership from accepted create/update bodies.
+- Runs inherit through `runs.bot_id`;
   events and summaries through their run. Do not duplicate user ownership on
   these child rows. Owner changes remain unsupported. Soft deletion sets
   `bots.deleted_at` under the same bot-row lock used by edits and launches, after
@@ -849,8 +811,7 @@ Sources and the pinned password/email library APIs were checked September 8, 202
   browser to display a deleted-configuration label instead of an edit link; run
   details, immutable graphs and events remain subject to normal retention.
 - Scope list and resource queries by the current user inside owning stores.
-  Apply the same policy to bot config changes, revision reads/appends, template
-  CRUD/copy, run creation/read/stop, summaries, durable event pagination, and
+  Apply the same policy to bot configuration changes, run creation/read/stop, summaries, durable event pagination, and
   SSE replay/live delivery. Authorize references as well as target IDs before
   copying data or committing/enqueueing side effects. Existing row locking and
   snapshot consistency still apply.
@@ -864,7 +825,7 @@ Sources and the pinned password/email library APIs were checked September 8, 202
   reconnect. Browser logout closes its streams immediately. Preserve durable
   replay and cursor semantics without leaking whether another user's run exists.
 - Continue exposing code-owned starter/example graphs as shared catalog data
-  to authenticated users. Do not convert user-created templates into shared
+  to authenticated users. Do not convert user-created bot graphs into shared
   catalog entries or add public access paths yet.
 
 ### Frontend and completed implementation checkpoints
@@ -878,8 +839,7 @@ post-login return path must stay within the application origin.
 
 The policy checkpoint and local alpha reset were explicitly approved September 8,
 2026. `api.auth` owns password hashing, credential ingress, PostgreSQL sessions,
-Redis attempt limits, CSRF checks and stream authorization. `BotStore` and
-`GraphTemplateStore` require an explicit current-user ID; `RunStore.read_owned`
+Redis attempt limits, CSRF checks and stream authorization. `BotStore` requires an explicit current-user ID; `RunStore.read_owned`
 and `list_owned` join through the bot, while trusted worker operations continue
 using persisted run IDs. HTTP authorization happens before event reads, summaries,
 stop transitions and launch delivery. No session token enters Taskiq payloads.
@@ -890,8 +850,7 @@ fresh restoration. A bounded current-user refresh detects expiry even on idle or
 historical pages. Redirect targets accept only local paths. Generated contracts
 and the generated runtime fixture supply account response shapes and form limits.
 
-The consolidated initial migration creates ownership and per-owner template-name
-uniqueness directly. Downgrade to `base` removes the complete schema. The approved
+The consolidated initial migration creates bot ownership directly. Downgrade to `base` removes the complete schema. The approved
 local reset does not authorize future deletion of retained account data.
 
 Verification lives in `backend/tests/control_plane/test_auth.py` and
@@ -936,8 +895,8 @@ Preview cash and operation scalar defaults have named catalog contracts.
 
 Backend event payload families and frontend durable-event validators separate
 lifecycle, broker, portfolio, and chart responsibilities behind one event dispatch
-boundary. Response validation distinguishes revision append (updated saved bot)
-from revision detail (graph revision). Canvas projections, factories, catalog
+boundary. Response validation checks complete bot configurations and run snapshots,
+including their nested graph. Canvas projections, factories, catalog
 lookup, and connection/port rules have distinct frontend modules. Home, bot
 builder, run detail, chart dashboard, and failure-detail styles live near their
 owners; tokens, shell, reset, controls, and shared primitives remain global.
@@ -1118,7 +1077,7 @@ key. Account access has one Python/SQL predicate covering both suspension and
 restore quarantine. Run history age/count selection is shared by reads and cleanup.
 Maintenance runs under recovery supervision; deletion uses the same admission →
 account → run lock order as launch/operator controls. Physical removal follows
-event → run → graph revision → bot → identity references; stale execution leases
+event → run → bot → identity references; stale execution leases
 cannot write after terminal transition or purge.
 
 Host-only `scripts.beta_backup` uses PostgreSQL container utilities and age, with
@@ -1131,7 +1090,7 @@ approved policy, manual reconciliation and non-database secret custody.
 
 The private guided-setup route composes the existing catalog examples, `LaunchForm`
 and market selector into choose/configure/review steps. It calls `SavedBotDraft`,
-shared with the full editor, to create a private template and saved bot. The
+shared with the full editor, to create a saved bot in one request. The
 `savedDraft` package owns confirmed-write state, a separate write-result adapter
 and UI feedback; HTTP client rejection classification is shared with launch. Confirmed
 writes are reused during an in-page retry. Unknown write outcomes block further

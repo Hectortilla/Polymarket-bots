@@ -39,7 +39,6 @@ class AccountUsageReader:
             ),
             queued_runs=counts.get(RunStatus.QUEUED, 0),
             saved_bots=await self._saved.count_bots(),
-            saved_templates=await self._saved.count_templates(),
             retained_runs=await self._retained_run_count(),
         )
 

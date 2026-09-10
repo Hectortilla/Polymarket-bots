@@ -90,9 +90,6 @@
     "maximumLimit": 20,
     "maximumSelections": 10
   },
-  "graphTemplate": {
-    "maximumNameLength": 200
-  },
   "widgetSchemaKey": "x-widget",
   "graphFieldPathSeparator": ".",
   "graphFieldPathSegmentPattern": "^[A-Za-z_][A-Za-z0-9_]*$",

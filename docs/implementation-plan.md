@@ -1439,66 +1439,49 @@ Acceptance:
 - `uv run pytest`, `npm run generate:check`, `npm run check`, `npm test`, and
   `npm run build` pass.
 
-## Slice 13D: Graph Templates, Saved Bots, and Revision Persistence
+## Slice 13D: Saved Bots and Complete Run Snapshots
 
-Status: implemented; depends on Slice 13C.
+Status: implemented; persistence simplified with user approval on September 10.
+Supersedes the original template-copy and immutable graph-revision design.
 
-- Add editable `graph_templates`, reusable `bots`, and immutable
-  `bot_graph_revisions` rows.
-- Remove graph JSON from `PaperRunConfig`. A graph-capable bot copies a
-  template into revision 1; later graph saves append one sequential revision.
-- Add required `bot_id` and nullable `bot_graph_revision_id` to runs. Enforce
-  revision ownership with a composite foreign key while retaining the run's
-  complete paper-config snapshot.
-- Rewrite the disposable alpha migration rather than adding compatibility or
-  backfill behavior.
+- Each `bots.config` JSONB document contains paper settings and the complete graph.
+- Each run stores an independent deep copy in `runs.config_snapshot` at creation.
+- Keep the bot foreign key for ownership, soft deletion and retained history.
+- Remove template/revision tables, references, resource accounting and edit caps.
+- Rewrite the sole undeployed migration `0001`; the user authorized losing all local
+  data. No backfill, compatibility migration, or automatic deployed reset is added.
 
-Acceptance covers exact graph JSON restoration, unique template names,
-positive sequential revisions, one-bot revision ownership, multiple runs per
-revision, isolation in both edit directions, and database recreation.
+## Slice 13E: Atomic Saved-Bot APIs and Snapshot Execution
 
-## Slice 13E: Saved-Bot APIs and Runtime Resolution
+Status: implemented; updated by the same configuration simplification.
 
-Status: implemented; depends on Slice 13D.
+- Create and update accept complete inputs plus graph and commit them atomically.
+- Lock the saved bot while copying its complete config into a run; commit before
+  enqueueing. Retain launch idempotency, admission and account ownership.
+- Workers read the run snapshot, including its graph, without graph-revision lookup.
+- Missing, malformed, required or forbidden graph state fails closed.
+- Remove template and revision endpoints; regenerate OpenAPI and frontend contracts.
 
-- Add graph-template CRUD, saved-bot create/list/read/update, graph-revision
-  append/read, and `POST /bots/{bot_id}/runs`.
-- Remove direct `POST /runs`; existing run list/detail/stop/event/SSE routes
-  remain.
-- Lock the bot row for configuration edits, revision appends, and run creation.
-  Commit the exact config/revision snapshot before enqueueing work.
-- Resolve the run's owned graph revision once before bot construction. Missing,
-  malformed, cross-bot, required, or forbidden graph state fails closed before
-  broker submission.
-- Regenerate OpenAPI and the generated frontend client.
+## Slice 13F: Unified Node-Bot Browser Workflows
 
-Acceptance covers invalid references and definition/graph combinations,
-transactional template copying, launch-delivery failure, concurrent edit/run
-serialization, worker fail-closed behavior, and historical snapshots.
+Status: implemented; updated by the same configuration simplification.
 
-## Slice 13F: Node-Bot Browser Workflows
+- Create a bot directly from settings and graph in one request; starter examples
+  and copying another bot's graph remain independent draft operations.
+- Save settings and graph together; keep Run disabled while changes are unsaved.
+- Show the executed graph from the run snapshot without revision numbering.
+- Show active, queued and saved-bot allowances only; no template counter or limit.
 
-Status: implemented; depends on Slice 13E.
+Acceptance covers exact JSON and decimal preservation, independent copied bots,
+queued-run isolation from edits, atomic invalid-save rejection, concurrent
+edit/launch serialization, duplicate launches, worker failures, soft deletion,
+account isolation, fresh migration parity, frontend workflows and generated contracts.
 
-- Present configured node-based bots as the only user-facing bot concept.
-- Combine configuration and graph editing into one new-bot form. Start with the
-  catalog graph or a copy of another bot's latest graph.
-- Keep the existing graph-template endpoint as an internal creation
-  compatibility step; do not expose template selection or management.
-- Add saved-bot detail with configuration, latest graph editing, unified save,
-  and a Run action disabled by unsaved changes.
-- Show the bot link and exact executed graph revision on run detail.
-
-Acceptance covers one-form bot creation, copying an existing bot graph, graph
-revision saving, unsaved-change protection, rerunning the latest saved revision,
-and historical run display.
-
-Documentation-drift audit: complete. The README, architecture, web
-architecture/specification, and bot-author guide describe the unified node-bot
-workspace, internal creation copy, saved-bot launches, and immutable historical
-revisions consistently. Earlier
-Slice 13A–13C text remains as historical slice scope and is superseded by
-Slices 13D–13F where their persistence or launch contracts differ.
+Documentation-drift audit: current README, architecture, product specification,
+author guide, graph authoring and lifecycle documentation describe one bot
+configuration and independent run snapshots. Historical acceptance notes for later
+slices record their original verification; references there to templates or graph
+revisions are superseded by this simplification. No Polymarket protocol changes.
 
 ## Market Search and Multi-Selection Follow-Up
 
@@ -1536,12 +1519,12 @@ soft-delete behavior.
   states in the rejection guard. Never implicitly stop a run when deleting.
 - Include nullable `bots.deleted_at` in the sole initial migration `0001`.
   The approved undeployed/local consolidation requires recreating old databases.
-  During normal use, soft deletion retains configurations, revisions and run ownership.
+  During normal use, soft deletion retains configurations and run snapshots.
 - Add owned `DELETE /bots/{bot_id}` with `204` success, `409` for nonterminal runs
   and `404` for missing, foreign or already deleted configurations. Serialize
   deletion with launches and edits on the bot row; reject stale launch snapshots.
 - Hide deleted bots from configuration reads/lists, editing, graph copying,
-  revision endpoints and launches. Exclude them from saved-bot usage.
+  and launches. Exclude them from saved-bot usage.
 - Keep historical run reads/lists, graphs and events under their existing ownership
   and retention rules. Expose `RunRead.bot_deleted` for the historical-page label.
 - Add a confirmation/cancel flow on bot detail, explain active-run conflicts, block
@@ -1578,7 +1561,7 @@ implementation, relevant tests and documentation updates pass.
 
 This slice supersedes the four-node/scalar, null-comparison-false, action-only
 terminal, stateless-evaluator and unavailable-context constraints recorded in
-Slices 13A–13C. Persistence and immutable run revisions from Slices 13D–13F remain.
+Slices 13A–13C. Complete configurations and immutable run snapshots follow the revised Slices 13D–13F.
 The graph interface now has Number, Boolean and Text, with exact decimal strings
 for Number. See [graph behavior and authoring](graph-node-mvp.md) for the complete
 operation set, arithmetic policy, context API, signal-consumption rules, bounds,
@@ -1664,7 +1647,7 @@ Acceptance:
   application routes require authentication. This unit alone does not claim
   per-user resource isolation.
 
-### Slice 15B: Private Bot, Template, and Run Access
+### Slice 15B: Private Bot and Run Access
 
 Status: implemented; depends on 15A.
 
@@ -1672,11 +1655,10 @@ Minimum deliverable:
 
 - Resolve the existing-data checkpoint before migrations: an explicitly
   authorized alpha reset or an explicit owner backfill, as defined in the
-  architecture. Preserve existing run/revision foreign-key invariants.
-- Add bot/template ownership, per-owner template-name uniqueness, and scoped
-  queries. Assign ownership only from the authenticated user; no owner-edit or
+  architecture. Preserve existing bot/run foreign-key invariants.
+- Add bot ownership and scoped queries. Assign ownership only from the authenticated user; no owner-edit or
   ownership-transfer endpoint exists.
-- Apply one ownership rule through all bot/template/revision/run and event
+- Apply one ownership rule through all bot/run and event
   paths, including copy, reference lookup, launch, stop, summary, pagination,
   and SSE. Authenticate catalogs, preview, and market endpoints too.
 - Keep trusted worker execution independent of user sessions and preserve
@@ -1689,12 +1671,10 @@ Acceptance:
 - A two-user integration scenario proves private lists and denial of guessed
   foreign IDs on every read/mutation/event path. Inaccessible IDs return the
   same outcome as missing IDs; no private data or queued work escapes first.
-- A user cannot copy another user's bot/template, append/read its revisions,
-  launch/stop its runs, or subscribe/replay its events, including through a
-  valid owned target with a foreign nested reference.
-- Different users can reuse template names; same-owner uniqueness remains
-  enforced. Spoofed owner fields cannot assign or change ownership.
-- Runs/revisions/events inherit ownership correctly, without child user IDs.
+- A user cannot read or copy another user's bot configuration, launch/stop its
+  runs, or subscribe/replay its events. Configuration and graph are owned together.
+- Spoofed owner fields cannot assign or change ownership.
+- Runs/events inherit ownership correctly, without child user IDs.
   Authorized background runs continue after logout, while stream access ends
   within the specified bound and reconnects require a valid session.
 - Migration tests cover the selected existing-data policy; ownership is
@@ -1740,8 +1720,8 @@ capabilities, and public deployment. A later marketplace slice may publish and
 copy snapshots; it must not widen this slice's private-run access policy.
 
 Implementation: `api.auth` owns identity, secrets, sessions, ingress protection
-and bounded SSE rechecks. Mandatory bot/template owner keys scope private resources;
-run/revision/event ownership remains inherited. The static browser restores users
+and bounded SSE rechecks. Mandatory bot owner keys scope private resources;
+run/event ownership remains inherited. The static browser restores users
 before loading private pages and clears views/streams on logout, expiry or account
 switch. Auth settings and the one-time local database reset were explicitly approved.
 The consolidated initial migration creates mandatory ownership directly; it does
@@ -1760,7 +1740,7 @@ explicit owners. Generated contracts include auth error responses and shared
 runtime HTTP policy. Added regressions cover config rejection, stale restoration,
 malformed stored hashes, active-stream revocation and schema parity; acceptance
 CI uses real services and rejects skipped tests. The final review also centralizes
-typed browser session state, HTTP outcome adapters, owned revision predicates and
+typed browser session state, HTTP outcome adapters, owned snapshot queries and
 terminal stream completion, and validates aware SSE timestamps. Disposable harnesses validate
 local targets and clear only authentication throttle keys.
 
@@ -2149,7 +2129,7 @@ Minimum deliverable:
   non-database files actually needed by the hosted service.
 - Implement bounded, retry-safe cleanup of retained events/history using the
   approved per-account and global storage policy. Preserve active runs and
-  required bot/revision/run references; disclose expired history in the browser.
+  required bot/run references; disclose expired history in the browser.
 - Add an authenticated account/data deletion request and an explicit lifecycle:
   block new work, revoke access, stop/quiesce jobs, then remove eligible data in
   dependency order. Set the policy for minimal retained operational records and
@@ -2161,7 +2141,7 @@ Minimum deliverable:
 Acceptance:
 
 - Restore a real backup into an isolated environment and verify accounts,
-  ownership, bots/revisions and retained history with no accidental job launch.
+  ownership, bot configurations and retained history with no accidental job launch.
 - Cleanup respects retention boundaries, active jobs and foreign keys; repeated
   runs and interruption/retry do not corrupt data or bypass account isolation.
 - Deletion races with queued/running jobs cannot recreate removed data or permit

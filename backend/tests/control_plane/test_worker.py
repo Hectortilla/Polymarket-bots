@@ -8,7 +8,6 @@ from uuid import uuid4
 import api.execution.worker.lifecycle as worker_lifecycle
 import api.execution.worker.runtime as worker_runtime
 import pytest
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.catalog.definitions import (
     CATALOG,
     NODE_BASED_DEFINITION_ID,
@@ -326,7 +325,10 @@ def test_claimed_runtime_rejects_inconsistent_graph_contract_before_execution(
         else CATALOG[WINNER_DEFINITION_ID].parse_config({"name": "forbidden-graph"})
     )
     run = _run().model_copy(
-        update={"definition_id": definition_id, "config": config, "graph": graph}
+        update={
+            "definition_id": definition_id,
+            "config": config.model_copy(update={"graph": graph}, deep=True),
+        }
     )
 
     with pytest.raises(ValueError, match="graph is (forbidden|required)"):
@@ -349,10 +351,7 @@ def test_node_based_action_graph_submits_each_matching_event(
     run = _run().model_copy(
         update={
             "definition_id": NODE_BASED_DEFINITION_ID,
-            "config": config,
-            "bot_graph_revision_id": uuid4(),
-            "graph_revision": FIRST_GRAPH_REVISION_NUMBER,
-            "graph": graph,
+            "config": config.model_copy(update={"graph": graph}, deep=True),
         }
     )
     broker = AsyncMock(spec=Broker)
@@ -410,10 +409,7 @@ def test_node_based_runtime_uses_paper_broker_and_durable_event_path(
     run = _run().model_copy(
         update={
             "definition_id": NODE_BASED_DEFINITION_ID,
-            "config": config,
-            "bot_graph_revision_id": uuid4(),
-            "graph_revision": FIRST_GRAPH_REVISION_NUMBER,
-            "graph": graph,
+            "config": config.model_copy(update={"graph": graph}, deep=True),
         }
     )
     writer = _CollectingEventWriter()

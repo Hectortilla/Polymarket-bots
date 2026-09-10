@@ -24,27 +24,15 @@ from api.auth.schema import (
     UserColumn,
 )
 from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.bots.schema import (
-    BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISION_SEQUENCE_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISIONS_TABLE_NAME,
     BOTS_TABLE_NAME,
     BotColumn,
-    BotGraphRevisionColumn,
 )
 from api.events.schema import (
     RUN_EVENTS_CURSOR_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
     EventColumn,
     event_kind_column_type,
-)
-from api.graph_templates.names import GRAPH_TEMPLATE_NAME_MAX_LENGTH
-from api.graph_templates.schema import (
-    GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME,
-    GRAPH_TEMPLATES_TABLE_NAME,
-    GraphTemplateColumn,
 )
 from api.lifecycle.schema import (
     DELETION_REQUEST_TIME_INDEX,
@@ -64,7 +52,6 @@ from api.operations.schema import (
 from api.operations.schema import OperationControlColumn as ControlColumn
 from api.operations.schema import OperatorAuditColumn as AuditColumn
 from api.runs.schema import (
-    RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
     RUN_LAUNCH_KEY_CONSTRAINT_NAME,
     RUNS_TABLE_NAME,
     RunColumn,
@@ -137,45 +124,6 @@ def upgrade() -> None:
     )
     op.create_index(TOKEN_EXPIRY_INDEX, ACCOUNT_TOKENS_TABLE, [TokenColumn.EXPIRES_AT])
     op.create_table(
-        GRAPH_TEMPLATES_TABLE_NAME,
-        sa.Column(
-            GraphTemplateColumn.ID, postgresql.UUID(as_uuid=True), nullable=False
-        ),
-        sa.Column(
-            GraphTemplateColumn.NAME,
-            sa.String(length=GRAPH_TEMPLATE_NAME_MAX_LENGTH),
-            nullable=False,
-        ),
-        sa.Column(
-            GraphTemplateColumn.GRAPH,
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-        ),
-        sa.Column(
-            GraphTemplateColumn.CREATED_AT, sa.DateTime(timezone=True), nullable=False
-        ),
-        sa.Column(
-            GraphTemplateColumn.UPDATED_AT, sa.DateTime(timezone=True), nullable=False
-        ),
-        sa.Column(OWNER_USER_ID_COLUMN, postgresql.UUID(as_uuid=True), nullable=False),
-        sa.PrimaryKeyConstraint(GraphTemplateColumn.ID),
-        sa.UniqueConstraint(
-            OWNER_USER_ID_COLUMN,
-            GraphTemplateColumn.NAME,
-            name=GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME,
-        ),
-        sa.ForeignKeyConstraint(
-            [OWNER_USER_ID_COLUMN],
-            [USER_ID_REFERENCE],
-            name=f"fk_{GRAPH_TEMPLATES_TABLE_NAME}_owner",
-        ),
-    )
-    op.create_index(
-        f"ix_{GRAPH_TEMPLATES_TABLE_NAME}_{OWNER_USER_ID_COLUMN}",
-        GRAPH_TEMPLATES_TABLE_NAME,
-        [OWNER_USER_ID_COLUMN],
-    )
-    op.create_table(
         BOTS_TABLE_NAME,
         sa.Column(BotColumn.ID, postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(BotColumn.DEFINITION_ID, sa.String(), nullable=False),
@@ -199,55 +147,14 @@ def upgrade() -> None:
         [OWNER_USER_ID_COLUMN],
     )
     op.create_table(
-        BOT_GRAPH_REVISIONS_TABLE_NAME,
-        sa.Column(
-            BotGraphRevisionColumn.ID, postgresql.UUID(as_uuid=True), nullable=False
-        ),
-        sa.Column(
-            BotGraphRevisionColumn.BOT_ID, postgresql.UUID(as_uuid=True), nullable=False
-        ),
-        sa.Column(BotGraphRevisionColumn.REVISION, sa.Integer(), nullable=False),
-        sa.Column(
-            BotGraphRevisionColumn.GRAPH,
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-        ),
-        sa.Column(
-            BotGraphRevisionColumn.CREATED_AT,
-            sa.DateTime(timezone=True),
-            nullable=False,
-        ),
-        sa.CheckConstraint(
-            f"{BotGraphRevisionColumn.REVISION} >= {FIRST_GRAPH_REVISION_NUMBER}",
-            name=BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
-        ),
-        sa.ForeignKeyConstraint(
-            [BotGraphRevisionColumn.BOT_ID], [f"{BOTS_TABLE_NAME}.{BotColumn.ID}"]
-        ),
-        sa.PrimaryKeyConstraint(BotGraphRevisionColumn.ID),
-        sa.UniqueConstraint(
-            BotGraphRevisionColumn.BOT_ID,
-            BotGraphRevisionColumn.REVISION,
-            name=BOT_GRAPH_REVISION_SEQUENCE_CONSTRAINT_NAME,
-        ),
-        sa.UniqueConstraint(
-            BotGraphRevisionColumn.BOT_ID,
-            BotGraphRevisionColumn.ID,
-            name=BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
-        ),
-    )
-    op.create_table(
         RUNS_TABLE_NAME,
         sa.Column(RunColumn.ID, postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(RunColumn.BOT_ID, postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(RunColumn.DEFINITION_ID, sa.String(), nullable=False),
         sa.Column(
-            RunColumn.CONFIG, postgresql.JSONB(astext_type=sa.Text()), nullable=False
-        ),
-        sa.Column(
-            RunColumn.BOT_GRAPH_REVISION_ID,
-            postgresql.UUID(as_uuid=True),
-            nullable=True,
+            RunColumn.CONFIG_SNAPSHOT,
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
         ),
         sa.Column(RunColumn.STATUS, run_status_column_type(), nullable=False),
         sa.Column(RunColumn.CREATED_AT, sa.DateTime(timezone=True), nullable=False),
@@ -265,14 +172,6 @@ def upgrade() -> None:
         sa.Column(HISTORY_EXPIRED_AT_COLUMN, sa.DateTime(timezone=True)),
         sa.ForeignKeyConstraint(
             [RunColumn.BOT_ID], [f"{BOTS_TABLE_NAME}.{BotColumn.ID}"]
-        ),
-        sa.ForeignKeyConstraint(
-            [RunColumn.BOT_ID, RunColumn.BOT_GRAPH_REVISION_ID],
-            [
-                f"{BOT_GRAPH_REVISIONS_TABLE_NAME}.{BotGraphRevisionColumn.BOT_ID}",
-                f"{BOT_GRAPH_REVISIONS_TABLE_NAME}.{BotGraphRevisionColumn.ID}",
-            ],
-            name=RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
         ),
         sa.PrimaryKeyConstraint(RunColumn.ID),
         sa.UniqueConstraint(
@@ -348,9 +247,7 @@ def downgrade() -> None:
     op.drop_table(CONTROL_TABLE)
     op.drop_table(RUN_EVENTS_TABLE_NAME)
     op.drop_table(RUNS_TABLE_NAME)
-    op.drop_table(BOT_GRAPH_REVISIONS_TABLE_NAME)
     op.drop_table(BOTS_TABLE_NAME)
-    op.drop_table(GRAPH_TEMPLATES_TABLE_NAME)
     op.drop_table(ACCOUNT_TOKENS_TABLE)
     op.drop_table(SESSIONS_TABLE)
     op.drop_table(USERS_TABLE)

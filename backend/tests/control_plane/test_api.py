@@ -8,18 +8,12 @@ import api.http.dependencies as dependencies_module
 import api.http.openapi as openapi_module
 import api.http.routes.bots.run_launch as bot_run_routes
 import api.http.routes.bots.saved_bot as saved_bot_routes
-import api.http.routes.bots.validation as bot_validation
 import api.http.routes.events as events_routes
-import api.http.routes.graph_templates as graph_template_routes
 import api.http.routes.run_lookup as run_lookup
 import api.http.routes.runs as runs_routes
 import pytest
-from api.bots.contracts import BotCreate, BotGraphRevisionRead, BotRead, BotUpdate
-from api.bots.models import BotGraphRevisionRow, BotRow
-from api.bots.revisions import (
-    FIRST_GRAPH_REVISION_NUMBER,
-    next_graph_revision_number,
-)
+from api.bots.contracts import BotCreate, BotRead, BotUpdate
+from api.bots.models import BotRow
 from api.catalog.contracts import BotDefinitionDescriptor
 from api.catalog.definitions import (
     NODE_BASED_DEFINITION_ID,
@@ -47,8 +41,6 @@ from api.events.pagination import (
     next_event_page_cursor,
 )
 from api.events.store import StoredEventPage
-from api.graph_templates.contracts import GraphTemplateRead
-from api.graph_templates.models import GraphTemplateRow
 from api.http.app import app
 from api.http.contracts import HealthResponse
 from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
@@ -65,13 +57,9 @@ from api.http.routes.events import (
 from api.http.routes.paths import (
     API_PREFIX,
     BOT_DEFINITIONS_PATH,
-    BOT_GRAPH_REVISION_PATH,
-    BOT_GRAPH_REVISIONS_PATH,
     BOT_PATH,
     BOT_RUNS_PATH,
     BOTS_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
     HEALTH_PATH,
     RUN_EVENTS_PATH,
     RUN_EVENTS_STREAM_PATH,
@@ -85,7 +73,6 @@ from api.runs.failures import LaunchAttemptUnavailable
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
 from polybot.performance.contracts.valuation_status import ValuationStatus
-from sqlalchemy.exc import IntegrityError
 from fastapi import status
 
 from control_plane.auth_fixtures import TEST_USER_ID
@@ -115,7 +102,7 @@ def test_launch_list_detail_and_ingress_rejection(
     assert run["bot_id"] == bot["id"]
     assert "definition_version" not in run
     assert run["config"]["max_order_size"] == "2.500"
-    assert "graph" not in run["config"]
+    assert run["config"]["graph"] is None
     assert launcher.run_ids == [run["id"]]
     assert client.get(api_route_path(RUNS_PATH)).json() == [run]
     assert client.get(api_route_path(RUN_PATH, run_id=run["id"])).json() == run
@@ -186,9 +173,7 @@ def test_existing_launch_recovery_bypasses_current_admission_and_never_delivers(
     monkeypatch.setattr(_RunStore, "recover_existing_launch", recover, raising=False)
     monkeypatch.setattr(_RunStore, "create_from_bot", reject_fresh_work)
     monkeypatch.setattr(bot_run_routes, "require_catalog_entry", reject_fresh_work)
-    monkeypatch.setattr(
-        bot_run_routes, "require_run_revision_contract", reject_fresh_work
-    )
+    monkeypatch.setattr(bot_run_routes, "require_run_graph_contract", reject_fresh_work)
     monkeypatch.setattr(
         PaperRunConfig, "require_subscription_allowance", reject_fresh_work
     )
@@ -244,24 +229,20 @@ def test_node_graph_saved_bot_persists_exact_snapshot_and_rejects_invalid_graph(
     launcher = _Launcher()
     client = _client(monkeypatch, state, launcher=launcher)
     graph = threshold_buy_graph()
-    template = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Threshold", "graph": graph},
-    )
     body = {
         "definition_id": NODE_BASED_DEFINITION_ID,
         "inputs": {
             "name": "node-observer",
             "market_slugs": ["example-market"],
         },
-        "graph_template_id": template.json()["id"],
+        "graph": threshold_buy_graph(),
     }
     saved_bot = client.post(api_route_path(BOTS_PATH), json=body)
     launched = client.post(api_route_path(BOT_RUNS_PATH, bot_id=saved_bot.json()["id"]))
     invalid_graph = {**graph, "schema_version": 1}
     rejected_graph = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Invalid", "graph": invalid_graph},
+        api_route_path(BOTS_PATH),
+        json={**body, "graph": invalid_graph},
     )
     rejected_inputs = client.post(
         api_route_path(BOTS_PATH),
@@ -273,13 +254,11 @@ def test_node_graph_saved_bot_persists_exact_snapshot_and_rejects_invalid_graph(
     )
     forbidden_template = client.post(
         api_route_path(BOTS_PATH),
-        json={**_bot_body(), "graph_template_id": template.json()["id"]},
+        json={**_bot_body(), "graph": threshold_buy_graph()},
     )
 
     assert launched.status_code == 202
-    assert launched.json()["graph"] == graph
-    assert "graph" not in launched.json()["config"]
-    assert launched.json()["graph_revision"] == FIRST_GRAPH_REVISION_NUMBER
+    assert launched.json()["config"]["graph"] == graph
     assert rejected_graph.status_code == 422
     assert rejected_inputs.status_code == 422
     assert missing_template.status_code == 422
@@ -294,14 +273,10 @@ def test_saved_bot_rejects_unavailable_additions_without_writing(
     state = _State()
     client = _client(monkeypatch, state)
     discovery = client.app.state.market_discovery
-    template = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Selection test", "graph": threshold_buy_graph()},
-    )
     body = {
         "definition_id": NODE_BASED_DEFINITION_ID,
         "inputs": {"name": "selection test", "market_slugs": ["original"]},
-        "graph_template_id": template.json()["id"],
+        "graph": threshold_buy_graph(),
     }
     bot = client.post(api_route_path(BOTS_PATH), json=body).json()
     discovery.resolve.side_effect = None
@@ -310,7 +285,10 @@ def test_saved_bot_rejects_unavailable_additions_without_writing(
     rejected_create = client.post(api_route_path(BOTS_PATH), json=body)
     rejected_update = client.patch(
         api_route_path(BOT_PATH, bot_id=bot["id"]),
-        json={"inputs": {"name": "changed", "market_slugs": ["original", "missing"]}},
+        json={
+            "inputs": {"name": "changed", "market_slugs": ["original", "missing"]},
+            "graph": threshold_buy_graph(),
+        },
     )
     for response in (rejected_create, rejected_update):
         assert response.status_code == 422
@@ -321,183 +299,6 @@ def test_saved_bot_rejects_unavailable_additions_without_writing(
     assert (
         client.get(api_route_path(BOT_PATH, bot_id=bot["id"])).json()["config"]
         == bot["config"]
-    )
-
-
-def test_template_and_bot_graph_edits_are_isolated_revisions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = _client(monkeypatch, _State())
-    original_graph = threshold_buy_graph()
-    changed_graph = threshold_buy_graph()
-    changed_graph["nodes"][1]["data"]["value"] = "0.6000"
-    bot_graph = threshold_buy_graph()
-    bot_graph["nodes"][1]["data"]["value"] = "0.7000"
-    template = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Reusable", "graph": original_graph},
-    ).json()
-    bot = client.post(
-        api_route_path(BOTS_PATH),
-        json={
-            "definition_id": NODE_BASED_DEFINITION_ID,
-            "inputs": {"name": "isolated", "market_slugs": ["market"]},
-            "graph_template_id": template["id"],
-        },
-    ).json()
-
-    updated_template = client.patch(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"]),
-        json={"graph": changed_graph},
-    ).json()
-    unchanged_bot = client.get(api_route_path(BOT_PATH, bot_id=bot["id"])).json()
-    revision_two = client.post(
-        api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=bot["id"]),
-        json={"graph": bot_graph},
-    ).json()
-    unchanged_template = client.get(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"])
-    ).json()
-
-    assert updated_template["graph"] == changed_graph
-    assert unchanged_bot["latest_graph_revision"]["graph"] == original_graph
-    assert revision_two["latest_graph_revision"]["revision"] == (
-        FIRST_GRAPH_REVISION_NUMBER + 1
-    )
-    assert revision_two["latest_graph_revision"]["graph"] == bot_graph
-    assert unchanged_template["graph"] == changed_graph
-
-
-def test_template_and_saved_bot_crud_preserve_revision_ownership(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = _State()
-    client = _client(monkeypatch, state)
-    graph = threshold_buy_graph()
-    template = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "  Reusable graph  ", "graph": graph},
-    ).json()
-    bot = client.post(
-        api_route_path(BOTS_PATH),
-        json={
-            "definition_id": NODE_BASED_DEFINITION_ID,
-            "inputs": {"name": "before", "market_slugs": ["market"]},
-            "graph_template_id": template["id"],
-        },
-    ).json()
-    revision = bot["latest_graph_revision"]
-
-    updated_bot = client.patch(
-        api_route_path(BOT_PATH, bot_id=bot["id"]),
-        json={"inputs": {"name": "after", "market_slugs": ["market"]}},
-    )
-    read_revision = client.get(
-        api_route_path(
-            BOT_GRAPH_REVISION_PATH,
-            bot_id=bot["id"],
-            revision_id=revision["id"],
-        )
-    )
-    wrong_owner = client.get(
-        api_route_path(
-            BOT_GRAPH_REVISION_PATH,
-            bot_id=uuid4(),
-            revision_id=revision["id"],
-        )
-    )
-    non_graph_bot = _create_bot(client, name="plain")
-    forbidden_revision = client.post(
-        api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=non_graph_bot["id"]),
-        json={"graph": graph},
-    )
-    bots_before_missing_template = len(state.bots)
-    missing_template = client.post(
-        api_route_path(BOTS_PATH),
-        json={
-            "definition_id": NODE_BASED_DEFINITION_ID,
-            "inputs": {"name": "missing", "market_slugs": ["market"]},
-            "graph_template_id": str(uuid4()),
-        },
-    )
-
-    assert template["name"] == "Reusable graph"
-    assert client.get(api_route_path(GRAPH_TEMPLATES_PATH)).json() == [template]
-    assert (
-        client.get(
-            api_route_path(GRAPH_TEMPLATE_PATH, template_id=template["id"])
-        ).json()
-        == template
-    )
-    assert updated_bot.status_code == 200
-    assert updated_bot.json()["config"]["name"] == "after"
-    assert updated_bot.json()["latest_graph_revision"] == revision
-    assert {
-        saved_bot["id"] for saved_bot in client.get(api_route_path(BOTS_PATH)).json()
-    } == {
-        bot["id"],
-        non_graph_bot["id"],
-    }
-    assert read_revision.status_code == 200
-    assert read_revision.json() == revision
-    assert wrong_owner.status_code == 404
-    assert forbidden_revision.status_code == 422
-    assert missing_template.status_code == 404
-    assert len(state.bots) == bots_before_missing_template
-
-
-def test_graph_template_conflicts_and_missing_writes_preserve_state(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = _State()
-    client = _client(monkeypatch, state)
-    graph = threshold_buy_graph()
-    first = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Reusable", "graph": graph},
-    ).json()
-    second = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Other", "graph": graph},
-    ).json()
-
-    duplicate = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": first["name"], "graph": graph},
-    )
-    conflicting_rename = client.patch(
-        api_route_path(GRAPH_TEMPLATE_PATH, template_id=second["id"]),
-        json={"name": first["name"]},
-    )
-    missing_id = uuid4()
-
-    assert duplicate.status_code == 409
-    assert conflicting_rename.status_code == 409
-    assert (
-        client.get(
-            api_route_path(GRAPH_TEMPLATE_PATH, template_id=missing_id)
-        ).status_code
-        == 404
-    )
-    assert (
-        client.patch(
-            api_route_path(GRAPH_TEMPLATE_PATH, template_id=missing_id),
-            json={"name": "Missing"},
-        ).status_code
-        == 404
-    )
-    assert (
-        client.patch(
-            api_route_path(GRAPH_TEMPLATE_PATH, template_id=first["id"]),
-            json={},
-        ).status_code
-        == 422
-    )
-    assert (
-        client.get(
-            api_route_path(GRAPH_TEMPLATE_PATH, template_id=second["id"])
-        ).json()["name"]
-        == "Other"
     )
 
 
@@ -515,16 +316,11 @@ def test_missing_saved_bot_routes_have_no_side_effects(
             api_route_path(BOT_PATH, bot_id=missing_id),
             json={"inputs": {"name": "Missing"}},
         ),
-        client.post(
-            api_route_path(BOT_GRAPH_REVISIONS_PATH, bot_id=missing_id),
-            json={"graph": threshold_buy_graph()},
-        ),
         client.post(api_route_path(BOT_RUNS_PATH, bot_id=missing_id)),
     )
 
     assert all(response.status_code == 404 for response in responses)
     assert state.bots == {}
-    assert state.revisions == {}
     assert state.runs == {}
     assert launcher.run_ids == []
 
@@ -536,34 +332,24 @@ def test_run_launch_rejects_inconsistent_persisted_graph_contracts(
     launcher = _Launcher()
     client = _client(monkeypatch, state, launcher=launcher)
     graph = threshold_buy_graph()
-    template = client.post(
-        api_route_path(GRAPH_TEMPLATES_PATH),
-        json={"name": "Graph", "graph": graph},
-    ).json()
     graph_bot = client.post(
         api_route_path(BOTS_PATH),
         json={
             "definition_id": NODE_BASED_DEFINITION_ID,
             "inputs": {"name": "graph", "market_slugs": ["market"]},
-            "graph_template_id": template["id"],
+            "graph": threshold_buy_graph(),
         },
     ).json()
     graph_bot_id = graph_bot["id"]
-    state.bots[graph_bot_id] = state.bots[graph_bot_id].model_copy(
-        update={"latest_graph_revision": None}
-    )
+    state.bots[graph_bot_id].config.graph = None
     plain_bot = _create_bot(client, name="plain")
     plain_bot_id = plain_bot["id"]
-    state.bots[plain_bot_id] = state.bots[plain_bot_id].model_copy(
-        update={
-            "latest_graph_revision": BotGraphRevisionRead(
-                id=uuid4(),
-                bot_id=state.bots[plain_bot_id].id,
-                revision=FIRST_GRAPH_REVISION_NUMBER,
-                graph=graph,
-                created_at=datetime.now(UTC),
-            )
-        }
+    state.bots[plain_bot_id].config.graph = (
+        state.bots[graph_bot_id]
+        .config.model_validate(
+            {**state.bots[graph_bot_id].config.model_dump(mode="json"), "graph": graph}
+        )
+        .graph
     )
 
     missing_revision = client.post(api_route_path(BOT_RUNS_PATH, bot_id=graph_bot_id))
@@ -660,16 +446,12 @@ def test_graph_snapshot_survives_api_stop_and_launch_failure(
     graph = threshold_buy_graph()
 
     def create_graph_bot(client: TestClient, name: str) -> dict[str, object]:
-        template = client.post(
-            api_route_path(GRAPH_TEMPLATES_PATH),
-            json={"name": f"{name} template", "graph": graph},
-        ).json()
         return client.post(
             api_route_path(BOTS_PATH),
             json={
                 "definition_id": NODE_BASED_DEFINITION_ID,
                 "inputs": {"name": name, "market_slugs": ["example-market"]},
-                "graph_template_id": template["id"],
+                "graph": threshold_buy_graph(),
             },
         ).json()
 
@@ -692,13 +474,12 @@ def test_graph_snapshot_survives_api_stop_and_launch_failure(
         api_route_path(BOT_RUNS_PATH, bot_id=failed_bot["id"])
     ).json()
 
-    for run, status in (
+    for run, expected_status in (
         (stopped, RunStatus.STOPPED),
         (failed, RunStatus.QUEUED),
     ):
-        assert run["status"] == status
-        assert run["graph_revision"] == FIRST_GRAPH_REVISION_NUMBER
-        assert run["graph"] == graph
+        assert run["status"] == expected_status
+        assert run["config"]["graph"] == graph
 
 
 def test_health_requires_postgres_and_redis(
@@ -910,19 +691,12 @@ def test_documented_exact_field_inventories_match_contract_owners() -> None:
         BotUpdate.model_fields
     )
     assert documented_fields_after(
-        "`PaperRunConfig` is the complete persisted paper snapshot and contains only "
-        "the\nnon-sensitive `BotConfig` inputs used by web runs:"
+        "`PaperRunConfig` is the complete saved configuration and run snapshot:"
     ) == tuple(PaperRunConfig.model_fields)
     assert documented_fields_after("The final v0 run row has exactly:") == tuple(
         RunRow.model_fields
     )
-    assert documented_fields_after("`graph_templates` has exactly:") == tuple(
-        GraphTemplateRow.model_fields
-    )
     assert documented_fields_after("`bots` has exactly:") == tuple(BotRow.model_fields)
-    assert documented_fields_after("`bot_graph_revisions` has exactly:") == tuple(
-        BotGraphRevisionRow.model_fields
-    )
 
 
 def test_frontend_run_constants_match_backend_contract() -> None:
@@ -1006,14 +780,8 @@ def _client(
     launcher: "_Launcher | None" = None,
 ) -> TestClient:
     monkeypatch.setattr(saved_bot_routes, "BotStore", _BotStore)
-    monkeypatch.setattr(bot_validation, "GraphTemplateStore", _GraphTemplateStore)
     monkeypatch.setattr(bot_run_routes, "BotStore", _BotStore)
     monkeypatch.setattr(bot_run_routes, "RunStore", _RunStore)
-    monkeypatch.setattr(
-        graph_template_routes,
-        "GraphTemplateStore",
-        _GraphTemplateStore,
-    )
     monkeypatch.setattr(runs_routes, "RunStore", _RunStore)
     monkeypatch.setattr(runs_routes, "ApiRunLifecycle", _ApiRunLifecycle)
     monkeypatch.setattr(run_lookup, "RunStore", _RunStore)
@@ -1092,8 +860,6 @@ class _State:
         self.database_ready = database_ready
         self.runs: dict[str, RunRead] = {}
         self.bots: dict[str, BotRead] = {}
-        self.templates: dict[str, GraphTemplateRead] = {}
-        self.revisions: dict[str, BotGraphRevisionRead] = {}
         self.next_event_id = 1
         self.terminal_event_count = 0
         self.events: list[DurableEvent] = []
@@ -1125,82 +891,18 @@ class _Session:
         return None
 
 
-class _GraphTemplateStore:
-    def __init__(self, session: _Session, owner_user_id) -> None:
-        assert owner_user_id == TEST_USER_ID
-        self.state = session.state
-
-    async def create(self, request) -> GraphTemplateRead:
-        self._raise_if_name_conflicts(request.name)
-        now = datetime.now(UTC)
-        template = GraphTemplateRead(
-            id=uuid4(),
-            name=request.name,
-            graph=request.graph,
-            created_at=now,
-            updated_at=now,
-        )
-        self.state.templates[str(template.id)] = template
-        return template
-
-    async def read(self, template_id) -> GraphTemplateRead | None:
-        return self.state.templates.get(str(template_id))
-
-    async def list(self) -> tuple[GraphTemplateRead, ...]:
-        return tuple(
-            sorted(
-                self.state.templates.values(),
-                key=lambda template: (template.name, str(template.id)),
-            )
-        )
-
-    async def update(self, template_id, request) -> GraphTemplateRead | None:
-        existing = self.state.templates.get(str(template_id))
-        if existing is None:
-            return None
-        if request.name is not None:
-            self._raise_if_name_conflicts(request.name, excluding=template_id)
-        updated = existing.model_copy(
-            update={
-                "name": request.name or existing.name,
-                "graph": request.graph or existing.graph,
-                "updated_at": datetime.now(UTC),
-            }
-        )
-        self.state.templates[str(template_id)] = updated
-        return updated
-
-    def _raise_if_name_conflicts(self, name, *, excluding=None) -> None:
-        if any(
-            template.name == name and template.id != excluding
-            for template in self.state.templates.values()
-        ):
-            raise IntegrityError("duplicate graph template name", {}, Exception())
-
-
 class _BotStore:
     def __init__(self, session: _Session, owner_user_id) -> None:
         assert owner_user_id == TEST_USER_ID
         self.state = session.state
 
-    async def create(self, *, definition_id, config, graph) -> BotRead:
+    async def create(self, *, definition_id, config) -> BotRead:
         now = datetime.now(UTC)
         bot_id = uuid4()
-        revision = None
-        if graph is not None:
-            revision = BotGraphRevisionRead(
-                id=uuid4(),
-                bot_id=bot_id,
-                revision=FIRST_GRAPH_REVISION_NUMBER,
-                graph=graph,
-                created_at=now,
-            )
-            self.state.revisions[str(revision.id)] = revision
         bot = BotRead(
             id=bot_id,
             definition_id=definition_id,
             config=config,
-            latest_graph_revision=revision,
             created_at=now,
             updated_at=now,
         )
@@ -1229,50 +931,17 @@ class _BotStore:
         self.state.bots[str(bot_id)] = updated
         return updated
 
-    async def append_revision(self, bot_id, graph) -> BotRead | None:
-        bot = self.state.bots.get(str(bot_id))
-        if bot is None:
-            return None
-        revision = BotGraphRevisionRead(
-            id=uuid4(),
-            bot_id=bot.id,
-            revision=next_graph_revision_number(
-                None
-                if bot.latest_graph_revision is None
-                else bot.latest_graph_revision.revision
-            ),
-            graph=graph,
-            created_at=datetime.now(UTC),
-        )
-        self.state.revisions[str(revision.id)] = revision
-        updated = bot.model_copy(
-            update={
-                "latest_graph_revision": revision,
-                "updated_at": revision.created_at,
-            }
-        )
-        self.state.bots[str(bot_id)] = updated
-        return updated
-
-    async def read_revision(self, bot_id, revision_id) -> BotGraphRevisionRead | None:
-        revision = self.state.revisions.get(str(revision_id))
-        return revision if revision is not None and revision.bot_id == bot_id else None
-
 
 class _RunStore:
     def __init__(self, session: _Session, owner_user_id=None) -> None:
         self.state = session.state
 
     async def create_from_bot(self, bot: BotRead, *, launch_key=None) -> RunRead:
-        revision = bot.latest_graph_revision
         run = RunRead(
             id=uuid4(),
             bot_id=bot.id,
             definition_id=bot.definition_id,
-            config=bot.config,
-            bot_graph_revision_id=revision.id if revision else None,
-            graph_revision=revision.revision if revision else None,
-            graph=revision.graph if revision else None,
+            config=bot.config.model_copy(deep=True),
             status=RunStatus.QUEUED,
             created_at=datetime.now(UTC),
         )
@@ -1410,3 +1079,39 @@ def _openapi_route_methods(
         for method, operation in path_item.items()
         if isinstance(operation, dict) and "operationId" in operation
     }
+
+
+def test_atomic_bot_save_rejects_invalid_graph_without_changing_settings(monkeypatch):
+    client = _client(monkeypatch, _State())
+    body = {
+        "definition_id": NODE_BASED_DEFINITION_ID,
+        "inputs": {"name": "before", "market_slugs": ["market"]},
+        "graph": threshold_buy_graph(),
+    }
+    bot = client.post(api_route_path(BOTS_PATH), json=body).json()
+    first = client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"])).json()
+    path = api_route_path(BOT_PATH, bot_id=bot["id"])
+    invalid = client.patch(
+        path,
+        json={
+            "inputs": {**body["inputs"], "name": "after"},
+            "graph": {"nodes": [], "edges": []},
+        },
+    )
+    assert invalid.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert client.get(path).json()["config"] == bot["config"]
+    edited_graph = threshold_buy_graph()
+    edited_graph["nodes"][1]["position"]["x"] += 1
+    saved = client.patch(
+        path,
+        json={"inputs": {**body["inputs"], "name": "after"}, "graph": edited_graph},
+    )
+    assert saved.status_code == status.HTTP_200_OK
+    assert saved.json()["config"]["name"] == "after"
+    assert saved.json()["config"]["graph"] == edited_graph
+    assert (
+        client.get(api_route_path(RUN_PATH, run_id=first["id"])).json()["config"]
+        == bot["config"]
+    )
+    second = client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"])).json()
+    assert second["config"] == saved.json()["config"]

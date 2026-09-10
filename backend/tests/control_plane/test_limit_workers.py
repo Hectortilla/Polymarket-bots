@@ -139,7 +139,7 @@ def test_owned_history_bound_preserves_old_active_and_queued_runs(limits_service
                         RunRow(
                             bot_id=bot.id,
                             definition_id=bot.definition_id,
-                            config=bot.config.model_dump(mode="json"),
+                            config_snapshot=bot.config.model_dump(mode="json"),
                             status=RunStatus.STOPPED,
                             created_at=now + timedelta(seconds=index),
                             ended_at=now,

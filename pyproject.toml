@@ -119,7 +119,6 @@ packages = [
   "api.catalog.graphs",
   "api.catalog.node_based",
   "api.catalog.node_based.evaluator",
-  "api.graph_templates",
   "api.runs",
   "api.events",
   "api.events.health",

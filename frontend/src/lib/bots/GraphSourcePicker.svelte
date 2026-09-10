@@ -22,9 +22,7 @@
 
   const START_FRESH = "__start_fresh__";
   const graphBots = $derived(
-    bots.filter(
-      (bot) => bot.id !== excludeBotId && bot.latest_graph_revision !== null && bot.latest_graph_revision !== undefined,
-    ),
+    bots.filter((bot) => bot.id !== excludeBotId && bot.config.graph !== null && bot.config.graph !== undefined),
   );
   let selectedSource = $state(START_FRESH);
 
@@ -39,7 +37,7 @@
       return;
     }
     const source = graphBots.find((bot) => bot.id === selectedSource);
-    const graph = source?.latest_graph_revision?.graph;
+    const graph = source?.config.graph;
     if (source && graph) {
       onselect(cloneNodeGraph(graph), source.config.name);
     }

@@ -50,7 +50,7 @@
         listBotsApiV1BotsGet({ throwOnError: true }),
       ]);
       descriptor = definitionsResponse.data.find(hasGraphCapability);
-      bots = botsResponse.data.filter((bot) => bot.latest_graph_revision);
+      bots = botsResponse.data.filter((bot) => bot.config.graph);
       if (!hasGraphCapability(descriptor)) {
         error = BOT_BUILDER_COPY.MISSING_DEFINITION;
         return;

@@ -55,7 +55,7 @@ async def onboarding_runtime(run, observer, *, execution_scope):
         activity=ObserverActivitySink(observer),
         clock=clock,
     )
-    bot = CATALOG[run.definition_id].create_bot(config, run.graph)
+    bot = CATALOG[run.definition_id].create_bot(config, run.config.graph)
     runner = BotRunner(bot, ctx, now_ms_fn=clock.now_ms)
     await observer.start(config)
     observer.emit(RuntimeStarted.from_config(config))

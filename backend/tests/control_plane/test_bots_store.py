@@ -1,7 +1,7 @@
 """Focused tests for saved-bot persistence behavior."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 from api.bots.models import BotRow
 from api.bots.store import BotStore
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from control_plane.auth_fixtures import TEST_USER_ID
 
 
-def test_list_materializes_bots_after_loading_latest_revisions() -> None:
+def test_list_materializes_complete_bots_without_additional_queries() -> None:
     first_config = CATALOG[WINNER_DEFINITION_ID].parse_config(
         {"name": "first", "max_order_size": "1"}
     )
@@ -35,11 +35,10 @@ def test_list_materializes_bots_after_loading_latest_revisions() -> None:
     session = AsyncMock(spec=AsyncSession)
     session.execute.return_value = result
     store = BotStore(session, TEST_USER_ID)
-    store.latest_revision = AsyncMock(return_value=None)
 
     bots = asyncio.run(store.list())
 
     assert tuple(bot.id for bot in bots) == tuple(row.id for row in rows)
     assert tuple(bot.config.name for bot in bots) == ("first", "second")
-    assert all(bot.latest_graph_revision is None for bot in bots)
-    store.latest_revision.assert_has_awaits([call(row.id) for row in rows])
+    assert all(bot.config.graph is None for bot in bots)
+    session.execute.assert_awaited_once()

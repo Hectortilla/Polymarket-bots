@@ -5,7 +5,7 @@ import subprocess
 
 from api.auth.recovery.schema import ACCOUNT_TOKENS_TABLE
 from api.auth.schema import SESSIONS_TABLE, USERS_TABLE, UserColumn
-from api.bots.schema import BOT_GRAPH_REVISIONS_TABLE_NAME, BOTS_TABLE_NAME
+from api.bots.schema import BOTS_TABLE_NAME
 from api.deployment.services import POSTGRES_SERVICE, REDIS_SERVICE, DeploymentService
 from api.events.schema import RUN_EVENTS_TABLE_NAME
 from api.lifecycle.schema import RESTORE_QUARANTINED_AT_COLUMN
@@ -165,7 +165,6 @@ class BackupRehearsal:
         for table in (
             USERS_TABLE,
             BOTS_TABLE_NAME,
-            BOT_GRAPH_REVISIONS_TABLE_NAME,
             RUNS_TABLE_NAME,
             RUN_EVENTS_TABLE_NAME,
         ):

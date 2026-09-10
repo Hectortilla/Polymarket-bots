@@ -26,7 +26,3 @@ export function botRowLabel(name: string): string {
 export function runRowLabel(name: string, createdAtLabel: string): string {
   return `Open run for ${name} created ${createdAtLabel}`;
 }
-
-export function graphRevisionLabel(revision: number): string {
-  return `revision ${revision}`;
-}

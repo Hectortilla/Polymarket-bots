@@ -16,14 +16,8 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from api.auth.models import UserRow
-from api.bots.contracts import BotRead
-from api.bots.models import BotGraphRevisionRow, BotRow
-from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
+from api.bots.models import BotRow
 from api.bots.schema import (
-    BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISION_SEQUENCE_CONSTRAINT_NAME,
-    BOT_GRAPH_REVISIONS_TABLE_NAME,
     BOTS_TABLE_NAME,
 )
 from api.bots.store import BotStore
@@ -63,20 +57,8 @@ from api.events.store import EventStore
 from api.events.writer import RunEventWriter
 from api.execution.config import REDIS_URL_ENV
 from api.execution.worker import execute_run
-from api.graph_templates.contracts import (
-    GraphTemplateCreate,
-    GraphTemplateUpdate,
-)
-from api.graph_templates.models import GraphTemplateRow
-from api.graph_templates.schema import (
-    GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME,
-    GRAPH_TEMPLATES_TABLE_NAME,
-)
-from api.graph_templates.store import GraphTemplateStore
 from api.http.routes.paths import (
     BOT_RUNS_PATH,
-    GRAPH_TEMPLATE_PATH,
-    GRAPH_TEMPLATES_PATH,
     api_route_path,
 )
 from api.runs.contracts import RunRead
@@ -84,7 +66,6 @@ from api.runs.failures import INTERRUPTION_DETAIL
 from api.runs.models import RunRow
 from api.runs.schema import (
     INTERNAL_RUN_COLUMNS,
-    RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
     RUN_STATUS_CONSTRAINT_NAME,
     RUNS_TABLE_NAME,
     RunColumn,
@@ -93,7 +74,6 @@ from api.runs.status import RunStatus
 from api.runs.store import RunStore
 from httpx import ASGITransport, AsyncClient
 from polybot.cli.observability.broker import ObservableBroker
-from polybot.framework.clock import system_now_utc
 from polybot.framework.context import BotContext
 from polybot.framework.events import FillEvent, FillRejectReason
 from polybot.framework.events.books import BookLevel, BookSnapshot
@@ -142,7 +122,7 @@ def _run_insert_statement() -> TextClause:
     values = ", ".join(
         (
             f"CAST(:{column.value} AS JSONB)"
-            if column is RunColumn.CONFIG
+            if column is RunColumn.CONFIG_SNAPSHOT
             else f":{column.value}"
         )
         for column in RunColumn
@@ -163,8 +143,7 @@ async def _create_run(
         session, owner_user_id or await ensure_test_user(session)
     ).create(
         definition_id=definition_id,
-        config=config,
-        graph=graph,
+        config=config.model_copy(update={"graph": graph}, deep=True),
     )
     return await RunStore(session).create_from_bot(bot)
 
@@ -266,9 +245,7 @@ def test_initial_migration_upgrade_and_downgrade_schema_and_cursor_index() -> No
     assert RUNS_TABLE_NAME in table_names
     assert RUN_EVENTS_TABLE_NAME in table_names
     assert {
-        GRAPH_TEMPLATES_TABLE_NAME,
         BOTS_TABLE_NAME,
-        BOT_GRAPH_REVISIONS_TABLE_NAME,
     }.issubset(table_names)
     assert set(column["name"] for column in columns) == set(
         RunRow.__table__.columns.keys()
@@ -284,65 +261,6 @@ def test_initial_migration_upgrade_and_downgrade_schema_and_cursor_index() -> No
     assert primary_key["constrained_columns"] == [RunRow.id.name]
     assert {check["name"] for check in checks} == {RUN_STATUS_CONSTRAINT_NAME}
 
-    async def inspect_saved_bot_schema() -> dict[str, object]:
-        engine = create_async_engine(url)
-        async with engine.connect() as connection:
-
-            def inspect_all(sync_connection):
-                inspector = inspect(sync_connection)
-                return {
-                    "template_columns": inspector.get_columns(
-                        GRAPH_TEMPLATES_TABLE_NAME
-                    ),
-                    "template_uniques": inspector.get_unique_constraints(
-                        GRAPH_TEMPLATES_TABLE_NAME
-                    ),
-                    "bot_columns": inspector.get_columns(BOTS_TABLE_NAME),
-                    "revision_columns": inspector.get_columns(
-                        BOT_GRAPH_REVISIONS_TABLE_NAME
-                    ),
-                    "revision_checks": inspector.get_check_constraints(
-                        BOT_GRAPH_REVISIONS_TABLE_NAME
-                    ),
-                    "revision_uniques": inspector.get_unique_constraints(
-                        BOT_GRAPH_REVISIONS_TABLE_NAME
-                    ),
-                    "run_foreign_keys": inspector.get_foreign_keys(RUNS_TABLE_NAME),
-                }
-
-            result = await connection.run_sync(inspect_all)
-        await engine.dispose()
-        return result
-
-    saved_bot_schema = asyncio.run(inspect_saved_bot_schema())
-    assert set(
-        column["name"] for column in saved_bot_schema["template_columns"]
-    ) == set(GraphTemplateRow.__table__.columns.keys())
-    assert set(column["name"] for column in saved_bot_schema["bot_columns"]) == set(
-        BotRow.__table__.columns.keys()
-    )
-    assert tuple(
-        column["name"] for column in saved_bot_schema["revision_columns"]
-    ) == tuple(BotGraphRevisionRow.__table__.columns.keys())
-    assert {
-        constraint["name"] for constraint in saved_bot_schema["template_uniques"]
-    } == {GRAPH_TEMPLATE_NAME_CONSTRAINT_NAME}
-    assert {
-        constraint["name"] for constraint in saved_bot_schema["revision_checks"]
-    } == {BOT_GRAPH_REVISION_NUMBER_CONSTRAINT_NAME}
-    assert {
-        constraint["name"] for constraint in saved_bot_schema["revision_uniques"]
-    } == {
-        BOT_GRAPH_REVISION_SEQUENCE_CONSTRAINT_NAME,
-        BOT_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME,
-    }
-    run_foreign_keys = saved_bot_schema["run_foreign_keys"]
-    assert any(
-        foreign_key["name"] == RUN_GRAPH_REVISION_OWNERSHIP_CONSTRAINT_NAME
-        and foreign_key["constrained_columns"]
-        == [RunColumn.BOT_ID, RunColumn.BOT_GRAPH_REVISION_ID]
-        for foreign_key in run_foreign_keys
-    )
     assert tuple(column["name"] for column in event_columns) == tuple(
         EventRow.__table__.columns.keys()
     )
@@ -371,17 +289,15 @@ def test_initial_migration_upgrade_and_downgrade_schema_and_cursor_index() -> No
         async with AsyncSession(engine, expire_on_commit=False) as session:
             bot = await BotStore(session, await ensure_test_user(session)).create(
                 definition_id=WINNER_DEFINITION_ID,
-                config=CATALOG[WINNER_DEFINITION_ID].parse_config(
-                    {"name": "constraint"}
-                ),
-                graph=None,
+                config=CATALOG[WINNER_DEFINITION_ID]
+                .parse_config({"name": "constraint"})
+                .model_copy(update={"graph": None}, deep=True),
             )
         statement = _run_insert_statement()
         common_values = {
             RunColumn.BOT_ID.value: bot.id,
             RunColumn.DEFINITION_ID.value: "definition",
-            RunColumn.CONFIG.value: json.dumps({}),
-            RunColumn.BOT_GRAPH_REVISION_ID.value: None,
+            RunColumn.CONFIG_SNAPSHOT.value: json.dumps({}),
             RunColumn.STATUS.value: RunStatus.QUEUED.value,
             RunColumn.CREATED_AT.value: datetime.now(UTC),
             RunColumn.STARTED_AT.value: None,
@@ -414,8 +330,7 @@ def test_initial_migration_upgrade_and_downgrade_schema_and_cursor_index() -> No
             RunColumn.ID.value: run_id,
             RunColumn.BOT_ID.value: bot_id,
             RunColumn.DEFINITION_ID.value: "definition",
-            RunColumn.CONFIG.value: json.dumps({}),
-            RunColumn.BOT_GRAPH_REVISION_ID.value: None,
+            RunColumn.CONFIG_SNAPSHOT.value: json.dumps({}),
             RunColumn.STATUS.value: RunStatus.QUEUED.value,
             RunColumn.CREATED_AT.value: datetime.now(UTC),
             RunColumn.STARTED_AT.value: None,
@@ -521,16 +436,14 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
                     id=uuid4(),
                     bot_id=first.bot_id,
                     definition_id=definition_id,
-                    config=config.model_dump(mode="json"),
-                    bot_graph_revision_id=first.bot_graph_revision_id,
+                    config_snapshot=config.model_dump(mode="json"),
                     created_at=tied_at,
                 ),
                 RunRow(
                     id=uuid4(),
                     bot_id=first.bot_id,
                     definition_id=definition_id,
-                    config=config.model_dump(mode="json"),
-                    bot_graph_revision_id=first.bot_graph_revision_id,
+                    config_snapshot=config.model_dump(mode="json"),
                     created_at=tied_at,
                 ),
             )
@@ -547,11 +460,13 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
 
     assert isinstance(restored, RunRead)
     assert restored.status is RunStatus.QUEUED
-    assert restored.config.model_dump(mode="json") == config.model_dump(mode="json")
+    assert restored.config.model_dump(mode="json") == config.model_copy(
+        update={"graph": expected_graph}
+    ).model_dump(mode="json")
     assert restored.config.max_order_size.as_tuple() == config.max_order_size.as_tuple()
     assert restored.config.stream_rules[0].relation is StreamRelation.INDEPENDENT
     assert restored.config.stream_rules[0].market_slugs == ("example-market",)
-    assert restored.graph == expected_graph
+    assert restored.config.graph == expected_graph
     assert missing is None
     run_ids = tuple(run.id for run in runs)
     assert tuple(run_id for run_id in run_ids if run_id in {first.id, second.id}) == (
@@ -561,181 +476,6 @@ def test_run_store_round_trip_restores_typed_config_and_newest_first() -> None:
     assert tuple(
         run_id for run_id in run_ids if run_id in {row.id for row in tied_rows}
     ) == tuple(sorted((row.id for row in tied_rows), reverse=True))
-
-
-@pytest.mark.postgres
-def test_template_bot_revision_and_run_snapshots_are_isolated() -> None:
-    url = _postgres_url()
-    alembic_config = _alembic_config(url)
-    command.downgrade(alembic_config, "base")
-    command.upgrade(alembic_config, "head")
-    updated_graph = NodeGraph.model_validate(threshold_buy_graph())
-    config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-        {"name": "isolated", "market_slugs": ["example-market"]}
-    )
-
-    async def scenario() -> None:
-        engine = create_async_engine(url)
-        async with AsyncSession(engine, expire_on_commit=False) as session:
-            template_store = GraphTemplateStore(
-                session, await ensure_test_user(session)
-            )
-            template = await template_store.create(
-                GraphTemplateCreate(name="Reusable", graph=STARTER_NODE_GRAPH)
-            )
-            first_bot = await BotStore(session, await ensure_test_user(session)).create(
-                definition_id=NODE_BASED_DEFINITION_ID,
-                config=config,
-                graph=template.graph,
-            )
-            first_run = await RunStore(session).create_from_bot(first_bot)
-
-            await template_store.update(
-                template.id,
-                GraphTemplateUpdate(graph=updated_graph),
-            )
-            revision_two = await BotStore(
-                session, await ensure_test_user(session)
-            ).append_revision(
-                first_bot.id,
-                updated_graph,
-            )
-            assert revision_two is not None
-            revised_bot = await BotStore(session, await ensure_test_user(session)).read(
-                first_bot.id
-            )
-            assert revised_bot is not None
-            second_run = await RunStore(session).create_from_bot(revised_bot)
-            await RunStore(session).request_stop(first_run.id, now=system_now_utc())
-            third_run = await RunStore(session).create_from_bot(revised_bot)
-
-            current_template = await template_store.read(template.id)
-            original_revision = await BotStore(
-                session, await ensure_test_user(session)
-            ).read_revision(
-                first_bot.id,
-                first_bot.latest_graph_revision.id,
-            )
-            assert current_template is not None
-            assert current_template.graph == updated_graph
-            assert original_revision is not None
-            assert original_revision.graph == STARTER_NODE_GRAPH
-            assert first_run.graph == STARTER_NODE_GRAPH
-            assert second_run.graph == updated_graph
-            assert second_run.bot_graph_revision_id == third_run.bot_graph_revision_id
-
-            second_bot = await BotStore(
-                session, await ensure_test_user(session)
-            ).create(
-                definition_id=NODE_BASED_DEFINITION_ID,
-                config=config.model_copy(update={"name": "other"}),
-                graph=current_template.graph,
-            )
-            assert second_bot.latest_graph_revision is not None
-            assert (
-                second_bot.latest_graph_revision.id
-                != revised_bot.latest_graph_revision.id
-            )
-            session.add(
-                RunRow(
-                    bot_id=second_bot.id,
-                    definition_id=second_bot.definition_id,
-                    config=second_bot.config.model_dump(mode="json"),
-                    bot_graph_revision_id=revised_bot.latest_graph_revision.id,
-                )
-            )
-            with pytest.raises(IntegrityError):
-                await session.commit()
-            await session.rollback()
-        await engine.dispose()
-
-    try:
-        asyncio.run(scenario())
-    finally:
-        command.downgrade(alembic_config, "base")
-
-
-@pytest.mark.postgres
-def test_persistence_updates_preserve_owned_graph_snapshots() -> None:
-    url = _postgres_url()
-    alembic_config = _alembic_config(url)
-    command.downgrade(alembic_config, "base")
-    command.upgrade(alembic_config, "head")
-
-    async def scenario() -> None:
-        engine = create_async_engine(url)
-        session_factory = async_sessionmaker(engine, expire_on_commit=False)
-        graph_config = CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-            {"name": "before-update", "market_slugs": ["example-market"]}
-        )
-        async with session_factory() as session:
-            template_store = GraphTemplateStore(
-                session, await ensure_test_user(session)
-            )
-            template = await template_store.create(
-                GraphTemplateCreate(name="Before rename", graph=STARTER_NODE_GRAPH)
-            )
-            renamed = await template_store.update(
-                template.id,
-                GraphTemplateUpdate(name="After rename"),
-            )
-            assert renamed is not None
-            assert renamed.name == "After rename"
-            assert renamed.graph == STARTER_NODE_GRAPH
-            assert renamed.updated_at >= template.updated_at
-
-            bot_store = BotStore(session, await ensure_test_user(session))
-            graph_bot = await bot_store.create(
-                definition_id=NODE_BASED_DEFINITION_ID,
-                config=graph_config,
-                graph=STARTER_NODE_GRAPH,
-            )
-            original_revision = graph_bot.latest_graph_revision
-            assert original_revision is not None
-            updated_bot = await bot_store.update_config(
-                graph_bot.id,
-                graph_config.model_copy(update={"name": "after-update"}),
-            )
-            assert updated_bot is not None
-            assert updated_bot.config.name == "after-update"
-            assert updated_bot.latest_graph_revision == original_revision
-            assert updated_bot.updated_at >= graph_bot.updated_at
-
-            graph_run = await RunStore(session).create_from_bot(updated_bot)
-            claimed = await RunStore(session).claim(
-                graph_run.id,
-                now=datetime.now(UTC),
-            )
-            assert claimed is not None
-            assert claimed.status is RunStatus.STARTING
-            assert claimed.bot_graph_revision_id == original_revision.id
-            assert claimed.graph_revision == original_revision.revision
-            assert claimed.graph == original_revision.graph
-
-            ordinary_config = CATALOG[WINNER_DEFINITION_ID].parse_config(
-                {"name": "ordinary", "max_order_size": "2"}
-            )
-            ordinary_bot = await bot_store.create(
-                definition_id=WINNER_DEFINITION_ID,
-                config=ordinary_config,
-                graph=None,
-            )
-            restored_ordinary = await bot_store.read(ordinary_bot.id)
-            listed_bots = await bot_store.list()
-            ordinary_run = await RunStore(session).create_from_bot(ordinary_bot)
-
-            assert restored_ordinary is not None
-            assert restored_ordinary.latest_graph_revision is None
-            assert ordinary_bot.id in {bot.id for bot in listed_bots}
-            assert ordinary_run.bot_graph_revision_id is None
-            assert ordinary_run.graph_revision is None
-            assert ordinary_run.graph is None
-        await engine.dispose()
-
-    try:
-        asyncio.run(scenario())
-    finally:
-        command.downgrade(alembic_config, "base")
 
 
 @pytest.mark.postgres
@@ -749,6 +489,7 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
     )
     edited_config = original_config.model_copy(update={"name": "after-lock"})
     edited_graph = NodeGraph.model_validate(threshold_buy_graph())
+    edited_config = edited_config.model_copy(update={"graph": edited_graph}, deep=True)
 
     async def scenario() -> None:
         engine = create_async_engine(url)
@@ -758,8 +499,9 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
                 setup_session, await ensure_test_user(setup_session)
             ).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
-                config=original_config,
-                graph=STARTER_NODE_GRAPH,
+                config=original_config.model_copy(
+                    update={"graph": STARTER_NODE_GRAPH}, deep=True
+                ),
             )
 
         class FakeRedis:
@@ -805,13 +547,7 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
                     await asyncio.wait_for(launcher.called.wait(), timeout=0.05)
 
                 locked_row.config = edited_config.model_dump(mode="json")
-                revision_two = BotGraphRevisionRow(
-                    bot_id=bot.id,
-                    revision=FIRST_GRAPH_REVISION_NUMBER + 1,
-                    graph=edited_graph.model_dump(mode="json"),
-                )
                 edit_session.add(locked_row)
-                edit_session.add(revision_two)
                 await edit_session.commit()
 
                 response = await asyncio.wait_for(launch_task, timeout=2)
@@ -821,76 +557,7 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
         assert launcher.called.is_set()
         assert launcher.run == launched
         assert launched.config == edited_config
-        assert launched.bot_graph_revision_id == revision_two.id
-        assert launched.graph_revision == FIRST_GRAPH_REVISION_NUMBER + 1
-        assert launched.graph == edited_graph
-        await engine.dispose()
-
-    try:
-        asyncio.run(scenario())
-    finally:
-        command.downgrade(alembic_config, "base")
-
-
-@pytest.mark.postgres
-def test_concurrent_graph_revisions_receive_unique_sequence_numbers() -> None:
-    url = _postgres_url()
-    alembic_config = _alembic_config(url)
-    command.downgrade(alembic_config, "base")
-    command.upgrade(alembic_config, "head")
-
-    async def scenario() -> None:
-        engine = create_async_engine(url)
-        session_factory = async_sessionmaker(engine, expire_on_commit=False)
-        async with session_factory() as session:
-            bot = await BotStore(session, await ensure_test_user(session)).create(
-                definition_id=NODE_BASED_DEFINITION_ID,
-                config=CATALOG[NODE_BASED_DEFINITION_ID].parse_config(
-                    {"name": "revision-race", "market_slugs": ["example-market"]}
-                ),
-                graph=STARTER_NODE_GRAPH,
-            )
-
-        start = asyncio.Event()
-
-        async def append(graph: NodeGraph) -> BotRead | None:
-            await start.wait()
-            async with session_factory() as session:
-                return await BotStore(
-                    session, await ensure_test_user(session)
-                ).append_revision(bot.id, graph)
-
-        first_task = asyncio.create_task(
-            append(NodeGraph.model_validate(threshold_buy_graph()))
-        )
-        second_task = asyncio.create_task(append(STARTER_NODE_GRAPH))
-        start.set()
-        appended = await asyncio.gather(first_task, second_task)
-
-        assert all(result is not None for result in appended)
-        revision_numbers = sorted(
-            result.latest_graph_revision.revision
-            for result in appended
-            if result is not None and result.latest_graph_revision is not None
-        )
-        assert revision_numbers == [
-            FIRST_GRAPH_REVISION_NUMBER + 1,
-            FIRST_GRAPH_REVISION_NUMBER + 2,
-        ]
-
-        async with session_factory() as session:
-            persisted = (
-                await session.execute(
-                    select(BotGraphRevisionRow)
-                    .where(BotGraphRevisionRow.bot_id == bot.id)
-                    .order_by(BotGraphRevisionRow.revision)
-                )
-            ).scalars()
-            assert [row.revision for row in persisted] == [
-                FIRST_GRAPH_REVISION_NUMBER,
-                FIRST_GRAPH_REVISION_NUMBER + 1,
-                FIRST_GRAPH_REVISION_NUMBER + 2,
-            ]
+        assert launched.config.graph == edited_graph
         await engine.dispose()
 
     try:
@@ -1002,7 +669,7 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
     finally:
         command.downgrade(alembic_config, "base")
 
-    assert restored.graph == NodeGraph.model_validate(threshold_buy_graph())
+    assert restored.config.graph == NodeGraph.model_validate(threshold_buy_graph())
     assert restored.status is RunStatus.STOPPED
     assert len(submitted_orders) == 1
     assert [
@@ -1021,7 +688,7 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
     ("corruption", "error_type"),
     (("missing", GraphRequirementError), ("malformed", ValidationError)),
 )
-def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_revision(
+def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     corruption: str,
     error_type: type[Exception],
@@ -1060,15 +727,15 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_revision(
         async with AsyncSession(engine, expire_on_commit=False) as session:
             bot = await BotStore(session, await ensure_test_user(session)).create(
                 definition_id=NODE_BASED_DEFINITION_ID,
-                config=config,
-                graph=STARTER_NODE_GRAPH,
+                config=config.model_copy(
+                    update={"graph": STARTER_NODE_GRAPH}, deep=True
+                ),
             )
             if corruption == "missing":
                 run_row = RunRow(
                     bot_id=bot.id,
                     definition_id=bot.definition_id,
-                    config=config.model_dump(mode="json"),
-                    bot_graph_revision_id=None,
+                    config_snapshot=config.model_dump(mode="json"),
                 )
                 session.add(run_row)
                 await session.commit()
@@ -1076,14 +743,12 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_revision(
                 run_id = run_row.id
             else:
                 created = await RunStore(session).create_from_bot(bot)
-                assert bot.latest_graph_revision is not None
-                revision_row = await session.get(
-                    BotGraphRevisionRow,
-                    bot.latest_graph_revision.id,
-                )
-                assert revision_row is not None
-                revision_row.graph = {"nodes": [], "edges": []}
-                session.add(revision_row)
+                run_row = await session.get(RunRow, created.id)
+                run_row.config_snapshot = {
+                    **run_row.config_snapshot,
+                    "graph": {"nodes": [], "edges": []},
+                }
+                session.add(run_row)
                 await session.commit()
                 run_id = created.id
 
@@ -1107,80 +772,6 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_revision(
         f"{error_type.__name__}: {worker_lifecycle.PAPER_RUN_FAILURE_REASON}"
     )
     assert events[-1].payload.status is RunStatus.FAILED
-
-
-@pytest.mark.postgres
-def test_graph_template_api_rolls_back_name_conflicts() -> None:
-    url = _postgres_url()
-    alembic_config = _alembic_config(url)
-    command.downgrade(alembic_config, "base")
-    command.upgrade(alembic_config, "head")
-
-    async def scenario() -> None:
-        engine = create_async_engine(url)
-        session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
-        class FakeRedis:
-            async def publish(self, channel: str, message: str) -> int:
-                return 1
-
-        async with session_factory() as identity_session:
-            await ensure_test_user(identity_session)
-            await identity_session.commit()
-        application = create_app(
-            session_factory=session_factory,
-            redis=FakeRedis(),
-            launcher=AsyncMock(),
-        )
-        graph = STARTER_NODE_GRAPH.model_dump(mode="json")
-        async with AsyncClient(
-            transport=ASGITransport(app=application),
-            base_url="http://test",
-            headers=TEST_HEADERS,
-        ) as client:
-            first = await client.post(
-                api_route_path(GRAPH_TEMPLATES_PATH),
-                json={"name": "Existing", "graph": graph},
-            )
-            duplicate = await client.post(
-                api_route_path(GRAPH_TEMPLATES_PATH),
-                json={"name": "Existing", "graph": graph},
-            )
-            second = await client.post(
-                api_route_path(GRAPH_TEMPLATES_PATH),
-                json={"name": "Second", "graph": graph},
-            )
-            conflicting_rename = await client.patch(
-                api_route_path(
-                    GRAPH_TEMPLATE_PATH,
-                    template_id=second.json()["id"],
-                ),
-                json={"name": "Existing"},
-            )
-            recovered_rename = await client.patch(
-                api_route_path(
-                    GRAPH_TEMPLATE_PATH,
-                    template_id=second.json()["id"],
-                ),
-                json={"name": "Recovered"},
-            )
-            listed = await client.get(api_route_path(GRAPH_TEMPLATES_PATH))
-
-        assert first.status_code == 201
-        assert duplicate.status_code == 409
-        assert second.status_code == 201
-        assert conflicting_rename.status_code == 409
-        assert recovered_rename.status_code == 200
-        assert [template["name"] for template in listed.json()] == [
-            "Existing",
-            "Recovered",
-        ]
-        await engine.dispose()
-
-    try:
-        asyncio.run(scenario())
-    finally:
-        command.downgrade(alembic_config, "base")
 
 
 @pytest.mark.postgres
@@ -1317,7 +908,7 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
             malformed_run = RunRow(
                 bot_id=queued.bot_id,
                 definition_id=WALLET_FILTER_COPY_EXAMPLE_DEFINITION_ID,
-                config={},
+                config_snapshot={},
             )
             session.add(malformed_run)
             await session.commit()
@@ -1582,7 +1173,7 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
 
 
 @pytest.mark.postgres
-def test_graph_parameters_preserve_exact_values_and_run_revisions() -> None:
+def test_graph_parameters_preserve_exact_values_and_run_snapshots() -> None:
     url = _postgres_url()
     alembic_config = _alembic_config(url)
     command.downgrade(alembic_config, "base")
@@ -1601,28 +1192,30 @@ def test_graph_parameters_preserve_exact_values_and_run_revisions() -> None:
             async with AsyncSession(engine, expire_on_commit=False) as session:
                 bots = BotStore(session, await ensure_test_user(session))
                 bot = await bots.create(
-                    definition_id=NODE_BASED_DEFINITION_ID, config=config, graph=graph
+                    definition_id=NODE_BASED_DEFINITION_ID,
+                    config=config.model_copy(update={"graph": graph}, deep=True),
                 )
-                original_revision_id = bot.latest_graph_revision.id
                 run = await RunStore(session).create_from_bot(bot)
                 graph_data["parameters"][0]["data"]["value"] = "0.25"
                 replacement = NodeGraph.model_validate(graph_data)
-                await bots.append_revision(bot.id, replacement)
+                await bots.update_config(
+                    bot.id,
+                    bot.config.model_copy(update={"graph": replacement}, deep=True),
+                )
                 session.expire_all()
-                original = await bots.read_revision(bot.id, original_revision_id)
                 latest = await bots.read(bot.id)
                 saved_run = await RunStore(session).read(run.id)
-                assert original.graph == graph
-                assert original.graph.parameters[0].data.value == exact_value
-                assert saved_run.graph == graph
-                assert latest.latest_graph_revision.graph == replacement
+                assert saved_run.config.graph.parameters[0].data.value == exact_value
+                assert saved_run.config.graph == graph
+                assert latest.config.graph == replacement
                 copied = await bots.create(
                     definition_id=NODE_BASED_DEFINITION_ID,
-                    config=config,
-                    graph=original.graph,
+                    config=config.model_copy(
+                        update={"graph": saved_run.config.graph}, deep=True
+                    ),
                 )
-                assert copied.latest_graph_revision.graph == graph
-                assert copied.latest_graph_revision.id != original_revision_id
+                assert copied.config.graph == graph
+                assert copied.id != bot.id
         finally:
             await engine.dispose()
 

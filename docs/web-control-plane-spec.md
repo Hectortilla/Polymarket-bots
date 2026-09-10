@@ -93,18 +93,18 @@ catalog entry.
 
 ## Saved Bot and Run
 
-A saved bot has an immutable definition ID, editable paper configuration, and
-an immutable sequence of graph revisions. The current frontend creates revision
-1 through the existing template-copy API, but treats that source template as an
-internal persistence detail and retains no template reference on the bot.
-Saving later graph edits appends a new bot-owned revision; earlier revisions
-never change and may be shared by multiple runs of that same bot.
+A saved bot has an immutable definition ID and one editable configuration document
+containing all paper settings and its strategy graph. Creation and edits save the
+whole configuration atomically. Copying a graph creates an independent bot draft.
+There are no separate saved templates, graph revisions, or allowances for either.
 
-Each Run action creates a new UUID-backed run with an immutable definition ID,
-resolved paper configuration snapshot, saved-bot ID, and exact graph revision
-reference when applicable. Pre-auth alpha deployments recreated their disposable
-control-plane database for incompatible catalog or graph changes. Since Slice 15,
-account data and owned historical snapshots require deliberate forward migrations.
+Each Run action creates a UUID-backed run with its own immutable definition ID,
+saved-bot ID, and a deep copy of the complete configuration in `config_snapshot`.
+The snapshot is committed while queueing, before worker delivery. Later bot edits
+never affect queued, active, or historical runs. Unsaved edit history is not retained.
+The public run response exposes this document as `config`, including `config.graph`.
+The user approved rewriting migration `0001` and discarding local data for this
+undeployed change; no migration backfill is needed.
 
 The public lifecycle is:
 
@@ -134,7 +134,7 @@ keyboard-accessible collapse controls. Collapsing a section is local to the page
 visit; returning home shows both lists again. The Runs section shows up to ten recent rows.
 Bot rows expose
 the information needed for comparison: name, market scope, max order size,
-latest graph revision, run status, and last update. The frontend does not expose
+saved-configuration status, run status, and last update. The frontend does not expose
 other definition types or a graph-template page. A failed Runs row
 exposes the same latest runtime error and recorded failure outcome shown on its
 failed lifecycle event, on hover or keyboard focus.
@@ -176,18 +176,17 @@ one bot run; a new run starts with fresh state.
 
 ### Bot and run detail
 
-Bot detail edits configuration and the latest graph revision in one form,
-appends a revision when graph changes are saved, and runs the latest fully saved
-state. Run is disabled while the form has unsaved changes. The graph can also
+Bot detail edits settings and graph in one form, saves both in one transaction,
+and runs the latest fully saved state. Run is disabled while the form has unsaved changes. The graph can also
 be reset or copied from another bot without creating an ongoing relationship.
 
 The detail page shows lifecycle/timing, immutable configuration, bootstrap and
 activity progress, portfolio/equity, orders/fills/failures/settlements, stream
-health, the dashboard charts, the saved bot, the exact graph revision and graph,
+health, the dashboard charts, the saved bot, the exact executed graph,
 and Stop while the run is stoppable. Running
 stream health is ephemeral and the final graceful-shutdown summary is durable.
 Terminal runs remain readable. Rerunning happens from saved-bot detail and uses
-the latest saved revision; historical run detail never changes.
+the latest saved configuration; historical run configuration never changes.
 
 ## Dashboard Parity
 
@@ -233,7 +232,7 @@ v0 is complete when one trusted operator can:
 - add a trusted configuration field using an already-supported field/widget
   kind without editing the builder page; and
 - create a node-based bot in one form, optionally copy another bot's graph,
-  append a bot graph revision, and launch a paper bot that compares a computed best bid/ask value with
+  save the complete bot configuration, and launch a paper bot that compares a computed best bid/ask value with
   a constant, submits the configured BUY or SELL through the existing broker,
   reports its order/fill through the existing progress path, reloads its exact
   graph snapshot, and stops cooperatively.
@@ -272,8 +271,7 @@ Agreed MVP scope:
   authenticated user; the browser cannot choose an owner.
 - Existing copy workflows copy only the user's own bot graph in this slice.
   Code-owned starter/example graphs remain available to every signed-in user.
-  Internal graph templates are private to their creator too.
-- Runs and graph revisions inherit the owning bot's user. Bot ownership cannot
+- Runs inherit the owning bot's user. Bot ownership cannot
   transfer, and bots referenced by historical runs remain present.
 - Login and registration are the only new account screens. The app restores
   the signed-in user on reload and clears private state on logout or expiry.
@@ -341,8 +339,8 @@ market union is capped throughout execution, including dynamic discoveries and
 positions; exceeding it ends the run explicitly instead of silently dropping
 portfolio interests. CLI users retain their existing unlimited default.
 
-Saved bots, templates and immutable revisions have hard creation allowances;
-existing data is preserved. Run lists return a bounded recent window. The policy
+Saved bots have a creation allowance; configuration edits have no revision cap
+and there is no separate template allowance. Run lists return a bounded recent window. The policy
 also declares the retained-history allowance. Slice 21 now enforces both its
 count and age boundaries with bounded cleanup; the Slice 17 checkpoint itself
 did not delete history.
@@ -473,7 +471,7 @@ stop-requested and stopping runs all block deletion. The user stops runs through
 the existing run controls and retries deletion after they finish.
 
 Confirmed deletion hides the configuration from the workspace and graph-copy
-choices and prevents further edits or launches. The bot row and graph revisions
+choices and prevents further edits or launches. The bot row and run snapshots
 stay in the system. Old runs, their executed graphs and events remain visible to
 their owner under the existing retention policy, with a deleted-configuration
 label on run detail. Deleted bots no longer consume the visible saved-bot allowance.

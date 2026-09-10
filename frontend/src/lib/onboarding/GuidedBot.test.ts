@@ -11,7 +11,6 @@ import { NAVIGATION_LABEL, NAVIGATION_PATH } from "$lib/navigation";
 
 const mocks = vi.hoisted(() => ({
   definitions: vi.fn(),
-  template: vi.fn(),
   bot: vi.fn(),
   usage: vi.fn(),
   goto: vi.fn(),
@@ -19,7 +18,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("$app/navigation", () => ({ goto: mocks.goto }));
 vi.mock("$lib/api/generated", () => ({
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.definitions,
-  createGraphTemplateApiV1GraphTemplatesPost: mocks.template,
   createBotApiV1BotsPost: mocks.bot,
   readUsage: mocks.usage,
 }));
@@ -45,11 +43,10 @@ beforeEach(() => {
       active_runs: 0,
       queued_runs: 0,
       saved_bots: 0,
-      saved_templates: 0,
       retained_runs: 0,
     },
   });
-  mocks.template.mockResolvedValue({ data: { id: "private-template" } });
+
   mocks.bot.mockResolvedValue({ data: { id: "private-bot" } });
 });
 afterEach(() => {
@@ -79,7 +76,6 @@ it("loads examples with retry and preserves a route back to existing bots", asyn
 it("does not persist before review, retains settings on Back, and saves without launch", async () => {
   render(GuidedBot);
   await review();
-  expect(mocks.template).not.toHaveBeenCalled();
   expect(mocks.bot).not.toHaveBeenCalled();
   await fireEvent.click(screen.getByRole("button", { name: ONBOARDING_COPY.BACK }));
   expect(screen.getByLabelText("Name")).toHaveValue("My example");
@@ -91,12 +87,12 @@ it("does not persist before review, retains settings on Back, and saves without 
       body: {
         definition_id: definition.definition_id,
         inputs: { name: "My example" },
-        graph_template_id: "private-template",
+        graph: expect.any(Object),
       },
     }),
   );
 });
-it("retains the review after capacity rejection and reuses the confirmed template", async () => {
+it("retains the review after capacity rejection and allows a corrected retry", async () => {
   mocks.bot.mockRejectedValueOnce({
     code: Object.values(contract.resourceLimitCodes)[0],
     detail: RESOURCE_LIMIT_DETAIL,
@@ -108,7 +104,6 @@ it("retains the review after capacity rejection and reuses the confirmed templat
   expect(screen.getByText("My example")).toBeVisible();
   await fireEvent.click(screen.getByRole("button", { name: ONBOARDING_COPY.SAVE }));
   await waitFor(() => expect(mocks.goto).toHaveBeenCalled());
-  expect(mocks.template).toHaveBeenCalledTimes(1);
 });
 
 it("retries navigation without repeating a confirmed bot write", async () => {
@@ -168,14 +163,14 @@ it("reviews and saves the selected second example", async () => {
   expect(screen.getByRole("heading", { name: second.name })).toBeVisible();
   await fireEvent.click(screen.getByRole("button", { name: ONBOARDING_COPY.SAVE }));
   await waitFor(() =>
-    expect(mocks.template).toHaveBeenCalledWith(
+    expect(mocks.bot).toHaveBeenCalledWith(
       expect.objectContaining({ body: expect.objectContaining({ graph: second.graph }) }),
     ),
   );
 });
 
-it("renders a template graph rejection and retries without writing a bot first", async () => {
-  mocks.template.mockResolvedValueOnce({
+it("renders a bot graph rejection and retries without saving partial data", async () => {
+  mocks.bot.mockResolvedValueOnce({
     error: { detail: [{ loc: ["body", "graph"], msg: "Graph input cardinality is invalid", type: "value_error" }] },
     response: new Response(null, { status: HTTP_STATUS.UNPROCESSABLE_CONTENT }),
   });
@@ -183,7 +178,7 @@ it("renders a template graph rejection and retries without writing a bot first",
   await review();
   await fireEvent.click(screen.getByRole("button", { name: ONBOARDING_COPY.SAVE }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Graph input cardinality is invalid.");
-  expect(mocks.bot).not.toHaveBeenCalled();
+  expect(mocks.bot).toHaveBeenCalledTimes(1);
   await fireEvent.click(screen.getByRole("button", { name: ONBOARDING_COPY.SAVE }));
-  await waitFor(() => expect(mocks.bot).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(mocks.bot).toHaveBeenCalledTimes(2));
 });

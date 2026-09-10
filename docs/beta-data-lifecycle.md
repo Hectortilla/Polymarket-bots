@@ -40,7 +40,7 @@ Approved beta policy: encrypted backups every 24 hours, retained 14 days; recove
 History is hidden at the age/count boundary. Cleanup runs every minute in the
 supervised recovery process, removes at most 25 terminal runs per pass and 5,000
 events per selected run, and commits an expiry marker before partially removed
-history can be observed. Active runs, saved bots and graph revisions are not
+history can be observed. Active runs and saved bots are not
 removed by history expiry. Old run URLs return the same private not-found response
 as inaccessible resources. Launch deduplication keys expire with their retained
 run. Browser retries send `Idempotency-Recovery: true` with their stored key:
@@ -54,7 +54,7 @@ and explicit browser confirmation, accepts no target account ID, atomically bloc
 admissions, revokes all sessions/recovery links and terminates paper jobs. Workers
 must retain their database execution lease for every write/fill; stale deliveries
 cannot recreate purged rows. After a 60-second quiescence interval, bounded cleanup
-removes events, runs, graph revisions, bots, private graph templates, credentials
+removes events, runs, bots, credentials
 and the identity in dependency order. Retry is safe. Requests remain blocked even
 if cleanup fails; ordinary operator Resume cannot cancel deletion.
 
@@ -137,8 +137,7 @@ admissions remain paused. No API, worker, recovery daemon or ingress is started.
 A failure leaves the destination closed; inspect and remove the disposable project
 before retrying. Never point `pg_restore` at a running deployment.
 
-Compare accounts and ownership, bots, immutable graph revisions and retained run
-history to the backup inventory. Do not interpret a successfully restored snapshot
+Compare accounts and ownership, bots and retained run history with complete configuration snapshots to the backup inventory. Do not interpret a successfully restored snapshot
 as permission to reopen any identity: changes after its recovery point are absent.
 Reconcile **each identity** against current deletion requests, suspension/audit
 records and authenticated support records kept outside the failed snapshot. If
@@ -181,7 +180,7 @@ Users can export their private graph JSON before deletion through the existing
 editor download. There is no full-account self-service export. Until a real support
 address is configured, an authenticated operator-assisted export is a manual beta
 procedure: verify account ownership through the existing signed-in account and
-verified email flow, select only that owner’s bots/revisions and retained runs,
+verified email flow, select only that owner’s bot configurations and retained runs,
 exclude password hashes/session or recovery secrets and third-party account data,
 and deliver through an agreed private channel. Do not retain an export indefinitely
 or promise recovery after erasure. Public opening is blocked while support contact,

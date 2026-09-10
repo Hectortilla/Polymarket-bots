@@ -2,7 +2,7 @@ import type { NodeGraph } from "$lib/api/generated";
 import { graphValidationIssues, type GraphValidationIssue } from "$lib/catalog/graphValidation";
 import { launchRequestValidationIssues, type LaunchValidationIssue } from "$lib/catalog/schema";
 import { resourceLimitDetail } from "$lib/limits/validation";
-import { DraftSaveFailure, DRAFT_WRITE } from "./failure";
+import { DraftSaveFailure } from "./failure";
 
 export const DRAFT_SAVE_UNCERTAIN_COPY =
   "The save result is unknown. Return to your bots and check for the saved bot before creating another. This draft will not resend an uncertain write.";
@@ -18,8 +18,8 @@ export class DraftSaveFeedback {
   static fromFailure(error: unknown, graph: NodeGraph): DraftSaveFeedback {
     if (!(error instanceof DraftSaveFailure)) return new DraftSaveFeedback();
     return new DraftSaveFeedback(
-      error.stage === DRAFT_WRITE.BOT ? launchRequestValidationIssues(error.detail) : [],
-      error.stage === DRAFT_WRITE.TEMPLATE ? graphValidationIssues(error.detail, graph) : [],
+      launchRequestValidationIssues(error.detail),
+      graphValidationIssues(error.detail, graph),
       error.uncertain ? DRAFT_SAVE_UNCERTAIN_COPY : resourceLimitDetail(error.detail),
       error.uncertain,
     );

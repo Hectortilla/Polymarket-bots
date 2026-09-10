@@ -96,7 +96,6 @@
       <span>{usage.active_runs} / {usage.policy.active_runs} active</span>
       <span> {usage.queued_runs} / {usage.policy.queued_runs} queued</span>
       <span> {usage.saved_bots} / {usage.policy.saved_bots} bots</span>
-      <span> {usage.saved_templates} / {usage.policy.saved_templates} saved templates</span>
     </p>
   {:else}
     <p role="status">Loading allowance usage…</p>

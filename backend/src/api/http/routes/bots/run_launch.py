@@ -20,7 +20,7 @@ from api.http.responses import NOT_FOUND_AND_CONFLICT_RESPONSES
 from api.http.routes.bots.validation import (
     require_bot,
     require_catalog_entry,
-    require_run_revision_contract,
+    require_run_graph_contract,
 )
 from api.http.routes.paths import (
     BOT_RUNS_PATH,
@@ -73,7 +73,7 @@ async def launch_bot_run(
         if not user.can_launch_runs:
             raise HTTPException(status.HTTP_403_FORBIDDEN, VERIFICATION_REQUIRED_DETAIL)
         # The lock makes the committed run snapshot atomic with config and
-        # revision edits; delivery starts only after that transaction commits.
+        # graph edits; delivery starts only after that transaction commits.
         bot = require_bot(await BotStore(session, user.id).read(bot_id, lock=True))
         store = RunStore(session)
         try:
@@ -87,7 +87,7 @@ async def launch_bot_run(
             if existing is not None:
                 return existing
             definition = require_catalog_entry(bot.definition_id)
-            require_run_revision_contract(definition, bot)
+            require_run_graph_contract(definition, bot)
             bot.config.require_subscription_allowance()
             run = await store.create_from_bot(bot, launch_key=launch_key)
         except LaunchAttemptUnavailable:

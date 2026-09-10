@@ -1,5 +1,6 @@
 """Async persistence boundary for durable paper-run lifecycle state."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -11,8 +12,7 @@ from sqlmodel import select
 
 from api.bots.contracts import BotRead
 from api.bots.errors import BotUnavailableError
-from api.bots.models import BotGraphRevisionRow, BotRow
-from api.bots.store import BotStore
+from api.bots.models import BotRow
 from api.lifecycle.history.selection import HistorySelection
 from api.limits.admission import RunAdmission
 from api.runs.contracts import ClaimedRunRead, PaperRunConfig, RunRead
@@ -81,12 +81,13 @@ class RunStore:
         *,
         launch_key: UUID | None = None,
     ) -> RunRead:
-        available_bot_id = await self._session.scalar(
-            select(BotRow.id)
+        saved_bot = await self._session.scalar(
+            select(BotRow)
             .where(BotRow.id == bot.id, BotRow.deleted_at.is_(None))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
-        if available_bot_id is None:
+        if saved_bot is None:
             raise BotUnavailableError
         await RunAdmission(self._session).lock_transaction()
         if launch_key is not None:
@@ -95,18 +96,18 @@ class RunStore:
                 await self._session.commit()
                 return existing
         await RunAdmission(self._session).require_queue_capacity(bot.id)
-        revision = bot.latest_graph_revision
+        # Persist the exact saved document under the same lock used by edits.
+        # Copy nested graph values too; queued workers must never read bot config.
         row = RunRow(
             bot_id=bot.id,
             launch_key=launch_key,
-            definition_id=bot.definition_id,
-            config=bot.config.model_dump(mode="json"),
-            bot_graph_revision_id=None if revision is None else revision.id,
+            definition_id=saved_bot.definition_id,
+            config_snapshot=deepcopy(saved_bot.config),
         )
         self._session.add(row)
         await self._session.commit()
         await self._session.refresh(row)
-        return self.read_from_row(row, revision)
+        return self.read_from_row(row)
 
     async def read(self, run_id: UUID) -> RunRead | None:
         row = await self._session.get(RunRow, run_id)
@@ -318,15 +319,12 @@ class RunStore:
         return await self._read_row(row)
 
     @staticmethod
-    def read_from_row(row: RunRow, revision=None) -> RunRead:
+    def read_from_row(row: RunRow) -> RunRead:
         return RunRead(
             id=row.id,
             bot_id=row.bot_id,
             definition_id=row.definition_id,
-            config=PaperRunConfig.model_validate(row.config),
-            bot_graph_revision_id=row.bot_graph_revision_id,
-            graph_revision=None if revision is None else revision.revision,
-            graph=None if revision is None else revision.graph,
+            config=PaperRunConfig.model_validate(row.config_snapshot),
             status=row.status,
             created_at=row.created_at,
             started_at=row.started_at,
@@ -373,31 +371,10 @@ class RunStore:
         )
 
     async def _read_row(self, row: RunRow) -> RunRead:
-        revision = None
-        if row.bot_graph_revision_id is not None:
-            # Workers read authorized run snapshots independently of browser sessions.
-            revision_row = (
-                await self._session.execute(
-                    select(BotGraphRevisionRow).where(
-                        BotGraphRevisionRow.matches_bot_revision(
-                            row.bot_id, row.bot_graph_revision_id
-                        )
-                    )
-                )
-            ).scalar_one_or_none()
-            revision = (
-                None
-                if revision_row is None
-                else BotStore.revision_from_row(revision_row)
-            )
-            if revision is None:
-                raise RunSnapshotError(
-                    "run graph revision is missing or owned by another bot"
-                )
         bot = await self._session.get(BotRow, row.bot_id)
         if bot is None:
             raise RunSnapshotError("run bot is missing")
-        return self.read_from_row(row, revision).model_copy(
+        return self.read_from_row(row).model_copy(
             update={"bot_deleted": bot.deleted_at is not None}
         )
 
