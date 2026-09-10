@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.auth.credential_input import EmailAddress, Password
+from api.auth.credential_input import EmailAddress, ExistingPassword, Password
 from api.auth.models import UserRow
 
 
@@ -16,6 +16,10 @@ class EmailRequest(BaseModel):
 
 class Credentials(EmailRequest):
     password: Password
+
+
+class LoginCredentials(EmailRequest):
+    password: ExistingPassword
 
 
 class CurrentUser(BaseModel):

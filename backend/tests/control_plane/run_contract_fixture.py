@@ -8,6 +8,7 @@ from pathlib import Path
 from api.auth.policy import (
     CSRF_SAFE_METHODS,
     EMAIL_MAX_LENGTH,
+    EXISTING_PASSWORD_MIN_LENGTH,
     LOGIN_PATH,
     LOGOUT_PATH,
     ME_PATH,
@@ -200,6 +201,7 @@ def frontend_run_contract() -> dict[str, object]:
             "jsonContentType": JSON_CONTENT_TYPE,
             "contentTypeHeader": CONTENT_TYPE_HEADER,
             "passwordMinLength": PASSWORD_MIN_LENGTH,
+            "existingPasswordMinLength": EXISTING_PASSWORD_MIN_LENGTH,
             "passwordMaxLength": PASSWORD_MAX_LENGTH,
             "emailMaxLength": EMAIL_MAX_LENGTH,
             "sessionRecheckMs": SESSION_RECHECK_SECONDS * 1000,

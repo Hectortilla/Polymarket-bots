@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
-from api.auth.credential_input import Password
+from api.auth.credential_input import ExistingPassword, Password
 from api.auth.models import UserRow
 from api.auth.recovery.policy import SessionRevocation
 from api.auth.recovery.tokens import ACCOUNT_TOKEN_LENGTH, AccountToken
@@ -32,7 +32,7 @@ class RedeemRequest(SecretRequest):
 
 
 class ReauthenticateRequest(SecretRequest):
-    current_password: Password
+    current_password: ExistingPassword
 
 
 class ChangePasswordRequest(ReauthenticateRequest):

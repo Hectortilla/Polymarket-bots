@@ -61,6 +61,7 @@ def test_production_requires_https_secret_files_and_immutable_release(
 ):
     production_environment(monkeypatch, tmp_path)
     settings = StartupSettings.from_env()
+    assert not settings.seed_development_account
     assert "secret@" not in repr(settings)
     monkeypatch.setenv(AUTH_ALLOW_HTTP_ENV, "true")
     with pytest.raises(ValueError, match="HTTPS"):

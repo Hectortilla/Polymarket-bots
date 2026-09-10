@@ -3,7 +3,12 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from api.auth.config import AuthSettings
-from api.auth.contracts import Credentials, CurrentUser, LogoutResponse
+from api.auth.contracts import (
+    Credentials,
+    CurrentUser,
+    LoginCredentials,
+    LogoutResponse,
+)
 from api.auth.cookies import SessionCookie
 from api.auth.dependencies import CurrentUserDependency
 from api.auth.passwords import DUMMY_HASH, hash_password, verify_password
@@ -63,7 +68,7 @@ async def register(
     responses=AUTH_ATTEMPT_RESPONSES,
 )
 async def login(
-    credentials: Credentials,
+    credentials: LoginCredentials,
     request: Request,
     response: Response,
     session_factory: SessionFactoryDependency,

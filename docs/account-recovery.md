@@ -7,6 +7,15 @@ paper run. The consolidated initial migration defaults new accounts to requiring
 verification and leaves their verification timestamp empty. Accounts explicitly
 exempted from verification remain supported by the runtime access policy.
 
+For everyday local development, explicitly set `POLYBOT_ENVIRONMENT=development`.
+After schema migration, API startup seeds the verified account `a@a.a` with password
+`a` if that address is absent. No SMTP or mailbox action is needed for this account.
+Unset environment and production startup do not seed it. Existing accounts are
+never changed, including their passwords and verification/suspension state. See
+[local accounts](../README.md#local-accounts-and-private-access) for setup.
+Login and current-password checks accept 1–128 characters and still verify the
+stored hash; registration and replacement passwords retain the 15–128 requirement.
+
 Email links expire after 30 minutes and work once. Reset and verification ask for
 a new password and sign out all sessions, including the current browser. Sign in
 normally afterward. Verification replaces any password set before mailbox ownership
@@ -56,7 +65,7 @@ Use your existing transactional SMTP submission relay. No vendor subscription or
 public deployment is created by this slice. The sender domain must be configured
 with the relay's required domain authentication and delivery policies.
 
-For local development configure:
+To test email flows locally, configure:
 
 ```dotenv
 POLYBOT_SMTP_HOST=smtp.example.com

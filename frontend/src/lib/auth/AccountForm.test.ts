@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 import AccountForm from "./AccountForm.svelte";
 import { AUTH_COPY } from "./copy";
 import { HTTP_STATUS } from "$lib/api/http";
@@ -20,6 +21,25 @@ afterEach(() => {
 });
 
 describe("credential failure presentation", () => {
+  it.each([false, true])("applies password creation rules only when registering=%s", (registering) => {
+    render(AccountForm, { registering });
+    expect(screen.getByLabelText(AUTH_COPY.PASSWORD)).toHaveAttribute(
+      "minlength",
+      String(registering ? runtimeContract.auth.passwordMinLength : runtimeContract.auth.existingPasswordMinLength),
+    );
+  });
+
+  it("submits a one-character existing password", async () => {
+    mocks.login.mockResolvedValue({ data: { id: "account", email: "a@a.a" } });
+    const accept = vi.spyOn(accountSession, "acceptLogin").mockImplementation(() => {});
+    render(AccountForm);
+    await fireEvent.input(screen.getByLabelText(AUTH_COPY.EMAIL), { target: { value: "a@a.a" } });
+    await fireEvent.input(screen.getByLabelText(AUTH_COPY.PASSWORD), { target: { value: "a" } });
+    await fireEvent.click(screen.getByRole("button", { name: AUTH_COPY.SIGN_IN }));
+    await waitFor(() => expect(accept).toHaveBeenCalledWith(null));
+    expect(mocks.login).toHaveBeenCalledWith({ body: { email: "a@a.a", password: "a" } });
+  });
+
   it.each([
     { registering: true, status: HTTP_STATUS.CONFLICT, message: AUTH_COPY.REGISTER_ERROR },
     { registering: false, status: HTTP_STATUS.TOO_MANY_REQUESTS, message: AUTH_COPY.RATE_LIMIT_ERROR },

@@ -424,7 +424,7 @@
           "current_password": {
             "format": "password",
             "maxLength": 128,
-            "minLength": 15,
+            "minLength": 1,
             "title": "Current Password",
             "type": "string",
             "writeOnly": true
@@ -2344,6 +2344,31 @@
         "title": "LiveWalletChartEvent",
         "type": "object"
       },
+      "LoginCredentials": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "minLength": 1,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginCredentials",
+        "type": "object"
+      },
       "LogoutResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3629,7 +3654,7 @@
           "current_password": {
             "format": "password",
             "maxLength": 128,
-            "minLength": 15,
+            "minLength": 1,
             "title": "Current Password",
             "type": "string",
             "writeOnly": true
@@ -3734,7 +3759,7 @@
           "current_password": {
             "format": "password",
             "maxLength": 128,
-            "minLength": 15,
+            "minLength": 1,
             "title": "Current Password",
             "type": "string",
             "writeOnly": true
@@ -4873,7 +4898,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Credentials"
+                "$ref": "#/components/schemas/LoginCredentials"
               }
             }
           },

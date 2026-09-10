@@ -1973,6 +1973,15 @@ Delivered implementation and verification:
 
 ## Slice 19: Account Recovery and Management
 
+September 10 local-development follow-up: explicit
+`POLYBOT_ENVIRONMENT=development` seeds the verified `a@a.a` / `a` account during
+API startup after schema migration. Missing environment and production do not
+seed; concurrent startup is idempotent and existing account state is preserved.
+Login/current-password validation accepts existing secrets of 1–128 characters;
+new passwords retain 15–128 characters. Normal registration and verification
+policy remain in place. OpenAPI, browser contracts and local setup docs reflect
+this exception; no migration or Polymarket integration change is required.
+
 Status: delivered September 10, 2026; depends on Slice 15 and Slice 16's HTTPS/email-link origin.
 
 Approved September 10 policy: configurable SMTP relay; new accounts verify before

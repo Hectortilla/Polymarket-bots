@@ -68,6 +68,7 @@
     "jsonContentType": "application/json",
     "contentTypeHeader": "Content-Type",
     "passwordMinLength": 15,
+    "existingPasswordMinLength": 1,
     "passwordMaxLength": 128,
     "emailMaxLength": 254,
     "sessionRecheckMs": 15000

@@ -50,6 +50,7 @@ class StartupSettings(BaseModel):
     database_url: SecretStr
     redis_url: SecretStr
     environment: Environment = Environment.DEVELOPMENT
+    seed_development_account: bool = False
     release_id: str = "development"
     worker_concurrency: int = Field(default=DEFAULT_WORKER_CONCURRENCY, gt=0)
     heartbeat_seconds: float = Field(
@@ -76,6 +77,8 @@ class StartupSettings(BaseModel):
         if self.proxy_address is not None:
             ip_address(self.proxy_address)
         if self.environment is Environment.PRODUCTION:
+            if self.seed_development_account:
+                raise ValueError("production forbids development account seeding")
             if re.fullmatch(RELEASE_ID_PATTERN, self.release_id) is None:
                 raise ValueError("production requires an immutable release identifier")
             if self.proxy_address is None:
@@ -100,6 +103,9 @@ class StartupSettings(BaseModel):
             database_url=SecretStr(database_url),
             redis_url=SecretStr(redis_url),
             environment=os.getenv(ENVIRONMENT_ENV, Environment.DEVELOPMENT),
+            seed_development_account=(
+                os.getenv(ENVIRONMENT_ENV) == Environment.DEVELOPMENT
+            ),
             release_id=os.getenv(RELEASE_ID_ENV, "development"),
             worker_concurrency=os.getenv(
                 WORKER_CONCURRENCY_ENV, DEFAULT_WORKER_CONCURRENCY

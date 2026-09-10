@@ -81,14 +81,16 @@
       id="account-password"
       type="password"
       autocomplete={registering ? "new-password" : "current-password"}
-      minlength={runtimeContract.auth.passwordMinLength}
+      minlength={registering ? runtimeContract.auth.passwordMinLength : runtimeContract.auth.existingPasswordMinLength}
       maxlength={runtimeContract.auth.passwordMaxLength}
       bind:value={password}
       required
     />
-    <p class="field-help">
-      Use {runtimeContract.auth.passwordMinLength}–{runtimeContract.auth.passwordMaxLength} characters.
-    </p>
+    {#if registering}
+      <p class="field-help">
+        Use {runtimeContract.auth.passwordMinLength}–{runtimeContract.auth.passwordMaxLength} characters.
+      </p>
+    {/if}
     {#if error}<p role="alert" class="notice error">{error}</p>{/if}
     <button class="primary" type="submit" disabled={busy}
       >{busy ? AUTH_COPY.BUSY : registering ? AUTH_COPY.REGISTER : AUTH_COPY.SIGN_IN}</button

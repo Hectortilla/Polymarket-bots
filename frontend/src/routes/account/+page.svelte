@@ -110,7 +110,7 @@
       >{ACCOUNT_COPY.CURRENT_PASSWORD}<input
         type="password"
         autocomplete="current-password"
-        minlength={contract.auth.passwordMinLength}
+        minlength={contract.auth.existingPasswordMinLength}
         maxlength={contract.auth.passwordMaxLength}
         bind:value={currentPassword}
         required

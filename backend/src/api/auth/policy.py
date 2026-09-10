@@ -9,6 +9,7 @@ from api.auth.recovery.policy import (
 )
 from api.http.routes.paths import API_PREFIX, HEALTH_PATH
 
+EXISTING_PASSWORD_MIN_LENGTH = 1
 PASSWORD_MIN_LENGTH = 15
 PASSWORD_MAX_LENGTH = 128
 EMAIL_MAX_LENGTH = 254

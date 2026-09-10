@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from api.auth.config import AuthSettings
+from api.auth.development import DevelopmentAccountStore
 from api.auth.mail import AccountMailer
 from api.deployment.settings import Environment, StartupSettings
 from api.execution.launcher import RunLauncher
@@ -63,6 +64,9 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         owned_discovery = MarketDiscovery()
         app.state.market_discovery = owned_discovery
     try:
+        if startup_settings is not None and startup_settings.seed_development_account:
+            async with app.state.session_factory() as session:
+                await DevelopmentAccountStore(session).ensure_account()
         yield
     finally:
         try:

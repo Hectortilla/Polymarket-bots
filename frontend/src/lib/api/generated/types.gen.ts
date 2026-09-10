@@ -1181,6 +1181,16 @@ export type LiveWalletChartEvent = {
 };
 
 /**
+ * LoginCredentials
+ */
+export type LoginCredentials = {
+    /**
+     * Email
+     */
+    email: string;
+};
+
+/**
  * LogoutResponse
  */
 export type LogoutResponse = {
@@ -2326,6 +2336,20 @@ export type CredentialsWritable = {
 export type GraphEvaluationReasonWritable = GraphReason | GraphActionSkipReason | BookValidationIssue | WalletTradeValidationIssue | FillRejectReason;
 
 /**
+ * LoginCredentials
+ */
+export type LoginCredentialsWritable = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Password
+     */
+    password: string;
+};
+
+/**
  * RevokeSessionsRequest
  */
 export type RevokeSessionsRequestWritable = {
@@ -2513,7 +2537,7 @@ export type RequestEmailVerificationResponses = {
 export type RequestEmailVerificationResponse = RequestEmailVerificationResponses[keyof RequestEmailVerificationResponses];
 
 export type LoginData = {
-    body: CredentialsWritable;
+    body: LoginCredentialsWritable;
     path?: never;
     query?: never;
     url: '/api/v1/auth/login';

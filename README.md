@@ -82,11 +82,31 @@ rebuild their schema. Without those settings the service-dependent tests skip.
 
 ## Local accounts and private access
 
-Set `POLYBOT_AUTH_ORIGIN` in `.env` to the exact browser origin, for example
-`http://localhost:5173`, and set `POLYBOT_AUTH_ALLOW_HTTP=true` only for local HTTP
-development. Start the frontend with `npm --prefix frontend run dev`, then open
-`/register` to create your account. Password recovery and email verification require an SMTP relay. Passwords contain
-15–128 characters; emails are case-insensitive with dots and plus-tags retained.
+For no-setup local login, use these settings in `.env` (included in `.env-example`):
+
+```dotenv
+POLYBOT_ENVIRONMENT=development
+POLYBOT_AUTH_ORIGIN=http://localhost:5173
+POLYBOT_AUTH_ALLOW_HTTP=true
+```
+
+After migrating the database, start the backend normally and open `/login` in the
+frontend. Sign in with **`a@a.a` / `a`**. API startup creates this real database
+account with a hashed password and verified email; no registration or SMTP is
+needed. Seeding requires the explicit environment value above: an unset value does
+not seed, and production forbids seeding. Repeated or concurrent startup creates
+at most one account and preserves any existing account's password, verification,
+suspension, sessions and owned data. A recreated database gets the account on the
+next startup. An existing account using this address is never overwritten; if you
+change its password, use the new one afterward. Alembic only manages the schema.
+
+Start the frontend with `npm --prefix frontend run dev`. To exercise normal signup,
+open `/register`; new passwords contain 15–128 characters, and normal new accounts
+still require email verification to launch runs. Login and current-password checks
+accept 1–128 characters and verify the stored hash. Emails are case-insensitive
+with dots and plus-tags retained. Password recovery and email verification require
+an SMTP relay. `POLYBOT_AUTH_ORIGIN` must match the exact browser origin;
+`POLYBOT_AUTH_ALLOW_HTTP=true` is only for local HTTP development.
 Account settings provide password changes, session revocation and email verification; the sign-in page links to forgotten-password recovery.
 
 New accounts must verify their mailbox before launching runs. Existing accounts retain

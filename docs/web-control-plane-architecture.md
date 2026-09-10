@@ -739,6 +739,19 @@ apply per client IP and return Retry-After on exhaustion.
 
 <!-- auth-policy:end -->
 
+The password-length policy above applies when creating or replacing a password.
+Login and current-password reauthentication accept 1–128 characters and verify the
+stored Argon2 hash. Explicit `POLYBOT_ENVIRONMENT=development` enables a startup
+seed in `api.auth.development`: create the verified `a@a.a` / `a` account if absent,
+using the migrated schema and the normal password hasher. An unset environment
+never enables seeding; production configuration forbids it. The unique email
+constraint handles simultaneous API startup, and existing accounts are preserved
+without resetting passwords, verification, suspension or ownership. This is local
+seed data, not an Alembic migration or a special login endpoint. Seed failures
+abort startup. Ordinary registration, cookies, CSRF, attempt limits and sessions
+continue through the existing auth boundaries.
+
+
 The application uses only
 ASGI client addresses; deploy Uvicorn with proxy headers disabled by default, or
 explicitly trust only a controlled reverse proxy that overwrites forwarded headers.
