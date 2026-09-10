@@ -1,4 +1,6 @@
+import { HTTP_STATUS } from '$lib/api/http';
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from '$lib/limits/testFixtures';
+import { DRAFT_SAVE_UNCERTAIN_COPY } from '$lib/bots/savedDraft/feedback';
 import { BOT_BUILDER_COPY } from '$lib/bots/copy';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -100,7 +102,6 @@ describe('unified bot creation page', () => {
           name: expect.stringMatching(/^bot-draft-/),
           graph: TEST_GRAPH,
         },
-        throwOnError: true,
       });
       expect(mocks.createBot).toHaveBeenCalledWith({
         body: {
@@ -108,7 +109,6 @@ describe('unified bot creation page', () => {
           inputs: { name: 'Threshold buyer' },
           graph_template_id: 'dddddddd-0000-0000-0000-000000000001',
         },
-        throwOnError: true,
       });
     });
     expect(mocks.goto).toHaveBeenCalledWith('/bots/eeeeeeee-0000-0000-0000-000000000001');
@@ -146,7 +146,7 @@ describe('unified bot creation page', () => {
     await fireEvent.input(name, { target: { value: 'Keep my draft' } });
     await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain(code ? RESOURCE_LIMIT_DETAIL : BOT_BUILDER_COPY.SAVE_ERROR);
+    expect((await screen.findByRole('alert')).textContent).toContain(code ? RESOURCE_LIMIT_DETAIL : DRAFT_SAVE_UNCERTAIN_COPY);
     expect((name as HTMLInputElement).value).toBe('Keep my draft');
   });
 });
@@ -172,4 +172,42 @@ it('explains template admission failure without attempting to save a bot', async
   await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
   expect(await screen.findByRole('alert')).toHaveTextContent(RESOURCE_LIMIT_DETAIL);
   expect(mocks.createBot).not.toHaveBeenCalled();
+});
+
+it('disables resending a resolved server error while preserving the draft', async () => {
+  loadBuilder();
+  mocks.createBot.mockResolvedValueOnce({ error: {}, response: new Response(null, { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }) });
+  render(Page);
+  await fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'Uncertain draft' } });
+  const save = screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE });
+  await fireEvent.click(save);
+  expect(await screen.findByRole('alert')).toHaveTextContent(DRAFT_SAVE_UNCERTAIN_COPY);
+  expect(save).toBeDisabled();
+  await fireEvent.click(save);
+  expect(mocks.createBot).toHaveBeenCalledTimes(1);
+});
+
+it('focuses a rejected template graph and allows a corrected retry', async () => {
+  loadBuilder();
+  mocks.createTemplate.mockResolvedValueOnce({ error: { detail: [{ loc: ['body', 'graph'], msg: 'Graph input cardinality is invalid', type: 'value_error' }] }, response: new Response(null, { status: HTTP_STATUS.UNPROCESSABLE_CONTENT }) });
+  render(Page);
+  await fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'Correct my graph' } });
+  await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
+  expect(await screen.findByText('Graph input cardinality is invalid.')).toBeTruthy();
+  await waitFor(() => expect(document.getElementById('new-bot-graph-validation')).toHaveFocus());
+  expect(mocks.createBot).not.toHaveBeenCalled();
+  await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
+  await waitFor(() => expect(mocks.createBot).toHaveBeenCalledTimes(1));
+});
+
+it('renders bot input rejection on the full editor without a generic save error', async () => {
+  loadBuilder();
+  mocks.createBot.mockResolvedValueOnce({ error: { detail: [{ loc: ['body', 'inputs', 'name'], msg: 'Name was rejected', type: 'value_error' }] }, response: new Response(null, { status: HTTP_STATUS.UNPROCESSABLE_CONTENT }) });
+  render(Page);
+  const name = await screen.findByLabelText('Name');
+  await fireEvent.input(name, { target: { value: 'Keep this value' } });
+  await fireEvent.click(screen.getByRole('button', { name: BOT_BUILDER_COPY.CREATE }));
+  expect(await screen.findByText('Name was rejected.')).toBeTruthy();
+  expect(name).toHaveValue('Keep this value');
+  expect(screen.queryByText(BOT_BUILDER_COPY.SAVE_ERROR)).toBeNull();
 });

@@ -61,6 +61,7 @@ describe('MarketSelector', () => {
     await fireEvent.keyDown(input, { key: 'Enter' });
     expect(onchange).toHaveBeenCalledWith([market.slug]);
     expect((input as HTMLInputElement).value).toBe('');
+    expect(input).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('adds more markets, prevents duplicates, and removes a selection', async () => {
@@ -125,6 +126,9 @@ describe('MarketSelector', () => {
     await fireEvent.click(
       await screen.findByRole('button', { name: MARKET_SELECTOR_COPY.RETRY_SEARCH }),
     );
+    expect(screen.getByRole('combobox')).toHaveFocus();
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('combobox')).not.toHaveValue('');
     expect(await screen.findByText(MARKET_SELECTOR_COPY.NO_RESULTS)).toBeTruthy();
   });
 

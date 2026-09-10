@@ -111,12 +111,8 @@
     onchange([...value, market.slug]);
     query = '';
     input.focus();
-  }
-
-  function wrappedSelectionIndex(forward: boolean): number {
-    if (activeIndex < 0) return forward ? 0 : results.length - 1;
-    const direction = forward ? 1 : -1;
-    return (activeIndex + direction + results.length) % results.length;
+    // Close after focus so later pointer clicks cannot shift when suggestions blur away.
+    open = false;
   }
 
   function onkeydown(event: KeyboardEvent): void {
@@ -135,6 +131,19 @@
       event.preventDefault();
       if (open && activeIndex >= 0 && results[activeIndex]) select(results[activeIndex]);
     }
+  }
+
+  function retrySearch(): void {
+    // Keep focus on the stable input before the retry button disappears.
+    input.focus();
+    open = true;
+    retry += 1;
+  }
+
+  function wrappedSelectionIndex(forward: boolean): number {
+    if (activeIndex < 0) return forward ? 0 : results.length - 1;
+    const direction = forward ? 1 : -1;
+    return (activeIndex + direction + results.length) % results.length;
   }
 
   function closingDate(value: string | null): string | null {
@@ -184,7 +193,7 @@
       <div class="search-status" role="status" aria-live="polite">
         {#if searchError}
           <span>{searchError}</span>
-          <button type="button" class="text-button" onclick={() => (retry += 1)}
+          <button type="button" class="text-button" onclick={retrySearch}
             >{MARKET_SELECTOR_COPY.RETRY_SEARCH}</button
           >
         {:else if loading}

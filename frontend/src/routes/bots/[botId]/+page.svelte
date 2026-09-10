@@ -1,6 +1,6 @@
 <script lang="ts">
   import { LaunchAttempt } from '$lib/bots/launchAttempt';
-  import { HTTP_STATUS } from '$lib/api/http';
+  import { HTTP_STATUS, isClientRejection } from '$lib/api/http';
   import { resourceLimitDetail } from '$lib/limits/validation';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -181,7 +181,7 @@
   }
   function resolveLaunchFailure(status: number | undefined, detail: unknown): { rejected: boolean; message: string } {
     const admissionRejection = resourceLimitDetail(detail);
-    const rejected = (status !== undefined && status >= HTTP_STATUS.BAD_REQUEST && status < HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    const rejected = isClientRejection(status)
       || admissionRejection !== undefined;
     if (status === HTTP_STATUS.GONE) return { rejected, message: BOT_DETAIL_COPY.EXPIRED_LAUNCH };
     return { rejected, message: admissionRejection ?? BOT_DETAIL_COPY.RUN_ERROR };

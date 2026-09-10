@@ -165,8 +165,8 @@ now includes the delivered Slice 12F deployment foundation and Slice 16 private
 HTTPS release workflow. Slice 17 adds per-account and global resource admission,
 browser usage, and server-side expiry. Slice 18 adds durable launch retries and scheduled queue/worker recovery.
 Slice 19 adds account recovery and management. Slices 20–21 deliver operational
-controls, encrypted backups and bounded data lifecycle. Slices 22–23 cover onboarding
-and launch/support information. Open signup remains gated on their acceptance.
+controls, encrypted backups and bounded data lifecycle. Slice 22 adds guided onboarding; Slice 23 covers
+launch/support information. Open signup remains gated on final acceptance.
 Marketplace work is deferred.
 
 Private HTTPS deployment work and the repeatable release procedure are documented

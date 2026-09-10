@@ -1,3 +1,4 @@
+import { RUN_GUIDE_COPY } from '$lib/runs/runGuide';
 import { STREAM_CONNECTION_STATE, type StreamConnectionState } from '$lib/runs/events';
 import { ADD_NODE_LABEL } from '$lib/catalog/NodePalette.svelte';
 import { VALUATION_STATUS } from '$lib/charts/contracts';
@@ -431,9 +432,9 @@ describe('run detail interactions', () => {
       hydrate({ run: ACTIVE_RUN, events: [], nextBeforeEventId: null });
       return close;
     });
+    // Frames run asynchronously so consecutive health events exercise browser ordering.
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      callback(0);
-      return 1;
+      return window.setTimeout(() => callback(0), 0);
     });
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     const view = render(Page);
@@ -453,8 +454,13 @@ describe('run detail interactions', () => {
         book_coalesced_count: 5,
       },
     });
-    expect(await screen.findByText(RUN_DETAIL_COPY.STALE_BOOK_INPUT)).toBeTruthy();
-    expect(screen.getByText('17')).toBeTruthy();
+    expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_UNAVAILABLE)).toBeTruthy();
+    expect(await screen.findByText('17')).toBeTruthy();
+    live({
+      kind: LIVE_EVENT_KIND.streamHealth, run_id: RUN.id, occurred_at: RUN.created_at,
+      payload: { queue_depth: 0, peak_queue_depth: 23, book_dispatch_lag_ms: 8, book_stale: false, book_received_count: 42, book_coalesced_count: 5 },
+    });
+    expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_REPORTED)).toBeTruthy();
     durable(chartSampleEvent(2));
     durable(lifecycleEvent(1, RUN_STATUS.STOPPED));
     expect(

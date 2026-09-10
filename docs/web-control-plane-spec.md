@@ -299,7 +299,7 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-Slices 16–21 are delivered; Slices 22–23 remain planned extensions. Adopt their product
+Slices 16–22 are delivered; Slice 23 remains a planned extension. Adopt their product
 policies here during each slice and keep the current private boundary until the
 complete open-signup gate passes. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
@@ -422,3 +422,18 @@ target at most two hours. Restored accounts stay quarantined until individually
 reconciled with current deletion/suspension records; previous jobs never resume.
 See [data lifecycle](beta-data-lifecycle.md) for export/support handling and the
 explicit public-opening gates.
+
+## Slice 22: Guided first use
+
+After account verification, the empty Bots page links to **Create your first
+paper bot**; Account settings also exposes this route. Users choose a
+catalog-owned example, select available markets, review conditions and paper
+settings, then save a private bot. Back navigation preserves settings. An unknown save result requires checking
+existing bots before creating another; it cannot blindly resend the current draft. Saving
+never launches; the saved page requires **Run bot** and the existing gates.
+
+Run pages explain simulated cash/equity, loaded orders and fill outcomes,
+existing skipped/rejected progress, stale or missing inputs, reconnection and
+terminal failures. Conditions may produce no order and no progress entry.
+Keyboard step focus, mobile layout, retry feedback and allowance/account links
+cover the basic first-use path.

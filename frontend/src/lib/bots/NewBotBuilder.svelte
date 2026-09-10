@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { resourceLimitDetail } from '$lib/limits/validation';
+  import { SavedBotDraft } from './savedDraft';
+  import { DraftSaveFeedback } from './savedDraft/feedback';
   import { goto } from '$app/navigation';
   import { BOT_BUILDER_COPY } from '$lib/bots/copy';
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
@@ -7,8 +8,6 @@
   import './builder.css';
 
   import {
-    createBotApiV1BotsPost,
-    createGraphTemplateApiV1GraphTemplatesPost,
     listBotDefinitionsApiV1BotDefinitionsGet,
     listBotsApiV1BotsGet,
     type BotDefinitionDescriptor,
@@ -20,9 +19,8 @@
   import LaunchForm from '$lib/catalog/LaunchForm.svelte';
   import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
   import { cloneNodeGraph, hasGraphCapability } from '$lib/catalog/graphContracts';
-  import { graphValidationIssues, type GraphValidationIssue } from '$lib/catalog/graphValidation';
+  import { type GraphValidationIssue } from '$lib/catalog/graphValidation';
   import {
-    launchRequestValidationIssues,
     type LaunchInputs,
     type LaunchValidationIssue,
   } from '$lib/catalog/schema';
@@ -35,7 +33,8 @@
   let graphSourceName = $state<string>(GRAPH_SOURCE_COPY.FRESH);
   let loading = $state(true);
   let saving = $state(false);
-  let savedDraft: { id: string; graphJson: string } | undefined;
+  let saveUncertain = $state(false);
+  const savedDraft = new SavedBotDraft();
   let error = $state('');
   let configServerIssues = $state<LaunchValidationIssue[]>([]);
   let graphServerIssues = $state<GraphValidationIssue[]>([]);
@@ -73,43 +72,26 @@
     graphEditorResetKey += 1;
   }
 
-  function privateTemplateName(): string {
-    return `bot-draft-${Date.now()}`;
-  }
-
   async function createSavedBot(inputs: LaunchInputs): Promise<void> {
-    if (!hasGraphCapability(descriptor) || !graph) return;
+    if (saving || saveUncertain || !hasGraphCapability(descriptor) || !graph) return;
     const graphToSave = graph;
     saving = true;
     error = '';
     configServerIssues = [];
     graphServerIssues = [];
     try {
-      const graphJson = JSON.stringify(graphToSave);
-      if (savedDraft?.graphJson !== graphJson) {
-        const templateResponse = await createGraphTemplateApiV1GraphTemplatesPost({
-          body: { name: privateTemplateName(), graph: graphToSave },
-          throwOnError: true,
-        });
-        savedDraft = { id: templateResponse.data.id, graphJson };
-      }
-      const botResponse = await createBotApiV1BotsPost({
-        body: {
-          definition_id: descriptor.definition_id,
-          inputs,
-          graph_template_id: savedDraft.id,
-        },
-        throwOnError: true,
-      });
-      await goto(botPath(botResponse.data.id));
+      const bot = await savedDraft.save(descriptor.definition_id, inputs, graphToSave);
+      await goto(botPath(bot.id));
     } catch (caught) {
-      configServerIssues = launchRequestValidationIssues(caught);
-      graphServerIssues = graphValidationIssues(caught, graphToSave);
+      const failure = DraftSaveFeedback.fromFailure(caught, graphToSave);
+      configServerIssues = failure.inputIssues;
+      graphServerIssues = failure.graphIssues;
+      saveUncertain = failure.uncertain;
       if (graphServerIssues.length > 0) {
         await tick();
         document.getElementById('new-bot-graph-validation')?.focus();
       } else if (configServerIssues.length === 0) {
-        error = resourceLimitDetail(caught) ?? BOT_BUILDER_COPY.SAVE_ERROR;
+        error = failure.message(BOT_BUILDER_COPY.SAVE_ERROR);
       }
     } finally {
       saving = false;
@@ -152,6 +134,7 @@
     {descriptor}
     onsubmit={createSavedBot}
     busy={saving}
+    disabled={saveUncertain}
     submitLabel={BOT_BUILDER_COPY.CREATE}
     busyLabel={BOT_BUILDER_COPY.CREATING}
     serverIssues={configServerIssues}

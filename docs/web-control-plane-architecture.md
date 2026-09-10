@@ -1096,3 +1096,34 @@ systemd timers for backup and RPO checks. Restore decrypts before a single
 transaction into a new isolated project and quarantines all access/jobs before any
 application service may start. See [the data runbook](beta-data-lifecycle.md) for
 approved policy, manual reconciliation and non-database secret custody.
+
+## Guided first use (Slice 22)
+
+The private guided-setup route composes the existing catalog examples, `LaunchForm`
+and market selector into choose/configure/review steps. It calls `SavedBotDraft`,
+shared with the full editor, to create a private template and saved bot. The
+`savedDraft` package owns confirmed-write state, a separate write-result adapter
+and UI feedback; HTTP client rejection classification is shared with launch. Confirmed
+writes are reused during an in-page retry. Unknown write outcomes block further
+sends from that draft and direct users to inspect their saved bots before creating
+another; confirmed rejections stay retryable. This does not claim durable save
+idempotency across reloads. The existing saved-bot page owns explicit launch,
+verification, market validation, capacity and paper gates.
+
+The run-reading guide derives status and loaded order/fill counts from the
+existing dashboard contracts. It distinguishes missing/stale book reports,
+reconnection and failures from a condition that may legitimately be waiting.
+Counts describe the loaded history window, and cached health is identified as
+last reported rather than asserted current. No graph debugger or new strategy
+engine is introduced.
+
+Browser acceptance supplies deterministic normalized books to the real catalog
+bot, `BotRunner`, paper broker, observable broker and execution lease coordinator.
+The managed fixture launcher uses production queue recovery and lease expiry,
+deduplicates in-flight hints, and drains tasks before closing API resources. A
+shared exact-one-market resolver rejects ambiguous fixture selection. Typed
+fixture cases live in `backend/tests/control_plane/onboarding_policy.py` and
+generate a separate browser test contract. A shared explicit clock and seeded
+jitter keep the market scenarios controlled while exercising real elapsed time.
+Those inputs live only in `backend/tests/control_plane/onboarding_fixture/`;
+production adapters and Polymarket protocols are unchanged.

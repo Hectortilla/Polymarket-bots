@@ -871,3 +871,11 @@ input[type='checkbox'] {
     -webkit-backdrop-filter: none;
   }
 }
+
+.account-controls { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.account-controls span { max-width: 240px; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; }
+@media (max-width: 600px) {
+  .site-header-inner { flex-wrap: wrap; gap: 8px 16px; padding-block: 8px; }
+  .account-controls { width: 100%; min-width: 0; flex-wrap: wrap; gap: 8px 16px; }
+  .account-controls span { max-width: 100%; overflow-wrap: anywhere; }
+}

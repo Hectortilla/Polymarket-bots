@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { hasReportedUsableBook, RUN_GUIDE_COPY } from '$lib/runs/runGuide';
+  import RunGuide from '$lib/runs/RunGuide.svelte';
   import { STREAM_CONNECTION_STATE } from '$lib/runs/events';
   import { RunNotFoundError } from '$lib/runs/hydrate';
   import { page } from '$app/state';
@@ -246,6 +248,8 @@
     <p class="notice error">{run.failure_detail}</p>
   {/if}
 
+  <RunGuide {run} {events} health={dashboard.streamHealth} reconnecting={streamReconnecting} />
+
   <section class="detail-grid">
     <article class="detail-section timing-panel">
       <div class="section-heading"><h2>Timing</h2></div>
@@ -320,11 +324,7 @@
     <div class="section-heading">
       <h2>Stream health</h2>
       <span class:health-stale={dashboard.streamHealth?.book_stale} class="section-count">
-        {dashboard.streamHealth
-          ? dashboard.streamHealth.book_stale
-            ? RUN_DETAIL_COPY.STALE_BOOK_INPUT
-            : 'current'
-          : 'awaiting telemetry'}
+        {hasReportedUsableBook(dashboard.streamHealth) ? RUN_GUIDE_COPY.BOOK_REPORTED : RUN_GUIDE_COPY.BOOK_UNAVAILABLE}
       </span>
     </div>
     {#if dashboard.streamHealth}

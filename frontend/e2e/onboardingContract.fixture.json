@@ -1,0 +1,12 @@
+{
+  "cases": {
+    "action": {
+      "marketSlug": "onboarding-action",
+      "expectedFillCount": 1
+    },
+    "waiting": {
+      "marketSlug": "onboarding-waiting",
+      "expectedFillCount": 0
+    }
+  }
+}

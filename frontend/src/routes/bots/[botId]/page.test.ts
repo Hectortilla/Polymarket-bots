@@ -411,11 +411,12 @@ it.each([
   [HTTP_STATUS.TOO_MANY_REQUESTS, false],
   [HTTP_STATUS.UNPROCESSABLE_CONTENT, false],
   [HTTP_STATUS.SERVICE_UNAVAILABLE, true],
+  [undefined, true],
 ])('handles returned HTTP %s with recovery=%s on the next explicit attempt', async (status, recovery) => {
   sessionStorage.clear();
   mocks.readBot.mockResolvedValue({ data: BOT });
   mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
-  mocks.launchRun.mockResolvedValue({ response: { status }, error: {} });
+  mocks.launchRun.mockResolvedValue({ response: status === undefined ? undefined : { status }, error: new TypeError('fetch failed') });
   render(Page);
   const button = await screen.findByRole('button', { name: BOT_DETAIL_COPY.RUN });
   await fireEvent.click(button);

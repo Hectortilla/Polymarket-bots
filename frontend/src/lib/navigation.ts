@@ -1,5 +1,6 @@
 export const NAVIGATION_PATH = {
   HOME: '/',
+  START: '/start',
   NEW_BOT: '/bots/new'
 } as const;
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ONBOARDING_COPY } from '$lib/onboarding/copy';
   import AccountUsage from '$lib/limits/AccountUsage.svelte';
   import { PRESENTATION_COPY } from '$lib/presentation';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
@@ -109,6 +110,7 @@
       </div>
       {#if visibleBots.length === 0}
         <p class="empty-state">{HOME_COPY.CREATE_FIRST_BOT}</p>
+        <p><a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a></p>
       {:else}
         {#each visibleBots as bot (bot.id)}
           {@const recentRun = latestRun(bot.id)}

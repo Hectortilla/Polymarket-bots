@@ -1713,7 +1713,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slices 16–21 delivered; Slices 22–23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–22 delivered; Slice 23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -2128,7 +2128,7 @@ No Polymarket protocol changes or blocked MCP checks were introduced.
 
 ## Slice 22: First-Use Experience
 
-Status: planned; depends on Slices 17–19 and the existing node editor/catalog.
+Status: delivered; depends on Slices 17–19 and the existing node editor/catalog.
 
 Minimum deliverable:
 
@@ -2155,6 +2155,24 @@ Acceptance:
 
 Explicit exclusions: new strategy engines, a marketplace, a tutorial CMS and a
 full graph execution debugger. Rich diagnostics remain a later product feature.
+
+Delivered approach: the private guided route reuses catalog examples, market search,
+`LaunchForm`, shared private-draft saving and the saved-bot page's explicit Run.
+Run guidance distinguishes reported usable books, waiting, reconnecting and failed
+execution, with simulated balances and loaded-history counts. Confirmed writes are
+reused during an editor retry; unknown outcomes block resends from that draft and
+direct the user to inspect existing bots. Reload starts a new blank create intent.
+
+Acceptance: all 51 style-rule reviewers and affected closing reviewers completed;
+accepted findings were reconciled across ownership, dependency direction, retry
+safety, accessibility and tests. The backend suite passed 1,389 tests using real
+disposable PostgreSQL/Redis; all eight browser scenarios passed, including search
+failure/retry, deterministic action and no-action runs, Stop and reload. The
+HTTPS deployment/failure/rollback rehearsal passed without assuming a market trade.
+All 305 frontend tests, zero-diagnostic Svelte checks, generated-client parity, frontend
+and Python package builds passed. Final documentation-drift audit covered README,
+product spec, both architecture documents, this plan, author/API notes and operator
+runbooks; no protocol change or public deployment was introduced.
 
 ## Slice 23: Launch Information, Support and Public-Beta Acceptance
 

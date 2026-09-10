@@ -6,7 +6,7 @@ import contract from '../src/lib/runtimeContract.fixture.json' with { type: 'jso
 import { ALLOWANCE_COPY } from '../src/lib/limits/copy';
 import { AUTH_COPY } from '../src/lib/auth/copy';
 import { LOGIN_PATH, REGISTER_PATH, RETURN_TO_QUERY_PARAM } from '../src/lib/auth/navigation';
-import { NAVIGATION_PATH } from '../src/lib/navigation';
+import { NAVIGATION_PATH, runPath } from '../src/lib/navigation';
 import { BOT_BUILDER_COPY } from '../src/lib/bots/copy';
 import { BOT_DETAIL_COPY } from '../src/routes/bots/[botId]/copy';
 import { RUN_STATUS, RUN_STATUS_PRESENTATION } from '../src/lib/runs/status';
@@ -152,6 +152,10 @@ test('active streams close on logout, external revocation, and cross-tab account
     }
     await expect.poll(() => streamCount(page, STREAM_COUNTERS.closed)).toBeGreaterThan(closed);
   }
+  await authenticate(page, firstActiveEmail);
+  await page.goto(runPath(previousRunId!));
+  await page.getByRole('button', { name: RUN_STATUS_PRESENTATION[RUN_STATUS.QUEUED].stopLabel!, exact: true }).click();
+  await expect(page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first()).toBeVisible();
 });
 
 async function installStreamLifecycleCounters(page: Page): Promise<void> {
@@ -204,4 +208,6 @@ test('lost launch response and reload recover one private run', async ({ page })
   await page.getByRole('button', { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
   await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
   expect(page.url()).not.toContain(originalRunId);
+  await page.getByRole('button', { name: RUN_STATUS_PRESENTATION[RUN_STATUS.QUEUED].stopLabel!, exact: true }).click();
+  await expect(page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first()).toBeVisible();
 });

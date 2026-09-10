@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ONBOARDING_COPY } from '$lib/onboarding/copy';
+  import { NAVIGATION_PATH } from '$lib/navigation';
   import { onMount } from 'svelte';
   import AccountDeletion from '$lib/lifecycle/AccountDeletion.svelte';
   import { accountStatus, changePassword, revokeSessions as revokeSessionsRequest, type AccountStatus, type SessionRevocation } from '$lib/api/generated';
@@ -62,6 +64,7 @@
 <svelte:head><title>Account settings | Polybot</title></svelte:head>
 <section class="account-panel">
   <h1>{ACCOUNT_COPY.SETTINGS}</h1>
+  <p><a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a></p>
   {#if status}
     <p>{accountStatusMessage(status)}</p>
     {#if !status.email_verified}<RequestLink flow={EMAIL_VERIFICATION_FLOW} initialEmail={$account?.email ?? ''} />{/if}
