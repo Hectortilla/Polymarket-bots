@@ -18,7 +18,8 @@
   onMount(() => {
     chart = init(container, undefined, {
       renderer: "canvas",
-      useDirtyRect: true,
+      // Partial canvas repaints can erase line segments as the axis pointer moves.
+      useDirtyRect: false,
     });
     chart.setOption(option, updateOptions);
     let width = -1;

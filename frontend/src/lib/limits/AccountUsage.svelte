@@ -2,6 +2,7 @@
   import { minutesFromSeconds } from "$lib/time";
   import { ALLOWANCE_COPY } from "./copy";
   import { LIFECYCLE_COPY } from "$lib/lifecycle/copy";
+  import ArrowClockwiseIcon from "phosphor-svelte/lib/ArrowClockwiseIcon";
   import InfoIcon from "phosphor-svelte/lib/InfoIcon";
   import { onMount } from "svelte";
   import { readUsage, type AccountUsage } from "$lib/api/generated";
@@ -49,74 +50,99 @@
 />
 
 <section aria-label={ALLOWANCE_COPY.HEADING} class="allowance">
-  <div class="section-heading">
-    <div class="allowance-title" role="group" bind:this={infoHost} onpointerleave={leaveInfo}>
-      <h2>{ALLOWANCE_COPY.HEADING}</h2>
-      {#if usage && !error}
-        <button
-          class="allowance-info-button"
-          aria-label={ALLOWANCE_COPY.DETAILS}
-          aria-describedby={infoOpen ? "allowance-info" : undefined}
-          aria-expanded={infoOpen}
-          aria-controls="allowance-info"
-          onpointerenter={(event) => {
-            if (event.pointerType === "mouse") infoOpen = true;
-          }}
-          onfocus={() => (infoOpen = true)}
-          onblur={() => {
-            if (!infoPinned) infoOpen = false;
-          }}
-          onclick={() => {
-            infoPinned = !infoPinned;
-            infoOpen = infoPinned;
-          }}
-        >
-          <InfoIcon size={18} aria-hidden="true" />
-        </button>
-        <div class="allowance-info-position" hidden={!infoOpen}>
-          <div id="allowance-info" class="allowance-info" role="tooltip">
-            <strong>{ALLOWANCE_COPY.DETAILS}</strong>
-            <p>
-              Runs stop after {minutesFromSeconds(usage.policy.run_duration_seconds)} minutes. Each run supports up to {usage
-                .policy.tracked_markets_per_run} tracked markets and
-              {usage.policy.followed_wallets_per_run} followed wallets. Queued runs start oldest first when their account
-              has a free active slot.
-            </p>
-            <p>{LIFECYCLE_COPY.HISTORY}</p>
-          </div>
+  <div class="allowance-title" role="group" bind:this={infoHost} onpointerleave={leaveInfo}>
+    <h2>{ALLOWANCE_COPY.HEADING}</h2>
+    {#if usage && !error}
+      <button
+        class="allowance-info-button"
+        aria-label={ALLOWANCE_COPY.DETAILS}
+        aria-describedby={infoOpen ? "allowance-info" : undefined}
+        aria-expanded={infoOpen}
+        aria-controls="allowance-info"
+        onpointerenter={(event) => {
+          if (event.pointerType === "mouse") infoOpen = true;
+        }}
+        onfocus={() => (infoOpen = true)}
+        onblur={() => {
+          if (!infoPinned) infoOpen = false;
+        }}
+        onclick={() => {
+          infoPinned = !infoPinned;
+          infoOpen = infoPinned;
+        }}
+      >
+        <InfoIcon size={18} aria-hidden="true" />
+      </button>
+      <div class="allowance-info-position" hidden={!infoOpen}>
+        <div id="allowance-info" class="allowance-info" role="tooltip">
+          <strong>{ALLOWANCE_COPY.DETAILS}</strong>
+          <p>
+            Runs stop after {minutesFromSeconds(usage.policy.run_duration_seconds)} minutes. Each run supports up to {usage
+              .policy.tracked_markets_per_run} tracked markets and
+            {usage.policy.followed_wallets_per_run} followed wallets. Queued runs start oldest first when their account has
+            a free active slot.
+          </p>
+          <p>{LIFECYCLE_COPY.HISTORY}</p>
         </div>
-      {/if}
-    </div>
-    <button class="secondary" onclick={refresh} disabled={loading}>{ALLOWANCE_COPY.REFRESH}</button>
+      </div>
+    {/if}
   </div>
   {#if error}
-    <p role="status">{error}</p>
+    <p class="allowance-message" role="status">{error}</p>
   {:else if usage}
     <p class="allowance-values" aria-live="polite">
-      <span>{usage.active_runs} / {usage.policy.active_runs} active</span>
-      <span> {usage.queued_runs} / {usage.policy.queued_runs} queued</span>
-      <span> {usage.saved_bots} / {usage.policy.saved_bots} bots</span>
+      <span>{usage.active_runs}/{usage.policy.active_runs} active</span>
+      <span> {usage.queued_runs}/{usage.policy.queued_runs} queued</span>
+      <span> {usage.saved_bots}/{usage.policy.saved_bots} bots</span>
     </p>
   {:else}
-    <p role="status">Loading allowance usage…</p>
+    <p class="allowance-message" role="status">Loading allowance usage…</p>
   {/if}
+  <button
+    class="allowance-refresh"
+    aria-label={ALLOWANCE_COPY.REFRESH}
+    title={ALLOWANCE_COPY.REFRESH}
+    aria-busy={loading}
+    onclick={refresh}
+    disabled={loading}
+  >
+    <ArrowClockwiseIcon size={18} aria-hidden="true" />
+  </button>
 </section>
 
 <style>
   .allowance {
     margin: 0;
-    padding: 24px;
+    padding: 8px 16px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 8px 24px;
+    border-radius: var(--radius-surface);
     border: 1px solid var(--line);
     background: var(--surface);
   }
   .allowance-values {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px 24px;
+    justify-content: flex-start;
+    gap: 8px 24px;
     margin: 0;
     color: var(--text);
     font-family: var(--font-mono);
     font-size: 0.82rem;
+  }
+  .allowance-title h2 {
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .allowance-message {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.82rem;
+    line-height: 1.5;
   }
   .allowance-values span {
     white-space: nowrap;
@@ -128,7 +154,8 @@
     min-width: 0;
     gap: 4px;
   }
-  .allowance-info-button {
+  .allowance-info-button,
+  .allowance-refresh {
     flex: none;
     width: 44px;
     height: 44px;
@@ -137,6 +164,7 @@
     background: transparent;
     color: var(--text-muted);
   }
+  .allowance-refresh:hover,
   .allowance-info-button:hover,
   .allowance-info-button[aria-expanded="true"] {
     color: var(--text);
@@ -167,21 +195,24 @@
     margin: 10px 0 0;
     color: var(--text-soft);
   }
-  @media (max-width: 600px) {
-    .allowance :global(.section-heading) {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 12px;
-    }
-  }
-  @media (max-width: 767px) {
+  @media (max-width: 640px) {
     .allowance {
-      padding: 20px 16px;
+      grid-template-columns: minmax(0, 1fr) 44px;
+      gap: 0 8px;
+      padding: 6px 12px 12px;
+    }
+    .allowance-refresh {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .allowance-values,
+    .allowance-message {
+      grid-column: 1 / -1;
     }
     .allowance-values {
-      display: grid;
-      grid-template-columns: 1fr;
+      justify-content: space-between;
       gap: 8px;
+      font-size: 0.78rem;
     }
   }
 </style>

@@ -3,6 +3,7 @@
   import { SIDE } from "$lib/sides";
   import { MAX_CHART_TOKENS, OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR, VALUATION_STATUS } from "./contracts";
   import type { EChartsCoreOption } from "./echarts";
+  import { CHART_COLORS, PRICE_CHART_GRID, TIME_AXIS, VALUE_AXIS, priceChartTooltip } from "./appearance";
 
   const MARKET_SERIES_PALETTE = [
     "#57d3ff",
@@ -27,7 +28,10 @@
     "#bfc5c2",
   ];
 
-  export function marketChartOption(samples: ChartSamplePayload[]): EChartsCoreOption {
+  export function marketChartOption(
+    samples: ChartSamplePayload[],
+    hiddenTokens: ReadonlySet<string> = new Set(),
+  ): EChartsCoreOption {
     const marketSeries = recentMarketSeries(samples);
     const pointsByToken = new Map(
       marketSeries.map(({ token_id }) => [token_id, Array<MarketChartPointPayload | undefined>(samples.length)]),
@@ -41,18 +45,19 @@
     return {
       animation: false,
       color: MARKET_SERIES_PALETTE,
-      grid: { left: 44, right: 16, top: 42, bottom: 28 },
-      legend: { top: 0, textStyle: { color: "#b8bfbb" } },
-      tooltip: { trigger: "axis" },
-      xAxis: { type: "time", axisLabel: { color: "#7e8781", hideOverlap: true } },
+      grid: PRICE_CHART_GRID,
+      tooltip: priceChartTooltip((value) => value.toFixed(3)),
+      xAxis: TIME_AXIS,
       yAxis: {
-        type: "value",
+        ...VALUE_AXIS,
         min: OUTCOME_PRICE_FLOOR,
         max: OUTCOME_PRICE_CEILING,
-        axisLabel: { color: "#7e8781" },
+        interval: (OUTCOME_PRICE_CEILING - OUTCOME_PRICE_FLOOR) / 4,
       },
       series: marketSeries.flatMap((market, index) =>
-        marketSeriesForToken(samples, market, pointsByToken.get(market.token_id) ?? [], index),
+        hiddenTokens.has(market.token_id)
+          ? []
+          : marketSeriesForToken(samples, market, pointsByToken.get(market.token_id) ?? [], index),
       ),
     };
   }
@@ -80,7 +85,7 @@
       const point = points[sampleIndex];
       return [sample.sampled_at_ms, point?.value == null ? null : Number(point.value)];
     });
-    const markers = marketFillMarkers(samples, points);
+    const markers = marketFillMarkers(samples, points, label);
     const data = (status: typeof VALUATION_STATUS.fresh | typeof VALUATION_STATUS.stale) =>
       marketPricePoints.map(([time, value], sampleIndex) => [
         time,
@@ -93,7 +98,8 @@
         type: "line",
         showSymbol: false,
         connectNulls: false,
-        lineStyle: { color, width: 1.5 },
+        itemStyle: { color },
+        lineStyle: { color, width: 2 },
         data: data(VALUATION_STATUS.fresh),
       },
       {
@@ -102,24 +108,37 @@
         type: "line",
         showSymbol: false,
         silent: true,
-        lineStyle: { color, opacity: 0.3, width: 1.5 },
+        itemStyle: { color },
+        lineStyle: { color, opacity: 0.4, type: "dashed", width: 2 },
         data: data(VALUATION_STATUS.stale),
       },
       {
         id: `market:${tokenId}:fills`,
         name: `${label} fills`,
         type: "scatter",
+        clip: false,
         symbolSize: 8,
         data: markers,
       },
     ];
   }
 
-  function marketFillMarkers(samples: ChartSamplePayload[], points: Array<MarketChartPointPayload | undefined>) {
+  function marketFillMarkers(
+    samples: ChartSamplePayload[],
+    points: Array<MarketChartPointPayload | undefined>,
+    label: string,
+  ) {
     return points.flatMap((point, sampleIndex) =>
       (point?.markers ?? []).map((side) => ({
+        name: `${label} ${side === SIDE.buy ? "buy" : "sell"} fill`,
         value: [samples[sampleIndex].sampled_at_ms, point?.value == null ? null : Number(point.value)],
-        itemStyle: { color: side === SIDE.buy ? "#72df98" : "#ff847c" },
+        symbol: side === SIDE.buy ? "triangle" : "diamond",
+        itemStyle: {
+          color: side === SIDE.buy ? CHART_COLORS.buy : CHART_COLORS.sell,
+          borderColor: CHART_COLORS.surface,
+          borderWidth: 1.5,
+          opacity: 1,
+        },
       })),
     );
   }
@@ -129,7 +148,48 @@
   import EChart from "./EChart.svelte";
 
   let { samples }: { samples: ChartSamplePayload[] } = $props();
-  const option = $derived(marketChartOption(samples));
+  let hiddenTokens = $state(new Set<string>());
+  const markets = $derived(recentMarketSeries(samples));
+  const option = $derived(marketChartOption(samples, hiddenTokens));
+
+  function toggleMarket(tokenId: string): void {
+    const next = new Set(hiddenTokens);
+    if (next.has(tokenId)) next.delete(tokenId);
+    else next.add(tokenId);
+    hiddenTokens = next;
+  }
 </script>
 
-<EChart {option} label="Market prices with buy and sell markers" />
+<div class="market-chart-content">
+  {#if markets.length}
+    <div class="market-legend" role="group" aria-label="Visible markets">
+      {#each markets as market, index (market.token_id)}
+        <button
+          class="market-legend-item"
+          aria-pressed={!hiddenTokens.has(market.token_id)}
+          onclick={() => toggleMarket(market.token_id)}
+          title={market.label}
+          style:--series-color={MARKET_SERIES_PALETTE[index % MARKET_SERIES_PALETTE.length]}
+        >
+          <span class="market-legend-swatch" aria-hidden="true"></span>
+          <span>{market.label}</span>
+        </button>
+      {/each}
+    </div>
+    <div class="market-plot">
+      <EChart {option} label="Market prices with buy and sell markers" />
+    </div>
+    <div
+      class="chart-key"
+      aria-label="Chart symbols"
+      style:--buy-color={CHART_COLORS.buy}
+      style:--sell-color={CHART_COLORS.sell}
+    >
+      <span><i class="chart-key-buy" aria-hidden="true"></i>Buy fill</span>
+      <span><i class="chart-key-sell" aria-hidden="true"></i>Sell fill</span>
+      <span><i class="chart-key-stale" aria-hidden="true"></i>Stale estimate</span>
+    </div>
+  {:else}
+    <p class="chart-empty">No market prices in this time window.</p>
+  {/if}
+</div>

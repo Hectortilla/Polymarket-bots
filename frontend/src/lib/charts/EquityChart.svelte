@@ -2,6 +2,7 @@
   import type { ChartSamplePayload } from "$lib/api/generated";
   import { VALUATION_STATUS, type AvailableValuationStatus } from "./contracts";
   import type { EChartsCoreOption } from "./echarts";
+  import { CHART_COLORS, PRICE_CHART_GRID, TIME_AXIS, VALUE_AXIS, priceChartTooltip } from "./appearance";
   import { DASHBOARD_COPY } from "./copy";
 
   export function equityChartOption(samples: ChartSamplePayload[]): EChartsCoreOption {
@@ -12,17 +13,20 @@
       ]);
     return {
       animation: false,
-      grid: { left: 56, right: 16, top: 16, bottom: 28 },
-      tooltip: { trigger: "axis" },
-      xAxis: { type: "time", axisLabel: { color: "#7e8781", hideOverlap: true } },
-      yAxis: { type: "value", scale: true, axisLabel: { color: "#7e8781" } },
+      grid: PRICE_CHART_GRID,
+      tooltip: priceChartTooltip((value) =>
+        value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      ),
+      xAxis: TIME_AXIS,
+      yAxis: { ...VALUE_AXIS, scale: true, boundaryGap: ["15%", "15%"] },
       series: [
         {
           id: "equity:fresh",
           name: DASHBOARD_COPY.EQUITY,
           type: "line",
           showSymbol: false,
-          lineStyle: { color: "#72df98" },
+          itemStyle: { color: CHART_COLORS.buy },
+          lineStyle: { color: CHART_COLORS.buy, width: 2 },
           data: data(VALUATION_STATUS.fresh),
         },
         {
@@ -30,7 +34,8 @@
           name: "Stale estimate",
           type: "line",
           showSymbol: false,
-          lineStyle: { color: "#72df98", opacity: 0.3 },
+          itemStyle: { color: CHART_COLORS.buy },
+          lineStyle: { color: CHART_COLORS.buy, opacity: 0.4, type: "dashed", width: 2 },
           data: data(VALUATION_STATUS.stale),
         },
       ],

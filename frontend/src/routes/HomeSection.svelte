@@ -33,7 +33,6 @@
       <span id={`${headingId}-label`} class="home-section-title">{title}</span>
       <span class="home-section-count" aria-hidden="true">{count}</span>
       <span id={`${headingId}-count`} class="sr-only">{count} {count === 1 ? "item" : "items"}</span>
-      <span class="home-section-action" aria-hidden="true">{expanded ? "Hide" : "Show"}</span>
       <span class="home-section-chevron" class:collapsed={!expanded} aria-hidden="true">
         <CaretDownIcon size={14} />
       </span>
@@ -109,11 +108,8 @@
     text-align: center;
   }
 
-  .home-section-action {
+  .home-section-chevron {
     margin-left: auto;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 500;
   }
 
   .home-section-chevron.collapsed {
@@ -138,13 +134,4 @@
     }
   }
 
-  @media (max-width: 420px) {
-    .home-section-action {
-      display: none;
-    }
-
-    .home-section-chevron {
-      margin-left: auto;
-    }
-  }
 </style>

@@ -60,7 +60,7 @@ describe("EChart lifecycle", () => {
 
     expect(mocks.init).toHaveBeenCalledWith(expect.any(HTMLDivElement), undefined, {
       renderer: "canvas",
-      useDirtyRect: true,
+      useDirtyRect: false,
     });
     expect(mocks.chart.setOption).toHaveBeenCalledWith(first, updateOptions);
 

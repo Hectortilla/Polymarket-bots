@@ -55,6 +55,33 @@ Equity and market charts remain expanded within Live data. Shared time navigatio
 equity; the market/wallet view toggle sits beside the second chart title.
 The equity plot is 300px high and the market plot 460px high on desktop.
 
+### Chart presentation
+
+Keep the same CLI time controls and valuation semantics. Canvas charts use full
+repaints so moving the dashed axis pointer cannot leave erased line segments.
+Option updates remain incremental and resize work remains frame-coalesced.
+
+Both price plots share 76px left, 28px right, 36px top, and 48px bottom insets,
+with outer bounds that protect axis labels from the chart edges. Use 11px Geist
+Mono axis labels, subtle horizontal grid lines, no axis ticks, and 2px price
+lines. Equity adds vertical range padding; market prices keep the fixed 0-1
+domain with quarter-price ticks. Fresh and stale valuations remain separate,
+with stale estimates dimmed and dashed and unavailable samples left as gaps.
+
+Market legends live above the canvas, separated by a quiet divider. Show one
+44px-minimum-height toggle per token with a matching line swatch and wrapping
+label. A toggle controls that token's fresh prices, stale prices, and fills
+together and retains its selection through sample updates. Token identity,
+rather than its display label, owns visibility. The legend scrolls within 144px
+on desktop and 128px on mobile, keeping the plot visible with up to 20 tokens.
+The bottom key explains green triangular buy fills, red diamond sell fills, and
+dimmed dashed stale estimates. Fill markers remain visible at 0 and 1.
+
+Tooltips use an opaque raised surface, matching swatches, a timestamp, wrapping
+labels, and aligned numeric values. Omit unavailable values, retain zero prices,
+and label stale estimates and fill sides explicitly. External labels render as
+text. Confine tooltips to the chart and allow scrolling for long market lists.
+
 Events starts closed on each visit, with a compact right-side toggle and loaded
 progress-event count. Opening it changes the chart column's available width and
 reveals a 360px drawer, reduced to 300px on smaller desktop widths. The drawer

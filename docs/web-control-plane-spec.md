@@ -342,6 +342,10 @@ Each account has the same free allowance returned with its private usage by
 `GET /api/v1/usage`. The owning numeric contract is `api.limits.policy.PAPER_BETA`;
 there are no paid tiers or account-supplied limit overrides. The approved initial
 values are conditional on the bounded load rehearsal documented in the plan.
+The private Account usage strip places active-run, queued-run and saved-bot
+counts alongside its heading in one desktop row. Refresh is an icon button with
+an accessible label; run-limit and retention details remain in the info tooltip.
+On narrow screens the counts sit in a compact row beneath the heading.
 
 New runs enter a bounded queue. Workers select the oldest queued run whose
 account has a free active slot (creation time, then run ID). A busy account does

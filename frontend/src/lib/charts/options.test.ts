@@ -46,6 +46,21 @@ describe("dashboard option builders", () => {
     ]);
   });
 
+  it("hides a market's prices, stale estimates and fills together without hiding a same-label token", () => {
+    const point = sample(1_000, "0.5", VALUATION_STATUS.fresh, [SIDE.buy]);
+    point.markets.push({ ...point.markets[0], token_id: "other-token" });
+    const option = marketChartOption([point], new Set(["token"]));
+    const series = option.series as Array<{ id: string; itemStyle?: { color: string } }>;
+
+    expect(series.map(({ id }) => id)).toEqual([
+      "market:other-token:fresh",
+      "market:other-token:stale",
+      "market:other-token:fills",
+    ]);
+    const visible = marketChartOption([point]).series as typeof series;
+    expect(series[0].itemStyle).toEqual(visible[3].itemStyle);
+  });
+
   it("separates fresh and stale executable equity", () => {
     const option = equityChartOption([
       sample(1_000, "100", VALUATION_STATUS.fresh, []),
