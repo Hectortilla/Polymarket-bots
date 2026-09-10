@@ -2,7 +2,6 @@
   import { RUN_DETAIL_COPY, loadedEventsLabel } from "./copy";
   import { SERVICE_NAME } from "$lib/serviceIdentity";
   import { hasReportedUsableBook, RUN_GUIDE_COPY } from "$lib/runs/runGuide";
-  import RunGuide from "$lib/runs/RunGuide.svelte";
   import { STREAM_CONNECTION_STATE } from "$lib/runs/events";
   import { RunNotFoundError } from "$lib/runs/hydrate";
   import { page } from "$app/state";
@@ -243,8 +242,6 @@
     <p class="notice error">{run.failure_detail}</p>
   {/if}
 
-  <RunGuide {run} {events} health={dashboard.streamHealth} reconnecting={streamReconnecting} />
-
   {#if definitionLoading}
     <section class="builder-section" aria-label="Loading configuration" aria-busy="true">
       <div class="skeleton skeleton-heading" aria-hidden="true"></div>
@@ -354,7 +351,7 @@
 
   <section class="progress-section">
     <div class="section-heading">
-      <h2>Durable progress</h2>
+      <h2>Events</h2>
       <div class="section-actions">
         <span class="section-count">{loadedEventsLabel(progressEvents.length)}</span>
         {#if nextBeforeEventId !== null}
