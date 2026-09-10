@@ -5,7 +5,7 @@
   import { PRESENTATION_COPY } from "$lib/presentation";
   import PlusIcon from "phosphor-svelte/lib/PlusIcon";
   import FlowArrowIcon from "phosphor-svelte/lib/FlowArrowIcon";
-  import ClockCounterClockwiseIcon from "phosphor-svelte/lib/ClockCounterClockwiseIcon";
+  import TrendUpIcon from "phosphor-svelte/lib/TrendUpIcon";
   import HomeSection from "./HomeSection.svelte";
   import { onMount } from "svelte";
   import "./home.css";
@@ -136,7 +136,7 @@
   </HomeSection>
 
   <HomeSection title={HOME_COPY.RECENT_RUNS} headingId="recent-runs-heading" count={visibleRuns.length}>
-    {#snippet icon()}<ClockCounterClockwiseIcon size={20} />{/snippet}
+    {#snippet icon()}<TrendUpIcon size={20} />{/snippet}
     {#if visibleRuns.length === 0}
       <p class="empty-state">Run a configured bot to see its history here.</p>
     {:else}

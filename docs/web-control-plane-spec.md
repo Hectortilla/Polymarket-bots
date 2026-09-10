@@ -130,11 +130,11 @@ The home page is an operator workspace with one primary **New bot** action, a
 structured list of configured node-based bots, and recent runs. Both lists start
 expanded, with integrated section headers, displayed-item counts, and independent
 keyboard-accessible collapse controls. Collapsing a section is local to the page
-visit; returning home shows both lists again. Recent runs shows up to ten rows.
+visit; returning home shows both lists again. The Runs section shows up to ten recent rows.
 Bot rows expose
 the information needed for comparison: name, market scope, max order size,
 latest graph revision, run status, and last update. The frontend does not expose
-other definition types or a graph-template page. A failed Recent Runs row
+other definition types or a graph-template page. A failed Runs row
 exposes the same latest runtime error and recorded failure outcome shown on its
 failed lifecycle event, on hover or keyboard focus.
 

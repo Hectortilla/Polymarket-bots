@@ -1,8 +1,8 @@
 export const HOME_COPY = {
-  CONFIGURED_BOTS: "Configured bots",
+  CONFIGURED_BOTS: "Bot configurations",
   CREATE_FIRST_BOT: "Create your first bot.",
   NOT_RUN_YET: "Not run yet",
-  RECENT_RUNS: "Recent runs",
+  RECENT_RUNS: "Runs",
   LOAD_ERROR: "The control plane could not be loaded.",
 } as const;
 
