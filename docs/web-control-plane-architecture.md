@@ -315,11 +315,13 @@ adds only its internal launch identity, execution token and delivery timestamp.
 Current summaries come from durable events. ECS can add its own reference when
 an ECS slice actually exists.
 
-Before Slice 15, the disposable alpha migration history was rewritten in place: `0001` creates
-the complete graph-template, saved-bot, graph-revision, and run schema,
-including Taskiq progress state; `0002` adds durable events. Later migrations
-extend the event contract. Slice 15 supersedes that reset policy: preserve accounts and owned resources
-through explicit forward migrations and backups; do not rewrite applied history.
+The September 10 user-approved consolidation replaces the undeployed, disposable
+migration history with one initial revision, `0001`. It creates all current tables,
+constraints and indexes, including identity, events, reliability, recovery,
+operations and lifecycle state, and seeds the required operations singleton.
+Databases from the former chain must be explicitly recreated with the existing
+recreation command. Downgrade to `base` drops all control-plane tables. This is a
+local reset exception; future retained deployments use forward migrations/backups.
 
 The persistence boundary decodes `config` into `PaperRunConfig` once before it
 returns a run to API or worker code. Orchestration never handles raw JSON and
@@ -743,10 +745,10 @@ explicitly trust only a controlled reverse proxy that overwrites forwarded heade
 Never configure wildcard forwarded-address trust. Duplicate signup returns a
 generic 409; wrong/unknown login shares a generic 401 and Argon2 work pattern.
 
-Migration 0005 refuses populated pre-auth bot/template tables. The approved alpha
-reset uses the existing explicit database recreation script before upgrade; it
-never silently deletes data or assigns it to the first registration. Once users
-exist, resets are destructive account operations requiring new authorization.
+The initial migration creates mandatory bot/template ownership on a fresh schema.
+The September 10 local history consolidation and disposable-data reset are approved;
+old databases use the explicit recreation script, never an implicit owner backfill.
+Future resets of retained account data require explicit authorization.
 
 ### Identity and credentials
 
@@ -859,10 +861,9 @@ fresh restoration. A bounded current-user refresh detects expiry even on idle or
 historical pages. Redirect targets accept only local paths. Generated contracts
 and the generated runtime fixture supply account response shapes and form limits.
 
-Migration 0005 refuses populated pre-auth bot/template tables instead of guessing
-an owner. The approved local database was explicitly recreated. Existing accounts
-must subsequently be preserved through deliberate migrations/backups; downgrades
-remove identity and cannot express per-owner duplicate names in the old schema.
+The consolidated initial migration creates ownership and per-owner template-name
+uniqueness directly. Downgrade to `base` removes the complete schema. The approved
+local reset does not authorize future deletion of retained account data.
 
 Verification lives in `backend/tests/control_plane/test_auth.py` and
 `frontend/e2e/accounts.spec.ts`, plus the existing PostgreSQL snapshot/worker suite.
@@ -956,8 +957,8 @@ a pending key in session storage before sending and keeps it through errors and
 reload, clearing it only after navigation to the confirmed run. Identities remain
 valid as long as their run history is retained. Slice 21 adds `Idempotency-Recovery`
 for browser retries: missing or expired attempts return 410 without creating work.
-Migration 0006 adds nullable identity/delivery/claim columns and a unique bot/key
-constraint without resetting existing accounts or history.
+The initial migration includes nullable identity/delivery/claim columns and a unique
+bot/key constraint.
 
 The queued row is the durable delivery obligation. The separate `recovery` process
 scans on the configured recovery cadence, serializes delivery attempts in PostgreSQL, and
@@ -1007,10 +1008,10 @@ Paper/live event shapes and Polymarket adapters are unchanged.
 ## Slice 19: Recovery, verification and credential lifecycle
 
 The September 10 approved policy extends Slice 15. `api.auth` owns all new identity
-state. A forward migration adds nullable `email_verified_at`, a
-`verification_required` flag and digest-only purpose-scoped account tokens.
-Existing rows receive `verification_required=false` and remain unverified; new
-rows default to true. The HTTP launch boundary rejects an unverified required
+state. The initial migration includes nullable `email_verified_at`, a
+`verification_required` flag defaulting to true, and digest-only purpose-scoped
+account tokens. The earlier unverified-account backfill is superseded by the
+approved disposable local reset. The HTTP launch boundary rejects an unverified required
 account before reserving capacity; history, editing, Stop and authentication stay
 available. No framework or execution-domain dependency on identity is added.
 
@@ -1055,7 +1056,7 @@ journal. Host OS/Docker access is the authorization boundary; ordinary web sessi
 cannot invoke it. Lock order is run-admission advisory lock, account row, then run
 rows. Login/session issuance shares the account lock; launch and worker admission
 recheck account suspension inside the admission transaction. Global control is a
-required singleton seeded by migration 0008; missing state fails explicitly.
+required singleton seeded by the initial migration; missing state fails explicitly.
 Operator termination and lifecycle events commit with the control and audit row.
 
 The recovery process also samples operational measurements every five seconds.
@@ -1082,7 +1083,7 @@ unhealthy status checks exit nonzero. HTTP admission exposes `incident_paused`
 ## Slice 21: Data lifecycle boundaries
 
 `api.lifecycle` owns bounded history/account/audit maintenance and the private
-restoration quarantine commands. Migration 0009 adds hidden-history and separate
+restoration quarantine commands. The initial migration includes hidden-history and separate
 restore-quarantine markers plus minimal deletion receipts without a user foreign
 key. Account access has one Python/SQL predicate covering both suspension and
 restore quarantine. Run history age/count selection is shared by reads and cleanup.

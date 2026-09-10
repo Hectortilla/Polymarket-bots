@@ -101,17 +101,18 @@ sees only its own bots, templates and run history. Code-owned starter graphs rem
 available to every signed-in account. The full policy lives in
 [the identity architecture](docs/web-control-plane-architecture.md#slice-15-identity-and-authorization).
 
-Migration 0005 requires empty pre-auth resource tables. The September 8 development
-reset was explicitly approved. On a disposable pre-auth installation only, use:
+The September 10 approved consolidation replaces the undeployed, disposable migration
+history with one initial revision (`0001`). It creates the complete current schema.
+Databases created with the former migration chain must be recreated, not stamped:
 
 ```sh
 uv run --env-file .env python -m scripts.recreate_control_plane_database
 ```
 
 This command deletes the configured database, including all bots, runs and accounts.
-Once accounts exist, preserve data through explicit forward migrations and backups;
-do not rewrite migration history or silently reset the database. Downgrading 0005
-removes identity and cannot represent duplicate template names across users.
+This reset is appropriate for the current disposable local data. Once a deployment
+retains important data, preserve it with forward migrations and backups. Downgrading
+the initial revision to `base` removes the entire control-plane schema.
 
 Keep API and frontend on one origin and retain the private network boundary.
 HTTPS deployments must use `POLYBOT_AUTH_ALLOW_HTTP=false`; cookies are then Secure.
@@ -208,6 +209,23 @@ npm test
 npm run build
 ```
 
+Formatting is manual and optional. After `uv sync --extra dev` and `npm ci`
+inside `frontend/`, use these commands from the repository root:
+
+```sh
+uv run --extra dev ruff format backend scripts
+npm --prefix frontend run format
+```
+
+[Ruff](https://docs.astral.sh/ruff/formatter/) formats the Python backend, tests,
+migrations, and scripts. [Prettier](https://prettier.io/docs/cli) with its
+[Svelte plugin](https://github.com/sveltejs/prettier-plugin-svelte) formats frontend
+JavaScript, TypeScript, Svelte, CSS, and configuration files. Generated API code,
+lockfiles, dependencies, and build/test outputs are excluded from frontend formatting.
+VS Code exposes both commands as `Formatting: Backend (Python)` and
+`Formatting: Frontend (Prettier)` in `.vscode/launch.json`. There are no formatting
+hooks, CI requirements, or format-on-save settings.
+
 For local UI development, run the FastAPI control plane on port `8000` and then
 run `npm run dev` from `frontend/`; Vite proxies same-origin `/api` requests to
 that API. Run detail combines bounded durable reload history with live market,
@@ -222,7 +240,7 @@ For local migration work, add the exact disposable PostgreSQL target to `.env`:
 POLYBOT_DATABASE_URL=postgresql://user:password@localhost:5432/polybot_dev
 ```
 
-Then run the `Recreate control-plane database` launch configuration in VS Code.
+Then run the `Control plane: Recreate database` launch configuration in VS Code.
 It terminates connections to that database, drops it if present, creates it,
 and applies Alembic migrations through `head`. The command is intentionally
 destructive and refuses the `postgres`, `template0`, and `template1` databases.

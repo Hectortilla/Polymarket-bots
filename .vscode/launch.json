@@ -242,6 +242,28 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "subProcess": true
+    },
+    {
+      "name": "Formatting: Backend (Python)",
+      "presentation": {
+        "group": "Formatting",
+        "order": 60
+      },
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "uv run --extra dev ruff format backend scripts",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Formatting: Frontend (Prettier)",
+      "presentation": {
+        "group": "Formatting",
+        "order": 61
+      },
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run format",
+      "cwd": "${workspaceFolder}/frontend"
     }
   ],
   "compounds": [

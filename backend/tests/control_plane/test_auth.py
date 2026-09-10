@@ -33,18 +33,15 @@ from api.auth.policy import (
     SESSION_COOKIE_SAMESITE,
     SESSION_RECHECK_SECONDS,
 )
-from api.auth.schema import OWNER_USER_ID_COLUMN, SESSIONS_TABLE, USERS_TABLE
+from api.auth.schema import OWNER_USER_ID_COLUMN
 from api.auth.store import AuthStore
 from api.auth.store.tokens import SESSION_TOKEN_LENGTH, SessionToken
 from api.auth.streams import StreamAuthorization
 from api.bots.models import BotRow
-from api.bots.schema import BOTS_TABLE_NAME
 from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.events.contracts import RunLifecycleEvent, RunStatusPayload
 from api.events.ids import FIRST_EVENT_CURSOR
-from api.graph_templates.models import GraphTemplateRow
-from api.graph_templates.schema import GRAPH_TEMPLATES_TABLE_NAME
 from api.http.app import create_app
 from api.http.protocol import (
     CACHE_CONTROL_HEADER,
@@ -78,7 +75,7 @@ from httpx import ASGITransport, AsyncClient
 from polybot.framework.clock import system_now_utc
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
-from sqlalchemy import UniqueConstraint, func, inspect, text, update
+from sqlalchemy import func, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import select
@@ -110,23 +107,10 @@ def services():
     redis_url = disposable_redis_url(redis_url)
     config = Config(Path(__file__).parents[2] / "alembic.ini")
     config.set_main_option("sqlalchemy.url", url)
-    asyncio.run(clear_private_templates(url))
     command.downgrade(config, "base")
     command.upgrade(config, "head")
     yield url, redis_url
-    asyncio.run(clear_private_templates(url))
     command.downgrade(config, "base")
-
-
-async def clear_private_templates(url):
-    # Per-owner duplicate names cannot be represented by the old global constraint.
-    engine = create_async_engine(url)
-    try:
-        async with engine.begin() as connection:
-            if await connection.scalar(text("SELECT to_regclass('graph_templates')")):
-                await connection.execute(text("DELETE FROM graph_templates"))
-    finally:
-        await engine.dispose()
 
 
 async def run_scenario(services, scenario):
@@ -570,53 +554,6 @@ def test_stream_authorization_stops_after_logout_within_bound(services):
     asyncio.run(run_scenario(services, scenario))
 
 
-@pytest.mark.parametrize("legacy_table", [BOTS_TABLE_NAME, GRAPH_TEMPLATES_TABLE_NAME])
-def test_migration_refuses_implicit_backfill_and_preserves_pre_auth_data(
-    services, legacy_table
-):
-    url, _ = services
-    config = Config(Path(__file__).parents[2] / "alembic.ini")
-    config.set_main_option("sqlalchemy.url", url)
-    command.downgrade(config, "0004")
-
-    async def seed_or_clear(*, clear=False):
-        engine = create_async_engine(url)
-        try:
-            async with engine.begin() as connection:
-                if clear:
-                    assert (
-                        await connection.scalar(
-                            text(f"SELECT count(*) FROM {legacy_table}")
-                        )
-                        == 1
-                    )
-                    await connection.execute(text(f"DELETE FROM {legacy_table}"))
-                elif legacy_table == GRAPH_TEMPLATES_TABLE_NAME:
-                    await connection.execute(
-                        text(
-                            f"INSERT INTO {GRAPH_TEMPLATES_TABLE_NAME} (id, name, graph, created_at, updated_at) VALUES (:id, 'legacy', '{{}}', now(), now())"
-                        ),
-                        {"id": uuid4()},
-                    )
-                else:
-                    await connection.execute(
-                        text(
-                            "INSERT INTO bots (id, definition_id, config, created_at, updated_at) VALUES (:id, 'legacy', '{}', now(), now())"
-                        ),
-                        {"id": uuid4()},
-                    )
-        finally:
-            await engine.dispose()
-
-    asyncio.run(seed_or_clear())
-    with pytest.raises(
-        RuntimeError, match="explicitly authorized pre-auth alpha database reset"
-    ):
-        command.upgrade(config, "head")
-    asyncio.run(seed_or_clear(clear=True))
-    command.upgrade(config, "head")
-
-
 def test_authenticated_database_failure_is_closed_and_secret_safe(services):
     async def scenario(client, app, factory, redis, launcher):
         await signup(client)
@@ -790,99 +727,3 @@ def test_corrupt_password_hash_is_unavailable_without_leaking_persisted_state(se
         assert PASSWORD not in response.text
 
     asyncio.run(run_scenario(services, scenario))
-
-
-def test_identity_migration_matches_metadata_and_downgrades_cleanly(services):
-    url, _ = services
-
-    async def check_schema():
-        engine = create_async_engine(url)
-        try:
-            async with engine.connect() as connection:
-
-                def compare(sync_connection):
-                    inspector = inspect(sync_connection)
-                    for model in (UserRow, SessionRow, BotRow, GraphTemplateRow):
-                        table = model.__table__
-                        actual = {
-                            column["name"]: column
-                            for column in inspector.get_columns(table.name)
-                        }
-                        assert set(actual) == set(table.columns.keys())
-                        for column in table.columns:
-                            assert actual[column.name]["nullable"] == column.nullable
-                            assert str(
-                                actual[column.name]["type"].compile(
-                                    dialect=sync_connection.dialect
-                                )
-                            ) == str(
-                                column.type.compile(dialect=sync_connection.dialect)
-                            )
-                        actual_unique = {
-                            tuple(item["column_names"])
-                            for item in inspector.get_unique_constraints(table.name)
-                        }
-                        expected_unique = {
-                            tuple(column.name for column in item.columns)
-                            for item in table.constraints
-                            if isinstance(item, UniqueConstraint)
-                        }
-                        assert actual_unique == expected_unique
-                        assert {
-                            tuple(item["column_names"])
-                            for item in inspector.get_indexes(table.name)
-                            if not item.get("duplicates_constraint")
-                        } == {
-                            tuple(column.name for column in item.columns)
-                            for item in table.indexes
-                        }
-                        actual_foreign = {
-                            (
-                                tuple(item["constrained_columns"]),
-                                item["referred_table"],
-                                tuple(item["referred_columns"]),
-                            )
-                            for item in inspector.get_foreign_keys(table.name)
-                        }
-                        expected_foreign = {
-                            (
-                                tuple(element.parent.name for element in item.elements),
-                                item.referred_table.name,
-                                tuple(element.column.name for element in item.elements),
-                            )
-                            for item in table.foreign_key_constraints
-                        }
-                        assert actual_foreign == expected_foreign
-
-                await connection.run_sync(compare)
-        finally:
-            await engine.dispose()
-
-    asyncio.run(check_schema())
-    config = Config(Path(__file__).parents[2] / "alembic.ini")
-    config.set_main_option("sqlalchemy.url", url)
-    command.downgrade(config, "0004")
-
-    async def check_downgrade():
-        engine = create_async_engine(url)
-        try:
-            async with engine.connect() as connection:
-                for table in (USERS_TABLE, SESSIONS_TABLE):
-                    assert (
-                        await connection.scalar(
-                            text("SELECT to_regclass(:table)"), {"table": table}
-                        )
-                        is None
-                    )
-                for table in (BOTS_TABLE_NAME, GRAPH_TEMPLATES_TABLE_NAME):
-                    columns = await connection.run_sync(
-                        lambda sync: inspect(sync).get_columns(table)
-                    )
-                    assert OWNER_USER_ID_COLUMN not in {
-                        column["name"] for column in columns
-                    }
-        finally:
-            await engine.dispose()
-
-    asyncio.run(check_downgrade())
-    command.upgrade(config, "head")

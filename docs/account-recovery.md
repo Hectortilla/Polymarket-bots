@@ -3,8 +3,9 @@
 Account settings expose email verification, password change and session revocation.
 Forgot-password recovery starts from the sign-in page. New accounts can sign in,
 edit bots and read their workspace immediately, but must verify before launching a
-paper run. Existing accounts retain access and are prompted to verify; migration
-0007 leaves their verification timestamp empty.
+paper run. The consolidated initial migration defaults new accounts to requiring
+verification and leaves their verification timestamp empty. Accounts explicitly
+exempted from verification remain supported by the runtime access policy.
 
 Email links expire after 30 minutes and work once. Reset and verification ask for
 a new password and sign out all sessions, including the current browser. Sign in
@@ -91,16 +92,17 @@ MFA in this slice. A user who loses both their password and mailbox access canno
 recover through this application. A still-signed-in user who knows their password
 can change it. Account deletion and retention are implemented by Slice 21; see [the data lifecycle runbook](beta-data-lifecycle.md).
 
-Deploy migration 0007 forward without resetting accounts or history. Old releases
-that require an earlier exact schema cannot run after upgrade; rollback requires a
-compatible release. Do not downgrade production to bypass verification.
+The September 10 approved local consolidation includes recovery in the initial
+migration. Recreate disposable databases from the former chain; see the README.
+Future retained deployments require forward migrations and a compatible rollback
+release. Do not downgrade a retained deployment to bypass verification.
 
 ## Acceptance
 
 Run from the repository root with disposable PostgreSQL and Redis configured:
 
 ```sh
-uv run pytest backend/tests/control_plane/test_account_recovery.py backend/tests/control_plane/test_account_recovery_migration.py backend/tests/control_plane/test_account_mail.py backend/tests/control_plane/test_account_startup.py backend/tests/control_plane/test_account_contracts.py
+uv run pytest backend/tests/control_plane/test_account_recovery.py backend/tests/control_plane/test_initial_migration.py backend/tests/control_plane/test_account_mail.py backend/tests/control_plane/test_account_startup.py backend/tests/control_plane/test_account_contracts.py
 npm --prefix frontend run test:e2e
 ```
 

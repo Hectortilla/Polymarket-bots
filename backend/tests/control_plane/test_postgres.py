@@ -56,7 +56,6 @@ from api.events.models import EventRow
 from api.events.schema import (
     EVENT_KIND_CONSTRAINT_NAME,
     RUN_EVENTS_CURSOR_INDEX_NAME,
-    RUN_EVENTS_RUN_ID_INDEX_NAME,
     RUN_EVENTS_TABLE_NAME,
     EventColumn,
 )
@@ -171,11 +170,11 @@ async def _create_run(
 
 
 @pytest.mark.postgres
-def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> None:
+def test_initial_migration_upgrade_and_downgrade_schema_and_cursor_index() -> None:
     url = _postgres_url()
     config = _alembic_config(url)
     command.downgrade(config, "base")
-    command.upgrade(config, "0001")
+    command.upgrade(config, "head")
 
     async def inspect_schema() -> tuple[
         list[str],
@@ -252,13 +251,6 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
             event_primary_key,
         )
 
-    slice_12a_schema = asyncio.run(inspect_schema())
-    assert tuple(column["name"] for column in slice_12a_schema[1]) == tuple(
-        column.value for column in RunColumn if column not in INTERNAL_RUN_COLUMNS
-    )
-    assert RUN_EVENTS_TABLE_NAME not in slice_12a_schema[0]
-
-    command.upgrade(config, "head")
     (
         table_names,
         columns,
@@ -323,7 +315,6 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
         return result
 
     saved_bot_schema = asyncio.run(inspect_saved_bot_schema())
-    # ALTER TABLE appends ownership columns; physical column order is not a contract.
     assert set(
         column["name"] for column in saved_bot_schema["template_columns"]
     ) == set(GraphTemplateRow.__table__.columns.keys())
@@ -413,10 +404,9 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
 
     asyncio.run(assert_constraint_rejections())
 
-    async def insert_chart_sample(*, accepted: bool) -> None:
+    async def insert_chart_sample() -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            # Reuse the bot seeded at head; old schemas have no identity columns.
             bot_id = await session.scalar(select(BotRow.id).limit(1))
             assert bot_id is not None
         run_id = uuid4()
@@ -440,71 +430,45 @@ def test_migrations_upgrade_and_downgrade_event_schema_and_cursor_index() -> Non
             "VALUES (:run_id, :kind, :occurred_at, CAST(:payload AS JSONB))"
         )
 
-        async def insert() -> None:
-            async with engine.begin() as connection:
-                await connection.execute(_run_insert_statement(), run_values)
-                await connection.execute(
-                    event_statement,
-                    {
-                        "run_id": run_id,
-                        "kind": EventKind.CHART_SAMPLE.value,
-                        "occurred_at": datetime.now(UTC),
-                        "payload": json.dumps({}),
-                    },
-                )
-                await connection.execute(
-                    event_statement,
-                    {
-                        "run_id": run_id,
-                        "kind": EventKind.RUN_LIFECYCLE.value,
-                        "occurred_at": datetime.now(UTC),
-                        "payload": json.dumps({}),
-                    },
-                )
-
-        if accepted:
-            await insert()
-        else:
-            with pytest.raises(IntegrityError):
-                await insert()
+        async with engine.begin() as connection:
+            await connection.execute(_run_insert_statement(), run_values)
+            await connection.execute(
+                event_statement,
+                {
+                    "run_id": run_id,
+                    "kind": EventKind.CHART_SAMPLE.value,
+                    "occurred_at": datetime.now(UTC),
+                    "payload": json.dumps({}),
+                },
+            )
+            await connection.execute(
+                event_statement,
+                {
+                    "run_id": run_id,
+                    "kind": EventKind.RUN_LIFECYCLE.value,
+                    "occurred_at": datetime.now(UTC),
+                    "payload": json.dumps({}),
+                },
+            )
         await engine.dispose()
 
-    asyncio.run(insert_chart_sample(accepted=True))
+    asyncio.run(insert_chart_sample())
 
-    command.downgrade(config, "0002")
-
-    async def persisted_event_kinds() -> tuple[str, ...]:
-        engine = create_async_engine(url)
-        async with engine.connect() as connection:
-            kinds = (
-                await connection.execute(
-                    text(
-                        f"SELECT {EventColumn.KIND} "
-                        f"FROM {RUN_EVENTS_TABLE_NAME} "
-                        f"ORDER BY {EventColumn.ID}"
-                    )
-                )
-            ).scalars()
-            result = tuple(kinds)
-        await engine.dispose()
-        return result
-
-    slice_12b_schema = asyncio.run(inspect_schema())
-    assert {index["name"] for index in slice_12b_schema[5]} == {
-        RUN_EVENTS_RUN_ID_INDEX_NAME
-    }
-    assert slice_12b_schema[5][0]["column_names"] == [EventRow.run_id.name]
-    assert EventKind.CHART_SAMPLE.value not in slice_12b_schema[6][0]["sqltext"]
-    assert asyncio.run(persisted_event_kinds()) == (EventKind.RUN_LIFECYCLE.value,)
-    asyncio.run(insert_chart_sample(accepted=False))
-
-    command.downgrade(config, "0001")
-    downgraded_schema = asyncio.run(inspect_schema())
-    assert RUN_EVENTS_TABLE_NAME not in downgraded_schema[0]
-    assert tuple(column["name"] for column in downgraded_schema[1]) == tuple(
-        column.value for column in RunColumn if column not in INTERNAL_RUN_COLUMNS
-    )
     command.downgrade(config, "base")
+
+    async def remaining_tables() -> list[str]:
+        engine = create_async_engine(url)
+        try:
+            async with engine.connect() as connection:
+                return await connection.run_sync(
+                    lambda sync: inspect(sync).get_table_names()
+                )
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(remaining_tables()) == ["alembic_version"]
+    command.upgrade(config, "head")
+    assert set(asyncio.run(inspect_schema())[0]) == set(table_names)
 
 
 @pytest.mark.postgres

@@ -127,17 +127,18 @@ and `npm --prefix frontend exec -- playwright install chromium`.
 Slice 18 adds the `recovery` service to release shutdown/startup. Local stacks must
 also run `uv run --env-file .env python -m api.execution.recovery`. It retries queue
 delivery and reconciles expired worker leases on the architecture policy cadence. Run history is
-preserved and interrupted runs require a new launch. Migration 0006 is forward-only
-in production and preserves accounts; older exact-head releases cannot roll back
-across this schema change. During a database outage recovery waits for the database,
+preserved and interrupted runs require a new launch. The initial migration includes
+reliability metadata. The September 10 local consolidation requires recreating old
+disposable databases; future retained deployments use forward migrations and only
+schema-compatible rollback releases. During a database outage recovery waits for the database,
 and Redis outages keep queue entries durable. See the architecture's Slice 18
 section for lease, I/O and shutdown bounds. Open signup remains gated.
 
 Slice 19 requires SMTP configuration in the release manifest and runtime SMTP
 credential files, available only to the API service. See [account recovery](account-recovery.md).
 Production API startup refuses missing or invalid mail configuration; relay outages
-produce a retryable generic delivery failure without blocking sign-in. The recovery
-migration preserves accounts and requires a matching schema-aware release. Browser
+produce a retryable generic delivery failure without blocking sign-in. Recovery
+state is included in the initial migration and requires a matching schema-aware release. Browser
 acceptance captures mail in a short-lived disposable sink; traces are disabled so
 passwords and link tokens are not retained in test artifacts.
 

@@ -2,11 +2,6 @@
 
 from enum import StrEnum
 
-from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
-
-# Migration 0005 imports this historical name.
-SESSION_DIGEST_HEX_LENGTH = AUTH_TOKEN_DIGEST_HEX_LENGTH
-
 USERS_TABLE = "users"
 SESSIONS_TABLE = "sessions"
 USERS_EMAIL_CONSTRAINT_NAME = "users_email_key"

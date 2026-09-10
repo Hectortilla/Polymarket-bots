@@ -20,6 +20,22 @@ repository root. Local output defaults live under `data`. This repository-wide
 relocation preserves implemented slice behavior and adds no new slice features;
 see `docs/architecture.md`, **Package Layout**, for the directory map.
 
+## September 10 local migration consolidation
+
+The user confirmed that nothing is deployed and local data is disposable, and
+approved replacing the entire Alembic chain with one initial revision (`0001`).
+This maintenance change supersedes the historical migration/reset requirements
+below for the current local schema; it adds no product slice. The initial revision
+creates the complete schema from Slices 12–21, including verification defaults,
+ownership, event cursor indexes, launch reliability, operations state, and lifecycle
+metadata. Old development databases must be explicitly recreated. Future retained
+deployments still require forward migrations and backups.
+
+Migration acceptance now covers a single root/head, offline SQL, complete schema
+parity with ORM metadata, database defaults, required operations seed state,
+repeat upgrades on populated data, and upgrade/downgrade/re-upgrade. Manual Ruff
+and Prettier launch commands are optional; no formatting enforcement is introduced.
+
 ## Network Implementation Rule
 
 Every network slice must first map its requirements against the current
@@ -1685,7 +1701,8 @@ and bounded SSE rechecks. Mandatory bot/template owner keys scope private resour
 run/revision/event ownership remains inherited. The static browser restores users
 before loading private pages and clears views/streams on logout, expiry or account
 switch. Auth settings and the one-time local database reset were explicitly approved.
-Migration 0005 refuses implicit backfills or deletion of populated pre-auth data.
+The consolidated initial migration creates mandatory ownership directly; it does
+not backfill or guess owners for old local data.
 
 Verification: real PostgreSQL/Redis acceptance covers two accounts, every private
 resource route, guessed/nested foreign IDs, concurrency, session rotation/revocation,
@@ -1933,7 +1950,7 @@ interruption reporting, not uninterrupted execution.
 
 Delivered implementation and verification:
 
-- Migration 0006 preserves accounts/history while adding bot-scoped launch keys,
+- The consolidated initial migration includes bot-scoped launch keys,
   execution tokens and delivery-attempt timestamps. Browser launch identity survives
   lost responses and reload; unkeyed legacy callers explicitly request a fresh run.
 - PostgreSQL queue obligations are retried by the separately deployed recovery
@@ -1999,8 +2016,8 @@ when selecting the exact token and delivery policies.
 
 Delivered implementation: `api.auth` owns SMTP configuration/delivery, digest-only
 account links, user-serialized credential transactions and session revocation.
-Migration 0007 preserves existing accounts and requires verification for new-account
-launches. The browser supplies account settings and recovery/verification forms,
+The consolidated initial migration requires verification for new-account
+launches by default. The browser supplies account settings and recovery/verification forms,
 erases link fragments before account restoration, and requires normal sign-in
 after credential replacement. Generated API/runtime contracts and deployment secrets
 remain synchronized. Explicit resends replace the old digest before SMTP, including
