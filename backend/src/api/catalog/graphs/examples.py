@@ -294,4 +294,86 @@ def multiple_conditions_example() -> GraphExample:
     )
 
 
-GRAPH_EXAMPLES = (entry_exit_example(), multiple_conditions_example())
+def random_example() -> GraphExample:
+    builder = _ExampleBuilder()
+    context = ("book", GraphPort.CONTEXT)
+    token = ("book", GraphFieldPath(segments=("token_id",)).handle_id)
+    ask = GraphFieldPath(segments=("best_ask", "price")).handle_id
+    bid = GraphFieldPath(segments=("best_bid", "price")).handle_id
+    builder.parameter("shares", "Order size (shares)", "5")
+    builder.parameter("cooldown_ms", "Cooldown milliseconds", "5000")
+    builder.parameter("probability", "Trade probability (0–1)", "0.5")
+    builder.operation(
+        "position",
+        GraphOperation.POSITION,
+        {GraphPort.CONTEXT: context, GraphPort.TOKEN_ID: token},
+    )
+    builder.operation(
+        "flat",
+        GraphOperation.NOT,
+        {GraphPort.VALUE: ("position", GraphPort.HAS_POSITION)},
+    )
+    builder.operation(
+        "quoted",
+        GraphOperation.IS_PRESENT,
+        {GraphPort.VALUE: ("book", ask)},
+    )
+    builder.operation(
+        "gate",
+        GraphOperation.COOLDOWN,
+        {
+            GraphPort.CONTEXT: context,
+            GraphPort.ENABLED: ("quoted", GraphPort.RESULT),
+            GraphPort.KEY: token,
+            GraphPort.DURATION_MS: ("cooldown_ms", GraphPort.VALUE),
+        },
+    )
+    builder.operation(
+        "random",
+        GraphOperation.RANDOM_NUMBER,
+        {GraphPort.CONTEXT: context, GraphPort.ENABLED: ("gate", GraphPort.RESULT)},
+    )
+    builder.comparison(
+        "trade",
+        GraphComparisonOperator.LESS_THAN,
+        ("random", GraphPort.VALUE),
+        ("probability", GraphPort.VALUE),
+    )
+    builder.operation(
+        "enter",
+        GraphOperation.AND,
+        {
+            DEFAULT_BOOLEAN_INPUT_IDS[0]: ("flat", GraphPort.RESULT),
+            DEFAULT_BOOLEAN_INPUT_IDS[1]: ("trade", GraphPort.RESULT),
+        },
+    )
+    builder.action(
+        "buy",
+        GraphBrokerAction.SUBMIT_BUY,
+        ("enter", GraphPort.RESULT),
+        ask,
+        ("shares", GraphPort.VALUE),
+    )
+    builder.operation(
+        "leave",
+        GraphOperation.AND,
+        {
+            DEFAULT_BOOLEAN_INPUT_IDS[0]: ("position", GraphPort.HAS_POSITION),
+            DEFAULT_BOOLEAN_INPUT_IDS[1]: ("trade", GraphPort.RESULT),
+        },
+    )
+    builder.action(
+        "sell",
+        GraphBrokerAction.SUBMIT_SELL,
+        ("leave", GraphPort.RESULT),
+        bid,
+        ("position", GraphPort.SIZE),
+    )
+    return GraphExample(
+        name="Random",
+        description="Debug paper fills and charts: every 5 seconds per token, a 50% chance to buy while flat or sell held shares. Edit order size, cooldown and probability. Requires market updates; fills still depend on liquidity and paper limits.",
+        graph=builder.graph(),
+    )
+
+
+GRAPH_EXAMPLES = (entry_exit_example(), multiple_conditions_example(), random_example())

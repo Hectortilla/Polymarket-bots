@@ -1092,6 +1092,378 @@
       "valid": true
     },
     {
+      "name": "Random",
+      "graph": {
+        "parameters": [
+          {
+            "id": "shares",
+            "name": "Order size (shares)",
+            "data": {
+              "scalar_type": "number",
+              "value": "5"
+            }
+          },
+          {
+            "id": "cooldown_ms",
+            "name": "Cooldown milliseconds",
+            "data": {
+              "scalar_type": "number",
+              "value": "5000"
+            }
+          },
+          {
+            "id": "probability",
+            "name": "Trade probability (0\u20131)",
+            "data": {
+              "scalar_type": "number",
+              "value": "0.5"
+            }
+          }
+        ],
+        "nodes": [
+          {
+            "id": "book",
+            "type": "trigger",
+            "position": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "data": {
+              "hook_name": "on_book"
+            }
+          },
+          {
+            "id": "shares",
+            "type": "parameter",
+            "position": {
+              "x": 320.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "shares"
+            }
+          },
+          {
+            "id": "cooldown_ms",
+            "type": "parameter",
+            "position": {
+              "x": 640.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "cooldown_ms"
+            }
+          },
+          {
+            "id": "probability",
+            "type": "parameter",
+            "position": {
+              "x": 960.0,
+              "y": 0.0
+            },
+            "data": {
+              "parameter_id": "probability"
+            }
+          },
+          {
+            "id": "position",
+            "type": "operation",
+            "position": {
+              "x": 1280.0,
+              "y": 0.0
+            },
+            "data": {
+              "operation": "position",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "flat",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "not",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "quoted",
+            "type": "operation",
+            "position": {
+              "x": 320.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "is_present",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "gate",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "cooldown",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "random",
+            "type": "operation",
+            "position": {
+              "x": 960.0,
+              "y": 260.0
+            },
+            "data": {
+              "operation": "random_number",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "trade",
+            "type": "comparison",
+            "position": {
+              "x": 1280.0,
+              "y": 260.0
+            },
+            "data": {
+              "operator": "less_than"
+            }
+          },
+          {
+            "id": "enter",
+            "type": "operation",
+            "position": {
+              "x": 0.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "buy",
+            "type": "broker_action",
+            "position": {
+              "x": 320.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_buy"
+            }
+          },
+          {
+            "id": "leave",
+            "type": "operation",
+            "position": {
+              "x": 640.0,
+              "y": 520.0
+            },
+            "data": {
+              "operation": "and",
+              "input_ids": [],
+              "scalar_type": "number"
+            }
+          },
+          {
+            "id": "sell",
+            "type": "broker_action",
+            "position": {
+              "x": 960.0,
+              "y": 520.0
+            },
+            "data": {
+              "action": "submit_sell"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "book-context-position-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "position",
+            "target_handle": "context"
+          },
+          {
+            "id": "book-field:token_id-position-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "position",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "position-has_position-flat-value",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "flat",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-field:best_ask.price-quoted-value",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "quoted",
+            "target_handle": "value"
+          },
+          {
+            "id": "book-context-gate-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "gate",
+            "target_handle": "context"
+          },
+          {
+            "id": "quoted-result-gate-enabled",
+            "source": "quoted",
+            "source_handle": "result",
+            "target": "gate",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-gate-key",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "gate",
+            "target_handle": "key"
+          },
+          {
+            "id": "cooldown_ms-value-gate-duration_ms",
+            "source": "cooldown_ms",
+            "source_handle": "value",
+            "target": "gate",
+            "target_handle": "duration_ms"
+          },
+          {
+            "id": "book-context-random-context",
+            "source": "book",
+            "source_handle": "context",
+            "target": "random",
+            "target_handle": "context"
+          },
+          {
+            "id": "gate-result-random-enabled",
+            "source": "gate",
+            "source_handle": "result",
+            "target": "random",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "random-value-trade-left",
+            "source": "random",
+            "source_handle": "value",
+            "target": "trade",
+            "target_handle": "left"
+          },
+          {
+            "id": "probability-value-trade-right",
+            "source": "probability",
+            "source_handle": "value",
+            "target": "trade",
+            "target_handle": "right"
+          },
+          {
+            "id": "flat-result-enter-input_1",
+            "source": "flat",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "trade-result-enter-input_2",
+            "source": "trade",
+            "source_handle": "result",
+            "target": "enter",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "enter-result-buy-enabled",
+            "source": "enter",
+            "source_handle": "result",
+            "target": "buy",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-buy-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "buy",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_ask.price-buy-price",
+            "source": "book",
+            "source_handle": "field:best_ask.price",
+            "target": "buy",
+            "target_handle": "price"
+          },
+          {
+            "id": "shares-value-buy-size",
+            "source": "shares",
+            "source_handle": "value",
+            "target": "buy",
+            "target_handle": "size"
+          },
+          {
+            "id": "position-has_position-leave-input_1",
+            "source": "position",
+            "source_handle": "has_position",
+            "target": "leave",
+            "target_handle": "input_1"
+          },
+          {
+            "id": "trade-result-leave-input_2",
+            "source": "trade",
+            "source_handle": "result",
+            "target": "leave",
+            "target_handle": "input_2"
+          },
+          {
+            "id": "leave-result-sell-enabled",
+            "source": "leave",
+            "source_handle": "result",
+            "target": "sell",
+            "target_handle": "enabled"
+          },
+          {
+            "id": "book-field:token_id-sell-token_id",
+            "source": "book",
+            "source_handle": "field:token_id",
+            "target": "sell",
+            "target_handle": "token_id"
+          },
+          {
+            "id": "book-field:best_bid.price-sell-price",
+            "source": "book",
+            "source_handle": "field:best_bid.price",
+            "target": "sell",
+            "target_handle": "price"
+          },
+          {
+            "id": "position-size-sell-size",
+            "source": "position",
+            "source_handle": "size",
+            "target": "sell",
+            "target_handle": "size"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
       "name": "exact large Number",
       "graph": {
         "parameters": [

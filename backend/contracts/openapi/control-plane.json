@@ -1455,6 +1455,7 @@
           "max",
           "clamp",
           "round",
+          "random_number",
           "cooldown",
           "once",
           "deduplicate",

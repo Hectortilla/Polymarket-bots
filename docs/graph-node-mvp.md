@@ -31,7 +31,7 @@ whole count of decimal places (at most 1000). Whole-number settings accept `2.0`
 field-specific explanation. Numeric input constraints are published in the catalog. Cooldown duration is expressed in milliseconds.
 
 Available operations are AND, OR, NOT, Is Present, Between, Select, Add, Subtract,
-Multiply, Divide, Min, Max, Clamp, Round, Cooldown, Once, Deduplicate, Position,
+Multiply, Divide, Min, Max, Clamp, Round, Random Number, Cooldown, Once, Deduplicate, Position,
 Balance, Inspect and Log. AND and OR have 2–16 uniquely identified inputs. Between
 includes both endpoints. Select has an explicit result type, inferred by its selected
 node setting rather than a user-inserted cast. Its alternatives must have that type.
@@ -61,6 +61,12 @@ Select is a value selector, not a branch-execution construct.
 Division by zero and invalid numeric bounds produce explicit errors. No error path
 supplies a guessed price, quantity, zero balance or synthetic fill. Compilation checks
 all required operation capabilities before any branch can submit an order.
+
+Random Number takes Context and Enabled and produces one Number from 0 inclusive
+to 1 exclusive per enabled, eligible event. It draws from `ctx.rng`, so a seeded
+context reproduces the sequence; every consumer of that node sees the same draw.
+Disabled, unavailable or ineligible inputs do not consume randomness and produce
+an unavailable output. Each decision preview uses its own fresh random source.
 
 ## Own portfolio
 
@@ -133,9 +139,21 @@ values are unavailable. It is a decision preview, not a fill simulator. Use pape
 for fills and behavior over time. Results are marked outdated after graph changes.
 
 The starting-point selector includes **Threshold entry and exit** and **Multiple
-conditions and cooldown**. Both use editable parameters and current token IDs from
+conditions and cooldown**, plus **Random**. All use editable parameters and current token IDs from
 events. Copying an example does not start a run. The first is intended for positions
 opened by that example; it is not a general short-position exit strategy.
+
+**Random** is a paper debugging strategy for observing fills, chart markers and
+portfolio movement. On the first eligible book and then at most once every 5,000 ms
+per token, it draws a number and trades with probability `0.5`. A passing draw buys
+five shares while flat or sells the token's currently held shares. Size, cooldown
+and probability are editable parameters; probability `1` attempts a trade on every
+opportunity and `0` never trades. Partial fills are reflected in the next portfolio
+snapshot; a rejected buy leaves the strategy flat. This is event-driven, so quiet
+markets can wait longer than the cooldown. The normal paper limits, market minimum
+size, freshness and liquidity checks still apply; small partial positions may be
+below the market's sell minimum. It does not guarantee fills or profitable trades.
+Select **Random**, copy the graph, save the bot and start a paper run to see fills.
 
 ## Validation
 

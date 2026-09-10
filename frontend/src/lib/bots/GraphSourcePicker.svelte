@@ -48,7 +48,7 @@
   <div>
     <label class="field-label" for="graph-source">Starting point</label>
     <span class="field-helper" id="graph-source-helper">
-      Start with the default graph or copy the latest strategy from another bot.
+      Start with the default graph, choose an example, or copy the latest strategy from another bot.
     </span>
     <select id="graph-source" aria-describedby="graph-source-helper" bind:value={selectedSource}>
       <option value={START_FRESH}>Start fresh</option>
@@ -57,6 +57,11 @@
         <option value={source.id}>{source.config.name}</option>
       {/each}
     </select>
+    {#each examples as example, index}
+      {#if selectedSource === `example-${index}`}
+        <p class="field-helper">{example.description}</p>
+      {/if}
+    {/each}
   </div>
   <button class="secondary" type="button" onclick={applySource}>
     <CopySimpleIcon aria-hidden="true" size={17} />

@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import replace
+from decimal import Decimal
 
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest
@@ -26,6 +27,7 @@ from api.catalog.graphs.values import (
     GRAPH_COMPARISON_RESULT_HANDLE_ID,
     GRAPH_CONTEXT_HANDLE_ID,
     GRAPH_VALUE_HANDLE_ID,
+    GraphOperation,
     GraphPort,
 )
 from api.catalog.node_based.evaluator.actions import (
@@ -174,6 +176,20 @@ class GraphEvaluator:
             return {node.outputs()[0].handle_id: evaluate_pure(operation, inputs)}
         if operation in PORTFOLIO_OPERATIONS:
             return portfolio_outputs(operation, inputs, frame.portfolio)
+        if operation is GraphOperation.RANDOM_NUMBER:
+            issue = event_skip_reason(frame.ctx, frame.payload)
+            unavailable = next(
+                (value for value in inputs.values() if not value.available), None
+            )
+            if issue:
+                result = RuntimeValue.skipped(issue)
+            elif unavailable is not None:
+                result = unavailable
+            elif inputs[GraphPort.ENABLED].value is not True:
+                result = RuntimeValue.skipped(GraphReason.DISABLED)
+            else:
+                result = RuntimeValue(Decimal(str(frame.ctx.rng.random())))
+            return {GraphPort.VALUE: result}
         if operation in EVENT_CONTROL_OPERATIONS:
             issue = event_skip_reason(frame.ctx, frame.payload)
             result = (

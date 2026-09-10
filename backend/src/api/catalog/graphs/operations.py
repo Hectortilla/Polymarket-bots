@@ -167,6 +167,19 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
         ),
         value,
     )
+    add(
+        GraphOperation.RANDOM_NUMBER,
+        "Math",
+        (
+            context,
+            input_port(
+                GraphPort.ENABLED,
+                boolean,
+                description="Draw once when enabled: 0 inclusive to 1 exclusive. Uses the run random source.",
+            ),
+        ),
+        value,
+    )
     for op in (
         GraphOperation.COOLDOWN,
         GraphOperation.ONCE,

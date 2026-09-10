@@ -73,6 +73,7 @@ class GraphOperation(StrEnum):
     MAX = "max"
     CLAMP = "clamp"
     ROUND = "round"
+    RANDOM_NUMBER = "random_number"
     COOLDOWN = "cooldown"
     ONCE = "once"
     DEDUPLICATE = "deduplicate"

@@ -721,7 +721,7 @@ export type GraphNumberConstantData = {
 /**
  * GraphOperation
  */
-export type GraphOperation = 'and' | 'or' | 'not' | 'is_present' | 'between' | 'select' | 'add' | 'subtract' | 'multiply' | 'divide' | 'min' | 'max' | 'clamp' | 'round' | 'cooldown' | 'once' | 'deduplicate' | 'position' | 'balance' | 'inspect' | 'log';
+export type GraphOperation = 'and' | 'or' | 'not' | 'is_present' | 'between' | 'select' | 'add' | 'subtract' | 'multiply' | 'divide' | 'min' | 'max' | 'clamp' | 'round' | 'random_number' | 'cooldown' | 'once' | 'deduplicate' | 'position' | 'balance' | 'inspect' | 'log';
 
 /**
  * GraphOperationDescriptor

@@ -735,6 +735,49 @@
       },
       {
         "node_type": "operation",
+        "operation": "random_number",
+        "display_name": "Random Number",
+        "category": "Math",
+        "inputs": [
+          {
+            "handle_id": "context",
+            "display_name": "Context",
+            "scalar_types": ["context"],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": null
+          },
+          {
+            "handle_id": "enabled",
+            "display_name": "Enabled",
+            "scalar_types": ["boolean"],
+            "nullable": true,
+            "required": true,
+            "whole_number": false,
+            "minimum": null,
+            "maximum": null,
+            "description": "Draw once when enabled: 0 inclusive to 1 exclusive. Uses the run random source."
+          }
+        ],
+        "outputs": [
+          {
+            "handle_id": "value",
+            "display_name": "Value",
+            "scalar_type": "number",
+            "nullable": true
+          }
+        ],
+        "expandable": false,
+        "terminal": false,
+        "selectable_scalar_type": false,
+        "minimum_inputs": null,
+        "maximum_inputs": null
+      },
+      {
+        "node_type": "operation",
         "operation": "cooldown",
         "display_name": "Cooldown",
         "category": "Event controls",

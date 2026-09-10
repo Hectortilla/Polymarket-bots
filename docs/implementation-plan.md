@@ -1585,6 +1585,21 @@ preview isolation and example strategies. Existing development data is disposabl
 no compatibility decoder or version migration is introduced. Public deployment,
 tenancy and live execution are not part of this slice.
 
+### Random debugging starting point follow-up
+
+The graph catalog now includes a **Random** example and **Random Number** operation.
+The node uses `ctx.rng` once per enabled, eligible evaluation, preserves seeded
+sequences, and shares its Number across consumers. The example combines it with
+existing per-token cooldown, portfolio, comparison and broker nodes: five-share
+entries while flat and exits of actual held shares, with an editable 50% trade
+probability and five-second cooldown. Paper execution and chart events use their
+existing paths. This adds no external protocol, live trading or migration.
+
+Validation covers seeded/gated draws, invalid books, missing portfolios, complete
+and partial paper fills, graph-contract parity and frontend metadata rendering.
+Documentation-drift audit: graph authoring, bot-author guide, catalog examples and
+generated backend/frontend contracts describe the same operation and defaults.
+
 ## Main-module review follow-up — September 2026
 
 This maintenance pass applies the reconciled main-module style review across the

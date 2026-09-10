@@ -690,7 +690,8 @@ The private control plane presents configuration and graph design as one bot:
 
 1. Select **New bot**, fill in the bot name, markets, and paper limits, then
    edit the strategy graph in the same form.
-2. Start from the catalog-provided graph or copy the latest graph from another
+2. Start from the catalog-provided graph, choose **Random** for paper buy/sell
+   debugging, or copy the latest graph from another
    configured bot. Copying creates an independent draft; later edits never
    propagate between bots.
 3. Save the form to create one bot with its complete configuration, including
