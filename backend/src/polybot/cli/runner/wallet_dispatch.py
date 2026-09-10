@@ -30,8 +30,12 @@ async def dispatch_wallet_trade(
     if market is None:
         market = await _find_market(gamma, event.market_slug)
     try:
-        if market is None or not MarketIdentity.from_wallet_trade(event).matches(market):
-            raise RuntimeError("wallet trade market identity is incomplete or mismatched")
+        if market is None or not MarketIdentity.from_wallet_trade(event).matches(
+            market
+        ):
+            raise RuntimeError(
+                "wallet trade market identity is incomplete or mismatched"
+            )
     except RuntimeError:
         return DispatchOutcome.skipped(DispatchSkipReason.MARKET_METADATA_MISSING)
     if registry is not None and market is not None:

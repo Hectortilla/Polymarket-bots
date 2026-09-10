@@ -61,7 +61,10 @@ def normalize_position(
         or token_id is None
         or condition_id is None
         or market_slug is None
-        or (requested_conditions is not None and condition_id not in requested_conditions)
+        or (
+            requested_conditions is not None
+            and condition_id not in requested_conditions
+        )
         or (raw_outcome is not None and outcome is None)
         or not normalized_size.is_finite()
         or normalized_size <= 0

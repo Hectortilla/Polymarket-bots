@@ -7,7 +7,14 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from api.auth.config import AuthSettings
 from api.database import DATABASE_URL_ENV, configured_database_url
@@ -102,7 +109,9 @@ class StartupSettings(BaseModel):
             ),
             lease_seconds=os.getenv(LEASE_SECONDS_ENV, DEFAULT_LEASE_SECONDS),
             proxy_address=os.getenv(PROXY_ADDRESS_ENV),
-            storage_probe_path=os.getenv(STORAGE_PROBE_PATH_ENV, DEFAULT_STORAGE_PROBE_PATH),
+            storage_probe_path=os.getenv(
+                STORAGE_PROBE_PATH_ENV, DEFAULT_STORAGE_PROBE_PATH
+            ),
         )
         if settings.environment is Environment.PRODUCTION:
             auth = AuthSettings.from_env()

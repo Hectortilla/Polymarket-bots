@@ -34,7 +34,6 @@ def _gap_affects_selected_markets(
         record.gap,
         record.identity,
     ).resolved_condition_ids(markets)
-    return (
-        affected_condition_ids is None
-        or not selected_condition_ids.isdisjoint(affected_condition_ids)
+    return affected_condition_ids is None or not selected_condition_ids.isdisjoint(
+        affected_condition_ids
     )

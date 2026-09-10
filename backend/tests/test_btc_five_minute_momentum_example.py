@@ -221,7 +221,9 @@ def test_bot_sells_at_the_stop_and_does_not_short(
         Side.SELL,
     ]
     assert dummy_context.broker.submitted[1].reason == STOP_EXIT_REASON
-    assert dummy_context.broker.submitted[1].size == dummy_context.broker.submitted[0].size
+    assert (
+        dummy_context.broker.submitted[1].size == dummy_context.broker.submitted[0].size
+    )
 
 
 def test_bot_sells_at_the_profit_target(dummy_context: BotContext) -> None:

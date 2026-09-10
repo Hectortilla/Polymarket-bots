@@ -46,7 +46,9 @@ def test_runner_dispatches_wallet_trade_once(dummy_context: BotContext) -> None:
     assert seen == ["tx-1"]
 
 
-def test_runner_rejects_wallet_trade_without_source_id(dummy_context: BotContext) -> None:
+def test_runner_rejects_wallet_trade_without_source_id(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> tuple[bool, int]:
         bot = RecordingBot(seen=[])
         runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_250)
@@ -227,7 +229,9 @@ def test_dedupe_scopes_source_ids_to_each_wallet(dummy_context: BotContext) -> N
     assert seen == ["shared-source", "shared-source"]
 
 
-def test_runner_calls_start_and_stop_for_wallet_stream(dummy_context: BotContext) -> None:
+def test_runner_calls_start_and_stop_for_wallet_stream(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> tuple[int, int]:
         bot = RecordingBot(seen=[])
         runner = BotRunner(bot, dummy_context, now_ms_fn=lambda: 1_250)
@@ -270,7 +274,9 @@ def _bot_config(
 ) -> BotConfig:
     return BotConfig(
         name=name,
-        stream_rules=(StreamRule(StreamRelation.INDEPENDENT, wallet_addresses=wallets),),
+        stream_rules=(
+            StreamRule(StreamRelation.INDEPENDENT, wallet_addresses=wallets),
+        ),
         **overrides,  # type: ignore[arg-type]
     )
 

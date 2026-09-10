@@ -9,6 +9,7 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 if TYPE_CHECKING:
     from polybot.polymarket.markets import Market
 
+
 def book_skip_reason(
     book: BookSnapshot,
     *,

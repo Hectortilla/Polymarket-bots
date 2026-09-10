@@ -11,8 +11,7 @@ def normalize_resolution_tokens(
         not isinstance(token_ids, tuple)
         or len(token_ids) != MARKET_RESOLUTION_TOKEN_COUNT
         or not all(
-            isinstance(token_id, str) and token_id.strip()
-            for token_id in token_ids
+            isinstance(token_id, str) and token_id.strip() for token_id in token_ids
         )
     ):
         raise ValueError("market resolution requires two token IDs")

@@ -120,9 +120,7 @@ async def stream_run_events(
         request,
         session_factory,
         redis,
-        StreamAuthorization(
-            session_factory, request.state.session_token, user.id
-        ),
+        StreamAuthorization(session_factory, request.state.session_token, user.id),
     )
     return LimitedStreamResponse(
         streamer.stream(cursor),

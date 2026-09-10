@@ -176,7 +176,11 @@ def frontend_run_contract() -> dict[str, object]:
             "INTERNAL_SERVER_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
         },
-        "dataLifecycle": {"deletionTargetHours": lifecycle_policy.DELETION_TARGET_HOURS, "backupRetentionDays": lifecycle_policy.BACKUP_RETENTION_DAYS, "auditRetentionDays": lifecycle_policy.OPERATOR_AUDIT_RETENTION_DAYS},
+        "dataLifecycle": {
+            "deletionTargetHours": lifecycle_policy.DELETION_TARGET_HOURS,
+            "backupRetentionDays": lifecycle_policy.BACKUP_RETENTION_DAYS,
+            "auditRetentionDays": lifecycle_policy.OPERATOR_AUDIT_RETENTION_DAYS,
+        },
         "accountManagement": {
             "accountPath": account_policy.BROWSER_ACCOUNT_PATH,
             "forgotPath": account_policy.BROWSER_FORGOT_PATH,

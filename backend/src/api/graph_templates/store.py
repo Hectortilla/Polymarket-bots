@@ -25,7 +25,9 @@ class GraphTemplateStore:
         )
 
     async def create(self, request: GraphTemplateCreate) -> GraphTemplateRead:
-        await SavedResourceAllowance(self._session, self._owner_user_id).reserve_template()
+        await SavedResourceAllowance(
+            self._session, self._owner_user_id
+        ).reserve_template()
         row = GraphTemplateRow(
             owner_user_id=self._owner_user_id,
             name=request.name,
@@ -39,7 +41,9 @@ class GraphTemplateStore:
     async def read(self, template_id: UUID) -> GraphTemplateRead | None:
         row = (
             await self._session.execute(
-                self._owned_templates_statement.where(GraphTemplateRow.id == template_id)
+                self._owned_templates_statement.where(
+                    GraphTemplateRow.id == template_id
+                )
             )
         ).scalar_one_or_none()
         return None if row is None else self.read_from_row(row)
@@ -62,7 +66,9 @@ class GraphTemplateStore:
     ) -> GraphTemplateRead | None:
         row = (
             await self._session.execute(
-                self._owned_templates_statement.where(GraphTemplateRow.id == template_id)
+                self._owned_templates_statement.where(
+                    GraphTemplateRow.id == template_id
+                )
             )
         ).scalar_one_or_none()
         if row is None:

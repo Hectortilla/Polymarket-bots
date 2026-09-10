@@ -260,10 +260,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
         self._position = None
         self._cooldown_until_ms = book.received_at_ms + self.settings.cooldown_ms
         await ctx.activity.emit(
-            (
-                f"BTC 5m exited {position.outcome} at "
-                f"{fill.execution_price} ({reason})"
-            ),
+            (f"BTC 5m exited {position.outcome} at {fill.execution_price} ({reason})"),
             severity=ActivitySeverity.INFO,
         )
 

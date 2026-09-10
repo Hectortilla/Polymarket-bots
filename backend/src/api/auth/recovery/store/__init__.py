@@ -60,7 +60,9 @@ class AccountCredentialStore:
     ) -> None:
         await self.reauthenticate(user_id, session_token, current_password)
         keep_token = None if scope.revokes_current else session_token
-        await AccountAccessStore(self._session).delete_sessions(user_id, keep_token=keep_token)
+        await AccountAccessStore(self._session).delete_sessions(
+            user_id, keep_token=keep_token
+        )
         await self._session.commit()
 
     async def reauthenticate(

@@ -194,11 +194,7 @@ class ReplayScheduler:
             self._artifacts.record_book(book)
         admitted_before = self._admitted_slugs.copy()
         self._enqueue_books(
-            tuple(
-                book
-                for book in applied.books
-                if book.market_slug in admitted_before
-            )
+            tuple(book for book in applied.books if book.market_slug in admitted_before)
         )
         resolution = applied.resolution
         resolution_was_queued = (
@@ -389,9 +385,7 @@ class ReplayScheduler:
         affected_positions = invalidated_token_ids.intersection(
             self._paper_broker.portfolio.positions
         )
-        self._artifacts.record_coverage_gap_affected_positions(
-            affected_positions
-        )
+        self._artifacts.record_coverage_gap_affected_positions(affected_positions)
         invalidated = tuple(sorted(invalidated_token_ids))
         self._artifacts.remove_books(invalidated)
         for token_id in invalidated:
@@ -414,11 +408,7 @@ class ReplayScheduler:
         for book in books:
             self._artifacts.record_book(book)
         self._enqueue_books(
-            tuple(
-                book
-                for book in books
-                if book.market_slug in self._admitted_slugs
-            )
+            tuple(book for book in books if book.market_slug in self._admitted_slugs)
         )
 
     def _can_fast_forward(self) -> bool:

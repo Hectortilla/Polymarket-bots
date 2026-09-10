@@ -12,9 +12,7 @@ def paired_observations_are_current(
 ) -> bool:
     return bool(observed_at_ms) and (
         all(
-            NONNEGATIVE_TIMESTAMP_FLOOR
-            <= now_ms - timestamp
-            <= maximum_age_ms
+            NONNEGATIVE_TIMESTAMP_FLOOR <= now_ms - timestamp <= maximum_age_ms
             for timestamp in observed_at_ms
         )
         and max(observed_at_ms) - min(observed_at_ms) <= maximum_skew_ms

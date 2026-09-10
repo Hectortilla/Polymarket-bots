@@ -22,12 +22,19 @@ def pick_row_curses(stdscr, rows: list[dict[str, object]]) -> dict[str, object]:
             top = selected
         elif selected >= top + usable_height:
             top = selected - usable_height + 1
-        stdscr.addstr(0, 0, "Up/Down move | Enter select | sort: n/h/m/d/v/t/w | q quit", curses.A_BOLD)
+        stdscr.addstr(
+            0,
+            0,
+            "Up/Down move | Enter select | sort: n/h/m/d/v/t/w | q quit",
+            curses.A_BOLD,
+        )
         for screen_row, index in enumerate(
             range(top, min(top + usable_height, len(sorted_rows))), start=1
         ):
             style = curses.A_REVERSE if index == selected else curses.A_NORMAL
-            stdscr.addnstr(screen_row, 0, format_row(sorted_rows[index], width), width - 1, style)
+            stdscr.addnstr(
+                screen_row, 0, format_row(sorted_rows[index], width), width - 1, style
+            )
         key = stdscr.getch()
         if key in (curses.KEY_UP, ord("k")):
             selected = max(0, selected - 1)

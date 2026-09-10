@@ -33,8 +33,7 @@ class WalletTradeBatch:
 
 
 class WalletTradeSource(Protocol):
-    def trades(self, wallets: frozenset[str]) -> AsyncIterable[object]:
-        ...
+    def trades(self, wallets: frozenset[str]) -> AsyncIterable[object]: ...
 
 
 class WalletDataClient(Protocol):
@@ -47,8 +46,7 @@ class WalletDataClient(Protocol):
         start: int | None = None,
         end: int | None = None,
         page_size: int,
-    ) -> AsyncIterable[object]:
-        ...
+    ) -> AsyncIterable[object]: ...
 
     def list_activity(
         self,
@@ -56,8 +54,7 @@ class WalletDataClient(Protocol):
         user: str,
         activity_types: tuple[str, ...],
         page_size: int,
-    ) -> AsyncIterable[object]:
-        ...
+    ) -> AsyncIterable[object]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,10 +86,6 @@ class WalletTradeSelector:
         object.__setattr__(self, "condition_ids", normalized_conditions)
 
     def accepts(self, trade: WalletTradeEvent) -> bool:
-        return (
-            (self.wallet is None or trade.wallet == self.wallet)
-            and (
-                not self.condition_ids
-                or trade.condition_id in self.condition_ids
-            )
+        return (self.wallet is None or trade.wallet == self.wallet) and (
+            not self.condition_ids or trade.condition_id in self.condition_ids
         )

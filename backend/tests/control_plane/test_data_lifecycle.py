@@ -642,7 +642,9 @@ def test_terminal_launch_recovery_uses_unmarked_history_policy(
                 await session.commit()
                 store = RunStore(session)
                 if retention == "retained":
-                    assert (await store.recover_existing_launch(bot.id, key)).id == row.id
+                    assert (
+                        await store.recover_existing_launch(bot.id, key)
+                    ).id == row.id
                 else:
                     with pytest.raises(LaunchAttemptUnavailable):
                         await store.recover_existing_launch(bot.id, key)

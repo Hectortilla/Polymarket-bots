@@ -72,8 +72,7 @@ class ResumedGapRecovery:
     ) -> None:
         conditions = {} if conditions_by_gap_id is None else conditions_by_gap_id
         self._remaining_conditions_by_gap_id = {
-            gap_id: set(condition_ids)
-            for gap_id, condition_ids in conditions.items()
+            gap_id: set(condition_ids) for gap_id, condition_ids in conditions.items()
         }
         self._affected_conditions_by_gap_id = {
             gap_id: frozenset(condition_ids)
@@ -92,9 +91,7 @@ class ResumedGapRecovery:
 
     def remaining_condition_ids(self, gap_id: int) -> frozenset[str]:
         """Return the conditions still required before one resumed gap closes."""
-        return frozenset(
-            self._remaining_conditions_by_gap_id.get(gap_id, ())
-        )
+        return frozenset(self._remaining_conditions_by_gap_id.get(gap_id, ()))
 
     def is_in_open_scope(
         self,
@@ -122,18 +119,14 @@ class ResumedGapRecovery:
                 ReleasedResumedGap(
                     gap_id=gap_id,
                     condition_id=condition_id,
-                    affected_condition_ids=self._affected_conditions_by_gap_id[
-                        gap_id
-                    ],
+                    affected_condition_ids=self._affected_conditions_by_gap_id[gap_id],
                 )
             )
         return tuple(released)
 
     def restore_release(self, released: ReleasedResumedGap) -> None:
         """Undo a failed archive close so the gap remains recoverable."""
-        self._remaining_conditions_by_gap_id[released.gap_id].add(
-            released.condition_id
-        )
+        self._remaining_conditions_by_gap_id[released.gap_id].add(released.condition_id)
 
     def close_released_gap(self, released: ReleasedResumedGap) -> None:
         """Forget a successfully closed resumed gap."""

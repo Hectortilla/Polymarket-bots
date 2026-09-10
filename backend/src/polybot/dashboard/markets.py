@@ -58,9 +58,7 @@ class DashboardMarkets:
             )
         activate_chart_token(book.token_id)
 
-    def settle(
-        self, *, condition_id: str, token_ids: Iterable[str]
-    ) -> tuple[str, ...]:
+    def settle(self, *, condition_id: str, token_ids: Iterable[str]) -> tuple[str, ...]:
         if condition_id not in self.resolved_condition_ids:
             self.resolved_condition_ids.add(condition_id)
             self.resolved_market_count += 1

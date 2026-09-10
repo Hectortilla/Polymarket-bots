@@ -9,7 +9,9 @@ from polybot.framework.events import FillEvent, OrderRequest
 class LiveBroker(Broker):
     def __init__(self, config: BotConfig) -> None:
         if config.mode is not BotMode.LIVE or not config.live_enabled:
-            raise RuntimeError("Live broker requires BOT_MODE=live and BOT_LIVE_ENABLED=true.")
+            raise RuntimeError(
+                "Live broker requires BOT_MODE=live and BOT_LIVE_ENABLED=true."
+            )
         self._require_live_credentials(config)
 
     async def submit(self, order: OrderRequest) -> FillEvent:
@@ -29,4 +31,6 @@ class LiveBroker(Broker):
                 config.funder_address,
             )
         ):
-            raise RuntimeError("Live broker requires wallet, funder, and CLOB credentials.")
+            raise RuntimeError(
+                "Live broker requires wallet, funder, and CLOB credentials."
+            )

@@ -167,7 +167,9 @@ class WebRuntimeObserver:
                 )
             )
 
-    async def _publish_stream_health(self, health: StreamHealth, occurred_at: datetime) -> None:
+    async def _publish_stream_health(
+        self, health: StreamHealth, occurred_at: datetime
+    ) -> None:
         # Dashboard ticks reuse a sample; only a new feed observation may
         # renew its stored lifetime. Capture its timestamp before awaiting I/O.
         health_observed_at = self._health_observed_at

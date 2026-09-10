@@ -35,12 +35,8 @@ class GraphTopology(Generic[EdgeT]):
         for edge in edges:
             incoming_lists[edge.target].append(edge)
             outgoing_lists[edge.source].append(edge)
-        incoming = {
-            node_id: tuple(incoming_lists[node_id]) for node_id in node_ids
-        }
-        outgoing = {
-            node_id: tuple(outgoing_lists[node_id]) for node_id in node_ids
-        }
+        incoming = {node_id: tuple(incoming_lists[node_id]) for node_id in node_ids}
+        outgoing = {node_id: tuple(outgoing_lists[node_id]) for node_id in node_ids}
         ordered_node_ids = topological_order(
             node_ids,
             ((edge.source, edge.target) for edge in edges),

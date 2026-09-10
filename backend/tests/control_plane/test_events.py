@@ -611,7 +611,13 @@ def test_observer_does_not_refresh_old_feed_observations(fail_first) -> None:
         writer = _CollectingWriter()
         if fail_first:
             writer.health.record.side_effect = [RuntimeError("unavailable"), None, None]
-        observer = WebRuntimeObserver(uuid4(), writer, sleep=clock.sleep, now_ms=clock.now_ms, now_utc=clock.now_utc)
+        observer = WebRuntimeObserver(
+            uuid4(),
+            writer,
+            sleep=clock.sleep,
+            now_ms=clock.now_ms,
+            now_utc=clock.now_utc,
+        )
         await observer.start(BotConfig(name="health freshness"))
         observer.emit(StreamHealth(0, 0, 0))
         for _ in range(8):
@@ -626,6 +632,7 @@ def test_observer_does_not_refresh_old_feed_observations(fail_first) -> None:
         assert writer.health.record.await_count == (3 if fail_first else 2)
         assert writer.health.record.await_args.args[0].occurred_at > first_observed_at
         await observer.stop()
+
     asyncio.run(scenario())
 
 

@@ -87,9 +87,7 @@ def decode_resolution(data: dict[str, Any]) -> ResolutionPayload:
             data[fields.RESOLUTION_WINNING_OUTCOME_FIELD], "winning outcome"
         ),
         source=require_text(data[source_field], "resolution source"),
-        resolution_id=optional_text(
-            data[fields.RESOLUTION_ID_FIELD], "resolution ID"
-        ),
+        resolution_id=optional_text(data[fields.RESOLUTION_ID_FIELD], "resolution ID"),
     )
 
 

@@ -33,9 +33,7 @@ def market_payload(market: object) -> dict[str, object]:
     schedule = getattr(market, SDK_MARKET_SCHEDULE_ATTRIBUTE, None)
     resolution = getattr(market, SDK_MARKET_RESOLUTION_ATTRIBUTE, None)
     return {
-        CONDITION_ID_FIELD: str(
-            getattr(market, SDK_CONDITION_ID_ATTRIBUTE, "") or ""
-        ),
+        CONDITION_ID_FIELD: str(getattr(market, SDK_CONDITION_ID_ATTRIBUTE, "") or ""),
         ACTIVITY_SLUG_FIELD: getattr(market, SDK_SLUG_ATTRIBUTE, None),
         MARKET_QUESTION_FIELD: getattr(market, SDK_MARKET_QUESTION_ATTRIBUTE, None),
         MARKET_START_DATE_FIELD: getattr(schedule, SDK_START_DATE_ATTRIBUTE, None),

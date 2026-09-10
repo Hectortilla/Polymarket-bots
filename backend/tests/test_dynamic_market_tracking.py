@@ -1317,9 +1317,14 @@ def test_wallet_cap_is_checked_before_clob_mutation_or_bot_dispatch():
         event = _trade("capacity", Side.BUY, "1", "0.4", 1_000)
         with pytest.raises(TrackedMarketLimitExceeded):
             await dispatch_wallet_trade(
-                runner, WalletStreamEvent(StreamKind.WALLET, event), gamma=gamma, clob=clob,
-                registry=registry, followed_wallets=None,
+                runner,
+                WalletStreamEvent(StreamKind.WALLET, event),
+                gamma=gamma,
+                clob=clob,
+                registry=registry,
+                followed_wallets=None,
             )
         runner.dispatch_wallet_trade.assert_not_awaited()
         clob.add_market.assert_not_called()
+
     asyncio.run(scenario())

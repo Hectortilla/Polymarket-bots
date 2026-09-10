@@ -60,7 +60,11 @@ async def resource_limit_response(
     request.scope[ADMISSION_REJECTION_SCOPE_KEY] = True
     headers = (
         {}
-        if error.code in {ResourceLimitCode.INVALID_CONFIGURATION, ResourceLimitCode.ACCOUNT_SUSPENDED}
+        if error.code
+        in {
+            ResourceLimitCode.INVALID_CONFIGURATION,
+            ResourceLimitCode.ACCOUNT_SUSPENDED,
+        }
         else {RETRY_AFTER_HEADER: str(RATE_WINDOW_SECONDS)}
     )
     return JSONResponse(

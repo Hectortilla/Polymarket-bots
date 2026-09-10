@@ -76,7 +76,10 @@ class UserRow(SQLModel, table=True):
         sa_column=Column(UserColumn.SUSPENDED_AT, DateTime(timezone=True)),
     )
 
-    restore_quarantined_at: datetime | None = Field(default=None, sa_column=Column(RESTORE_QUARANTINED_AT_COLUMN, DateTime(timezone=True)))
+    restore_quarantined_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(RESTORE_QUARANTINED_AT_COLUMN, DateTime(timezone=True)),
+    )
 
     @hybrid_property
     def access_allowed(self) -> bool:

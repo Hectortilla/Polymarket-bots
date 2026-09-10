@@ -78,7 +78,7 @@ def format_wallet_scan_record(
     return (
         f"{label.value} net={net:+.2f} hedge={hedge:.2f} vol={volume:.0f} "
         f"market_trade_pct={market_trade_pct:.2f} "
-        f"trade_density={trade_density:.2f} \"{reason}\" {scanned_at}"
+        f'trade_density={trade_density:.2f} "{reason}" {scanned_at}'
     )
 
 
@@ -86,7 +86,7 @@ def _field_value(token: str, key: str) -> str:
     prefix = f"{key}="
     if not token.startswith(prefix):
         raise ValueError(f"expected token starting with {prefix!r}, got {token!r}")
-    return token[len(prefix):]
+    return token[len(prefix) :]
 
 
 def _validate_scan_record(record: WalletScanRecord) -> None:

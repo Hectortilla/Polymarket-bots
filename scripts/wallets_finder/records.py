@@ -35,8 +35,11 @@ def result_note(
 ) -> str:
     return format_wallet_scan_record(
         label=verdict,
-        net=metrics[NET_CASH_METRIC], hedge=metrics[HEDGE_AVERAGE_METRIC],
-        volume=metrics[VOLUME_METRIC], market_trade_pct=market_share,
-        trade_density=trades_per_day, reason=reason,
+        net=metrics[NET_CASH_METRIC],
+        hedge=metrics[HEDGE_AVERAGE_METRIC],
+        volume=metrics[VOLUME_METRIC],
+        market_trade_pct=market_share,
+        trade_density=trades_per_day,
+        reason=reason,
         scanned_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )

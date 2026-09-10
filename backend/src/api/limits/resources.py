@@ -18,7 +18,9 @@ class SavedResourceAllowance:
         self._owner_user_id = owner_user_id
 
     async def reserve_bot(self) -> None:
-        await OperationAdmission(self._session).require_active_account(self._owner_user_id)
+        await OperationAdmission(self._session).require_active_account(
+            self._owner_user_id
+        )
         count = await self.count_bots()
         if count >= PAPER_BETA.saved_bots:
             raise ResourceLimitError(
@@ -27,7 +29,9 @@ class SavedResourceAllowance:
             )
 
     async def reserve_template(self) -> None:
-        await OperationAdmission(self._session).require_active_account(self._owner_user_id)
+        await OperationAdmission(self._session).require_active_account(
+            self._owner_user_id
+        )
         count = await self.count_templates()
         if count >= PAPER_BETA.saved_templates:
             raise ResourceLimitError(

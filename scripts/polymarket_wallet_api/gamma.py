@@ -39,9 +39,7 @@ def gamma_condition_id(
         return None, None
     market = event.markets[0] if event.markets else None
     closed = getattr(event.state, SDK_CLOSED_ATTRIBUTE, None)
-    condition_id = (
-        getattr(market, SDK_CONDITION_ID_ATTRIBUTE, None) if market else None
-    )
+    condition_id = getattr(market, SDK_CONDITION_ID_ATTRIBUTE, None) if market else None
     return str(condition_id) if condition_id else None, closed
 
 

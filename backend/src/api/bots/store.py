@@ -25,7 +25,9 @@ class BotStore:
     def __init__(self, session: AsyncSession, owner_user_id: UUID) -> None:
         self._session = session
         self._owner_user_id = owner_user_id
-        self._owned_bots_statement = select(BotRow).where(BotRow.owner_user_id == owner_user_id)
+        self._owned_bots_statement = select(BotRow).where(
+            BotRow.owner_user_id == owner_user_id
+        )
         self._owned_revisions_statement = (
             select(BotGraphRevisionRow)
             .join(BotRow, BotRow.id == BotGraphRevisionRow.bot_id)
@@ -73,7 +75,9 @@ class BotStore:
     async def list(self) -> tuple[BotRead, ...]:
         rows = (
             await self._session.execute(
-                self._owned_bots_statement.order_by(BotRow.updated_at.desc(), BotRow.id.desc())
+                self._owned_bots_statement.order_by(
+                    BotRow.updated_at.desc(), BotRow.id.desc()
+                )
             )
         ).scalars()
         return tuple(
@@ -88,7 +92,9 @@ class BotStore:
         bot_id: UUID,
         config: PaperRunConfig,
     ) -> BotRead | None:
-        statement = self._owned_bots_statement.where(BotRow.id == bot_id).with_for_update()
+        statement = self._owned_bots_statement.where(
+            BotRow.id == bot_id
+        ).with_for_update()
         row = (await self._session.execute(statement)).scalar_one_or_none()
         if row is None:
             await self._session.commit()
@@ -108,7 +114,9 @@ class BotStore:
     ) -> BotRead | None:
         # The row lock serializes revision numbering with config edits and run
         # snapshots, so every committed revision is one unique next version.
-        bot_statement = self._owned_bots_statement.where(BotRow.id == bot_id).with_for_update()
+        bot_statement = self._owned_bots_statement.where(
+            BotRow.id == bot_id
+        ).with_for_update()
         bot = (await self._session.execute(bot_statement)).scalar_one_or_none()
         if bot is None:
             await self._session.commit()
@@ -156,7 +164,9 @@ class BotStore:
     async def latest_revision(self, bot_id: UUID) -> BotGraphRevisionRead | None:
         row = (
             await self._session.execute(
-                self._owned_revisions_statement.where(BotGraphRevisionRow.bot_id == bot_id)
+                self._owned_revisions_statement.where(
+                    BotGraphRevisionRow.bot_id == bot_id
+                )
                 .order_by(BotGraphRevisionRow.revision.desc())
                 .limit(1)
             )

@@ -23,9 +23,7 @@ from scripts.wallet_payload_fields import (
 def position_payload(model: object) -> dict[str, object]:
     return {
         PROXY_WALLET_FIELD: str(getattr(model, SDK_WALLET_ATTRIBUTE, "") or ""),
-        CONDITION_ID_FIELD: str(
-            getattr(model, SDK_CONDITION_ID_ATTRIBUTE, "") or ""
-        ),
+        CONDITION_ID_FIELD: str(getattr(model, SDK_CONDITION_ID_ATTRIBUTE, "") or ""),
         POSITION_SIZE_FIELD: getattr(model, SDK_SIZE_ATTRIBUTE, None),
         POSITION_CURRENT_VALUE_FIELD: getattr(model, SDK_CURRENT_VALUE_ATTRIBUTE, None),
         POSITION_REALIZED_PNL_FIELD: getattr(model, SDK_REALIZED_PNL_ATTRIBUTE, None),

@@ -48,7 +48,11 @@ class HttpObservation:
 
 @dataclass(frozen=True, slots=True)
 class FailureObservation:
-    event: Literal[Observation.TELEMETRY_UNAVAILABLE, Observation.OBSERVER_FAILURE, Observation.DATA_MAINTENANCE_FAILED]
+    event: Literal[
+        Observation.TELEMETRY_UNAVAILABLE,
+        Observation.OBSERVER_FAILURE,
+        Observation.DATA_MAINTENANCE_FAILED,
+    ]
 
 
 @dataclass(frozen=True, slots=True)

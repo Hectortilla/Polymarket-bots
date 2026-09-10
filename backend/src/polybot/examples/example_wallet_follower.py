@@ -47,7 +47,11 @@ class ExampleWalletFollower(BaseBot):
         ctx: BotContext,
         now_ms: int,
     ) -> tuple[StreamRule, ...]:
-        return (StreamRule(StreamRelation.INDEPENDENT, wallet_addresses=tuple(self.leader_wallets)),)
+        return (
+            StreamRule(
+                StreamRelation.INDEPENDENT, wallet_addresses=tuple(self.leader_wallets)
+            ),
+        )
 
     async def on_wallet_trade(self, ctx: BotContext, trade: WalletTradeEvent) -> None:
         await ctx.broker.submit(self.order_for_trade(trade, ctx.config.max_order_size))

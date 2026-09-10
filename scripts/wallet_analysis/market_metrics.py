@@ -76,8 +76,7 @@ def weighted_hedge_score(markets: Iterable[MarketMetrics]) -> float:
     total_weight = 0.0
     for market in markets:
         weight = sum(
-            abs(value)
-            for value in market.signed_position_sizes_by_outcome.values()
+            abs(value) for value in market.signed_position_sizes_by_outcome.values()
         )
         if weight == 0:
             continue

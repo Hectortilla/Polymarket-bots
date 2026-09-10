@@ -58,8 +58,6 @@ class BotRow(UserOwnedRow, table=True):
     )
 
 
-
-
 class BotGraphRevisionRow(SQLModel, table=True):
     __tablename__ = BOT_GRAPH_REVISIONS_TABLE_NAME
     __table_args__ = (

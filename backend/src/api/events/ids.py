@@ -1,6 +1,5 @@
 """Dependency-light durable event ID and cursor contracts."""
 
-
 FIRST_EVENT_CURSOR = 0
 FIRST_DURABLE_EVENT_ID = 1
 # Browser consumers compare cursors as JavaScript numbers. Keep the public

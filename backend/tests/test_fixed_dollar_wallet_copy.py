@@ -13,7 +13,9 @@ from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, wallet_source_key
 
 
-def test_fixed_dollar_copy_preserves_requested_notional(dummy_context: BotContext) -> None:
+def test_fixed_dollar_copy_preserves_requested_notional(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> OrderRequest:
         bot = FixedDollarWalletCopyBot()
         await bot.on_wallet_trade(dummy_context, _wallet_trade(price=Decimal("0.40")))
@@ -30,7 +32,9 @@ def test_fixed_dollar_copy_preserves_requested_notional(dummy_context: BotContex
     assert order.reason == FIXED_DOLLAR_COPY_REASON
 
 
-def test_fixed_dollar_copy_uses_the_same_notional_for_sells(dummy_context: BotContext) -> None:
+def test_fixed_dollar_copy_uses_the_same_notional_for_sells(
+    dummy_context: BotContext,
+) -> None:
     async def run() -> OrderRequest:
         bot = FixedDollarWalletCopyBot()
         await bot.on_wallet_trade(

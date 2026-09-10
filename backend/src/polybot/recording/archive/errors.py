@@ -49,9 +49,7 @@ class ArchiveCoverageError(RecordingArchiveError):
         )
         if len(ranges) > len(displayed_ranges):
             summary = f"{summary}, ..."
-        return cls(
-            f"{prefix}: {len(ordered_gap_ids):,} gaps (IDs {summary})"
-        )
+        return cls(f"{prefix}: {len(ordered_gap_ids):,} gaps (IDs {summary})")
 
 
 class ArchiveClosedError(RecordingArchiveError):

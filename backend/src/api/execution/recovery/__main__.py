@@ -25,8 +25,15 @@ async def serve_recovery(settings: StartupSettings) -> None:
     recovery = RunRecovery(
         session_factory, TaskiqRunLauncher(), lease_seconds=settings.lease_seconds
     )
-    redis = Redis.from_url(settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS)
-    monitor = OperationMonitor(session_factory, redis, lease_seconds=settings.lease_seconds, storage_path=settings.storage_probe_path)
+    redis = Redis.from_url(
+        settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS
+    )
+    monitor = OperationMonitor(
+        session_factory,
+        redis,
+        lease_seconds=settings.lease_seconds,
+        storage_path=settings.storage_probe_path,
+    )
     monitor_task = asyncio.create_task(monitor.serve())
     maintenance_task = asyncio.create_task(DataMaintenance(session_factory).serve())
     stopping = asyncio.Event()

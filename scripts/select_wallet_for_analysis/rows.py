@@ -4,10 +4,13 @@ from scripts.wallet_scan_report import load_wallet_scan_report_rows
 from scripts.paths import GOOD_FILE
 
 SORT_CHOICES = (
-    ("n", "net", "Net"), ("h", "hedge", "Hedge"),
+    ("n", "net", "Net"),
+    ("h", "hedge", "Hedge"),
     ("m", "market_trade_pct", "Market share"),
-    ("d", "trade_density", "Trade density"), ("v", "volume", "Volume"),
-    ("t", "scanned_at", "Scanned"), ("w", "wallet", "Wallet"),
+    ("d", "trade_density", "Trade density"),
+    ("v", "volume", "Volume"),
+    ("t", "scanned_at", "Scanned"),
+    ("w", "wallet", "Wallet"),
 )
 
 

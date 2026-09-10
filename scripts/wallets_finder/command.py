@@ -49,9 +49,7 @@ def resolve_target(
         bucket_start - BTC_FIVE_MINUTE_BUCKET_SECONDS * lookback_windows
     )
     for offset in range(lookback_windows, lookback_windows + 4):
-        slug = slug_for_start(
-            bucket_start - BTC_FIVE_MINUTE_BUCKET_SECONDS * offset
-        )
+        slug = slug_for_start(bucket_start - BTC_FIVE_MINUTE_BUCKET_SECONDS * offset)
         condition_id, _ = gamma_condition_id(slug)
         if condition_id:
             return slug, condition_id

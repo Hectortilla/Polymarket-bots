@@ -35,9 +35,7 @@ class CoverageScope:
             frozenset(
                 () if identity.condition_id is None else (identity.condition_id,)
             ),
-            frozenset(
-                () if identity.market_slug is None else (identity.market_slug,)
-            ),
+            frozenset(() if identity.market_slug is None else (identity.market_slug,)),
             frozenset(() if identity.token_id is None else (identity.token_id,)),
         )
 

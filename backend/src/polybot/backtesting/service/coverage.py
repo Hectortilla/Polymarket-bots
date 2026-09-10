@@ -70,9 +70,8 @@ def advance_bootstrap_coverage(
     if coverage is None:
         return
     while (
-        (boundary_ms := coverage.next_boundary_at_ms) is not None
-        and boundary_ms <= through_ms
-    ):
+        boundary_ms := coverage.next_boundary_at_ms
+    ) is not None and boundary_ms <= through_ms:
         clock.move_to(boundary_ms)
         activate_bootstrap_blackouts(
             state,

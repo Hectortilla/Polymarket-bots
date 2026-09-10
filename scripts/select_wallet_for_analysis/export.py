@@ -15,7 +15,11 @@ from scripts.polymarket_wallet_api.market_contracts import (
     MARKET_START_DATE_FIELD,
     MARKET_WINNING_OUTCOME_FIELD,
 )
-from scripts.wallet_payload_contracts import ACTIVITY_SLUG_FIELD, CONDITION_ID_FIELD, ActivityRow
+from scripts.wallet_payload_contracts import (
+    ACTIVITY_SLUG_FIELD,
+    CONDITION_ID_FIELD,
+    ActivityRow,
+)
 from scripts.paths import RESULTS_DIR
 
 DATA_FILENAME_TEMPLATE = "data_{wallet_id}.json"
@@ -57,9 +61,8 @@ def _fetch_market_context(condition_id: str) -> dict[str, object]:
     return {
         "condition_id": market.get(CONDITION_ID_FIELD) or condition_id,
         "market_slug": market.get(ACTIVITY_SLUG_FIELD),
-        "market_name": market.get(MARKET_QUESTION_FIELD) or market.get(
-            ACTIVITY_SLUG_FIELD
-        ),
+        "market_name": market.get(MARKET_QUESTION_FIELD)
+        or market.get(ACTIVITY_SLUG_FIELD),
         "market_start_timestamp": _timestamp(market.get(MARKET_START_DATE_FIELD)),
         "market_end_timestamp": _timestamp(market.get(MARKET_END_DATE_FIELD)),
         "market_active": market.get(MARKET_ACTIVE_FIELD),

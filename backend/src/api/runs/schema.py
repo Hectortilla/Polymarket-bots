@@ -31,7 +31,12 @@ class RunColumn(StrEnum):
 
 
 INTERNAL_RUN_COLUMNS = frozenset(
-    {RunColumn.LAUNCH_KEY, RunColumn.EXECUTION_TOKEN, RunColumn.DELIVERY_ATTEMPTED_AT, HISTORY_EXPIRED_AT_COLUMN}
+    {
+        RunColumn.LAUNCH_KEY,
+        RunColumn.EXECUTION_TOKEN,
+        RunColumn.DELIVERY_ATTEMPTED_AT,
+        HISTORY_EXPIRED_AT_COLUMN,
+    }
 )
 
 

@@ -46,7 +46,11 @@ class RunEventWriter:
     ) -> None:
         self._session_factory = session_factory
         self._redis = redis
-        self._lease = None if execution_token is None else ExecutionLease(execution_token, lease_seconds)
+        self._lease = (
+            None
+            if execution_token is None
+            else ExecutionLease(execution_token, lease_seconds)
+        )
 
     async def append(self, event: DurableEvent) -> PersistedDurableEvent:
         async with asyncio.timeout(DEPENDENCY_TIMEOUT_SECONDS):

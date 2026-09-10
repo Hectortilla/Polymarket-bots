@@ -49,7 +49,9 @@ class RuntimeObserverGroup:
             await stop_observer_fail_open(observer)
 
 
-async def start_observer_fail_open(observer: RuntimeObserver, config: BotConfig) -> None:
+async def start_observer_fail_open(
+    observer: RuntimeObserver, config: BotConfig
+) -> None:
     try:
         await observer.start(config)
     except Exception:
