@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import runtimeContract from '$lib/runtimeContract.fixture.json';
   import { page } from '$app/state';
   import { AUTH_COPY } from './copy';
@@ -39,7 +40,7 @@
   }
 </script>
 
-<svelte:head><title>{title} | Polybot</title></svelte:head>
+<svelte:head><title>{title} | {SERVICE_NAME}</title></svelte:head>
 <section class="account-panel">
   <p class="eyebrow">Your private workspace</p>
   <h1>{title}</h1>
@@ -57,5 +58,5 @@
     <button class="primary" type="submit" disabled={busy}>{busy ? AUTH_COPY.BUSY : registering ? AUTH_COPY.REGISTER : AUTH_COPY.SIGN_IN}</button>
   </form>
   {#if !registering}<p><a href={runtimeContract.accountManagement.forgotPath}>{ACCOUNT_COPY.FORGOT}</a></p>{/if}
-  <p>{registering ? 'Already have an account?' : 'New to Polybot?'} <a href={accountPath(registering ? LOGIN_PATH : REGISTER_PATH, page.url.searchParams.get(RETURN_TO_QUERY_PARAM))}>{registering ? AUTH_COPY.SIGN_IN : AUTH_COPY.REGISTER}</a></p>
+  <p>{registering ? 'Already have an account?' : `New to ${SERVICE_NAME}?`} <a href={accountPath(registering ? LOGIN_PATH : REGISTER_PATH, page.url.searchParams.get(RETURN_TO_QUERY_PARAM))}>{registering ? AUTH_COPY.SIGN_IN : AUTH_COPY.REGISTER}</a></p>
 </section>

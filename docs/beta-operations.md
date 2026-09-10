@@ -104,3 +104,6 @@ before allowing new work. Resumption is an explicit operator command.
 | Counter TTL seconds | 180 |
 | Maximum queued log records | 1024 |
 <!-- operational-cadence:end -->
+
+The final public-opening checklist and contact prerequisites are in
+[beta launch](beta-launch.md); completing these procedures does not itself open signup.

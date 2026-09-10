@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { listBotDefinitionsApiV1BotDefinitionsGet, type GraphExample } from '$lib/api/generated';
@@ -71,7 +72,7 @@
 
 </script>
 
-<svelte:head><title>{ONBOARDING_COPY.START} | Polybot</title></svelte:head>
+<svelte:head><title>{ONBOARDING_COPY.START} | {SERVICE_NAME}</title></svelte:head>
 <section class="guided-bot">
   <a href={NAVIGATION_PATH.HOME}>{NAVIGATION_LABEL.BACK_TO_BOTS}</a>
   <h1>{ONBOARDING_COPY.START}</h1>

@@ -1127,3 +1127,21 @@ generate a separate browser test contract. A shared explicit clock and seeded
 jitter keep the market scenarios controlled while exercising real elapsed time.
 Those inputs live only in `backend/tests/control_plane/onboarding_fixture/`;
 production adapters and Polymarket protocols are unchanged.
+
+## Public information boundary (Slice 23)
+
+The exact static information routes are owned by `$lib/public/navigation` and
+render before session restoration in the app shell. Public navigation disables
+SvelteKit data preloading; no public component imports a private API operation.
+The shell restores the session when navigation enters an account or private route,
+and keeps private children keyed to the authenticated account. An expired session
+clears private state/streams without redirecting an information page. Public pages
+read generated allowance/lifecycle policy, not account usage. The existing HTTP
+method/path allowlist and ownership predicates remain unchanged.
+
+`api.service_identity` owns the application name used in mail and the generated
+browser contract; `$lib/serviceIdentity` supplies shared browser branding.
+`$lib/public/identity` carries that name and the missing operator/support contact. Help links use the existing account/recovery routes.
+The public support page has no submitting form while its mailbox is unconfigured.
+The release checklist in [beta launch](beta-launch.md) requires replacing these
+placeholders and testing contact delivery before the private ingress can open.

@@ -35,8 +35,10 @@ Redis request/stream bounds and optional runtime market caps. Slice 18 adds dura
 scheduled queue/lease recovery. Slice 19 adds SMTP account links, verification,
 password changes and session revocation inside `api.auth`. Slice 20 adds private
 operational visibility and controls; Slice 21 adds encrypted backups, retention,
-account deletion and restore quarantine. Slice 23 and public signup remain
-outside the delivered scope.
+account deletion and restore quarantine. Slice 22 adds private guided first use
+and run-reading guidance. Slice 23 adds static public information without private
+preloads and a final acceptance/release checklist. Public opening remains a
+separate operational action gated on configured operator/support ownership.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade

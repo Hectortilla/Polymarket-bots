@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { minutesFromSeconds } from '$lib/time';
   import { ALLOWANCE_COPY } from './copy';
   import { LIFECYCLE_COPY } from '$lib/lifecycle/copy';
   import { onMount } from 'svelte';
@@ -38,7 +39,7 @@
       {usage.saved_templates} / {usage.policy.saved_templates} saved templates
     </p>
     <p class="allowance-note">
-      Runs stop after {usage.policy.run_duration_seconds / 60} minutes.
+      Runs stop after {minutesFromSeconds(usage.policy.run_duration_seconds)} minutes.
       Each run supports up to {usage.policy.tracked_markets_per_run} tracked markets and
       {usage.policy.followed_wallets_per_run} followed wallets.
       Queued runs start oldest first when their account has a free active slot.

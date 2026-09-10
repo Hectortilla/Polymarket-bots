@@ -1,3 +1,4 @@
+import { isPublicInformationPath } from '$lib/public/navigation';
 import { derived, get, writable } from 'svelte/store';
 import { AUTH_COPY } from '../copy';
 import { ACCOUNT_DELETION_QUERY_PARAM, ACCOUNT_UPDATED_QUERY_PARAM, accountPath, isAccountPath, LOGIN_PATH, safeReturnPath } from '../navigation';
@@ -64,8 +65,9 @@ export class AccountSession {
   }
 
   expire(): void {
+    // In-flight auth expiry must clear private state without taking readers away from public information.
     this.clear();
-    if (!isAccountPath(window.location.pathname)) {
+    if (!isAccountPath(window.location.pathname) && !isPublicInformationPath(window.location.pathname)) {
       window.location.replace(accountPath(LOGIN_PATH, window.location.pathname + window.location.search));
     }
   }

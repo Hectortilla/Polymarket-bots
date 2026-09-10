@@ -204,3 +204,6 @@ projects/volumes. Run it after schema or backup changes and before release; comp
 its measured result with the two-hour target. Unit/real-service lifecycle tests
 cover retention boundaries, partial-batch rollback/retry, account isolation,
 deletion/launch serialization and delayed worker writes after purge.
+
+The final public-opening checklist and contact prerequisites are in
+[beta launch](beta-launch.md); completing these procedures does not itself open signup.

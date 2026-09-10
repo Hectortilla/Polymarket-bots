@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { ONBOARDING_COPY } from '$lib/onboarding/copy';
   import AccountUsage from '$lib/limits/AccountUsage.svelte';
   import { PRESENTATION_COPY } from '$lib/presentation';
@@ -73,7 +74,7 @@
 </script>
 
 <svelte:head>
-  <title>{NAVIGATION_LABEL.BOTS} | Polybot</title>
+  <title>{NAVIGATION_LABEL.BOTS} | {SERVICE_NAME}</title>
   <meta
     name="description"
     content="Configure node-based paper bots and inspect their recent runs."

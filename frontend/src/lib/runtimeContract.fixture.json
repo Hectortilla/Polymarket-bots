@@ -1,4 +1,5 @@
 {
+  "serviceName": "Polybot",
   "idempotencyKeyHeader": "Idempotency-Key",
   "idempotencyRecoveryHeader": "Idempotency-Recovery",
   "resourcePolicy": {
@@ -52,6 +53,7 @@
     "verifyPath": "/verify-email",
     "tokenPattern": "[A-Za-z0-9_-]{43}",
     "tokenLifetimeSeconds": 1800,
+    "tokenLifetimeMinutes": 30,
     "sessionRevocation": {
       "OTHER": "other",
       "ALL": "all"

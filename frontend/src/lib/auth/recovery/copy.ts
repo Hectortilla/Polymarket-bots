@@ -5,7 +5,7 @@ export const ACCOUNT_COPY = {
   FORGOT: 'Forgot password?',
   SEND_RESET: 'Send reset link',
   SEND_VERIFICATION: 'Send verification link',
-  SENT: `Check your email. If your account is eligible, the link will work for ${contract.accountManagement.tokenLifetimeSeconds / 60} minutes. Inbox delivery may take a few minutes; you can retry if it does not arrive.`,
+  SENT: `Check your email. If your account is eligible, the link will work for ${contract.accountManagement.tokenLifetimeMinutes} minutes. Inbox delivery may take a few minutes; you can retry if it does not arrive.`,
   DELIVERY_FAILED: 'Email delivery is unavailable. Please try again later.',
   INVALID_LINK: 'This link is missing, invalid, expired or already used. Request a new link.',
   CURRENT_PASSWORD: 'Current password',

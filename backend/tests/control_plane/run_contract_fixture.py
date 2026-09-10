@@ -77,6 +77,7 @@ from api.runs.status import (
     TERMINAL_RUN_STATUSES,
     RunStatus,
 )
+from api.service_identity import SERVICE_NAME
 from fastapi import status
 from polybot.cli.observability.states import (
     BOOTSTRAP_COMPLETED_MAY_EXCEED_TOTAL,
@@ -158,6 +159,7 @@ FRONTEND_RUN_CONTRACT_PATH = (
 
 def frontend_run_contract() -> dict[str, object]:
     return {
+        "serviceName": SERVICE_NAME,
         "idempotencyKeyHeader": IDEMPOTENCY_KEY_HEADER,
         "idempotencyRecoveryHeader": IDEMPOTENCY_RECOVERY_HEADER,
         "resourcePolicy": PAPER_BETA.model_dump(),
@@ -182,6 +184,7 @@ def frontend_run_contract() -> dict[str, object]:
             "verifyPath": account_policy.BROWSER_VERIFY_PATH,
             "tokenPattern": ACCOUNT_TOKEN_PATTERN,
             "tokenLifetimeSeconds": account_policy.TOKEN_LIFETIME_SECONDS,
+            "tokenLifetimeMinutes": account_policy.TOKEN_LIFETIME_MINUTES,
             "sessionRevocation": _enum_values(account_policy.SessionRevocation),
             "revokesCurrentSession": {
                 scope.value: scope.revokes_current

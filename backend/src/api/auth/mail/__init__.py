@@ -10,11 +10,15 @@ from starlette.applications import Starlette
 
 from api.auth.config import AuthSettings
 from api.auth.mail.config import SMTP_TIMEOUT_SECONDS, SmtpSecurity, SmtpSettings
-from api.auth.recovery.policy import TOKEN_LIFETIME_SECONDS, TokenPurpose
+from api.auth.recovery.policy import TOKEN_LIFETIME_MINUTES, TokenPurpose
 from api.auth.recovery.tokens import AccountToken
+from api.service_identity import SERVICE_NAME
 
 ACCOUNT_MAILER_STATE_KEY = "account_mailer"
 EMAIL_DELIVERY_UNAVAILABLE_DETAIL = "Email delivery is unavailable. Try again later."
+
+
+ACCOUNT_LINK_SUBJECT = f"{SERVICE_NAME} account link"
 
 
 class MailDeliveryError(Exception):
@@ -45,10 +49,10 @@ class AccountMailer:
         message = EmailMessage()
         message["From"] = self._settings.sender
         message["To"] = email
-        message["Subject"] = "Polybot account link"
+        message["Subject"] = ACCOUNT_LINK_SUBJECT
         message.set_content(
-            "Someone requested a Polybot account link for this address. "
-            f"If your account is eligible, use this single-use link within {TOKEN_LIFETIME_SECONDS // 60} minutes "
+            f"Someone requested a {SERVICE_NAME} account link for this address. "
+            f"If your account is eligible, use this single-use link within {TOKEN_LIFETIME_MINUTES} minutes "
             "to choose a password and complete the request.\n\n"
             f"{link}\n\n"
             "If you did not request this, ignore this email. "

@@ -1,3 +1,4 @@
+import { PUBLIC_INFORMATION_PATH } from '$lib/public/navigation';
 import { ACCOUNT_SESSION_STATUS } from './session/state';
 import { runPath } from '$lib/navigation';
 import { LOGIN_PATH } from './navigation';
@@ -165,4 +166,16 @@ it('clears private streams and redirects after a confirmed 401', async () => {
   expect(get(session.account)).toBeNull();
   expect(close).toHaveBeenCalledOnce();
   expect(replace).toHaveBeenCalledOnce();
+});
+
+it.each(Object.values(PUBLIC_INFORMATION_PATH))('clears expired private data without redirecting the public page %s', path => {
+  const replace = vi.fn();
+  vi.stubGlobal('window', { location: { pathname: path, search: '', replace } });
+  session.state.set({ status: ACCOUNT_SESSION_STATUS.AUTHENTICATED, user: first });
+  const close = vi.fn();
+  session.streams.track(close);
+  session.expire();
+  expect(get(session.account)).toBeNull();
+  expect(close).toHaveBeenCalledOnce();
+  expect(replace).not.toHaveBeenCalled();
 });

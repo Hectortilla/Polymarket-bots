@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { ONBOARDING_COPY } from '$lib/onboarding/copy';
   import { NAVIGATION_PATH } from '$lib/navigation';
   import { onMount } from 'svelte';
@@ -61,7 +62,7 @@
 
   function clearPasswords(): void { currentPassword = ''; password = ''; confirmation = ''; }
 </script>
-<svelte:head><title>Account settings | Polybot</title></svelte:head>
+<svelte:head><title>Account settings | {SERVICE_NAME}</title></svelte:head>
 <section class="account-panel">
   <h1>{ACCOUNT_COPY.SETTINGS}</h1>
   <p><a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a></p>

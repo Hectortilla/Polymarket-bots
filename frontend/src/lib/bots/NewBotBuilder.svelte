@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { SavedBotDraft } from './savedDraft';
   import { DraftSaveFeedback } from './savedDraft/feedback';
   import { goto } from '$app/navigation';
@@ -100,7 +101,7 @@
 </script>
 
 <svelte:head>
-  <title>{NAVIGATION_LABEL.NEW_BOT} | Polybot</title>
+  <title>{NAVIGATION_LABEL.NEW_BOT} | {SERVICE_NAME}</title>
   <meta
     name="description"
     content="Configure a paper bot and build its node strategy in one workspace."

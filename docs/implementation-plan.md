@@ -1713,7 +1713,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slices 16–22 delivered; Slice 23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–23 delivered; operational public-opening gates remain. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -2176,7 +2176,8 @@ runbooks; no protocol change or public deployment was introduced.
 
 ## Slice 23: Launch Information, Support and Public-Beta Acceptance
 
-Status: planned; final open-signup gate depends on Slice 12F and Slices 16–22.
+Status: delivered; the separate operational open-signup gate depends on configured
+operator/support ownership and the release checklist after Slice 12F and Slices 16–22.
 
 Minimum deliverable:
 
@@ -2216,6 +2217,41 @@ Explicit exclusions: billing, paid acquisition, marketplace features and live
 execution. These eight slices add no planned Polymarket protocol behavior; any
 implementation that needs to change it must first verify with PolymarketDocs
 and stop that protocol-sensitive work if the MCP is unavailable.
+
+Delivered approach: five static public information pages with an exact, encoded-path
+aware navigation boundary; no account/usage lookup or private preload on those
+pages, including while already signed in. Public copy uses generated allowance,
+lifecycle and recovery contracts. SMTP and browser branding share the application
+identity owner. Placeholder operator/contact status is explicit on overview and
+support; configuring the contact updates both through one component. No new
+anonymous API, strategy engine or live path was introduced.
+
+Acceptance on 2026-09-10: all 51 registered style reviewers completed, followed by
+holistically applied fixes and focused closing reviews. All 1,389 backend tests ran
+against real disposable PostgreSQL/Redis with no skipped service tests; all 314
+frontend tests and all 11 browser scenarios passed. Svelte reported zero errors or
+warnings; generated-client parity, frontend and Python package builds passed.
+The complete HTTPS rehearsal passed guided setup, verification/login, launch/Stop,
+reload/SSE, account isolation, queueing, worker/dependency faults, operator controls,
+release/rollback and failed-migration refusal. The encrypted backup/restore
+rehearsal passed in 7.2 seconds, preserving accounts/ownership/bots/revisions/history,
+quarantining access and launching no old jobs; invalid authenticated dumps were
+refused before app activation.
+
+The 15-second bounded synthetic load rehearsal passed at the configured global
+limits: 22,160 books, 221 durable writes, 247 reads, 1,768 stream frames and 247
+budgeted requests; p95 I/O was 154.83 ms and event-loop lag 5.84 ms. These are local
+fixture measurements, not vendor or production-host capacity claims. The
+[release checklist](beta-launch.md) records rerun commands, named-owner prerequisites,
+known beta limitations and the deliberate ingress-opening action. Local evidence
+is in `data/reviews/slice23` and `/tmp/polybot-s23-*` logs.
+
+Final documentation-drift audit completed across README, product spec, both
+architecture documents, this plan, deployment/operations/lifecycle/launch runbooks,
+author/API notes and generated contracts. Framework/protocol behavior is unchanged,
+so no PolymarketDocs check was required. Support/operator placeholders remain an
+approved exception to launch readiness, not authorization to publish. No public
+ingress, account invitation or production deployment was performed.
 
 ## Later Product Features
 

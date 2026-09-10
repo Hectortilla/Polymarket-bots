@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { NAVIGATION_LABEL } from '$lib/navigation';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
@@ -10,6 +11,6 @@
   });
 </script>
 
-<svelte:head><title>{NAVIGATION_LABEL.NEW_BOT} | Polybot</title></svelte:head>
+<svelte:head><title>{NAVIGATION_LABEL.NEW_BOT} | {SERVICE_NAME}</title></svelte:head>
 
 <p class="empty-state" aria-live="polite">Opening the bot builder...</p>

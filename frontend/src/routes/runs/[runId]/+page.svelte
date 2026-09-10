@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { hasReportedUsableBook, RUN_GUIDE_COPY } from '$lib/runs/runGuide';
   import RunGuide from '$lib/runs/RunGuide.svelte';
   import { STREAM_CONNECTION_STATE } from '$lib/runs/events';
@@ -196,7 +197,7 @@
 </script>
 
 <svelte:head>
-  <title>{run ? `${run.config.name} | Polybot` : 'Run detail | Polybot'}</title>
+  <title>{run ? `${run.config.name} | ${SERVICE_NAME}` : `Run detail | ${SERVICE_NAME}`}</title>
 </svelte:head>
 {#if streamReconnecting}<p role="status" class="notice error">{RUN_DETAIL_COPY.STREAM_RECONNECTING}</p>{/if}
 

@@ -146,3 +146,6 @@ structured alerts. Workers publish process presence separately from job leases.
 Recovery mounts the PostgreSQL volume read-only only for filesystem-capacity
 measurement. See [beta operations](beta-operations.md) for incident admission,
 account suspension and OS-authorized diagnostics; no operator HTTP route is added.
+
+The final public-opening checklist and contact prerequisites are in
+[beta launch](beta-launch.md); completing these procedures does not itself open signup.

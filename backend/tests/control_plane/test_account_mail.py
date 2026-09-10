@@ -7,11 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from api.auth.config import AuthSettings
-from api.auth.mail import AccountMailer, MailDeliveryError
+from api.auth.mail import ACCOUNT_LINK_SUBJECT, AccountMailer, MailDeliveryError
 from api.auth.mail.config import SMTP_TIMEOUT_SECONDS, SmtpSecurity, SmtpSettings
 from api.auth.recovery.policy import (
     BROWSER_RESET_PATH,
     BROWSER_VERIFY_PATH,
+    TOKEN_LIFETIME_MINUTES,
     TokenPurpose,
 )
 from api.auth.recovery.tokens import AccountToken
@@ -48,6 +49,8 @@ def test_smtp_uses_tls_and_keeps_blocking_work_off_the_event_loop(
             f"https://paper.example.com{browser_path}#{token.value}"
             in message.get_content()
         )
+        assert f"within {TOKEN_LIFETIME_MINUTES} minutes" in message.get_content()
+        assert message["Subject"] == ACCOUNT_LINK_SUBJECT
         assert message["To"] == "owner@example.com"
         assert "secret" not in message.get_content()
 

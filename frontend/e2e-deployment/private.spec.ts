@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 import { AUTH_COPY } from '../src/lib/auth/copy';
 import { REGISTER_PATH, LOGIN_PATH } from '../src/lib/auth/navigation';
 import { NAVIGATION_PATH } from '../src/lib/navigation';
-import { BOT_BUILDER_COPY } from '../src/lib/bots/copy';
+import { ONBOARDING_COPY } from '../src/lib/onboarding/copy';
 import { BOT_DETAIL_COPY } from '../src/routes/bots/[botId]/copy';
 import { RUN_STATUS, RUN_STATUS_PRESENTATION } from '../src/lib/runs/status';
 
@@ -25,11 +25,14 @@ test('private HTTPS browser login, run, Stop, refresh and stream reconnect', asy
   await page.getByRole('button', { name: AUTH_COPY.SIGN_IN, exact: true }).click();
   await expect(page).toHaveURL(url => url.pathname === NAVIGATION_PATH.HOME);
   await expect(page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
-  await page.goto(NAVIGATION_PATH.NEW_BOT);
+  await page.goto(NAVIGATION_PATH.START)
+  await page.getByRole('button', { name: ONBOARDING_COPY.CONTINUE, exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('HTTPS browser bot');
-  await page.getByPlaceholder('Search markets by name or topic…').fill('browser');
+  await page.getByRole('combobox').fill('browser');
   await page.getByRole('option').filter({ hasText: 'Will browser-market happen?' }).click();
-  await page.getByRole('button', { name: BOT_BUILDER_COPY.CREATE, exact: true }).click();
+  await page.getByRole('button', { name: ONBOARDING_COPY.REVIEW, exact: true }).click();
+  await expect(page.getByText(ONBOARDING_COPY.NO_LAUNCH)).toBeVisible();
+  await page.getByRole('button', { name: ONBOARDING_COPY.SAVE, exact: true }).click();
   await expect(page).toHaveURL(/\/bots\/[a-f0-9-]+$/);
   await page.getByRole('button', { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
   await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);

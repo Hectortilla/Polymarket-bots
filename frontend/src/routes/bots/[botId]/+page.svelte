@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SERVICE_NAME } from '$lib/serviceIdentity';
   import { LaunchAttempt } from '$lib/bots/launchAttempt';
   import { HTTP_STATUS, isClientRejection } from '$lib/api/http';
   import { resourceLimitDetail } from '$lib/limits/validation';
@@ -189,7 +190,7 @@
 </script>
 
 <svelte:head>
-  <title>{bot ? `${bot.config.name} | Polybot` : 'Bot | Polybot'}</title>
+  <title>{bot ? `${bot.config.name} | ${SERVICE_NAME}` : `Bot | ${SERVICE_NAME}`}</title>
 </svelte:head>
 
 <a class="back-link" href={NAVIGATION_PATH.HOME}>

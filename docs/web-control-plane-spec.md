@@ -291,7 +291,7 @@ designed account-linking flow. Matching an email supplied during unverified
 registration is not sufficient proof to link accounts. Existing email/password
 accounts must not become implicitly verified when those features arrive.
 
-## Planned Public Paper-Trading Beta
+## Public Paper-Trading Beta
 
 The user-approved next direction is a public paper-only service. The
 [readiness roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
@@ -299,9 +299,9 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-Slices 16–22 are delivered; Slice 23 remains a planned extension. Adopt their product
-policies here during each slice and keep the current private boundary until the
-complete open-signup gate passes. Private bot/run ownership remains in force
+Slices 16–23 are delivered. The policies below describe their implementation.
+Keep the current private boundary until the complete operational open-signup
+gate passes, including configured operator/support ownership. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
 
 Slice 16 implementation uses a private HTTPS staging entrypoint. Browser
@@ -437,3 +437,20 @@ existing skipped/rejected progress, stale or missing inputs, reconnection and
 terminal failures. Conditions may produce no order and no progress entry.
 Keyboard step focus, mobile layout, retry feedback and allowance/account links
 cover the basic first-use path.
+
+## Slice 23: Launch information and acceptance
+
+Public overview, help, privacy, preview terms and support pages describe only the
+delivered visual builder and simulated paper execution. The dashboard, bots,
+graphs, runs, events and usage stay private. Anonymous information navigation does
+not request account state or preload private resources. Existing authentication
+and recovery entrypoints retain their prior boundaries; no public data API is added.
+
+The approved operator/support placeholders are visible as unconfigured, with no
+fake mailbox or submitting feedback form. Self-service recovery/help links work.
+The public-opening gate remains blocked until a named operator and monitored
+support contact replace the placeholders, appropriate service terms/privacy are
+reviewed, email and incident ownership are tested, and deployment/backups are
+installed. The [release checklist](beta-launch.md) owns final acceptance evidence
+and the separate deliberate ingress-opening step. Coding completion does not
+publish the service.

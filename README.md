@@ -158,15 +158,16 @@ adds email/password accounts, server-side sessions, and private ownership of bot
 templates, revisions, runs, and event streams. Registration signs in immediately
 at the Slice 15 checkpoint. Slice 19 adds verification and password recovery;
 social login and a marketplace remain excluded. The application still requires a
-local/private access boundary until the remaining beta-readiness slices are delivered.
+local/private access boundary until the operational public-opening gates are completed.
 
 [Public paper-beta readiness](docs/implementation-plan.md#public-paper-trading-beta-roadmap)
 now includes the delivered Slice 12F deployment foundation and Slice 16 private
 HTTPS release workflow. Slice 17 adds per-account and global resource admission,
 browser usage, and server-side expiry. Slice 18 adds durable launch retries and scheduled queue/worker recovery.
 Slice 19 adds account recovery and management. Slices 20–21 deliver operational
-controls, encrypted backups and bounded data lifecycle. Slice 22 adds guided onboarding; Slice 23 covers
-launch/support information. Open signup remains gated on final acceptance.
+controls, encrypted backups and bounded data lifecycle. Slice 22 adds guided onboarding; Slice 23 delivers
+launch/support information and the [final release checklist](docs/beta-launch.md).
+Open signup remains gated on acceptance and configured operator/support ownership.
 Marketplace work is deferred.
 
 Private HTTPS deployment work and the repeatable release procedure are documented
