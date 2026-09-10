@@ -1,11 +1,11 @@
 # Web Control Plane v0 Architecture and API
 
-Status: Slices 12A–12F, 13A–13F, 14, 15, 16 and 17 are implemented.
+Status: Slices 12A–12F, 13A–13F and 14–20 are implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
-continues with planned Slices 19–23 after the delivered deployment, resource-limit and reliable-lifecycle foundation. It covers production
+continues with planned Slices 21–23 after the delivered deployment, resource-limit, reliable-lifecycle, account-recovery and operations foundation. It covers production
 operation, resource limits, reliability, recovery, data lifecycle and launch
 workflows. Adopt each slice's technical contracts here during implementation;
 current private access, ownership and paper execution remain unchanged until the
@@ -1044,3 +1044,34 @@ GET redemption, open redirect, token response or browser persistence is allowed.
 This policy follows the current [OWASP recovery guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html),
 checked for this slice. SMTP is an application account dependency; no Polymarket
 protocol, SDK or endpoint behavior changes.
+
+## Slice 20: Operator and observation boundaries
+
+`api.operations` owns the maintenance CLI, durable incident control and mutation
+journal. Host OS/Docker access is the authorization boundary; ordinary web sessions
+cannot invoke it. Lock order is run-admission advisory lock, account row, then run
+rows. Login/session issuance shares the account lock; launch and worker admission
+recheck account suspension inside the admission transaction. Global control is a
+required singleton seeded by migration 0008; missing state fails explicitly.
+Operator termination and lifecycle events commit with the control and audit row.
+
+The recovery process also samples operational measurements every five seconds.
+PostgreSQL supplies queue depth/age, stale leases and database bytes; Redis supplies
+worker process presence, per-minute HTTP status counts and recent feed observations.
+Missing or failed probes produce unknown/unavailable alerts, never zero-valued
+healthy measurements. Log records contain only bounded typed operational fields;
+request paths, query strings, bodies, emails, headers, SDK payloads and exception
+text are excluded. The deployment operator reads structured alerts in recovery
+logs; each alert includes its effective threshold and response instruction. No external
+monitoring provider or public metrics endpoint is introduced.
+
+Slice 20 operational logs use typed payload-free records and a bounded background
+log writer; sink saturation is reported by the next accepted overflow record.
+Counter/presence Redis adapters validate stored values; feed envelopes preserve
+the original observation time and classify missing lag, invalid JSON and expired
+health as unavailable. A separate `api.events.health.writer.RunHealthWriter` shares the
+event writer execution lease without adding side effects to generic publication.
+The monitor uses its own cadence, verifies the required incident singleton, and
+is supervised by recovery. The CLI returns typed status/inspection/mutation shapes;
+unhealthy status checks exit nonzero. HTTP admission exposes `incident_paused`
+(503) and `account_suspended` (403) without requiring detail-string parsing.

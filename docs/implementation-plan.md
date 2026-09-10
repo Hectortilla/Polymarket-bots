@@ -1713,7 +1713,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slices 16–19 delivered; Slices 20–23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–20 delivered; Slices 21–23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -2016,7 +2016,7 @@ requirements; no Polymarket protocol behavior changed or MCP check was required.
 
 ## Slice 20: Operational Visibility and Controls
 
-Status: planned; depends on Slices 16–19.
+Status: delivered. Depends on Slices 16–19.
 
 Minimum deliverable:
 
@@ -2048,6 +2048,20 @@ Acceptance:
 Explicit exclusions: a full administration dashboard, generalized RBAC and
 monitoring every internal function. Reuse existing runtime health observations;
 changes to Polymarket adapters require the normal MCP checkpoint.
+
+Delivered an OS-authorized operator CLI, atomic suspension/incident controls,
+lease-fenced feed observations, independent worker presence, typed redacted logs,
+and bounded operational probes. All 51 style reviewers completed; accepted
+findings were reconciled and affected rules rechecked. Acceptance: 1,328 Python
+tests passed with disposable PostgreSQL/Redis, followed by 32 focused auth/fence
+checks after the final shared predicate change; 262 frontend tests, generated
+contract parity, Svelte checks, production and Python package builds, five browser
+scenarios, and the isolated HTTPS release/rollback/worker-loss rehearsal passed.
+The HTTPS browser rehearsal now waits for authentication redirects to complete.
+Documentation-drift audit updated README, product/architecture contracts, this
+plan, deployment/operations runbooks and generated error contracts. No Polymarket
+protocol behavior changed. Public operator/support identity remains the approved
+placeholder and public signup remains closed.
 
 ## Slice 21: Backups and Data Lifecycle
 

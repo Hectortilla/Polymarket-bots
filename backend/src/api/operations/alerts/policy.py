@@ -1,0 +1,12 @@
+"""Operational alert thresholds and ownership."""
+
+ALERT_OWNER = "deployment operator (public contact pending)"
+QUEUE_AGE_ALERT_SECONDS = 120
+DATABASE_SIZE_ALERT_BYTES = 10 * 1024**3
+DISK_FREE_ALERT_BYTES = 5 * 1024**3
+FEED_LAG_ALERT_MS = 5000
+HTTP_ERROR_ALERT_COUNT = 5
+ADMISSION_ALERT_COUNT = 10
+
+
+NO_AVAILABLE_PROBE_THRESHOLD = 0

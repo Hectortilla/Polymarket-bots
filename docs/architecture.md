@@ -1039,3 +1039,9 @@ independently of browser session lifetime. See the
 [control-plane identity contract](web-control-plane-architecture.md#slice-15-identity-and-authorization)
 for approved policy, reset history and two-account acceptance tests. The change
 introduces no Polymarket protocol behavior or live-execution capability.
+
+Slice 20 adds `api.operations`, a private host-command boundary for incident
+admission, suspension and atomic terminal fencing. Its independent monitoring task
+reads existing API, queue, worker, storage and feed observations without importing
+API concerns into `polybot`. See [operations](beta-operations.md) and the control-plane
+architecture for authorization and lock order.

@@ -604,6 +604,31 @@ def test_terminal_and_web_share_dashboard_semantics() -> None:
     assert tuple(terminal.chart_tokens) == ()
 
 
+@pytest.mark.parametrize("fail_first", [False, True])
+def test_observer_does_not_refresh_old_feed_observations(fail_first) -> None:
+    async def scenario():
+        clock = _ControlledClock()
+        writer = _CollectingWriter()
+        if fail_first:
+            writer.health.record.side_effect = [RuntimeError("unavailable"), None, None]
+        observer = WebRuntimeObserver(uuid4(), writer, sleep=clock.sleep, now_ms=clock.now_ms, now_utc=clock.now_utc)
+        await observer.start(BotConfig(name="health freshness"))
+        observer.emit(StreamHealth(0, 0, 0))
+        for _ in range(8):
+            clock.advance()
+            await asyncio.sleep(0)
+        assert writer.health.record.await_count == (2 if fail_first else 1)
+        first_observed_at = writer.health.record.await_args.args[0].occurred_at
+        observer.emit(StreamHealth(0, 0, None))
+        for _ in range(4):
+            clock.advance()
+            await asyncio.sleep(0)
+        assert writer.health.record.await_count == (3 if fail_first else 2)
+        assert writer.health.record.await_args.args[0].occurred_at > first_observed_at
+        await observer.stop()
+    asyncio.run(scenario())
+
+
 def test_observer_cadence_and_persistence_classification() -> None:
     async def scenario():
         clock = _ControlledClock()
@@ -908,6 +933,10 @@ class _CollectingWriter:
         self.live_events = []
         self._fail = fail
         self._fail_live = fail_live
+        self.health = AsyncMock()
+
+    def health_writer(self):
+        return self.health
 
     async def append(self, event):
         self.events.append(event)

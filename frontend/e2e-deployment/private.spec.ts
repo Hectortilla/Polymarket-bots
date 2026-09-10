@@ -19,10 +19,11 @@ test('private HTTPS browser login, run, Stop, refresh and stream reconnect', asy
   await expect(page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
   await verifyNewAccount(page, email, password);
   await page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true }).click();
-  await page.goto(LOGIN_PATH);
+  await expect(page).toHaveURL(url => url.pathname === LOGIN_PATH);
   await page.getByLabel(AUTH_COPY.EMAIL, { exact: true }).fill(email);
   await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(password);
   await page.getByRole('button', { name: AUTH_COPY.SIGN_IN, exact: true }).click();
+  await expect(page).toHaveURL(url => url.pathname === NAVIGATION_PATH.HOME);
   await expect(page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
   await page.goto(NAVIGATION_PATH.NEW_BOT);
   await page.getByLabel('Name', { exact: true }).fill('HTTPS browser bot');

@@ -164,8 +164,8 @@ local/private access boundary until the remaining beta-readiness slices are deli
 now includes the delivered Slice 12F deployment foundation and Slice 16 private
 HTTPS release workflow. Slice 17 adds per-account and global resource admission,
 browser usage, and server-side expiry. Slice 18 adds durable launch retries and scheduled queue/worker recovery.
-Slice 19 adds account recovery and management. Slices 20–23 remain planned: operations, data lifecycle, onboarding and
-launch/support information. Open signup remains gated on their acceptance.
+Slice 19 adds account recovery and management. Slice 20 operational controls are
+delivered; Slices 21–23 cover data lifecycle, onboarding and launch/support information. Open signup remains gated on their acceptance.
 Marketplace work is deferred.
 
 Private HTTPS deployment work and the repeatable release procedure are documented
@@ -578,3 +578,7 @@ target, reversal, cooldown, and pre-expiry guards. See
 `docs/bot-author-guide.md` for the full strategy explanation. Keep it in paper
 mode until its parameters have been evaluated on representative recorded data;
 unit tests validate deterministic behavior, not profitability.
+
+Slice 20 operational controls, structured observations, alert ownership and incident
+procedures are documented in [beta operations](docs/beta-operations.md). Maintenance
+commands require private host access; ordinary web accounts have no operator role.

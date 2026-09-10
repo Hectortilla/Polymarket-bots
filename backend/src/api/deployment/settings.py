@@ -4,9 +4,10 @@ import os
 import re
 from enum import StrEnum
 from ipaddress import ip_address
+from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from api.auth.config import AuthSettings
 from api.database import DATABASE_URL_ENV, configured_database_url
@@ -27,6 +28,9 @@ WORKER_CONCURRENCY_ENV = "POLYBOT_WORKER_CONCURRENCY"
 HEARTBEAT_SECONDS_ENV = "POLYBOT_HEARTBEAT_SECONDS"
 LEASE_SECONDS_ENV = "POLYBOT_LEASE_SECONDS"
 PROXY_ADDRESS_ENV = "POLYBOT_PROXY_ADDRESS"
+STORAGE_PROBE_PATH_ENV = "POLYBOT_STORAGE_PROBE_PATH"
+DEFAULT_STORAGE_PROBE_PATH = Path("/")
+DEPLOYMENT_STORAGE_PROBE_PATH = Path("/storage")
 DEFAULT_WORKER_CONCURRENCY = PAPER_BETA.global_active_runs
 
 API_WORKERS = 2
@@ -48,6 +52,15 @@ class StartupSettings(BaseModel):
         default=DEFAULT_LEASE_SECONDS, gt=0, allow_inf_nan=False
     )
     proxy_address: str | None = None
+    storage_probe_path: Path = DEFAULT_STORAGE_PROBE_PATH
+
+    @field_validator("storage_probe_path", mode="before")
+    @classmethod
+    def validate_storage_path(cls, value: str | Path) -> Path:
+        path = Path(value)
+        if not str(value).strip() or not path.is_absolute():
+            raise ValueError("storage probe requires a nonempty absolute path")
+        return Path(os.path.normpath(path))
 
     @model_validator(mode="after")
     def validate_deployment(self) -> Self:
@@ -89,6 +102,7 @@ class StartupSettings(BaseModel):
             ),
             lease_seconds=os.getenv(LEASE_SECONDS_ENV, DEFAULT_LEASE_SECONDS),
             proxy_address=os.getenv(PROXY_ADDRESS_ENV),
+            storage_probe_path=os.getenv(STORAGE_PROBE_PATH_ENV, DEFAULT_STORAGE_PROBE_PATH),
         )
         if settings.environment is Environment.PRODUCTION:
             auth = AuthSettings.from_env()

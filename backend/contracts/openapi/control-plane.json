@@ -3703,6 +3703,8 @@
         "enum": [
           "user_allowance",
           "global_capacity",
+          "incident_paused",
+          "account_suspended",
           "invalid_configuration"
         ],
         "title": "ResourceLimitCode",

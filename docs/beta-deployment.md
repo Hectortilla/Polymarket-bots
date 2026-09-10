@@ -140,3 +140,9 @@ produce a retryable generic delivery failure without blocking sign-in. The recov
 migration preserves accounts and requires a matching schema-aware release. Browser
 acceptance captures mail in a short-lived disposable sink; traces are disabled so
 passwords and link tokens are not retained in test artifacts.
+
+Slice 20's independent operational monitor runs alongside recovery and logs
+structured alerts. Workers publish process presence separately from job leases.
+Recovery mounts the PostgreSQL volume read-only only for filesystem-capacity
+measurement. See [beta operations](beta-operations.md) for incident admission,
+account suspension and OS-authorized diagnostics; no operator HTTP route is added.

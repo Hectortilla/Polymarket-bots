@@ -27,6 +27,7 @@ from api.limits.policy import RATE_WINDOW_SECONDS
 from api.limits.redis.request_budgets import RequestRateLimiter
 from api.limits.redis.stream_admission import OpenStreamAdmission, StreamLease
 from api.limits.usage import AccountUsageReader
+from api.operations.http import ADMISSION_REJECTION_SCOPE_KEY
 
 EXPENSIVE_MUTATION_METHODS = frozenset({HTTPMethod.POST, HTTPMethod.PATCH})
 EXPENSIVE_READ_PATHS = frozenset(
@@ -35,6 +36,8 @@ EXPENSIVE_READ_PATHS = frozenset(
 RESOURCE_STATUS = {
     ResourceLimitCode.USER_ALLOWANCE: status.HTTP_429_TOO_MANY_REQUESTS,
     ResourceLimitCode.GLOBAL_CAPACITY: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ResourceLimitCode.INCIDENT_PAUSED: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ResourceLimitCode.ACCOUNT_SUSPENDED: status.HTTP_403_FORBIDDEN,
     ResourceLimitCode.INVALID_CONFIGURATION: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 router = APIRouter()
@@ -54,9 +57,10 @@ async def application_resource_limits(request: Request) -> None:
 async def resource_limit_response(
     request: Request, error: ResourceLimitError
 ) -> JSONResponse:
+    request.scope[ADMISSION_REJECTION_SCOPE_KEY] = True
     headers = (
         {}
-        if error.code is ResourceLimitCode.INVALID_CONFIGURATION
+        if error.code in {ResourceLimitCode.INVALID_CONFIGURATION, ResourceLimitCode.ACCOUNT_SUSPENDED}
         else {RETRY_AFTER_HEADER: str(RATE_WINDOW_SECONDS)}
     )
     return JSONResponse(

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth.access import AccountAccessStore
 from api.auth.models import UserRow
 from api.auth.passwords import verify_password
 from api.auth.recovery.errors import ReauthenticationFailed
@@ -59,13 +60,13 @@ class AccountCredentialStore:
     ) -> None:
         await self._reauthenticate(user_id, session_token, current_password)
         keep_token = None if scope.revokes_current else session_token
-        await self._rows.delete_sessions(user_id, keep_token=keep_token)
+        await AccountAccessStore(self._session).delete_sessions(user_id, keep_token=keep_token)
         await self._session.commit()
 
     async def _reauthenticate(
         self, user_id: UUID, session_token: SessionToken, current_password: str
     ) -> UserRow:
-        user = await self._rows.lock_user(user_id)
+        user = await AccountAccessStore(self._session).require_locked_account(user_id)
         current_user = await AuthStore(self._session).current_user(session_token)
         if current_user is None or current_user.id != user_id:
             raise ReauthenticationFailed

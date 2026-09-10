@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from polybot.framework.clock import system_now_utc
+from pydantic import ConfigDict
 from sqlalchemy import (
     Boolean,
     Column,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     true,
 )
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlmodel import Field, SQLModel
 
 from api.auth.policy import EMAIL_MAX_LENGTH
@@ -32,6 +34,7 @@ from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
 
 
 class UserRow(SQLModel, table=True):
+    model_config = ConfigDict(ignored_types=(hybrid_property,))
     __tablename__ = USERS_TABLE
     __table_args__ = (
         UniqueConstraint(UserColumn.EMAIL, name=USERS_EMAIL_CONSTRAINT_NAME),
@@ -66,6 +69,16 @@ class UserRow(SQLModel, table=True):
             server_default=true(),
         ),
     )
+
+    suspended_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(UserColumn.SUSPENDED_AT, DateTime(timezone=True)),
+    )
+
+    @hybrid_property
+    def access_allowed(self) -> bool:
+        # Equality intentionally serves both Python values and SQL NULL comparison.
+        return self.suspended_at == None  # noqa: E711
 
     def mark_email_verified(self) -> None:
         self.email_verified_at = system_now_utc()

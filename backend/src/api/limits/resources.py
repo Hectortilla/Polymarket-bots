@@ -5,11 +5,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.auth.models import UserRow
 from api.bots.models import BotRow
 from api.graph_templates.models import GraphTemplateRow
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.limits.policy import PAPER_BETA
+from api.operations.admission import OperationAdmission
 
 
 class SavedResourceAllowance:
@@ -18,7 +18,7 @@ class SavedResourceAllowance:
         self._owner_user_id = owner_user_id
 
     async def reserve_bot(self) -> None:
-        await self._lock_owner()
+        await OperationAdmission(self._session).require_active_account(self._owner_user_id)
         count = await self.count_bots()
         if count >= PAPER_BETA.saved_bots:
             raise ResourceLimitError(
@@ -27,7 +27,7 @@ class SavedResourceAllowance:
             )
 
     async def reserve_template(self) -> None:
-        await self._lock_owner()
+        await OperationAdmission(self._session).require_active_account(self._owner_user_id)
         count = await self.count_templates()
         if count >= PAPER_BETA.saved_templates:
             raise ResourceLimitError(
@@ -48,12 +48,3 @@ class SavedResourceAllowance:
             .select_from(GraphTemplateRow)
             .where(GraphTemplateRow.owner_user_id == self._owner_user_id)
         )
-
-    async def _lock_owner(self) -> None:
-        owner = await self._session.scalar(
-            select(UserRow.id)
-            .where(UserRow.id == self._owner_user_id)
-            .with_for_update()
-        )
-        if owner is None:
-            raise RuntimeError("resource admission requires a persisted account")

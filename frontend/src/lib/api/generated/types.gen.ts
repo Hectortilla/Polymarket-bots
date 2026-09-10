@@ -1925,7 +1925,7 @@ export type RequestValidationIssue = {
 /**
  * ResourceLimitCode
  */
-export type ResourceLimitCode = 'user_allowance' | 'global_capacity' | 'invalid_configuration';
+export type ResourceLimitCode = 'user_allowance' | 'global_capacity' | 'incident_paused' | 'account_suspended' | 'invalid_configuration';
 
 /**
  * RevokeSessionsRequest

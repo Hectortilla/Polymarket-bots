@@ -70,14 +70,14 @@ async def login(
 ) -> CurrentUser:
     async with session_factory() as session:
         store = AuthStore(session)
-        # Serialize password verification and issuance with credential replacement.
-        # An old password must not mint a session that survives a concurrent reset.
+        # Verify eligibility after the account lock serializes with password changes
+        # and suspension; neither can leave a newly issued session behind.
         user = await store.find_user(credentials.email, lock=True)
         valid = await verify_password(
             DUMMY_HASH if user is None else user.password_hash,
             credentials.password.get_secret_value(),
         )
-        if not valid or user is None:
+        if not valid or user is None or not user.access_allowed:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, LOGIN_FAILED_DETAIL)
         token = await store.issue_session(user, SessionCookie.read(request))
     SessionCookie(AuthSettings.for_app(request.app)).issue(response, token)

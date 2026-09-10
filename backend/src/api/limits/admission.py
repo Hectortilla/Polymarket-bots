@@ -6,9 +6,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth.models import UserRow
 from api.bots.models import BotRow
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.limits.policy import PAPER_BETA
+from api.operations.admission import OperationAdmission
 from api.runs.models import RunRow
 from api.runs.status import INTERRUPTIBLE_RUN_STATUSES, RunStatus
 
@@ -26,6 +28,7 @@ class RunAdmission:
         )
         if owner is None:
             raise RuntimeError("run admission requires a persisted bot owner")
+        await OperationAdmission(self._session).require_launch(owner)
         queued = await self._queued_owners()
         if queued.count(owner) >= PAPER_BETA.queued_runs:
             raise ResourceLimitError(
@@ -40,6 +43,8 @@ class RunAdmission:
 
     async def next_eligible_queued_run_id(self) -> UUID | None:
         await self.lock_transaction()
+        if await OperationAdmission(self._session).admissions_paused():
+            return None
         active_owners = list(
             (
                 await self._session.execute(
@@ -56,7 +61,8 @@ class RunAdmission:
             await self._session.execute(
                 select(RunRow.id, BotRow.owner_user_id)
                 .join(BotRow, BotRow.id == RunRow.bot_id)
-                .where(RunRow.status == RunStatus.QUEUED)
+                .join(UserRow, UserRow.id == BotRow.owner_user_id)
+                .where(RunRow.status == RunStatus.QUEUED, UserRow.access_allowed)
                 .order_by(RunRow.created_at, RunRow.id)
             )
         ).all()

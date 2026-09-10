@@ -30,6 +30,7 @@ from api.http.routes.health import router as health_router
 from api.http.routes.markets import router as markets_router
 from api.http.routes.paths import API_PREFIX
 from api.http.routes.runs import router as runs_router
+from api.operations.http import OperationalHttpMiddleware
 from api.limits.errors import ResourceLimitError
 from api.limits.http import (
     application_resource_limits,
@@ -64,6 +65,7 @@ def create_app(
     application.add_middleware(AuthBoundaryMiddleware)
     application.add_middleware(ServiceFailureMiddleware)
     # Keep cache protection outside errors so generated 503 responses are private too.
+    application.add_middleware(OperationalHttpMiddleware)
     application.add_middleware(PrivateResponseMiddleware)
     application.add_exception_handler(RequestValidationError, safe_validation_error)
     application.add_exception_handler(ResourceLimitError, resource_limit_response)

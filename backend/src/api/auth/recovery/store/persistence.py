@@ -8,14 +8,14 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from api.auth.models import SessionRow, UserRow
+from api.auth.access import AccountAccessStore
+from api.auth.models import UserRow
 from api.auth.recovery.contracts import AccountStatus
 from api.auth.recovery.errors import InvalidAccountToken
 from api.auth.recovery.models import AccountTokenRow
 from api.auth.recovery.policy import TOKEN_LIFETIME_SECONDS, TokenPurpose
 from api.auth.recovery.tokens import AccountToken
 from api.auth.store import AuthStore
-from api.auth.store.tokens import SessionToken
 
 
 class CredentialRows:
@@ -32,7 +32,7 @@ class CredentialRows:
         self, email: str, purpose: TokenPurpose
     ) -> UserRow | None:
         user = await AuthStore(self._session).find_user(email, lock=True)
-        if user is None:
+        if user is None or not user.access_allowed:
             return None
         if purpose.verifies_email and user.email_verified_at is not None:
             return None
@@ -50,8 +50,10 @@ class CredentialRows:
         if user_id is None:
             raise InvalidAccountToken
         # Every credential workflow locks user before token/session rows. Recheck
-        # expiry after waiting so concurrent redemption cannot reuse stale eligibility.
-        user = await self.lock_user(user_id)
+        # expiry and suspension after waiting so redemption cannot reuse stale eligibility.
+        user = await AccountAccessStore(self._session).require_locked_account(user_id)
+        if not user.access_allowed:
+            raise InvalidAccountToken
         token_row = (
             await self._session.execute(
                 select(AccountTokenRow)
@@ -65,13 +67,6 @@ class CredentialRows:
         if token_row is None or token_row.expires_at <= system_now_utc():
             raise InvalidAccountToken
         return user
-
-    async def lock_user(self, user_id: UUID) -> UserRow:
-        return (
-            await self._session.execute(
-                select(UserRow).where(UserRow.id == user_id).with_for_update()
-            )
-        ).scalar_one()
 
     async def replace_link(
         self, user: UserRow, purpose: TokenPurpose, account_token: AccountToken
@@ -94,15 +89,4 @@ class CredentialRows:
     async def replace_password(self, user: UserRow, password_hash: str) -> None:
         user.password_hash = password_hash
         self._session.add(user)
-        await self.delete_sessions(user.id)
-        await self._session.execute(
-            delete(AccountTokenRow).where(AccountTokenRow.user_id == user.id)
-        )
-
-    async def delete_sessions(
-        self, user_id: UUID, *, keep_token: SessionToken | None = None
-    ) -> None:
-        query = delete(SessionRow).where(SessionRow.user_id == user_id)
-        if keep_token is not None:
-            query = query.where(SessionRow.token_digest != keep_token.digest)
-        await self._session.execute(query)
+        await AccountAccessStore(self._session).invalidate_credentials(user.id)

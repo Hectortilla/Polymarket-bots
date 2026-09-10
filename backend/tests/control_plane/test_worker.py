@@ -636,6 +636,9 @@ class _CollectingEventWriter:
         self.events: list[DurableEvent] = []
         self._fail = fail
 
+    def health_writer(self):
+        return AsyncMock()
+
     def for_execution(self, execution_token, lease_seconds):
         return self
 

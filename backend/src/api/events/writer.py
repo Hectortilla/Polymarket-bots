@@ -16,6 +16,7 @@ from api.events.contracts import (
     LiveRunEvent,
     PersistedDurableEvent,
 )
+from api.events.health.writer import RunHealthWriter
 from api.events.ids import require_persisted_event_id
 from api.events.store import EventStore
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
@@ -45,8 +46,7 @@ class RunEventWriter:
     ) -> None:
         self._session_factory = session_factory
         self._redis = redis
-        self._execution_token = execution_token
-        self._lease_seconds = lease_seconds
+        self._lease = None if execution_token is None else ExecutionLease(execution_token, lease_seconds)
 
     async def append(self, event: DurableEvent) -> PersistedDurableEvent:
         async with asyncio.timeout(DEPENDENCY_TIMEOUT_SECONDS):
@@ -67,6 +67,10 @@ class RunEventWriter:
                     encode_live_event_frame(event),
                 )
 
+    def health_writer(self) -> RunHealthWriter:
+        """Give the observer a separately owned, identically fenced health sink."""
+        return RunHealthWriter(self._session_factory, self._redis, self._lease)
+
     def for_execution(
         self, execution_token: UUID, lease_seconds: float
     ) -> "RunEventWriter":
@@ -78,7 +82,5 @@ class RunEventWriter:
         )
 
     async def _lock_execution(self, session: AsyncSession, run_id: UUID) -> None:
-        if self._execution_token is not None:
-            await ExecutionLease(self._execution_token, self._lease_seconds).require(
-                session, run_id
-            )
+        if self._lease is not None:
+            await self._lease.require(session, run_id)

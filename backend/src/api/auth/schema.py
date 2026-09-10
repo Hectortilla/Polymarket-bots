@@ -21,6 +21,7 @@ class UserColumn(StrEnum):
     PASSWORD_HASH = "password_hash"
     CREATED_AT = "created_at"
     EMAIL_VERIFIED_AT = "email_verified_at"
+    SUSPENDED_AT = "suspended_at"
     VERIFICATION_REQUIRED = "verification_required"
 
 

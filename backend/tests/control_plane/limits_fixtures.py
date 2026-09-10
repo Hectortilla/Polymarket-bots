@@ -21,6 +21,7 @@ from api.execution.worker.resources import drain_queued_runs_with_worker_resourc
 from api.http.app import create_app
 from api.limits.errors import ResourceLimitError
 from api.limits.redis.contracts import RESOURCE_KEY_PREFIX
+from api.operations.telemetry.keys import OPERATIONS_TELEMETRY_KEY_NAMESPACE
 from api.runs.store import RunStore
 from fastapi import Request
 from polybot.framework.clock import system_now_utc
@@ -60,8 +61,9 @@ async def resource_services(settings):
     engine = create_async_engine(url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     redis = Redis.from_url(redis_url)
-    async for key in redis.scan_iter(RESOURCE_KEY_PREFIX + "*"):
-        await redis.delete(key)
+    for prefix in (RESOURCE_KEY_PREFIX, OPERATIONS_TELEMETRY_KEY_NAMESPACE):
+        async for key in redis.scan_iter(prefix + "*"):
+            await redis.delete(key)
     try:
         yield sessions, redis
     finally:

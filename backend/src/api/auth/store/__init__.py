@@ -59,6 +59,7 @@ class AuthStore:
                 .join(SessionRow, SessionRow.user_id == UserRow.id)
                 .where(
                     SessionRow.token_digest == token.digest,
+                    UserRow.access_allowed,
                     SessionRow.expires_at > system_now_utc(),
                 )
             )

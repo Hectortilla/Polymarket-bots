@@ -25,6 +25,8 @@ from api.events.contracts import (
     LiveStreamHealthEvent,
     StreamHealthEvent,
 )
+from api.operations.observations.contracts import FailureObservation, Observation
+from api.operations.observations.sink import OPERATION_LOG
 
 from .contracts import DurableEvent
 from .projection import project_live_chart_events, project_runtime_event_to_durable
@@ -50,6 +52,9 @@ class WebRuntimeObserver:
     ) -> None:
         self._run_id = run_id
         self._event_writer = event_writer
+        self._health_writer = event_writer.health_writer()
+        self._health_observed_at: datetime | None = None
+        self._recorded_health_at: datetime | None = None
         self._pending: asyncio.Queue[DurableEvent | None] = asyncio.Queue(
             maxsize=max_pending_events
         )
@@ -78,6 +83,7 @@ class WebRuntimeObserver:
                 self._dirty_wallet_sources.add(change.wallet_event.source_key)
         if isinstance(event, StreamHealth):
             self._latest_stream_health = event
+            self._health_observed_at = self._now_utc()
             return
         for projected in project_runtime_event_to_durable(self._run_id, event):
             self._enqueue(projected)
@@ -122,7 +128,8 @@ class WebRuntimeObserver:
             try:
                 await self._event_writer.append(event)
             except Exception:
-                # Observability must never change paper execution.
+                # Telemetry persistence failures must not change paper execution.
+                OPERATION_LOG.emit(FailureObservation(Observation.OBSERVER_FAILURE))
                 continue
 
     async def _publish_dashboard(self) -> None:
@@ -151,16 +158,7 @@ class WebRuntimeObserver:
                 continue
             health = self._latest_stream_health
             if health is not None:
-                try:
-                    await self._event_writer.publish_live(
-                        LiveStreamHealthEvent.from_observation(
-                            self._run_id,
-                            health,
-                            occurred_at=occurred_at,
-                        )
-                    )
-                except Exception:
-                    pass
+                await self._publish_stream_health(health, occurred_at)
             self._enqueue(
                 ChartSampleEvent.from_sample(
                     self._run_id,
@@ -168,6 +166,35 @@ class WebRuntimeObserver:
                     occurred_at=occurred_at,
                 )
             )
+
+    async def _publish_stream_health(self, health: StreamHealth, occurred_at: datetime) -> None:
+        # Dashboard ticks reuse a sample; only a new feed observation may
+        # renew its stored lifetime. Capture its timestamp before awaiting I/O.
+        health_observed_at = self._health_observed_at
+        if health_observed_at != self._recorded_health_at:
+            try:
+                await self._health_writer.record(
+                    LiveStreamHealthEvent.from_observation(
+                        self._run_id,
+                        health,
+                        occurred_at=health_observed_at,
+                    )
+                )
+                self._recorded_health_at = health_observed_at
+            except Exception:
+                OPERATION_LOG.emit(
+                    FailureObservation(Observation.TELEMETRY_UNAVAILABLE)
+                )
+        try:
+            await self._event_writer.publish_live(
+                LiveStreamHealthEvent.from_observation(
+                    self._run_id,
+                    health,
+                    occurred_at=occurred_at,
+                )
+            )
+        except Exception:
+            pass
 
     def _take_dirty_wallet_points(
         self,
@@ -185,7 +212,8 @@ class WebRuntimeObserver:
         try:
             self._pending.put_nowait(event)
         except asyncio.QueueFull:
-            # Synchronous paper execution never blocks on bounded telemetry.
+            # Synchronous paper callbacks cannot wait for a saturated observer.
+            OPERATION_LOG.emit(FailureObservation(Observation.OBSERVER_FAILURE))
             return
 
     def _remember_markers(self, sample: DashboardSample) -> None:

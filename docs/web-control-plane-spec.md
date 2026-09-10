@@ -299,7 +299,7 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-Slices 16–18 are delivered; Slices 19–23 remain planned extensions. Adopt their product
+Slices 16–20 are delivered; Slices 21–23 remain planned extensions. Adopt their product
 policies here during each slice and keep the current private boundary until the
 complete open-signup gate passes. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
@@ -389,3 +389,21 @@ requires reopening the email. Missing, invalid, expired and used links have clea
 recovery instructions. Passwords and tokens are never saved in browser storage.
 Without access to the registered mailbox, forgotten-password recovery is unavailable;
 there is no support override, email change, account linking or identity transfer.
+
+## Slice 20: Operations policy
+
+Operators use an OS-authorized maintenance command on the private deployment host;
+there is no operator HTTP endpoint or browser role. Account suspension revokes
+sessions and recovery links, prevents login/new work, stops queued runs and
+interrupts active runs in the same transaction. History remains readable after an
+operator resumes the account and the user signs in again. Global incident stop
+rejects new launches and interrupts all active work; resume only reopens admission,
+never restarts a run. A specific run can also be stopped by its UUID.
+
+The committed terminal transition immediately fences further paper mutations.
+Default worker cleanup budget: heartbeat 5 seconds plus cleanup 10 seconds.
+The deployed heartbeat setting overrides that default; this bound assumes available
+dependencies. Database outages cannot authorize fills.
+Operator actions are retry-safe and audited with OS actor, UUID target, action,
+outcome and time. Support and operational ownership are the deployment operator
+until the release checklist supplies a named public contact.

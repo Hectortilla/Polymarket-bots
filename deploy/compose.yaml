@@ -77,6 +77,14 @@ services:
   recovery:
     <<: *application
     command: [recovery]
+    environment:
+      <<: *application_environment
+      POLYBOT_STORAGE_PROBE_PATH: &storage_probe_path /storage
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: *storage_probe_path
+        read_only: true
     stop_grace_period: 15s
   migrate:
     <<: *application
