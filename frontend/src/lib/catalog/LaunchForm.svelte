@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "$lib/bots/builder.css";
   import type { AnySchemaObject } from "ajv";
   import { tick, type Snippet } from "svelte";
 
@@ -10,6 +11,7 @@
     WIDGET_KIND,
     fieldLabel,
     initialLaunchInputs,
+    isWideLaunchField,
     launchFields,
     launchValidationIssues,
     launchValidator,
@@ -165,11 +167,7 @@
         {@const errorId = `field-${name}-error`}
         {@const fieldIssues = issuesForField(name)}
         {@const hasHelper = typeof schema.description === "string"}
-        <div
-          class="form-field"
-          class:wide={widget === WIDGET_KIND.STREAM_RULES || widget === WIDGET_KIND.MARKET_SLUGS}
-          class:checkbox-field={schema.type === "boolean"}
-        >
+        <div class="form-field" class:wide={isWideLaunchField(field)} class:checkbox-field={schema.type === "boolean"}>
           <label class="field-label" id={labelId} for={`${labelId}-input`}>{fieldLabel(name, schema)}</label>
           {#if typeof schema.description === "string"}
             <span class="field-helper" id={helperId}>{schema.description}</span>
@@ -259,12 +257,3 @@
     <button type="submit" disabled={busy || disabled} aria-busy={busy}>{busy ? busyLabel : submitLabel}</button>
   </footer>
 </form>
-
-<style>
-  .form-field {
-    display: grid;
-    align-content: start;
-    gap: 8px;
-    min-width: 0;
-  }
-</style>

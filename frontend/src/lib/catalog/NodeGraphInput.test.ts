@@ -45,6 +45,30 @@ afterEach(() => {
 });
 
 describe("node graph editor", () => {
+  it("fits measured nodes on every entry without resetting subsequent zoom", async () => {
+    stubFlowBrowserApis();
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(600);
+    const props = {
+      initialGraph: THRESHOLD_BUY_GRAPH,
+      graphCatalog: TEST_GRAPH_CATALOG,
+      labelledby: "editor-label",
+    };
+    const view = render(NodeGraphInput, props);
+    const viewport = document.querySelector(".svelte-flow__viewport")!;
+    await waitFor(() => expect(viewport.getAttribute("style")).not.toContain("translate(0px, 0px) scale(1)"));
+    const fittedTransform = viewport.getAttribute("style");
+    await fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+    await waitFor(() => expect(viewport.getAttribute("style")).not.toBe(fittedTransform));
+    await fireEvent.click(screen.getByRole("button", { name: "Fit View" }));
+    await waitFor(() => expect(viewport.getAttribute("style")).toBe(fittedTransform));
+    view.unmount();
+    render(NodeGraphInput, props);
+    await waitFor(() =>
+      expect(document.querySelector(".svelte-flow__viewport")?.getAttribute("style")).toBe(fittedTransform),
+    );
+  });
+
   it("constructs real Flow nodes and remounts the emitted graph", async () => {
     stubFlowBrowserApis();
     const onchange = vi.fn<(graph: NodeGraph) => void>();
@@ -234,7 +258,7 @@ describe("node graph editor", () => {
     expect(screen.getByRole("button", { name: `Add ${NUMBER_CONSTANT.display_name}` })).toBeTruthy();
   });
 
-  it("renders the same graph as a strictly non-interactive snapshot", async () => {
+  it("allows viewport exploration while preventing snapshot edits", async () => {
     stubFlowBrowserApis();
     const onchange = vi.fn<(graph: NodeGraph) => void>();
 
@@ -249,7 +273,14 @@ describe("node graph editor", () => {
     expect(await screen.findByLabelText(`${BUY_ACTION.display_name} broker action node`)).toBeTruthy();
     expect(onchange).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: ADD_NODE_LABEL })).toBeNull();
-    expect(document.querySelector('[data-testid="svelte-flow__controls"]')).toBeNull();
+    const viewport = document.querySelector(".svelte-flow__viewport")!;
+    const initialTransform = viewport.getAttribute("style");
+    await fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+    await waitFor(() => expect(viewport.getAttribute("style")).not.toBe(initialTransform));
+    expect(screen.getByRole("button", { name: "Fit View" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Toggle Interactivity" })).toBeNull();
+    await fireEvent.keyDown(document, { key: "Delete" });
+    expect(onchange).not.toHaveBeenCalled();
     for (const input of screen.getAllByRole<HTMLInputElement>("textbox", {
       name: GRAPH_FIELD_COPY.VALUE,
     })) {

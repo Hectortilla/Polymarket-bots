@@ -127,6 +127,11 @@ export function widgetKind(field: AnySchemaObject): WidgetKind | undefined {
   return Object.values(WIDGET_KIND).find((kind) => kind === value);
 }
 
+export function isWideLaunchField(field: AnySchemaObject): boolean {
+  const widget = widgetKind(field);
+  return widget === WIDGET_KIND.STREAM_RULES || widget === WIDGET_KIND.MARKET_SLUGS;
+}
+
 export function fieldLabel(name: string, field: AnySchemaObject): string {
   return typeof field.title === "string"
     ? field.title

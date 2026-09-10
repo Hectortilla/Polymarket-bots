@@ -12,6 +12,7 @@ export const RUN_DETAIL_COPY = {
   BOT_DELETED: "Bot configuration deleted",
   BOT_CONFIGURATION: "Bot configuration",
   EXECUTED_GRAPH: "Executed graph",
+  CONFIGURATION_LAYOUT_ERROR: "The configuration layout is unavailable. Saved values are shown below.",
   GRAPH_LOAD_ERROR: "The executed graph could not be displayed.",
 } as const;
 

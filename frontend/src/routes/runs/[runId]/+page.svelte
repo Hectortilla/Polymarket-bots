@@ -9,12 +9,14 @@
   import { PRESENTATION_COPY } from "$lib/presentation";
   import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
   import { onMount } from "svelte";
+  import "$lib/bots/builder.css";
   import "./run.css";
+  import RunConfiguration from "$lib/runs/RunConfiguration.svelte";
 
   import {
     listBotDefinitionsApiV1BotDefinitionsGet,
     stopRunApiV1RunsRunIdStopPost,
-    type GraphNodeCatalog,
+    type BotDefinitionDescriptor,
     type RunRead,
   } from "$lib/api/generated";
   import NodeGraphInput from "$lib/catalog/NodeGraphInput.svelte";
@@ -47,9 +49,10 @@
   let nextBeforeEventId = $state<number | null>(null);
   let error = $state("");
   let streamReconnecting = $state(false);
-  let executedGraphCatalog = $state<GraphNodeCatalog>();
-  let executedGraphCatalogLoading = $state(false);
-  let executedGraphCatalogError = $state("");
+  let executedDefinition = $state<BotDefinitionDescriptor>();
+  const executedGraphCatalog = $derived(executedDefinition?.graph_catalog);
+  let definitionLoading = $state(false);
+  let definitionFailed = $state(false);
   let closeStream = () => {};
 
   const progressEvents = $derived(events.filter((event) => event.kind !== EVENT_KIND.chartSample));
@@ -75,21 +78,19 @@
           events = hydration.events;
           dashboard = mergeDurableEvents(emptyDashboardHistory(), hydration.events);
           nextBeforeEventId = hydration.nextBeforeEventId;
-          if (hydration.run.config.graph) {
-            executedGraphCatalogLoading = true;
-            void loadExecutedGraphCatalog(hydration.run.definition_id)
-              .then((catalog) => {
-                if (!disposed) executedGraphCatalog = catalog;
-              })
-              .catch(() => {
-                if (!disposed) {
-                  executedGraphCatalogError = RUN_DETAIL_COPY.GRAPH_LOAD_ERROR;
-                }
-              })
-              .finally(() => {
-                if (!disposed) executedGraphCatalogLoading = false;
-              });
-          }
+          definitionLoading = true;
+          void loadExecutedDefinition(hydration.run.definition_id)
+            .then((definition) => {
+              if (!disposed) executedDefinition = definition;
+            })
+            .catch(() => {
+              if (!disposed) {
+                definitionFailed = true;
+              }
+            })
+            .finally(() => {
+              if (!disposed) definitionLoading = false;
+            });
         }
       },
       appendDurableEvent,
@@ -133,15 +134,16 @@
     nextBeforeEventId = events[0].id;
   }
 
-  async function loadExecutedGraphCatalog(definitionId: string): Promise<GraphNodeCatalog> {
+  async function loadExecutedDefinition(definitionId: string): Promise<BotDefinitionDescriptor> {
     const response = await listBotDefinitionsApiV1BotDefinitionsGet({
       throwOnError: true,
     });
     const definition = response.data.find((candidate) => candidate.definition_id === definitionId);
-    if (!hasGraphCapability(definition)) {
+    if (!definition) throw new Error("Run definition is unavailable");
+    if (run?.config.graph && !hasGraphCapability(definition)) {
       throw new Error("Executed graph definition is unavailable");
     }
-    return definition.graph_catalog;
+    return definition;
   }
 
   async function stopRun(): Promise<void> {
@@ -184,10 +186,6 @@
       trimEventWindow();
       loadingOlderEvents = false;
     }
-  }
-
-  function displayValue(value: unknown): string {
-    return typeof value === "object" ? JSON.stringify(value) : String(value);
   }
 </script>
 
@@ -247,53 +245,31 @@
 
   <RunGuide {run} {events} health={dashboard.streamHealth} reconnecting={streamReconnecting} />
 
-  <section class="detail-grid">
-    <article class="detail-section timing-panel">
-      <div class="section-heading"><h2>Timing</h2></div>
-      <dl>
-        <div>
-          <dt>Created</dt>
-          <dd>{formatTime(run.created_at)}</dd>
-        </div>
-        <div>
-          <dt>Started</dt>
-          <dd>{formatTime(run.started_at)}</dd>
-        </div>
-        <div>
-          <dt>Heartbeat</dt>
-          <dd>{formatTime(run.heartbeat_at)}</dd>
-        </div>
-        <div>
-          <dt>Ended</dt>
-          <dd>{formatTime(run.ended_at)}</dd>
-        </div>
-      </dl>
-    </article>
-
-    <article class="detail-section configuration-panel">
-      <div class="section-heading"><h2>Immutable configuration</h2></div>
-      <dl>
-        {#each Object.entries(run.config) as [name, value] (name)}
-          <div>
-            <dt>{name.replaceAll("_", " ")}</dt>
-            <dd>{displayValue(value)}</dd>
-          </div>
-        {/each}
-      </dl>
-    </article>
-  </section>
+  {#if definitionLoading}
+    <section class="builder-section" aria-label="Loading configuration" aria-busy="true">
+      <div class="skeleton skeleton-heading" aria-hidden="true"></div>
+      <div class="skeleton skeleton-panel" aria-hidden="true"></div>
+    </section>
+  {:else}
+    {#if definitionFailed}
+      <p class="notice" role="status">{RUN_DETAIL_COPY.CONFIGURATION_LAYOUT_ERROR}</p>
+    {/if}
+    <RunConfiguration config={run.config} descriptor={executedDefinition} />
+  {/if}
 
   {#if run.config.graph}
-    <section class="historical-graph">
-      <div class="section-heading">
-        <h2 id="executed-graph-heading">
-          {RUN_DETAIL_COPY.EXECUTED_GRAPH}
-        </h2>
-        <span class="section-count">immutable run snapshot</span>
-      </div>
-      <p id="executed-graph-description">
-        This is the exact bot graph used by this run. Later bot edits do not change it.
-      </p>
+    <section class="builder-section historical-graph">
+      <header class="builder-section-heading">
+        <div>
+          <h2 id="executed-graph-heading">
+            {RUN_DETAIL_COPY.EXECUTED_GRAPH}
+          </h2>
+          <p id="executed-graph-description">
+            The exact strategy used by this run. Pan and zoom to explore; editing is disabled.
+          </p>
+        </div>
+        <span class="save-state">Read only</span>
+      </header>
       {#if executedGraphCatalog}
         <NodeGraphInput
           initialGraph={run.config.graph}
@@ -302,13 +278,35 @@
           describedby="executed-graph-description"
           readOnly
         />
-      {:else if executedGraphCatalogLoading}
+      {:else if definitionLoading}
         <p class="empty-state" aria-live="polite">Loading executed graph…</p>
       {:else}
-        <p class="notice error" role="alert">{executedGraphCatalogError}</p>
+        <p class="notice error" role="alert">{RUN_DETAIL_COPY.GRAPH_LOAD_ERROR}</p>
       {/if}
     </section>
   {/if}
+
+  <section class="builder-section timing-panel" aria-labelledby="run-timing-heading">
+    <header class="builder-section-heading"><h2 id="run-timing-heading">Timing</h2></header>
+    <dl class="timing-metrics">
+      <div>
+        <dt>Created</dt>
+        <dd>{formatTime(run.created_at)}</dd>
+      </div>
+      <div>
+        <dt>Started</dt>
+        <dd>{formatTime(run.started_at)}</dd>
+      </div>
+      <div>
+        <dt>Heartbeat</dt>
+        <dd>{formatTime(run.heartbeat_at)}</dd>
+      </div>
+      <div>
+        <dt>Ended</dt>
+        <dd>{formatTime(run.ended_at)}</dd>
+      </div>
+    </dl>
+  </section>
 
   <DashboardCharts
     samples={dashboard.samples}

@@ -10,7 +10,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BotDefinitionDescriptor, RunRead } from "$lib/api/generated";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
-import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
+import {
+  BOT_DEFINITION_LABEL,
+  SELECTION_MODE,
+  WIDGET_KIND,
+  WIDGET_SCHEMA_KEY,
+  fieldLabel,
+  launchFields,
+} from "$lib/catalog/schema";
+import { BOT_BUILDER_COPY } from "$lib/bots/copy";
 import { botPath } from "$lib/navigation";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { formatTime } from "$lib/time";
@@ -68,7 +76,14 @@ const GRAPH_DEFINITION = {
   label: BOT_DEFINITION_LABEL.STANDARD,
   market_selection: SELECTION_MODE.USER_CONFIGURED,
   wallet_selection: SELECTION_MODE.ABSENT,
-  input_schema: {},
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      max_order_size: { type: "string" },
+      market_slugs: { type: "array", title: "Markets", [WIDGET_SCHEMA_KEY]: WIDGET_KIND.MARKET_SLUGS },
+    },
+  },
   graph_catalog: TEST_GRAPH_CATALOG,
   starter_graph: TEST_GRAPH,
 } satisfies BotDefinitionDescriptor;
@@ -116,6 +131,42 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("run detail page", () => {
+  it("maps snapshot values into the builder field order without graph JSON or editable settings", async () => {
+    const markets = ["historical-market-one", "historical-market-two"];
+    mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
+      hydrate({
+        run: {
+          ...RUN,
+          config: {
+            ...RUN.config,
+            max_order_size: "1.2300",
+            stream_rules: [
+              {
+                relation: runtimeContract.streamRelation.INDEPENDENT,
+                market_slugs: markets,
+              },
+            ],
+          },
+        },
+        events: [],
+        nextBeforeEventId: null,
+      });
+      return () => {};
+    });
+    render(Page);
+    const configuration = await screen.findByRole("region", { name: BOT_BUILDER_COPY.CONFIGURATION });
+    expect([...configuration.querySelectorAll("dt")].map((field) => field.textContent)).toEqual(
+      launchFields(GRAPH_DEFINITION).map(([name, field]) => fieldLabel(name, field)),
+    );
+    expect(configuration.textContent).toContain("1.2300");
+    for (const market of markets) expect(configuration.textContent).toContain(market);
+    expect(configuration.querySelectorAll("input, select, textarea, pre")).toHaveLength(0);
+    expect(configuration.textContent).not.toContain(JSON.stringify(TEST_GRAPH));
+    const graphSection = screen.getByRole("heading", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH }).closest("section")!;
+    expect(configuration.compareDocumentPosition(graphSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Timing" })).toBeTruthy();
+  });
+
   it("shows stream reconnection until transport is connected again", async () => {
     let connectionState: (state: StreamConnectionState) => void = () => {};
     mocks.loadRun.mockImplementation(async (_runId, hydrate, _durable, _live, _open, onConnectionState) => {
@@ -150,7 +201,7 @@ describe("run detail page", () => {
     const graphCanvas = await screen.findByRole("group", {
       name: RUN_DETAIL_COPY.EXECUTED_GRAPH,
     });
-    expect(graphCanvas.getAttribute("aria-disabled")).toBe("true");
+    expect(graphCanvas.hasAttribute("aria-disabled")).toBe(false);
     expect(screen.getByLabelText("on_book trigger node")).toBeTruthy();
     expect(graphSection?.querySelector("pre")).toBeNull();
     expect(screen.queryByRole("button", { name: ADD_NODE_LABEL })).toBeNull();
@@ -167,13 +218,17 @@ describe("run detail page", () => {
         name: new RegExp(RUN_DETAIL_COPY.EXECUTED_GRAPH),
       }),
     ).toBeNull();
-    expect(mocks.listDefinitions).not.toHaveBeenCalled();
+    expect(mocks.listDefinitions).toHaveBeenCalledOnce();
   });
   it("reports when the executed graph catalog cannot be loaded", async () => {
     mocks.listDefinitions.mockRejectedValue(new Error("catalog unavailable"));
     render(Page);
     expect((await screen.findByRole("alert")).textContent).toContain(RUN_DETAIL_COPY.GRAPH_LOAD_ERROR);
     expect(document.querySelector(".historical-graph pre")).toBeNull();
+    const configuration = screen.getByRole("region", { name: BOT_BUILDER_COPY.CONFIGURATION });
+    expect(configuration.textContent).toContain(RUN.config.max_order_size);
+    expect(configuration.textContent).not.toContain(JSON.stringify(TEST_GRAPH));
+    expect(screen.getByText(RUN_DETAIL_COPY.CONFIGURATION_LAYOUT_ERROR)).toBeTruthy();
   });
   it("attaches recorded failure detail to the failed lifecycle row", async () => {
     const failureDetail = "RuntimeError: run launch failed";

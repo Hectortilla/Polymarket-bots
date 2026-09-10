@@ -38,6 +38,7 @@
   import ConstantNode from "./ConstantNode.svelte";
   import GraphParameters from "./GraphParameters.svelte";
   import GraphPreview from "./GraphPreview.svelte";
+  import InitialGraphFit from "./InitialGraphFit.svelte";
   import { GRAPH_VALIDATION_COPY, type GraphValidationIssue } from "./graphValidation";
   import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
   import NodePalette from "./NodePalette.svelte";
@@ -77,6 +78,9 @@
     [GRAPH_NODE_TYPE.brokerAction]: BrokerActionNode,
   };
   const readOnlyFlowOptions = { hideAttribution: true };
+  const fitViewOptions = { padding: 0.12, maxZoom: 1 };
+  let canvasWidth = $state(0);
+  let canvasHeight = $state(0);
   let nodes = $state.raw<CanvasNode[]>(canvasNodes(initialGraphSnapshot));
   let edges = $state.raw<CanvasEdge[]>(canvasEdges(initialGraphSnapshot));
   let parameters = $state<GraphParameter[]>(initialGraphSnapshot.parameters ?? []);
@@ -208,11 +212,11 @@
   </div>
   <div
     class="graph-canvas"
-    class:read-only={readOnly}
+    bind:clientWidth={canvasWidth}
+    bind:clientHeight={canvasHeight}
     role={readOnly ? "group" : "application"}
     aria-labelledby={labelledby}
     aria-describedby={canvasDescription}
-    aria-disabled={readOnly || undefined}
   >
     <SvelteFlow
       bind:nodes
@@ -231,23 +235,28 @@
       autoPanOnConnect={!readOnly}
       autoPanOnNodeDrag={!readOnly}
       autoPanOnSelection={!readOnly}
-      panOnDrag={!readOnly}
+      panOnDrag
       panOnScroll={false}
-      zoomOnScroll={!readOnly}
-      zoomOnDoubleClick={!readOnly}
-      zoomOnPinch={!readOnly}
-      preventScrolling={!readOnly}
+      zoomOnScroll
+      zoomOnDoubleClick
+      zoomOnPinch
+      preventScrolling
       clickConnect={!readOnly}
       disableKeyboardA11y={readOnly}
       proOptions={readOnly ? readOnlyFlowOptions : undefined}
       {nodeExtent}
-      fitView
-      minZoom={0.25}
+      deleteKey={readOnly ? null : undefined}
+      minZoom={0.01}
       maxZoom={2}
     >
-      {#if !readOnly}
-        <Controls class="node-graph-controls" position="bottom-right" orientation="horizontal" />
-      {/if}
+      <InitialGraphFit canvasReady={canvasWidth > 0 && canvasHeight > 0} options={fitViewOptions} />
+      <Controls
+        class="node-graph-controls"
+        position="bottom-right"
+        orientation="horizontal"
+        showLock={!readOnly}
+        {fitViewOptions}
+      />
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
     </SvelteFlow>
   </div>
@@ -310,11 +319,6 @@
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface);
     background: var(--surface-input);
-  }
-
-  .graph-canvas.read-only {
-    pointer-events: none;
-    user-select: none;
   }
 
   .graph-validation-summary {
@@ -406,8 +410,8 @@
   }
 
   :global(.node-graph-controls .svelte-flow__controls-button) {
-    width: 2rem;
-    height: 2rem;
+    width: 2.75rem;
+    height: 2.75rem;
     border: 0;
     border-radius: var(--radius-control);
     padding: 0.5rem;

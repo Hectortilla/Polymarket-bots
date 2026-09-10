@@ -59,6 +59,10 @@ Never use pure black, neon glows, purple gradients, or unrelated accent colors.
 - A graph starts clean or copies the latest graph from another configured bot.
 - Existing bot detail uses the same builder model and one save action.
 - Run detail is a historical snapshot and never appears editable.
+- Run configuration follows the builder's field order and column layout, using
+  labeled text values instead of inputs. Show markets and wallets as readable
+  lists. The executed graph replaces graph JSON; Timing is a separate section
+  after configuration and graph.
 
 ## 5. Component Styling
 
@@ -82,6 +86,9 @@ Never use pure black, neon glows, purple gradients, or unrelated accent colors.
 - **Run history:** a compact table with responsive stacked rows below 768px.
 - **Graph canvas:** a large bounded workspace. Node addition and viewport
   controls remain close to the canvas. Graph validation stays beside it.
+  Fit the complete graph once after nodes and viewport are ready on every entry.
+  Historical graphs retain pan, zoom, and Fit View with 44px control targets;
+  node editing, selection, connections, deletion, and unlocking remain disabled.
 - **Loading:** skeletons match the final page structure. No circular spinners.
 - **Empty state:** explain what is missing and include the next valid action.
 

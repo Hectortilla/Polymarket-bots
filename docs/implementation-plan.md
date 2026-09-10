@@ -1470,6 +1470,11 @@ Status: implemented; updated by the same configuration simplification.
   and copying another bot's graph remain independent draft operations.
 - Save settings and graph together; keep Run disabled while changes are unsaved.
 - Show the executed graph from the run snapshot without revision numbering.
+- Fit graphs after all nodes are measured when entering a bot or run. Historical
+  graphs support pan, zoom and Fit View while remaining locked against edits.
+- Present run configuration in the builder's field order and responsive layout,
+  with plain values and readable selection lists instead of graph JSON. Timing
+  follows the configuration and executed graph as its own section.
 - Show active, queued and saved-bot allowances only; no template counter or limit.
 
 Acceptance covers exact JSON and decimal preservation, independent copied bots,

@@ -188,6 +188,12 @@ stream health is ephemeral and the final graceful-shutdown summary is durable.
 Terminal runs remain readable. Rerunning happens from saved-bot detail and uses
 the latest saved configuration; historical run configuration never changes.
 
+Run configuration uses the builder's field order and responsive layout with
+read-only text values. Selection lists stay readable, and graph JSON is omitted
+in favor of the executed graph viewer. Timing follows as a separate section.
+Both bot and run graphs fit automatically once all nodes and the viewport are
+ready. Run graphs allow pan, zoom and Fit View without enabling graph edits.
+
 ## Dashboard Parity
 
 `docs/architecture.md` section **Terminal Observability** is the behavioral
