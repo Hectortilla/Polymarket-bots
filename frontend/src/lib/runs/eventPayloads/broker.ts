@@ -1,15 +1,15 @@
-import Decimal from 'decimal.js';
+import Decimal from "decimal.js";
 
-import { isOutcomePrice } from '$lib/outcomePrices';
+import { isOutcomePrice } from "$lib/outcomePrices";
 
-import { isSide } from '$lib/sides';
+import { isSide } from "$lib/sides";
 
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
-import { isNonemptyString, isNonnegativeInteger, isNullableString, isOneOf, isRecord } from '$lib/valueGuards';
-import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from '$lib/decimalGuards';
+import { isNonemptyString, isNonnegativeInteger, isNullableString, isOneOf, isRecord } from "$lib/valueGuards";
+import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from "$lib/decimalGuards";
 
-import { isPortfolioSnapshot } from '$lib/runs/eventPayloads/portfolio';
+import { isPortfolioSnapshot } from "$lib/runs/eventPayloads/portfolio";
 
 const FILL_REJECT_REASONS = Object.values(runtimeContract.fillRejectReason);
 
@@ -34,24 +34,21 @@ export function isBrokerFillPayload(payload: Record<string, unknown>): boolean {
     isOrderRequest(payload.order) &&
     isRecord(payload.fill) &&
     isFill(payload.fill) &&
-    (payload.portfolio === null ||
-      (isRecord(payload.portfolio) && isPortfolioSnapshot(payload.portfolio))) &&
+    (payload.portfolio === null || (isRecord(payload.portfolio) && isPortfolioSnapshot(payload.portfolio))) &&
     isNonnegativeInteger(payload.latency_ms)
   );
 }
 
 function isValidSourceId(value: unknown): boolean {
   return (
-    value === null ||
-    value === undefined ||
-    (isNonemptyString(value) && !value.includes('\n') && !value.includes('\r'))
+    value === null || value === undefined || (isNonemptyString(value) && !value.includes("\n") && !value.includes("\r"))
   );
 }
 
 function isFill(fill: Record<string, unknown>): boolean {
   if (
     !isNonemptyString(fill.order_id) ||
-    typeof fill.token_id !== 'string' ||
+    typeof fill.token_id !== "string" ||
     !isSide(fill.side) ||
     !isOneOf(fill.status, ORDER_STATUSES) ||
     !isDecimal(fill.requested_size) ||
@@ -63,8 +60,7 @@ function isFill(fill: Record<string, unknown>): boolean {
 
   const requestedSize = new Decimal(fill.requested_size);
   const filledSize = new Decimal(fill.filled_size);
-  const policy =
-    runtimeContract.fillStatusPolicy[fill.status as keyof typeof runtimeContract.fillStatusPolicy];
+  const policy = runtimeContract.fillStatusPolicy[fill.status as keyof typeof runtimeContract.fillStatusPolicy];
   if (policy.requiresRejectDetails) {
     return (
       filledSize.isZero() &&
@@ -84,13 +80,10 @@ function isFill(fill: Record<string, unknown>): boolean {
   )
     return false;
   if (policy.execution === runtimeContract.fillExecutionConstraint.NONE) {
-    return (
-      filledSize.isZero() && fill.average_price === null && new Decimal(fill.fee_usdc).isZero()
-    );
+    return filledSize.isZero() && fill.average_price === null && new Decimal(fill.fee_usdc).isZero();
   }
   if (!isOutcomePrice(fill.average_price) || !filledSize.gt(minimumExclusiveSize)) return false;
   return policy.execution === runtimeContract.fillExecutionConstraint.EXACT_REQUEST
     ? filledSize.eq(requestedSize)
-    : policy.execution === runtimeContract.fillExecutionConstraint.BELOW_REQUEST &&
-        filledSize.lt(requestedSize);
+    : policy.execution === runtimeContract.fillExecutionConstraint.BELOW_REQUEST && filledSize.lt(requestedSize);
 }

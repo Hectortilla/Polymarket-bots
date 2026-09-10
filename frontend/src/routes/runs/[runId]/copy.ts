@@ -1,18 +1,18 @@
 export const RUN_DETAIL_COPY = {
-  NOT_FOUND: 'Run not found. Older history may have expired; return to your workspace for retained runs.',
-  RUN_LOAD_ERROR: 'The run could not be loaded.',
-  STREAM_RECONNECTING: 'Live updates are unavailable. Reconnecting…',
-  STOP_ERROR: 'The stop request could not be sent.',
-  SENDING: 'Sending…',
-  LOAD_EARLIER: 'Load earlier events',
-  LOAD_ERROR: 'Older durable events could not be loaded.',
-  LOADING: 'Loading…',
-  NO_PROGRESS_EVENTS: 'No progress events in the loaded history.',
+  NOT_FOUND: "Run not found. Older history may have expired; return to your workspace for retained runs.",
+  RUN_LOAD_ERROR: "The run could not be loaded.",
+  STREAM_RECONNECTING: "Live updates are unavailable. Reconnecting…",
+  STOP_ERROR: "The stop request could not be sent.",
+  SENDING: "Sending…",
+  LOAD_EARLIER: "Load earlier events",
+  LOAD_ERROR: "Older durable events could not be loaded.",
+  LOADING: "Loading…",
+  NO_PROGRESS_EVENTS: "No progress events in the loaded history.",
 
-  BOT_CONFIGURATION: 'Bot configuration',
-  EXECUTED_GRAPH_REVISION: 'Executed graph revision',
-  GRAPH_REVISION: 'graph revision',
-  GRAPH_LOAD_ERROR: 'The executed graph could not be displayed.',
+  BOT_CONFIGURATION: "Bot configuration",
+  EXECUTED_GRAPH_REVISION: "Executed graph revision",
+  GRAPH_REVISION: "graph revision",
+  GRAPH_LOAD_ERROR: "The executed graph could not be displayed.",
 } as const;
 
 export function runGraphRevisionLabel(revision: number | null | undefined): string {

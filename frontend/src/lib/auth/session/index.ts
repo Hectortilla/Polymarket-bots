@@ -1,11 +1,18 @@
-import { isPublicInformationPath } from '$lib/public/navigation';
-import { derived, get, writable } from 'svelte/store';
-import { AUTH_COPY } from '../copy';
-import { ACCOUNT_DELETION_QUERY_PARAM, ACCOUNT_UPDATED_QUERY_PARAM, accountPath, isAccountPath, LOGIN_PATH, safeReturnPath } from '../navigation';
-import { AccountChannel } from './crossTab';
-import { ACCOUNT_LOOKUP, lookupCurrentAccount, revokeCurrentSession } from './requests';
-import { ACCOUNT_FAILURE, ACCOUNT_SESSION_STATUS, type AccountSessionState } from './state';
-import { PrivateStreams } from './streams';
+import { isPublicInformationPath } from "$lib/public/navigation";
+import { derived, get, writable } from "svelte/store";
+import { AUTH_COPY } from "../copy";
+import {
+  ACCOUNT_DELETION_QUERY_PARAM,
+  ACCOUNT_UPDATED_QUERY_PARAM,
+  accountPath,
+  isAccountPath,
+  LOGIN_PATH,
+  safeReturnPath,
+} from "../navigation";
+import { AccountChannel } from "./crossTab";
+import { ACCOUNT_LOOKUP, lookupCurrentAccount, revokeCurrentSession } from "./requests";
+import { ACCOUNT_FAILURE, ACCOUNT_SESSION_STATUS, type AccountSessionState } from "./state";
+import { PrivateStreams } from "./streams";
 
 const ACCOUNT_FAILURE_COPY = {
   [ACCOUNT_FAILURE.RESTORE]: AUTH_COPY.RESTORE_ERROR,
@@ -14,11 +21,16 @@ const ACCOUNT_FAILURE_COPY = {
 
 export class AccountSession {
   readonly state = writable<AccountSessionState>({ status: ACCOUNT_SESSION_STATUS.RESTORING });
-  readonly account = derived(this.state, state => state.status === ACCOUNT_SESSION_STATUS.AUTHENTICATED ? state.user : null);
-  readonly ready = derived(this.state, state => state.status !== ACCOUNT_SESSION_STATUS.RESTORING && state.status !== ACCOUNT_SESSION_STATUS.SIGNING_OUT);
-  readonly error = derived(this.state, state => state.status === ACCOUNT_SESSION_STATUS.FAILURE
-    ? ACCOUNT_FAILURE_COPY[state.reason]
-    : '');
+  readonly account = derived(this.state, (state) =>
+    state.status === ACCOUNT_SESSION_STATUS.AUTHENTICATED ? state.user : null,
+  );
+  readonly ready = derived(
+    this.state,
+    (state) => state.status !== ACCOUNT_SESSION_STATUS.RESTORING && state.status !== ACCOUNT_SESSION_STATUS.SIGNING_OUT,
+  );
+  readonly error = derived(this.state, (state) =>
+    state.status === ACCOUNT_SESSION_STATUS.FAILURE ? ACCOUNT_FAILURE_COPY[state.reason] : "",
+  );
   readonly streams = new PrivateStreams();
   private readonly channel = new AccountChannel();
   private privateSessionGeneration = 0;
@@ -58,7 +70,10 @@ export class AccountSession {
     window.location.replace(safeReturnPath(returnPath));
   }
 
-  credentialsRevoked(loginNoticeQueryParam: typeof ACCOUNT_UPDATED_QUERY_PARAM | typeof ACCOUNT_DELETION_QUERY_PARAM = ACCOUNT_UPDATED_QUERY_PARAM): void {
+  credentialsRevoked(
+    loginNoticeQueryParam:
+      typeof ACCOUNT_UPDATED_QUERY_PARAM | typeof ACCOUNT_DELETION_QUERY_PARAM = ACCOUNT_UPDATED_QUERY_PARAM,
+  ): void {
     this.clear();
     this.channel.announce();
     window.location.replace(`${LOGIN_PATH}?${loginNoticeQueryParam}=1`);

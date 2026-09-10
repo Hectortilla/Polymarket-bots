@@ -1,18 +1,18 @@
-import type { NodeGraph } from '$lib/api/generated';
-import { describe, expect, it } from 'vitest';
+import type { NodeGraph } from "$lib/api/generated";
+import { describe, expect, it } from "vitest";
 
-import { triggerAlreadyExists } from '$lib/catalog/nodeGraph/catalog';
-import { connectionIsValid } from '$lib/catalog/nodeGraph/connections';
-import { type CanvasEdge, type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
+import { triggerAlreadyExists } from "$lib/catalog/nodeGraph/catalog";
+import { connectionIsValid } from "$lib/catalog/nodeGraph/connections";
+import { type CanvasEdge, type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
 import {
   createBrokerActionNode,
   createComparisonNode,
   createConstantNode,
   createTriggerNode,
-} from '$lib/catalog/nodeGraph/factories';
-import { canvasEdges, canvasNodes, toPersistedNodeGraph } from '$lib/catalog/nodeGraph/projections';
-import { nodeGraphsEqual } from '$lib/catalog/nodeGraphEquality';
-import { GRAPH_NODE_TYPE } from './graphContracts';
+} from "$lib/catalog/nodeGraph/factories";
+import { canvasEdges, canvasNodes, toPersistedNodeGraph } from "$lib/catalog/nodeGraph/projections";
+import { nodeGraphsEqual } from "$lib/catalog/nodeGraphEquality";
+import { GRAPH_NODE_TYPE } from "./graphContracts";
 import {
   BUY_ACTION,
   EQUAL_COMPARISON,
@@ -25,10 +25,10 @@ import {
   TEST_GRAPH_CATALOG,
   THRESHOLD_BUY_GRAPH,
   graphFieldHandle,
-} from './nodeGraphTestFixtures';
+} from "./nodeGraphTestFixtures";
 
-describe('node graph canvas adapter', () => {
-  it('round-trips all node data and handles while stripping Flow-only state', () => {
+describe("node graph canvas adapter", () => {
+  it("round-trips all node data and handles while stripping Flow-only state", () => {
     const transientNodes = canvasNodes(THRESHOLD_BUY_GRAPH).map((node) => ({
       ...node,
       selected: true,
@@ -43,7 +43,7 @@ describe('node graph canvas adapter', () => {
     expect(toPersistedNodeGraph(transientNodes, transientEdges)).toEqual(THRESHOLD_BUY_GRAPH);
   });
 
-  it('compares persisted graphs by meaning instead of JSON property or array order', () => {
+  it("compares persisted graphs by meaning instead of JSON property or array order", () => {
     const equivalentGraph = {
       edges: [...(THRESHOLD_BUY_GRAPH.edges ?? [])].reverse(),
       nodes: [...THRESHOLD_BUY_GRAPH.nodes].reverse(),
@@ -51,17 +51,13 @@ describe('node graph canvas adapter', () => {
     const movedGraph = {
       ...equivalentGraph,
       nodes: equivalentGraph.nodes.map((node) =>
-        node.id === 'on-book-trigger'
-          ? { ...node, position: { ...node.position, x: node.position.x + 1 } }
-          : node,
+        node.id === "on-book-trigger" ? { ...node, position: { ...node.position, x: node.position.x + 1 } } : node,
       ),
     };
     const changedNodeData = {
       ...equivalentGraph,
       nodes: equivalentGraph.nodes.map((node) =>
-        node.type === GRAPH_NODE_TYPE.constant
-          ? { ...node, data: { ...node.data, value: '0.75' } }
-          : node,
+        node.type === GRAPH_NODE_TYPE.constant ? { ...node, data: { ...node.data, value: "0.75" } } : node,
       ),
     } as NodeGraph;
     const changedEdge = {
@@ -79,7 +75,7 @@ describe('node graph canvas adapter', () => {
     expect(nodeGraphsEqual(THRESHOLD_BUY_GRAPH, undefined)).toBe(false);
   });
 
-  it('detects every persisted node discriminator and edge endpoint change', () => {
+  it("detects every persisted node discriminator and edge endpoint change", () => {
     const changedNodeGraphs = [
       changeNodeData(GRAPH_NODE_TYPE.trigger, {
         hook_name: ON_START_TRIGGER.hook_name,
@@ -92,7 +88,7 @@ describe('node graph canvas adapter', () => {
       }),
     ];
     const firstEdge = THRESHOLD_BUY_GRAPH.edges?.[0];
-    if (!firstEdge) throw new Error('threshold graph fixture requires an edge');
+    if (!firstEdge) throw new Error("threshold graph fixture requires an edge");
     const changedEdgeGraphs = [
       { ...firstEdge, source: `${firstEdge.source}-changed` },
       { ...firstEdge, source_handle: `${firstEdge.source_handle}-changed` },
@@ -108,11 +104,11 @@ describe('node graph canvas adapter', () => {
     }
   });
 
-  it('creates each catalog-described node kind', () => {
+  it("creates each catalog-described node kind", () => {
     const nodes = canvasNodes(TEST_GRAPH);
 
     expect(createTriggerNode(nodes, ON_START_TRIGGER)).toMatchObject({
-      id: 'trigger-on-start',
+      id: "trigger-on-start",
       type: ON_START_TRIGGER.node_type,
       data: { hook_name: ON_START_TRIGGER.hook_name },
     });
@@ -135,23 +131,21 @@ describe('node graph canvas adapter', () => {
     expect(triggerAlreadyExists(nodes, ON_START_TRIGGER)).toBe(false);
   });
 
-  it('keeps generated node IDs unique', () => {
+  it("keeps generated node IDs unique", () => {
     const first = createConstantNode(canvasNodes(TEST_GRAPH), NUMBER_CONSTANT);
     const second = createConstantNode([...canvasNodes(TEST_GRAPH), first], NUMBER_CONSTANT);
 
-    expect(first.id).toBe('constant-number');
-    expect(second.id).toBe('constant-number-2');
+    expect(first.id).toBe("constant-number");
+    expect(second.id).toBe("constant-number-2");
   });
 
-  it('rejects persistence without connection handles', () => {
+  it("rejects persistence without connection handles", () => {
     expect(() =>
-      toPersistedNodeGraph(canvasNodes(TEST_GRAPH), [
-        { id: 'missing-handle', source: 'a', target: 'b' },
-      ]),
-    ).toThrow('require source and target handles');
+      toPersistedNodeGraph(canvasNodes(TEST_GRAPH), [{ id: "missing-handle", source: "a", target: "b" }]),
+    ).toThrow("require source and target handles");
   });
 
-  it('accepts the metadata-compatible threshold BUY connections', () => {
+  it("accepts the metadata-compatible threshold BUY connections", () => {
     const nodes = canvasNodes(THRESHOLD_BUY_GRAPH);
     const accepted: CanvasEdge[] = [];
 
@@ -163,10 +157,10 @@ describe('node graph canvas adapter', () => {
     expect(
       connectionIsValid(
         {
-          id: 'wrong-type',
-          source: 'on-book-trigger',
-          sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, 'token_id'),
-          target: 'comparison-threshold',
+          id: "wrong-type",
+          source: "on-book-trigger",
+          sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, "token_id"),
+          target: "comparison-threshold",
           targetHandle: LESS_THAN_OR_EQUAL.inputs[0].handle_id,
         },
         nodes,
@@ -178,15 +172,12 @@ describe('node graph canvas adapter', () => {
     expect(
       connectionIsValid(
         {
-          source: 'on-book-trigger',
-          sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, 'bids'),
-          target: 'comparison-threshold',
+          source: "on-book-trigger",
+          sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, "bids"),
+          target: "comparison-threshold",
           targetHandle: LESS_THAN_OR_EQUAL.inputs[0].handle_id,
         },
-        [
-          ...canvasNodes(TEST_GRAPH),
-          createComparisonNode(canvasNodes(TEST_GRAPH), LESS_THAN_OR_EQUAL),
-        ],
+        [...canvasNodes(TEST_GRAPH), createComparisonNode(canvasNodes(TEST_GRAPH), LESS_THAN_OR_EQUAL)],
         [],
         TEST_GRAPH_CATALOG,
       ),
@@ -195,7 +186,7 @@ describe('node graph canvas adapter', () => {
     const validEdge = canvasEdges(THRESHOLD_BUY_GRAPH)[0];
     const invalidConnections = [
       { ...validEdge, sourceHandle: null },
-      { ...validEdge, source: 'missing-node' },
+      { ...validEdge, source: "missing-node" },
       {
         ...validEdge,
         source: validEdge.target,
@@ -222,8 +213,6 @@ function changeNodeData(
 ): NodeGraph {
   return {
     ...THRESHOLD_BUY_GRAPH,
-    nodes: THRESHOLD_BUY_GRAPH.nodes.map((node) =>
-      node.type === nodeType ? { ...node, data } : node,
-    ),
+    nodes: THRESHOLD_BUY_GRAPH.nodes.map((node) => (node.type === nodeType ? { ...node, data } : node)),
   } as NodeGraph;
 }

@@ -1,46 +1,41 @@
 <script lang="ts">
-  import { SERVICE_NAME } from '$lib/serviceIdentity';
-  import { hasReportedUsableBook, RUN_GUIDE_COPY } from '$lib/runs/runGuide';
-  import RunGuide from '$lib/runs/RunGuide.svelte';
-  import { STREAM_CONNECTION_STATE } from '$lib/runs/events';
-  import { RunNotFoundError } from '$lib/runs/hydrate';
-  import { page } from '$app/state';
-  import { PRESENTATION_COPY } from '$lib/presentation';
-  import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
-  import { onMount } from 'svelte';
-  import './run.css';
+  import { SERVICE_NAME } from "$lib/serviceIdentity";
+  import { hasReportedUsableBook, RUN_GUIDE_COPY } from "$lib/runs/runGuide";
+  import RunGuide from "$lib/runs/RunGuide.svelte";
+  import { STREAM_CONNECTION_STATE } from "$lib/runs/events";
+  import { RunNotFoundError } from "$lib/runs/hydrate";
+  import { page } from "$app/state";
+  import { PRESENTATION_COPY } from "$lib/presentation";
+  import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
+  import { onMount } from "svelte";
+  import "./run.css";
 
   import {
     listBotDefinitionsApiV1BotDefinitionsGet,
     stopRunApiV1RunsRunIdStopPost,
     type GraphNodeCatalog,
     type RunRead,
-  } from '$lib/api/generated';
-  import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
-  import { hasGraphCapability } from '$lib/catalog/graphContracts';
-  import DashboardCharts from '$lib/charts/DashboardCharts.svelte';
+  } from "$lib/api/generated";
+  import NodeGraphInput from "$lib/catalog/NodeGraphInput.svelte";
+  import { hasGraphCapability } from "$lib/catalog/graphContracts";
+  import DashboardCharts from "$lib/charts/DashboardCharts.svelte";
   import {
     emptyDashboardHistory,
     mergeDurableEvents,
     mergeLiveEvents,
     type DashboardHistory,
-  } from '$lib/charts/history';
-  import { createLiveDashboardBatcher } from '$lib/charts/liveBatch';
-  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
-  import runtimeContract from '$lib/runtimeContract.fixture.json';
-  import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
-  import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
-  import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
-  import { eventFailureDetail, eventSummary } from '$lib/runs/eventSummary';
-  import { loadAndContinueRunDetail, loadOlderRunEvents } from '$lib/runs/hydrate';
-  import { RUN_STATUS_PRESENTATION } from '$lib/runs/status';
-  import { formatTime } from '$lib/time';
-  import {
-    loadedEventsLabel,
-    RUN_DETAIL_COPY,
-    executedRunGraphRevisionLabel,
-    runGraphRevisionLabel,
-  } from './copy';
+  } from "$lib/charts/history";
+  import { createLiveDashboardBatcher } from "$lib/charts/liveBatch";
+  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from "$lib/navigation";
+  import runtimeContract from "$lib/runtimeContract.fixture.json";
+  import FailureDetailTooltip from "$lib/runs/FailureDetailTooltip.svelte";
+  import RunStatusBadge from "$lib/runs/RunStatusBadge.svelte";
+  import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
+  import { eventFailureDetail, eventSummary } from "$lib/runs/eventSummary";
+  import { loadAndContinueRunDetail, loadOlderRunEvents } from "$lib/runs/hydrate";
+  import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
+  import { formatTime } from "$lib/time";
+  import { loadedEventsLabel, RUN_DETAIL_COPY, executedRunGraphRevisionLabel, runGraphRevisionLabel } from "./copy";
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
@@ -50,18 +45,16 @@
   let loadingOlderEvents = $state(false);
   let loadedEventPages = 1;
   let nextBeforeEventId = $state<number | null>(null);
-  let error = $state('');
+  let error = $state("");
   let streamReconnecting = $state(false);
   let executedGraphCatalog = $state<GraphNodeCatalog>();
   let executedGraphCatalogLoading = $state(false);
-  let executedGraphCatalogError = $state('');
+  let executedGraphCatalogError = $state("");
   let closeStream = () => {};
 
   const progressEvents = $derived(events.filter((event) => event.kind !== EVENT_KIND.chartSample));
   const statusPresentation = $derived(run ? RUN_STATUS_PRESENTATION[run.status] : undefined);
-  const configuredWallets = $derived(
-    run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? [],
-  );
+  const configuredWallets = $derived(run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? []);
 
   onMount(() => {
     let disposed = false;
@@ -102,7 +95,9 @@
       appendDurableEvent,
       liveBatcher.push,
       undefined,
-      (state) => { if (!disposed) streamReconnecting = state === STREAM_CONNECTION_STATE.RECONNECTING; },
+      (state) => {
+        if (!disposed) streamReconnecting = state === STREAM_CONNECTION_STATE.RECONNECTING;
+      },
     )
       .then((close) => {
         if (disposed) close();
@@ -144,7 +139,7 @@
     });
     const definition = response.data.find((candidate) => candidate.definition_id === definitionId);
     if (!hasGraphCapability(definition)) {
-      throw new Error('Executed graph definition is unavailable');
+      throw new Error("Executed graph definition is unavailable");
     }
     return definition.graph_catalog;
   }
@@ -152,7 +147,7 @@
   async function stopRun(): Promise<void> {
     if (!run || !statusPresentation?.canStop) return;
     stopping = true;
-    error = '';
+    error = "";
     try {
       const response = await stopRunApiV1RunsRunIdStopPost({
         path: { run_id: run.id },
@@ -169,7 +164,7 @@
   async function loadOlderEvents(): Promise<void> {
     if (!run || nextBeforeEventId === null || loadingOlderEvents) return;
     loadingOlderEvents = true;
-    error = '';
+    error = "";
     // Reserve the next page while fetching so streamed events cannot leave a gap
     // between the requested history and the retained window.
     loadedEventPages += 1;
@@ -192,7 +187,7 @@
   }
 
   function displayValue(value: unknown): string {
-    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+    return typeof value === "object" ? JSON.stringify(value) : String(value);
   }
 </script>
 
@@ -200,7 +195,6 @@
   <title>{run ? `${run.config.name} | ${SERVICE_NAME}` : `Run detail | ${SERVICE_NAME}`}</title>
 </svelte:head>
 {#if streamReconnecting}<p role="status" class="notice error">{RUN_DETAIL_COPY.STREAM_RECONNECTING}</p>{/if}
-
 
 <a class="back-link" href={NAVIGATION_PATH.HOME}>
   <ArrowLeftIcon aria-hidden="true" size={16} />
@@ -222,7 +216,7 @@
       <p class="route-meta">
         <a href={botPath(run.bot_id)}>{RUN_DETAIL_COPY.BOT_CONFIGURATION}</a>{run.graph_revision
           ? ` / ${runGraphRevisionLabel(run.graph_revision)}`
-          : ''}
+          : ""}
       </p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>
@@ -279,7 +273,7 @@
       <dl>
         {#each Object.entries(run.config) as [name, value] (name)}
           <div>
-            <dt>{name.replaceAll('_', ' ')}</dt>
+            <dt>{name.replaceAll("_", " ")}</dt>
             <dd>{displayValue(value)}</dd>
           </div>
         {/each}
@@ -392,11 +386,7 @@
               >
                 <td data-label="Time">{formatTime(event.occurred_at)}</td>
                 <td data-label="Kind"><span class="event-kind">{event.kind}</span></td>
-                <td
-                  class="event-detail-cell"
-                  class:failure-detail-host={failureDetail !== null}
-                  data-label="Detail"
-                >
+                <td class="event-detail-cell" class:failure-detail-host={failureDetail !== null} data-label="Detail">
                   {eventSummary(event)}
                   {#if failureDetail}
                     <FailureDetailTooltip id={failureDetailId} detail={failureDetail} />

@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { tick } from 'svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
+import { tick } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ChartSamplePayload } from '$lib/api/generated';
+import type { ChartSamplePayload } from "$lib/api/generated";
 
 const echartsMocks = vi.hoisted(() => {
   const instances: Array<{
@@ -24,12 +24,12 @@ const echartsMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('./echarts', () => ({ init: echartsMocks.init }));
+vi.mock("./echarts", () => ({ init: echartsMocks.init }));
 
-import { SIDE } from '$lib/sides';
-import DashboardCharts from './DashboardCharts.svelte';
-import { DASHBOARD_KEY, VALUATION_STATUS } from './contracts';
-import { DASHBOARD_COPY } from './copy';
+import { SIDE } from "$lib/sides";
+import DashboardCharts from "./DashboardCharts.svelte";
+import { DASHBOARD_KEY, VALUATION_STATUS } from "./contracts";
+import { DASHBOARD_COPY } from "./copy";
 
 class FakeResizeObserver {
   static instances: FakeResizeObserver[] = [];
@@ -72,8 +72,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('dashboard controls and layout', () => {
-  it('exposes matching buttons and keyboard navigation', async () => {
+describe("dashboard controls and layout", () => {
+  it("exposes matching buttons and keyboard navigation", async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
@@ -81,58 +81,52 @@ describe('dashboard controls and layout', () => {
     });
 
     expect(
-      screen.getByRole('button', {
+      screen.getByRole("button", {
         name: `${DASHBOARD_KEY.view} · ${DASHBOARD_COPY.CONTROL_VIEW}`,
       }),
     ).toBeTruthy();
-    const closer = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.closer}"]`,
-    );
-    const wider = view.container.querySelector<HTMLButtonElement>(
-      `button[title="Keyboard: ${DASHBOARD_KEY.wider}"]`,
-    );
-    if (!closer || !wider) throw new Error('zoom controls not rendered');
+    const closer = view.container.querySelector<HTMLButtonElement>(`button[title="Keyboard: ${DASHBOARD_KEY.closer}"]`);
+    const wider = view.container.querySelector<HTMLButtonElement>(`button[title="Keyboard: ${DASHBOARD_KEY.wider}"]`);
+    if (!closer || !wider) throw new Error("zoom controls not rendered");
     for (let index = 0; index < 3; index += 1) await fireEvent.click(closer);
     expect(closer.disabled).toBe(true);
     expect(wider.disabled).toBe(false);
     for (let index = 0; index < 6; index += 1) await fireEvent.click(wider);
     expect(wider.disabled).toBe(true);
     await fireEvent.keyDown(window, { key: DASHBOARD_KEY.view });
-    expect(screen.getByRole('heading', { name: DASHBOARD_COPY.WALLET_ACTIVITY })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: DASHBOARD_COPY.WALLET_ACTIVITY })).toBeTruthy();
     const resetControlName = `${DASHBOARD_KEY.reset} · ${DASHBOARD_COPY.CONTROL_RESET}`;
-    await fireEvent.click(screen.getByRole('button', { name: resetControlName }));
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: resetControlName }).disabled).toBe(
-      true,
-    );
+    await fireEvent.click(screen.getByRole("button", { name: resetControlName }));
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: resetControlName }).disabled).toBe(true);
   });
 
-  it('stacks the market and executable-equity charts', async () => {
+  it("stacks the market and executable-equity charts", async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
       walletTimelinePoints: [
         {
-          source_key: 'wallet:trade',
-          wallet: '0x0000000000000000000000000000000000000001',
+          source_key: "wallet:trade",
+          wallet: "0x0000000000000000000000000000000000000001",
           trade_timestamp_ms: 1_000,
           side: SIDE.buy,
-          notional: '1',
-          market_label: 'market',
+          notional: "1",
+          market_label: "market",
           accepted: true,
         },
       ],
     });
     FakeIntersectionObserver.current.trigger(true);
     await tick();
-    const grid = view.container.querySelector('.dashboard-grid');
+    const grid = view.container.querySelector(".dashboard-grid");
 
-    expect(grid?.getAttribute('data-layout')).toBe('stacked');
+    expect(grid?.getAttribute("data-layout")).toBe("stacked");
   });
 
-  it('presents durable samples as history for a terminal run', async () => {
+  it("presents durable samples as history for a terminal run", async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
-      samples: [chartSample(1_000, '100')],
+      samples: [chartSample(1_000, "100")],
       walletTimelinePoints: [],
       terminal: true,
     });
@@ -144,7 +138,7 @@ describe('dashboard controls and layout', () => {
     expect(echartsMocks.instances).toHaveLength(2);
   });
 
-  it('keeps configured wallets visible before their first trade', async () => {
+  it("keeps configured wallets visible before their first trade", async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
@@ -157,7 +151,7 @@ describe('dashboard controls and layout', () => {
     const viewButton = view.container.querySelector<HTMLButtonElement>(
       `button[title="Keyboard: ${DASHBOARD_KEY.view}"]`,
     );
-    if (!viewButton) throw new Error('view control not rendered');
+    if (!viewButton) throw new Error("view control not rendered");
     await fireEvent.click(viewButton);
 
     const nextButton = view.container.querySelector<HTMLButtonElement>(
@@ -166,7 +160,7 @@ describe('dashboard controls and layout', () => {
     const previousButton = view.container.querySelector<HTMLButtonElement>(
       `button[title="Keyboard: ${DASHBOARD_KEY.previousWalletPage}"]`,
     );
-    if (!nextButton || !previousButton) throw new Error('wallet controls not rendered');
+    if (!nextButton || !previousButton) throw new Error("wallet controls not rendered");
     expect(nextButton.disabled).toBe(false);
     await fireEvent.click(nextButton);
     expect(nextButton.disabled).toBe(true);
@@ -174,16 +168,14 @@ describe('dashboard controls and layout', () => {
     await fireEvent.click(previousButton);
     expect(previousButton.disabled).toBe(true);
 
-    expect(
-      view.container.querySelector(`[aria-label="${DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL}"]`),
-    ).toBeTruthy();
+    expect(view.container.querySelector(`[aria-label="${DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL}"]`)).toBeTruthy();
     expect(view.container.textContent).not.toContain(DASHBOARD_COPY.NO_WALLETS);
   });
 
-  it('freezes chart options offscreen and catches up once on re-entry', async () => {
+  it("freezes chart options offscreen and catches up once on re-entry", async () => {
     installBrowserObservers();
-    const first = chartSample(1_000, '100');
-    const second = chartSample(1_250, '101');
+    const first = chartSample(1_000, "100");
+    const second = chartSample(1_250, "101");
     const view = render(DashboardCharts, {
       samples: [first],
       walletTimelinePoints: [],
@@ -193,9 +185,7 @@ describe('dashboard controls and layout', () => {
     FakeIntersectionObserver.current.trigger(true);
     await tick();
     expect(echartsMocks.instances).toHaveLength(2);
-    const visibleUpdateCounts = echartsMocks.instances.map(
-      ({ setOption }) => setOption.mock.calls.length,
-    );
+    const visibleUpdateCounts = echartsMocks.instances.map(({ setOption }) => setOption.mock.calls.length);
 
     FakeIntersectionObserver.current.trigger(false);
     await tick();
@@ -203,9 +193,7 @@ describe('dashboard controls and layout', () => {
       samples: [first, second],
       walletTimelinePoints: [],
     });
-    expect(echartsMocks.instances.map(({ setOption }) => setOption.mock.calls.length)).toEqual(
-      visibleUpdateCounts,
-    );
+    expect(echartsMocks.instances.map(({ setOption }) => setOption.mock.calls.length)).toEqual(visibleUpdateCounts);
 
     FakeIntersectionObserver.current.trigger(true);
     await tick();
@@ -216,15 +204,15 @@ describe('dashboard controls and layout', () => {
 });
 
 function installBrowserObservers(): void {
-  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
-  vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     const frameId = nextAnimationFrame;
     nextAnimationFrame += 1;
     animationFrames.set(frameId, callback);
     return frameId;
   });
-  vi.stubGlobal('cancelAnimationFrame', (frameId: number) => {
+  vi.stubGlobal("cancelAnimationFrame", (frameId: number) => {
     animationFrames.delete(frameId);
   });
 }
@@ -234,9 +222,9 @@ function chartSample(sampledAtMs: number, equity: string): ChartSamplePayload {
     sampled_at_ms: sampledAtMs,
     markets: [
       {
-        token_id: 'token',
-        label: 'Market',
-        value: '0.5',
+        token_id: "token",
+        label: "Market",
+        value: "0.5",
         status: VALUATION_STATUS.fresh,
         markers: [],
       },

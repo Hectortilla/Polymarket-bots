@@ -870,11 +870,7 @@
             },
             "data": {
               "operation": "and",
-              "input_ids": [
-                "input_1",
-                "input_2",
-                "input_3"
-              ],
+              "input_ids": ["input_1", "input_2", "input_3"],
               "scalar_type": "number"
             }
           },
@@ -3566,11 +3562,7 @@
             },
             "data": {
               "operation": "and",
-              "input_ids": [
-                "input_1",
-                "input_1",
-                "input_3"
-              ],
+              "input_ids": ["input_1", "input_1", "input_3"],
               "scalar_type": "number"
             }
           },

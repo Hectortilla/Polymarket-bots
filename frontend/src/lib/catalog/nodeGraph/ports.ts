@@ -1,19 +1,14 @@
-import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
+import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
 
-import { DEFAULT_OPERATION_SCALAR_TYPE } from '$lib/catalog/graphContracts';
+import { DEFAULT_OPERATION_SCALAR_TYPE } from "$lib/catalog/graphContracts";
 
-import type {
-  GraphInputDescriptor,
-  GraphNodeCatalog,
-  GraphOutputDescriptor,
-  GraphParameter,
-} from '$lib/api/generated';
+import type { GraphInputDescriptor, GraphNodeCatalog, GraphOutputDescriptor, GraphParameter } from "$lib/api/generated";
 
-import catalogContract from '$lib/catalog/catalogContract.fixture.json';
+import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 
-import { GRAPH_CONTEXT_PORT_TYPE, GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
+import { GRAPH_CONTEXT_PORT_TYPE, GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
 
-import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
+import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
 
 import {
   brokerActionForNode,
@@ -21,7 +16,7 @@ import {
   constantForNode,
   operationForNode,
   triggerForNode,
-} from '$lib/catalog/nodeGraph/catalog';
+} from "$lib/catalog/nodeGraph/catalog";
 
 export function outputsForNode(
   node: CanvasNode,
@@ -33,10 +28,8 @@ export function outputsForNode(
     return triggerOutputs(trigger);
   }
   if (node.type === GRAPH_NODE_TYPE.constant) return [constantForNode(catalog, node.data).output];
-  if (node.type === GRAPH_NODE_TYPE.comparison)
-    return [comparisonForNode(catalog, node.data).output];
-  if (node.type === GRAPH_NODE_TYPE.brokerAction)
-    return brokerActionForNode(catalog, node.data).outputs ?? [];
+  if (node.type === GRAPH_NODE_TYPE.comparison) return [comparisonForNode(catalog, node.data).output];
+  if (node.type === GRAPH_NODE_TYPE.brokerAction) return brokerActionForNode(catalog, node.data).outputs ?? [];
   if (node.type === GRAPH_NODE_TYPE.parameter) {
     const parameter = parameters.find((p) => p.id === node.data.parameter_id);
     return parameter
@@ -63,16 +56,12 @@ export function graphOutputScalarType(
   catalog: GraphNodeCatalog,
   parameters: GraphParameter[] = [],
 ) {
-  return (
-    outputsForNode(node, catalog, parameters).find((port) => port.handle_id === handleId)
-      ?.scalar_type ?? null
-  );
+  return outputsForNode(node, catalog, parameters).find((port) => port.handle_id === handleId)?.scalar_type ?? null;
 }
 
 export function inputsForNode(node: CanvasNode, catalog: GraphNodeCatalog): GraphInputDescriptor[] {
   if (node.type === GRAPH_NODE_TYPE.comparison) return comparisonForNode(catalog, node.data).inputs;
-  if (node.type === GRAPH_NODE_TYPE.brokerAction)
-    return brokerActionForNode(catalog, node.data).inputs;
+  if (node.type === GRAPH_NODE_TYPE.brokerAction) return brokerActionForNode(catalog, node.data).inputs;
   if (node.type !== GRAPH_NODE_TYPE.operation) return [];
   const descriptor = operationForNode(catalog, node.data);
   if (descriptor.expandable) return expandableInputs(node, descriptor);
@@ -83,7 +72,7 @@ function triggerOutputs(trigger: ReturnType<typeof triggerForNode>): GraphOutput
   const outputs: GraphOutputDescriptor[] = [
     {
       handle_id: trigger.context_handle_id,
-      display_name: 'Context',
+      display_name: "Context",
       scalar_type: GRAPH_CONTEXT_PORT_TYPE,
     },
   ];
@@ -118,11 +107,7 @@ function typedInputs(
   descriptor: ReturnType<typeof operationForNode>,
 ): GraphInputDescriptor[] {
   return descriptor.inputs.map((port) => {
-    if (
-      !descriptor.selectable_scalar_type ||
-      port.handle_id === catalogContract.graphPort.CONDITION
-    )
-      return port;
+    if (!descriptor.selectable_scalar_type || port.handle_id === catalogContract.graphPort.CONDITION) return port;
     return { ...port, scalar_types: [node.data.scalar_type ?? DEFAULT_OPERATION_SCALAR_TYPE] };
   });
 }

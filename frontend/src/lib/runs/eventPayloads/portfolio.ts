@@ -1,11 +1,11 @@
-import Decimal from 'decimal.js';
+import Decimal from "decimal.js";
 
-import { isOutcomePayout, isOutcomePrice } from '$lib/outcomePrices';
+import { isOutcomePayout, isOutcomePrice } from "$lib/outcomePrices";
 
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
-import { isNonemptyString, isNonnegativeInteger, isRecord } from '$lib/valueGuards';
-import { isDecimal } from '$lib/decimalGuards';
+import { isNonemptyString, isNonnegativeInteger, isRecord } from "$lib/valueGuards";
+import { isDecimal } from "$lib/decimalGuards";
 
 export function isPortfolioSnapshot(snapshot: Record<string, unknown>): boolean {
   const policy = runtimeContract.portfolio;
@@ -80,8 +80,6 @@ function isSettledPosition(value: unknown): boolean {
     isDecimal(value.size) &&
     isOutcomePayout(value.payout_per_token) &&
     isDecimal(value.cash_payout_usdc) &&
-    (value.realized_pnl_usdc === null ||
-      value.realized_pnl_usdc === undefined ||
-      isDecimal(value.realized_pnl_usdc))
+    (value.realized_pnl_usdc === null || value.realized_pnl_usdc === undefined || isDecimal(value.realized_pnl_usdc))
   );
 }

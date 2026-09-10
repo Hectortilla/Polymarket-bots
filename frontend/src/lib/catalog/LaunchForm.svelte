@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { AnySchemaObject } from 'ajv';
-  import { tick, type Snippet } from 'svelte';
+  import type { AnySchemaObject } from "ajv";
+  import { tick, type Snippet } from "svelte";
 
-  import type { BotDefinitionDescriptor } from '$lib/api/generated';
-  import { FORM_COPY } from '$lib/formCopy';
-  import { LAUNCH_FORM_COPY } from './copy';
-  import MarketSelector from './MarketSelector.svelte';
+  import type { BotDefinitionDescriptor } from "$lib/api/generated";
+  import { FORM_COPY } from "$lib/formCopy";
+  import { LAUNCH_FORM_COPY } from "./copy";
+  import MarketSelector from "./MarketSelector.svelte";
   import {
     WIDGET_KIND,
     fieldLabel,
@@ -17,8 +17,8 @@
     selectionExplanation,
     widgetKind,
     type LaunchInputs,
-    type LaunchValidationIssue
-  } from './schema';
+    type LaunchValidationIssue,
+  } from "./schema";
 
   let {
     descriptor,
@@ -33,7 +33,7 @@
     showSelectionNotes = true,
     sectionTitle,
     sectionDescription,
-    children
+    children,
   }: {
     descriptor: BotDefinitionDescriptor;
     onsubmit: (inputs: LaunchInputs) => void | Promise<void>;
@@ -53,20 +53,16 @@
   const fields = $derived(launchFields(descriptor));
   const validator = $derived(launchValidator(descriptor));
   let inputs = $state<LaunchInputs>({});
-  let activeInputsKey = $state('');
+  let activeInputsKey = $state("");
   let localIssues = $state<LaunchValidationIssue[]>([]);
   let touchedFields = $state<Set<string>>(new Set());
   let submitted = $state(false);
   let formElement: HTMLFormElement;
   const visibleIssues = $derived([
-    ...localIssues.filter((issue) =>
-      issue.field ? submitted || touchedFields.has(issue.field) : submitted
-    ),
-    ...serverIssues
+    ...localIssues.filter((issue) => (issue.field ? submitted || touchedFields.has(issue.field) : submitted)),
+    ...serverIssues,
   ]);
-  const formIssues = $derived(
-    visibleIssues.filter((issue) => issue.field === undefined)
-  );
+  const formIssues = $derived(visibleIssues.filter((issue) => issue.field === undefined));
 
   $effect(() => {
     // Compare serialized values so parent object identity changes do not erase edits.
@@ -95,7 +91,7 @@
       value
         .split(/[\n,]/)
         .map((item) => item.trim())
-        .filter(Boolean)
+        .filter(Boolean),
     );
   }
 
@@ -109,11 +105,11 @@
 
   function inputType(field: AnySchemaObject): string {
     const type = resolvedFieldSchema(descriptor, field).type;
-    return type === 'integer' || type === 'number' ? 'number' : 'text';
+    return type === "integer" || type === "number" ? "number" : "text";
   }
 
   function parseFieldInput(field: AnySchemaObject, value: string): string | number {
-    return inputType(field) === 'number' && value !== '' ? Number(value) : value;
+    return inputType(field) === "number" && value !== "" ? Number(value) : value;
   }
 
   async function submit(event: SubmitEvent): Promise<void> {
@@ -136,32 +132,21 @@
     helperId: string,
     hasHelper: boolean,
     errorId: string,
-    hasError: boolean
+    hasError: boolean,
   ): string | undefined {
-    const descriptions = [
-      hasHelper ? helperId : undefined,
-      hasError ? errorId : undefined
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const descriptions = [hasHelper ? helperId : undefined, hasError ? errorId : undefined].filter(Boolean).join(" ");
     return descriptions || undefined;
   }
 </script>
 
 {#if showSelectionNotes}
   <div class="selection-notes" aria-label="Selection behavior">
-    <p>{selectionExplanation('Market', descriptor.market_selection)}</p>
-    <p>{selectionExplanation('Wallet', descriptor.wallet_selection)}</p>
+    <p>{selectionExplanation("Market", descriptor.market_selection)}</p>
+    <p>{selectionExplanation("Wallet", descriptor.wallet_selection)}</p>
   </div>
 {/if}
 
-<form
-  bind:this={formElement}
-  class="launch-form"
-  onsubmit={submit}
-  novalidate
-  aria-busy={busy}
->
+<form bind:this={formElement} class="launch-form" onsubmit={submit} novalidate aria-busy={busy}>
   <section class="builder-section configuration-section">
     {#if sectionTitle}
       <header class="builder-section-heading">
@@ -179,20 +164,22 @@
         {@const helperId = `field-${name}-helper`}
         {@const errorId = `field-${name}-error`}
         {@const fieldIssues = issuesForField(name)}
-        {@const hasHelper = typeof schema.description === 'string'}
+        {@const hasHelper = typeof schema.description === "string"}
         <div
           class="form-field"
           class:wide={widget === WIDGET_KIND.STREAM_RULES || widget === WIDGET_KIND.MARKET_SLUGS}
-          class:checkbox-field={schema.type === 'boolean'}
+          class:checkbox-field={schema.type === "boolean"}
         >
           <label class="field-label" id={labelId} for={`${labelId}-input`}>{fieldLabel(name, schema)}</label>
-          {#if typeof schema.description === 'string'}
+          {#if typeof schema.description === "string"}
             <span class="field-helper" id={helperId}>{schema.description}</span>
           {/if}
 
           {#if widget === WIDGET_KIND.MARKET_SLUGS}
             <MarketSelector
-              value={Array.isArray(inputs[name]) ? inputs[name].filter((value: unknown): value is string => typeof value === 'string') : []}
+              value={Array.isArray(inputs[name])
+                ? inputs[name].filter((value: unknown): value is string => typeof value === "string")
+                : []}
               onchange={(slugs) => update(name, slugs)}
               {labelId}
               descriptionId={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
@@ -203,18 +190,12 @@
             <textarea
               id={`${labelId}-input`}
               rows="3"
-              value={Array.isArray(inputs[name]) ? inputs[name].join('\n') : ''}
+              value={Array.isArray(inputs[name]) ? inputs[name].join("\n") : ""}
               oninput={(event) => updateList(name, event.currentTarget.value)}
               placeholder="One wallet address per line"
               aria-labelledby={labelId}
-              aria-describedby={fieldDescription(
-                helperId,
-                hasHelper,
-                errorId,
-                fieldIssues.length > 0
-              )}
-              aria-invalid={fieldIssues.length > 0}
-            ></textarea>
+              aria-describedby={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
+              aria-invalid={fieldIssues.length > 0}></textarea>
           {:else if widget === WIDGET_KIND.STREAM_RULES}
             <textarea
               id={`${labelId}-input`}
@@ -223,49 +204,33 @@
               oninput={(event) => updateJson(name, event.currentTarget.value)}
               spellcheck="false"
               aria-labelledby={labelId}
-              aria-describedby={fieldDescription(
-                helperId,
-                hasHelper,
-                errorId,
-                fieldIssues.length > 0
-              )}
-              aria-invalid={fieldIssues.length > 0}
-            ></textarea>
-          {:else if schema.type === 'boolean'}
+              aria-describedby={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
+              aria-invalid={fieldIssues.length > 0}></textarea>
+          {:else if schema.type === "boolean"}
             <input
               id={`${labelId}-input`}
               type="checkbox"
               checked={inputs[name] === true}
               onchange={(event) => update(name, event.currentTarget.checked)}
               aria-labelledby={labelId}
-              aria-describedby={fieldDescription(
-                helperId,
-                hasHelper,
-                errorId,
-                fieldIssues.length > 0
-              )}
+              aria-describedby={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
               aria-invalid={fieldIssues.length > 0}
             />
           {:else}
             <input
               id={`${labelId}-input`}
-              type={widget === WIDGET_KIND.DECIMAL ? 'text' : inputType(field)}
-              inputmode={widget === WIDGET_KIND.DECIMAL ? 'decimal' : undefined}
-              value={String(inputs[name] ?? '')}
-              required={Array.isArray(descriptor.input_schema.required) && descriptor.input_schema.required.includes(name)}
-              min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
-              max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
-              step={inputType(field) === 'number' ? '1' : undefined}
+              type={widget === WIDGET_KIND.DECIMAL ? "text" : inputType(field)}
+              inputmode={widget === WIDGET_KIND.DECIMAL ? "decimal" : undefined}
+              value={String(inputs[name] ?? "")}
+              required={Array.isArray(descriptor.input_schema.required) &&
+                descriptor.input_schema.required.includes(name)}
+              min={typeof schema.minimum === "number" ? schema.minimum : undefined}
+              max={typeof schema.maximum === "number" ? schema.maximum : undefined}
+              step={inputType(field) === "number" ? "1" : undefined}
               aria-labelledby={labelId}
-              aria-describedby={fieldDescription(
-                helperId,
-                hasHelper,
-                errorId,
-                fieldIssues.length > 0
-              )}
+              aria-describedby={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
               aria-invalid={fieldIssues.length > 0}
-              oninput={(event) =>
-                update(name, parseFieldInput(field, event.currentTarget.value))}
+              oninput={(event) => update(name, parseFieldInput(field, event.currentTarget.value))}
             />
           {/if}
           {#if fieldIssues.length > 0}
@@ -296,5 +261,9 @@
 </form>
 
 <style>
-  .form-field { display: grid; gap: 8px; min-width: 0; }
+  .form-field {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
 </style>

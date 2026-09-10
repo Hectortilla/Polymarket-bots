@@ -1,5 +1,5 @@
-import { EVENT_KIND, INITIAL_EVENT_CURSOR, type PersistedDurableEvent } from './durableEvents';
-import { RUN_STATUS, runStatusLabel } from './status';
+import { EVENT_KIND, INITIAL_EVENT_CURSOR, type PersistedDurableEvent } from "./durableEvents";
+import { RUN_STATUS, runStatusLabel } from "./status";
 
 export function eventSummary(event: PersistedDurableEvent): string {
   switch (event.kind) {
@@ -62,11 +62,7 @@ function latestRuntimeFailureBefore(
   let latestId = INITIAL_EVENT_CURSOR;
   let detail: string | null = null;
   for (const event of events) {
-    if (
-      event.id < lifecycleEvent.id &&
-      event.id > latestId &&
-      event.kind === EVENT_KIND.runFailure
-    ) {
+    if (event.id < lifecycleEvent.id && event.id > latestId && event.kind === EVENT_KIND.runFailure) {
       latestId = event.id;
       detail = event.payload.error;
     }
@@ -75,10 +71,10 @@ function latestRuntimeFailureBefore(
 }
 
 function fillSummary(
-  fill: Extract<PersistedDurableEvent, { kind: typeof EVENT_KIND.brokerFill }>['payload']['fill'],
+  fill: Extract<PersistedDurableEvent, { kind: typeof EVENT_KIND.brokerFill }>["payload"]["fill"],
 ): string {
   const rejection = [fill.reject_reason, fill.reject_message]
     .filter((detail): detail is string => Boolean(detail))
-    .join(': ');
-  return `${fill.status} / ${fill.filled_size} filled${rejection ? ` / ${rejection}` : ''}`;
+    .join(": ");
+  return `${fill.status} / ${fill.filled_size} filled${rejection ? ` / ${rejection}` : ""}`;
 }

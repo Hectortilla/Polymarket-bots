@@ -1,20 +1,20 @@
 <script lang="ts">
-  import type { ChartSamplePayload, WalletChartPointPayload } from '$lib/api/generated';
-  import { onMount } from 'svelte';
-  import './dashboard.css';
+  import type { ChartSamplePayload, WalletChartPointPayload } from "$lib/api/generated";
+  import { onMount } from "svelte";
+  import "./dashboard.css";
 
-  import { chartWindowPoints } from './chartWindow';
+  import { chartWindowPoints } from "./chartWindow";
   import {
     DASHBOARD_KEY,
     INITIAL_TIME_ZOOM_LEVEL,
     MAX_CHART_HISTORY_POINTS,
     MAX_TIME_ZOOM_LEVEL,
     MIN_TIME_ZOOM_LEVEL,
-  } from './contracts';
-  import { DASHBOARD_COPY } from './copy';
-  import EquityChart from './EquityChart.svelte';
-  import MarketChart from './MarketChart.svelte';
-  import WalletChart from './WalletChart.svelte';
+  } from "./contracts";
+  import { DASHBOARD_COPY } from "./copy";
+  import EquityChart from "./EquityChart.svelte";
+  import MarketChart from "./MarketChart.svelte";
+  import WalletChart from "./WalletChart.svelte";
 
   const BASE_WINDOW_POINTS = 180;
   const MIN_WINDOW_POINTS = 12;
@@ -30,7 +30,7 @@
     configuredWallets?: string[];
     terminal?: boolean;
   } = $props();
-  let view = $state<'market' | 'wallet'>('market');
+  let view = $state<"market" | "wallet">("market");
   let zoom = $state(INITIAL_TIME_ZOOM_LEVEL);
   let panel: HTMLElement;
   let panelInObservationRange = $state(false);
@@ -43,12 +43,9 @@
   );
   const chartSamples = $derived(renderedSamples.slice(-windowPoints));
   const chartTimeRangeMs = $derived.by(() => {
-    const chartStartMs =
-      chartSamples[0]?.sampled_at_ms ?? renderedWalletTimelinePoints[0]?.trade_timestamp_ms ?? 0;
+    const chartStartMs = chartSamples[0]?.sampled_at_ms ?? renderedWalletTimelinePoints[0]?.trade_timestamp_ms ?? 0;
     const chartEndMs =
-      chartSamples.at(-1)?.sampled_at_ms ??
-      renderedWalletTimelinePoints.at(-1)?.trade_timestamp_ms ??
-      chartStartMs + 1;
+      chartSamples.at(-1)?.sampled_at_ms ?? renderedWalletTimelinePoints.at(-1)?.trade_timestamp_ms ?? chartStartMs + 1;
     return [chartStartMs, Math.max(chartStartMs + 1, chartEndMs)] as const;
   });
   $effect(() => {
@@ -59,21 +56,20 @@
 
   onMount(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
-        return;
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       handleControl(event.key.toLowerCase());
     };
-    window.addEventListener('keydown', keydown);
+    window.addEventListener("keydown", keydown);
     const visibility = new IntersectionObserver(
       ([entry]) => {
         panelInObservationRange = entry?.isIntersecting ?? false;
         chartsActivated ||= panelInObservationRange;
       },
-      { rootMargin: '200px 0px' },
+      { rootMargin: "200px 0px" },
     );
     visibility.observe(panel);
     return () => {
-      window.removeEventListener('keydown', keydown);
+      window.removeEventListener("keydown", keydown);
       visibility.disconnect();
     };
   });
@@ -83,7 +79,7 @@
     else if (key === DASHBOARD_KEY.wider) zoom = Math.min(MAX_TIME_ZOOM_LEVEL, zoom + 1);
     else if (key === DASHBOARD_KEY.reset) zoom = INITIAL_TIME_ZOOM_LEVEL;
     else if (key === DASHBOARD_KEY.view) {
-      view = view === 'market' ? 'wallet' : 'market';
+      view = view === "market" ? "wallet" : "market";
     }
   }
 </script>
@@ -92,32 +88,28 @@
   <div class="dashboard-toolbar">
     <div>
       <p class="page-kicker">{terminal ? DASHBOARD_COPY.RUN_HISTORY : DASHBOARD_COPY.LIVE}</p>
-      <h2>{view === 'market' ? DASHBOARD_COPY.MARKET_PRICES : DASHBOARD_COPY.WALLET_ACTIVITY}</h2>
+      <h2>{view === "market" ? DASHBOARD_COPY.MARKET_PRICES : DASHBOARD_COPY.WALLET_ACTIVITY}</h2>
     </div>
     <div class="dashboard-controls" aria-label={DASHBOARD_COPY.CONTROLS_ARIA_LABEL}>
       <button
-        class:active={view === 'wallet'}
+        class:active={view === "wallet"}
         onclick={() => handleControl(DASHBOARD_KEY.view)}
-        title={`Keyboard: ${DASHBOARD_KEY.view}`}
-        >{DASHBOARD_KEY.view} · {DASHBOARD_COPY.CONTROL_VIEW}</button
+        title={`Keyboard: ${DASHBOARD_KEY.view}`}>{DASHBOARD_KEY.view} · {DASHBOARD_COPY.CONTROL_VIEW}</button
       >
       <button
         onclick={() => handleControl(DASHBOARD_KEY.closer)}
         disabled={zoom === MIN_TIME_ZOOM_LEVEL}
-        title={`Keyboard: ${DASHBOARD_KEY.closer}`}
-        >{DASHBOARD_KEY.closer} · {DASHBOARD_COPY.CONTROL_CLOSER}</button
+        title={`Keyboard: ${DASHBOARD_KEY.closer}`}>{DASHBOARD_KEY.closer} · {DASHBOARD_COPY.CONTROL_CLOSER}</button
       >
       <button
         onclick={() => handleControl(DASHBOARD_KEY.wider)}
         disabled={zoom === MAX_TIME_ZOOM_LEVEL}
-        title={`Keyboard: ${DASHBOARD_KEY.wider}`}
-        >{DASHBOARD_KEY.wider} · {DASHBOARD_COPY.CONTROL_WIDER}</button
+        title={`Keyboard: ${DASHBOARD_KEY.wider}`}>{DASHBOARD_KEY.wider} · {DASHBOARD_COPY.CONTROL_WIDER}</button
       >
       <button
         onclick={() => handleControl(DASHBOARD_KEY.reset)}
         disabled={zoom === INITIAL_TIME_ZOOM_LEVEL}
-        title={`Keyboard: ${DASHBOARD_KEY.reset}`}
-        >{DASHBOARD_KEY.reset} · {DASHBOARD_COPY.CONTROL_RESET}</button
+        title={`Keyboard: ${DASHBOARD_KEY.reset}`}>{DASHBOARD_KEY.reset} · {DASHBOARD_COPY.CONTROL_RESET}</button
       >
     </div>
   </div>
@@ -131,7 +123,7 @@
   {:else}
     <div class="dashboard-grid" data-layout="stacked">
       <div class="primary-chart">
-        {#if view === 'market'}
+        {#if view === "market"}
           <MarketChart samples={chartSamples} />
         {:else}
           <WalletChart

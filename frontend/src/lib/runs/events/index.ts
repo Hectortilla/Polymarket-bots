@@ -1,13 +1,23 @@
-import type { LiveRunEvent, PersistedDurableEvent as GeneratedPersistedDurableEvent, StreamRunEventsApiV1RunsRunIdEventsStreamGetData } from '$lib/api/generated';
-import { accountSession } from '$lib/auth/session';
-import { client } from '$lib/api/generated/client.gen';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { eventCursorQuery, isTerminalLifecycleEvent, persistedDurableEvent, type PersistedDurableEvent } from '../durableEvents';
-import { liveRunEvent } from './live';
+import type {
+  LiveRunEvent,
+  PersistedDurableEvent as GeneratedPersistedDurableEvent,
+  StreamRunEventsApiV1RunsRunIdEventsStreamGetData,
+} from "$lib/api/generated";
+import { accountSession } from "$lib/auth/session";
+import { client } from "$lib/api/generated/client.gen";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import {
+  eventCursorQuery,
+  isTerminalLifecycleEvent,
+  persistedDurableEvent,
+  type PersistedDurableEvent,
+} from "../durableEvents";
+import { liveRunEvent } from "./live";
 
-export const STREAM_CONNECTION_STATE = { CONNECTED: 'connected', RECONNECTING: 'reconnecting' } as const;
-export type StreamConnectionState = typeof STREAM_CONNECTION_STATE[keyof typeof STREAM_CONNECTION_STATE];
-const RUN_EVENTS_STREAM_PATH = runtimeContract.apiPaths.runEventsStream as StreamRunEventsApiV1RunsRunIdEventsStreamGetData['url'];
+export const STREAM_CONNECTION_STATE = { CONNECTED: "connected", RECONNECTING: "reconnecting" } as const;
+export type StreamConnectionState = (typeof STREAM_CONNECTION_STATE)[keyof typeof STREAM_CONNECTION_STATE];
+const RUN_EVENTS_STREAM_PATH = runtimeContract.apiPaths
+  .runEventsStream as StreamRunEventsApiV1RunsRunIdEventsStreamGetData["url"];
 
 export type EventStreamOpener = (
   runId: string,
@@ -59,7 +69,6 @@ export function runEventStreamUrl(runId: string, afterEventId: number): string {
     query: eventCursorQuery(afterEventId),
   });
 }
-
 
 function parseDurableEvent(data: unknown, runId: string): PersistedDurableEvent | null {
   try {

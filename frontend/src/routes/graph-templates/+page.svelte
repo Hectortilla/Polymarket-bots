@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { SERVICE_NAME } from '$lib/serviceIdentity';
-  import { NAVIGATION_LABEL } from '$lib/navigation';
-  import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { SERVICE_NAME } from "$lib/serviceIdentity";
+  import { NAVIGATION_LABEL } from "$lib/navigation";
+  import { goto } from "$app/navigation";
+  import { onMount } from "svelte";
 
-  import { NAVIGATION_PATH } from '$lib/navigation';
+  import { NAVIGATION_PATH } from "$lib/navigation";
 
   onMount(() => {
     void goto(NAVIGATION_PATH.NEW_BOT, { replaceState: true });

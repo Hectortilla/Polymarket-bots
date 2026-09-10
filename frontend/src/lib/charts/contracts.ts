@@ -1,5 +1,5 @@
-import type { ValuationStatus } from '$lib/api/generated';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import type { ValuationStatus } from "$lib/api/generated";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
 type ValuationStatusContract = {
   [Key in keyof typeof runtimeContract.valuationStatus]: Extract<ValuationStatus, Lowercase<Key>>;
@@ -23,10 +23,7 @@ export const VALUATION_STATUS = {
   unavailable: valuationStatusContract.UNAVAILABLE,
 } as const satisfies Record<string, ValuationStatus>;
 
-export type AvailableValuationStatus = Exclude<
-  ValuationStatus,
-  typeof VALUATION_STATUS.unavailable
->;
+export type AvailableValuationStatus = Exclude<ValuationStatus, typeof VALUATION_STATUS.unavailable>;
 
 export const DASHBOARD_KEY = {
   closer: runtimeContract.dashboard.keys.CLOSER,

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
-  import { getContext } from 'svelte';
-  import NodeIssues from './NodeIssues.svelte';
+  import { Handle, Position } from "@xyflow/svelte";
+  import { getContext } from "svelte";
+  import NodeIssues from "./NodeIssues.svelte";
 
-  import type { GraphTriggerNodeData } from '$lib/api/generated';
-  import { triggerForNode } from '$lib/catalog/nodeGraph/catalog';
-  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
+  import type { GraphTriggerNodeData } from "$lib/api/generated";
+  import { triggerForNode } from "$lib/catalog/nodeGraph/catalog";
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
-  let { id = '', data }: { id?: string; data: GraphTriggerNodeData } = $props();
+  let { id = "", data }: { id?: string; data: GraphTriggerNodeData } = $props();
 
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const trigger = $derived(triggerForNode(editor.catalog, data));
@@ -21,12 +21,7 @@
 
   <div class="output context-output">
     <span>Context</span>
-    <Handle
-      type="source"
-      position={Position.Right}
-      id={trigger.context_handle_id}
-      isConnectable={!editor.readOnly}
-    />
+    <Handle type="source" position={Position.Right} id={trigger.context_handle_id} isConnectable={!editor.readOnly} />
   </div>
 
   {#if trigger.payload}
@@ -38,7 +33,7 @@
           <small>
             {field.collection
               ? `collection<${field.value_type}>`
-              : (field.scalar_type ?? field.value_type)}{field.nullable ? ' | null' : ''}
+              : (field.scalar_type ?? field.value_type)}{field.nullable ? " | null" : ""}
           </small>
           <Handle
             type="source"
@@ -75,7 +70,7 @@
   }
 
   header strong {
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.88rem;
   }
 
@@ -94,7 +89,7 @@
   .context-output {
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--line);
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.76rem;
   }
 
@@ -120,7 +115,7 @@
 
   .field-output span {
     overflow: hidden;
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.72rem;
     text-overflow: ellipsis;
     white-space: nowrap;

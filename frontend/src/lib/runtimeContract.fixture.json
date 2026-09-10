@@ -64,11 +64,7 @@
     }
   },
   "auth": {
-    "csrfSafeMethods": [
-      "GET",
-      "HEAD",
-      "OPTIONS"
-    ],
+    "csrfSafeMethods": ["GET", "HEAD", "OPTIONS"],
     "jsonContentType": "application/json",
     "contentTypeHeader": "Content-Type",
     "passwordMinLength": 15,
@@ -155,10 +151,7 @@
     "firstWalletNotionalTier": 1,
     "nonpositiveMaxNotionalThreshold": "0",
     "walletNotionalTierDenominator": 3,
-    "walletNotionalTierUpperNumerators": [
-      1,
-      2
-    ],
+    "walletNotionalTierUpperNumerators": [1, 2],
     "walletBucketPolicy": {
       "clampToLastColumn": true,
       "rounding": "floor"
@@ -276,13 +269,8 @@
     "tokenCount": 2
   },
   "chartValueStatus": {
-    "nullValue": [
-      "unavailable"
-    ],
-    "valueRequired": [
-      "fresh",
-      "stale"
-    ]
+    "nullValue": ["unavailable"],
+    "valueRequired": ["fresh", "stale"]
   },
   "portfolio": {
     "emptyPositionRequiresNullPrice": true,
@@ -315,16 +303,8 @@
   },
   "runStatus": {
     "initial": "starting",
-    "stoppable": [
-      "queued",
-      "running",
-      "starting"
-    ],
-    "terminal": [
-      "failed",
-      "interrupted",
-      "stopped"
-    ],
+    "stoppable": ["queued", "running", "starting"],
+    "terminal": ["failed", "interrupted", "stopped"],
     "values": {
       "QUEUED": "queued",
       "STARTING": "starting",

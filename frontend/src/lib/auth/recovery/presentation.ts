@@ -1,6 +1,6 @@
-import type { AccountStatus, SessionRevocation } from '$lib/api/generated';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { ACCOUNT_COPY } from './copy';
+import type { AccountStatus, SessionRevocation } from "$lib/api/generated";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { ACCOUNT_COPY } from "./copy";
 
 type RevocationContract = {
   [Key in keyof typeof runtimeContract.accountManagement.sessionRevocation]: Extract<SessionRevocation, Lowercase<Key>>;

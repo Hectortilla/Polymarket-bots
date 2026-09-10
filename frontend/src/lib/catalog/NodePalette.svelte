@@ -1,18 +1,18 @@
 <script module lang="ts">
-  export const ADD_NODE_LABEL = 'Add node';
+  export const ADD_NODE_LABEL = "Add node";
 </script>
 
 <script lang="ts">
-  import CaretRightIcon from 'phosphor-svelte/lib/CaretRightIcon';
-  import { tick } from 'svelte';
-  import ArrowsLeftRightIcon from 'phosphor-svelte/lib/ArrowsLeftRightIcon';
-  import HashStraightIcon from 'phosphor-svelte/lib/HashStraightIcon';
-  import LightningIcon from 'phosphor-svelte/lib/LightningIcon';
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
-  import ShoppingCartSimpleIcon from 'phosphor-svelte/lib/ShoppingCartSimpleIcon';
-  import TagIcon from 'phosphor-svelte/lib/TagIcon';
-  import TextTIcon from 'phosphor-svelte/lib/TextTIcon';
-  import ToggleLeftIcon from 'phosphor-svelte/lib/ToggleLeftIcon';
+  import CaretRightIcon from "phosphor-svelte/lib/CaretRightIcon";
+  import { tick } from "svelte";
+  import ArrowsLeftRightIcon from "phosphor-svelte/lib/ArrowsLeftRightIcon";
+  import HashStraightIcon from "phosphor-svelte/lib/HashStraightIcon";
+  import LightningIcon from "phosphor-svelte/lib/LightningIcon";
+  import PlusIcon from "phosphor-svelte/lib/PlusIcon";
+  import ShoppingCartSimpleIcon from "phosphor-svelte/lib/ShoppingCartSimpleIcon";
+  import TagIcon from "phosphor-svelte/lib/TagIcon";
+  import TextTIcon from "phosphor-svelte/lib/TextTIcon";
+  import ToggleLeftIcon from "phosphor-svelte/lib/ToggleLeftIcon";
 
   import type {
     GraphOperationDescriptor,
@@ -22,12 +22,12 @@
     GraphConstantDescriptor,
     GraphNodeCatalog,
     GraphTriggerDescriptor,
-  } from '$lib/api/generated';
-  import { SIDE } from '$lib/sides';
-  import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
-  import { triggerAlreadyExists } from '$lib/catalog/nodeGraph/catalog';
-  import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
-  import { GRAPH_SCALAR_TYPE } from './graphContracts';
+  } from "$lib/api/generated";
+  import { SIDE } from "$lib/sides";
+  import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
+  import { triggerAlreadyExists } from "$lib/catalog/nodeGraph/catalog";
+  import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
+  import { GRAPH_SCALAR_TYPE } from "./graphContracts";
 
   let {
     catalog,
@@ -54,7 +54,7 @@
   } = $props();
 
   type NodeCategory = (typeof GRAPH_NODE_TYPE)[keyof typeof GRAPH_NODE_TYPE];
-  type PaletteIcon = 'trigger' | 'boolean' | 'number' | 'string' | 'comparison' | 'buy' | 'sell';
+  type PaletteIcon = "trigger" | "boolean" | "number" | "string" | "comparison" | "buy" | "sell";
 
   type PaletteItem = {
     id: string;
@@ -72,33 +72,33 @@
   const categories = [
     {
       id: GRAPH_NODE_TYPE.operation,
-      label: 'Operations',
-      description: 'Calculate, control signals, query your portfolio, and inspect results.',
+      label: "Operations",
+      description: "Calculate, control signals, query your portfolio, and inspect results.",
     },
     {
       id: GRAPH_NODE_TYPE.parameter,
-      label: 'Parameters',
-      description: 'Reuse named strategy settings.',
+      label: "Parameters",
+      description: "Reuse named strategy settings.",
     },
     {
       id: GRAPH_NODE_TYPE.trigger,
-      label: 'Triggers',
-      description: 'Start a branch from a runtime event.',
+      label: "Triggers",
+      description: "Start a branch from a runtime event.",
     },
     {
       id: GRAPH_NODE_TYPE.constant,
-      label: 'Values',
-      description: 'Supply a typed value to another node.',
+      label: "Values",
+      description: "Supply a typed value to another node.",
     },
     {
       id: GRAPH_NODE_TYPE.comparison,
-      label: 'Comparisons',
-      description: 'Compare compatible values.',
+      label: "Comparisons",
+      description: "Compare compatible values.",
     },
     {
       id: GRAPH_NODE_TYPE.brokerAction,
-      label: 'Actions',
-      description: 'Submit a fixed-side paper order.',
+      label: "Actions",
+      description: "Submit a fixed-side paper order.",
     },
   ] as const satisfies ReadonlyArray<{
     id: NodeCategory;
@@ -107,7 +107,7 @@
   }>;
 
   let open = $state(false);
-  let query = $state('');
+  let query = $state("");
   let expandedGroups = $state<Record<string, boolean>>({ [GRAPH_NODE_TYPE.operation]: true });
   let searchExpansion = $state<Record<string, boolean>>({});
   let searchInput = $state<HTMLInputElement>();
@@ -122,17 +122,17 @@
 
     return [
       {
-        id: 'comparison',
+        id: "comparison",
         category: GRAPH_NODE_TYPE.comparison,
-        icon: 'comparison',
-        name: 'Comparison',
-        description: 'Compare two compatible values with a selectable operator.',
-        meta: `${operatorCount} ${operatorCount === 1 ? 'operator' : 'operators'}`,
+        icon: "comparison",
+        name: "Comparison",
+        description: "Compare two compatible values with a selectable operator.",
+        meta: `${operatorCount} ${operatorCount === 1 ? "operator" : "operators"}`,
         searchTerms: [
-          'comparison',
-          'logic',
+          "comparison",
+          "logic",
           ...comparisons.flatMap((comparison) => [comparison.display_name, comparison.operator]),
-        ].join(' '),
+        ].join(" "),
         disabled: false,
         select: () => onaddcomparison(defaultComparison),
       },
@@ -142,20 +142,20 @@
   function constantIcon(constant: GraphConstantDescriptor): PaletteIcon {
     switch (constant.scalar_type) {
       case GRAPH_SCALAR_TYPE.boolean:
-        return 'boolean';
+        return "boolean";
       case GRAPH_SCALAR_TYPE.number:
-        return 'number';
+        return "number";
       case GRAPH_SCALAR_TYPE.string:
-        return 'string';
+        return "string";
     }
   }
 
   function actionIcon(action: GraphBrokerActionDescriptor): PaletteIcon {
     switch (action.side) {
       case SIDE.buy:
-        return 'buy';
+        return "buy";
       case SIDE.sell:
-        return 'sell';
+        return "sell";
     }
   }
 
@@ -164,7 +164,7 @@
       id: operation.operation,
       category: GRAPH_NODE_TYPE.operation,
       subgroup: operation.category,
-      icon: 'comparison' as const,
+      icon: "comparison" as const,
       name: operation.display_name,
       description: operation.category,
       meta: operation.category,
@@ -175,9 +175,9 @@
     ...parameters.map((parameter) => ({
       id: parameter.id,
       category: GRAPH_NODE_TYPE.parameter,
-      icon: 'number' as const,
+      icon: "number" as const,
       name: parameter.name,
-      description: 'Named strategy parameter',
+      description: "Named strategy parameter",
       meta: parameter.data.scalar_type,
       searchTerms: parameter.name,
       disabled: additionDisabled,
@@ -186,13 +186,13 @@
     ...catalog.triggers.map((trigger) => ({
       id: `trigger-${trigger.hook_name}`,
       category: GRAPH_NODE_TYPE.trigger,
-      icon: 'trigger' as const,
+      icon: "trigger" as const,
       name: trigger.hook_name,
       description: trigger.payload
         ? `Start with ${trigger.payload.type_name} data.`
-        : 'Start from a bot lifecycle event.',
-      meta: 'event',
-      searchTerms: `${trigger.hook_name} ${trigger.payload?.type_name ?? ''}`,
+        : "Start from a bot lifecycle event.",
+      meta: "event",
+      searchTerms: `${trigger.hook_name} ${trigger.payload?.type_name ?? ""}`,
       disabled: additionDisabled || triggerAlreadyExists(nodes, trigger),
       select: () => onaddtrigger(trigger),
     })),
@@ -230,9 +230,7 @@
       .map((category) => ({
         ...category,
         items: paletteItems.filter(
-          (item) =>
-            item.category === category.id &&
-            item.searchTerms.toLocaleLowerCase().includes(normalizedQuery),
+          (item) => item.category === category.id && item.searchTerms.toLocaleLowerCase().includes(normalizedQuery),
         ),
       }))
       .filter((category) => category.items.length > 0),
@@ -260,9 +258,7 @@
     searchExpansion = {};
   });
 
-  const visibleItemCount = $derived(
-    visibleGroups.reduce((count, group) => count + group.items.length, 0),
-  );
+  const visibleItemCount = $derived(visibleGroups.reduce((count, group) => count + group.items.length, 0));
 
   $effect(() => {
     if (open)
@@ -283,12 +279,12 @@
 
   function togglePalette(): void {
     open = !open;
-    if (!open) query = '';
+    if (!open) query = "";
   }
 
   function closePalette(): void {
     open = false;
-    query = '';
+    query = "";
     triggerButton?.focus();
   }
 
@@ -299,7 +295,7 @@
   }
 
   function handleWindowKeydown(event: KeyboardEvent): void {
-    if (open && event.key === 'Escape') closePalette();
+    if (open && event.key === "Escape") closePalette();
   }
 </script>
 
@@ -314,17 +310,17 @@
         onclick={() => addItem(item)}
       >
         <span class="palette-icon" aria-hidden="true">
-          {#if item.icon === 'trigger'}
+          {#if item.icon === "trigger"}
             <LightningIcon aria-hidden="true" size={18} />
-          {:else if item.icon === 'boolean'}
+          {:else if item.icon === "boolean"}
             <ToggleLeftIcon aria-hidden="true" size={18} />
-          {:else if item.icon === 'number'}
+          {:else if item.icon === "number"}
             <HashStraightIcon aria-hidden="true" size={18} />
-          {:else if item.icon === 'string'}
+          {:else if item.icon === "string"}
             <TextTIcon aria-hidden="true" size={18} />
-          {:else if item.icon === 'comparison'}
+          {:else if item.icon === "comparison"}
             <ArrowsLeftRightIcon aria-hidden="true" size={18} />
-          {:else if item.icon === 'buy'}
+          {:else if item.icon === "buy"}
             <ShoppingCartSimpleIcon aria-hidden="true" size={18} />
           {:else}
             <TagIcon aria-hidden="true" size={18} />
@@ -332,7 +328,7 @@
         </span>
         <span class="item-heading">
           <strong>{item.name}</strong>
-          <small>{item.disabled ? 'On canvas' : item.meta}</small>
+          <small>{item.disabled ? "On canvas" : item.meta}</small>
         </span>
         <span>{item.description}</span>
       </button>
@@ -392,9 +388,7 @@
               <span class="group-chevron" class:expanded={groupIsExpanded(group.id)}
                 ><CaretRightIcon size={14} aria-hidden="true" /></span
               >
-              <span class="group-heading"
-                ><strong>{group.label}</strong><small>{group.description}</small></span
-              >
+              <span class="group-heading"><strong>{group.label}</strong><small>{group.description}</small></span>
               <span class="group-count">{group.items.length}</span>
             </button>
             <div id={`palette-items-${group.id}`} hidden={!groupIsExpanded(group.id)}>
@@ -412,9 +406,7 @@
                       <span class="group-chevron" class:expanded={groupIsExpanded(subgroup.id)}
                         ><CaretRightIcon size={13} aria-hidden="true" /></span
                       >
-                      <strong>{subgroup.label}</strong><span class="group-count"
-                        >{subgroup.items.length}</span
-                      >
+                      <strong>{subgroup.label}</strong><span class="group-count">{subgroup.items.length}</span>
                     </button>
                     <div id={`palette-items-${subgroup.id}`} hidden={!groupIsExpanded(subgroup.id)}>
                       {@render itemGrid(subgroup.items)}
@@ -495,7 +487,7 @@
     grid-column: 2;
     grid-row: 1;
     color: var(--text-muted);
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.68rem;
   }
 
@@ -642,7 +634,7 @@
 
   .item-heading strong,
   .item-heading small {
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
   }
 
   .item-heading strong {

@@ -1,25 +1,18 @@
-import {
-  isPersistedEventId,
-  persistedDurableEvent,
-  persistedEventPage,
-} from '$lib/runs/durableEvents';
+import { isPersistedEventId, persistedDurableEvent, persistedEventPage } from "$lib/runs/durableEvents";
 
-import { liveRunEvent } from '$lib/runs/events/live';
+import { liveRunEvent } from "$lib/runs/events/live";
 
-import { isNonemptyString, isRecord } from '$lib/valueGuards';
+import { isNonemptyString, isRecord } from "$lib/valueGuards";
 
 export function isEventPage(value: Record<string, unknown>, expectedRunId?: string): boolean {
   if (!Array.isArray(value.events)) return false;
-  if (value.next_before_event_id !== null && !isPersistedEventId(value.next_before_event_id))
-    return false;
+  if (value.next_before_event_id !== null && !isPersistedEventId(value.next_before_event_id)) return false;
   if (expectedRunId !== undefined) {
     return persistedEventPage(value, expectedRunId) !== null;
   }
   return value.events.every(
     (event) =>
-      isRecord(event) &&
-      typeof event.run_id === 'string' &&
-      persistedDurableEvent(event, event.run_id) !== null,
+      isRecord(event) && typeof event.run_id === "string" && persistedDurableEvent(event, event.run_id) !== null,
   );
 }
 

@@ -1,15 +1,12 @@
-import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from '$lib/api/http';
-import { describe, expect, it, vi } from 'vitest';
+import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from "$lib/api/http";
+import { describe, expect, it, vi } from "vitest";
 import {
   createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
   readBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGet,
-} from './generated/sdk.gen';
+} from "./generated/sdk.gen";
 
-import {
-  configureApiResponseValidation,
-  validateControlPlaneResponse,
-} from '$lib/api/responseValidation/index';
-import catalogContract from '$lib/catalog/catalogContract.fixture.json';
+import { configureApiResponseValidation, validateControlPlaneResponse } from "$lib/api/responseValidation/index";
+import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 import {
   BOOLEAN_CONSTANT,
   EQUAL_COMPARISON,
@@ -17,25 +14,25 @@ import {
   ON_WALLET_TRADE_TRIGGER,
   TEST_GRAPH,
   THRESHOLD_BUY_GRAPH,
-} from '$lib/catalog/nodeGraphTestFixtures';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { client } from './generated/client.gen';
+} from "$lib/catalog/nodeGraphTestFixtures";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { client } from "./generated/client.gen";
 import {
   createBotApiV1BotsPost,
   lookupMarkets,
   readUsage,
   readRunEventsApiV1RunsRunIdEventsGet,
   searchMarkets,
-} from './generated/sdk.gen';
+} from "./generated/sdk.gen";
 
-const RUN_ID = '00000000-0000-4000-8000-000000000001';
-const BOT_ID = '00000000-0000-4000-8000-000000000002';
-const CREATED_AT = '2026-09-02T00:00:00Z';
+const RUN_ID = "00000000-0000-4000-8000-000000000001";
+const BOT_ID = "00000000-0000-4000-8000-000000000002";
+const CREATED_AT = "2026-09-02T00:00:00Z";
 const PAPER_CONFIG = {
-  name: 'Winner',
-  paper_portfolio_usdc: '1000',
-  max_order_size: '10',
-  max_slippage_pct: '0.01',
+  name: "Winner",
+  paper_portfolio_usdc: "1000",
+  max_order_size: "10",
+  max_slippage_pct: "0.01",
   paper_latency_ms: 0,
   paper_latency_jitter_ms: 0,
   event_max_age_ms: 5000,
@@ -43,28 +40,28 @@ const PAPER_CONFIG = {
   stream_rules: [],
 };
 const DEFINITION = {
-  definition_id: 'winner',
-  display_name: 'Winner',
-  description: 'Trades a resolved market.',
+  definition_id: "winner",
+  display_name: "Winner",
+  description: "Trades a resolved market.",
   label: catalogContract.botDefinitionLabel.STANDARD,
   input_schema: {},
   market_selection: catalogContract.selectionMode.USER_CONFIGURED,
   wallet_selection: catalogContract.selectionMode.ABSENT,
 };
 
-describe('control-plane response validation', () => {
-  it('validates market suggestions for the exact discovery operation', async () => {
+describe("control-plane response validation", () => {
+  it("validates market suggestions for the exact discovery operation", async () => {
     configureApiResponseValidation();
     const market = {
-      slug: 'market',
-      condition_id: 'condition',
-      question: 'A question?',
+      slug: "market",
+      condition_id: "condition",
+      question: "A question?",
       event_title: null,
       end_date: null,
       is_open_for_trading: true,
     };
     const transport = (data: unknown) => ({
-      baseUrl: 'http://control-plane.test',
+      baseUrl: "http://control-plane.test",
       throwOnError: true as const,
       fetch: async () =>
         new Response(JSON.stringify(data), {
@@ -73,43 +70,43 @@ describe('control-plane response validation', () => {
     });
     await expect(
       searchMarkets({
-        query: { q: 'market' },
+        query: { q: "market" },
         ...transport({ markets: [market], has_more: false }),
       }),
-    ).resolves.toHaveProperty('data.markets', [market]);
+    ).resolves.toHaveProperty("data.markets", [market]);
     await expect(
       lookupMarkets({
         body: { slugs: [market.slug] },
         ...transport([{ ...market, is_open_for_trading: false }]),
       }),
-    ).resolves.toHaveProperty('data');
+    ).resolves.toHaveProperty("data");
     for (const malformed of [
-      { ...market, end_date: 'not a date' },
-      { ...market, question: '' },
-      { ...market, is_open_for_trading: 'true' },
+      { ...market, end_date: "not a date" },
+      { ...market, question: "" },
+      { ...market, is_open_for_trading: "true" },
       { ...market, is_open_for_trading: false },
     ]) {
       await expect(
         searchMarkets({
-          query: { q: 'market' },
+          query: { q: "market" },
           ...transport({ markets: [malformed], has_more: false }),
         }),
-      ).rejects.toThrow('failed operation validation');
+      ).rejects.toThrow("failed operation validation");
     }
     await expect(
       lookupMarkets({
         body: { slugs: [market.slug] },
         ...transport({ markets: [market], has_more: false }),
       }),
-    ).rejects.toThrow('failed operation validation');
+    ).rejects.toThrow("failed operation validation");
   });
 
-  it('accepts a valid run response', async () => {
+  it("accepts a valid run response", async () => {
     await expect(
       validateControlPlaneResponse({
         id: RUN_ID,
         bot_id: BOT_ID,
-        definition_id: 'winner',
+        definition_id: "winner",
         created_at: CREATED_AT,
         status: runtimeContract.runStatus.values.RUNNING,
         config: PAPER_CONFIG,
@@ -117,7 +114,7 @@ describe('control-plane response validation', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('accepts every REST response family and installs the client validator', async () => {
+  it("accepts every REST response family and installs the client validator", async () => {
     const graphRevision = {
       id: RUN_ID,
       bot_id: BOT_ID,
@@ -127,7 +124,7 @@ describe('control-plane response validation', () => {
     };
     const bot = {
       id: BOT_ID,
-      definition_id: 'winner',
+      definition_id: "winner",
       created_at: CREATED_AT,
       updated_at: CREATED_AT,
       config: PAPER_CONFIG,
@@ -135,7 +132,7 @@ describe('control-plane response validation', () => {
     };
     const template = {
       id: RUN_ID,
-      name: 'Starter',
+      name: "Starter",
       created_at: CREATED_AT,
       updated_at: CREATED_AT,
       graph: TEST_GRAPH,
@@ -179,37 +176,37 @@ describe('control-plane response validation', () => {
       await expect(validateControlPlaneResponse(response)).resolves.toBeUndefined();
     }
 
-    const setConfig = vi.spyOn(client, 'setConfig');
+    const setConfig = vi.spyOn(client, "setConfig");
     configureApiResponseValidation();
     expect(setConfig).toHaveBeenCalledWith({
       responseValidator: validateControlPlaneResponse,
     });
   });
 
-  it('enforces the exact generated operation response and JSON transport', async () => {
+  it("enforces the exact generated operation response and JSON transport", async () => {
     configureApiResponseValidation();
     const request = {
-      body: { definition_id: 'winner', inputs: {} },
-      baseUrl: 'http://control-plane.test',
+      body: { definition_id: "winner", inputs: {} },
+      baseUrl: "http://control-plane.test",
       throwOnError: true as const,
     };
     await expect(
       createBotApiV1BotsPost({
         ...request,
         fetch: async () =>
-          new Response(JSON.stringify({ status: 'ok' }), {
+          new Response(JSON.stringify({ status: "ok" }), {
             status: 200,
             headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
           }),
       }),
-    ).rejects.toThrow('failed operation validation');
+    ).rejects.toThrow("failed operation validation");
     await expect(
       createBotApiV1BotsPost({
         ...request,
         fetch: async () =>
-          new Response('not json', {
+          new Response("not json", {
             status: 200,
-            headers: { [CONTENT_TYPE_HEADER]: 'text/plain' },
+            headers: { [CONTENT_TYPE_HEADER]: "text/plain" },
           }),
       }),
     ).rejects.toThrow(`must use ${JSON_CONTENT_TYPE}`);
@@ -217,12 +214,12 @@ describe('control-plane response validation', () => {
       createBotApiV1BotsPost({
         ...request,
         fetch: async () =>
-          new Response('', {
+          new Response("", {
             status: 200,
             headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
           }),
       }),
-    ).rejects.toThrow('must not be empty');
+    ).rejects.toThrow("must not be empty");
 
     const wrongRunPage = {
       events: [
@@ -239,7 +236,7 @@ describe('control-plane response validation', () => {
     await expect(
       readRunEventsApiV1RunsRunIdEventsGet({
         path: { run_id: RUN_ID },
-        baseUrl: 'http://control-plane.test',
+        baseUrl: "http://control-plane.test",
         throwOnError: true,
         fetch: async () =>
           new Response(JSON.stringify(wrongRunPage), {
@@ -247,26 +244,26 @@ describe('control-plane response validation', () => {
             headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
           }),
       }),
-    ).rejects.toThrow('failed operation validation');
+    ).rejects.toThrow("failed operation validation");
   });
 
-  it('rejects malformed data before generated types are trusted', async () => {
+  it("rejects malformed data before generated types are trusted", async () => {
     await expect(
       validateControlPlaneResponse({
         id: RUN_ID,
-        status: 'running',
+        status: "running",
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         id: RUN_ID,
-        name: 'Broken graph',
+        name: "Broken graph",
         created_at: CREATED_AT,
         updated_at: CREATED_AT,
         graph: {
           nodes: [
             {
-              id: 'trigger',
+              id: "trigger",
               type: catalogContract.graphNodeType.TRIGGER,
               position: { x: 0, y: 0 },
               data: {},
@@ -274,24 +271,22 @@ describe('control-plane response validation', () => {
           ],
         },
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         id: RUN_ID,
-        name: 'x'.repeat(catalogContract.graphTemplate.maximumNameLength + 1),
+        name: "x".repeat(catalogContract.graphTemplate.maximumNameLength + 1),
         created_at: CREATED_AT,
         updated_at: CREATED_AT,
         graph: TEST_GRAPH,
       }),
-    ).rejects.toThrow('failed runtime validation');
-    await expect(validateControlPlaneResponse([{ definition_id: '' }])).rejects.toThrow(
-      'failed runtime validation',
-    );
+    ).rejects.toThrow("failed runtime validation");
+    await expect(validateControlPlaneResponse([{ definition_id: "" }])).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         id: RUN_ID,
         bot_id: BOT_ID,
-        definition_id: 'winner',
+        definition_id: "winner",
         created_at: CREATED_AT,
         status: runtimeContract.runStatus.values.RUNNING,
         config: {
@@ -299,7 +294,7 @@ describe('control-plane response validation', () => {
           data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget + 1,
         },
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         ...DEFINITION,
@@ -311,12 +306,12 @@ describe('control-plane response validation', () => {
           ],
         },
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     const triggerWithPayload = catalogContract.graphNodeCatalog.triggers.find(
       (trigger) => trigger.payload && trigger.payload.fields.length > 0,
     );
     if (!triggerWithPayload?.payload) {
-      throw new Error('generated graph catalog requires a payload field fixture');
+      throw new Error("generated graph catalog requires a payload field fixture");
     }
     const fieldWithoutValueSchema = {
       ...triggerWithPayload.payload.fields[0],
@@ -338,7 +333,7 @@ describe('control-plane response validation', () => {
           ],
         },
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         ...DEFINITION,
@@ -352,7 +347,7 @@ describe('control-plane response validation', () => {
                 fields: [
                   {
                     ...triggerWithPayload.payload.fields[0],
-                    path: { segments: ['invalid segment'] },
+                    path: { segments: ["invalid segment"] },
                   },
                 ],
               },
@@ -360,11 +355,11 @@ describe('control-plane response validation', () => {
           ],
         },
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         id: BOT_ID,
-        definition_id: 'winner',
+        definition_id: "winner",
         created_at: CREATED_AT,
         updated_at: CREATED_AT,
         config: PAPER_CONFIG,
@@ -373,10 +368,10 @@ describe('control-plane response validation', () => {
           bot_id: BOT_ID,
           revision: 1,
           created_at: CREATED_AT,
-          graph: { ...TEST_GRAPH, edges: [{ id: 'incomplete' }] },
+          graph: { ...TEST_GRAPH, edges: [{ id: "incomplete" }] },
         },
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
     await expect(
       validateControlPlaneResponse({
         events: [
@@ -390,57 +385,57 @@ describe('control-plane response validation', () => {
         ],
         next_before_event_id: null,
       }),
-    ).rejects.toThrow('failed runtime validation');
+    ).rejects.toThrow("failed runtime validation");
 
     for (const streamRule of [
       {
         relation: runtimeContract.streamRelation.FILTERED,
-        market_slugs: ['market'],
+        market_slugs: ["market"],
       },
       { relation: runtimeContract.streamRelation.INDEPENDENT },
       {
         relation: runtimeContract.streamRelation.INDEPENDENT,
-        wallet_addresses: ['not-a-wallet'],
+        wallet_addresses: ["not-a-wallet"],
       },
     ]) {
       await expect(
         validateControlPlaneResponse({
           id: RUN_ID,
           bot_id: BOT_ID,
-          definition_id: 'winner',
+          definition_id: "winner",
           created_at: CREATED_AT,
           status: runtimeContract.runStatus.values.RUNNING,
           config: { ...PAPER_CONFIG, stream_rules: [streamRule] },
         }),
-      ).rejects.toThrow('failed runtime validation');
+      ).rejects.toThrow("failed runtime validation");
     }
 
     for (const invalidOptionalField of [
-      { bot_graph_revision_id: 'not-a-uuid' },
+      { bot_graph_revision_id: "not-a-uuid" },
       { graph_revision: 0 },
-      { started_at: 'not-a-date' },
+      { started_at: "not-a-date" },
       { ended_at: 42 },
-      { heartbeat_at: 'not-a-date' },
+      { heartbeat_at: "not-a-date" },
       { failure_detail: 42 },
       { latest_runtime_failure: 42 },
-      { latest_equity: 'not-a-decimal' },
+      { latest_equity: "not-a-decimal" },
     ]) {
       await expect(
         validateControlPlaneResponse({
           id: RUN_ID,
           bot_id: BOT_ID,
-          definition_id: 'winner',
+          definition_id: "winner",
           created_at: CREATED_AT,
           status: runtimeContract.runStatus.values.RUNNING,
           config: PAPER_CONFIG,
           ...invalidOptionalField,
         }),
-      ).rejects.toThrow('failed runtime validation');
+      ).rejects.toThrow("failed runtime validation");
     }
 
     const template = {
       id: RUN_ID,
-      name: 'Malformed graph',
+      name: "Malformed graph",
       created_at: CREATED_AT,
       updated_at: CREATED_AT,
     };
@@ -450,7 +445,7 @@ describe('control-plane response validation', () => {
         nodes: [
           {
             ...TEST_GRAPH.nodes[0],
-            id: 'n'.repeat(catalogContract.nodeGraph.maximumIdentifierLength + 1),
+            id: "n".repeat(catalogContract.nodeGraph.maximumIdentifierLength + 1),
           },
         ],
       },
@@ -468,20 +463,18 @@ describe('control-plane response validation', () => {
         nodes: [
           {
             ...TEST_GRAPH.nodes[0],
-            data: { hook_name: 'invalid hook' },
+            data: { hook_name: "invalid hook" },
           },
         ],
       },
     ]) {
-      await expect(validateControlPlaneResponse({ ...template, graph })).rejects.toThrow(
-        'failed runtime validation',
-      );
+      await expect(validateControlPlaneResponse({ ...template, graph })).rejects.toThrow("failed runtime validation");
     }
 
     const cyclicGraph = {
       nodes: [
         {
-          id: 'boolean-constant',
+          id: "boolean-constant",
           type: catalogContract.graphNodeType.CONSTANT,
           position: { x: 0, y: 0 },
           data: {
@@ -489,7 +482,7 @@ describe('control-plane response validation', () => {
             value: BOOLEAN_CONSTANT.default_value,
           },
         },
-        ...['comparison-a', 'comparison-b'].map((id, index) => ({
+        ...["comparison-a", "comparison-b"].map((id, index) => ({
           id,
           type: catalogContract.graphNodeType.COMPARISON,
           position: { x: 100 + index * 100, y: 0 },
@@ -498,22 +491,22 @@ describe('control-plane response validation', () => {
       ],
       edges: [
         {
-          id: 'a-to-b',
-          source: 'comparison-a',
+          id: "a-to-b",
+          source: "comparison-a",
           source_handle: EQUAL_COMPARISON.output.handle_id,
-          target: 'comparison-b',
+          target: "comparison-b",
           target_handle: EQUAL_COMPARISON.inputs[0].handle_id,
         },
         {
-          id: 'b-to-a',
-          source: 'comparison-b',
+          id: "b-to-a",
+          source: "comparison-b",
           source_handle: EQUAL_COMPARISON.output.handle_id,
-          target: 'comparison-a',
+          target: "comparison-a",
           target_handle: EQUAL_COMPARISON.inputs[0].handle_id,
         },
-        ...['comparison-a', 'comparison-b'].map((target, index) => ({
+        ...["comparison-a", "comparison-b"].map((target, index) => ({
           id: `constant-to-${index}`,
-          source: 'boolean-constant',
+          source: "boolean-constant",
           source_handle: BOOLEAN_CONSTANT.output.handle_id,
           target,
           target_handle: EQUAL_COMPARISON.inputs[1].handle_id,
@@ -523,38 +516,36 @@ describe('control-plane response validation', () => {
     const thresholdEdges = THRESHOLD_BUY_GRAPH.edges ?? [];
     const missingRequiredInputGraph = {
       ...THRESHOLD_BUY_GRAPH,
-      edges: thresholdEdges.filter((edge) => edge.id !== 'constant-size'),
+      edges: thresholdEdges.filter((edge) => edge.id !== "constant-size"),
     };
     const crossTriggerGraph = {
       ...THRESHOLD_BUY_GRAPH,
       nodes: [
         ...THRESHOLD_BUY_GRAPH.nodes,
         {
-          id: 'wallet-trigger',
+          id: "wallet-trigger",
           type: catalogContract.graphNodeType.TRIGGER,
           position: { x: 0, y: 400 },
           data: { hook_name: ON_WALLET_TRADE_TRIGGER.hook_name },
         },
       ],
       edges: thresholdEdges.map((edge) =>
-        edge.id === 'book-price'
+        edge.id === "book-price"
           ? {
               ...edge,
-              source: 'wallet-trigger',
-              source_handle: graphFieldHandle(ON_WALLET_TRADE_TRIGGER, 'price'),
+              source: "wallet-trigger",
+              source_handle: graphFieldHandle(ON_WALLET_TRADE_TRIGGER, "price"),
             }
           : edge,
       ),
     };
     for (const graph of [cyclicGraph, missingRequiredInputGraph, crossTriggerGraph]) {
-      await expect(validateControlPlaneResponse({ ...template, graph })).rejects.toThrow(
-        'failed runtime validation',
-      );
+      await expect(validateControlPlaneResponse({ ...template, graph })).rejects.toThrow("failed runtime validation");
     }
   });
 });
 
-it('validates graph revision save as an updated bot and detail as a revision', async () => {
+it("validates graph revision save as an updated bot and detail as a revision", async () => {
   configureApiResponseValidation();
   const revision = {
     id: RUN_ID,
@@ -565,17 +556,16 @@ it('validates graph revision save as an updated bot and detail as a revision', a
   };
   const bot = {
     id: BOT_ID,
-    definition_id: 'winner',
+    definition_id: "winner",
     created_at: CREATED_AT,
     updated_at: CREATED_AT,
     config: PAPER_CONFIG,
     latest_graph_revision: revision,
   };
   const transport = (data: unknown) => ({
-    baseUrl: 'http://control-plane.test',
+    baseUrl: "http://control-plane.test",
     throwOnError: true as const,
-    fetch: async () =>
-      new Response(JSON.stringify(data), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
+    fetch: async () => new Response(JSON.stringify(data), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
   });
   await expect(
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
@@ -583,30 +573,37 @@ it('validates graph revision save as an updated bot and detail as a revision', a
       body: { graph: TEST_GRAPH },
       ...transport(bot),
     }),
-  ).resolves.toHaveProperty('data.latest_graph_revision', revision);
+  ).resolves.toHaveProperty("data.latest_graph_revision", revision);
   await expect(
     readBotGraphRevisionApiV1BotsBotIdGraphRevisionsRevisionIdGet({
       path: { bot_id: BOT_ID, revision_id: RUN_ID },
       ...transport(revision),
     }),
-  ).resolves.toHaveProperty('data.graph', TEST_GRAPH);
+  ).resolves.toHaveProperty("data.graph", TEST_GRAPH);
   await expect(
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
       path: { bot_id: BOT_ID },
       body: { graph: TEST_GRAPH },
       ...transport(revision),
     }),
-  ).rejects.toThrow('failed operation validation');
+  ).rejects.toThrow("failed operation validation");
 });
 
-
-it('validates usage through both configured generated-client boundaries', async () => {
+it("validates usage through both configured generated-client boundaries", async () => {
   configureApiResponseValidation();
-  const usage = { policy: runtimeContract.resourcePolicy, active_runs: 0, queued_runs: 1, saved_bots: 2, saved_templates: 3, retained_runs: 4 };
+  const usage = {
+    policy: runtimeContract.resourcePolicy,
+    active_runs: 0,
+    queued_runs: 1,
+    saved_bots: 2,
+    saved_templates: 3,
+    retained_runs: 4,
+  };
   const request = (data: unknown) => ({
-    baseUrl: 'http://control-plane.test', throwOnError: true as const,
+    baseUrl: "http://control-plane.test",
+    throwOnError: true as const,
     fetch: async () => new Response(JSON.stringify(data), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
   });
-  await expect(readUsage(request(usage))).resolves.toHaveProperty('data', usage);
-  await expect(readUsage(request({ ...usage, queued_runs: '1' }))).rejects.toThrow('failed operation validation');
+  await expect(readUsage(request(usage))).resolves.toHaveProperty("data", usage);
+  await expect(readUsage(request({ ...usage, queued_runs: "1" }))).rejects.toThrow("failed operation validation");
 });

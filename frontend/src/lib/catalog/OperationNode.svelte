@@ -1,20 +1,20 @@
 <script lang="ts">
-  import type { GraphOperationNodeData, GraphScalarType } from '$lib/api/generated';
-  import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
-  import { operationForNode } from '$lib/catalog/nodeGraph/catalog';
-  import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
-  import { inputsForNode, outputsForNode } from '$lib/catalog/nodeGraph/ports';
-  import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
-  import { getContext } from 'svelte';
+  import type { GraphOperationNodeData, GraphScalarType } from "$lib/api/generated";
+  import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
+  import { operationForNode } from "$lib/catalog/nodeGraph/catalog";
+  import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
+  import { inputsForNode, outputsForNode } from "$lib/catalog/nodeGraph/ports";
+  import { Handle, Position, useUpdateNodeInternals } from "@xyflow/svelte";
+  import { getContext } from "svelte";
   import {
     DEFAULT_OPERATION_SCALAR_TYPE,
     DEFAULT_PREVIEW_CASH,
     GRAPH_NODE_TYPE,
     GRAPH_PORT,
     GRAPH_SCALAR_TYPE,
-  } from './graphContracts';
-  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
-  import NodeIssues from './NodeIssues.svelte';
+  } from "./graphContracts";
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
+  import NodeIssues from "./NodeIssues.svelte";
   let { id, data }: { id: string; data: GraphOperationNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const updateInternals = useUpdateNodeInternals();
@@ -39,9 +39,7 @@
     editor.setOperationData(id, { ...data, input_ids: [...ids, `input_${suffix}`] });
   }
   function removeInput(inputHandleId: string) {
-    const remainingInputIds = inputs
-      .filter((port) => port.handle_id !== inputHandleId)
-      .map((port) => port.handle_id);
+    const remainingInputIds = inputs.filter((port) => port.handle_id !== inputHandleId).map((port) => port.handle_id);
     editor.setOperationData(id, { ...data, input_ids: remainingInputIds });
   }
   function selectOperation(operationName: string) {
@@ -79,22 +77,16 @@
             scalar_type: event.currentTarget.value as GraphScalarType,
           })}
       >
-        {#each editor.catalog.constants as constant}<option value={constant.scalar_type}
-            >{constant.display_name}</option
+        {#each editor.catalog.constants as constant}<option value={constant.scalar_type}>{constant.display_name}</option
           >{/each}
       </select>
     {/if}
   </div>
   {#each inputs as port (port.handle_id)}
     <div class="port">
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={port.handle_id}
-        isConnectable={!editor.readOnly}
-      /><span title={port.description ?? undefined}
-        >{port.display_name}{port.required ? '' : ' (optional)'}</span
-      ><small>{port.whole_number ? 'Whole number' : port.scalar_types.join(' / ')}</small>
+      <Handle type="target" position={Position.Left} id={port.handle_id} isConnectable={!editor.readOnly} /><span
+        title={port.description ?? undefined}>{port.display_name}{port.required ? "" : " (optional)"}</span
+      ><small>{port.whole_number ? "Whole number" : port.scalar_types.join(" / ")}</small>
       {#if descriptor.expandable && inputs.length > (descriptor.minimum_inputs ?? 0) && !editor.readOnly}<button
           type="button"
           class="nodrag"

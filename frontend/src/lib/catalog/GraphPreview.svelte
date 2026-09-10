@@ -1,32 +1,27 @@
 <script lang="ts">
-  import {
-    previewGraph,
-    type GraphNodeCatalog,
-    type GraphPreviewResponse,
-    type NodeGraph,
-  } from '$lib/api/generated';
-  import { requestErrorDetail, requestValidationIssues } from '$lib/api/requestErrors';
-  import { GRAPH_FIELD_COPY, GRAPH_PREVIEW_COPY, intendedOrdersLabel } from '$lib/catalog/copy';
-  import { untrack } from 'svelte';
+  import { previewGraph, type GraphNodeCatalog, type GraphPreviewResponse, type NodeGraph } from "$lib/api/generated";
+  import { requestErrorDetail, requestValidationIssues } from "$lib/api/requestErrors";
+  import { GRAPH_FIELD_COPY, GRAPH_PREVIEW_COPY, intendedOrdersLabel } from "$lib/catalog/copy";
+  import { untrack } from "svelte";
   import {
     DEFAULT_OPERATION_SCALAR_TYPE,
     DEFAULT_PREVIEW_CASH,
     GRAPH_NODE_TYPE,
     GRAPH_PORT,
     GRAPH_SCALAR_TYPE,
-  } from './graphContracts';
-  import './graphPanels.css';
+  } from "./graphContracts";
+  import "./graphPanels.css";
   let { graph, catalog }: { graph: NodeGraph; catalog: GraphNodeCatalog } = $props();
   const initialTrigger = untrack(() => triggersForGraph()[0]);
-  let hook = $state(initialTrigger?.hook_name ?? '');
+  let hook = $state(initialTrigger?.hook_name ?? "");
   let payloadText = $state(JSON.stringify(initialTrigger?.sample_payload ?? null, null, 2));
   let virtualTimestampText = $state(String(initialTrigger?.sample_time_ms ?? 0));
   let cash = $state(DEFAULT_PREVIEW_CASH);
   let positions = $state(untrack(() => JSON.stringify(catalog.sample_positions ?? [], null, 2)));
   let busy = $state(false);
-  let error = $state('');
+  let error = $state("");
   let result = $state<GraphPreviewResponse>();
-  let evaluatedGraph = $state('');
+  let evaluatedGraph = $state("");
   const triggers = $derived(triggersForGraph());
   const stale = $derived(result !== undefined && evaluatedGraph !== JSON.stringify(graph));
   function selectTrigger(value: string) {
@@ -38,12 +33,12 @@
   }
   async function runPreview() {
     busy = true;
-    error = '';
+    error = "";
     result = undefined;
     try {
       const nowMs = Number(virtualTimestampText);
       if (!Number.isSafeInteger(nowMs) || nowMs < 0)
-        throw new Error('Virtual time requires a nonnegative whole number.');
+        throw new Error("Virtual time requires a nonnegative whole number.");
       const snapshot = JSON.parse(JSON.stringify(graph)) as NodeGraph;
       const response = await previewGraph({
         body: {
@@ -65,26 +60,21 @@
   }
   function triggersForGraph() {
     const hooks = new Set(
-      graph.nodes
-        .filter((node) => node.type === GRAPH_NODE_TYPE.trigger)
-        .map((node) => node.data.hook_name),
+      graph.nodes.filter((node) => node.type === GRAPH_NODE_TYPE.trigger).map((node) => node.data.hook_name),
     );
     return catalog.triggers.filter((trigger) => hooks.has(trigger.hook_name));
   }
   function previewErrorMessage(failure: unknown): string {
     const issues = requestValidationIssues(failure);
-    if (issues.length)
-      return issues.map((issue) => `${issue.loc.join(' → ')}: ${issue.msg}`).join('\n');
+    if (issues.length) return issues.map((issue) => `${issue.loc.join(" → ")}: ${issue.msg}`).join("\n");
     const detail = requestErrorDetail(failure);
     if (detail) return detail;
     if (failure instanceof Error) return failure.message;
     return GRAPH_PREVIEW_COPY.ERROR;
   }
-  function previewOutputDetails(
-    output: GraphPreviewResponse['nodes'][number]['outputs'][string],
-  ): string {
-    const reason = output.reason ? ` · ${output.reason}` : '';
-    const message = output.message ? ` · ${output.input_handle_id ?? ''}: ${output.message}` : '';
+  function previewOutputDetails(output: GraphPreviewResponse["nodes"][number]["outputs"][string]): string {
+    const reason = output.reason ? ` · ${output.reason}` : "";
+    const message = output.message ? ` · ${output.input_handle_id ?? ""}: ${output.message}` : "";
     return `${output.status}${reason}${message}`;
   }
 </script>
@@ -93,65 +83,43 @@
   <summary>Try this event</summary>
   <div class="graph-panel-body">
     <p class="graph-panel-intro">
-      Inspect one event using sample data. Orders are shown as planned; no trades or fills occur.
-      Each preview starts with fresh cooldown and deduplication state.
+      Inspect one event using sample data. Orders are shown as planned; no trades or fills occur. Each preview starts
+      with fresh cooldown and deduplication state.
     </p>
     <div class="fields">
       <label
         >Trigger<select value={hook} onchange={(event) => selectTrigger(event.currentTarget.value)}
-          >{#each triggers as trigger}<option value={trigger.hook_name}>{trigger.hook_name}</option
-            >{/each}</select
+          >{#each triggers as trigger}<option value={trigger.hook_name}>{trigger.hook_name}</option>{/each}</select
         ></label
       >
-      <label
-        >Virtual time (milliseconds)<input type="text" bind:value={virtualTimestampText} /></label
-      >
+      <label>Virtual time (milliseconds)<input type="text" bind:value={virtualTimestampText} /></label>
       <label>Available cash<input type="text" bind:value={cash} /></label>
     </div>
     <div class="sample-fields">
-      <label
-        >Sample event<textarea rows="9" bind:value={payloadText} spellcheck="false"
-        ></textarea></label
-      >
-      <label
-        >Sample positions<textarea rows="3" bind:value={positions} spellcheck="false"
-        ></textarea></label
-      >
+      <label>Sample event<textarea rows="9" bind:value={payloadText} spellcheck="false"></textarea></label>
+      <label>Sample positions<textarea rows="3" bind:value={positions} spellcheck="false"></textarea></label>
     </div>
     <div class="preview-submit">
-      <small
-        >Keep exact numeric amounts in quotation marks in sample JSON. Timestamps use whole numbers.</small
-      >
+      <small>Keep exact numeric amounts in quotation marks in sample JSON. Timestamps use whole numbers.</small>
       <div class="graph-panel-actions">
-        <button
-          type="button"
-          disabled={busy || !triggers.some((item) => item.hook_name === hook)}
-          onclick={runPreview}>{busy ? GRAPH_PREVIEW_COPY.BUSY : GRAPH_PREVIEW_COPY.PREVIEW}</button
+        <button type="button" disabled={busy || !triggers.some((item) => item.hook_name === hook)} onclick={runPreview}
+          >{busy ? GRAPH_PREVIEW_COPY.BUSY : GRAPH_PREVIEW_COPY.PREVIEW}</button
         >
       </div>
     </div>
     {#if error}<p role="alert" class="error">{error}</p>{/if}
     {#if result}
-      {#if stale}<p role="status">
-          The graph has changed. Preview again to see updated results.
-        </p>{/if}
+      {#if stale}<p role="status">The graph has changed. Preview again to see updated results.</p>{/if}
       <section class="result-section">
         <h4>{GRAPH_PREVIEW_COPY.NODE_RESULTS}</h4>
         <div class="results">
           <table>
-            <thead
-              ><tr
-                ><th>Node</th><th>Output</th><th>{GRAPH_FIELD_COPY.VALUE}</th><th
-                  >Status / reason</th
-                ></tr
-              ></thead
+            <thead><tr><th>Node</th><th>Output</th><th>{GRAPH_FIELD_COPY.VALUE}</th><th>Status / reason</th></tr></thead
             ><tbody>
               {#each result.nodes as node}
                 {#each Object.entries(node.outputs) as [outputHandleId, output]}<tr
                     ><td>{node.node_id}</td><td>{outputHandleId}</td><td
-                      >{output.value === null
-                        ? GRAPH_PREVIEW_COPY.UNAVAILABLE
-                        : String(output.value)}</td
+                      >{output.value === null ? GRAPH_PREVIEW_COPY.UNAVAILABLE : String(output.value)}</td
                     ><td>{previewOutputDetails(output)}</td></tr
                   >{/each}
               {/each}
@@ -197,7 +165,7 @@
   }
   textarea {
     padding: 0.85rem;
-    font-family: 'Geist Mono Variable', monospace;
+    font-family: "Geist Mono Variable", monospace;
     font-size: 0.78rem;
     line-height: 1.6;
     resize: vertical;

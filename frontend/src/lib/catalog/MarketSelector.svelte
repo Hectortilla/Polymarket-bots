@@ -1,10 +1,10 @@
 <script lang="ts">
   import { resourceLimitDetail } from "$lib/limits/validation";
-  import { lookupMarkets, searchMarkets, type MarketSuggestion } from '$lib/api/generated';
-  import { MARKET_SELECTOR_COPY } from '$lib/catalog/copy';
-  import { Check, MagnifyingGlass, Plus, X } from 'phosphor-svelte';
-  import { untrack } from 'svelte';
-  import catalogContract from './catalogContract.fixture.json';
+  import { lookupMarkets, searchMarkets, type MarketSuggestion } from "$lib/api/generated";
+  import { MARKET_SELECTOR_COPY } from "$lib/catalog/copy";
+  import { Check, MagnifyingGlass, Plus, X } from "phosphor-svelte";
+  import { untrack } from "svelte";
+  import catalogContract from "./catalogContract.fixture.json";
 
   let {
     value,
@@ -26,11 +26,11 @@
   const debounceMilliseconds = 300;
   const listId = $derived(`${labelId}-options`);
   let input: HTMLInputElement;
-  let query = $state('');
+  let query = $state("");
   let open = $state(false);
   let loading = $state(false);
   let searched = $state(false);
-  let searchError = $state('');
+  let searchError = $state("");
   let retry = $state(0);
   let results = $state<MarketSuggestion[]>([]);
   let hasMore = $state(false);
@@ -48,7 +48,7 @@
     results = [];
     activeIndex = -1;
     searched = false;
-    searchError = '';
+    searchError = "";
     hasMore = false;
     loading = text.length >= limits.minimumQueryLength;
     if (text.length < limits.minimumQueryLength) return;
@@ -95,9 +95,7 @@
           ...metadata,
           ...Object.fromEntries(data.map((market) => [market.slug, market])),
         };
-        missingMetadataSlugs = lookupSlugs.filter(
-          (slug) => !data.some((market) => market.slug === slug),
-        );
+        missingMetadataSlugs = lookupSlugs.filter((slug) => !data.some((market) => market.slug === slug));
       } catch {
         if (!controller.signal.aborted) lookupError = true;
       }
@@ -109,24 +107,24 @@
     if (disabled || atLimit || value.includes(market.slug)) return;
     metadata = { ...metadata, [market.slug]: market };
     onchange([...value, market.slug]);
-    query = '';
+    query = "";
     input.focus();
     // Close after focus so later pointer clicks cannot shift when suggestions blur away.
     open = false;
   }
 
   function onkeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
+    if (event.key === "Escape") {
       open = false;
       activeIndex = -1;
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       open = true;
       if (results.length) {
-        activeIndex = wrappedSelectionIndex(event.key === 'ArrowDown');
-        document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView?.({ block: 'nearest' });
+        activeIndex = wrappedSelectionIndex(event.key === "ArrowDown");
+        document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView?.({ block: "nearest" });
       }
-    } else if (event.key === 'Enter') {
+    } else if (event.key === "Enter") {
       // Enter chooses a suggestion; it must never submit the surrounding form.
       event.preventDefault();
       if (open && activeIndex >= 0 && results[activeIndex]) select(results[activeIndex]);
@@ -149,9 +147,9 @@
   function closingDate(value: string | null): string | null {
     return value
       ? new Intl.DateTimeFormat(undefined, {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
+          month: "short",
+          day: "numeric",
+          year: "numeric",
         }).format(new Date(value))
       : null;
   }
@@ -179,7 +177,7 @@
       aria-invalid={invalid}
       autocomplete="off"
       maxlength={limits.maximumQueryLength}
-      placeholder={atLimit ? 'Selection limit reached' : 'Search markets by name or topic…'}
+      placeholder={atLimit ? "Selection limit reached" : "Search markets by name or topic…"}
       disabled={disabled || atLimit}
       onfocus={() => (open = true)}
       oninput={() => (open = true)}
@@ -193,9 +191,7 @@
       <div class="search-status" role="status" aria-live="polite">
         {#if searchError}
           <span>{searchError}</span>
-          <button type="button" class="text-button" onclick={retrySearch}
-            >{MARKET_SELECTOR_COPY.RETRY_SEARCH}</button
-          >
+          <button type="button" class="text-button" onclick={retrySearch}>{MARKET_SELECTOR_COPY.RETRY_SEARCH}</button>
         {:else if loading}
           Searching Polymarket…
         {:else if query.trim().length < limits.minimumQueryLength}
@@ -230,13 +226,12 @@
             onclick={() => select(market)}
           >
             <span class="option-copy">
-              {#if market.event_title && market.event_title !== market.question}<span
-                  class="event-title">{market.event_title}</span
+              {#if market.event_title && market.event_title !== market.question}<span class="event-title"
+                  >{market.event_title}</span
                 >{/if}
               <span class="question">{market.question}</span>
               <span class="market-detail"
-                ><span class="slug">{market.slug}</span>{#if endDate}<span>Ends {endDate}</span
-                  >{/if}</span
+                ><span class="slug">{market.slug}</span>{#if endDate}<span>Ends {endDate}</span>{/if}</span
               >
             </span>
             <span class="option-action"
@@ -247,9 +242,7 @@
           </button>
         {/each}
       </div>
-      {#if hasMore}<p class="refine-hint">
-          More matches available. Refine your search to narrow the list.
-        </p>{/if}
+      {#if hasMore}<p class="refine-hint">More matches available. Refine your search to narrow the list.</p>{/if}
     </div>
   {/if}
 
@@ -268,8 +261,7 @@
             {#if market && !market.is_open_for_trading}<span class="unavailable"
                 >{MARKET_SELECTOR_COPY.UNAVAILABLE}</span
               >
-            {:else if missingMetadataSlugs.includes(slug)}<span class="unavailable"
-                >{MARKET_SELECTOR_COPY.MISSING}</span
+            {:else if missingMetadataSlugs.includes(slug)}<span class="unavailable">{MARKET_SELECTOR_COPY.MISSING}</span
               >{/if}
           </span>
           <button

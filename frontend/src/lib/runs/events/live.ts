@@ -1,7 +1,12 @@
-import type { LiveRunEvent } from '$lib/api/generated';
-import { isFiniteDateTime, isRecord } from '$lib/valueGuards';
-import { isEquityChartPayload, isMarketChartPayload, isStreamHealthPayload, isWalletChartPayload } from '../dashboardPayloads';
-import { LIVE_EVENT_KIND } from '../eventKinds';
+import type { LiveRunEvent } from "$lib/api/generated";
+import { isFiniteDateTime, isRecord } from "$lib/valueGuards";
+import {
+  isEquityChartPayload,
+  isMarketChartPayload,
+  isStreamHealthPayload,
+  isWalletChartPayload,
+} from "../dashboardPayloads";
+import { LIVE_EVENT_KIND } from "../eventKinds";
 
 export function liveRunEvent(data: unknown, runId: string): LiveRunEvent | null {
   if (!isRecord(data)) return null;
@@ -20,11 +25,11 @@ export function liveRunEvent(data: unknown, runId: string): LiveRunEvent | null 
   return candidate as unknown as LiveRunEvent;
 }
 
-function isLiveKind(kind: unknown): kind is LiveRunEvent['kind'] {
+function isLiveKind(kind: unknown): kind is LiveRunEvent["kind"] {
   return Object.values(LIVE_EVENT_KIND).includes(kind as never);
 }
 
-function isLivePayload(kind: LiveRunEvent['kind'], payload: Record<string, unknown>): boolean {
+function isLivePayload(kind: LiveRunEvent["kind"], payload: Record<string, unknown>): boolean {
   switch (kind) {
     case LIVE_EVENT_KIND.market:
       return isMarketChartPayload(payload);

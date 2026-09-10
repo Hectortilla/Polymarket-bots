@@ -1,7 +1,7 @@
 {
-  "plugins": [
-    "prettier-plugin-svelte"
-  ],
+  "printWidth": 120,
+  "singleAttributePerLine": false,
+  "plugins": ["prettier-plugin-svelte"],
   "overrides": [
     {
       "files": "*.svelte",

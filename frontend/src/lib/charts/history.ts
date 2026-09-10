@@ -1,20 +1,12 @@
-import type {
-  ChartSamplePayload,
-  StreamHealthPayload,
-  WalletChartPointPayload
-} from '$lib/api/generated';
+import type { ChartSamplePayload, StreamHealthPayload, WalletChartPointPayload } from "$lib/api/generated";
 
-import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
-import type { LiveRunEvent } from '$lib/api/generated';
-import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
+import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
+import type { LiveRunEvent } from "$lib/api/generated";
+import { LIVE_EVENT_KIND } from "$lib/runs/eventKinds";
 
-import {
-  MAX_CHART_HISTORY_POINTS,
-  MAX_WALLET_TIMELINE_EVENTS,
-  VALUATION_STATUS
-} from './contracts';
+import { MAX_CHART_HISTORY_POINTS, MAX_WALLET_TIMELINE_EVENTS, VALUATION_STATUS } from "./contracts";
 
-export { MAX_CHART_HISTORY_POINTS } from './contracts';
+export { MAX_CHART_HISTORY_POINTS } from "./contracts";
 
 export type DashboardHistory = {
   samples: ChartSamplePayload[];
@@ -26,10 +18,7 @@ export function emptyDashboardHistory(): DashboardHistory {
   return { samples: [], walletTimelinePoints: [], streamHealth: null };
 }
 
-export function mergeDurableEvents(
-  history: DashboardHistory,
-  events: PersistedDurableEvent[]
-): DashboardHistory {
+export function mergeDurableEvents(history: DashboardHistory, events: PersistedDurableEvent[]): DashboardHistory {
   const samples: ChartSamplePayload[] = [];
   const walletPoints: WalletChartPointPayload[] = [];
   let streamHealth = history.streamHealth;
@@ -50,29 +39,22 @@ export function mergeDurableEvents(
   return streamHealthChanged ? { ...next, streamHealth } : next;
 }
 
-export function mergeLiveEvent(
-  history: DashboardHistory,
-  event: LiveRunEvent
-): DashboardHistory {
+export function mergeLiveEvent(history: DashboardHistory, event: LiveRunEvent): DashboardHistory {
   return mergeLiveEvents(history, [event]);
 }
 
-export function mergeLiveEvents(
-  history: DashboardHistory,
-  events: LiveRunEvent[]
-): DashboardHistory {
+export function mergeLiveEvents(history: DashboardHistory, events: LiveRunEvent[]): DashboardHistory {
   const samplesByTimestamp = new Map<number, ChartSamplePayload>();
   const walletPoints: WalletChartPointPayload[] = [];
   let streamHealth: StreamHealthPayload | null = history.streamHealth;
   let streamHealthChanged = false;
 
   const sampleAtTimestamp = (sampledAtMs: number): ChartSamplePayload =>
-    samplesByTimestamp.get(sampledAtMs)
-    ?? sampleAt(history, sampledAtMs)
-    ?? {
+    samplesByTimestamp.get(sampledAtMs) ??
+    sampleAt(history, sampledAtMs) ?? {
       sampled_at_ms: sampledAtMs,
       markets: [],
-      equity: { value: null, status: VALUATION_STATUS.unavailable }
+      equity: { value: null, status: VALUATION_STATUS.unavailable },
     };
 
   for (const event of events) {
@@ -81,7 +63,7 @@ export function mergeLiveEvents(
         const sample = sampleAtTimestamp(event.payload.sampled_at_ms);
         samplesByTimestamp.set(event.payload.sampled_at_ms, {
           ...sample,
-          markets: event.payload.points
+          markets: event.payload.points,
         });
         break;
       }
@@ -89,7 +71,7 @@ export function mergeLiveEvents(
         const sample = sampleAtTimestamp(event.payload.sampled_at_ms);
         samplesByTimestamp.set(event.payload.sampled_at_ms, {
           ...sample,
-          equity: event.payload.point
+          equity: event.payload.point,
         });
         break;
       }
@@ -105,50 +87,34 @@ export function mergeLiveEvents(
     }
   }
 
-  const next = withWalletTimelinePoints(
-    withSamples(history, [...samplesByTimestamp.values()]),
-    walletPoints
-  );
+  const next = withWalletTimelinePoints(withSamples(history, [...samplesByTimestamp.values()]), walletPoints);
   return streamHealthChanged ? { ...next, streamHealth } : next;
 }
 
-function withSamples(
-  history: DashboardHistory,
-  incoming: ChartSamplePayload[]
-): DashboardHistory {
+function withSamples(history: DashboardHistory, incoming: ChartSamplePayload[]): DashboardHistory {
   if (incoming.length === 0) return history;
-  const byTimestamp = new Map(
-    history.samples.map((sample) => [sample.sampled_at_ms, sample])
-  );
+  const byTimestamp = new Map(history.samples.map((sample) => [sample.sampled_at_ms, sample]));
   for (const sample of incoming) byTimestamp.set(sample.sampled_at_ms, sample);
   return {
     ...history,
     samples: [...byTimestamp.values()]
       .sort((left, right) => left.sampled_at_ms - right.sampled_at_ms)
-      .slice(-MAX_CHART_HISTORY_POINTS)
+      .slice(-MAX_CHART_HISTORY_POINTS),
   };
 }
 
-function withWalletTimelinePoints(
-  history: DashboardHistory,
-  points: WalletChartPointPayload[]
-): DashboardHistory {
+function withWalletTimelinePoints(history: DashboardHistory, points: WalletChartPointPayload[]): DashboardHistory {
   if (points.length === 0) return history;
-  const bySource = new Map(
-    history.walletTimelinePoints.map((point) => [point.source_key, point])
-  );
+  const bySource = new Map(history.walletTimelinePoints.map((point) => [point.source_key, point]));
   for (const point of points) bySource.set(point.source_key, point);
   return {
     ...history,
     walletTimelinePoints: [...bySource.values()]
       .sort((left, right) => left.trade_timestamp_ms - right.trade_timestamp_ms)
-      .slice(-MAX_WALLET_TIMELINE_EVENTS)
+      .slice(-MAX_WALLET_TIMELINE_EVENTS),
   };
 }
 
-function sampleAt(
-  history: DashboardHistory,
-  sampledAtMs: number
-): ChartSamplePayload | undefined {
+function sampleAt(history: DashboardHistory, sampledAtMs: number): ChartSamplePayload | undefined {
   return history.samples.find((sample) => sample.sampled_at_ms === sampledAtMs);
 }

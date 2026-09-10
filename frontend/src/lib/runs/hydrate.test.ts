@@ -1,17 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PersistedDurableEvent, RunRead } from '$lib/api/generated';
-import { readRunApiV1RunsRunIdGet, readRunEventsApiV1RunsRunIdEventsGet } from '$lib/api/generated';
-import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
-import { ON_START_TRIGGER } from '$lib/catalog/nodeGraphTestFixtures';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { EVENT_KIND } from './durableEvents';
-import { hydrateRunDetail, RunNotFoundError, loadAndContinueRunDetail, loadOlderRunEvents } from './hydrate';
-import { HTTP_STATUS } from '$lib/api/http';
-import { RUN_STATUS } from './status';
+import type { PersistedDurableEvent, RunRead } from "$lib/api/generated";
+import { readRunApiV1RunsRunIdGet, readRunEventsApiV1RunsRunIdEventsGet } from "$lib/api/generated";
+import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
+import { ON_START_TRIGGER } from "$lib/catalog/nodeGraphTestFixtures";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { EVENT_KIND } from "./durableEvents";
+import { hydrateRunDetail, RunNotFoundError, loadAndContinueRunDetail, loadOlderRunEvents } from "./hydrate";
+import { HTTP_STATUS } from "$lib/api/http";
+import { RUN_STATUS } from "./status";
 
-vi.mock('$lib/api/generated', async (importOriginal) => {
-  const original = await importOriginal<typeof import('$lib/api/generated')>();
+vi.mock("$lib/api/generated", async (importOriginal) => {
+  const original = await importOriginal<typeof import("$lib/api/generated")>();
   return {
     ...original,
     readRunApiV1RunsRunIdGet: vi.fn(),
@@ -20,15 +20,15 @@ vi.mock('$lib/api/generated', async (importOriginal) => {
 });
 
 const RUN: RunRead = {
-  id: 'aaaaaaaa-0000-0000-0000-000000000001',
-  bot_id: 'bbbbbbbb-0000-0000-0000-000000000001',
-  definition_id: 'test-definition',
-  bot_graph_revision_id: 'cccccccc-0000-0000-0000-000000000001',
+  id: "aaaaaaaa-0000-0000-0000-000000000001",
+  bot_id: "bbbbbbbb-0000-0000-0000-000000000001",
+  definition_id: "test-definition",
+  bot_graph_revision_id: "cccccccc-0000-0000-0000-000000000001",
   graph_revision: 3,
   graph: {
     nodes: [
       {
-        id: 'on-start',
+        id: "on-start",
         type: GRAPH_NODE_TYPE.trigger,
         position: { x: 0, y: 0 },
         data: { hook_name: ON_START_TRIGGER.hook_name },
@@ -37,46 +37,46 @@ const RUN: RunRead = {
     edges: [],
   },
   config: {
-    name: 'Hydrated run',
+    name: "Hydrated run",
     stream_rules: [],
     data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget,
-    max_order_size: '10',
-    max_slippage_pct: '0.02',
+    max_order_size: "10",
+    max_slippage_pct: "0.02",
     paper_latency_ms: 250,
     paper_latency_jitter_ms: 100,
     event_max_age_ms: 5000,
-    paper_portfolio_usdc: '1000',
+    paper_portfolio_usdc: "1000",
   },
   status: RUN_STATUS.RUNNING,
-  created_at: '2026-08-23T00:00:00Z',
+  created_at: "2026-08-23T00:00:00Z",
 };
 
 const EVENT: PersistedDurableEvent = {
   id: 7,
   kind: EVENT_KIND.runLifecycle,
   run_id: RUN.id,
-  occurred_at: '2026-08-23T00:00:01Z',
+  occurred_at: "2026-08-23T00:00:01Z",
   payload: { status: RUN_STATUS.RUNNING },
 };
 
-describe('run reload', () => {
+describe("run reload", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('hydrates ordinary HTTP state before opening SSE from the durable cursor', async () => {
+  it("hydrates ordinary HTTP state before opening SSE from the durable cursor", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: { events: [EVENT], next_before_event_id: 7 },
     } as never);
     const calls: string[] = [];
     const openStream = vi.fn(() => {
-      calls.push('stream');
+      calls.push("stream");
       return () => {};
     });
 
     await loadAndContinueRunDetail(
       RUN.id.toUpperCase(),
       (hydration) => {
-        calls.push('hydrated');
+        calls.push("hydrated");
         expect(hydration.run).toEqual(RUN);
         expect(hydration.events).toEqual([EVENT]);
         expect(hydration.nextBeforeEventId).toBe(7);
@@ -86,7 +86,7 @@ describe('run reload', () => {
       openStream,
     );
 
-    expect(calls).toEqual(['hydrated', 'stream']);
+    expect(calls).toEqual(["hydrated", "stream"]);
     expect(openStream).toHaveBeenCalledWith(RUN.id, 7, expect.any(Function), expect.any(Function), undefined);
     expect(readRunEventsApiV1RunsRunIdEventsGet).toHaveBeenCalledWith({
       path: { run_id: RUN.id },
@@ -94,7 +94,7 @@ describe('run reload', () => {
     });
   });
 
-  it('does not open SSE when the hydrated run is terminal', async () => {
+  it("does not open SSE when the hydrated run is terminal", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({
       data: { ...RUN, status: RUN_STATUS.STOPPED },
     } as never);
@@ -109,7 +109,7 @@ describe('run reload', () => {
     expect(close()).toBeUndefined();
   });
 
-  it('does not open SSE past a terminal event committed during hydration', async () => {
+  it("does not open SSE past a terminal event committed during hydration", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet)
       .mockResolvedValueOnce({ data: RUN } as never)
       .mockResolvedValueOnce({ data: { ...RUN, status: RUN_STATUS.STOPPED } } as never);
@@ -128,7 +128,7 @@ describe('run reload', () => {
     expect(hydrated.mock.calls[0][0].run.status).toBe(RUN_STATUS.STOPPED);
   });
 
-  it('refreshes a queued snapshot when the running event is already in the SSE cursor', async () => {
+  it("refreshes a queued snapshot when the running event is already in the SSE cursor", async () => {
     vi.mocked(readRunApiV1RunsRunIdGet)
       .mockResolvedValueOnce({ data: { ...RUN, status: RUN_STATUS.QUEUED } } as never)
       .mockResolvedValueOnce({ data: RUN } as never);
@@ -142,7 +142,7 @@ describe('run reload', () => {
     expect(openStream).toHaveBeenCalledWith(RUN.id, EVENT.id, expect.any(Function), expect.any(Function), undefined);
   });
 
-  it('loads only the older page selected by the server cursor', async () => {
+  it("loads only the older page selected by the server cursor", async () => {
     const olderEvent = { ...EVENT, id: 3 };
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: { events: [olderEvent], next_before_event_id: null },
@@ -160,14 +160,15 @@ describe('run reload', () => {
     vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
       data: { events: [olderEvent], next_before_event_id: 4 },
     } as never);
-    await expect(loadOlderRunEvents(RUN.id, 7)).rejects.toThrow('Invalid run event page cursor');
+    await expect(loadOlderRunEvents(RUN.id, 7)).rejects.toThrow("Invalid run event page cursor");
   });
 });
 
-
-it('keeps run denial distinct from infrastructure failure', async () => {
+it("keeps run denial distinct from infrastructure failure", async () => {
   vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ response: { status: HTTP_STATUS.NOT_FOUND } } as never);
   await expect(hydrateRunDetail(RUN.id)).rejects.toBeInstanceOf(RunNotFoundError);
-  vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ response: { status: HTTP_STATUS.SERVICE_UNAVAILABLE } } as never);
-  await expect(hydrateRunDetail(RUN.id)).rejects.toThrow('Run unavailable');
+  vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({
+    response: { status: HTTP_STATUS.SERVICE_UNAVAILABLE },
+  } as never);
+  await expect(hydrateRunDetail(RUN.id)).rejects.toThrow("Run unavailable");
 });

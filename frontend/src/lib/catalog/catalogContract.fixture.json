@@ -132,9 +132,7 @@
           {
             "handle_id": "input_1",
             "display_name": "Input 1",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -145,9 +143,7 @@
           {
             "handle_id": "input_2",
             "display_name": "Input 2",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -179,9 +175,7 @@
           {
             "handle_id": "input_1",
             "display_name": "Input 1",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -192,9 +186,7 @@
           {
             "handle_id": "input_2",
             "display_name": "Input 2",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -226,9 +218,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -260,11 +250,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -296,9 +282,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -309,9 +293,7 @@
           {
             "handle_id": "minimum",
             "display_name": "Minimum",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -322,9 +304,7 @@
           {
             "handle_id": "maximum",
             "display_name": "Maximum",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -356,9 +336,7 @@
           {
             "handle_id": "condition",
             "display_name": "Condition",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -369,11 +347,7 @@
           {
             "handle_id": "when_true",
             "display_name": "When True",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -384,11 +358,7 @@
           {
             "handle_id": "when_false",
             "display_name": "When False",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -420,9 +390,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -433,9 +401,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -467,9 +433,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -480,9 +444,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -514,9 +476,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -527,9 +487,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -561,9 +519,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -574,9 +530,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -608,9 +562,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -621,9 +573,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -655,9 +605,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -668,9 +616,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -702,9 +648,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -715,9 +659,7 @@
           {
             "handle_id": "minimum",
             "display_name": "Minimum",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -728,9 +670,7 @@
           {
             "handle_id": "maximum",
             "display_name": "Maximum",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -762,9 +702,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -775,9 +713,7 @@
           {
             "handle_id": "places",
             "display_name": "Places",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": true,
@@ -809,9 +745,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -822,9 +756,7 @@
           {
             "handle_id": "enabled",
             "display_name": "Enabled",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -835,9 +767,7 @@
           {
             "handle_id": "key",
             "display_name": "Key",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -848,9 +778,7 @@
           {
             "handle_id": "duration_ms",
             "display_name": "Duration Ms",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": true,
@@ -882,9 +810,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -895,9 +821,7 @@
           {
             "handle_id": "enabled",
             "display_name": "Enabled",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -908,9 +832,7 @@
           {
             "handle_id": "key",
             "display_name": "Key",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -921,9 +843,7 @@
           {
             "handle_id": "reset",
             "display_name": "Reset",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -955,9 +875,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -968,9 +886,7 @@
           {
             "handle_id": "enabled",
             "display_name": "Enabled",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -981,9 +897,7 @@
           {
             "handle_id": "key",
             "display_name": "Key",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1015,9 +929,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1028,9 +940,7 @@
           {
             "handle_id": "token_id",
             "display_name": "Token Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1074,9 +984,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1108,9 +1016,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1121,11 +1027,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1150,9 +1052,7 @@
           {
             "handle_id": "context",
             "display_name": "Context",
-            "scalar_types": [
-              "context"
-            ],
+            "scalar_types": ["context"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1163,11 +1063,7 @@
           {
             "handle_id": "value",
             "display_name": "Value",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -1204,9 +1100,7 @@
           "fields": [
             {
               "path": {
-                "segments": [
-                  "token_id"
-                ]
+                "segments": ["token_id"]
               },
               "handle_id": "field:token_id",
               "display_name": "BookSnapshot.token_id",
@@ -1220,9 +1114,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "bids"
-                ]
+                "segments": ["bids"]
               },
               "handle_id": "field:bids",
               "display_name": "BookSnapshot.bids",
@@ -1259,10 +1151,7 @@
                         "title": "Size"
                       }
                     },
-                    "required": [
-                      "price",
-                      "size"
-                    ],
+                    "required": ["price", "size"],
                     "title": "BookLevel",
                     "type": "object"
                   }
@@ -1275,9 +1164,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "asks"
-                ]
+                "segments": ["asks"]
               },
               "handle_id": "field:asks",
               "display_name": "BookSnapshot.asks",
@@ -1314,10 +1201,7 @@
                         "title": "Size"
                       }
                     },
-                    "required": [
-                      "price",
-                      "size"
-                    ],
+                    "required": ["price", "size"],
                     "title": "BookLevel",
                     "type": "object"
                   }
@@ -1330,9 +1214,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "received_at_ms"
-                ]
+                "segments": ["received_at_ms"]
               },
               "handle_id": "field:received_at_ms",
               "display_name": "BookSnapshot.received_at_ms",
@@ -1346,9 +1228,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "market_slug"
-                ]
+                "segments": ["market_slug"]
               },
               "handle_id": "field:market_slug",
               "display_name": "BookSnapshot.market_slug",
@@ -1369,9 +1249,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "condition_id"
-                ]
+                "segments": ["condition_id"]
               },
               "handle_id": "field:condition_id",
               "display_name": "BookSnapshot.condition_id",
@@ -1392,9 +1270,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "outcome"
-                ]
+                "segments": ["outcome"]
               },
               "handle_id": "field:outcome",
               "display_name": "BookSnapshot.outcome",
@@ -1415,10 +1291,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "best_bid",
-                  "price"
-                ]
+                "segments": ["best_bid", "price"]
               },
               "handle_id": "field:best_bid.price",
               "display_name": "BookSnapshot.best_bid.price",
@@ -1440,10 +1313,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "best_bid",
-                  "size"
-                ]
+                "segments": ["best_bid", "size"]
               },
               "handle_id": "field:best_bid.size",
               "display_name": "BookSnapshot.best_bid.size",
@@ -1465,10 +1335,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "best_ask",
-                  "price"
-                ]
+                "segments": ["best_ask", "price"]
               },
               "handle_id": "field:best_ask.price",
               "display_name": "BookSnapshot.best_ask.price",
@@ -1490,10 +1357,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "best_ask",
-                  "size"
-                ]
+                "segments": ["best_ask", "size"]
               },
               "handle_id": "field:best_ask.size",
               "display_name": "BookSnapshot.best_ask.size",
@@ -1546,9 +1410,7 @@
           "fields": [
             {
               "path": {
-                "segments": [
-                  "condition_id"
-                ]
+                "segments": ["condition_id"]
               },
               "handle_id": "field:condition_id",
               "display_name": "BookGapEvent.condition_id",
@@ -1569,9 +1431,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "observed_at_ms"
-                ]
+                "segments": ["observed_at_ms"]
               },
               "handle_id": "field:observed_at_ms",
               "display_name": "BookGapEvent.observed_at_ms",
@@ -1585,9 +1445,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "reason"
-                ]
+                "segments": ["reason"]
               },
               "handle_id": "field:reason",
               "display_name": "BookGapEvent.reason",
@@ -1629,9 +1487,7 @@
           "fields": [
             {
               "path": {
-                "segments": [
-                  "wallet"
-                ]
+                "segments": ["wallet"]
               },
               "handle_id": "field:wallet",
               "display_name": "WalletTradeEvent.wallet",
@@ -1645,9 +1501,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "condition_id"
-                ]
+                "segments": ["condition_id"]
               },
               "handle_id": "field:condition_id",
               "display_name": "WalletTradeEvent.condition_id",
@@ -1661,9 +1515,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "token_id"
-                ]
+                "segments": ["token_id"]
               },
               "handle_id": "field:token_id",
               "display_name": "WalletTradeEvent.token_id",
@@ -1677,9 +1529,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "side"
-                ]
+                "segments": ["side"]
               },
               "handle_id": "field:side",
               "display_name": "WalletTradeEvent.side",
@@ -1688,19 +1538,14 @@
               "nullable": false,
               "collection": false,
               "value_schema": {
-                "enum": [
-                  "BUY",
-                  "SELL"
-                ],
+                "enum": ["BUY", "SELL"],
                 "title": "Side",
                 "type": "string"
               }
             },
             {
               "path": {
-                "segments": [
-                  "size"
-                ]
+                "segments": ["size"]
               },
               "handle_id": "field:size",
               "display_name": "WalletTradeEvent.size",
@@ -1722,9 +1567,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "price"
-                ]
+                "segments": ["price"]
               },
               "handle_id": "field:price",
               "display_name": "WalletTradeEvent.price",
@@ -1746,9 +1589,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "source_id"
-                ]
+                "segments": ["source_id"]
               },
               "handle_id": "field:source_id",
               "display_name": "WalletTradeEvent.source_id",
@@ -1762,9 +1603,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "trade_timestamp_ms"
-                ]
+                "segments": ["trade_timestamp_ms"]
               },
               "handle_id": "field:trade_timestamp_ms",
               "display_name": "WalletTradeEvent.trade_timestamp_ms",
@@ -1778,9 +1617,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "observed_at_ms"
-                ]
+                "segments": ["observed_at_ms"]
               },
               "handle_id": "field:observed_at_ms",
               "display_name": "WalletTradeEvent.observed_at_ms",
@@ -1794,9 +1631,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "kind"
-                ]
+                "segments": ["kind"]
               },
               "handle_id": "field:kind",
               "display_name": "WalletTradeEvent.kind",
@@ -1805,20 +1640,14 @@
               "nullable": false,
               "collection": false,
               "value_schema": {
-                "enum": [
-                  "trade",
-                  "backfill",
-                  "reconciliation"
-                ],
+                "enum": ["trade", "backfill", "reconciliation"],
                 "title": "WalletTradeKind",
                 "type": "string"
               }
             },
             {
               "path": {
-                "segments": [
-                  "market_slug"
-                ]
+                "segments": ["market_slug"]
               },
               "handle_id": "field:market_slug",
               "display_name": "WalletTradeEvent.market_slug",
@@ -1839,9 +1668,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "transaction_hash"
-                ]
+                "segments": ["transaction_hash"]
               },
               "handle_id": "field:transaction_hash",
               "display_name": "WalletTradeEvent.transaction_hash",
@@ -1862,9 +1689,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "outcome"
-                ]
+                "segments": ["outcome"]
               },
               "handle_id": "field:outcome",
               "display_name": "WalletTradeEvent.outcome",
@@ -1912,9 +1737,7 @@
           "fields": [
             {
               "path": {
-                "segments": [
-                  "order_id"
-                ]
+                "segments": ["order_id"]
               },
               "handle_id": "field:order_id",
               "display_name": "FillEvent.order_id",
@@ -1928,9 +1751,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "token_id"
-                ]
+                "segments": ["token_id"]
               },
               "handle_id": "field:token_id",
               "display_name": "FillEvent.token_id",
@@ -1944,9 +1765,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "side"
-                ]
+                "segments": ["side"]
               },
               "handle_id": "field:side",
               "display_name": "FillEvent.side",
@@ -1955,19 +1774,14 @@
               "nullable": false,
               "collection": false,
               "value_schema": {
-                "enum": [
-                  "BUY",
-                  "SELL"
-                ],
+                "enum": ["BUY", "SELL"],
                 "title": "Side",
                 "type": "string"
               }
             },
             {
               "path": {
-                "segments": [
-                  "status"
-                ]
+                "segments": ["status"]
               },
               "handle_id": "field:status",
               "display_name": "FillEvent.status",
@@ -1976,22 +1790,14 @@
               "nullable": false,
               "collection": false,
               "value_schema": {
-                "enum": [
-                  "accepted",
-                  "filled",
-                  "partial",
-                  "rejected",
-                  "canceled"
-                ],
+                "enum": ["accepted", "filled", "partial", "rejected", "canceled"],
                 "title": "OrderStatus",
                 "type": "string"
               }
             },
             {
               "path": {
-                "segments": [
-                  "requested_size"
-                ]
+                "segments": ["requested_size"]
               },
               "handle_id": "field:requested_size",
               "display_name": "FillEvent.requested_size",
@@ -2013,9 +1819,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "filled_size"
-                ]
+                "segments": ["filled_size"]
               },
               "handle_id": "field:filled_size",
               "display_name": "FillEvent.filled_size",
@@ -2037,9 +1841,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "average_price"
-                ]
+                "segments": ["average_price"]
               },
               "handle_id": "field:average_price",
               "display_name": "FillEvent.average_price",
@@ -2064,9 +1866,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "fee_usdc"
-                ]
+                "segments": ["fee_usdc"]
               },
               "handle_id": "field:fee_usdc",
               "display_name": "FillEvent.fee_usdc",
@@ -2088,9 +1888,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "received_at_ms"
-                ]
+                "segments": ["received_at_ms"]
               },
               "handle_id": "field:received_at_ms",
               "display_name": "FillEvent.received_at_ms",
@@ -2104,9 +1902,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "reject_reason"
-                ]
+                "segments": ["reject_reason"]
               },
               "handle_id": "field:reject_reason",
               "display_name": "FillEvent.reject_reason",
@@ -2155,9 +1951,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "reject_message"
-                ]
+                "segments": ["reject_message"]
               },
               "handle_id": "field:reject_message",
               "display_name": "FillEvent.reject_message",
@@ -2203,9 +1997,7 @@
           "fields": [
             {
               "path": {
-                "segments": [
-                  "condition_id"
-                ]
+                "segments": ["condition_id"]
               },
               "handle_id": "field:condition_id",
               "display_name": "MarketResolutionEvent.condition_id",
@@ -2219,9 +2011,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "market_slug"
-                ]
+                "segments": ["market_slug"]
               },
               "handle_id": "field:market_slug",
               "display_name": "MarketResolutionEvent.market_slug",
@@ -2235,9 +2025,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "token_ids"
-                ]
+                "segments": ["token_ids"]
               },
               "handle_id": "field:token_ids",
               "display_name": "MarketResolutionEvent.token_ids",
@@ -2261,9 +2049,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "winning_token_id"
-                ]
+                "segments": ["winning_token_id"]
               },
               "handle_id": "field:winning_token_id",
               "display_name": "MarketResolutionEvent.winning_token_id",
@@ -2277,9 +2063,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "winning_outcome"
-                ]
+                "segments": ["winning_outcome"]
               },
               "handle_id": "field:winning_outcome",
               "display_name": "MarketResolutionEvent.winning_outcome",
@@ -2293,9 +2077,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "resolved_at_ms"
-                ]
+                "segments": ["resolved_at_ms"]
               },
               "handle_id": "field:resolved_at_ms",
               "display_name": "MarketResolutionEvent.resolved_at_ms",
@@ -2309,9 +2091,7 @@
             },
             {
               "path": {
-                "segments": [
-                  "source"
-                ]
+                "segments": ["source"]
               },
               "handle_id": "field:source",
               "display_name": "MarketResolutionEvent.source",
@@ -2328,10 +2108,7 @@
         "sample_payload": {
           "condition_id": "example-condition",
           "market_slug": "example-market",
-          "token_ids": [
-            "example-token",
-            "other-token"
-          ],
+          "token_ids": ["example-token", "other-token"],
           "winning_token_id": "example-token",
           "winning_outcome": "Up",
           "resolved_at_ms": 1000,
@@ -2396,11 +2173,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2411,11 +2184,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2439,11 +2208,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2454,11 +2219,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "boolean",
-              "number",
-              "string"
-            ],
+            "scalar_types": ["boolean", "number", "string"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2482,9 +2243,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2495,9 +2254,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2521,9 +2278,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2534,9 +2289,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2560,9 +2313,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2573,9 +2324,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2599,9 +2348,7 @@
           {
             "handle_id": "left",
             "display_name": "Left",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2612,9 +2359,7 @@
           {
             "handle_id": "right",
             "display_name": "Right",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": true,
             "required": true,
             "whole_number": false,
@@ -2642,9 +2387,7 @@
           {
             "handle_id": "enabled",
             "display_name": "Enabled",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2655,9 +2398,7 @@
           {
             "handle_id": "token_id",
             "display_name": "Token Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2668,9 +2409,7 @@
           {
             "handle_id": "price",
             "display_name": "Price",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2681,9 +2420,7 @@
           {
             "handle_id": "size",
             "display_name": "Size",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2694,9 +2431,7 @@
           {
             "handle_id": "market_slug",
             "display_name": "Market Slug",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2707,9 +2442,7 @@
           {
             "handle_id": "condition_id",
             "display_name": "Condition Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2720,9 +2453,7 @@
           {
             "handle_id": "source_id",
             "display_name": "Source Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2733,9 +2464,7 @@
           {
             "handle_id": "reason",
             "display_name": "Reason",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2787,9 +2516,7 @@
           {
             "handle_id": "enabled",
             "display_name": "Enabled",
-            "scalar_types": [
-              "boolean"
-            ],
+            "scalar_types": ["boolean"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2800,9 +2527,7 @@
           {
             "handle_id": "token_id",
             "display_name": "Token Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2813,9 +2538,7 @@
           {
             "handle_id": "price",
             "display_name": "Price",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2826,9 +2549,7 @@
           {
             "handle_id": "size",
             "display_name": "Size",
-            "scalar_types": [
-              "number"
-            ],
+            "scalar_types": ["number"],
             "nullable": false,
             "required": true,
             "whole_number": false,
@@ -2839,9 +2560,7 @@
           {
             "handle_id": "market_slug",
             "display_name": "Market Slug",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2852,9 +2571,7 @@
           {
             "handle_id": "condition_id",
             "display_name": "Condition Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2865,9 +2582,7 @@
           {
             "handle_id": "source_id",
             "display_name": "Source Id",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,
@@ -2878,9 +2593,7 @@
           {
             "handle_id": "reason",
             "display_name": "Reason",
-            "scalar_types": [
-              "string"
-            ],
+            "scalar_types": ["string"],
             "nullable": true,
             "required": false,
             "whole_number": false,

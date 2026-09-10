@@ -1,12 +1,8 @@
-import type { GraphEdge, GraphNode, GraphParameter, NodeGraph } from '$lib/api/generated';
+import type { GraphEdge, GraphNode, GraphParameter, NodeGraph } from "$lib/api/generated";
 
-import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
+import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
 
-import {
-  type CanvasEdge,
-  type CanvasNode,
-  hasCompleteHandles,
-} from '$lib/catalog/nodeGraph/contracts';
+import { type CanvasEdge, type CanvasNode, hasCompleteHandles } from "$lib/catalog/nodeGraph/contracts";
 
 export function canvasNodes(graph: NodeGraph): CanvasNode[] {
   return graph.nodes.map(toCanvasNode);
@@ -57,7 +53,7 @@ function toCanvasNode(node: GraphNode): CanvasNode {
 
 function toPersistedEdge(edge: CanvasEdge): GraphEdge {
   if (!hasCompleteHandles(edge)) {
-    throw new Error('Connected graph edges require source and target handles');
+    throw new Error("Connected graph edges require source and target handles");
   }
   return {
     id: edge.id,

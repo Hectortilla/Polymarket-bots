@@ -3,10 +3,10 @@ import {
   createGraphTemplateApiV1GraphTemplatesPost,
   type BotRead,
   type NodeGraph,
-} from '$lib/api/generated';
-import type { LaunchInputs } from '$lib/catalog/schema';
-import { DraftSaveFailure, DRAFT_WRITE } from './failure';
-import { resolveDraftWrite } from './write';
+} from "$lib/api/generated";
+import type { LaunchInputs } from "$lib/catalog/schema";
+import { DraftSaveFailure, DRAFT_WRITE } from "./failure";
+import { resolveDraftWrite } from "./write";
 
 /** Reuse confirmed writes when saving or navigation is retried in this editor. */
 export class SavedBotDraft {
@@ -23,14 +23,20 @@ export class SavedBotDraft {
     if (this.confirmedBotSave?.signature === signature) return this.confirmedBotSave.bot;
     try {
       if (this.template?.graphJson !== graphJson) {
-        const template = await resolveDraftWrite(DRAFT_WRITE.TEMPLATE, createGraphTemplateApiV1GraphTemplatesPost({
-          body: { name: `bot-draft-${Date.now()}`, graph },
-        }));
+        const template = await resolveDraftWrite(
+          DRAFT_WRITE.TEMPLATE,
+          createGraphTemplateApiV1GraphTemplatesPost({
+            body: { name: `bot-draft-${Date.now()}`, graph },
+          }),
+        );
         this.template = { id: template.id, graphJson };
       }
-      const bot = await resolveDraftWrite(DRAFT_WRITE.BOT, createBotApiV1BotsPost({
-        body: { definition_id: definitionId, inputs, graph_template_id: this.template.id },
-      }));
+      const bot = await resolveDraftWrite(
+        DRAFT_WRITE.BOT,
+        createBotApiV1BotsPost({
+          body: { definition_id: definitionId, inputs, graph_template_id: this.template.id },
+        }),
+      );
       this.confirmedBotSave = { signature, bot };
       return bot;
     } catch (error) {

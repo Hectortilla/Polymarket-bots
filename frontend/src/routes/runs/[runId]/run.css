@@ -25,7 +25,7 @@
 
 .section-count {
   color: var(--text-muted);
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
   font-size: 0.72rem;
 }
 
@@ -102,7 +102,7 @@ dd {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text-soft);
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
   font-size: 0.76rem;
   line-height: 1.55;
 }
@@ -142,7 +142,7 @@ dd {
 
 .event-kind {
   color: var(--accent);
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
   font-size: 0.72rem;
 }
 

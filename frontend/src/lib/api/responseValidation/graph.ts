@@ -1,21 +1,21 @@
-import { isOutcomePrice } from '$lib/outcomePrices';
+import { isOutcomePrice } from "$lib/outcomePrices";
 
-import { isOptionalNullable } from '$lib/valueGuards';
-import { isPositiveDecimal } from '$lib/decimalGuards';
+import { isOptionalNullable } from "$lib/valueGuards";
+import { isPositiveDecimal } from "$lib/decimalGuards";
 
-import { isArrayOf, isFiniteNumber } from '$lib/valueGuards';
+import { isArrayOf, isFiniteNumber } from "$lib/valueGuards";
 
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
-import catalogContract from '$lib/catalog/catalogContract.fixture.json';
+import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 
-import { graphScalarValueIsValid as isScalarValue } from '$lib/catalog/scalarValue';
+import { graphScalarValueIsValid as isScalarValue } from "$lib/catalog/scalarValue";
 
-import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
+import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
 
-import { nodeGraphContractIsValid } from '$lib/catalog/runtimeGraphValidation';
+import { nodeGraphContractIsValid } from "$lib/catalog/runtimeGraphValidation";
 
-import { isNonemptyString, isOneOf, isRecord } from '$lib/valueGuards';
+import { isNonemptyString, isOneOf, isRecord } from "$lib/valueGuards";
 
 const GRAPH_SCALAR_TYPES = Object.values(catalogContract.graphScalarType);
 
@@ -24,18 +24,11 @@ const GRAPH_COMPARISON_OPERATORS = Object.values(catalogContract.graphComparison
 const GRAPH_BROKER_ACTIONS = Object.values(catalogContract.graphBrokerAction);
 
 export function isNodeGraph(value: unknown): boolean {
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.nodes) ||
-    value.nodes.length < catalogContract.nodeGraph.minimumNodes
-  ) {
+  if (!isRecord(value) || !Array.isArray(value.nodes) || value.nodes.length < catalogContract.nodeGraph.minimumNodes) {
     return false;
   }
   if (!value.nodes.every(isGraphNode)) return false;
-  if (
-    value.parameters !== undefined &&
-    (!Array.isArray(value.parameters) || !value.parameters.every(isGraphParameter))
-  )
+  if (value.parameters !== undefined && (!Array.isArray(value.parameters) || !value.parameters.every(isGraphParameter)))
     return false;
   const edgesAreValid =
     value.edges === undefined ||
@@ -49,10 +42,7 @@ export function isNodeGraph(value: unknown): boolean {
           isGraphIdentifier(edge.target) &&
           isGraphIdentifier(edge.target_handle),
       ));
-  return (
-    edgesAreValid &&
-    nodeGraphContractIsValid(value as unknown as import('$lib/api/generated').NodeGraph)
-  );
+  return edgesAreValid && nodeGraphContractIsValid(value as unknown as import("$lib/api/generated").NodeGraph);
 }
 
 export function isGraphCatalog(value: unknown): boolean {
@@ -66,18 +56,16 @@ export function isGraphCatalog(value: unknown): boolean {
   )
     return false;
   return (
-    hasUniqueValues(value.triggers, 'hook_name') &&
-    hasUniqueValues(value.operations, 'operation') &&
-    hasUniqueValues(value.constants, 'scalar_type') &&
-    hasUniqueValues(value.comparisons, 'operator') &&
-    hasUniqueValues(value.broker_actions, 'action')
+    hasUniqueValues(value.triggers, "hook_name") &&
+    hasUniqueValues(value.operations, "operation") &&
+    hasUniqueValues(value.constants, "scalar_type") &&
+    hasUniqueValues(value.comparisons, "operator") &&
+    hasUniqueValues(value.broker_actions, "action")
   );
 }
 
 export function isGraphPreviewResponse(value: Record<string, unknown>): boolean {
-  return (
-    isArrayOf(value.nodes, isGraphPreviewNode) && isArrayOf(value.intended_orders, isIntendedOrder)
-  );
+  return isArrayOf(value.nodes, isGraphPreviewNode) && isArrayOf(value.intended_orders, isIntendedOrder);
 }
 
 function isGraphNode(node: unknown): boolean {
@@ -99,8 +87,7 @@ function isGraphNode(node: unknown): boolean {
         catalogContract.graphNodeCatalog.operations
           .map((item) => item.operation)
           .includes(node.data.operation as never) &&
-        (node.data.scalar_type === undefined ||
-          isOneOf(node.data.scalar_type, GRAPH_SCALAR_TYPES)) &&
+        (node.data.scalar_type === undefined || isOneOf(node.data.scalar_type, GRAPH_SCALAR_TYPES)) &&
         (node.data.input_ids === undefined ||
           (Array.isArray(node.data.input_ids) && node.data.input_ids.every(isGraphIdentifier)))
       );
@@ -132,7 +119,7 @@ function isGraphEdgeIdentifier(value: unknown): value is string {
 
 function isTrimmedStringWithinLimit(value: unknown, maximumLength: number): value is string {
   return (
-    typeof value === 'string' &&
+    typeof value === "string" &&
     value === value.trim() &&
     value.length >= catalogContract.nodeGraph.minimumIdentifierLength &&
     value.length <= maximumLength
@@ -140,9 +127,7 @@ function isTrimmedStringWithinLimit(value: unknown, maximumLength: number): valu
 }
 
 function isGraphHookName(value: unknown): value is string {
-  return (
-    isGraphIdentifier(value) && new RegExp(catalogContract.nodeGraph.hookNamePattern).test(value)
-  );
+  return isGraphIdentifier(value) && new RegExp(catalogContract.nodeGraph.hookNamePattern).test(value);
 }
 
 function isGraphCoordinate(value: unknown): value is number {
@@ -165,9 +150,7 @@ function isTriggerDescriptor(value: Record<string, unknown>): boolean {
     value.context_handle_id === canonicalDescriptor.context_handle_id &&
     value.context_type_name === canonicalDescriptor.context_type_name &&
     isGraphHookName(value.hook_name) &&
-    (value.payload === undefined ||
-      value.payload === null ||
-      isGraphPayloadDescriptor(value.payload))
+    (value.payload === undefined || value.payload === null || isGraphPayloadDescriptor(value.payload))
   );
 }
 
@@ -235,11 +218,9 @@ function isGraphInputDescriptor(value: unknown): boolean {
     isNonemptyString(value.display_name) &&
     Array.isArray(value.scalar_types) &&
     value.scalar_types.length >= catalogContract.nodeGraph.minimumInputScalarTypes &&
-    value.scalar_types.every((type) =>
-      isOneOf(type, [...GRAPH_SCALAR_TYPES, catalogContract.contextPortType]),
-    ) &&
-    typeof value.nullable === 'boolean' &&
-    typeof value.required === 'boolean'
+    value.scalar_types.every((type) => isOneOf(type, [...GRAPH_SCALAR_TYPES, catalogContract.contextPortType])) &&
+    typeof value.nullable === "boolean" &&
+    typeof value.required === "boolean"
   );
 }
 
@@ -248,21 +229,17 @@ function isGraphOutputDescriptor(value: Record<string, unknown>): boolean {
     isGraphIdentifier(value.handle_id) &&
     isNonemptyString(value.display_name) &&
     isOneOf(value.scalar_type, [...GRAPH_SCALAR_TYPES, catalogContract.contextPortType]) &&
-    (value.nullable === undefined || typeof value.nullable === 'boolean')
+    (value.nullable === undefined || typeof value.nullable === "boolean")
   );
 }
 
 function isGraphFieldPathSegment(value: unknown): value is string {
-  return (
-    isGraphIdentifier(value) && new RegExp(catalogContract.graphFieldPathSegmentPattern).test(value)
-  );
+  return isGraphIdentifier(value) && new RegExp(catalogContract.graphFieldPathSegmentPattern).test(value);
 }
 
 function isOperationDescriptor(value: Record<string, unknown>): boolean {
   return (
-    catalogContract.graphNodeCatalog.operations.some(
-      (item) => item.operation === value.operation,
-    ) &&
+    catalogContract.graphNodeCatalog.operations.some((item) => item.operation === value.operation) &&
     isNonemptyString(value.display_name) &&
     isNonemptyString(value.category) &&
     isArrayOf(value.inputs, isGraphInputDescriptor) &&
@@ -284,9 +261,7 @@ function isGraphPreviewOutput(output: unknown): boolean {
   return (
     isRecord(output) &&
     isOneOf(output.status, Object.values(catalogContract.graphValueStatus)) &&
-    (output.value === null ||
-      typeof output.value === 'boolean' ||
-      typeof output.value === 'string') &&
+    (output.value === null || typeof output.value === "boolean" || typeof output.value === "string") &&
     isOptionalNullable(output.reason, isGraphEvaluationReason)
   );
 }
@@ -311,8 +286,8 @@ function isGraphPayloadField(field: unknown): boolean {
     field.path.segments.every(isGraphFieldPathSegment) &&
     isNonemptyString(field.value_type) &&
     (field.scalar_type === null || isOneOf(field.scalar_type, GRAPH_SCALAR_TYPES)) &&
-    typeof field.nullable === 'boolean' &&
-    typeof field.collection === 'boolean' &&
+    typeof field.nullable === "boolean" &&
+    typeof field.collection === "boolean" &&
     isRecord(field.value_schema)
   );
 }
@@ -321,7 +296,7 @@ function isGraphParameter(parameter: unknown): boolean {
   return (
     isRecord(parameter) &&
     isGraphIdentifier(parameter.id) &&
-    typeof parameter.name === 'string' &&
+    typeof parameter.name === "string" &&
     parameter.name.length > 0 &&
     parameter.name.length <= catalogContract.maximumParameterNameLength &&
     isRecord(parameter.data) &&

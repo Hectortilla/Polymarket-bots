@@ -1,8 +1,10 @@
 import {
-  requestPasswordReset, completePasswordReset,
-  requestEmailVerification, completeEmailVerification,
-} from '$lib/api/generated';
-import { ACCOUNT_COPY } from './copy';
+  requestPasswordReset,
+  completePasswordReset,
+  requestEmailVerification,
+  completeEmailVerification,
+} from "$lib/api/generated";
+import { ACCOUNT_COPY } from "./copy";
 
 export type AccountLinkFlow = {
   request: typeof requestPasswordReset;

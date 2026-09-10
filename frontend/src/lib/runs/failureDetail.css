@@ -23,7 +23,7 @@
   background: var(--surface-raised);
   box-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
   color: var(--text);
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
   font-size: 0.75rem;
   line-height: 1.55;
   opacity: 0;
@@ -41,7 +41,7 @@
   margin-bottom: 6px;
   display: block;
   color: var(--error);
-  font-family: 'Geist Variable', sans-serif;
+  font-family: "Geist Variable", sans-serif;
   font-size: 0.68rem;
   font-weight: 650;
   letter-spacing: 0.06em;

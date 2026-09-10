@@ -1,19 +1,19 @@
-import { ACCOUNT_SESSION_STATUS } from '$lib/auth/session/state';
-import { runPath } from '$lib/navigation';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { accountSession } from '$lib/auth/session';
-import { get } from 'svelte/store';
+import { ACCOUNT_SESSION_STATUS } from "$lib/auth/session/state";
+import { runPath } from "$lib/navigation";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { accountSession } from "$lib/auth/session";
+import { get } from "svelte/store";
 
-import type { BotMode, PersistedDurableEvent } from '$lib/api/generated';
-import { VALUATION_STATUS } from '$lib/charts/contracts';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { SIDE } from '$lib/sides';
-import { EVENT_KIND, INITIAL_EVENT_CURSOR, persistedDurableEvent } from './durableEvents';
-import { openRunEventStream, STREAM_CONNECTION_STATE, runEventStreamUrl } from './events';
-import { LIVE_EVENT_KIND } from './eventKinds';
-import { INITIAL_RUN_STATUS, RUN_STATUS } from './status';
+import type { BotMode, PersistedDurableEvent } from "$lib/api/generated";
+import { VALUATION_STATUS } from "$lib/charts/contracts";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { SIDE } from "$lib/sides";
+import { EVENT_KIND, INITIAL_EVENT_CURSOR, persistedDurableEvent } from "./durableEvents";
+import { openRunEventStream, STREAM_CONNECTION_STATE, runEventStreamUrl } from "./events";
+import { LIVE_EVENT_KIND } from "./eventKinds";
+import { INITIAL_RUN_STATUS, RUN_STATUS } from "./status";
 
-const RUN_ID = '00000000-0000-0000-0000-000000000001';
+const RUN_ID = "00000000-0000-0000-0000-000000000001";
 
 class FakeEventSource {
   static current: FakeEventSource;
@@ -27,11 +27,15 @@ class FakeEventSource {
   }
 }
 
-afterEach(() => { accountSession.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  accountSession.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
-describe('run EventSource adapter', () => {
-  it('continues from the cursor, filters invalid events, and closes at terminal', () => {
-    vi.stubGlobal('EventSource', FakeEventSource);
+describe("run EventSource adapter", () => {
+  it("continues from the cursor, filters invalid events, and closes at terminal", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
     const onDurableEvent = vi.fn();
     const close = openRunEventStream(RUN_ID, 4, onDurableEvent, vi.fn());
     const source = FakeEventSource.current;
@@ -39,24 +43,24 @@ describe('run EventSource adapter', () => {
       id: 5,
       kind: EVENT_KIND.runLifecycle,
       run_id: RUN_ID,
-      occurred_at: '2026-08-23T00:00:00Z',
+      occurred_at: "2026-08-23T00:00:00Z",
       payload: { status: RUN_STATUS.RUNNING },
     };
 
-    source.onmessage?.(new MessageEvent('message', { data: JSON.stringify(event) }));
-    source.onmessage?.(new MessageEvent('message', { data: JSON.stringify(event) }));
+    source.onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }));
+    source.onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }));
     source.onmessage?.(
-      new MessageEvent('message', {
+      new MessageEvent("message", {
         data: JSON.stringify({ ...event, id: 0 }),
       }),
     );
     source.onmessage?.(
-      new MessageEvent('message', {
-        data: JSON.stringify({ ...event, id: 6, payload: { status: 'bogus' } }),
+      new MessageEvent("message", {
+        data: JSON.stringify({ ...event, id: 6, payload: { status: "bogus" } }),
       }),
     );
     source.onmessage?.(
-      new MessageEvent('message', {
+      new MessageEvent("message", {
         data: JSON.stringify({
           ...event,
           id: 6,
@@ -64,11 +68,11 @@ describe('run EventSource adapter', () => {
           payload: {
             point: {
               source_key: `wallet${runtimeContract.walletSourceKeySeparator}source`,
-              wallet: '0x' + 'a'.repeat(40),
+              wallet: "0x" + "a".repeat(40),
               trade_timestamp_ms: 1,
               side: SIDE.buy,
-              notional: '1',
-              market_label: 'Market',
+              notional: "1",
+              market_label: "Market",
               accepted: true,
             },
           },
@@ -77,33 +81,33 @@ describe('run EventSource adapter', () => {
     );
     for (const id of [-1, 1.5, null]) {
       source.onmessage?.(
-        new MessageEvent('message', {
+        new MessageEvent("message", {
           data: JSON.stringify({ ...event, id }),
         }),
       );
     }
     source.onmessage?.(
-      new MessageEvent('message', {
-        data: JSON.stringify({ ...event, id: 6, run_id: 'another-run' }),
+      new MessageEvent("message", {
+        data: JSON.stringify({ ...event, id: 6, run_id: "another-run" }),
       }),
     );
     source.onmessage?.(
-      new MessageEvent('message', {
+      new MessageEvent("message", {
         data: JSON.stringify({
           ...event,
           id: 6,
           kind: EVENT_KIND.chartSample,
-          payload: { sampled_at_ms: 1, markets: 'invalid', equity: null },
+          payload: { sampled_at_ms: 1, markets: "invalid", equity: null },
         }),
       }),
     );
-    source.onmessage?.(new MessageEvent('message', { data: '{broken' }));
+    source.onmessage?.(new MessageEvent("message", { data: "{broken" }));
 
     expect(source.url).toBe(runEventStreamUrl(RUN_ID, 4));
     expect(onDurableEvent).toHaveBeenCalledOnce();
     expect(source.close).not.toHaveBeenCalled();
     source.onmessage?.(
-      new MessageEvent('message', {
+      new MessageEvent("message", {
         data: JSON.stringify({
           ...event,
           id: 7,
@@ -116,25 +120,23 @@ describe('run EventSource adapter', () => {
     expect(source.close).toHaveBeenCalledOnce();
   });
 
-  it('normalizes the generated starting lifecycle default at ingress', () => {
-    vi.stubGlobal('EventSource', FakeEventSource);
+  it("normalizes the generated starting lifecycle default at ingress", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
     const onDurableEvent = vi.fn();
     openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, onDurableEvent, vi.fn());
     const event: PersistedDurableEvent = {
       id: 1,
       kind: EVENT_KIND.runLifecycle,
       run_id: RUN_ID,
-      occurred_at: '2026-08-23T00:00:00Z',
+      occurred_at: "2026-08-23T00:00:00Z",
       payload: {
-        name: 'Starting run',
+        name: "Starting run",
         mode: runtimeContract.botMode.PAPER as BotMode,
-        initial_cash_usdc: '1000',
+        initial_cash_usdc: "1000",
       },
     };
 
-    FakeEventSource.current.onmessage?.(
-      new MessageEvent('message', { data: JSON.stringify(event) }),
-    );
+    FakeEventSource.current.onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }));
 
     expect(onDurableEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,13 +145,13 @@ describe('run EventSource adapter', () => {
     );
   });
 
-  it('accepts every live variant and rejects malformed live payloads', () => {
-    vi.stubGlobal('EventSource', FakeEventSource);
+  it("accepts every live variant and rejects malformed live payloads", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
     const onLiveEvent = vi.fn();
     openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, vi.fn(), onLiveEvent);
     const base = {
       run_id: RUN_ID,
-      occurred_at: '2026-08-23T00:00:00Z',
+      occurred_at: "2026-08-23T00:00:00Z",
     };
     const events = [
       {
@@ -159,9 +161,9 @@ describe('run EventSource adapter', () => {
           sampled_at_ms: 1,
           points: [
             {
-              token_id: 'token',
-              label: 'Market',
-              value: '0.5',
+              token_id: "token",
+              label: "Market",
+              value: "0.5",
               status: VALUATION_STATUS.fresh,
               markers: [SIDE.buy],
             },
@@ -173,7 +175,7 @@ describe('run EventSource adapter', () => {
         kind: LIVE_EVENT_KIND.equity,
         payload: {
           sampled_at_ms: 1,
-          point: { value: '100', status: VALUATION_STATUS.fresh },
+          point: { value: "100", status: VALUATION_STATUS.fresh },
         },
       },
       {
@@ -184,11 +186,11 @@ describe('run EventSource adapter', () => {
           points: [
             {
               source_key: `wallet${runtimeContract.walletSourceKeySeparator}source`,
-              wallet: '0x' + 'a'.repeat(40),
+              wallet: "0x" + "a".repeat(40),
               trade_timestamp_ms: 1,
               side: SIDE.sell,
-              notional: '2',
-              market_label: 'Market',
+              notional: "2",
+              market_label: "Market",
               accepted: null,
             },
           ],
@@ -215,9 +217,9 @@ describe('run EventSource adapter', () => {
         sampled_at_ms: 2,
         points: [
           {
-            token_id: 'token',
-            label: 'Market',
-            value: '0.5',
+            token_id: "token",
+            label: "Market",
+            value: "0.5",
             status: VALUATION_STATUS.unavailable,
             markers: [],
           },
@@ -229,12 +231,12 @@ describe('run EventSource adapter', () => {
       ...events[1],
       payload: {
         sampled_at_ms: 2,
-        point: { value: '0x10', status: VALUATION_STATUS.fresh },
+        point: { value: "0x10", status: VALUATION_STATUS.fresh },
       },
     });
     emit({
       ...events[2],
-      payload: { sampled_at_ms: 2, points: [{ notional: '-1' }] },
+      payload: { sampled_at_ms: 2, points: [{ notional: "-1" }] },
     });
     emit({
       ...events[3],
@@ -242,37 +244,35 @@ describe('run EventSource adapter', () => {
     });
 
     expect(onLiveEvent).toHaveBeenCalledTimes(4);
-    expect(onLiveEvent.mock.calls.map(([event]) => event.kind)).toEqual(
-      events.map(({ kind }) => kind),
-    );
+    expect(onLiveEvent.mock.calls.map(([event]) => event.kind)).toEqual(events.map(({ kind }) => kind));
   });
 
-  it('validates every durable financial-history payload at ingress', () => {
+  it("validates every durable financial-history payload at ingress", () => {
     const order = {
-      token_id: 'token',
+      token_id: "token",
       side: SIDE.buy,
-      price: '0.5',
-      size: '2',
+      price: "0.5",
+      size: "2",
     };
     const portfolio = {
-      cash_usdc: '100',
+      cash_usdc: "100",
       positions: [
-        { token_id: 'open-token', size: '2', average_entry_price: '0.5' },
-        { token_id: 'closed-token', size: '0', average_entry_price: null },
+        { token_id: "open-token", size: "2", average_entry_price: "0.5" },
+        { token_id: "closed-token", size: "0", average_entry_price: null },
       ],
-      cumulative_fees_usdc: '0',
+      cumulative_fees_usdc: "0",
     };
     const fillPayload = {
       order,
       fill: {
-        order_id: 'order',
-        token_id: 'token',
+        order_id: "order",
+        token_id: "token",
         side: SIDE.buy,
         status: runtimeContract.orderStatus.FILLED,
-        requested_size: '2',
-        filled_size: '2',
-        average_price: '0.5',
-        fee_usdc: '0',
+        requested_size: "2",
+        filled_size: "2",
+        average_price: "0.5",
+        fee_usdc: "0",
         received_at_ms: 1,
         reject_reason: null,
         reject_message: null,
@@ -283,31 +283,31 @@ describe('run EventSource adapter', () => {
     const settlementPayload = {
       settlement: {
         resolution: {
-          condition_id: 'condition',
-          market_slug: 'market',
-          token_ids: ['yes-token', 'no-token'],
-          winning_token_id: 'yes-token',
-          winning_outcome: 'Yes',
+          condition_id: "condition",
+          market_slug: "market",
+          token_ids: ["yes-token", "no-token"],
+          winning_token_id: "yes-token",
+          winning_outcome: "Yes",
           resolved_at_ms: 1,
-          source: 'test',
+          source: "test",
         },
         paper_positions: [
           {
-            owner: 'paper',
-            token_id: 'yes-token',
-            size: '2',
-            payout_per_token: '1',
-            cash_payout_usdc: '2',
-            realized_pnl_usdc: '1',
+            owner: "paper",
+            token_id: "yes-token",
+            size: "2",
+            payout_per_token: "1",
+            cash_payout_usdc: "2",
+            realized_pnl_usdc: "1",
           },
         ],
         followed_wallet_positions: [
           {
-            owner: 'wallet',
-            token_id: 'no-token',
-            size: '1',
-            payout_per_token: '0',
-            cash_payout_usdc: '0',
+            owner: "wallet",
+            token_id: "no-token",
+            size: "1",
+            payout_per_token: "0",
+            cash_payout_usdc: "0",
             realized_pnl_usdc: null,
           },
         ],
@@ -316,18 +316,18 @@ describe('run EventSource adapter', () => {
       portfolio,
     };
     const walletTrade = {
-      wallet: '0x0000000000000000000000000000000000000001',
-      condition_id: 'condition',
-      token_id: 'a-very-long-token-id',
+      wallet: "0x0000000000000000000000000000000000000001",
+      condition_id: "condition",
+      token_id: "a-very-long-token-id",
       side: SIDE.buy,
-      size: '2',
-      price: '0.5',
-      source_id: 'source',
+      size: "2",
+      price: "0.5",
+      source_id: "source",
       trade_timestamp_ms: 1,
       observed_at_ms: 1,
       kind: runtimeContract.walletTradeKind.TRADE,
-      market_slug: 'market',
-      outcome: 'Yes',
+      market_slug: "market",
+      outcome: "Yes",
     };
     const walletTimelinePayload = {
       trade: walletTrade,
@@ -337,7 +337,7 @@ describe('run EventSource adapter', () => {
         wallet: walletTrade.wallet,
         trade_timestamp_ms: 1,
         side: SIDE.buy,
-        notional: '1.00',
+        notional: "1.00",
         market_label: `market${runtimeContract.dashboard.walletMarketLabelPolicy.partSeparator}Yes`,
         accepted: true,
       },
@@ -354,7 +354,7 @@ describe('run EventSource adapter', () => {
       {
         kind: EVENT_KIND.botActivity,
         payload: {
-          message: 'Watching market',
+          message: "Watching market",
           severity: runtimeContract.activitySeverity.INFO,
         },
       },
@@ -362,12 +362,12 @@ describe('run EventSource adapter', () => {
       { kind: EVENT_KIND.brokerFill, payload: fillPayload },
       {
         kind: EVENT_KIND.brokerFailure,
-        payload: { order, error: 'Broker unavailable' },
+        payload: { order, error: "Broker unavailable" },
       },
       { kind: EVENT_KIND.marketSettlement, payload: settlementPayload },
       { kind: EVENT_KIND.walletTimeline, payload: walletTimelinePayload },
       { kind: EVENT_KIND.portfolioSnapshot, payload: portfolio },
-      { kind: EVENT_KIND.runFailure, payload: { error: 'Run failed' } },
+      { kind: EVENT_KIND.runFailure, payload: { error: "Run failed" } },
     ];
 
     validPayloads.forEach(({ kind, payload }, index) => {
@@ -377,7 +377,7 @@ describe('run EventSource adapter', () => {
             id: index + 1,
             kind,
             run_id: RUN_ID,
-            occurred_at: '2026-08-23T00:00:00Z',
+            occurred_at: "2026-08-23T00:00:00Z",
             payload,
           },
           RUN_ID,
@@ -388,30 +388,28 @@ describe('run EventSource adapter', () => {
     const validFillStates = [
       {
         status: runtimeContract.orderStatus.REJECTED,
-        token_id: '',
-        filled_size: '0',
+        token_id: "",
+        filled_size: "0",
         average_price: null,
         reject_reason: runtimeContract.fillRejectReason.BAD_SIZE,
-        reject_message: 'Order size is below the market minimum',
+        reject_message: "Order size is below the market minimum",
       },
       {
         status: runtimeContract.orderStatus.PARTIAL,
-        token_id: 'token',
-        filled_size: '1',
-        average_price: '0.5',
+        token_id: "token",
+        filled_size: "1",
+        average_price: "0.5",
         reject_reason: null,
         reject_message: null,
       },
-      ...[runtimeContract.orderStatus.ACCEPTED, runtimeContract.orderStatus.CANCELED].map(
-        (status) => ({
-          status,
-          token_id: 'token',
-          filled_size: '0',
-          average_price: null,
-          reject_reason: null,
-          reject_message: null,
-        }),
-      ),
+      ...[runtimeContract.orderStatus.ACCEPTED, runtimeContract.orderStatus.CANCELED].map((status) => ({
+        status,
+        token_id: "token",
+        filled_size: "0",
+        average_price: null,
+        reject_reason: null,
+        reject_message: null,
+      })),
     ];
     validFillStates.forEach((fill, index) => {
       expect(
@@ -420,7 +418,7 @@ describe('run EventSource adapter', () => {
             id: index + 100,
             kind: EVENT_KIND.brokerFill,
             run_id: RUN_ID,
-            occurred_at: '2026-08-23T00:00:00Z',
+            occurred_at: "2026-08-23T00:00:00Z",
             payload: {
               ...fillPayload,
               fill: { ...fillPayload.fill, ...fill },
@@ -443,24 +441,24 @@ describe('run EventSource adapter', () => {
       {
         kind: EVENT_KIND.botActivity,
         payload: {
-          message: 'Watching market',
-          severity: 'invalid',
+          message: "Watching market",
+          severity: "invalid",
         },
       },
       {
         kind: EVENT_KIND.brokerOrder,
         payload: {
-          order: { ...order, price: '0' },
+          order: { ...order, price: "0" },
         },
       },
       {
         kind: EVENT_KIND.brokerFill,
         payload: {
           ...fillPayload,
-          fill: { ...fillPayload.fill, token_id: '' },
+          fill: { ...fillPayload.fill, token_id: "" },
         },
       },
-      { kind: EVENT_KIND.brokerFailure, payload: { order, error: '' } },
+      { kind: EVENT_KIND.brokerFailure, payload: { order, error: "" } },
       {
         kind: EVENT_KIND.marketSettlement,
         payload: {
@@ -469,7 +467,7 @@ describe('run EventSource adapter', () => {
             ...settlementPayload.settlement,
             resolution: {
               ...settlementPayload.settlement.resolution,
-              token_ids: ['same-token', 'same-token'],
+              token_ids: ["same-token", "same-token"],
             },
           },
         },
@@ -483,7 +481,7 @@ describe('run EventSource adapter', () => {
             paper_positions: [
               {
                 ...settlementPayload.settlement.paper_positions[0],
-                payout_per_token: '2',
+                payout_per_token: "2",
               },
             ],
           },
@@ -493,24 +491,24 @@ describe('run EventSource adapter', () => {
         kind: EVENT_KIND.walletTimeline,
         payload: {
           ...walletTimelinePayload,
-          point: { ...walletTimelinePayload.point, notional: '999' },
+          point: { ...walletTimelinePayload.point, notional: "999" },
         },
       },
       {
         kind: EVENT_KIND.portfolioSnapshot,
         payload: {
           ...portfolio,
-          cumulative_fees_usdc: '-1',
+          cumulative_fees_usdc: "-1",
         },
       },
       {
         kind: EVENT_KIND.portfolioSnapshot,
         payload: {
           ...portfolio,
-          positions: [{ token_id: 'open-token', size: '2', average_entry_price: '0' }],
+          positions: [{ token_id: "open-token", size: "2", average_entry_price: "0" }],
         },
       },
-      { kind: EVENT_KIND.runFailure, payload: { error: '' } },
+      { kind: EVENT_KIND.runFailure, payload: { error: "" } },
     ];
     malformedPayloads.forEach(({ kind, payload }, index) => {
       expect(
@@ -519,7 +517,7 @@ describe('run EventSource adapter', () => {
             id: index + 20,
             kind,
             run_id: RUN_ID,
-            occurred_at: '2026-08-23T00:00:00Z',
+            occurred_at: "2026-08-23T00:00:00Z",
             payload,
           },
           RUN_ID,
@@ -529,9 +527,9 @@ describe('run EventSource adapter', () => {
   });
 });
 
-it('shows transport degradation while independently checking authentication', async () => {
-  vi.stubGlobal('EventSource', FakeEventSource);
-  const restore = vi.spyOn(accountSession, 'restore').mockResolvedValue();
+it("shows transport degradation while independently checking authentication", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const restore = vi.spyOn(accountSession, "restore").mockResolvedValue();
   const connection = vi.fn();
   openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, vi.fn(), vi.fn(), connection);
   const source = FakeEventSource.current;
@@ -543,11 +541,14 @@ it('shows transport degradation while independently checking authentication', as
   expect(connection).toHaveBeenLastCalledWith(STREAM_CONNECTION_STATE.CONNECTED);
 });
 
-it('closes the real stream adapter when restoration confirms session expiry', async () => {
-  vi.stubGlobal('EventSource', FakeEventSource);
-  vi.stubGlobal('window', { location: { pathname: runPath('example'), search: '', replace: vi.fn() } });
-  accountSession.state.set({ status: ACCOUNT_SESSION_STATUS.AUTHENTICATED, user: { id: RUN_ID, email: 'first@example.com' } });
-  const restore = vi.spyOn(accountSession, 'restore').mockImplementation(async () => {
+it("closes the real stream adapter when restoration confirms session expiry", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.stubGlobal("window", { location: { pathname: runPath("example"), search: "", replace: vi.fn() } });
+  accountSession.state.set({
+    status: ACCOUNT_SESSION_STATUS.AUTHENTICATED,
+    user: { id: RUN_ID, email: "first@example.com" },
+  });
+  const restore = vi.spyOn(accountSession, "restore").mockImplementation(async () => {
     accountSession.expire();
   });
   openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, vi.fn(), vi.fn());
@@ -559,5 +560,5 @@ it('closes the real stream adapter when restoration confirms session expiry', as
 });
 
 function emit(event: object): void {
-  FakeEventSource.current.onmessage?.(new MessageEvent('message', { data: JSON.stringify(event) }));
+  FakeEventSource.current.onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }));
 }

@@ -1,41 +1,28 @@
 <script lang="ts">
-  import { SERVICE_NAME } from '$lib/serviceIdentity';
-  import { ONBOARDING_COPY } from '$lib/onboarding/copy';
-  import AccountUsage from '$lib/limits/AccountUsage.svelte';
-  import { PRESENTATION_COPY } from '$lib/presentation';
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
-  import { onMount } from 'svelte';
-  import './home.css';
+  import { SERVICE_NAME } from "$lib/serviceIdentity";
+  import { ONBOARDING_COPY } from "$lib/onboarding/copy";
+  import AccountUsage from "$lib/limits/AccountUsage.svelte";
+  import { PRESENTATION_COPY } from "$lib/presentation";
+  import PlusIcon from "phosphor-svelte/lib/PlusIcon";
+  import { onMount } from "svelte";
+  import "./home.css";
 
-  import {
-    listBotsApiV1BotsGet,
-    listRunsApiV1RunsGet,
-    type BotRead,
-    type RunRead,
-  } from '$lib/api/generated';
-  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath, runPath } from '$lib/navigation';
-  import { combinedFailureDetail } from '$lib/runs/eventSummary';
-  import FailureDetailTooltip from '$lib/runs/FailureDetailTooltip.svelte';
-  import RunStatusBadge from '$lib/runs/RunStatusBadge.svelte';
-  import { RUN_STATUS } from '$lib/runs/status';
-  import { formatTime } from '$lib/time';
-  import {
-    HOME_COLUMN_LABEL,
-    HOME_COPY,
-    botRowLabel,
-    graphRevisionLabel,
-    runRowLabel,
-  } from './homeCopy';
+  import { listBotsApiV1BotsGet, listRunsApiV1RunsGet, type BotRead, type RunRead } from "$lib/api/generated";
+  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath, runPath } from "$lib/navigation";
+  import { combinedFailureDetail } from "$lib/runs/eventSummary";
+  import FailureDetailTooltip from "$lib/runs/FailureDetailTooltip.svelte";
+  import RunStatusBadge from "$lib/runs/RunStatusBadge.svelte";
+  import { RUN_STATUS } from "$lib/runs/status";
+  import { formatTime } from "$lib/time";
+  import { HOME_COLUMN_LABEL, HOME_COPY, botRowLabel, graphRevisionLabel, runRowLabel } from "./homeCopy";
 
   let runs = $state<RunRead[]>([]);
   let bots = $state<BotRead[]>([]);
   let loading = $state(true);
-  let error = $state('');
+  let error = $state("");
 
   const visibleBots = $derived(
-    bots.filter(
-      (bot) => bot.latest_graph_revision !== null && bot.latest_graph_revision !== undefined,
-    ),
+    bots.filter((bot) => bot.latest_graph_revision !== null && bot.latest_graph_revision !== undefined),
   );
   const visibleBotIds = $derived(new Set(visibleBots.map((bot) => bot.id)));
   const visibleRuns = $derived(runs.filter((run) => visibleBotIds.has(run.bot_id)).slice(0, 10));
@@ -46,7 +33,7 @@
 
   async function loadHome(): Promise<void> {
     loading = true;
-    error = '';
+    error = "";
     try {
       const [botsResponse, runsResponse] = await Promise.all([
         listBotsApiV1BotsGet({ throwOnError: true }),
@@ -67,18 +54,15 @@
 
   function marketScope(bot: BotRead): string {
     const slugs = [...new Set(bot.config.stream_rules.flatMap((rule) => rule.market_slugs ?? []))];
-    if (slugs.length === 0) return 'No markets configured';
-    if (slugs.length <= 2) return slugs.join(', ');
-    return `${slugs.slice(0, 2).join(', ')} +${slugs.length - 2}`;
+    if (slugs.length === 0) return "No markets configured";
+    if (slugs.length <= 2) return slugs.join(", ");
+    return `${slugs.slice(0, 2).join(", ")} +${slugs.length - 2}`;
   }
 </script>
 
 <svelte:head>
   <title>{NAVIGATION_LABEL.BOTS} | {SERVICE_NAME}</title>
-  <meta
-    name="description"
-    content="Configure node-based paper bots and inspect their recent runs."
-  />
+  <meta name="description" content="Configure node-based paper bots and inspect their recent runs." />
 </svelte:head>
 
 <h1 class="sr-only">{NAVIGATION_LABEL.BOTS}</h1>
@@ -116,11 +100,7 @@
         {#each visibleBots as bot (bot.id)}
           {@const recentRun = latestRun(bot.id)}
           <div class="bot-list-item">
-            <a
-              class="data-list-row bot-list-row"
-              href={botPath(bot.id)}
-              aria-label={botRowLabel(bot.config.name)}
-            >
+            <a class="data-list-row bot-list-row" href={botPath(bot.id)} aria-label={botRowLabel(bot.config.name)}>
               <span class="bot-identity" data-label={HOME_COLUMN_LABEL.BOT_AND_MARKETS}>
                 <strong class="data-list-title">{bot.config.name}</strong>
                 <small>{marketScope(bot)}</small>
@@ -138,11 +118,7 @@
                   <span class="muted-value">{HOME_COPY.NOT_RUN_YET}</span>
                 {/if}
               </span>
-              <time
-                class="data-list-value"
-                data-label={HOME_COLUMN_LABEL.UPDATED}
-                datetime={bot.updated_at}
-              >
+              <time class="data-list-value" data-label={HOME_COLUMN_LABEL.UPDATED} datetime={bot.updated_at}>
                 {formatTime(bot.updated_at)}
               </time>
             </a>
@@ -187,10 +163,7 @@
             <strong class="data-list-title" data-label={HOME_COLUMN_LABEL.RUN}>
               {run.config.name}
             </strong>
-            <span
-              class:failure-detail-host={failureDetail !== null}
-              data-label={HOME_COLUMN_LABEL.STATUS}
-            >
+            <span class:failure-detail-host={failureDetail !== null} data-label={HOME_COLUMN_LABEL.STATUS}>
               <RunStatusBadge status={run.status} />
               {#if failureDetail}
                 <FailureDetailTooltip id={failureDetailId} detail={failureDetail} />
@@ -198,20 +171,12 @@
             </span>
             <span class="data-list-value" data-label={HOME_COLUMN_LABEL.EQUITY}>
               {run.latest_equity ?? PRESENTATION_COPY.NOT_AVAILABLE}
-              {run.equity_status ? ` / ${run.equity_status}` : ''}
+              {run.equity_status ? ` / ${run.equity_status}` : ""}
             </span>
-            <time
-              class="data-list-value"
-              data-label={HOME_COLUMN_LABEL.CREATED}
-              datetime={run.created_at}
-            >
+            <time class="data-list-value" data-label={HOME_COLUMN_LABEL.CREATED} datetime={run.created_at}>
               {formatTime(run.created_at)}
             </time>
-            <time
-              class="data-list-value"
-              data-label={HOME_COLUMN_LABEL.ENDED}
-              datetime={run.ended_at ?? undefined}
-            >
+            <time class="data-list-value" data-label={HOME_COLUMN_LABEL.ENDED} datetime={run.ended_at ?? undefined}>
               {formatTime(run.ended_at)}
             </time>
           </a>

@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { SERVICE_NAME } from '$lib/serviceIdentity';
-  import { LaunchAttempt } from '$lib/bots/launchAttempt';
-  import { HTTP_STATUS, isClientRejection } from '$lib/api/http';
-  import { resourceLimitDetail } from '$lib/limits/validation';
-  import { goto } from '$app/navigation';
-  import { page } from '$app/state';
-  import '$lib/bots/builder.css';
-  import { BOT_BUILDER_COPY } from '$lib/bots/copy';
-  import { readSavedBot, BotNotFoundError } from '$lib/bots/read';
-  import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
-  import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
-  import { onMount, tick } from 'svelte';
+  import { SERVICE_NAME } from "$lib/serviceIdentity";
+  import { LaunchAttempt } from "$lib/bots/launchAttempt";
+  import { HTTP_STATUS, isClientRejection } from "$lib/api/http";
+  import { resourceLimitDetail } from "$lib/limits/validation";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
+  import "$lib/bots/builder.css";
+  import { BOT_BUILDER_COPY } from "$lib/bots/copy";
+  import { readSavedBot, BotNotFoundError } from "$lib/bots/read";
+  import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
+  import PlayIcon from "phosphor-svelte/lib/PlayIcon";
+  import { onMount, tick } from "svelte";
 
   import {
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
@@ -21,23 +21,23 @@
     type BotDefinitionDescriptor,
     type BotRead,
     type NodeGraph,
-  } from '$lib/api/generated';
-  import GraphSourcePicker from '$lib/bots/GraphSourcePicker.svelte';
-  import { GRAPH_SOURCE_COPY } from '$lib/bots/graphSource';
-  import LaunchForm from '$lib/catalog/LaunchForm.svelte';
-  import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
-  import { hasGraphCapability } from '$lib/catalog/graphContracts';
-  import { graphValidationIssues, type GraphValidationIssue } from '$lib/catalog/graphValidation';
-  import { nodeGraphsEqual } from '$lib/catalog/nodeGraphEquality';
+  } from "$lib/api/generated";
+  import GraphSourcePicker from "$lib/bots/GraphSourcePicker.svelte";
+  import { GRAPH_SOURCE_COPY } from "$lib/bots/graphSource";
+  import LaunchForm from "$lib/catalog/LaunchForm.svelte";
+  import NodeGraphInput from "$lib/catalog/NodeGraphInput.svelte";
+  import { hasGraphCapability } from "$lib/catalog/graphContracts";
+  import { graphValidationIssues, type GraphValidationIssue } from "$lib/catalog/graphValidation";
+  import { nodeGraphsEqual } from "$lib/catalog/nodeGraphEquality";
   import {
     launchInputsFromConfig,
     launchRequestValidationIssues,
     type LaunchInputs,
     type LaunchValidationIssue,
-  } from '$lib/catalog/schema';
-  import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from '$lib/navigation';
-  import { formatTime } from '$lib/time';
-  import { BOT_DETAIL_COPY, botGraphRevisionLabel } from './copy';
+  } from "$lib/catalog/schema";
+  import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from "$lib/navigation";
+  import { formatTime } from "$lib/time";
+  import { BOT_DETAIL_COPY, botGraphRevisionLabel } from "./copy";
 
   let bot = $state<BotRead>();
   let bots = $state<BotRead[]>([]);
@@ -46,12 +46,12 @@
   let editedInputs = $state<LaunchInputs>({});
   let savedGraph = $state<NodeGraph>();
   let editedGraph = $state<NodeGraph>();
-  let graphEditorResetKey = $state('');
+  let graphEditorResetKey = $state("");
   let graphSourceName = $state<string>(GRAPH_SOURCE_COPY.CURRENT);
   let loading = $state(true);
   let saving = $state(false);
   let running = $state(false);
-  let error = $state('');
+  let error = $state("");
   let configServerIssues = $state<LaunchValidationIssue[]>([]);
   let graphServerIssues = $state<GraphValidationIssue[]>([]);
 
@@ -78,15 +78,13 @@
       ]);
       bot = savedBot;
       bots = botsResponse.data;
-      descriptor = definitionsResponse.data.find(
-        (definition) => definition.definition_id === bot?.definition_id,
-      );
-      if (!descriptor) throw new Error('definition missing');
+      descriptor = definitionsResponse.data.find((definition) => definition.definition_id === bot?.definition_id);
+      if (!descriptor) throw new Error("definition missing");
       savedInputs = launchInputsFromConfig(descriptor, bot.config);
       editedInputs = savedInputs;
       savedGraph = bot.latest_graph_revision?.graph;
       editedGraph = savedGraph;
-      graphEditorResetKey = bot.latest_graph_revision?.id ?? '';
+      graphEditorResetKey = bot.latest_graph_revision?.id ?? "";
     } catch (caught) {
       error = caught instanceof BotNotFoundError ? BOT_DETAIL_COPY.NOT_FOUND : BOT_DETAIL_COPY.LOAD_ERROR;
     } finally {
@@ -109,10 +107,10 @@
     if (!shouldSaveConfig && !shouldSaveGraph) return;
 
     saving = true;
-    error = '';
+    error = "";
     configServerIssues = [];
     graphServerIssues = [];
-    let phase: 'config' | 'graph' = 'config';
+    let phase: "config" | "graph" = "config";
     try {
       if (shouldSaveConfig) {
         const response = await updateBotApiV1BotsBotIdPatch({
@@ -126,7 +124,7 @@
       }
 
       if (shouldSaveGraph && graphToSave) {
-        phase = 'graph';
+        phase = "graph";
         const response = await createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost({
           path: { bot_id: bot.id },
           body: { graph: graphToSave },
@@ -136,17 +134,17 @@
         savedGraph = response.data.latest_graph_revision?.graph;
         editedGraph = savedGraph;
         graphSourceName = GRAPH_SOURCE_COPY.CURRENT;
-        graphEditorResetKey = response.data.latest_graph_revision?.id ?? '';
+        graphEditorResetKey = response.data.latest_graph_revision?.id ?? "";
       }
     } catch (caught) {
-      if (phase === 'config') {
+      if (phase === "config") {
         configServerIssues = launchRequestValidationIssues(caught);
         if (configServerIssues.length === 0) error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.CONFIG_SAVE_ERROR;
       } else if (graphToSave) {
         graphServerIssues = graphValidationIssues(caught, graphToSave);
         if (graphServerIssues.length > 0) {
           await tick();
-          document.getElementById('bot-graph-validation')?.focus();
+          document.getElementById("bot-graph-validation")?.focus();
         } else {
           error = resourceLimitDetail(caught) ?? BOT_DETAIL_COPY.GRAPH_SAVE_ERROR;
         }
@@ -159,7 +157,7 @@
   async function runBot(): Promise<void> {
     if (!bot || hasUnsavedChanges || running) return;
     running = true;
-    error = '';
+    error = "";
     const attempt = new LaunchAttempt(bot.id);
     try {
       const response = await launchBotRunApiV1BotsBotIdRunsPost({
@@ -182,8 +180,7 @@
   }
   function resolveLaunchFailure(status: number | undefined, detail: unknown): { rejected: boolean; message: string } {
     const admissionRejection = resourceLimitDetail(detail);
-    const rejected = isClientRejection(status)
-      || admissionRejection !== undefined;
+    const rejected = isClientRejection(status) || admissionRejection !== undefined;
     if (status === HTTP_STATUS.GONE) return { rejected, message: BOT_DETAIL_COPY.EXPIRED_LAUNCH };
     return { rejected, message: admissionRejection ?? BOT_DETAIL_COPY.RUN_ERROR };
   }
@@ -248,18 +245,13 @@
           <div>
             <h2 id="bot-graph-editor-label">
               {BOT_BUILDER_COPY.STRATEGY_GRAPH}
-              <span class="revision-label"
-                >{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</span
-              >
+              <span class="revision-label">{botGraphRevisionLabel(bot.latest_graph_revision?.revision)}</span>
             </h2>
             <p>
-              Edit the current graph or replace it with the latest graph from another bot. Current
-              source: {graphSourceName}.
+              Edit the current graph or replace it with the latest graph from another bot. Current source: {graphSourceName}.
             </p>
           </div>
-          <span class="save-state"
-            >{graphDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span
-          >
+          <span class="save-state">{graphDirty ? BOT_DETAIL_COPY.UNSAVED : BOT_DETAIL_COPY.SAVED}</span>
         </header>
         <GraphSourcePicker
           {bots}

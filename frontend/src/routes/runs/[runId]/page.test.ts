@@ -1,22 +1,22 @@
-import { RUN_GUIDE_COPY } from '$lib/runs/runGuide';
-import { STREAM_CONNECTION_STATE, type StreamConnectionState } from '$lib/runs/events';
-import { ADD_NODE_LABEL } from '$lib/catalog/NodePalette.svelte';
-import { VALUATION_STATUS } from '$lib/charts/contracts';
-import { eventSummary } from '$lib/runs/eventSummary';
-import { RUN_STATUS_PRESENTATION } from '$lib/runs/status';
-import type { LiveRunEvent } from '$lib/api/generated';
-import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RUN_GUIDE_COPY } from "$lib/runs/runGuide";
+import { STREAM_CONNECTION_STATE, type StreamConnectionState } from "$lib/runs/events";
+import { ADD_NODE_LABEL } from "$lib/catalog/NodePalette.svelte";
+import { VALUATION_STATUS } from "$lib/charts/contracts";
+import { eventSummary } from "$lib/runs/eventSummary";
+import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
+import type { LiveRunEvent } from "$lib/api/generated";
+import { LIVE_EVENT_KIND } from "$lib/runs/eventKinds";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BotDefinitionDescriptor, RunRead } from '$lib/api/generated';
-import { TEST_GRAPH, TEST_GRAPH_CATALOG } from '$lib/catalog/nodeGraphTestFixtures';
-import { BOT_DEFINITION_LABEL, SELECTION_MODE } from '$lib/catalog/schema';
-import { botPath } from '$lib/navigation';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { formatTime } from '$lib/time';
-import { EVENT_KIND, type PersistedDurableEvent } from '$lib/runs/durableEvents';
-import { RUN_STATUS } from '$lib/runs/status';
+import type { BotDefinitionDescriptor, RunRead } from "$lib/api/generated";
+import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
+import { botPath } from "$lib/navigation";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { formatTime } from "$lib/time";
+import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
+import { RUN_STATUS } from "$lib/runs/status";
 
 const mocks = vi.hoisted(() => ({
   listDefinitions: vi.fn(),
@@ -25,41 +25,41 @@ const mocks = vi.hoisted(() => ({
   stopRun: vi.fn(),
 }));
 
-vi.mock('$app/state', () => ({
-  page: { params: { runId: 'aaaaaaaa-0000-0000-0000-000000000001' } },
+vi.mock("$app/state", () => ({
+  page: { params: { runId: "aaaaaaaa-0000-0000-0000-000000000001" } },
 }));
-vi.mock('$lib/runs/hydrate', () => ({
+vi.mock("$lib/runs/hydrate", () => ({
   loadAndContinueRunDetail: mocks.loadRun,
   loadOlderRunEvents: mocks.loadOlderEvents,
 }));
-vi.mock('$lib/api/generated', () => ({
+vi.mock("$lib/api/generated", () => ({
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
   stopRunApiV1RunsRunIdStopPost: mocks.stopRun,
 }));
 
-import Page from './+page.svelte';
-import { loadedEventsLabel, RUN_DETAIL_COPY, executedRunGraphRevisionLabel } from './copy';
+import Page from "./+page.svelte";
+import { loadedEventsLabel, RUN_DETAIL_COPY, executedRunGraphRevisionLabel } from "./copy";
 
 const RUN = {
-  id: 'aaaaaaaa-0000-0000-0000-000000000001',
-  bot_id: 'bbbbbbbb-0000-0000-0000-000000000001',
-  definition_id: 'node-based-bot',
-  bot_graph_revision_id: 'cccccccc-0000-0000-0000-000000000001',
+  id: "aaaaaaaa-0000-0000-0000-000000000001",
+  bot_id: "bbbbbbbb-0000-0000-0000-000000000001",
+  definition_id: "node-based-bot",
+  bot_graph_revision_id: "cccccccc-0000-0000-0000-000000000001",
   graph_revision: 3,
   graph: TEST_GRAPH,
   config: {
-    name: 'Historical graph run',
+    name: "Historical graph run",
     stream_rules: [],
     data_trades_budget_per_10s: runtimeContract.config.maximumDataTradesBudget,
-    max_order_size: '10',
-    max_slippage_pct: '0.02',
+    max_order_size: "10",
+    max_slippage_pct: "0.02",
     paper_latency_ms: 250,
     paper_latency_jitter_ms: 100,
     event_max_age_ms: 5000,
-    paper_portfolio_usdc: '1000',
+    paper_portfolio_usdc: "1000",
   },
   status: RUN_STATUS.STOPPED,
-  created_at: '2026-08-30T00:00:00Z',
+  created_at: "2026-08-30T00:00:00Z",
 } satisfies RunRead;
 
 const GRAPHLESS_RUN = {
@@ -71,8 +71,8 @@ const GRAPHLESS_RUN = {
 
 const GRAPH_DEFINITION = {
   definition_id: RUN.definition_id,
-  display_name: 'Node-based bot',
-  description: 'A graph-capable test definition.',
+  display_name: "Node-based bot",
+  description: "A graph-capable test definition.",
   label: BOT_DEFINITION_LABEL.STANDARD,
   market_selection: SELECTION_MODE.USER_CONFIGURED,
   wallet_selection: SELECTION_MODE.ABSENT,
@@ -106,16 +106,16 @@ class FlowResizeObserver implements ResizeObserver {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('IntersectionObserver', PassiveIntersectionObserver);
-  vi.stubGlobal('ResizeObserver', FlowResizeObserver);
+  vi.stubGlobal("IntersectionObserver", PassiveIntersectionObserver);
+  vi.stubGlobal("ResizeObserver", FlowResizeObserver);
   vi.stubGlobal(
-    'DOMMatrixReadOnly',
+    "DOMMatrixReadOnly",
     class {
       readonly m22 = 1;
     },
   );
-  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(100);
-  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(50);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(100);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(50);
   mocks.listDefinitions.mockResolvedValue({ data: [GRAPH_DEFINITION] });
   mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
     hydrate({ run: RUN, events: [], nextBeforeEventId: null });
@@ -130,8 +130,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('run detail page', () => {
-  it('shows stream reconnection until transport is connected again', async () => {
+describe("run detail page", () => {
+  it("shows stream reconnection until transport is connected again", async () => {
     let connectionState: (state: StreamConnectionState) => void = () => {};
     mocks.loadRun.mockImplementation(async (_runId, hydrate, _durable, _live, _open, onConnectionState) => {
       connectionState = onConnectionState;
@@ -139,42 +139,42 @@ describe('run detail page', () => {
       return () => {};
     });
     render(Page);
-    await screen.findByRole('heading', { name: GRAPHLESS_RUN.config.name });
+    await screen.findByRole("heading", { name: GRAPHLESS_RUN.config.name });
     connectionState(STREAM_CONNECTION_STATE.RECONNECTING);
     expect(await screen.findByText(RUN_DETAIL_COPY.STREAM_RECONNECTING)).toBeTruthy();
     connectionState(STREAM_CONNECTION_STATE.CONNECTED);
     await waitFor(() => expect(screen.queryByText(RUN_DETAIL_COPY.STREAM_RECONNECTING)).toBeNull());
   });
 
-  it('renders the saved-bot link and immutable historical graph snapshot', async () => {
+  it("renders the saved-bot link and immutable historical graph snapshot", async () => {
     render(Page);
 
-    const botLink = await screen.findByRole('link', {
+    const botLink = await screen.findByRole("link", {
       name: RUN_DETAIL_COPY.BOT_CONFIGURATION,
     });
-    expect(botLink.getAttribute('href')).toBe(botPath(RUN.bot_id));
+    expect(botLink.getAttribute("href")).toBe(botPath(RUN.bot_id));
     expect(
-      screen.getByRole('heading', {
+      screen.getByRole("heading", {
         name: executedRunGraphRevisionLabel(RUN.graph_revision),
       }),
     ).toBeTruthy();
 
     const graphSection = screen
-      .getByRole('heading', {
+      .getByRole("heading", {
         name: executedRunGraphRevisionLabel(RUN.graph_revision),
       })
-      .closest('section');
+      .closest("section");
     expect(graphSection).not.toBeNull();
-    const graphCanvas = await screen.findByRole('group', {
+    const graphCanvas = await screen.findByRole("group", {
       name: executedRunGraphRevisionLabel(RUN.graph_revision),
     });
-    expect(graphCanvas.getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByLabelText('on_book trigger node')).toBeTruthy();
-    expect(graphSection?.querySelector('pre')).toBeNull();
-    expect(screen.queryByRole('button', { name: ADD_NODE_LABEL })).toBeNull();
+    expect(graphCanvas.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByLabelText("on_book trigger node")).toBeTruthy();
+    expect(graphSection?.querySelector("pre")).toBeNull();
+    expect(screen.queryByRole("button", { name: ADD_NODE_LABEL })).toBeNull();
   });
 
-  it('omits historical graph details for an ordinary run', async () => {
+  it("omits historical graph details for an ordinary run", async () => {
     mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
       hydrate({ run: GRAPHLESS_RUN, events: [], nextBeforeEventId: null });
       return () => {};
@@ -182,9 +182,9 @@ describe('run detail page', () => {
 
     render(Page);
 
-    await screen.findByRole('heading', { name: GRAPHLESS_RUN.config.name });
+    await screen.findByRole("heading", { name: GRAPHLESS_RUN.config.name });
     expect(
-      screen.queryByRole('heading', {
+      screen.queryByRole("heading", {
         name: new RegExp(RUN_DETAIL_COPY.EXECUTED_GRAPH_REVISION),
       }),
     ).toBeNull();
@@ -192,24 +192,22 @@ describe('run detail page', () => {
     expect(mocks.listDefinitions).not.toHaveBeenCalled();
   });
 
-  it('reports when the executed graph catalog cannot be loaded', async () => {
-    mocks.listDefinitions.mockRejectedValue(new Error('catalog unavailable'));
+  it("reports when the executed graph catalog cannot be loaded", async () => {
+    mocks.listDefinitions.mockRejectedValue(new Error("catalog unavailable"));
 
     render(Page);
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      RUN_DETAIL_COPY.GRAPH_LOAD_ERROR,
-    );
-    expect(document.querySelector('.historical-graph pre')).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toContain(RUN_DETAIL_COPY.GRAPH_LOAD_ERROR);
+    expect(document.querySelector(".historical-graph pre")).toBeNull();
   });
 
-  it('attaches recorded failure detail to the failed lifecycle row', async () => {
-    const failureDetail = 'RuntimeError: run launch failed';
+  it("attaches recorded failure detail to the failed lifecycle row", async () => {
+    const failureDetail = "RuntimeError: run launch failed";
     const failedLifecycle: PersistedDurableEvent = {
       id: 1,
       kind: EVENT_KIND.runLifecycle,
       run_id: RUN.id,
-      occurred_at: '2026-08-30T00:00:01Z',
+      occurred_at: "2026-08-30T00:00:01Z",
       payload: { status: RUN_STATUS.FAILED },
     };
     mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
@@ -227,11 +225,9 @@ describe('run detail page', () => {
 
     render(Page);
 
-    const row = (await screen.findByText(eventSummary(failedLifecycle))).closest('tr');
-    expect(row?.getAttribute('tabindex')).toBe('0');
-    expect(row?.getAttribute('aria-describedby')).toBe(
-      `event-failure-detail-${failedLifecycle.id}`,
-    );
+    const row = (await screen.findByText(eventSummary(failedLifecycle))).closest("tr");
+    expect(row?.getAttribute("tabindex")).toBe("0");
+    expect(row?.getAttribute("aria-describedby")).toBe(`event-failure-detail-${failedLifecycle.id}`);
     expect(row?.querySelector('[role="tooltip"]')?.textContent).toContain(failureDetail);
   });
 });
@@ -248,7 +244,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function lifecycleEvent(id: number, status: RunRead['status']): PersistedDurableEvent {
+function lifecycleEvent(id: number, status: RunRead["status"]): PersistedDurableEvent {
   return {
     id,
     run_id: RUN.id,
@@ -267,7 +263,7 @@ function chartSampleEvent(id: number): PersistedDurableEvent {
     payload: {
       sampled_at_ms: id * 1_000,
       markets: [],
-      equity: { value: '1000', status: VALUATION_STATUS.fresh },
+      equity: { value: "1000", status: VALUATION_STATUS.fresh },
     },
   };
 }
@@ -282,21 +278,19 @@ function hydrateActive(events: PersistedDurableEvent[] = [], cursor: number | nu
 const EVENT_PAGE_SIZE = runtimeContract.eventPagination.defaultLimit;
 
 function progressPage(firstId: number, count = EVENT_PAGE_SIZE): PersistedDurableEvent[] {
-  return Array.from({ length: count }, (_, index) =>
-    lifecycleEvent(firstId + index, RUN_STATUS.RUNNING),
-  );
+  return Array.from({ length: count }, (_, index) => lifecycleEvent(firstId + index, RUN_STATUS.RUNNING));
 }
 
 function expectProgressWindow(firstId: number, count: number): void {
-  const rows = [...document.querySelectorAll('.event-table tbody tr')];
+  const rows = [...document.querySelectorAll(".event-table tbody tr")];
   expect(rows).toHaveLength(count);
-  expect(rows.map((row) => row.querySelector('td')?.textContent)).toEqual(
+  expect(rows.map((row) => row.querySelector("td")?.textContent)).toEqual(
     progressPage(firstId, count).map((event) => formatTime(event.occurred_at)),
   );
 }
 
-describe('run detail interactions', () => {
-  it('bounds streaming to one page, including hidden samples, and reloads evicted history', async () => {
+describe("run detail interactions", () => {
+  it("bounds streaming to one page, including hidden samples, and reloads evicted history", async () => {
     hydrateActive(progressPage(1));
     render(Page);
     await screen.findByText(loadedEventsLabel(EVENT_PAGE_SIZE));
@@ -309,13 +303,13 @@ describe('run detail interactions', () => {
       events: progressPage(1, 1),
       nextBeforeEventId: null,
     });
-    await fireEvent.click(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
+    await fireEvent.click(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
     expect(mocks.loadOlderEvents).toHaveBeenCalledWith(RUN.id, 2);
     await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
-    expect(screen.queryByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
+    expect(screen.queryByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
   });
 
-  it('lets an initially empty window fill before evicting events', async () => {
+  it("lets an initially empty window fill before evicting events", async () => {
     hydrateActive();
     render(Page);
     await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS);
@@ -323,47 +317,47 @@ describe('run detail interactions', () => {
 
     progressPage(1).forEach(durable);
     await waitFor(() => expectProgressWindow(1, EVENT_PAGE_SIZE));
-    expect(screen.queryByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
+    expect(screen.queryByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull();
 
     durable(lifecycleEvent(EVENT_PAGE_SIZE + 1, RUN_STATUS.RUNNING));
     await waitFor(() => expectProgressWindow(2, EVENT_PAGE_SIZE));
-    expect(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
+    expect(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
   });
 
   it.each([1, EVENT_PAGE_SIZE * 3])(
-    'keeps two contiguous pages when %i events stream during an older-page request',
+    "keeps two contiguous pages when %i events stream during an older-page request",
     async (streamedCount) => {
       const firstId = EVENT_PAGE_SIZE + 1;
       hydrateActive(progressPage(firstId), firstId);
       const request = deferred<{ events: PersistedDurableEvent[]; nextBeforeEventId: null }>();
       mocks.loadOlderEvents.mockReturnValue(request.promise);
       render(Page);
-      const button = await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+      const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
       const durable = mocks.loadRun.mock.calls[0][2];
       await fireEvent.click(button);
 
       progressPage(EVENT_PAGE_SIZE * 2 + 1, streamedCount).forEach(durable);
       request.resolve({ events: progressPage(1), nextBeforeEventId: null });
-      await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+      await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
       await waitFor(() => expectProgressWindow(streamedCount + 1, EVENT_PAGE_SIZE * 2));
 
       mocks.loadOlderEvents.mockResolvedValue({ events: [], nextBeforeEventId: null });
-      await fireEvent.click(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
+      await fireEvent.click(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER }));
       expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, streamedCount + 1);
     },
   );
 
-  it('releases reserved page capacity and preserves the advanced cursor after a failed fetch', async () => {
+  it("releases reserved page capacity and preserves the advanced cursor after a failed fetch", async () => {
     const firstId = EVENT_PAGE_SIZE + 1;
     hydrateActive(progressPage(firstId), firstId);
     const request = deferred<never>();
     mocks.loadOlderEvents.mockReturnValue(request.promise);
     render(Page);
-    const button = await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+    const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
     const durable = mocks.loadRun.mock.calls[0][2];
     await fireEvent.click(button);
     progressPage(EVENT_PAGE_SIZE * 2 + 1).forEach(durable);
-    request.reject(new Error('unavailable'));
+    request.reject(new Error("unavailable"));
 
     await screen.findByText(RUN_DETAIL_COPY.LOAD_ERROR);
     expectProgressWindow(EVENT_PAGE_SIZE * 2 + 1, EVENT_PAGE_SIZE);
@@ -375,54 +369,54 @@ describe('run detail interactions', () => {
     expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, EVENT_PAGE_SIZE * 2 + 2);
   });
 
-  it('shows an empty progress state for a page containing only chart samples', async () => {
+  it("shows an empty progress state for a page containing only chart samples", async () => {
     hydrateActive([chartSampleEvent(2)], 2);
     render(Page);
 
     expect(await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS)).toBeTruthy();
     expect(screen.getByText(loadedEventsLabel(0))).toBeTruthy();
     expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
-    expect(screen.getByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
+    expect(screen.getByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeTruthy();
   });
 
-  it('shows a pending stop request and applies the returned status', async () => {
+  it("shows a pending stop request and applies the returned status", async () => {
     hydrateActive();
     const request = deferred<{ data: RunRead }>();
     mocks.stopRun.mockReturnValue(request.promise);
     render(Page);
-    const stop = await screen.findByRole('button', {
+    const stop = await screen.findByRole("button", {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
     await fireEvent.click(stop);
     expect(mocks.stopRun).toHaveBeenCalledWith({ path: { run_id: RUN.id }, throwOnError: true });
-    expect(stop.hasAttribute('disabled')).toBe(true);
-    expect(stop.getAttribute('aria-busy')).toBe('true');
+    expect(stop.hasAttribute("disabled")).toBe(true);
+    expect(stop.getAttribute("aria-busy")).toBe("true");
     expect(stop.textContent).toContain(RUN_DETAIL_COPY.SENDING);
     request.resolve({ data: { ...ACTIVE_RUN, status: RUN_STATUS.STOP_REQUESTED } });
     expect(
       (
-        await screen.findByRole('button', {
+        await screen.findByRole("button", {
           name: RUN_STATUS_PRESENTATION[RUN_STATUS.STOP_REQUESTED].stopLabel!,
         })
-      ).hasAttribute('disabled'),
+      ).hasAttribute("disabled"),
     ).toBe(true);
   });
 
-  it('clears busy state after a failed stop so the request can be retried', async () => {
+  it("clears busy state after a failed stop so the request can be retried", async () => {
     hydrateActive();
-    mocks.stopRun.mockRejectedValue(new Error('unavailable'));
+    mocks.stopRun.mockRejectedValue(new Error("unavailable"));
     render(Page);
-    const stop = await screen.findByRole('button', {
+    const stop = await screen.findByRole("button", {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
     await fireEvent.click(stop);
     expect(await screen.findByText(RUN_DETAIL_COPY.STOP_ERROR)).toBeTruthy();
-    expect(stop.hasAttribute('disabled')).toBe(false);
-    expect(stop.getAttribute('aria-busy')).not.toBe('true');
+    expect(stop.hasAttribute("disabled")).toBe(false);
+    expect(stop.getAttribute("aria-busy")).not.toBe("true");
     expect(stop.textContent).toContain(RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!);
   });
 
-  it('applies durable and live stream callbacks and closes the stream on unmount', async () => {
+  it("applies durable and live stream callbacks and closes the stream on unmount", async () => {
     let durable!: (event: PersistedDurableEvent) => void;
     let live!: (event: LiveRunEvent) => void;
     const close = vi.fn();
@@ -433,12 +427,12 @@ describe('run detail interactions', () => {
       return close;
     });
     // Frames run asynchronously so consecutive health events exercise browser ordering.
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       return window.setTimeout(() => callback(0), 0);
     });
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
     const view = render(Page);
-    await screen.findByRole('button', {
+    await screen.findByRole("button", {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
     live({
@@ -455,21 +449,28 @@ describe('run detail interactions', () => {
       },
     });
     expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_UNAVAILABLE)).toBeTruthy();
-    expect(await screen.findByText('17')).toBeTruthy();
+    expect(await screen.findByText("17")).toBeTruthy();
     live({
-      kind: LIVE_EVENT_KIND.streamHealth, run_id: RUN.id, occurred_at: RUN.created_at,
-      payload: { queue_depth: 0, peak_queue_depth: 23, book_dispatch_lag_ms: 8, book_stale: false, book_received_count: 42, book_coalesced_count: 5 },
+      kind: LIVE_EVENT_KIND.streamHealth,
+      run_id: RUN.id,
+      occurred_at: RUN.created_at,
+      payload: {
+        queue_depth: 0,
+        peak_queue_depth: 23,
+        book_dispatch_lag_ms: 8,
+        book_stale: false,
+        book_received_count: 42,
+        book_coalesced_count: 5,
+      },
     });
     expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_REPORTED)).toBeTruthy();
     durable(chartSampleEvent(2));
     durable(lifecycleEvent(1, RUN_STATUS.STOPPED));
-    expect(
-      await screen.findByText(eventSummary(lifecycleEvent(1, RUN_STATUS.STOPPED))),
-    ).toBeTruthy();
+    expect(await screen.findByText(eventSummary(lifecycleEvent(1, RUN_STATUS.STOPPED)))).toBeTruthy();
     expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
     expect(screen.getByText(loadedEventsLabel(1))).toBeTruthy();
     expect(
-      screen.queryByRole('button', {
+      screen.queryByRole("button", {
         name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
       }),
     ).toBeNull();
@@ -477,14 +478,14 @@ describe('run detail interactions', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it('keeps the older-event cursor for retries and merges a successful page', async () => {
+  it("keeps the older-event cursor for retries and merges a successful page", async () => {
     hydrateActive([lifecycleEvent(2, RUN_STATUS.RUNNING), chartSampleEvent(3)], 7);
-    mocks.loadOlderEvents.mockRejectedValueOnce(new Error('unavailable'));
+    mocks.loadOlderEvents.mockRejectedValueOnce(new Error("unavailable"));
     render(Page);
-    const button = await screen.findByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER });
+    const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
     await fireEvent.click(button);
     expect(await screen.findByText(RUN_DETAIL_COPY.LOAD_ERROR)).toBeTruthy();
-    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(button.hasAttribute("disabled")).toBe(false);
     const request = deferred<{
       events: PersistedDurableEvent[];
       nextBeforeEventId: number | null;
@@ -492,8 +493,8 @@ describe('run detail interactions', () => {
     mocks.loadOlderEvents.mockReturnValue(request.promise);
     await fireEvent.click(button);
     expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, 7);
-    expect(button.hasAttribute('disabled')).toBe(true);
-    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
     expect(button.textContent).toContain(RUN_DETAIL_COPY.LOADING);
     await fireEvent.click(button);
     expect(mocks.loadOlderEvents).toHaveBeenCalledTimes(2);
@@ -501,11 +502,9 @@ describe('run detail interactions', () => {
       events: [chartSampleEvent(4), lifecycleEvent(1, RUN_STATUS.QUEUED)],
       nextBeforeEventId: null,
     });
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER })).toBeNull());
     expect(await screen.findByText(loadedEventsLabel(2))).toBeTruthy();
-    const rows = [...document.querySelectorAll('.event-table tbody tr')];
+    const rows = [...document.querySelectorAll(".event-table tbody tr")];
     expect(rows).toHaveLength(2);
     expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
     expect(rows[0].textContent).toContain(eventSummary(lifecycleEvent(1, RUN_STATUS.QUEUED)));

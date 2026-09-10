@@ -1,13 +1,12 @@
-import type { DispatchSkipReason, Side } from '$lib/api/generated';
-import { MAX_CHART_TOKENS, MAX_WALLET_TIMELINE_EVENTS } from '$lib/charts/contracts';
-import { isOutcomePrice } from '$lib/outcomePrices';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { isSide } from '$lib/sides';
-import { isNonemptyString, isNonnegativeInteger, isRecord } from '$lib/valueGuards';
-import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from '$lib/decimalGuards';
-import { isWalletAddress } from '$lib/wallets';
-import Decimal from 'decimal.js';
-
+import type { DispatchSkipReason, Side } from "$lib/api/generated";
+import { MAX_CHART_TOKENS, MAX_WALLET_TIMELINE_EVENTS } from "$lib/charts/contracts";
+import { isOutcomePrice } from "$lib/outcomePrices";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { isSide } from "$lib/sides";
+import { isNonemptyString, isNonnegativeInteger, isRecord } from "$lib/valueGuards";
+import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from "$lib/decimalGuards";
+import { isWalletAddress } from "$lib/wallets";
+import Decimal from "decimal.js";
 
 const DISPATCH_SKIP_REASONS = new Set<DispatchSkipReason>(
   Object.values(runtimeContract.dispatchSkipReason) as DispatchSkipReason[],
@@ -65,11 +64,7 @@ export function isWalletTimelinePayload(payload: Record<string, unknown>): boole
   const trade = payload.trade;
   if (!isWalletTrade(trade)) return false;
   if (payload.outcome !== null && !isDispatchOutcome(payload.outcome)) return false;
-  return walletChartPointMatchesTrade(
-    payload.point,
-    trade,
-    payload.outcome === null ? null : payload.outcome.accepted,
-  );
+  return walletChartPointMatchesTrade(payload.point, trade, payload.outcome === null ? null : payload.outcome.accepted);
 }
 
 export function isStreamHealthPayload(payload: Record<string, unknown>): boolean {
@@ -77,7 +72,7 @@ export function isStreamHealthPayload(payload: Record<string, unknown>): boolean
     isNonnegativeInteger(payload.queue_depth) &&
     isNonnegativeInteger(payload.peak_queue_depth) &&
     (payload.book_dispatch_lag_ms === null || isNonnegativeInteger(payload.book_dispatch_lag_ms)) &&
-    typeof payload.book_stale === 'boolean' &&
+    typeof payload.book_stale === "boolean" &&
     isNonnegativeInteger(payload.book_received_count) &&
     isNonnegativeInteger(payload.book_coalesced_count)
   );
@@ -107,7 +102,7 @@ function isWalletChartPoint(value: unknown): value is Record<string, unknown> {
     isSide(value.side) &&
     isNonnegativeDecimal(value.notional) &&
     isNonemptyString(value.market_label) &&
-    (value.accepted === null || typeof value.accepted === 'boolean')
+    (value.accepted === null || typeof value.accepted === "boolean")
   );
 }
 
@@ -121,10 +116,8 @@ function isWalletTrade(trade: Record<string, unknown>): trade is ValidWalletTrad
     isOutcomePrice(trade.price) &&
     isNonemptyString(trade.source_id) &&
     !trade.source_id.includes(WALLET_SOURCE_KEY_SEPARATOR) &&
-    (trade.market_slug === undefined ||
-      trade.market_slug === null ||
-      typeof trade.market_slug === 'string') &&
-    (trade.outcome === undefined || trade.outcome === null || typeof trade.outcome === 'string') &&
+    (trade.market_slug === undefined || trade.market_slug === null || typeof trade.market_slug === "string") &&
+    (trade.outcome === undefined || trade.outcome === null || typeof trade.outcome === "string") &&
     isNonnegativeInteger(trade.trade_timestamp_ms) &&
     isNonnegativeInteger(trade.observed_at_ms) &&
     trade.observed_at_ms >= trade.trade_timestamp_ms
@@ -137,8 +130,7 @@ function walletChartPointMatchesTrade(
   accepted: boolean | null,
 ): boolean {
   return (
-    point.source_key ===
-      `${trade.wallet.toLowerCase()}${WALLET_SOURCE_KEY_SEPARATOR}${trade.source_id}` &&
+    point.source_key === `${trade.wallet.toLowerCase()}${WALLET_SOURCE_KEY_SEPARATOR}${trade.source_id}` &&
     point.wallet === trade.wallet.toLowerCase() &&
     point.trade_timestamp_ms === trade.trade_timestamp_ms &&
     point.side === trade.side &&
@@ -153,18 +145,15 @@ function walletMarketLabel(trade: ValidWalletTrade): string {
   if (trade.market_slug && trade.outcome) {
     return `${trade.market_slug}${policy.partSeparator}${trade.outcome}`;
   }
-  if (trade.market_slug || trade.outcome) return trade.market_slug || trade.outcome || '';
+  if (trade.market_slug || trade.outcome) return trade.market_slug || trade.outcome || "";
   if (trade.token_id.length <= policy.maximumTokenLength) return trade.token_id;
   return (
-    `${trade.token_id.slice(0, policy.prefixLength)}${policy.ellipsis}` +
-    trade.token_id.slice(-policy.suffixLength)
+    `${trade.token_id.slice(0, policy.prefixLength)}${policy.ellipsis}` + trade.token_id.slice(-policy.suffixLength)
   );
 }
 
-function isDispatchOutcome(
-  value: unknown,
-): value is Record<string, unknown> & { accepted: boolean } {
-  if (!isRecord(value) || typeof value.accepted !== 'boolean') return false;
+function isDispatchOutcome(value: unknown): value is Record<string, unknown> & { accepted: boolean } {
+  if (!isRecord(value) || typeof value.accepted !== "boolean") return false;
   return value.accepted
     ? runtimeContract.dispatchOutcome.acceptedAllowsSkipReason ||
         value.skip_reason === null ||
@@ -174,7 +163,7 @@ function isDispatchOutcome(
 }
 
 function isChartValueStatus(value: unknown, status: unknown): boolean {
-  if (typeof status !== 'string') return false;
+  if (typeof status !== "string") return false;
   if (runtimeContract.chartValueStatus.nullValue.includes(status)) {
     return value === null;
   }

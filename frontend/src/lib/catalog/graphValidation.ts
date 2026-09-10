@@ -1,10 +1,10 @@
-import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
+import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
 
-import type { GraphNode, NodeGraph } from '$lib/api/generated';
+import type { GraphNode, NodeGraph } from "$lib/api/generated";
 
-import { readableValidationMessage, requestValidationIssues } from '$lib/api/requestErrors';
+import { readableValidationMessage, requestValidationIssues } from "$lib/api/requestErrors";
 
-import { GRAPH_COLLECTION_FIELD, GRAPH_NODE_TYPE } from './graphContracts';
+import { GRAPH_COLLECTION_FIELD, GRAPH_NODE_TYPE } from "./graphContracts";
 
 export type GraphValidationIssue = {
   location: string;
@@ -12,24 +12,24 @@ export type GraphValidationIssue = {
 };
 
 export const GRAPH_VALIDATION_COPY = {
-  STRUCTURE: 'Graph structure',
-  INTRO: 'Review each issue below, update the graph, then save again.',
-  TITLE: 'Fix the graph before saving',
+  STRUCTURE: "Graph structure",
+  INTRO: "Review each issue below, update the graph, then save again.",
+  TITLE: "Fix the graph before saving",
 } as const;
 
 const FIELD_LABELS: Record<string, string> = {
-  action: 'Action',
-  hook_name: 'Trigger',
-  id: 'Identifier',
+  action: "Action",
+  hook_name: "Trigger",
+  id: "Identifier",
   operator: GRAPH_FIELD_COPY.OPERATOR,
   scalar_type: GRAPH_FIELD_COPY.VALUE_TYPE,
-  source: 'Source node',
-  source_handle: 'Source output',
-  target: 'Target node',
-  target_handle: 'Target input',
+  source: "Source node",
+  source_handle: "Source output",
+  target: "Target node",
+  target_handle: "Target input",
   value: GRAPH_FIELD_COPY.VALUE,
-  x: 'Horizontal position',
-  y: 'Vertical position',
+  x: "Horizontal position",
+  y: "Vertical position",
 };
 
 export function graphValidationIssues(error: unknown, graph: NodeGraph): GraphValidationIssue[] {
@@ -50,9 +50,7 @@ function graphIssueLocation(location: Array<string | number>, graph: NodeGraph):
   const nodeIndex = indexedSegment(location, GRAPH_COLLECTION_FIELD.nodes);
   if (nodeIndex !== undefined) {
     const node = graph.nodes[nodeIndex];
-    const nodeLocation = node
-      ? `Node ${nodeIndex + 1}: ${graphNodeLabel(node)}`
-      : `Node ${nodeIndex + 1}`;
+    const nodeLocation = node ? `Node ${nodeIndex + 1}: ${graphNodeLabel(node)}` : `Node ${nodeIndex + 1}`;
     const field = graphFieldLabel(location);
     return field ? `${nodeLocation}, ${field}` : nodeLocation;
   }
@@ -63,8 +61,8 @@ function graphIssueLocation(location: Array<string | number>, graph: NodeGraph):
     return field ? `Connection ${edgeIndex + 1}, ${field}` : `Connection ${edgeIndex + 1}`;
   }
 
-  if (location.includes(GRAPH_COLLECTION_FIELD.nodes)) return 'Node list';
-  if (location.includes(GRAPH_COLLECTION_FIELD.edges)) return 'Connection list';
+  if (location.includes(GRAPH_COLLECTION_FIELD.nodes)) return "Node list";
+  if (location.includes(GRAPH_COLLECTION_FIELD.edges)) return "Connection list";
   return GRAPH_VALIDATION_COPY.STRUCTURE;
 }
 
@@ -74,7 +72,7 @@ function indexedSegment(
 ): number | undefined {
   const collectionIndex = location.lastIndexOf(collection);
   const index = location[collectionIndex + 1];
-  return typeof index === 'number' ? index : undefined;
+  return typeof index === "number" ? index : undefined;
 }
 
 function graphNodeLabel(node: GraphNode): string {
@@ -95,12 +93,10 @@ function graphNodeLabel(node: GraphNode): string {
 }
 
 function graphFieldLabel(location: Array<string | number>): string | undefined {
-  const field = [...location]
-    .reverse()
-    .find((segment): segment is string => FIELD_LABELS[segment] !== undefined);
+  const field = [...location].reverse().find((segment): segment is string => FIELD_LABELS[segment] !== undefined);
   return field ? FIELD_LABELS[field] : undefined;
 }
 
 function humanize(value: string): string {
-  return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
+  return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }

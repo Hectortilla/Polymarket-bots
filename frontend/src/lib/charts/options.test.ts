@@ -1,18 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import type { ChartSamplePayload, Side, WalletChartPointPayload } from '$lib/api/generated';
-import { SIDE } from '$lib/sides';
-import walletBucketParity from '../../../../backend/contracts/fixtures/dashboard-wallet-bucket-parity.json';
-import { VALUATION_STATUS, type AvailableValuationStatus } from './contracts';
-import { equityChartOption } from './EquityChart.svelte';
-import { marketChartOption } from './MarketChart.svelte';
-import { walletChartOption } from './WalletChart.svelte';
+import type { ChartSamplePayload, Side, WalletChartPointPayload } from "$lib/api/generated";
+import { SIDE } from "$lib/sides";
+import walletBucketParity from "../../../../backend/contracts/fixtures/dashboard-wallet-bucket-parity.json";
+import { VALUATION_STATUS, type AvailableValuationStatus } from "./contracts";
+import { equityChartOption } from "./EquityChart.svelte";
+import { marketChartOption } from "./MarketChart.svelte";
+import { walletChartOption } from "./WalletChart.svelte";
 
-describe('dashboard option builders', () => {
-  it('keeps market stale spans and fill markers separate', () => {
+describe("dashboard option builders", () => {
+  it("keeps market stale spans and fill markers separate", () => {
     const option = marketChartOption([
-      sample(1_000, '0.5', VALUATION_STATUS.fresh, [SIDE.buy]),
-      sample(2_000, '0.5', VALUATION_STATUS.stale, []),
+      sample(1_000, "0.5", VALUATION_STATUS.fresh, [SIDE.buy]),
+      sample(2_000, "0.5", VALUATION_STATUS.stale, []),
     ]);
     const series = option.series as Array<{ data: unknown[] }>;
 
@@ -28,13 +28,13 @@ describe('dashboard option builders', () => {
     expect(series[2].data).toHaveLength(1);
   });
 
-  it('keeps recent market history when the final sample has no active market', () => {
+  it("keeps recent market history when the final sample has no active market", () => {
     const option = marketChartOption([
-      sample(1_000, '0.5', VALUATION_STATUS.fresh, []),
+      sample(1_000, "0.5", VALUATION_STATUS.fresh, []),
       {
         sampled_at_ms: 2_000,
         markets: [],
-        equity: { value: '100', status: VALUATION_STATUS.fresh },
+        equity: { value: "100", status: VALUATION_STATUS.fresh },
       },
     ]);
     const series = option.series as Array<{ data: unknown[] }>;
@@ -46,10 +46,10 @@ describe('dashboard option builders', () => {
     ]);
   });
 
-  it('separates fresh and stale executable equity', () => {
+  it("separates fresh and stale executable equity", () => {
     const option = equityChartOption([
-      sample(1_000, '100', VALUATION_STATUS.fresh, []),
-      sample(2_000, '100', VALUATION_STATUS.stale, []),
+      sample(1_000, "100", VALUATION_STATUS.fresh, []),
+      sample(2_000, "100", VALUATION_STATUS.stale, []),
     ]);
     const series = option.series as Array<{ data: unknown[] }>;
 
@@ -63,11 +63,11 @@ describe('dashboard option builders', () => {
     ]);
   });
 
-  it('buckets wallet sides, relative notional, and skipped opacity', () => {
-    const wallet = '0x0000000000000000000000000000000000000001';
+  it("buckets wallet sides, relative notional, and skipped opacity", () => {
+    const wallet = "0x0000000000000000000000000000000000000001";
     const points: WalletChartPointPayload[] = [
-      walletPoint(wallet, 'one', SIDE.buy, '1', false),
-      walletPoint(wallet, 'two', SIDE.sell, '2', false),
+      walletPoint(wallet, "one", SIDE.buy, "1", false),
+      walletPoint(wallet, "two", SIDE.sell, "2", false),
     ];
     const option = walletChartOption(points, [wallet], 1_000, 2_000);
     const series = option.series as Array<{
@@ -75,21 +75,19 @@ describe('dashboard option builders', () => {
     }>;
 
     expect(series[0].data[0].symbolSize).toBe(13);
-    expect(series[0].data[0].itemStyle.color).toBe('#f6c453');
+    expect(series[0].data[0].itemStyle.color).toBe("#f6c453");
     expect(series[0].data[0].itemStyle.opacity).toBe(0.32);
   });
 
-  it('rejects a non-increasing wallet timeline range', () => {
-    expect(() => walletChartOption([], [], 1_000, 1_000)).toThrow(
-      'wallet chart range must increase',
-    );
+  it("rejects a non-increasing wallet timeline range", () => {
+    expect(() => walletChartOption([], [], 1_000, 1_000)).toThrow("wallet chart range must increase");
   });
 
-  it('matches the shared terminal/browser wallet-bucket scenario', () => {
+  it("matches the shared terminal/browser wallet-bucket scenario", () => {
     const points: WalletChartPointPayload[] = walletBucketParity.points.map((point) => ({
       ...point,
       side: point.side as Side,
-      market_label: 'Market',
+      market_label: "Market",
     }));
     const option = walletChartOption(
       points,
@@ -116,19 +114,14 @@ describe('dashboard option builders', () => {
     ).toEqual(walletBucketParity.web_expected);
   });
 
-  it('keeps exact decimal notional tiers at their shared boundary', () => {
+  it("keeps exact decimal notional tiers at their shared boundary", () => {
     const boundary = walletBucketParity.decimal_boundary;
     const points: WalletChartPointPayload[] = boundary.points.map((point) => ({
       ...point,
       side: point.side as Side,
-      market_label: 'Market',
+      market_label: "Market",
     }));
-    const option = walletChartOption(
-      points,
-      boundary.lanes,
-      walletBucketParity.start_ms,
-      walletBucketParity.end_ms,
-    );
+    const option = walletChartOption(points, boundary.lanes, walletBucketParity.start_ms, walletBucketParity.end_ms);
     const series = option.series as Array<{
       data: Array<{ symbolSize: number }>;
     }>;
@@ -145,7 +138,7 @@ function sample(
 ): ChartSamplePayload {
   return {
     sampled_at_ms: sampledAtMs,
-    markets: [{ token_id: 'token', label: 'Market · Up', value, status, markers }],
+    markets: [{ token_id: "token", label: "Market · Up", value, status, markers }],
     equity: { value, status },
   };
 }
@@ -163,7 +156,7 @@ function walletPoint(
     trade_timestamp_ms: 1_100,
     side,
     notional,
-    market_label: 'Market · Up',
+    market_label: "Market · Up",
     accepted,
   };
 }

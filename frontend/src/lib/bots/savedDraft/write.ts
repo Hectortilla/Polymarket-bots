@@ -1,13 +1,17 @@
-import { isClientRejection } from '$lib/api/http';
-import { requestValidationIssues } from '$lib/api/requestErrors';
-import { resourceLimitDetail } from '$lib/limits/validation';
-import { DraftSaveFailure, type DraftWrite } from './failure';
+import { isClientRejection } from "$lib/api/http";
+import { requestValidationIssues } from "$lib/api/requestErrors";
+import { resourceLimitDetail } from "$lib/limits/validation";
+import { DraftSaveFailure, type DraftWrite } from "./failure";
 
-export async function resolveDraftWrite<T>(stage: DraftWrite, request: Promise<{ data?: T; error?: unknown; response?: Response }>): Promise<T> {
+export async function resolveDraftWrite<T>(
+  stage: DraftWrite,
+  request: Promise<{ data?: T; error?: unknown; response?: Response }>,
+): Promise<T> {
   // Only confirmed rejections permit retry: transport/server failures may have committed.
   let result;
-  try { result = await request; }
-  catch (error) {
+  try {
+    result = await request;
+  } catch (error) {
     const knownRejection = resourceLimitDetail(error) !== undefined || requestValidationIssues(error).length > 0;
     throw new DraftSaveFailure(stage, error, !knownRejection);
   }

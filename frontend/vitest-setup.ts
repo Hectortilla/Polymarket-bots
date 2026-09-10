@@ -1,7 +1,7 @@
-import '@testing-library/jest-dom/vitest';
+import "@testing-library/jest-dom/vitest";
 
 // Svelte Flow expects these browser APIs, which jsdom does not implement.
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string): MediaQueryList =>
     ({
@@ -12,8 +12,8 @@ Object.defineProperty(window, 'matchMedia', {
       removeEventListener: () => undefined,
       addListener: () => undefined,
       removeListener: () => undefined,
-      dispatchEvent: () => true
-    }) as MediaQueryList
+      dispatchEvent: () => true,
+    }) as MediaQueryList,
 });
 
 globalThis.ResizeObserver ??= class implements ResizeObserver {

@@ -1,18 +1,18 @@
-import type { GraphNodeCatalog, NodeGraph } from '$lib/api/generated';
+import type { GraphNodeCatalog, NodeGraph } from "$lib/api/generated";
 import {
   brokerActionForNode,
   comparisonForNode,
   constantForNode,
   operationForNode,
   triggerForNode,
-} from '$lib/catalog/nodeGraph/catalog';
-import { connectionIsValid } from '$lib/catalog/nodeGraph/connections';
-import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
-import { inputsForNode } from '$lib/catalog/nodeGraph/ports';
-import { canvasEdges, canvasNodes } from '$lib/catalog/nodeGraph/projections';
-import catalogContract from './catalogContract.fixture.json';
-import { GRAPH_NODE_TYPE } from './graphContracts';
-import { graphScalarValueIsValid } from './scalarValue';
+} from "$lib/catalog/nodeGraph/catalog";
+import { connectionIsValid } from "$lib/catalog/nodeGraph/connections";
+import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
+import { inputsForNode } from "$lib/catalog/nodeGraph/ports";
+import { canvasEdges, canvasNodes } from "$lib/catalog/nodeGraph/projections";
+import catalogContract from "./catalogContract.fixture.json";
+import { GRAPH_NODE_TYPE } from "./graphContracts";
+import { graphScalarValueIsValid } from "./scalarValue";
 
 const catalog = catalogContract.graphNodeCatalog as GraphNodeCatalog;
 
@@ -42,27 +42,21 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
     !hasUnique(parameters.map((p) => p.name))
   )
     return false;
-  if (!parameters.every((p) => graphScalarValueIsValid(p.data.scalar_type, p.data.value)))
-    return false;
+  if (!parameters.every((p) => graphScalarValueIsValid(p.data.scalar_type, p.data.value))) return false;
   if (
     nodes.some(
-      (node) =>
-        node.type === GRAPH_NODE_TYPE.parameter &&
-        !parameters.some((p) => p.id === node.data.parameter_id),
+      (node) => node.type === GRAPH_NODE_TYPE.parameter && !parameters.some((p) => p.id === node.data.parameter_id),
     )
   )
     return false;
   if (!nodes.every(nodeMatchesCatalog)) return false;
-  const triggerHooks = nodes
-    .filter((node) => node.type === GRAPH_NODE_TYPE.trigger)
-    .map((node) => node.data.hook_name);
+  const triggerHooks = nodes.filter((node) => node.type === GRAPH_NODE_TYPE.trigger).map((node) => node.data.hook_name);
   if (!hasUnique(triggerHooks)) return false;
 
   const edges = canvasEdges(graph);
   const acceptedEdges = [];
   for (const edge of edges) {
-    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog, graph.parameters ?? []))
-      return false;
+    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog, graph.parameters ?? [])) return false;
     acceptedEdges.push(edge);
   }
 
@@ -102,16 +96,11 @@ function nodeMatchesCatalog(node: CanvasNode): boolean {
   }
 }
 
-function requiredInputsConnected(
-  nodes: CanvasNode[],
-  edges: ReturnType<typeof canvasEdges>,
-): boolean {
+function requiredInputsConnected(nodes: CanvasNode[], edges: ReturnType<typeof canvasEdges>): boolean {
   for (const node of nodes) {
     const inputs = inputsForNode(node, catalog);
     for (const input of inputs) {
-      const count = edges.filter(
-        (edge) => edge.target === node.id && edge.targetHandle === input.handle_id,
-      ).length;
+      const count = edges.filter((edge) => edge.target === node.id && edge.targetHandle === input.handle_id).length;
       if (
         count > catalogContract.nodeGraph.maximumInputConnectionsPerHandle ||
         (input.required && count === catalogContract.nodeGraph.noInputConnections)
@@ -122,10 +111,7 @@ function requiredInputsConnected(
   return true;
 }
 
-function operationInputsMatchCatalog(
-  ids: string[],
-  descriptor: ReturnType<typeof operationForNode>,
-): boolean {
+function operationInputsMatchCatalog(ids: string[], descriptor: ReturnType<typeof operationForNode>): boolean {
   if (ids.length === 0) return true;
   if (!descriptor.expandable) return false;
   return (
@@ -170,15 +156,11 @@ function branchesBelongToOneTrigger(
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const ancestors = transitiveRelations(topologicalOrder, incoming);
   const descendants = transitiveRelations([...topologicalOrder].reverse(), outgoing);
-  const triggerIds = new Set(
-    nodes.filter(({ type }) => type === GRAPH_NODE_TYPE.trigger).map(({ id }) => id),
-  );
+  const triggerIds = new Set(nodes.filter(({ type }) => type === GRAPH_NODE_TYPE.trigger).map(({ id }) => id));
   const actionIds = new Set(nodes.filter(isTerminalNode).map(({ id }) => id));
   for (const node of nodes) {
     if (node.type === GRAPH_NODE_TYPE.trigger) continue;
-    const descendantActions = [...(descendants.get(node.id) ?? [])].filter((id) =>
-      actionIds.has(id),
-    );
+    const descendantActions = [...(descendants.get(node.id) ?? [])].filter((id) => actionIds.has(id));
     if (descendantActions.length === 0) return false;
     if (node.type === GRAPH_NODE_TYPE.constant || node.type === GRAPH_NODE_TYPE.parameter) continue;
     const branchTriggers = new Set<string>();
@@ -187,19 +169,13 @@ function branchesBelongToOneTrigger(
         if (triggerIds.has(ancestorId)) branchTriggers.add(ancestorId);
       }
     }
-    if (
-      branchTriggers.size !== catalogContract.nodeGraph.requiredTriggerBranchCount ||
-      !nodesById.has(node.id)
-    )
+    if (branchTriggers.size !== catalogContract.nodeGraph.requiredTriggerBranchCount || !nodesById.has(node.id))
       return false;
   }
   return true;
 }
 
-function transitiveRelations(
-  order: string[],
-  direct: Map<string, string[]>,
-): Map<string, Set<string>> {
+function transitiveRelations(order: string[], direct: Map<string, string[]>): Map<string, Set<string>> {
   const relations = new Map<string, Set<string>>();
   for (const id of order) {
     const related = new Set<string>([id]);

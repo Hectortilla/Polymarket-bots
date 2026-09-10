@@ -1,15 +1,15 @@
-import { isArrayOf, isOptionalNullable, isUuid } from '$lib/valueGuards';
+import { isArrayOf, isOptionalNullable, isUuid } from "$lib/valueGuards";
 
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
-import catalogContract from '$lib/catalog/catalogContract.fixture.json';
+import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 
-import { isFiniteDateTime, isNonemptyString, isNonnegativeInteger, isOneOf, isRecord } from '$lib/valueGuards';
-import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from '$lib/decimalGuards';
+import { isFiniteDateTime, isNonemptyString, isNonnegativeInteger, isOneOf, isRecord } from "$lib/valueGuards";
+import { isDecimal, isNonnegativeDecimal, isPositiveDecimal } from "$lib/decimalGuards";
 
-import { isWalletAddress } from '$lib/wallets';
+import { isWalletAddress } from "$lib/wallets";
 
-import { isGraphCatalog, isNodeGraph } from '$lib/api/responseValidation/graph';
+import { isGraphCatalog, isNodeGraph } from "$lib/api/responseValidation/graph";
 
 const RUN_STATUSES = Object.values(runtimeContract.runStatus.values);
 
@@ -28,7 +28,7 @@ export function isMarketSuggestion(value: Record<string, unknown>): boolean {
     isNonemptyString(value.question) &&
     (value.event_title === null || isNonemptyString(value.event_title)) &&
     (value.end_date === null || isFiniteDateTime(value.end_date)) &&
-    typeof value.is_open_for_trading === 'boolean'
+    typeof value.is_open_for_trading === "boolean"
   );
 }
 
@@ -38,7 +38,7 @@ export function isMarketSearchResults(value: Record<string, unknown>): boolean {
     isArrayOf(value.markets, isMarketSuggestion) &&
     value.markets.length <= catalogContract.marketSearch.maximumLimit &&
     value.markets.every((market) => market.is_open_for_trading === true) &&
-    typeof value.has_more === 'boolean'
+    typeof value.has_more === "boolean"
   );
 }
 
@@ -51,20 +51,14 @@ export function isDefinition(value: Record<string, unknown>): boolean {
     isRecord(value.input_schema) &&
     isOneOf(value.market_selection, SELECTION_MODES) &&
     isOneOf(value.wallet_selection, SELECTION_MODES) &&
-    (value.graph_catalog === undefined ||
-      value.graph_catalog === null ||
-      isGraphCatalog(value.graph_catalog)) &&
+    (value.graph_catalog === undefined || value.graph_catalog === null || isGraphCatalog(value.graph_catalog)) &&
     (value.graph_examples === undefined ||
       isArrayOf(
         value.graph_examples,
         (example) =>
-          isNonemptyString(example.name) &&
-          isNonemptyString(example.description) &&
-          isNodeGraph(example.graph),
+          isNonemptyString(example.name) && isNonemptyString(example.description) && isNodeGraph(example.graph),
       )) &&
-    (value.starter_graph === undefined ||
-      value.starter_graph === null ||
-      isNodeGraph(value.starter_graph))
+    (value.starter_graph === undefined || value.starter_graph === null || isNodeGraph(value.starter_graph))
   );
 }
 
@@ -94,14 +88,13 @@ export function isRun(value: Record<string, unknown>): boolean {
     isOptionalNullable(value.bot_graph_revision_id, isUuid) &&
     isOptionalNullable(
       value.graph_revision,
-      (revision) =>
-        isNonnegativeInteger(revision) && revision >= runtimeContract.minimumGraphRevisionNumber,
+      (revision) => isNonnegativeInteger(revision) && revision >= runtimeContract.minimumGraphRevisionNumber,
     ) &&
     isOptionalNullable(value.started_at, isFiniteDateTime) &&
     isOptionalNullable(value.ended_at, isFiniteDateTime) &&
     isOptionalNullable(value.heartbeat_at, isFiniteDateTime) &&
-    isOptionalNullable(value.failure_detail, (detail) => typeof detail === 'string') &&
-    isOptionalNullable(value.latest_runtime_failure, (detail) => typeof detail === 'string') &&
+    isOptionalNullable(value.failure_detail, (detail) => typeof detail === "string") &&
+    isOptionalNullable(value.latest_runtime_failure, (detail) => typeof detail === "string") &&
     isOptionalNullable(value.latest_equity, isDecimal) &&
     (value.equity_status === null ||
       value.equity_status === undefined ||
@@ -162,8 +155,7 @@ function isStreamRule(value: unknown): boolean {
     !isOptionalWalletArray(value.wallet_addresses)
   )
     return false;
-  const selectorGroupCount =
-    Number(hasSelectors(value.market_slugs)) + Number(hasSelectors(value.wallet_addresses));
+  const selectorGroupCount = Number(hasSelectors(value.market_slugs)) + Number(hasSelectors(value.wallet_addresses));
   const relation = value.relation as keyof typeof runtimeContract.streamRule.minimumSelectorGroups;
   return selectorGroupCount >= runtimeContract.streamRule.minimumSelectorGroups[relation];
 }

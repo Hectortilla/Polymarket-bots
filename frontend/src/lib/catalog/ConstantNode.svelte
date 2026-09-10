@@ -1,28 +1,26 @@
 <script lang="ts">
-  import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
-  import { Handle, Position } from '@xyflow/svelte';
-  import { getContext } from 'svelte';
+  import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
+  import { Handle, Position } from "@xyflow/svelte";
+  import { getContext } from "svelte";
   import {
     DEFAULT_OPERATION_SCALAR_TYPE,
     DEFAULT_PREVIEW_CASH,
     GRAPH_NODE_TYPE,
     GRAPH_PORT,
     GRAPH_SCALAR_TYPE,
-  } from './graphContracts';
-  import NodeIssues from './NodeIssues.svelte';
-  import { graphNumberIsValid } from './numberValue';
+  } from "./graphContracts";
+  import NodeIssues from "./NodeIssues.svelte";
+  import { graphNumberIsValid } from "./numberValue";
 
-  import type { GraphConstantNodeData } from '$lib/api/generated';
-  import { constantForNode } from '$lib/catalog/nodeGraph/catalog';
-  import { constantDataFromInput, constantInput } from './constantNode';
-  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
+  import type { GraphConstantNodeData } from "$lib/api/generated";
+  import { constantForNode } from "$lib/catalog/nodeGraph/catalog";
+  import { constantDataFromInput, constantInput } from "./constantNode";
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
   let { id, data }: { id: string; data: GraphConstantNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const descriptor = $derived(constantForNode(editor.catalog, data));
-  const numberInvalid = $derived(
-    data.scalar_type === GRAPH_SCALAR_TYPE.number && !graphNumberIsValid(data.value),
-  );
+  const numberInvalid = $derived(data.scalar_type === GRAPH_SCALAR_TYPE.number && !graphNumberIsValid(data.value));
   const inputControl = $derived(constantInput(data.scalar_type));
 
   function updateValue(event: Event): void {
@@ -39,13 +37,8 @@
   </header>
   <label class="nodrag nowheel">
     <span>{descriptor.output.display_name}</span>
-    {#if inputControl.type === 'checkbox'}
-      <input
-        type="checkbox"
-        checked={data.value === true}
-        disabled={editor.readOnly}
-        onchange={updateValue}
-      />
+    {#if inputControl.type === "checkbox"}
+      <input type="checkbox" checked={data.value === true} disabled={editor.readOnly} onchange={updateValue} />
     {:else}
       <input
         type={inputControl.type}
@@ -56,12 +49,7 @@
         onchange={updateValue}
       />
     {/if}
-    <Handle
-      type="source"
-      position={Position.Right}
-      id={descriptor.output.handle_id}
-      isConnectable={!editor.readOnly}
-    />
+    <Handle type="source" position={Position.Right} id={descriptor.output.handle_id} isConnectable={!editor.readOnly} />
   </label>
   {#if numberInvalid}<p role="alert">{GRAPH_FIELD_COPY.INVALID_NUMBER}</p>{/if}
   <NodeIssues {id} />
@@ -89,7 +77,7 @@
   }
   header strong,
   label span {
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.76rem;
   }
   header span {
@@ -99,8 +87,8 @@
   label {
     position: relative;
   }
-  input[type='text'],
-  input[type='number'] {
+  input[type="text"],
+  input[type="number"] {
     min-width: 0;
     width: 7rem;
   }

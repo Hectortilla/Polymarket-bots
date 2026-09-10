@@ -1,17 +1,17 @@
 <script lang="ts">
-  import type { GraphConstantNodeData, GraphNodeCatalog, GraphParameter } from '$lib/api/generated';
-  import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
-  import catalogContract from './catalogContract.fixture.json';
-  import { constantDataFromDescriptor, constantDataFromInput } from './constantNode';
+  import type { GraphConstantNodeData, GraphNodeCatalog, GraphParameter } from "$lib/api/generated";
+  import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
+  import catalogContract from "./catalogContract.fixture.json";
+  import { constantDataFromDescriptor, constantDataFromInput } from "./constantNode";
   import {
     DEFAULT_OPERATION_SCALAR_TYPE,
     DEFAULT_PREVIEW_CASH,
     GRAPH_NODE_TYPE,
     GRAPH_PORT,
     GRAPH_SCALAR_TYPE,
-  } from './graphContracts';
-  import './graphPanels.css';
-  import { graphNumberIsValid } from './numberValue';
+  } from "./graphContracts";
+  import "./graphPanels.css";
+  import { graphNumberIsValid } from "./numberValue";
   let {
     parameters,
     catalog,
@@ -35,16 +35,11 @@
     if (descriptor) update(id, { data: constantDataFromDescriptor(descriptor) });
   }
   function addParameter() {
-    const descriptor = catalog.constants.find(
-      (item) => item.scalar_type === GRAPH_SCALAR_TYPE.number,
-    );
-    if (!descriptor) throw new Error('Number descriptor is missing from the graph catalog');
+    const descriptor = catalog.constants.find((item) => item.scalar_type === GRAPH_SCALAR_TYPE.number);
+    if (!descriptor) throw new Error("Number descriptor is missing from the graph catalog");
     let suffix = 1;
     while (
-      parameters.some(
-        (parameter) =>
-          parameter.id === `parameter-${suffix}` || parameter.name === `Parameter ${suffix}`,
-      )
+      parameters.some((parameter) => parameter.id === `parameter-${suffix}` || parameter.name === `Parameter ${suffix}`)
     )
       suffix++;
     onchange([
@@ -62,8 +57,8 @@
   <summary>Strategy parameters <span class="graph-panel-count">{parameters.length}</span></summary>
   <div class="graph-panel-body">
     <p class="graph-panel-intro">
-      Name your strategy settings here, then add them to the graph from Parameters in the node
-      picker. Each run keeps its saved values.
+      Name your strategy settings here, then add them to the graph from Parameters in the node picker. Each run keeps
+      its saved values.
     </p>
     <div class="parameter-list">
       {#each parameters as parameter (parameter.id)}
@@ -84,8 +79,7 @@
               disabled={readOnly}
               onchange={(event) => updateParameterType(parameter.id, event.currentTarget.value)}
             >
-              {#each catalog.constants as constant}<option value={constant.scalar_type}
-                  >{constant.display_name}</option
+              {#each catalog.constants as constant}<option value={constant.scalar_type}>{constant.display_name}</option
                 >{/each}
             </select></label
           >
@@ -110,8 +104,7 @@
               type="button"
               class="secondary remove-parameter"
               aria-label={`Remove ${parameter.name}`}
-              onclick={() => onchange(parameters.filter((item) => item.id !== parameter.id))}
-              >Remove</button
+              onclick={() => onchange(parameters.filter((item) => item.id !== parameter.id))}>Remove</button
             >{/if}
           {#if parameter.data.scalar_type === GRAPH_SCALAR_TYPE.number && !graphNumberIsValid(parameter.data.value)}<p
               role="alert"
@@ -119,9 +112,7 @@
               {GRAPH_FIELD_COPY.INVALID_NUMBER}
             </p>{/if}
         </div>
-      {:else}<p class="empty-parameters">
-          No parameters yet. Add a setting such as Budget or Entry threshold.
-        </p>
+      {:else}<p class="empty-parameters">No parameters yet. Add a setting such as Budget or Entry threshold.</p>
       {/each}
     </div>
     <div class="graph-panel-actions">
@@ -162,7 +153,7 @@
     width: 100%;
     min-height: 2.75rem;
   }
-  input[type='checkbox'] {
+  input[type="checkbox"] {
     width: 1.15rem;
     height: 1.15rem;
     min-height: 0;
@@ -178,7 +169,7 @@
     font-size: 0.82rem;
     line-height: 1.6;
   }
-  [role='alert'] {
+  [role="alert"] {
     grid-column: 1 / -1;
     color: var(--danger);
     margin: 0;

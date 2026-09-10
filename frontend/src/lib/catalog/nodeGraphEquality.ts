@@ -1,10 +1,7 @@
-import type { GraphEdge, GraphNode, NodeGraph } from '$lib/api/generated';
-import { GRAPH_NODE_TYPE } from './graphContracts';
+import type { GraphEdge, GraphNode, NodeGraph } from "$lib/api/generated";
+import { GRAPH_NODE_TYPE } from "./graphContracts";
 
-export function nodeGraphsEqual(
-  left: NodeGraph | undefined,
-  right: NodeGraph | undefined
-): boolean {
+export function nodeGraphsEqual(left: NodeGraph | undefined, right: NodeGraph | undefined): boolean {
   if (!left || !right) return left === right;
   if (JSON.stringify(left.parameters ?? []) !== JSON.stringify(right.parameters ?? [])) return false;
   if (left.nodes.length !== right.nodes.length) return false;
@@ -34,35 +31,33 @@ export function nodeGraphsEqual(
 }
 
 function graphNodesEqual(left: GraphNode, right: GraphNode): boolean {
-  if (
-    left.type !== right.type ||
-    left.position.x !== right.position.x ||
-    left.position.y !== right.position.y
-  ) return false;
+  if (left.type !== right.type || left.position.x !== right.position.x || left.position.y !== right.position.y)
+    return false;
 
   switch (left.type) {
     case GRAPH_NODE_TYPE.operation:
     case GRAPH_NODE_TYPE.parameter:
       return JSON.stringify(left.data) === JSON.stringify(right.data);
     case GRAPH_NODE_TYPE.trigger:
-      return right.type === GRAPH_NODE_TYPE.trigger
-        && left.data.hook_name === right.data.hook_name;
+      return right.type === GRAPH_NODE_TYPE.trigger && left.data.hook_name === right.data.hook_name;
     case GRAPH_NODE_TYPE.constant:
-      return right.type === GRAPH_NODE_TYPE.constant
-        && left.data.scalar_type === right.data.scalar_type
-        && left.data.value === right.data.value;
+      return (
+        right.type === GRAPH_NODE_TYPE.constant &&
+        left.data.scalar_type === right.data.scalar_type &&
+        left.data.value === right.data.value
+      );
     case GRAPH_NODE_TYPE.comparison:
-      return right.type === GRAPH_NODE_TYPE.comparison
-        && left.data.operator === right.data.operator;
+      return right.type === GRAPH_NODE_TYPE.comparison && left.data.operator === right.data.operator;
     case GRAPH_NODE_TYPE.brokerAction:
-      return right.type === GRAPH_NODE_TYPE.brokerAction
-        && left.data.action === right.data.action;
+      return right.type === GRAPH_NODE_TYPE.brokerAction && left.data.action === right.data.action;
   }
 }
 
 function graphEdgesEqual(left: GraphEdge, right: GraphEdge): boolean {
-  return left.source === right.source
-    && left.source_handle === right.source_handle
-    && left.target === right.target
-    && left.target_handle === right.target_handle;
+  return (
+    left.source === right.source &&
+    left.source_handle === right.source_handle &&
+    left.target === right.target &&
+    left.target_handle === right.target_handle
+  );
 }

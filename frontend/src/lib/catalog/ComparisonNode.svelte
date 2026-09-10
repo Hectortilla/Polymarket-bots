@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { GRAPH_FIELD_COPY } from '$lib/catalog/copy';
-  import { Handle, Position } from '@xyflow/svelte';
-  import { getContext } from 'svelte';
-  import NodeIssues from './NodeIssues.svelte';
+  import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
+  import { Handle, Position } from "@xyflow/svelte";
+  import { getContext } from "svelte";
+  import NodeIssues from "./NodeIssues.svelte";
 
-  import type { GraphComparisonNodeData } from '$lib/api/generated';
-  import { comparisonForNode } from '$lib/catalog/nodeGraph/catalog';
-  import { GRAPH_NODE_TYPE } from './graphContracts';
-  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
+  import type { GraphComparisonNodeData } from "$lib/api/generated";
+  import { comparisonForNode } from "$lib/catalog/nodeGraph/catalog";
+  import { GRAPH_NODE_TYPE } from "./graphContracts";
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
   let { id, data }: { id: string; data: GraphComparisonNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
@@ -44,25 +44,15 @@
   </label>
   {#each descriptor.inputs as input (input.handle_id)}
     <div class="port input-port">
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={input.handle_id}
-        isConnectable={!editor.readOnly}
-      />
+      <Handle type="target" position={Position.Left} id={input.handle_id} isConnectable={!editor.readOnly} />
       <span>{input.display_name}</span>
-      <small>{input.scalar_types.join(' | ')}</small>
+      <small>{input.scalar_types.join(" | ")}</small>
     </div>
   {/each}
   <div class="port output-port">
     <span>{descriptor.output.display_name}</span>
     <small>{descriptor.output.scalar_type}</small>
-    <Handle
-      type="source"
-      position={Position.Right}
-      id={descriptor.output.handle_id}
-      isConnectable={!editor.readOnly}
-    />
+    <Handle type="source" position={Position.Right} id={descriptor.output.handle_id} isConnectable={!editor.readOnly} />
   </div>
   <NodeIssues {id} />
 </section>
@@ -105,7 +95,7 @@
     padding: 0.35rem 1.8rem 0.35rem 0.5rem;
     color: var(--text);
     background: var(--surface-input);
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.7rem;
     transition:
       border-color var(--transition),
@@ -129,7 +119,7 @@
   }
   header strong,
   .port span {
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.76rem;
   }
   header span,

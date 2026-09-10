@@ -1,10 +1,11 @@
-import type { NodeGraph } from '$lib/api/generated';
-import { graphValidationIssues, type GraphValidationIssue } from '$lib/catalog/graphValidation';
-import { launchRequestValidationIssues, type LaunchValidationIssue } from '$lib/catalog/schema';
-import { resourceLimitDetail } from '$lib/limits/validation';
-import { DraftSaveFailure, DRAFT_WRITE } from './failure';
+import type { NodeGraph } from "$lib/api/generated";
+import { graphValidationIssues, type GraphValidationIssue } from "$lib/catalog/graphValidation";
+import { launchRequestValidationIssues, type LaunchValidationIssue } from "$lib/catalog/schema";
+import { resourceLimitDetail } from "$lib/limits/validation";
+import { DraftSaveFailure, DRAFT_WRITE } from "./failure";
 
-export const DRAFT_SAVE_UNCERTAIN_COPY = 'The save result is unknown. Return to your bots and check for the saved bot before creating another. This draft will not resend an uncertain write.';
+export const DRAFT_SAVE_UNCERTAIN_COPY =
+  "The save result is unknown. Return to your bots and check for the saved bot before creating another. This draft will not resend an uncertain write.";
 
 export class DraftSaveFeedback {
   constructor(
@@ -26,7 +27,7 @@ export class DraftSaveFeedback {
 
   message(fallback: string): string {
     if (this.detail !== undefined) return this.detail;
-    if (this.inputIssues.length || this.graphIssues.length) return '';
+    if (this.inputIssues.length || this.graphIssues.length) return "";
     return fallback;
   }
 }

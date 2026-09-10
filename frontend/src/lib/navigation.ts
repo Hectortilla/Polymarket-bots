@@ -1,13 +1,13 @@
 export const NAVIGATION_PATH = {
-  HOME: '/',
-  START: '/start',
-  NEW_BOT: '/bots/new'
+  HOME: "/",
+  START: "/start",
+  NEW_BOT: "/bots/new",
 } as const;
 
 export const NAVIGATION_LABEL = {
-  BACK_TO_BOTS: 'Back to bots',
-  BOTS: 'Bots',
-  NEW_BOT: 'New bot'
+  BACK_TO_BOTS: "Back to bots",
+  BOTS: "Bots",
+  NEW_BOT: "New bot",
 } as const;
 
 export function botPath(botId: string): string {

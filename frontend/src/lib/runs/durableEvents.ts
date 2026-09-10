@@ -4,33 +4,30 @@ import type {
   RunEventPage,
   RunStatus,
   StreamRunEventsApiV1RunsRunIdEventsStreamGetData,
-} from '$lib/api/generated';
+} from "$lib/api/generated";
 
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
-import { isRecord } from '$lib/valueGuards';
+import { isRecord } from "$lib/valueGuards";
 
-import { isDurableEventPayload } from '$lib/runs/eventPayloads/index';
+import { isDurableEventPayload } from "$lib/runs/eventPayloads/index";
 
-import { EVENT_KIND } from './eventKinds';
+import { EVENT_KIND } from "./eventKinds";
 
-import { INITIAL_RUN_STATUS, isTerminalRunStatus } from './status';
+import { INITIAL_RUN_STATUS, isTerminalRunStatus } from "./status";
 
-export { EVENT_KIND } from './eventKinds';
+export { EVENT_KIND } from "./eventKinds";
 
 export const INITIAL_EVENT_CURSOR: EventCursorValue = runtimeContract.durableEventIds.firstCursor;
 
-type EventCursorQuery = NonNullable<StreamRunEventsApiV1RunsRunIdEventsStreamGetData['query']>;
+type EventCursorQuery = NonNullable<StreamRunEventsApiV1RunsRunIdEventsStreamGetData["query"]>;
 
-type PersistedLifecycleEvent = Extract<
-  GeneratedPersistedDurableEvent,
-  { kind: typeof EVENT_KIND.runLifecycle }
->;
+type PersistedLifecycleEvent = Extract<GeneratedPersistedDurableEvent, { kind: typeof EVENT_KIND.runLifecycle }>;
 
 export type PersistedDurableEvent =
   | Exclude<GeneratedPersistedDurableEvent, { kind: typeof EVENT_KIND.runLifecycle }>
-  | (Omit<PersistedLifecycleEvent, 'payload'> & {
-      payload: PersistedLifecycleEvent['payload'] & { status: RunStatus };
+  | (Omit<PersistedLifecycleEvent, "payload"> & {
+      payload: PersistedLifecycleEvent["payload"] & { status: RunStatus };
     });
 
 export type PersistedEventPage = {
@@ -49,7 +46,7 @@ export function persistedDurableEvent(value: unknown, runId: string): PersistedD
   const event = value as unknown as GeneratedPersistedDurableEvent;
   if (
     event.run_id !== runId ||
-    typeof event.occurred_at !== 'string' ||
+    typeof event.occurred_at !== "string" ||
     !Number.isFinite(Date.parse(event.occurred_at)) ||
     !isPersistedEventId(event.id) ||
     !isDurableEventPayload(value.kind, value.payload)
@@ -70,7 +67,7 @@ export function persistedDurableEvent(value: unknown, runId: string): PersistedD
 
 export function isPersistedEventId(value: unknown): value is number {
   return (
-    typeof value === 'number' &&
+    typeof value === "number" &&
     Number.isSafeInteger(value) &&
     value >= runtimeContract.durableEventIds.firstEventId &&
     value <= runtimeContract.durableEventIds.maximumEventId
@@ -83,7 +80,7 @@ export function requirePersistedDurableEvents(
 ): PersistedDurableEvent[] {
   return events.map((event) => {
     const persisted = persistedDurableEvent(event, runId);
-    if (persisted === null) throw new Error('Invalid persisted run event');
+    if (persisted === null) throw new Error("Invalid persisted run event");
     return persisted;
   });
 }
@@ -108,25 +105,19 @@ export function latestEventCursor(events: PersistedDurableEvent[]): number {
   return events.reduce((latest, event) => Math.max(latest, event.id), INITIAL_EVENT_CURSOR);
 }
 
-function isDurableEventKind(kind: unknown): kind is GeneratedPersistedDurableEvent['kind'] {
+function isDurableEventKind(kind: unknown): kind is GeneratedPersistedDurableEvent["kind"] {
   return Object.values(EVENT_KIND).includes(kind as never);
 }
 
 function parsePersistedEventPage(value: unknown, runId: string): PersistedEventPage {
   if (!isRecord(value) || !Array.isArray(value.events)) {
-    throw new Error('Invalid run event page');
+    throw new Error("Invalid run event page");
   }
-  const events = requirePersistedDurableEvents(
-    value.events as GeneratedPersistedDurableEvent[],
-    runId,
-  );
+  const events = requirePersistedDurableEvents(value.events as GeneratedPersistedDurableEvent[], runId);
   const nextBeforeEventId = value.next_before_event_id;
   const cursorEvent = events[runtimeContract.eventPagination.nextCursorEventIndex];
-  if (
-    nextBeforeEventId !== null &&
-    (!isPersistedEventId(nextBeforeEventId) || nextBeforeEventId !== cursorEvent?.id)
-  ) {
-    throw new Error('Invalid run event page cursor');
+  if (nextBeforeEventId !== null && (!isPersistedEventId(nextBeforeEventId) || nextBeforeEventId !== cursorEvent?.id)) {
+    throw new Error("Invalid run event page cursor");
   }
   return { events, nextBeforeEventId };
 }

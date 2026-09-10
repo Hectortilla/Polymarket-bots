@@ -1,15 +1,15 @@
 <script module lang="ts">
-  import type { WalletChartPointPayload } from '$lib/api/generated';
-  import { SIDE } from '$lib/sides';
-  import Decimal from 'decimal.js';
-  import type { EChartsCoreOption } from './echarts';
-  import { walletBucketIndex, walletNotionalTier } from './walletBuckets';
+  import type { WalletChartPointPayload } from "$lib/api/generated";
+  import { SIDE } from "$lib/sides";
+  import Decimal from "decimal.js";
+  import type { EChartsCoreOption } from "./echarts";
+  import { walletBucketIndex, walletNotionalTier } from "./walletBuckets";
 
   type Bucket = {
     timestampMs: number;
     laneIndex: number;
     notional: Decimal;
-    sides: Set<WalletChartPointPayload['side']>;
+    sides: Set<WalletChartPointPayload["side"]>;
     skipped: boolean;
   };
   const WALLET_LABEL_MAX_LENGTH = 12;
@@ -20,7 +20,7 @@
     startMs: number,
     endMs: number,
   ): EChartsCoreOption {
-    if (endMs <= startMs) throw new Error('wallet chart range must increase');
+    if (endMs <= startMs) throw new Error("wallet chart range must increase");
     return buildWalletChartOption(points, lanes, startMs, endMs);
   }
 
@@ -35,8 +35,7 @@
     const buckets = new Map<string, Bucket>();
     for (const point of points) {
       const laneIndex = lanes.indexOf(point.wallet);
-      if (laneIndex < 0 || point.trade_timestamp_ms < startMs || point.trade_timestamp_ms > endMs)
-        continue;
+      if (laneIndex < 0 || point.trade_timestamp_ms < startMs || point.trade_timestamp_ms > endMs) continue;
       const column = walletBucketIndex(point.trade_timestamp_ms, startMs, endMs, columns);
       const key = `${laneIndex}:${column}`;
       const bucket = buckets.get(key) ?? {
@@ -58,18 +57,18 @@
     return {
       animation: false,
       grid: { left: 116, right: 16, top: 16, bottom: 28 },
-      tooltip: { trigger: 'item' },
-      xAxis: { type: 'time', min: startMs, max: endMs, axisLabel: { color: '#7e8781' } },
+      tooltip: { trigger: "item" },
+      xAxis: { type: "time", min: startMs, max: endMs, axisLabel: { color: "#7e8781" } },
       yAxis: {
-        type: 'category',
+        type: "category",
         data: lanes.map(shortWallet),
-        axisLabel: { color: '#b8bfbb', fontFamily: 'monospace' },
+        axisLabel: { color: "#b8bfbb", fontFamily: "monospace" },
       },
       series: [
         {
-          id: 'wallet:activity',
-          name: 'Wallet activity',
-          type: 'scatter',
+          id: "wallet:activity",
+          name: "Wallet activity",
+          type: "scatter",
           data: [...buckets.values()].map((bucket) => ({
             value: [bucket.timestampMs, bucket.laneIndex, bucket.notional.toNumber()],
             symbolSize: walletSymbolSize(bucket.notional, maximumNotional),
@@ -84,26 +83,24 @@
   }
 
   function shortWallet(wallet: string): string {
-    return wallet.length <= WALLET_LABEL_MAX_LENGTH
-      ? wallet
-      : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
+    return wallet.length <= WALLET_LABEL_MAX_LENGTH ? wallet : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
   }
 
   function walletSymbolSize(notional: Decimal, maximumNotional: Decimal): number {
     return [5, 9, 13][walletNotionalTier(notional, maximumNotional) - 1];
   }
 
-  function walletBucketColor(sides: Set<WalletChartPointPayload['side']>): string {
-    if (sides.size > 1) return '#f6c453';
-    return sides.has(SIDE.buy) ? '#72df98' : '#ff847c';
+  function walletBucketColor(sides: Set<WalletChartPointPayload["side"]>): string {
+    if (sides.size > 1) return "#f6c453";
+    return sides.has(SIDE.buy) ? "#72df98" : "#ff847c";
   }
 </script>
 
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import EChart from './EChart.svelte';
-  import { DASHBOARD_KEY } from './contracts';
-  import { DASHBOARD_COPY } from './copy';
+  import { onMount } from "svelte";
+  import EChart from "./EChart.svelte";
+  import { DASHBOARD_KEY } from "./contracts";
+  import { DASHBOARD_COPY } from "./copy";
 
   const WALLET_LANES_PER_PAGE = 6;
 
@@ -119,12 +116,8 @@
     endMs: number;
   } = $props();
   let walletPage = $state(0);
-  const lanes = $derived([
-    ...new Set([...configuredWallets, ...points.map(({ wallet }) => wallet)]),
-  ]);
-  const maximumWalletPage = $derived(
-    Math.max(0, Math.ceil(lanes.length / WALLET_LANES_PER_PAGE) - 1),
-  );
+  const lanes = $derived([...new Set([...configuredWallets, ...points.map(({ wallet }) => wallet)])]);
+  const maximumWalletPage = $derived(Math.max(0, Math.ceil(lanes.length / WALLET_LANES_PER_PAGE) - 1));
   const visibleLanes = $derived(
     lanes.slice(walletPage * WALLET_LANES_PER_PAGE, (walletPage + 1) * WALLET_LANES_PER_PAGE),
   );
@@ -136,12 +129,11 @@
 
   onMount(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
-        return;
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       changeWalletPage(event.key.toLowerCase());
     };
-    window.addEventListener('keydown', keydown);
-    return () => window.removeEventListener('keydown', keydown);
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
   });
 
   function changeWalletPage(key: string): void {

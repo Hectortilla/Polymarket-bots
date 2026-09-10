@@ -1,12 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from "vitest";
 
-import type { LiveRunEvent } from '$lib/api/generated';
-import { LIVE_EVENT_KIND } from '$lib/runs/eventKinds';
-import { VALUATION_STATUS } from './contracts';
-import { createLiveDashboardBatcher } from './liveBatch';
+import type { LiveRunEvent } from "$lib/api/generated";
+import { LIVE_EVENT_KIND } from "$lib/runs/eventKinds";
+import { VALUATION_STATUS } from "./contracts";
+import { createLiveDashboardBatcher } from "./liveBatch";
 
-describe('live dashboard batching', () => {
-  it('flushes all events received during one animation frame once', () => {
+describe("live dashboard batching", () => {
+  it("flushes all events received during one animation frame once", () => {
     const flush = vi.fn();
     const frames = new Map<number, FrameRequestCallback>();
     const schedule = vi.fn((callback: FrameRequestCallback) => {
@@ -25,7 +25,7 @@ describe('live dashboard batching', () => {
     expect(flush).toHaveBeenCalledWith(events);
   });
 
-  it('cancels and drops a pending batch on disposal', () => {
+  it("cancels and drops a pending batch on disposal", () => {
     const cancel = vi.fn();
     const flush = vi.fn();
     const batcher = createLiveDashboardBatcher(flush, () => 7, cancel);
@@ -41,17 +41,19 @@ describe('live dashboard batching', () => {
 function marketEvent(sampledAtMs: number): LiveRunEvent {
   return {
     kind: LIVE_EVENT_KIND.market,
-    run_id: '00000000-0000-0000-0000-000000000001',
-    occurred_at: '2026-08-23T00:00:00Z',
+    run_id: "00000000-0000-0000-0000-000000000001",
+    occurred_at: "2026-08-23T00:00:00Z",
     payload: {
       sampled_at_ms: sampledAtMs,
-      points: [{
-        token_id: 'token',
-        label: 'Market',
-        value: '0.5',
-        status: VALUATION_STATUS.fresh,
-        markers: []
-      }]
-    }
+      points: [
+        {
+          token_id: "token",
+          label: "Market",
+          value: "0.5",
+          status: VALUATION_STATUS.fresh,
+          markers: [],
+        },
+      ],
+    },
   };
 }

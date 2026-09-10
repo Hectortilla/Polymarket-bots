@@ -1,7 +1,7 @@
-import Decimal from 'decimal.js';
+import Decimal from "decimal.js";
 
-import runtimeContract from '$lib/runtimeContract.fixture.json';
-import { isDecimal } from '$lib/decimalGuards';
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { isDecimal } from "$lib/decimalGuards";
 
 type UnitIntervalContract = {
   floor: string;
@@ -17,15 +17,10 @@ export function isOutcomePayout(value: unknown): value is string {
   return isUnitIntervalDecimal(value, runtimeContract.outcomePayout);
 }
 
-function isUnitIntervalDecimal(
-  value: unknown,
-  contract: UnitIntervalContract
-): value is string {
+function isUnitIntervalDecimal(value: unknown, contract: UnitIntervalContract): value is string {
   if (!isDecimal(value)) return false;
   const decimal = new Decimal(value);
   const floor = new Decimal(contract.floor);
-  const aboveFloor = contract.includeFloor
-    ? decimal.gte(floor)
-    : decimal.gt(floor);
+  const aboveFloor = contract.includeFloor ? decimal.gte(floor) : decimal.gt(floor);
   return aboveFloor && decimal.lte(contract.ceiling);
 }

@@ -1,4 +1,4 @@
-import runtimeContract from '../runtimeContract.fixture.json' with { type: 'json' };
+import runtimeContract from "../runtimeContract.fixture.json" with { type: "json" };
 
 export const HTTP_STATUS = runtimeContract.httpStatus;
 export const JSON_CONTENT_TYPE = runtimeContract.auth.jsonContentType;

@@ -1,4 +1,4 @@
-import type { LiveRunEvent } from '$lib/api/generated';
+import type { LiveRunEvent } from "$lib/api/generated";
 
 type ScheduleFrame = (callback: FrameRequestCallback) => number;
 type CancelFrame = (frameId: number) => void;
@@ -11,7 +11,7 @@ export type LiveDashboardBatcher = {
 export function createLiveDashboardBatcher(
   flush: (events: LiveRunEvent[]) => void,
   scheduleFrame: ScheduleFrame = requestAnimationFrame,
-  cancelFrame: CancelFrame = cancelAnimationFrame
+  cancelFrame: CancelFrame = cancelAnimationFrame,
 ): LiveDashboardBatcher {
   let pending: LiveRunEvent[] = [];
   let frameId: number | null = null;
@@ -30,6 +30,6 @@ export function createLiveDashboardBatcher(
       if (frameId !== null) cancelFrame(frameId);
       frameId = null;
       pending = [];
-    }
+    },
   };
 }

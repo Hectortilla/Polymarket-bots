@@ -1,5 +1,5 @@
-import type { Side } from '$lib/api/generated';
-import runtimeContract from '$lib/runtimeContract.fixture.json';
+import type { Side } from "$lib/api/generated";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
 
 type SideContract = {
   [Key in keyof typeof runtimeContract.side]: Extract<Side, Key>;

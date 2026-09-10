@@ -49,7 +49,7 @@
 .builder-section-heading .revision-label {
   margin-left: 10px;
   color: var(--text-muted);
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
   font-size: 0.68rem;
   font-weight: 500;
   letter-spacing: 0;
@@ -59,7 +59,7 @@
 .save-state {
   flex: none;
   color: var(--text-muted);
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
   font-size: 0.7rem;
 }
 

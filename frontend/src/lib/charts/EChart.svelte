@@ -1,13 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount } from "svelte";
 
-  import { init, type EChartsCoreOption } from './echarts';
+  import { init, type EChartsCoreOption } from "./echarts";
 
-  let {
-    option,
-    label,
-    class: className = ''
-  }: { option: EChartsCoreOption; label: string; class?: string } = $props();
+  let { option, label, class: className = "" }: { option: EChartsCoreOption; label: string; class?: string } = $props();
   let container: HTMLDivElement;
   let chart: ReturnType<typeof init> | undefined;
   let resizeFrame: number | null = null;
@@ -15,14 +11,14 @@
   const updateOptions = {
     notMerge: false,
     lazyUpdate: true,
-    replaceMerge: ['series'],
-    silent: true
+    replaceMerge: ["series"],
+    silent: true,
   };
 
   onMount(() => {
     chart = init(container, undefined, {
-      renderer: 'canvas',
-      useDirtyRect: true
+      renderer: "canvas",
+      useDirtyRect: true,
     });
     chart.setOption(option, updateOptions);
     let width = -1;

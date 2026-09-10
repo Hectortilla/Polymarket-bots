@@ -1,9 +1,9 @@
-import Decimal from 'decimal.js';
+import Decimal from "decimal.js";
 
 const DECIMAL_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 export function isDecimal(value: unknown): value is string {
-  if (typeof value !== 'string' || !DECIMAL_PATTERN.test(value)) return false;
+  if (typeof value !== "string" || !DECIMAL_PATTERN.test(value)) return false;
   return new Decimal(value).isFinite();
 }
 

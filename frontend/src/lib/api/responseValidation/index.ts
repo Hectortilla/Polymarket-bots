@@ -1,11 +1,11 @@
-import { isAccountAction, isAccountStatus } from '$lib/auth/recovery/validation';
-import { isCurrentUser, isLogoutResponse } from '$lib/auth/validation';
-import { client } from '$lib/api/generated/client.gen';
+import { isAccountAction, isAccountStatus } from "$lib/auth/recovery/validation";
+import { isCurrentUser, isLogoutResponse } from "$lib/auth/validation";
+import { client } from "$lib/api/generated/client.gen";
 
-import { isAccountUsage } from '$lib/limits/validation';
-import { isRecord } from '$lib/valueGuards';
+import { isAccountUsage } from "$lib/limits/validation";
+import { isRecord } from "$lib/valueGuards";
 
-import { validateOperationResponse } from '$lib/api/responseValidation/operations';
+import { validateOperationResponse } from "$lib/api/responseValidation/operations";
 
 import {
   isBot,
@@ -16,11 +16,11 @@ import {
   isMarketSearchResults,
   isMarketSuggestion,
   isRun,
-} from '$lib/api/responseValidation/resources';
+} from "$lib/api/responseValidation/resources";
 
-import { isEventPage, isRunEvent } from '$lib/api/responseValidation/events';
+import { isEventPage, isRunEvent } from "$lib/api/responseValidation/events";
 
-import { isGraphPreviewResponse } from '$lib/api/responseValidation/graph';
+import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph";
 
 let responseInterceptorConfigured = false;
 
@@ -33,20 +33,14 @@ export function configureApiResponseValidation(): void {
 }
 
 export async function validateControlPlaneResponse(data: unknown): Promise<void> {
-  const valid = Array.isArray(data)
-    ? data.every(isListItem)
-    : isRecord(data) && isObjectResponse(data);
-  if (!valid) throw new Error('Control-plane response failed runtime validation');
+  const valid = Array.isArray(data) ? data.every(isListItem) : isRecord(data) && isObjectResponse(data);
+  if (!valid) throw new Error("Control-plane response failed runtime validation");
 }
 
 function isListItem(value: unknown): boolean {
   return (
     isRecord(value) &&
-    (isDefinition(value) ||
-      isBot(value) ||
-      isRun(value) ||
-      isGraphTemplate(value) ||
-      isMarketSuggestion(value))
+    (isDefinition(value) || isBot(value) || isRun(value) || isGraphTemplate(value) || isMarketSuggestion(value))
   );
 }
 

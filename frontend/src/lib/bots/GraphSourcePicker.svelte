@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { BOT_BUILDER_COPY } from '$lib/bots/copy';
-  import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
+  import { BOT_BUILDER_COPY } from "$lib/bots/copy";
+  import CopySimpleIcon from "phosphor-svelte/lib/CopySimpleIcon";
 
-  import type { BotRead, GraphExample, NodeGraph } from '$lib/api/generated';
-  import { cloneNodeGraph } from '$lib/catalog/graphContracts';
-  import { GRAPH_SOURCE_COPY } from './graphSource';
+  import type { BotRead, GraphExample, NodeGraph } from "$lib/api/generated";
+  import { cloneNodeGraph } from "$lib/catalog/graphContracts";
+  import { GRAPH_SOURCE_COPY } from "./graphSource";
 
   let {
     bots,
@@ -20,13 +20,10 @@
     onselect: (graph: NodeGraph, sourceName: string) => void;
   } = $props();
 
-  const START_FRESH = '__start_fresh__';
+  const START_FRESH = "__start_fresh__";
   const graphBots = $derived(
     bots.filter(
-      (bot) =>
-        bot.id !== excludeBotId &&
-        bot.latest_graph_revision !== null &&
-        bot.latest_graph_revision !== undefined,
+      (bot) => bot.id !== excludeBotId && bot.latest_graph_revision !== null && bot.latest_graph_revision !== undefined,
     ),
   );
   let selectedSource = $state(START_FRESH);
@@ -57,8 +54,7 @@
     </span>
     <select id="graph-source" aria-describedby="graph-source-helper" bind:value={selectedSource}>
       <option value={START_FRESH}>Start fresh</option>
-      {#each examples as example, index}<option value={`example-${index}`}>{example.name}</option
-        >{/each}
+      {#each examples as example, index}<option value={`example-${index}`}>{example.name}</option>{/each}
       {#each graphBots as source (source.id)}
         <option value={source.id}>{source.config.name}</option>
       {/each}
@@ -66,6 +62,6 @@
   </div>
   <button class="secondary" type="button" onclick={applySource}>
     <CopySimpleIcon aria-hidden="true" size={17} />
-    {selectedSource === START_FRESH ? 'Reset graph' : BOT_BUILDER_COPY.COPY_GRAPH}
+    {selectedSource === START_FRESH ? "Reset graph" : BOT_BUILDER_COPY.COPY_GRAPH}
   </button>
 </div>

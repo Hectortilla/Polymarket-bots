@@ -10,26 +10,23 @@ import type {
   GraphParameterNode,
   GraphTriggerNode,
   GraphTriggerNodeData,
-} from '$lib/api/generated';
+} from "$lib/api/generated";
 
-import { type Connection, type Edge, type Node } from '@xyflow/svelte';
+import { type Connection, type Edge, type Node } from "@xyflow/svelte";
 
-type GraphNodeData = GraphNode['data'];
+type GraphNodeData = GraphNode["data"];
 
 export type CanvasNode =
-  | Node<GraphTriggerNodeData, GraphTriggerNode['type']>
-  | Node<GraphConstantNodeData, GraphConstantNode['type']>
-  | Node<GraphComparisonNodeData, GraphComparisonNode['type']>
-  | Node<GraphOperationNode['data'], GraphOperationNode['type']>
-  | Node<GraphParameterNode['data'], GraphParameterNode['type']>
-  | Node<GraphBrokerActionNodeData, GraphBrokerActionNode['type']>;
+  | Node<GraphTriggerNodeData, GraphTriggerNode["type"]>
+  | Node<GraphConstantNodeData, GraphConstantNode["type"]>
+  | Node<GraphComparisonNodeData, GraphComparisonNode["type"]>
+  | Node<GraphOperationNode["data"], GraphOperationNode["type"]>
+  | Node<GraphParameterNode["data"], GraphParameterNode["type"]>
+  | Node<GraphBrokerActionNodeData, GraphBrokerActionNode["type"]>;
 
 export type CanvasEdge = Edge;
 
-export function hasCompleteHandles(connection: Connection | CanvasEdge): connection is (
-  | Connection
-  | CanvasEdge
-) & {
+export function hasCompleteHandles(connection: Connection | CanvasEdge): connection is (Connection | CanvasEdge) & {
   sourceHandle: string;
   targetHandle: string;
 } {

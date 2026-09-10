@@ -1,4 +1,4 @@
-import { DEFAULT_OPERATION_SCALAR_TYPE } from '$lib/catalog/graphContracts';
+import { DEFAULT_OPERATION_SCALAR_TYPE } from "$lib/catalog/graphContracts";
 
 import type {
   GraphBrokerActionDescriptor,
@@ -7,29 +7,23 @@ import type {
   GraphOperationDescriptor,
   GraphParameter,
   GraphTriggerDescriptor,
-} from '$lib/api/generated';
+} from "$lib/api/generated";
 
-import { constantDataFromDescriptor } from '$lib/catalog/constantNode';
+import { constantDataFromDescriptor } from "$lib/catalog/constantNode";
 
-import { GRAPH_NODE_TYPE } from '$lib/catalog/graphContracts';
+import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
 
-import { type CanvasNode } from '$lib/catalog/nodeGraph/contracts';
+import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
 
-export function createTriggerNode(
-  nodes: CanvasNode[],
-  trigger: GraphTriggerDescriptor,
-): CanvasNode {
+export function createTriggerNode(nodes: CanvasNode[], trigger: GraphTriggerDescriptor): CanvasNode {
   return {
-    ...nextNodeBase(nodes, `trigger-${trigger.hook_name.replaceAll('_', '-')}`),
+    ...nextNodeBase(nodes, `trigger-${trigger.hook_name.replaceAll("_", "-")}`),
     type: trigger.node_type ?? GRAPH_NODE_TYPE.trigger,
     data: { hook_name: trigger.hook_name },
   };
 }
 
-export function createConstantNode(
-  nodes: CanvasNode[],
-  descriptor: GraphConstantDescriptor,
-): CanvasNode {
+export function createConstantNode(nodes: CanvasNode[], descriptor: GraphConstantDescriptor): CanvasNode {
   return {
     ...nextNodeBase(nodes, `constant-${descriptor.scalar_type}`),
     type: descriptor.node_type ?? GRAPH_NODE_TYPE.constant,
@@ -37,10 +31,7 @@ export function createConstantNode(
   };
 }
 
-export function createComparisonNode(
-  nodes: CanvasNode[],
-  descriptor: GraphComparisonDescriptor,
-): CanvasNode {
+export function createComparisonNode(nodes: CanvasNode[], descriptor: GraphComparisonDescriptor): CanvasNode {
   return {
     ...nextNodeBase(nodes, `comparison-${descriptor.operator}`),
     type: descriptor.node_type ?? GRAPH_NODE_TYPE.comparison,
@@ -48,10 +39,7 @@ export function createComparisonNode(
   };
 }
 
-export function createBrokerActionNode(
-  nodes: CanvasNode[],
-  descriptor: GraphBrokerActionDescriptor,
-): CanvasNode {
+export function createBrokerActionNode(nodes: CanvasNode[], descriptor: GraphBrokerActionDescriptor): CanvasNode {
   return {
     ...nextNodeBase(nodes, `action-${descriptor.action}`),
     type: descriptor.node_type ?? GRAPH_NODE_TYPE.brokerAction,
@@ -59,10 +47,7 @@ export function createBrokerActionNode(
   };
 }
 
-export function createOperationNode(
-  nodes: CanvasNode[],
-  descriptor: GraphOperationDescriptor,
-): CanvasNode {
+export function createOperationNode(nodes: CanvasNode[], descriptor: GraphOperationDescriptor): CanvasNode {
   return {
     ...nextNodeBase(nodes, descriptor.operation),
     type: GRAPH_NODE_TYPE.operation,
@@ -82,7 +67,7 @@ export function createParameterNode(nodes: CanvasNode[], parameter: GraphParamet
   };
 }
 
-function nextNodeBase(nodes: CanvasNode[], idPrefix: string): Pick<CanvasNode, 'id' | 'position'> {
+function nextNodeBase(nodes: CanvasNode[], idPrefix: string): Pick<CanvasNode, "id" | "position"> {
   const id = uniqueNodeId(nodes, idPrefix);
   const index = nodes.length;
   return {

@@ -1,11 +1,11 @@
-const ACCOUNT_CHANGE_CHANNEL_NAME = 'polybot-account';
-const ACCOUNT_CHANGED_EVENT = 'changed';
+const ACCOUNT_CHANGE_CHANNEL_NAME = "polybot-account";
+const ACCOUNT_CHANGED_EVENT = "changed";
 
 export class AccountChannel {
   private channel: BroadcastChannel | undefined;
 
   watch(onChange: () => void): () => void {
-    if (typeof BroadcastChannel === 'undefined') return () => {};
+    if (typeof BroadcastChannel === "undefined") return () => {};
     const channel = new BroadcastChannel(ACCOUNT_CHANGE_CHANNEL_NAME);
     this.channel = channel;
     channel.onmessage = (event: MessageEvent<unknown>) => {

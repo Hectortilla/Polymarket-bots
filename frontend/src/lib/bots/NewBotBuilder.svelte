@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { SERVICE_NAME } from '$lib/serviceIdentity';
-  import { SavedBotDraft } from './savedDraft';
-  import { DraftSaveFeedback } from './savedDraft/feedback';
-  import { goto } from '$app/navigation';
-  import { BOT_BUILDER_COPY } from '$lib/bots/copy';
-  import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon';
-  import { onMount, tick } from 'svelte';
-  import './builder.css';
+  import { SERVICE_NAME } from "$lib/serviceIdentity";
+  import { SavedBotDraft } from "./savedDraft";
+  import { DraftSaveFeedback } from "./savedDraft/feedback";
+  import { goto } from "$app/navigation";
+  import { BOT_BUILDER_COPY } from "$lib/bots/copy";
+  import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
+  import { onMount, tick } from "svelte";
+  import "./builder.css";
 
   import {
     listBotDefinitionsApiV1BotDefinitionsGet,
@@ -14,18 +14,15 @@
     type BotDefinitionDescriptor,
     type BotRead,
     type NodeGraph,
-  } from '$lib/api/generated';
-  import GraphSourcePicker from '$lib/bots/GraphSourcePicker.svelte';
-  import { GRAPH_SOURCE_COPY } from '$lib/bots/graphSource';
-  import LaunchForm from '$lib/catalog/LaunchForm.svelte';
-  import NodeGraphInput from '$lib/catalog/NodeGraphInput.svelte';
-  import { cloneNodeGraph, hasGraphCapability } from '$lib/catalog/graphContracts';
-  import { type GraphValidationIssue } from '$lib/catalog/graphValidation';
-  import {
-    type LaunchInputs,
-    type LaunchValidationIssue,
-  } from '$lib/catalog/schema';
-  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from '$lib/navigation';
+  } from "$lib/api/generated";
+  import GraphSourcePicker from "$lib/bots/GraphSourcePicker.svelte";
+  import { GRAPH_SOURCE_COPY } from "$lib/bots/graphSource";
+  import LaunchForm from "$lib/catalog/LaunchForm.svelte";
+  import NodeGraphInput from "$lib/catalog/NodeGraphInput.svelte";
+  import { cloneNodeGraph, hasGraphCapability } from "$lib/catalog/graphContracts";
+  import { type GraphValidationIssue } from "$lib/catalog/graphValidation";
+  import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema";
+  import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from "$lib/navigation";
 
   let descriptor = $state<BotDefinitionDescriptor>();
   let bots = $state<BotRead[]>([]);
@@ -36,7 +33,7 @@
   let saving = $state(false);
   let saveUncertain = $state(false);
   const savedDraft = new SavedBotDraft();
-  let error = $state('');
+  let error = $state("");
   let configServerIssues = $state<LaunchValidationIssue[]>([]);
   let graphServerIssues = $state<GraphValidationIssue[]>([]);
 
@@ -46,7 +43,7 @@
 
   async function loadBuilder(): Promise<void> {
     loading = true;
-    error = '';
+    error = "";
     try {
       const [definitionsResponse, botsResponse] = await Promise.all([
         listBotDefinitionsApiV1BotDefinitionsGet({ throwOnError: true }),
@@ -77,7 +74,7 @@
     if (saving || saveUncertain || !hasGraphCapability(descriptor) || !graph) return;
     const graphToSave = graph;
     saving = true;
-    error = '';
+    error = "";
     configServerIssues = [];
     graphServerIssues = [];
     try {
@@ -90,7 +87,7 @@
       saveUncertain = failure.uncertain;
       if (graphServerIssues.length > 0) {
         await tick();
-        document.getElementById('new-bot-graph-validation')?.focus();
+        document.getElementById("new-bot-graph-validation")?.focus();
       } else if (configServerIssues.length === 0) {
         error = failure.message(BOT_BUILDER_COPY.SAVE_ERROR);
       }
@@ -102,10 +99,7 @@
 
 <svelte:head>
   <title>{NAVIGATION_LABEL.NEW_BOT} | {SERVICE_NAME}</title>
-  <meta
-    name="description"
-    content="Configure a paper bot and build its node strategy in one workspace."
-  />
+  <meta name="description" content="Configure a paper bot and build its node strategy in one workspace." />
 </svelte:head>
 
 <a class="back-link" href={NAVIGATION_PATH.HOME}>

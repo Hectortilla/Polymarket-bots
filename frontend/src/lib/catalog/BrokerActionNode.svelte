@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
-  import { getContext } from 'svelte';
-  import NodeIssues from './NodeIssues.svelte';
+  import { Handle, Position } from "@xyflow/svelte";
+  import { getContext } from "svelte";
+  import NodeIssues from "./NodeIssues.svelte";
 
-  import type { GraphBrokerActionNodeData } from '$lib/api/generated';
-  import { brokerActionForNode } from '$lib/catalog/nodeGraph/catalog';
-  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from './nodeGraphContext';
+  import type { GraphBrokerActionNodeData } from "$lib/api/generated";
+  import { brokerActionForNode } from "$lib/catalog/nodeGraph/catalog";
+  import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
-  let { id = '', data }: { id?: string; data: GraphBrokerActionNodeData } = $props();
+  let { id = "", data }: { id?: string; data: GraphBrokerActionNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
   const descriptor = $derived(brokerActionForNode(editor.catalog, data));
 </script>
@@ -19,14 +19,9 @@
   </header>
   {#each descriptor.inputs as input (input.handle_id)}
     <div class="port">
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={input.handle_id}
-        isConnectable={!editor.readOnly}
-      />
-      <span>{input.display_name}{input.required ? '' : ' (optional)'}</span>
-      <small>{input.scalar_types.join(' | ')}</small>
+      <Handle type="target" position={Position.Left} id={input.handle_id} isConnectable={!editor.readOnly} />
+      <span>{input.display_name}{input.required ? "" : " (optional)"}</span>
+      <small>{input.scalar_types.join(" | ")}</small>
     </div>
   {/each}
   {#each descriptor.outputs ?? [] as output (output.handle_id)}
@@ -64,7 +59,7 @@
   }
   header strong,
   .port span {
-    font-family: 'Geist Mono Variable', ui-monospace, monospace;
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
     font-size: 0.76rem;
   }
   header span,
