@@ -25,11 +25,13 @@ def test_recovery_process_retries_database_outage_and_handles_termination(caplog
 
         redis = AsyncMock()
         monitor = AsyncMock()
+        maintenance = AsyncMock()
 
         async def monitor_forever():
             await asyncio.sleep(10)
 
         monitor.serve.side_effect = monitor_forever
+        maintenance.serve.side_effect = monitor_forever
         recovery = AsyncMock()
         recovery.tick.side_effect = tick
         loop = asyncio.get_running_loop()
@@ -47,6 +49,7 @@ def test_recovery_process_retries_database_outage_and_handles_termination(caplog
             patch.object(recovery_process, "RunRecovery", return_value=recovery),
             patch.object(recovery_process.Redis, "from_url", return_value=redis),
             patch.object(recovery_process, "OperationMonitor", return_value=monitor),
+            patch.object(recovery_process, "DataMaintenance", return_value=maintenance),
             patch.object(recovery_process, "DELIVERY_RETRY_SECONDS", 0.001),
         ):
             await asyncio.wait_for(
@@ -59,14 +62,18 @@ def test_recovery_process_retries_database_outage_and_handles_termination(caplog
         engine.dispose.assert_awaited_once()
         redis.aclose.assert_awaited_once()
         monitor.serve.assert_awaited_once()
+        maintenance.serve.assert_awaited_once()
 
     with caplog.at_level(logging.ERROR):
         asyncio.run(scenario())
     assert "retrying after outage" in caplog.text
 
 
-@pytest.mark.parametrize("failure", [None, RuntimeError("monitor failed")])
-def test_recovery_supervises_monitor_completion_and_closes_resources(failure):
+@pytest.mark.parametrize("finished_service", ["monitor", "maintenance"])
+@pytest.mark.parametrize("failure", [None, RuntimeError("supervised service failed")])
+def test_recovery_supervises_monitor_completion_and_closes_resources(
+    failure, finished_service
+):
     async def scenario():
         engine, redis, recovery, monitor = (
             AsyncMock(),
@@ -74,7 +81,17 @@ def test_recovery_supervises_monitor_completion_and_closes_resources(failure):
             AsyncMock(),
             AsyncMock(),
         )
-        monitor.serve.side_effect = failure
+        maintenance = AsyncMock()
+
+        async def forever():
+            await asyncio.Event().wait()
+
+        monitor.serve.side_effect = (
+            failure if finished_service == "monitor" else forever
+        )
+        maintenance.serve.side_effect = (
+            failure if finished_service == "maintenance" else forever
+        )
         loop = asyncio.get_running_loop()
         with (
             patch.object(loop, "add_signal_handler"),
@@ -86,6 +103,7 @@ def test_recovery_supervises_monitor_completion_and_closes_resources(failure):
             patch.object(recovery_process, "RunRecovery", return_value=recovery),
             patch.object(recovery_process.Redis, "from_url", return_value=redis),
             patch.object(recovery_process, "OperationMonitor", return_value=monitor),
+            patch.object(recovery_process, "DataMaintenance", return_value=maintenance),
             patch.object(recovery_process, "DELIVERY_RETRY_SECONDS", 0.001),
         ):
             with pytest.raises(RuntimeError):

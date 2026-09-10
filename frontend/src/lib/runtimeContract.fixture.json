@@ -1,5 +1,6 @@
 {
   "idempotencyKeyHeader": "Idempotency-Key",
+  "idempotencyRecoveryHeader": "Idempotency-Recovery",
   "resourcePolicy": {
     "active_runs": 1,
     "queued_runs": 2,
@@ -28,14 +29,21 @@
     "INVALID_CONFIGURATION": "invalid_configuration"
   },
   "httpStatus": {
+    "GONE": 410,
     "BAD_REQUEST": 400,
     "UNAUTHORIZED": 401,
     "FORBIDDEN": 403,
     "NOT_FOUND": 404,
     "CONFLICT": 409,
+    "UNPROCESSABLE_CONTENT": 422,
     "TOO_MANY_REQUESTS": 429,
     "INTERNAL_SERVER_ERROR": 500,
     "SERVICE_UNAVAILABLE": 503
+  },
+  "dataLifecycle": {
+    "deletionTargetHours": 24,
+    "backupRetentionDays": 14,
+    "auditRetentionDays": 90
   },
   "accountManagement": {
     "accountPath": "/account",
@@ -74,6 +82,7 @@
   },
   "apiPaths": {
     "accountStatus": "/api/v1/auth/account",
+    "requestAccountDeletion": "/api/v1/account/deletion",
     "requestPasswordReset": "/api/v1/auth/password/reset/request",
     "completePasswordReset": "/api/v1/auth/password/reset/complete",
     "requestEmailVerification": "/api/v1/auth/email/verification/request",

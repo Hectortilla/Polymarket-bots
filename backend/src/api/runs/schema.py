@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from sqlalchemy import Enum
 
+from api.lifecycle.schema import HISTORY_EXPIRED_AT_COLUMN
 from api.runs.status import RunStatus
 
 RUNS_TABLE_NAME = "runs"
@@ -30,7 +31,7 @@ class RunColumn(StrEnum):
 
 
 INTERNAL_RUN_COLUMNS = frozenset(
-    {RunColumn.LAUNCH_KEY, RunColumn.EXECUTION_TOKEN, RunColumn.DELIVERY_ATTEMPTED_AT}
+    {RunColumn.LAUNCH_KEY, RunColumn.EXECUTION_TOKEN, RunColumn.DELIVERY_ATTEMPTED_AT, HISTORY_EXPIRED_AT_COLUMN}
 )
 
 

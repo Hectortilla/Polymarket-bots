@@ -43,6 +43,7 @@ from api.http.contracts import HealthResponse
 from api.http.protocol import (
     CONTENT_TYPE_HEADER,
     IDEMPOTENCY_KEY_HEADER,
+    IDEMPOTENCY_RECOVERY_HEADER,
     JSON_CONTENT_TYPE,
 )
 from api.http.routes.paths import (
@@ -66,6 +67,8 @@ from api.http.routes.paths import (
     USAGE_PATH,
     api_route_path,
 )
+from api.lifecycle import policy as lifecycle_policy
+from api.lifecycle.http import ACCOUNT_DELETION_PATH
 from api.limits.errors import ResourceLimitCode
 from api.limits.policy import PAPER_BETA
 from api.runs.status import (
@@ -156,18 +159,22 @@ FRONTEND_RUN_CONTRACT_PATH = (
 def frontend_run_contract() -> dict[str, object]:
     return {
         "idempotencyKeyHeader": IDEMPOTENCY_KEY_HEADER,
+        "idempotencyRecoveryHeader": IDEMPOTENCY_RECOVERY_HEADER,
         "resourcePolicy": PAPER_BETA.model_dump(),
         "resourceLimitCodes": _enum_values(ResourceLimitCode),
         "httpStatus": {
+            "GONE": status.HTTP_410_GONE,
             "BAD_REQUEST": status.HTTP_400_BAD_REQUEST,
             "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,
             "FORBIDDEN": status.HTTP_403_FORBIDDEN,
             "NOT_FOUND": status.HTTP_404_NOT_FOUND,
             "CONFLICT": status.HTTP_409_CONFLICT,
+            "UNPROCESSABLE_CONTENT": status.HTTP_422_UNPROCESSABLE_CONTENT,
             "TOO_MANY_REQUESTS": status.HTTP_429_TOO_MANY_REQUESTS,
             "INTERNAL_SERVER_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
         },
+        "dataLifecycle": {"deletionTargetHours": lifecycle_policy.DELETION_TARGET_HOURS, "backupRetentionDays": lifecycle_policy.BACKUP_RETENTION_DAYS, "auditRetentionDays": lifecycle_policy.OPERATOR_AUDIT_RETENTION_DAYS},
         "accountManagement": {
             "accountPath": account_policy.BROWSER_ACCOUNT_PATH,
             "forgotPath": account_policy.BROWSER_FORGOT_PATH,
@@ -193,6 +200,7 @@ def frontend_run_contract() -> dict[str, object]:
         "activitySeverity": _enum_values(ActivitySeverity),
         "apiPaths": {
             "accountStatus": api_route_path(account_policy.ACCOUNT_PATH),
+            "requestAccountDeletion": api_route_path(ACCOUNT_DELETION_PATH),
             "requestPasswordReset": api_route_path(account_policy.RESET_REQUEST_PATH),
             "completePasswordReset": api_route_path(account_policy.RESET_COMPLETE_PATH),
             "requestEmailVerification": api_route_path(

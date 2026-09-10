@@ -31,6 +31,7 @@ from api.auth.schema import (
     UserColumn,
 )
 from api.auth.token_digest import AUTH_TOKEN_DIGEST_HEX_LENGTH
+from api.lifecycle.schema import RESTORE_QUARANTINED_AT_COLUMN
 
 
 class UserRow(SQLModel, table=True):
@@ -75,10 +76,12 @@ class UserRow(SQLModel, table=True):
         sa_column=Column(UserColumn.SUSPENDED_AT, DateTime(timezone=True)),
     )
 
+    restore_quarantined_at: datetime | None = Field(default=None, sa_column=Column(RESTORE_QUARANTINED_AT_COLUMN, DateTime(timezone=True)))
+
     @hybrid_property
     def access_allowed(self) -> bool:
         # Equality intentionally serves both Python values and SQL NULL comparison.
-        return self.suspended_at == None  # noqa: E711
+        return (self.suspended_at == None) & (self.restore_quarantined_at == None)  # noqa: E711
 
     def mark_email_verified(self) -> None:
         self.email_verified_at = system_now_utc()

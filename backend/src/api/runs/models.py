@@ -30,6 +30,7 @@ from api.runs.schema import (
     run_status_column_type,
 )
 from api.runs.status import RunStatus
+from api.lifecycle.schema import HISTORY_EXPIRED_AT_COLUMN
 
 
 class RunRow(SQLModel, table=True):
@@ -122,4 +123,9 @@ class RunRow(SQLModel, table=True):
     failure_detail: str | None = Field(
         default=None,
         sa_column=Column(RunColumn.FAILURE_DETAIL, String, nullable=True),
+    )
+
+    history_expired_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(HISTORY_EXPIRED_AT_COLUMN, DateTime(timezone=True)),
     )

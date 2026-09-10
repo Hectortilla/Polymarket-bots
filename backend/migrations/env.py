@@ -10,6 +10,7 @@ from api.auth.models import SessionRow, UserRow  # noqa: F401
 from api.auth.recovery.models import AccountTokenRow  # noqa: F401
 from api.bots.models import BotGraphRevisionRow, BotRow  # noqa: F401
 from api.graph_templates.models import GraphTemplateRow  # noqa: F401
+from api.lifecycle.deletion.models import DeletionRequestRow
 from api.operations.models import OperationControlRow, OperatorAuditRow  # noqa: F401
 from api.runs.models import RunRow  # noqa: F401
 from sqlalchemy import Connection, pool

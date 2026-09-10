@@ -1,4 +1,4 @@
-"""Application process names shared by deployment and release orchestration."""
+"""Compose service names and application process subsets for release orchestration."""
 
 from enum import StrEnum
 
@@ -10,6 +10,9 @@ class DeploymentService(StrEnum):
     MIGRATE = "migrate"
     CHECK = "check"
 
+
+POSTGRES_SERVICE = "postgres"
+REDIS_SERVICE = "redis"
 
 ENTRYPOINT_SERVICE = "entrypoint"
 APPLICATION_SERVICES = (

@@ -1,0 +1,13 @@
+[Unit]
+Description=Check Polybot backup recovery-point target
+RequiresMountsFor=/mnt/polybot-backups
+AssertPathIsMountPoint=/mnt/polybot-backups
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/polybot
+Environment=UV_NO_SYNC=1
+ExecStart=/usr/local/bin/uv run python -m scripts.beta_backup check --directory /mnt/polybot-backups
+UMask=0077
+StandardOutput=journal
+StandardError=journal

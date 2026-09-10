@@ -14,7 +14,13 @@ from api.auth.policy import LOGIN_PATH, LOGOUT_PATH, REGISTER_PATH
 from api.auth.recovery.policy import VERIFY_COMPLETE_PATH, VERIFY_REQUEST_PATH
 from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
-from api.deployment.services import APPLICATION_SERVICES, DeploymentService
+from api.deployment.services import (
+    APPLICATION_SERVICES,
+    DeploymentService,
+    ENTRYPOINT_SERVICE,
+    POSTGRES_SERVICE,
+    REDIS_SERVICE,
+)
 from api.execution.policy import WORKER_STOP_GRACE_SECONDS
 from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.http.routes.events import LAST_EVENT_ID_HEADER
@@ -98,8 +104,8 @@ class DeploymentSmoke:
         self.sensitive_values.add(password)
         for name, value in {
             "postgres_password": password,
-            "database_url": f"postgresql://polybot:{password}@postgres:5432/polybot",
-            "redis_url": "redis://redis:6379/0",
+            "database_url": f"postgresql://polybot:{password}@{POSTGRES_SERVICE}:5432/polybot",
+            "redis_url": f"redis://{REDIS_SERVICE}:6379/0",
             "smtp_username": "acceptance-user",
             "smtp_password": "acceptance-password",
         }.items():
@@ -158,7 +164,9 @@ class DeploymentSmoke:
         path = Path(self.values["POLYBOT_SECRETS_DIR"]) / "database_url"
         original = path.read_text()
         try:
-            path.write_text("postgresql://polybot:invalid@postgres:5432/polybot")
+            path.write_text(
+                f"postgresql://polybot:invalid@{POSTGRES_SERVICE}:5432/polybot"
+            )
             try:
                 release.activate(rollback=False)
             except subprocess.CalledProcessError:
@@ -193,7 +201,9 @@ class DeploymentSmoke:
         self.compose(
             "up", "-d", "--no-deps", "--wait", *APPLICATION_SERVICES[1:], fixture=True
         )
-        self.compose("up", "-d", "--no-deps", "--wait", "entrypoint", fixture=True)
+        self.compose(
+            "up", "-d", "--no-deps", "--wait", ENTRYPOINT_SERVICE, fixture=True
+        )
         self.require_health()
 
     def exercise_runs(self) -> None:
@@ -321,12 +331,14 @@ class DeploymentSmoke:
             result.raise_for_status()
             lost = result.json()["id"]
             self.wait_for(lambda: self.run_status(first, lost) == RunStatus.RUNNING)
-            self.compose("stop", "postgres", fixture=True)
+            self.compose("stop", POSTGRES_SERVICE, fixture=True)
             self.compose(
                 "stop", "--timeout", "0", DeploymentService.WORKER, fixture=True
             )
             time.sleep(DEFAULT_LEASE_SECONDS + DELIVERY_RETRY_SECONDS)
-            self.compose("up", "-d", "--no-deps", "--wait", "postgres", fixture=True)
+            self.compose(
+                "up", "-d", "--no-deps", "--wait", POSTGRES_SERVICE, fixture=True
+            )
             self.wait_for(lambda: self.run_status(first, lost) == RunStatus.INTERRUPTED)
             assert (
                 first.get(api_route_path(RUN_EVENTS_PATH, run_id=lost)).json()[
@@ -339,14 +351,14 @@ class DeploymentSmoke:
             result = first.post(api_route_path(BOT_RUNS_PATH, bot_id=bot_id), json={})
             result.raise_for_status()
             stranded = result.json()["id"]
-            self.compose("stop", "redis", fixture=True)
+            self.compose("stop", REDIS_SERVICE, fixture=True)
             time.sleep(DELIVERY_RETRY_SECONDS * 2)
             self.compose(
                 "up",
                 "-d",
                 "--no-deps",
                 "--wait",
-                "redis",
+                REDIS_SERVICE,
                 DeploymentService.WORKER,
                 fixture=True,
             )
@@ -376,7 +388,8 @@ class DeploymentSmoke:
             for port in entry.get("Publishers") or []:
                 if port.get("PublishedPort"):
                     assert (
-                        entry["Service"] == "entrypoint" and port["URL"] == "127.0.0.1"
+                        entry["Service"] == ENTRYPOINT_SERVICE
+                        and port["URL"] == "127.0.0.1"
                     )
 
     def require_health(self) -> None:

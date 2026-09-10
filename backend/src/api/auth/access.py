@@ -32,7 +32,13 @@ class AccountAccessStore:
             delete(AccountTokenRow).where(AccountTokenRow.user_id == owner_user_id)
         )
 
-    async def delete_sessions(self, owner_user_id: UUID, *, keep_token: SessionToken | None = None) -> None:
+    async def invalidate_all_credentials(self) -> None:
+        await self._session.execute(delete(SessionRow))
+        await self._session.execute(delete(AccountTokenRow))
+
+    async def delete_sessions(
+        self, owner_user_id: UUID, *, keep_token: SessionToken | None = None
+    ) -> None:
         query = delete(SessionRow).where(SessionRow.user_id == owner_user_id)
         if keep_token is not None:
             query = query.where(SessionRow.token_digest != keep_token.digest)

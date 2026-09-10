@@ -13,6 +13,7 @@ class Observation(StrEnum):
     ALERT = "alert"
     OBSERVER_FAILURE = "observer_failure"
     LOG_OVERFLOW = "log_overflow"
+    DATA_MAINTENANCE_FAILED = "data_maintenance_failed"
 
 
 class ProbeSource(StrEnum):
@@ -47,7 +48,7 @@ class HttpObservation:
 
 @dataclass(frozen=True, slots=True)
 class FailureObservation:
-    event: Literal[Observation.TELEMETRY_UNAVAILABLE, Observation.OBSERVER_FAILURE]
+    event: Literal[Observation.TELEMETRY_UNAVAILABLE, Observation.OBSERVER_FAILURE, Observation.DATA_MAINTENANCE_FAILED]
 
 
 @dataclass(frozen=True, slots=True)

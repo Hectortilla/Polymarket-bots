@@ -53,6 +53,7 @@ from api.http.app import app
 from api.http.contracts import HealthResponse
 from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
 from api.http.openapi import OPENAPI_OUTPUT_PATH
+from api.http.protocol import IDEMPOTENCY_KEY_HEADER, IDEMPOTENCY_RECOVERY_HEADER
 from api.http.routes.bots.market_validation import (
     MARKET_SELECTION_UNAVAILABLE_DETAIL,
 )
@@ -80,10 +81,12 @@ from api.http.routes.paths import (
     api_route_path,
 )
 from api.runs.contracts import PaperRunConfig, RunRead
+from api.runs.failures import LaunchAttemptUnavailable
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
 from polybot.performance.contracts.valuation_status import ValuationStatus
 from sqlalchemy.exc import IntegrityError
+from fastapi import status
 
 from control_plane.auth_fixtures import TEST_USER_ID
 from control_plane.auth_fixtures import authenticated_test_client as TestClient
@@ -134,6 +137,69 @@ def test_launch_list_detail_and_ingress_rejection(
     assert len(state.bots) == 1
     assert len(state.runs) == 1
     assert len(launcher.run_ids) == 1
+
+
+def test_expired_launch_recovery_and_missing_key_never_enqueue(monkeypatch):
+    state = _State()
+    launcher = _Launcher()
+    client = _client(monkeypatch, state, launcher=launcher)
+    bot = _create_bot(client)
+
+    async def unavailable(self, bot_id, launch_key):
+        raise LaunchAttemptUnavailable
+
+    monkeypatch.setattr(
+        _RunStore, "recover_existing_launch", unavailable, raising=False
+    )
+    path = api_route_path(BOT_RUNS_PATH, bot_id=bot["id"])
+    missing_key = client.post(path, headers={IDEMPOTENCY_RECOVERY_HEADER: "true"})
+    assert missing_key.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    expired = client.post(
+        path,
+        headers={
+            IDEMPOTENCY_KEY_HEADER: str(uuid4()),
+            IDEMPOTENCY_RECOVERY_HEADER: "true",
+        },
+    )
+    assert expired.status_code == status.HTTP_410_GONE
+    assert state.runs == {}
+    assert launcher.run_ids == []
+
+
+def test_existing_launch_recovery_bypasses_current_admission_and_never_delivers(
+    monkeypatch,
+):
+    state = _State()
+    launcher = _Launcher()
+    client = _client(monkeypatch, state, launcher=launcher)
+    run = _create_run(client)
+    key = uuid4()
+    launcher.run_ids.clear()
+
+    async def recover(self, bot_id, launch_key):
+        assert str(bot_id) == run["bot_id"] and launch_key == key
+        return state.runs[run["id"]]
+
+    def reject_fresh_work(*args, **kwargs):
+        raise AssertionError("Recovery must not validate or create new work")
+
+    monkeypatch.setattr(_RunStore, "recover_existing_launch", recover, raising=False)
+    monkeypatch.setattr(_RunStore, "create_from_bot", reject_fresh_work)
+    monkeypatch.setattr(bot_run_routes, "require_catalog_entry", reject_fresh_work)
+    monkeypatch.setattr(
+        bot_run_routes, "require_run_revision_contract", reject_fresh_work
+    )
+    monkeypatch.setattr(
+        PaperRunConfig, "require_subscription_allowance", reject_fresh_work
+    )
+    response = client.post(
+        api_route_path(BOT_RUNS_PATH, bot_id=run["bot_id"]),
+        headers={IDEMPOTENCY_KEY_HEADER: str(key), IDEMPOTENCY_RECOVERY_HEADER: "true"},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert response.json() == run
+    assert len(state.runs) == 1
+    assert launcher.run_ids == []
 
 
 def test_catalog_route_and_unknown_definition(

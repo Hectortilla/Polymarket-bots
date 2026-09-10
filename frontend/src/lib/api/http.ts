@@ -5,3 +5,5 @@ export const JSON_CONTENT_TYPE = runtimeContract.auth.jsonContentType;
 export const CONTENT_TYPE_HEADER = runtimeContract.auth.contentTypeHeader;
 
 export const IDEMPOTENCY_KEY_HEADER = runtimeContract.idempotencyKeyHeader;
+
+export const IDEMPOTENCY_RECOVERY_HEADER = runtimeContract.idempotencyRecoveryHeader;

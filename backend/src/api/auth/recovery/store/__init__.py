@@ -47,7 +47,7 @@ class AccountCredentialStore:
         current_password: str,
         password_hash: str,
     ) -> None:
-        user = await self._reauthenticate(user_id, session_token, current_password)
+        user = await self.reauthenticate(user_id, session_token, current_password)
         await self._rows.replace_password(user, password_hash)
         await self._session.commit()
 
@@ -58,12 +58,12 @@ class AccountCredentialStore:
         current_password: str,
         scope: SessionRevocation,
     ) -> None:
-        await self._reauthenticate(user_id, session_token, current_password)
+        await self.reauthenticate(user_id, session_token, current_password)
         keep_token = None if scope.revokes_current else session_token
         await AccountAccessStore(self._session).delete_sessions(user_id, keep_token=keep_token)
         await self._session.commit()
 
-    async def _reauthenticate(
+    async def reauthenticate(
         self, user_id: UUID, session_token: SessionToken, current_password: str
     ) -> UserRow:
         user = await AccountAccessStore(self._session).require_locked_account(user_id)

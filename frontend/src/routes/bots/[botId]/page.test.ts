@@ -1,4 +1,4 @@
-import { IDEMPOTENCY_KEY_HEADER } from '$lib/api/http';
+import { IDEMPOTENCY_KEY_HEADER, IDEMPOTENCY_RECOVERY_HEADER, HTTP_STATUS } from '$lib/api/http';
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from '$lib/limits/testFixtures';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,8 +123,7 @@ describe('saved-bot detail page', () => {
     });
     expect(mocks.launchRun).toHaveBeenCalledWith({
       path: { bot_id: BOT.id },
-      headers: { [IDEMPOTENCY_KEY_HEADER]: expect.any(String) },
-      throwOnError: true
+      headers: { [IDEMPOTENCY_KEY_HEADER]: expect.any(String), [IDEMPOTENCY_RECOVERY_HEADER]: String(false) }
     });
     expect(mocks.goto).toHaveBeenCalledWith(
       '/runs/bbbbbbbb-0000-0000-0000-000000000001'
@@ -388,5 +387,63 @@ it.each(Object.values(runtimeContract.resourceLimitCodes))('explains %s without 
   render(Page);
   await fireEvent.click(await screen.findByRole('button', { name: BOT_DETAIL_COPY.RUN }));
   expect(await screen.findByRole('alert')).toHaveTextContent(detail);
+  expect(mocks.goto).not.toHaveBeenCalled();
+});
+
+it('does not launch automatically when an old attempt is unavailable', async () => {
+  sessionStorage.clear();
+  mocks.readBot.mockResolvedValue({ data: BOT });
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  mocks.launchRun.mockResolvedValue({ response: { status: HTTP_STATUS.GONE }, error: {} });
+  render(Page);
+  const button = await screen.findByRole('button', { name: BOT_DETAIL_COPY.RUN });
+  await fireEvent.click(button);
+  expect(await screen.findByRole('alert')).toHaveTextContent(BOT_DETAIL_COPY.EXPIRED_LAUNCH);
+  expect(mocks.goto).not.toHaveBeenCalled();
+  expect(mocks.launchRun).toHaveBeenCalledTimes(1);
+  const firstKey = mocks.launchRun.mock.calls[0][0].headers[IDEMPOTENCY_KEY_HEADER];
+  await fireEvent.click(button);
+  expect(mocks.launchRun.mock.calls[1][0].headers[IDEMPOTENCY_KEY_HEADER]).not.toBe(firstKey);
+  expect(mocks.launchRun.mock.calls[1][0].headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(false));
+});
+
+it.each([
+  [HTTP_STATUS.TOO_MANY_REQUESTS, false],
+  [HTTP_STATUS.UNPROCESSABLE_CONTENT, false],
+  [HTTP_STATUS.SERVICE_UNAVAILABLE, true],
+])('handles returned HTTP %s with recovery=%s on the next explicit attempt', async (status, recovery) => {
+  sessionStorage.clear();
+  mocks.readBot.mockResolvedValue({ data: BOT });
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  mocks.launchRun.mockResolvedValue({ response: { status }, error: {} });
+  render(Page);
+  const button = await screen.findByRole('button', { name: BOT_DETAIL_COPY.RUN });
+  await fireEvent.click(button);
+  await screen.findByRole('alert');
+  const firstKey = mocks.launchRun.mock.calls[0][0].headers[IDEMPOTENCY_KEY_HEADER];
+  await fireEvent.click(button);
+  const headers = mocks.launchRun.mock.calls[1][0].headers;
+  expect(headers[IDEMPOTENCY_KEY_HEADER] === firstKey).toBe(recovery);
+  expect(headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(recovery));
+  expect(mocks.goto).not.toHaveBeenCalled();
+});
+
+it('shows returned capacity detail and clears its rejected launch key', async () => {
+  sessionStorage.clear();
+  mocks.readBot.mockResolvedValue({ data: BOT });
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  mocks.launchRun.mockResolvedValue({
+    response: { status: HTTP_STATUS.SERVICE_UNAVAILABLE },
+    error: { code: runtimeContract.resourceLimitCodes.GLOBAL_CAPACITY, detail: RESOURCE_LIMIT_DETAIL },
+  });
+  render(Page);
+  const button = await screen.findByRole('button', { name: BOT_DETAIL_COPY.RUN });
+  await fireEvent.click(button);
+  expect(await screen.findByRole('alert')).toHaveTextContent(RESOURCE_LIMIT_DETAIL);
+  const firstKey = mocks.launchRun.mock.calls[0][0].headers[IDEMPOTENCY_KEY_HEADER];
+  await fireEvent.click(button);
+  const headers = mocks.launchRun.mock.calls[1][0].headers;
+  expect(headers[IDEMPOTENCY_KEY_HEADER]).not.toBe(firstKey);
+  expect(headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(false));
   expect(mocks.goto).not.toHaveBeenCalled();
 });

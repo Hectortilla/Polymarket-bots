@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ALLOWANCE_COPY } from './copy';
+  import { LIFECYCLE_COPY } from '$lib/lifecycle/copy';
   import { onMount } from 'svelte';
   import { readUsage, type AccountUsage } from '$lib/api/generated';
 
@@ -42,6 +43,7 @@
       {usage.policy.followed_wallets_per_run} followed wallets.
       Queued runs start oldest first when their account has a free active slot.
     </p>
+    <p class="allowance-note">{LIFECYCLE_COPY.HISTORY}</p>
   {:else}
     <p role="status">Loading allowance usage…</p>
   {/if}

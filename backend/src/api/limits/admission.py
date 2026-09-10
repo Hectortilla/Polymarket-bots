@@ -72,8 +72,9 @@ class RunAdmission:
         return None
 
     async def lock_transaction(self) -> None:
-        # One transaction lock serializes admission, claim and release across
-        # processes. Committed lifecycle rows avoid a second mutable counter.
+        # Admission precedes account/run locks everywhere: launch, claim, terminal
+        # transition, purge and restore approval serialize across processes. This
+        # prevents new work racing erasure; run leases fence stale worker writes.
         await self._session.execute(
             select(func.pg_advisory_xact_lock(RUN_ADMISSION_LOCK_ID))
         )

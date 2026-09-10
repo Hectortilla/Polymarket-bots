@@ -1,6 +1,6 @@
 <script lang="ts">
   import { LaunchAttempt } from '$lib/bots/launchAttempt';
-  import { IDEMPOTENCY_KEY_HEADER } from '$lib/api/http';
+  import { HTTP_STATUS } from '$lib/api/http';
   import { resourceLimitDetail } from '$lib/limits/validation';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -159,13 +159,18 @@
     if (!bot || hasUnsavedChanges || running) return;
     running = true;
     error = '';
+    const attempt = new LaunchAttempt(bot.id);
     try {
-      const attempt = new LaunchAttempt(bot.id);
       const response = await launchBotRunApiV1BotsBotIdRunsPost({
         path: { bot_id: bot.id },
-        headers: { [IDEMPOTENCY_KEY_HEADER]: attempt.idempotencyKey() },
-        throwOnError: true,
+        headers: attempt.requestHeaders(),
       });
+      if (!response.data) {
+        const failure = resolveLaunchFailure(response.response?.status, response.error);
+        if (failure.rejected) attempt.complete();
+        error = failure.message;
+        return;
+      }
       await goto(runPath(response.data.id));
       attempt.complete();
     } catch (caught) {
@@ -173,6 +178,13 @@
     } finally {
       running = false;
     }
+  }
+  function resolveLaunchFailure(status: number | undefined, detail: unknown): { rejected: boolean; message: string } {
+    const admissionRejection = resourceLimitDetail(detail);
+    const rejected = (status !== undefined && status >= HTTP_STATUS.BAD_REQUEST && status < HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      || admissionRejection !== undefined;
+    if (status === HTTP_STATUS.GONE) return { rejected, message: BOT_DETAIL_COPY.EXPIRED_LAUNCH };
+    return { rejected, message: admissionRejection ?? BOT_DETAIL_COPY.RUN_ERROR };
   }
 </script>
 

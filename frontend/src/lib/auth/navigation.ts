@@ -4,6 +4,7 @@ import { NAVIGATION_PATH } from '$lib/navigation';
 export const LOGIN_PATH = '/login';
 export const REGISTER_PATH = '/register';
 export const ACCOUNT_UPDATED_QUERY_PARAM = 'accountUpdated';
+export const ACCOUNT_DELETION_QUERY_PARAM = 'accountDeleted';
 export const RETURN_TO_QUERY_PARAM = 'returnTo';
 const RETURN_PATH_ORIGIN = 'https://polybot.invalid';
 

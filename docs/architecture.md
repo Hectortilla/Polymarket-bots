@@ -33,8 +33,10 @@ the standalone framework still requires none of them. Slice 17 adds
 application-owned allowances, shared PostgreSQL run admission,
 Redis request/stream bounds and optional runtime market caps. Slice 18 adds durable launch identities, transactional terminal events and
 scheduled queue/lease recovery. Slice 19 adds SMTP account links, verification,
-password changes and session revocation inside `api.auth`. Slices 20–23 and
-public signup remain outside the delivered scope.
+password changes and session revocation inside `api.auth`. Slice 20 adds private
+operational visibility and controls; Slice 21 adds encrypted backups, retention,
+account deletion and restore quarantine. Slices 22–23 and public signup remain
+outside the delivered scope.
 Public adapters use the unified SDK for Gamma discovery, CLOB bootstrap
 snapshots, market WebSocket events, and wallet trade/activity reads. The package
 does not yet implement authenticated clients or an arbitrary-wallet trade
@@ -1045,3 +1047,10 @@ admission, suspension and atomic terminal fencing. Its independent monitoring ta
 reads existing API, queue, worker, storage and feed observations without importing
 API concerns into `polybot`. See [operations](beta-operations.md) and the control-plane
 architecture for authorization and lock order.
+
+Slice 21 adds `api.lifecycle` for bounded terminal-history retention, account
+erasure and restore quarantine. The recovery process supervises this maintenance
+alongside operational monitoring. `scripts.beta_backup` and the host systemd
+timers own encrypted database backups; PostgreSQL remains the durable source and
+Redis is restored empty. No Polymarket adapter or framework contract changes.
+Approved policy and recovery evidence belong to [the data lifecycle runbook](beta-data-lifecycle.md).

@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Polybot backup recovery-point check
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=polybot-backup-check.service
+
+[Install]
+WantedBy=timers.target

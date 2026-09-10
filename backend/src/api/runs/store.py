@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from polybot.framework.clock import system_now_utc
 from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -11,12 +12,13 @@ from sqlmodel import select
 from api.bots.contracts import BotRead
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.store import BotStore
+from api.lifecycle.history.selection import HistorySelection
 from api.limits.admission import RunAdmission
-from api.limits.policy import PAPER_BETA
 from api.runs.contracts import ClaimedRunRead, PaperRunConfig, RunRead
 from api.runs.failures import (
     INTERRUPTION_DETAIL,
     ExecutionOwnershipLost,
+    LaunchAttemptUnavailable,
     RunSnapshotError,
 )
 from api.runs.lease import ExecutionLease
@@ -45,15 +47,38 @@ class RunStore:
         return OwnedRunStore(self._session, lease)
 
     async def read_launch(self, bot_id: UUID, launch_key: UUID) -> RunRead | None:
-        row = await self._session.scalar(
-            select(RunRow).where(
-                RunRow.bot_id == bot_id, RunRow.launch_key == launch_key
+        result = (
+            await self._session.execute(
+                select(RunRow, BotRow.owner_user_id)
+                .join(BotRow, BotRow.id == RunRow.bot_id)
+                .where(RunRow.bot_id == bot_id, RunRow.launch_key == launch_key)
             )
-        )
-        return None if row is None else await self._read_row(row)
+        ).one_or_none()
+        if result is None:
+            return None
+        row, owner_user_id = result
+        if row.status in TERMINAL_RUN_STATUSES:
+            retained_run_id = await self._session.scalar(
+                select(RunRow.id).where(
+                    RunRow.id == row.id, self._visible_history_predicate(owner_user_id)
+                )
+            )
+            if retained_run_id is None:
+                raise LaunchAttemptUnavailable
+        return await self._read_row(row)
+
+    async def recover_existing_launch(self, bot_id: UUID, launch_key: UUID) -> RunRead:
+        await RunAdmission(self._session).lock_transaction()
+        existing = await self.read_launch(bot_id, launch_key)
+        if existing is None:
+            raise LaunchAttemptUnavailable
+        return existing
 
     async def create_from_bot(
-        self, bot: BotRead, *, launch_key: UUID | None = None
+        self,
+        bot: BotRead,
+        *,
+        launch_key: UUID | None = None,
     ) -> RunRead:
         await RunAdmission(self._session).lock_transaction()
         if launch_key is not None:
@@ -82,28 +107,18 @@ class RunStore:
     async def read_owned(self, run_id: UUID, owner_user_id: UUID) -> RunRead | None:
         row = (
             await self._session.execute(
-                self._owned_runs_statement(owner_user_id).where(RunRow.id == run_id)
+                self._owned_runs_statement(owner_user_id).where(
+                    RunRow.id == run_id, self._visible_history_predicate(owner_user_id)
+                )
             )
         ).scalar_one_or_none()
         return None if row is None else await self._read_row(row)
 
     async def list_owned(self, owner_user_id: UUID) -> tuple[RunRead, ...]:
-        recent_history = (
-            self._owned_runs_statement(owner_user_id)
-            .with_only_columns(RunRow.id)
-            .where(RunRow.status.in_(TERMINAL_RUN_STATUSES))
-            .order_by(RunRow.created_at.desc(), RunRow.id.desc())
-            .limit(PAPER_BETA.retained_runs)
-        )
         rows = (
             await self._session.execute(
                 self._owned_runs_statement(owner_user_id)
-                .where(
-                    or_(
-                        RunRow.status.not_in(TERMINAL_RUN_STATUSES),
-                        RunRow.id.in_(recent_history),
-                    )
-                )
+                .where(self._visible_history_predicate(owner_user_id))
                 .order_by(RunRow.created_at.desc(), RunRow.id.desc())
             )
         ).scalars()
@@ -331,6 +346,15 @@ class RunStore:
         else:
             await self._session.commit()
         return row is not None
+
+    @staticmethod
+    def _visible_history_predicate(owner_user_id: UUID):
+        return or_(
+            RunRow.status.not_in(TERMINAL_RUN_STATUSES),
+            RunRow.id.in_(
+                HistorySelection(system_now_utc()).retained_run_ids_query(owner_user_id)
+            ),
+        )
 
     @staticmethod
     def _owned_runs_statement(owner_user_id: UUID):

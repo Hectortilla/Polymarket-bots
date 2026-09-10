@@ -1,11 +1,11 @@
 # Web Control Plane v0 Architecture and API
 
-Status: Slices 12A–12F, 13A–13F and 14–20 are implemented.
+Status: Slices 12A–12F, 13A–13F and 14–21 are implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
-continues with planned Slices 21–23 after the delivered deployment, resource-limit, reliable-lifecycle, account-recovery and operations foundation. It covers production
+continues with planned Slices 22–23 after the delivered deployment, resource-limit, reliable-lifecycle, account-recovery, operations and data-lifecycle foundation. It covers production
 operation, resource limits, reliability, recovery, data lifecycle and launch
 workflows. Adopt each slice's technical contracts here during implementation;
 current private access, ownership and paper execution remain unchanged until the
@@ -304,6 +304,7 @@ The final v0 run row has exactly:
 - `execution_token` (nullable UUID)
 - `delivery_attempted_at` (nullable timestamp)
 - `failure_detail` (nullable, sanitized)
+- `history_expired_at` (nullable timestamp; hidden, partially purged terminal history)
 
 The composite `(bot_id, bot_graph_revision_id)` foreign key prevents a run from
 using another bot's revision. Graph-capable definitions require a revision and
@@ -534,6 +535,7 @@ type.
 - `POST /auth/email/verification/complete` — prove mailbox ownership and replace credentials.
 - `POST /auth/password/change` — reauthenticate, change password and revoke all sessions.
 - `POST /auth/sessions/revoke` — reauthenticate and revoke other/all sessions.
+- `POST /account/deletion` — reauthenticate the current account, quiesce work and revoke all access; return 202 before bounded erasure.
 
 All remaining routes require a session except minimal health readiness.
 Resource IDs are scoped to the current owner and return 404 when inaccessible.
@@ -558,7 +560,7 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 - `POST /bots/{bot_id}/graph-revisions` — append an immutable graph revision.
 - `GET /bots/{bot_id}/graph-revisions/{revision_id}` — read an owned revision.
 - `POST /bots/{bot_id}/runs` — snapshot and launch the latest saved bot.
-- `GET /runs` — all runs, newest first.
+- `GET /runs` — active runs plus retained terminal history from `HistorySelection`, newest first.
 - `GET /runs/{run_id}` — one run; Slice 12E adds its event-derived summary.
 - `POST /runs/{run_id}/stop` — idempotently request/complete stop.
 - `GET /runs/{run_id}/events?before_event_id=&limit=` — the newest bounded
@@ -952,7 +954,8 @@ termination; a new key starts a deliberate new run. Omitting the header explicit
 requests a fresh run for compatibility with existing callers. The browser persists
 a pending key in session storage before sending and keeps it through errors and
 reload, clearing it only after navigation to the confirmed run. Identities remain
-valid as long as their run row is retained; Slice 21 must preserve this contract.
+valid as long as their run history is retained. Slice 21 adds `Idempotency-Recovery`
+for browser retries: missing or expired attempts return 410 without creating work.
 Migration 0006 adds nullable identity/delivery/claim columns and a unique bot/key
 constraint without resetting existing accounts or history.
 
@@ -1075,3 +1078,21 @@ The monitor uses its own cadence, verifies the required incident singleton, and
 is supervised by recovery. The CLI returns typed status/inspection/mutation shapes;
 unhealthy status checks exit nonzero. HTTP admission exposes `incident_paused`
 (503) and `account_suspended` (403) without requiring detail-string parsing.
+
+## Slice 21: Data lifecycle boundaries
+
+`api.lifecycle` owns bounded history/account/audit maintenance and the private
+restoration quarantine commands. Migration 0009 adds hidden-history and separate
+restore-quarantine markers plus minimal deletion receipts without a user foreign
+key. Account access has one Python/SQL predicate covering both suspension and
+restore quarantine. Run history age/count selection is shared by reads and cleanup.
+Maintenance runs under recovery supervision; deletion uses the same admission →
+account → run lock order as launch/operator controls. Physical removal follows
+event → run → graph revision → bot → identity references; stale execution leases
+cannot write after terminal transition or purge.
+
+Host-only `scripts.beta_backup` uses PostgreSQL container utilities and age, with
+systemd timers for backup and RPO checks. Restore decrypts before a single
+transaction into a new isolated project and quarantines all access/jobs before any
+application service may start. See [the data runbook](beta-data-lifecycle.md) for
+approved policy, manual reconciliation and non-database secret custody.

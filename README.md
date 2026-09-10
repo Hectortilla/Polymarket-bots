@@ -164,8 +164,9 @@ local/private access boundary until the remaining beta-readiness slices are deli
 now includes the delivered Slice 12F deployment foundation and Slice 16 private
 HTTPS release workflow. Slice 17 adds per-account and global resource admission,
 browser usage, and server-side expiry. Slice 18 adds durable launch retries and scheduled queue/worker recovery.
-Slice 19 adds account recovery and management. Slice 20 operational controls are
-delivered; Slices 21–23 cover data lifecycle, onboarding and launch/support information. Open signup remains gated on their acceptance.
+Slice 19 adds account recovery and management. Slices 20–21 deliver operational
+controls, encrypted backups and bounded data lifecycle. Slices 22–23 cover onboarding
+and launch/support information. Open signup remains gated on their acceptance.
 Marketplace work is deferred.
 
 Private HTTPS deployment work and the repeatable release procedure are documented
@@ -582,3 +583,10 @@ unit tests validate deterministic behavior, not profitability.
 Slice 20 operational controls, structured observations, alert ownership and incident
 procedures are documented in [beta operations](docs/beta-operations.md). Maintenance
 commands require private host access; ordinary web accounts have no operator role.
+
+Slice 21 data lifecycle implementation and rehearsal instructions are in
+[the beta data runbook](docs/beta-data-lifecycle.md): daily encrypted backups,
+100-run/30-day terminal history, authenticated deletion and isolated restoration
+with all accounts/jobs quarantined. Public-opening and support-identity gates
+remain explicit. Run `PYTHONPATH=backend/tests uv run python -m
+control_plane.backup_rehearsal` for the disposable restoration acceptance.

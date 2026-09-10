@@ -11,7 +11,7 @@ import { passwordsMatch } from './validation';
 const paths = runtimeContract.apiPaths;
 const actionPaths = [paths.requestPasswordReset, paths.completePasswordReset,
   paths.requestEmailVerification, paths.completeEmailVerification,
-  paths.changePassword, paths.revokeSessions];
+  paths.changePassword, paths.revokeSessions, paths.requestAccountDeletion];
 
 function validate(url: string, body: unknown) {
   return validateOperationResponse(new Response(JSON.stringify(body), {

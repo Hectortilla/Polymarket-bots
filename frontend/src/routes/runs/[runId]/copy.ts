@@ -1,5 +1,5 @@
 export const RUN_DETAIL_COPY = {
-  NOT_FOUND: 'Run not found.',
+  NOT_FOUND: 'Run not found. Older history may have expired; return to your workspace for retained runs.',
   RUN_LOAD_ERROR: 'The run could not be loaded.',
   STREAM_RECONNECTING: 'Live updates are unavailable. Reconnecting…',
   STALE_BOOK_INPUT: 'stale book input',

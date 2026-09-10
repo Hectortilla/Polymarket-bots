@@ -89,7 +89,7 @@ Recovery requires access to the registered mailbox. There is no email-change flo
 manual identity-transfer override, social login, account linking, organization or
 MFA in this slice. A user who loses both their password and mailbox access cannot
 recover through this application. A still-signed-in user who knows their password
-can change it. Account deletion and retention belong to Slice 21.
+can change it. Account deletion and retention are implemented by Slice 21; see [the data lifecycle runbook](beta-data-lifecycle.md).
 
 Deploy migration 0007 forward without resetting accounts or history. Old releases
 that require an earlier exact schema cannot run after upgrade; rollback requires a

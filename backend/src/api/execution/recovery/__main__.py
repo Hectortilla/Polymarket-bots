@@ -13,6 +13,7 @@ from api.execution.taskiq_app import TaskiqRunLauncher
 from api.execution.worker.database import create_worker_database
 from api.io_policy import REDIS_SOCKET_OPTIONS
 from api.operations.monitor import OperationMonitor
+from api.lifecycle.maintenance import DataMaintenance
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,15 +28,17 @@ async def serve_recovery(settings: StartupSettings) -> None:
     redis = Redis.from_url(settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS)
     monitor = OperationMonitor(session_factory, redis, lease_seconds=settings.lease_seconds, storage_path=settings.storage_probe_path)
     monitor_task = asyncio.create_task(monitor.serve())
+    maintenance_task = asyncio.create_task(DataMaintenance(session_factory).serve())
     stopping = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stopping.set)
     try:
         while not stopping.is_set():
-            if monitor_task.done():
-                await monitor_task
-                raise RuntimeError("operation monitor ended unexpectedly")
+            for task in (monitor_task, maintenance_task):
+                if task.done():
+                    await task
+                    raise RuntimeError("supervised recovery service ended unexpectedly")
             try:
                 await recovery.tick()
             except Exception:
@@ -46,7 +49,8 @@ async def serve_recovery(settings: StartupSettings) -> None:
                 continue
     finally:
         monitor_task.cancel()
-        await asyncio.gather(monitor_task, return_exceptions=True)
+        maintenance_task.cancel()
+        await asyncio.gather(monitor_task, maintenance_task, return_exceptions=True)
         await redis.aclose()
         await engine.dispose()
 

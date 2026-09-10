@@ -18,7 +18,7 @@ def test_run_contract_matches_the_run_row() -> None:
         "latest_equity",
         "equity_status",
     }
-    assert len(row_fields) == 14
+    assert len(row_fields) == 15
     assert "latest_equity" not in RunRow.__table__.columns
     assert "equity_status" not in RunRow.__table__.columns
     assert "latest_runtime_failure" not in RunRow.__table__.columns

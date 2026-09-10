@@ -48,11 +48,11 @@ test('mail reset removes URL secrets, rejects replay, and supports password/sess
   const peerLogin = await peer.request.post(contract.apiPaths.login, { headers: { Origin: new URL(page.url()).origin }, data: { email: EMAIL, password: NEW_PASSWORD } });
   expect(peerLogin.ok()).toBe(true);
   await page.goto(contract.accountManagement.accountPath);
-  await page.getByLabel(ACCOUNT_COPY.CURRENT_PASSWORD).fill(NEW_PASSWORD);
+  await page.getByLabel(ACCOUNT_COPY.CURRENT_PASSWORD, { exact: true }).fill(NEW_PASSWORD);
   await page.getByRole('button', { name: ACCOUNT_COPY.REVOKE_OTHER, exact: true }).click();
   await expect(page.getByRole('status')).toContainText(ACCOUNT_COPY.OTHERS_DONE);
   expect((await peer.request.get(contract.apiPaths.currentUser)).status()).toBe(contract.httpStatus.UNAUTHORIZED);
-  await page.getByLabel(ACCOUNT_COPY.CURRENT_PASSWORD).fill(NEW_PASSWORD);
+  await page.getByLabel(ACCOUNT_COPY.CURRENT_PASSWORD, { exact: true }).fill(NEW_PASSWORD);
   await page.getByLabel(ACCOUNT_COPY.NEW_PASSWORD, { exact: true }).fill(PASSWORD);
   await page.getByLabel(ACCOUNT_COPY.CONFIRM_PASSWORD, { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: ACCOUNT_COPY.CHANGE_PASSWORD, exact: true }).click();
@@ -62,7 +62,7 @@ test('mail reset removes URL secrets, rejects replay, and supports password/sess
   await page.getByRole('button', { name: AUTH_COPY.SIGN_IN, exact: true }).click();
   await expect(page.getByRole('button', { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
   await page.goto(contract.accountManagement.accountPath);
-  await page.getByLabel(ACCOUNT_COPY.CURRENT_PASSWORD).fill(PASSWORD);
+  await page.getByLabel(ACCOUNT_COPY.CURRENT_PASSWORD, { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: ACCOUNT_COPY.REVOKE_ALL, exact: true }).click();
   await expect(page).toHaveURL(url => url.pathname === LOGIN_PATH);
   await expect(page.getByRole('status')).toContainText(ACCOUNT_COPY.DONE);

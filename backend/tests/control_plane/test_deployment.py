@@ -19,6 +19,7 @@ from api.deployment.settings import (
     StartupSettings,
 )
 from api.execution.config import REDIS_URL_ENV
+from api.deployment.services import DeploymentService
 from scripts.beta_release import APPLICATION_SERVICES, IMAGE_VARIABLES, BetaRelease
 
 
@@ -89,7 +90,7 @@ def test_secret_ingress_never_silently_falls_back(monkeypatch, tmp_path):
 def test_startup_reports_the_invalid_setting_without_credentials(monkeypatch, tmp_path):
     production_environment(monkeypatch, tmp_path)
     monkeypatch.setenv(RELEASE_ID_ENV, "latest")
-    monkeypatch.setattr("sys.argv", ["api.deployment", "check"])
+    monkeypatch.setattr("sys.argv", ["api.deployment", DeploymentService.CHECK])
     with pytest.raises(SystemExit) as failure:
         deployment_main()
     message = str(failure.value)
@@ -122,7 +123,7 @@ def test_failed_migration_never_activates_release_and_rollback_only_checks_schem
         release.activate(rollback=False)
     assert release.compose.call_args_list[2].args == ("stop", APPLICATION_SERVICES[0])
     assert release.compose.call_args_list[3].args == ("stop", *APPLICATION_SERVICES[1:])
-    assert release.compose.call_args_list[-1].args[-1] == "migrate"
+    assert release.compose.call_args_list[-1].args[-1] == DeploymentService.MIGRATE
     assert release.compose.call_count == 5
     release.compose = Mock()
     release.activate(rollback=True)
@@ -130,8 +131,8 @@ def test_failed_migration_never_activates_release_and_rollback_only_checks_schem
         "run",
         "--rm",
         "--no-deps",
-        "migrate",
-        "check",
+        DeploymentService.MIGRATE,
+        DeploymentService.CHECK,
     )
     assert not any("downgrade" in call.args for call in release.compose.call_args_list)
 

@@ -56,7 +56,7 @@ function isExpectedOperationResponse(
 ): boolean {
   const paths = runtimeContract.apiPaths;
   if (url === paths.accountStatus) return isAccountStatus(data);
-  if ([paths.requestPasswordReset, paths.completePasswordReset, paths.requestEmailVerification, paths.completeEmailVerification, paths.changePassword, paths.revokeSessions].includes(url)) return isAccountAction(data);
+  if ([paths.requestPasswordReset, paths.completePasswordReset, paths.requestEmailVerification, paths.completeEmailVerification, paths.changePassword, paths.revokeSessions, paths.requestAccountDeletion].includes(url)) return isAccountAction(data);
   if (url === paths.usage) return isAccountUsage(data);
   if (url === paths.logout) return isLogoutResponse(data);
   if ([paths.currentUser, paths.login, paths.register].includes(url)) return isCurrentUser(data);

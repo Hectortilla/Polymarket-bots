@@ -1713,7 +1713,7 @@ editing, public deployment or organization features were added.
 
 ## Public Paper-Trading Beta Roadmap
 
-Status: Slices 16–20 delivered; Slices 21–23 planned. The user approved the eight readiness areas below as the next
+Status: Slices 16–21 delivered; Slices 22–23 planned. The user approved the eight readiness areas below as the next
 direction, replacing the marketplace proposal. These slices deliver a public
 paper-only service; they do not authorize deploying it or changing production
 state as part of this planning task. Marketplace work is deferred.
@@ -2065,7 +2065,13 @@ placeholder and public signup remains closed.
 
 ## Slice 21: Backups and Data Lifecycle
 
-Status: planned; depends on Slices 16–20 and Slice 17's history allowance.
+Approved beta policy: encrypted backups every 24 hours, retained 14 days; recovery point ≤24 hours and isolated restore ≤2 hours; up to 100 terminal runs per account for 30 days; immediate deletion quiescence and eligible erasure within 24 hours; minimal completed deletion receipts and operator audits retained 90 days.
+
+Status: delivered; depends on Slices 16–20 and Slice 17's history allowance.
+
+Operator/support identity
+may remain explicitly marked placeholders until the public-opening checklist.
+See [beta-data-lifecycle.md](beta-data-lifecycle.md).
 
 Minimum deliverable:
 
@@ -2097,6 +2103,28 @@ Acceptance:
 Explicit exclusions: indefinite history, transparent archival search and a
 general-purpose data warehouse. Never apply destructive verification to the
 production database.
+
+Implementation uses a supervised bounded maintenance loop, one retained-history
+selection policy, reauthenticated deletion with execution fencing, and private
+restore quarantine with explicit per-account reconciliation. Daily mounted-storage
+systemd units run the encrypted backup and hourly recovery-point check; deployment
+installation and separate key custody remain operator release prerequisites.
+
+Acceptance: 1,377 Python tests and six browser scenarios passed with disposable
+PostgreSQL/Redis; 267 frontend tests, Svelte diagnostics, generated client parity,
+frontend build and Python packaging passed. Additional final refinement tests cover
+unmarked age/count recovery, returned launch errors, pinned Docker commands,
+quarantine retries and archive/pipeline failures. A real encrypted backup restored
+into a separate project in 7.2 seconds, preserving accounts, ownership, bots,
+revisions and retained history with no old jobs started; an authenticated invalid
+database dump failed without application startup. Evidence is under git-ignored
+`data/beta/` and `data/reviews/slice21/`.
+
+Documentation-drift audit synchronized README, product and architecture contracts,
+this plan, lifecycle/recovery guidance and exported API/runtime fixtures. Policies,
+scheduler budgets and documented command/status contracts have parity checks.
+Public opening remains gated; support/operator identity is explicitly provisional.
+No Polymarket protocol changes or blocked MCP checks were introduced.
 
 ## Slice 22: First-Use Experience
 

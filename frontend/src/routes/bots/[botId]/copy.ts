@@ -1,4 +1,5 @@
 export const BOT_DETAIL_COPY = {
+  EXPIRED_LAUNCH: 'The previous launch cannot be recovered. Its history may have expired, or the request never arrived. Review retained history before choosing Run again to start a new run.',
   CONFIG_SAVE_ERROR: 'The bot configuration could not be saved.',
   GRAPH_SAVE_ERROR: 'The graph revision could not be saved.',
   LOAD_ERROR: 'The saved bot could not be loaded.',

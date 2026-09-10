@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import AccountDeletion from '$lib/lifecycle/AccountDeletion.svelte';
   import { accountStatus, changePassword, revokeSessions as revokeSessionsRequest, type AccountStatus, type SessionRevocation } from '$lib/api/generated';
   import contract from '$lib/runtimeContract.fixture.json';
   import { accountSession } from '$lib/auth/session';
@@ -77,4 +78,5 @@
   {#if error}<p role="alert" class="notice error">{error}</p>{/if}
   {#if message}<p role="status">{message}</p>{/if}
   <p>Recovery requires access to your registered mailbox. Email changes, identity transfers and support recovery overrides are unavailable.</p>
+  <AccountDeletion />
 </section>

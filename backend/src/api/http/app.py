@@ -31,6 +31,7 @@ from api.http.routes.markets import router as markets_router
 from api.http.routes.paths import API_PREFIX
 from api.http.routes.runs import router as runs_router
 from api.operations.http import OperationalHttpMiddleware
+from api.lifecycle.routes import router as lifecycle_router
 from api.limits.errors import ResourceLimitError
 from api.limits.http import (
     application_resource_limits,
@@ -82,6 +83,7 @@ def create_app(
     for router in (
         auth_router,
         recovery_router,
+        lifecycle_router,
         limits_router,
         graph_preview_router,
         catalog_router,

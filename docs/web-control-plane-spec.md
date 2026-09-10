@@ -299,7 +299,7 @@ assigns production deployment, resource limits, run reliability, account recover
 operational controls, backups/data lifecycle, onboarding and launch/support
 information to Slices 16–23 after the Slice 12F foundation.
 
-Slices 16–20 are delivered; Slices 21–23 remain planned extensions. Adopt their product
+Slices 16–21 are delivered; Slices 22–23 remain planned extensions. Adopt their product
 policies here during each slice and keep the current private boundary until the
 complete open-signup gate passes. Private bot/run ownership remains in force
 after public launch. Marketplace and live trading are outside this beta roadmap.
@@ -334,9 +334,9 @@ portfolio interests. CLI users retain their existing unlimited default.
 
 Saved bots, templates and immutable revisions have hard creation allowances;
 existing data is preserved. Run lists return a bounded recent window. The policy
-also declares the future retained-history allowance: retain only runs within both
-the count and age allowances when Slice 21 implements cleanup. Slice 17 does not
-delete history or promise that existing over-allowance history has been purged.
+also declares the retained-history allowance. Slice 21 now enforces both its
+count and age boundaries with bounded cleanup; the Slice 17 checkpoint itself
+did not delete history.
 Authenticated requests have shared rate limits, with a tighter budget for costly
 operations. Open streams have account/global caps and bounded lifetimes; normal
 SSE reconnection resumes from the durable cursor. Dependency outages fail closed.
@@ -407,3 +407,18 @@ dependencies. Database outages cannot authorize fills.
 Operator actions are retry-safe and audited with OS actor, UUID target, action,
 outcome and time. Support and operational ownership are the deployment operator
 until the release checklist supplies a named public contact.
+
+## Slice 21: Data policy
+
+Approved beta policy: encrypted backups every 24 hours, retained 14 days; recovery point ≤24 hours and isolated restore ≤2 hours; up to 100 terminal runs per account for 30 days; immediate deletion quiescence and eligible erasure within 24 hours; minimal completed deletion receipts and operator audits retained 90 days.
+
+The approved beta policy keeps up to 100 completed runs per account for 30 days,
+with active runs preserved. Expired history is unavailable in lists and private
+run URLs. Account exposes a password-confirmed deletion request: revoke all access
+and stop paper jobs immediately, then erase eligible owner data within 24 hours.
+Encrypted daily backups expire after 14 days; minimal operator/deletion receipts
+expire after 90 days. The recovery point is at most 24 hours and isolated restore
+target at most two hours. Restored accounts stay quarantined until individually
+reconciled with current deletion/suspension records; previous jobs never resume.
+See [data lifecycle](beta-data-lifecycle.md) for export/support handling and the
+explicit public-opening gates.

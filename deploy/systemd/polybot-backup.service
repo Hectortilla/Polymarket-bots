@@ -1,0 +1,16 @@
+[Unit]
+Description=Encrypted Polybot database backup
+Requires=docker.service
+After=docker.service
+RequiresMountsFor=/mnt/polybot-backups
+AssertPathIsMountPoint=/mnt/polybot-backups
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/polybot
+Environment=UV_NO_SYNC=1
+ExecStart=/usr/local/bin/uv run python -m scripts.beta_backup create /etc/polybot/release.env --directory /mnt/polybot-backups --recipients /etc/polybot/backup-recipients.txt
+UMask=0077
+TimeoutStartSec=3700
+StandardOutput=journal
+StandardError=journal

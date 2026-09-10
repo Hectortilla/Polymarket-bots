@@ -5,8 +5,9 @@
   import { ACCOUNT_COPY } from './recovery/copy';
   import { ACCOUNT_ACTION, CREDENTIAL_OUTCOME, submitCredentials } from './credentials';
   import { accountSession } from './session';
-  import { ACCOUNT_UPDATED_QUERY_PARAM, LOGIN_PATH, REGISTER_PATH, accountPath, RETURN_TO_QUERY_PARAM } from './navigation';
+  import { ACCOUNT_DELETION_QUERY_PARAM, ACCOUNT_UPDATED_QUERY_PARAM, LOGIN_PATH, REGISTER_PATH, accountPath, RETURN_TO_QUERY_PARAM } from './navigation';
   import './account.css';
+  import { LIFECYCLE_COPY } from '$lib/lifecycle/copy';
 
   let { registering = false }: { registering?: boolean } = $props();
   let email = $state('');
@@ -45,6 +46,7 @@
   {#if !registering}<p><a href={runtimeContract.accountManagement.forgotPath}>{ACCOUNT_COPY.FORGOT}</a></p>{/if}
   <p>{registering ? 'Save your bots and follow your paper runs in one place. Registration signs you in immediately. Verify your email in Account settings before launching a run.' : 'Sign in to your bots, graphs, and run history.'}</p>
   {#if page.url.searchParams.has(ACCOUNT_UPDATED_QUERY_PARAM)}<p role="status">{ACCOUNT_COPY.DONE}</p>{/if}
+  {#if page.url.searchParams.has(ACCOUNT_DELETION_QUERY_PARAM)}<p role="status">{LIFECYCLE_COPY.REQUESTED}</p>{/if}
   <form onsubmit={submit}>
     <label for="account-email">{AUTH_COPY.EMAIL}</label>
     <input id="account-email" type="email" autocomplete="username" maxlength={runtimeContract.auth.emailMaxLength} bind:value={email} required />

@@ -2,15 +2,17 @@
 
 from uuid import UUID
 
+from polybot.framework.clock import system_now_utc
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.bots.models import BotRow
+from api.lifecycle.history.selection import HistorySelection
 from api.limits.contracts import AccountUsage
 from api.limits.policy import PAPER_BETA
 from api.limits.resources import SavedResourceAllowance
 from api.runs.models import RunRow
-from api.runs.status import INTERRUPTIBLE_RUN_STATUSES, TERMINAL_RUN_STATUSES, RunStatus
+from api.runs.status import INTERRUPTIBLE_RUN_STATUSES, RunStatus
 
 
 class AccountUsageReader:
@@ -38,7 +40,13 @@ class AccountUsageReader:
             queued_runs=counts.get(RunStatus.QUEUED, 0),
             saved_bots=await self._saved.count_bots(),
             saved_templates=await self._saved.count_templates(),
-            retained_runs=sum(
-                counts.get(status, 0) for status in TERMINAL_RUN_STATUSES
-            ),
+            retained_runs=await self._retained_run_count(),
+        )
+
+    async def _retained_run_count(self) -> int:
+        retained_run_ids_query = HistorySelection(
+            system_now_utc()
+        ).retained_run_ids_query(self._owner_user_id)
+        return await self._session.scalar(
+            select(func.count()).select_from(retained_run_ids_query.subquery())
         )

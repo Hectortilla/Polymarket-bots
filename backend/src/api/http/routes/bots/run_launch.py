@@ -15,7 +15,7 @@ from api.http.dependencies import (
     LauncherDependency,
     SessionFactoryDependency,
 )
-from api.http.protocol import IDEMPOTENCY_KEY_HEADER
+from api.http.protocol import IDEMPOTENCY_KEY_HEADER, IDEMPOTENCY_RECOVERY_HEADER
 from api.http.responses import NOT_FOUND_AND_CONFLICT_RESPONSES
 from api.http.routes.bots.validation import (
     require_bot,
@@ -28,6 +28,11 @@ from api.http.routes.paths import (
 )
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.runs.contracts import RunRead
+from api.runs.failures import (
+    LAUNCH_ATTEMPT_UNAVAILABLE_DETAIL,
+    LAUNCH_RECOVERY_KEY_REQUIRED_DETAIL,
+    LaunchAttemptUnavailable,
+)
 from api.runs.store import RunStore
 
 LOGGER = logging.getLogger(__name__)
@@ -42,6 +47,7 @@ router = APIRouter()
     operation_id=LAUNCH_BOT_RUN_OPERATION_ID,
     responses={
         status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_410_GONE: {"model": ErrorResponse},
         **NOT_FOUND_AND_CONFLICT_RESPONSES,
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "model": ErrorResponse | RequestValidationFailure
@@ -54,7 +60,15 @@ async def launch_bot_run(
     user: CurrentUserDependency,
     launcher: LauncherDependency,
     launch_key: Annotated[UUID | None, Header(alias=IDEMPOTENCY_KEY_HEADER)] = None,
+    recover_existing_launch_only: Annotated[
+        bool, Header(alias=IDEMPOTENCY_RECOVERY_HEADER)
+    ] = False,
 ) -> RunRead:
+    if recover_existing_launch_only and launch_key is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            LAUNCH_RECOVERY_KEY_REQUIRED_DETAIL,
+        )
     async with session_factory() as session:
         if not user.can_launch_runs:
             raise HTTPException(status.HTTP_403_FORBIDDEN, VERIFICATION_REQUIRED_DETAIL)
@@ -62,15 +76,25 @@ async def launch_bot_run(
         # revision edits; delivery starts only after that transaction commits.
         bot = require_bot(await BotStore(session, user.id).read(bot_id, lock=True))
         store = RunStore(session)
-        existing = (
-            None if launch_key is None else await store.read_launch(bot.id, launch_key)
-        )
-        if existing is not None:
-            return existing
-        definition = require_catalog_entry(bot.definition_id)
-        require_run_revision_contract(definition, bot)
-        bot.config.require_subscription_allowance()
-        run = await store.create_from_bot(bot, launch_key=launch_key)
+        try:
+            if recover_existing_launch_only:
+                return await store.recover_existing_launch(bot.id, launch_key)
+            existing = (
+                None
+                if launch_key is None
+                else await store.read_launch(bot.id, launch_key)
+            )
+            if existing is not None:
+                return existing
+            definition = require_catalog_entry(bot.definition_id)
+            require_run_revision_contract(definition, bot)
+            bot.config.require_subscription_allowance()
+            run = await store.create_from_bot(bot, launch_key=launch_key)
+        except LaunchAttemptUnavailable:
+            raise HTTPException(
+                status.HTTP_410_GONE, LAUNCH_ATTEMPT_UNAVAILABLE_DETAIL
+            ) from None
+
     try:
         async with asyncio.timeout(DEPENDENCY_TIMEOUT_SECONDS):
             await launcher.launch(run.id)

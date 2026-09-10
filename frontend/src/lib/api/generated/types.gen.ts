@@ -1881,6 +1881,16 @@ export type PreviewPortfolio = {
 };
 
 /**
+ * ReauthenticateRequest
+ */
+export type ReauthenticateRequest = {
+    /**
+     * Current Password
+     */
+    current_password: string;
+};
+
+/**
  * RedeemRequest
  */
 export type RedeemRequest = {
@@ -2325,6 +2335,47 @@ export type RevokeSessionsRequestWritable = {
     current_password: string;
     scope: SessionRevocation;
 };
+
+export type RequestAccountDeletionData = {
+    body: ReauthenticateRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/account/deletion';
+};
+
+export type RequestAccountDeletionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type RequestAccountDeletionError = RequestAccountDeletionErrors[keyof RequestAccountDeletionErrors];
+
+export type RequestAccountDeletionResponses = {
+    /**
+     * Successful Response
+     */
+    202: AccountActionResponse;
+};
+
+export type RequestAccountDeletionResponse = RequestAccountDeletionResponses[keyof RequestAccountDeletionResponses];
 
 export type AccountStatusData = {
     body?: never;
@@ -3147,6 +3198,10 @@ export type LaunchBotRunApiV1BotsBotIdRunsPostData = {
          * Idempotency-Key
          */
         'Idempotency-Key'?: string | null;
+        /**
+         * Idempotency-Recovery
+         */
+        'Idempotency-Recovery'?: boolean;
     };
     path: {
         /**
@@ -3175,6 +3230,10 @@ export type LaunchBotRunApiV1BotsBotIdRunsPostErrors = {
      * Conflict
      */
     409: ErrorResponse;
+    /**
+     * Gone
+     */
+    410: ErrorResponse;
     /**
      * Response 422 Launch Bot Run Api V1 Bots  Bot Id  Runs Post
      *

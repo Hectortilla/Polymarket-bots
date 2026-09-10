@@ -24,5 +24,18 @@ class ExecutionOwnershipLost(RuntimeError):
     """The run no longer accepts progress from this executor."""
 
 
+LAUNCH_ATTEMPT_UNAVAILABLE_DETAIL = (
+    "The previous launch can no longer be recovered. Its history may have expired, "
+    "or the request never reached the service. Review retained history before explicitly starting a new run."
+)
+LAUNCH_RECOVERY_KEY_REQUIRED_DETAIL = (
+    "Launch recovery requires its original idempotency key."
+)
+
+
+class LaunchAttemptUnavailable(ValueError):
+    """Recovery of a previous launch must never create a replacement run."""
+
+
 def sanitized_failure_detail(error: Exception, reason: str) -> str:
     return f"{type(error).__name__}: {reason}"

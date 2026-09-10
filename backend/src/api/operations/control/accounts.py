@@ -6,6 +6,7 @@ from polybot.framework.clock import system_now_utc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth.access import AccountAccessStore
+from api.lifecycle.deletion.requests import DeletionRequests
 from api.operations.schema import OperatorOutcome
 
 
@@ -32,6 +33,11 @@ class AccountControls:
         user = await self._access.lock_account(owner_user_id)
         if user is None:
             return OperatorOutcome.NOT_FOUND
+        await DeletionRequests(self._session).require_no_request(owner_user_id)
+        if user.restore_quarantined_at is not None:
+            raise ValueError(
+                "account deletion or restore quarantine prevents resumption"
+            )
         outcome = (
             OperatorOutcome.APPLIED
             if user.suspended_at is not None
