@@ -80,6 +80,7 @@ export function isRun(value: Record<string, unknown>): boolean {
   return (
     isUuid(value.id) &&
     isUuid(value.bot_id) &&
+    (value.bot_deleted === undefined || typeof value.bot_deleted === "boolean") &&
     isNonemptyString(value.definition_id) &&
     isFiniteDateTime(value.created_at) &&
     isOneOf(value.status, RUN_STATUSES) &&

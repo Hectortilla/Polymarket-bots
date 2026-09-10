@@ -15,6 +15,7 @@ class BotColumn(StrEnum):
     CONFIG = "config"
     CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
+    DELETED_AT = "deleted_at"
 
 
 class BotGraphRevisionColumn(StrEnum):

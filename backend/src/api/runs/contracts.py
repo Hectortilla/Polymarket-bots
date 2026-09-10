@@ -110,6 +110,7 @@ class RunRead(BaseModel):
 
     id: UUID
     bot_id: UUID
+    bot_deleted: bool = False
     definition_id: DefinitionId
     config: PaperRunConfig
     bot_graph_revision_id: UUID | None = None

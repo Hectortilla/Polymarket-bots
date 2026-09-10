@@ -57,6 +57,11 @@ class BotRow(UserOwnedRow, table=True):
         sa_column=Column(BotColumn.UPDATED_AT, DateTime(timezone=True), nullable=False),
     )
 
+    deleted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(BotColumn.DELETED_AT, DateTime(timezone=True)),
+    )
+
 
 class BotGraphRevisionRow(SQLModel, table=True):
     __tablename__ = BOT_GRAPH_REVISIONS_TABLE_NAME

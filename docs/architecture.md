@@ -25,7 +25,11 @@ SSE path, deterministic OpenAPI artifact, browser dashboard, and the
 alpha graph contract with framework-derived triggers, typed constants,
 comparisons, event-driven fixed-side paper broker actions, editable reusable
 templates, saved bots, immutable bot-owned graph revisions, email/password
-accounts, server-side sessions, and private resource ownership.
+accounts, server-side sessions, and private resource ownership. Saved bots support
+soft deletion after all their runs are terminal: configurations disappear from
+user access while the rows, graphs and owned run history remain. The sole initial
+migration `0001` includes the deletion marker; previous disposable local databases
+must be recreated after the approved consolidation.
 Slices 12F and 16 add the private Compose deployment, runtime secret-file
 configuration and HTTPS release/rollback workflow described in
 [the deployment runbook](beta-deployment.md). These are application services;

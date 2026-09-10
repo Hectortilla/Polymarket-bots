@@ -34,6 +34,7 @@ UPDATE_GRAPH_TEMPLATE_OPERATION_ID = (
 CREATE_BOT_OPERATION_ID = "create_bot_api_v1_bots_post"
 LIST_BOTS_OPERATION_ID = "list_bots_api_v1_bots_get"
 READ_BOT_OPERATION_ID = "read_bot_api_v1_bots__bot_id__get"
+DELETE_BOT_OPERATION_ID = "delete_bot_api_v1_bots__bot_id__delete"
 UPDATE_BOT_OPERATION_ID = "update_bot_api_v1_bots__bot_id__patch"
 CREATE_BOT_GRAPH_REVISION_OPERATION_ID = (
     "create_bot_graph_revision_api_v1_bots__bot_id__graph_revisions_post"

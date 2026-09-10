@@ -1,6 +1,16 @@
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+
 export const BOT_DETAIL_COPY = {
   EXPIRED_LAUNCH:
     "The previous launch cannot be recovered. Its history may have expired, or the request never arrived. Review retained history before choosing Run again to start a new run.",
+  DELETE: "Delete bot",
+  DELETE_CONFIRM: "Confirm deletion",
+  DELETE_CANCEL: "Cancel",
+  DELETING: "Deleting…",
+  DELETE_DESCRIPTION:
+    "This bot will disappear from your configurations. Its saved data stays in the system and past runs remain in your history. Stop all active runs and wait for them to finish before deleting. Unsaved changes will be discarded.",
+  DELETE_ACTIVE_RUNS: runtimeContract.botDeletion.activeRunsDetail,
+  DELETE_ERROR: "The bot could not be deleted. Please try again.",
   CONFIG_SAVE_ERROR: "The bot configuration could not be saved.",
   GRAPH_SAVE_ERROR: "The graph revision could not be saved.",
   LOAD_ERROR: "The saved bot could not be loaded.",

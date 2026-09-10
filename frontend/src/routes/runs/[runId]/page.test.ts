@@ -511,3 +511,15 @@ describe("run detail interactions", () => {
     expect(rows[1].textContent).toContain(eventSummary(lifecycleEvent(2, RUN_STATUS.RUNNING)));
   });
 });
+
+it("keeps the historical graph visible after its bot is deleted and removes the configuration link", async () => {
+  mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
+    hydrate({ run: { ...RUN, bot_deleted: true }, events: [], nextBeforeEventId: null });
+    return () => {};
+  });
+  render(Page);
+  expect(await screen.findByRole("heading", { name: RUN.config.name })).toBeTruthy();
+  expect(await screen.findByText(RUN_DETAIL_COPY.BOT_DELETED)).toBeTruthy();
+  expect(screen.queryByRole("link", { name: RUN_DETAIL_COPY.BOT_CONFIGURATION })).toBeNull();
+  expect(screen.getByText(executedRunGraphRevisionLabel(RUN.graph_revision))).toBeTruthy();
+});

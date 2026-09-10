@@ -214,9 +214,11 @@
   <section class="page-heading run-heading">
     <div>
       <p class="route-meta">
-        <a href={botPath(run.bot_id)}>{RUN_DETAIL_COPY.BOT_CONFIGURATION}</a>{run.graph_revision
-          ? ` / ${runGraphRevisionLabel(run.graph_revision)}`
-          : ""}
+        {#if run.bot_deleted}
+          <span>{RUN_DETAIL_COPY.BOT_DELETED}</span>
+        {:else}
+          <a href={botPath(run.bot_id)}>{RUN_DETAIL_COPY.BOT_CONFIGURATION}</a>
+        {/if}{run.graph_revision ? ` / ${runGraphRevisionLabel(run.graph_revision)}` : ""}
       </p>
       <div class="run-title-row">
         <h1>{run.config.name}</h1>

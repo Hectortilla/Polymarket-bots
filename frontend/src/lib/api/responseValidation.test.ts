@@ -1,4 +1,4 @@
-import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from "$lib/api/http";
+import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { describe, expect, it, vi } from "vitest";
 import {
   createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
@@ -19,6 +19,7 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { client } from "./generated/client.gen";
 import {
   createBotApiV1BotsPost,
+  deleteBotApiV1BotsBotIdDelete,
   lookupMarkets,
   readUsage,
   readRunEventsApiV1RunsRunIdEventsGet,
@@ -606,4 +607,27 @@ it("validates usage through both configured generated-client boundaries", async 
   });
   await expect(readUsage(request(usage))).resolves.toHaveProperty("data", usage);
   await expect(readUsage(request({ ...usage, queued_runs: "1" }))).rejects.toThrow("failed operation validation");
+});
+
+it("accepts the empty deletion response through the configured generated client", async () => {
+  configureApiResponseValidation();
+  const result = await deleteBotApiV1BotsBotIdDelete({
+    path: { bot_id: BOT_ID },
+    baseUrl: "http://control-plane.test",
+    throwOnError: true,
+    fetch: async () => new Response(null, { status: HTTP_STATUS.NO_CONTENT }),
+  });
+  expect(result.response.status).toBe(HTTP_STATUS.NO_CONTENT);
+});
+
+it("rejects an unexpected successful bot response for deletion", async () => {
+  configureApiResponseValidation();
+  await expect(
+    deleteBotApiV1BotsBotIdDelete({
+      path: { bot_id: BOT_ID },
+      baseUrl: "http://control-plane.test",
+      throwOnError: true,
+      fetch: async () => new Response(JSON.stringify({}), { headers: { [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE } }),
+    }),
+  ).rejects.toThrow("Bot deletion must return an empty success response");
 });

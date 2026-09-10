@@ -184,6 +184,7 @@ def upgrade() -> None:
         ),
         sa.Column(BotColumn.CREATED_AT, sa.DateTime(timezone=True), nullable=False),
         sa.Column(BotColumn.UPDATED_AT, sa.DateTime(timezone=True), nullable=False),
+        sa.Column(BotColumn.DELETED_AT, sa.DateTime(timezone=True), nullable=True),
         sa.Column(OWNER_USER_ID_COLUMN, postgresql.UUID(as_uuid=True), nullable=False),
         sa.PrimaryKeyConstraint(BotColumn.ID),
         sa.ForeignKeyConstraint(

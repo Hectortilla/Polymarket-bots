@@ -12,6 +12,7 @@ def test_run_contract_matches_the_run_row() -> None:
     assert (row_fields - INTERNAL_RUN_COLUMNS).issubset(RunRead.model_fields)
     assert INTERNAL_RUN_COLUMNS.isdisjoint(RunRead.model_fields)
     assert set(RunRead.model_fields) - row_fields == {
+        "bot_deleted",
         "graph_revision",
         "graph",
         "latest_runtime_failure",

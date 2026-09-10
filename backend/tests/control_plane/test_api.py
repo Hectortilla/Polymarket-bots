@@ -886,7 +886,7 @@ def test_documented_route_inventory_matches_registration() -> None:
     architecture = Path("docs/web-control-plane-architecture.md").read_text()
     http_api = architecture.split("## HTTP API", 1)[1].split("## Frontend", 1)[0]
     documented_routes = set(
-        re.findall(r"^- `(GET|POST|PATCH) (/[^`?]+)", http_api, re.MULTILINE)
+        re.findall(r"^- `(GET|POST|PATCH|DELETE) (/[^`?]+)", http_api, re.MULTILINE)
     )
 
     assert f"`{API_PREFIX}`" in architecture

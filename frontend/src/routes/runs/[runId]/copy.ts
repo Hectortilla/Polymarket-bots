@@ -9,6 +9,7 @@ export const RUN_DETAIL_COPY = {
   LOADING: "Loading…",
   NO_PROGRESS_EVENTS: "No progress events in the loaded history.",
 
+  BOT_DELETED: "Bot configuration deleted",
   BOT_CONFIGURATION: "Bot configuration",
   EXECUTED_GRAPH_REVISION: "Executed graph revision",
   GRAPH_REVISION: "graph revision",

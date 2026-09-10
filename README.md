@@ -122,8 +122,10 @@ available to every signed-in account. The full policy lives in
 [the identity architecture](docs/web-control-plane-architecture.md#slice-15-identity-and-authorization).
 
 The September 10 approved consolidation replaces the undeployed, disposable migration
-history with one initial revision (`0001`). It creates the complete current schema.
-Databases created with the former migration chain must be recreated, not stamped:
+history with one initial revision (`0001`), including saved-bot soft deletion.
+Recreate local databases built from the previous schema or migration chain,
+including the former `0002` head; do not stamp them or expect an upgrade to
+rebuild an already-applied initial revision:
 
 ```sh
 uv run --env-file .env python -m scripts.recreate_control_plane_database
@@ -281,7 +283,12 @@ dashboard, Slice 11 dynamic market tracking and resolution processing, and the
 isolated Slices 12A through 12E and Slices 13A through 13F control-plane
 foundation, worker, durable progress path, runs API, mixed durable/live SSE
 stream, and browser dashboard. The bots home keeps configured bots and the ten
-most recent runs visible together.
+most recent runs visible together. **Delete bot** on a saved bot page requires
+confirmation and rejects deletion until every run is terminal, including queued
+and stopping runs. Deletion hides the configuration and prevents edits, copying
+and new launches; the saved row and graphs remain in the system. Past runs stay
+visible under the existing history-retention policy. Deleted configurations no
+longer count toward the saved-bot allowance.
 Each section has a count of its displayed items and an independent collapse control;
 both sections start expanded on each visit. The dashboard has market-price and
 followed-wallet timeline views, plus one Svelte Flow bot editor that combines

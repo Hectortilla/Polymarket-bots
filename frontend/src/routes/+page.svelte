@@ -28,7 +28,11 @@
     bots.filter((bot) => bot.latest_graph_revision !== null && bot.latest_graph_revision !== undefined),
   );
   const visibleBotIds = $derived(new Set(visibleBots.map((bot) => bot.id)));
-  const visibleRuns = $derived(runs.filter((run) => visibleBotIds.has(run.bot_id)).slice(0, 10));
+  const visibleRuns = $derived(
+    runs
+      .filter((run) => visibleBotIds.has(run.bot_id) || (run.bot_deleted && run.bot_graph_revision_id != null))
+      .slice(0, 10),
+  );
 
   onMount(() => {
     void loadHome();

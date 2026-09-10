@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from api.bots.contracts import BotRead
+from api.bots.errors import BotUnavailableError
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.store import BotStore
 from api.lifecycle.history.selection import HistorySelection
@@ -80,6 +81,13 @@ class RunStore:
         *,
         launch_key: UUID | None = None,
     ) -> RunRead:
+        available_bot_id = await self._session.scalar(
+            select(BotRow.id)
+            .where(BotRow.id == bot.id, BotRow.deleted_at.is_(None))
+            .with_for_update()
+        )
+        if available_bot_id is None:
+            raise BotUnavailableError
         await RunAdmission(self._session).lock_transaction()
         if launch_key is not None:
             existing = await self.read_launch(bot.id, launch_key)
@@ -386,7 +394,12 @@ class RunStore:
                 raise RunSnapshotError(
                     "run graph revision is missing or owned by another bot"
                 )
-        return self.read_from_row(row, revision)
+        bot = await self._session.get(BotRow, row.bot_id)
+        if bot is None:
+            raise RunSnapshotError("run bot is missing")
+        return self.read_from_row(row, revision).model_copy(
+            update={"bot_deleted": bot.deleted_at is not None}
+        )
 
 
 class OwnedRunStore:

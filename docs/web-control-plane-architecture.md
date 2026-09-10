@@ -274,6 +274,7 @@ Templates are mutable and are never referenced by bots or runs.
 - `config` (editable resolved `PaperRunConfig` JSON)
 - `created_at`
 - `updated_at`
+- `deleted_at` (nullable soft-deletion timestamp)
 
 `bot_graph_revisions` has exactly:
 
@@ -322,6 +323,10 @@ operations and lifecycle state, and seeds the required operations singleton.
 Databases from the former chain must be explicitly recreated with the existing
 recreation command. Downgrade to `base` drops all control-plane tables. This is a
 local reset exception; future retained deployments use forward migrations/backups.
+The initial revision also includes nullable `bots.deleted_at`. The user approved
+folding the former soft-delete migration into `0001` because there are no
+deployments and local data will be removed. Databases built from the previous
+initial schema or the former `0002` head must be recreated, not stamped.
 
 The persistence boundary decodes `config` into `PaperRunConfig` once before it
 returns a run to API or worker code. Orchestration never handles raw JSON and
@@ -556,9 +561,13 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 - `GET /graph-templates/{template_id}` — read one template.
 - `PATCH /graph-templates/{template_id}` — update its name and/or graph.
 - `POST /bots` — validate and save a bot; graph-capable bots copy a template.
-- `GET /bots` — list saved bots, newest updated first.
+- `GET /bots` — list non-deleted saved bots, newest updated first.
 - `GET /bots/{bot_id}` — read one saved bot and its latest graph revision.
 - `PATCH /bots/{bot_id}` — replace its validated non-graph configuration.
+- `DELETE /bots/{bot_id}` — soft-delete an owned bot; return empty `204`, `409`
+  while any run is nonterminal, or the normal `404` for missing, deleted or
+  foreign-owned bots. All configuration/revision endpoints and new launches
+  exclude deleted bots.
 - `POST /bots/{bot_id}/graph-revisions` — append an immutable graph revision.
 - `GET /bots/{bot_id}/graph-revisions/{revision_id}` — read an owned revision.
 - `POST /bots/{bot_id}/runs` — snapshot and launch the latest saved bot.
@@ -594,7 +603,7 @@ generic pagination framework, status filtering, or links in v0. Durable events
 use only the cursor page contract above because their append-only history can be
 unbounded.
 
-`RunRead` exposes the row fields plus the resolved graph revision number and
+`RunRead` exposes the row fields, the parent bot’s `bot_deleted` flag, and the resolved graph revision number and
 exact graph for historical display. It also carries nullable `latest_equity`
 and `equity_status`, derived from the latest durable `chart.sample`, plus
 nullable `latest_runtime_failure`, derived from the latest durable
@@ -831,7 +840,14 @@ Sources and the pinned password/email library APIs were checked September 8, 202
   ownership from accepted create/update bodies.
 - Runs inherit through `runs.bot_id`; graph revisions through their `bot_id`;
   events and summaries through their run. Do not duplicate user ownership on
-  these child rows. Owner changes and bot deletion remain unsupported.
+  these child rows. Owner changes remain unsupported. Soft deletion sets
+  `bots.deleted_at` under the same bot-row lock used by edits and launches, after
+  checking that no nonterminal run exists. Both HTTP launches and the run store
+  lock and reject deleted bots. Saved-bot usage excludes deleted configurations.
+  Run ownership, history selection and snapshot reads continue to join the retained
+  bot row without filtering its deletion marker. `RunRead.bot_deleted` tells the
+  browser to display a deleted-configuration label instead of an edit link; run
+  details, immutable graphs and events remain subject to normal retention.
 - Scope list and resource queries by the current user inside owning stores.
   Apply the same policy to bot config changes, revision reads/appends, template
   CRUD/copy, run creation/read/stop, summaries, durable event pagination, and

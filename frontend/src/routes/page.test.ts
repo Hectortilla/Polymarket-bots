@@ -210,3 +210,14 @@ describe("bots home", () => {
     expect(screen.queryByText(RUN.config.name)).toBeNull();
   });
 });
+
+it("shows past runs of a deleted bot even when no configurations remain", async () => {
+  const deletedRun = { ...RUN, status: RUN_STATUS.STOPPED, bot_deleted: true } satisfies RunRead;
+  loadHome({ bots: [], runs: [deletedRun] });
+  render(Page);
+  const runLink = await screen.findByRole("link", { name: runRowLabel(RUN.config.name, formatTime(RUN.created_at)) });
+  expect(runLink).toHaveAttribute("href", runPath(RUN.id));
+  expect(screen.queryByRole("link", { name: botRowLabel(BOT.config.name) })).toBeNull();
+  expect(screen.getByRole("button", { name: HOME_COPY.CONFIGURED_BOTS })).toHaveAccessibleDescription("0 items");
+  expect(screen.getByRole("button", { name: HOME_COPY.RECENT_RUNS })).toHaveAccessibleDescription("1 item");
+});

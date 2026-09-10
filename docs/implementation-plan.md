@@ -28,10 +28,13 @@ This maintenance change supersedes the historical migration/reset requirements
 below for the current local schema; it adds no product slice. The initial revision
 creates the complete schema from Slices 12–21, including verification defaults,
 ownership, event cursor indexes, launch reliability, operations state, and lifecycle
-metadata. Old development databases must be explicitly recreated. Future retained
+metadata, plus the saved-bot deletion marker. The user also approved folding
+the soft-delete migration into this initial revision: there are no deployments
+and local data will be removed. Old development databases must be explicitly
+recreated. Future retained
 deployments still require forward migrations and backups.
 
-Migration acceptance now covers a single root/head, offline SQL, complete schema
+Migration acceptance covers the sole `0001` root/head, offline SQL, complete schema
 parity with ORM metadata, database defaults, required operations seed state,
 repeat upgrades on populated data, and upgrade/downgrade/re-upgrade. Manual Ruff
 and Prettier launch commands are optional; no formatting enforcement is introduced.
@@ -1523,6 +1526,46 @@ guide, web architecture/specification, endpoint inventory, and generated
 OpenAPI/client fixtures describe the selector consistently. Earlier numbered
 slice scopes remain historical; this follow-up does not alter them.
 
+
+## Saved-bot deletion follow-up
+
+Status: implemented September 10, 2026; extends Slices 13D–13F with the approved
+soft-delete behavior.
+
+- Require all runs to be terminal before deletion; include queued and stopping
+  states in the rejection guard. Never implicitly stop a run when deleting.
+- Include nullable `bots.deleted_at` in the sole initial migration `0001`.
+  The approved undeployed/local consolidation requires recreating old databases.
+  During normal use, soft deletion retains configurations, revisions and run ownership.
+- Add owned `DELETE /bots/{bot_id}` with `204` success, `409` for nonterminal runs
+  and `404` for missing, foreign or already deleted configurations. Serialize
+  deletion with launches and edits on the bot row; reject stale launch snapshots.
+- Hide deleted bots from configuration reads/lists, editing, graph copying,
+  revision endpoints and launches. Exclude them from saved-bot usage.
+- Keep historical run reads/lists, graphs and events under their existing ownership
+  and retention rules. Expose `RunRead.bot_deleted` for the historical-page label.
+- Add a confirmation/cancel flow on bot detail, explain active-run conflicts, block
+  conflicting UI actions while deleting, and return to the workspace after success.
+
+Acceptance covers every run state, ownership isolation, hidden configurations,
+preserved graph/event history, saved-bot usage, launch/delete races in both orders,
+fresh schema creation, repeat upgrades on populated data, cancellation, errors/retry
+and the generated client’s
+empty deletion response. Chromium acceptance exercises the real session, queued-run
+rejection, stop, confirmation, hidden configuration and retained history after reload.
+No Polymarket protocol behavior changes or MCP checks apply.
+
+Run focused backend coverage with `uv run pytest
+backend/tests/control_plane/test_bot_deletion.py
+backend/tests/control_plane/test_initial_migration.py` and disposable PostgreSQL/Redis
+settings from the README. Run browser acceptance with `npm --prefix frontend run
+test:e2e -- --grep "deleting a bot requires"` and its separate disposable browser
+service settings. Frontend regressions use `npm --prefix frontend test`.
+
+Documentation-drift audit: README, architecture, bot-author guide, web specification,
+web architecture, generated OpenAPI/client and this plan describe the same behavior.
+Historical slice scopes above remain historical; this follow-up supersedes their
+bot-deletion exclusions.
 
 ## Slice 14: Paper graph MVP in two phases
 

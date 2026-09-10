@@ -8,6 +8,8 @@ import { AUTH_COPY } from "../src/lib/auth/copy";
 import { LOGIN_PATH, REGISTER_PATH, RETURN_TO_QUERY_PARAM } from "../src/lib/auth/navigation";
 import { NAVIGATION_PATH, runPath } from "../src/lib/navigation";
 import { BOT_BUILDER_COPY } from "../src/lib/bots/copy";
+import { RUN_DETAIL_COPY } from "../src/routes/runs/[runId]/copy";
+import { HOME_COPY, botRowLabel } from "../src/routes/homeCopy";
 import { BOT_DETAIL_COPY } from "../src/routes/bots/[botId]/copy";
 import { RUN_STATUS, RUN_STATUS_PRESENTATION } from "../src/lib/runs/status";
 import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from "../src/lib/api/http";
@@ -103,11 +105,9 @@ test("two accounts keep editor, copies, runs and history private across reload a
     page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first(),
   ).toBeVisible();
   // Revoke outside the current page: the shell's bounded restoration detects expiry.
-  await page
-    .context()
-    .request.post(contract.apiPaths.logout, {
-      headers: { Origin: new URL(page.url()).origin, [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
-    });
+  await page.context().request.post(contract.apiPaths.logout, {
+    headers: { Origin: new URL(page.url()).origin, [CONTENT_TYPE_HEADER]: JSON_CONTENT_TYPE },
+  });
   await expect(page).toHaveURL((url) => url.pathname === LOGIN_PATH, {
     timeout: contract.auth.sessionRecheckMs + 5000,
   });
@@ -244,4 +244,45 @@ test("lost launch response and reload recover one private run", async ({ page })
   await expect(
     page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first(),
   ).toBeVisible();
+});
+
+test("deleting a bot requires stopped runs and keeps its history visible", async ({ page }) => {
+  const name = "Bot to delete";
+  await authenticate(page, "bot-deletion@example.com", true);
+  await configureBot(page, name);
+  await page.getByRole("button", { name: BOT_BUILDER_COPY.CREATE, exact: true }).click();
+  await expect(page).toHaveURL(/\/bots\/[a-f0-9-]+$/);
+  const botUrl = page.url();
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
+  await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
+  const runUrl = page.url();
+  await page.goto(botUrl);
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE, exact: true }).click();
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CANCEL, exact: true }).click();
+  await expect(page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM })).toHaveCount(0);
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE, exact: true }).click();
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM, exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(BOT_DETAIL_COPY.DELETE_ACTIVE_RUNS);
+  await page.goto(runUrl);
+  await page.getByRole("button", { name: RUN_STATUS_PRESENTATION[RUN_STATUS.QUEUED].stopLabel!, exact: true }).click();
+  await expect(
+    page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first(),
+  ).toBeVisible();
+  await page.goto(botUrl);
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE, exact: true }).click();
+  await page.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM, exact: true }).click();
+  await expect(page).toHaveURL(NAVIGATION_PATH.HOME);
+  await expect(page.getByRole("link", { name: botRowLabel(name), exact: true })).toHaveCount(0);
+  const history = page.getByRole("region", { name: HOME_COPY.RECENT_RUNS });
+  await expect(history.getByText(name, { exact: true })).toBeVisible();
+  await history.getByText(name, { exact: true }).click();
+  await expect(page).toHaveURL(runUrl);
+  await expect(page.getByText(RUN_DETAIL_COPY.BOT_DELETED, { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: RUN_DETAIL_COPY.BOT_CONFIGURATION, exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await page.goto(botUrl);
+  await expect(page.getByText(BOT_DETAIL_COPY.NOT_FOUND, { exact: true })).toBeVisible();
+  await page.goto(NAVIGATION_PATH.NEW_BOT);
+  await expect(page.getByLabel("Starting point")).not.toContainText(name);
 });

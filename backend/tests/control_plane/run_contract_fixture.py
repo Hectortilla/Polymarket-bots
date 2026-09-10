@@ -19,6 +19,7 @@ from api.auth.policy import (
 )
 from api.auth.recovery import policy as account_policy
 from api.auth.recovery.tokens import ACCOUNT_TOKEN_PATTERN
+from api.bots.errors import BOT_ACTIVE_RUNS_DETAIL
 from api.bots.revisions import FIRST_GRAPH_REVISION_NUMBER
 from api.events.contracts.payloads.chart import (
     CHART_NULL_VALUE_STATUSES,
@@ -165,7 +166,9 @@ def frontend_run_contract() -> dict[str, object]:
         "idempotencyRecoveryHeader": IDEMPOTENCY_RECOVERY_HEADER,
         "resourcePolicy": PAPER_BETA.model_dump(),
         "resourceLimitCodes": _enum_values(ResourceLimitCode),
+        "botDeletion": {"activeRunsDetail": BOT_ACTIVE_RUNS_DETAIL},
         "httpStatus": {
+            "NO_CONTENT": status.HTTP_204_NO_CONTENT,
             "GONE": status.HTTP_410_GONE,
             "BAD_REQUEST": status.HTTP_400_BAD_REQUEST,
             "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,

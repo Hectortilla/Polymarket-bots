@@ -701,6 +701,11 @@ The private control plane presents configuration and graph design as one bot:
 5. Run the bot only after all configuration and graph changes are saved. Each
    run copies the current `PaperRunConfig` and references the exact latest graph
    revision.
+6. To remove a saved configuration, stop its active runs and wait until all runs
+   finish, then select **Delete bot** and confirm. Queued and stopping runs also
+   block deletion. The bot disappears from configurations and graph-copy choices,
+   but its saved data stays in the system and past runs remain available under
+   the existing history-retention policy. Deleted bots cannot be edited or run.
 
 Rerunning the bot uses its latest saved revision. Earlier runs continue to show
 and execute the revision they originally referenced after the bot changes.

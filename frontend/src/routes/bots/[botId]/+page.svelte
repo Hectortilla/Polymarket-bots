@@ -9,11 +9,13 @@
   import { BOT_BUILDER_COPY } from "$lib/bots/copy";
   import { readSavedBot, BotNotFoundError } from "$lib/bots/read";
   import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
+  import TrashIcon from "phosphor-svelte/lib/TrashIcon";
   import PlayIcon from "phosphor-svelte/lib/PlayIcon";
   import { onMount, tick } from "svelte";
 
   import {
     createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost,
+    deleteBotApiV1BotsBotIdDelete,
     launchBotRunApiV1BotsBotIdRunsPost,
     listBotDefinitionsApiV1BotDefinitionsGet,
     listBotsApiV1BotsGet,
@@ -51,6 +53,8 @@
   let loading = $state(true);
   let saving = $state(false);
   let running = $state(false);
+  let confirmingDelete = $state(false);
+  let deleting = $state(false);
   let error = $state("");
   let configServerIssues = $state<LaunchValidationIssue[]>([]);
   let graphServerIssues = $state<GraphValidationIssue[]>([]);
@@ -100,7 +104,7 @@
   }
 
   async function saveChanges(inputs: LaunchInputs): Promise<void> {
-    if (!bot) return;
+    if (!bot || saving || running || confirmingDelete || deleting) return;
     const graphToSave = editedGraph;
     const shouldSaveConfig = JSON.stringify(savedInputs) !== JSON.stringify(inputs);
     const shouldSaveGraph = !nodeGraphsEqual(savedGraph, graphToSave);
@@ -155,7 +159,7 @@
   }
 
   async function runBot(): Promise<void> {
-    if (!bot || hasUnsavedChanges || running) return;
+    if (!bot || hasUnsavedChanges || running || saving || confirmingDelete || deleting) return;
     running = true;
     error = "";
     const attempt = new LaunchAttempt(bot.id);
@@ -178,6 +182,28 @@
       running = false;
     }
   }
+  async function deleteBot(): Promise<void> {
+    if (!bot || !confirmingDelete || deleting || saving || running) return;
+    deleting = true;
+    error = "";
+    try {
+      const response = await deleteBotApiV1BotsBotIdDelete({ path: { bot_id: bot.id } });
+      if (response.response?.status === HTTP_STATUS.CONFLICT) {
+        error = BOT_DETAIL_COPY.DELETE_ACTIVE_RUNS;
+        return;
+      }
+      if (response.response?.status !== HTTP_STATUS.NO_CONTENT && response.response?.status !== HTTP_STATUS.NOT_FOUND) {
+        error = BOT_DETAIL_COPY.DELETE_ERROR;
+        return;
+      }
+      await goto(NAVIGATION_PATH.HOME);
+    } catch {
+      error = BOT_DETAIL_COPY.DELETE_ERROR;
+    } finally {
+      deleting = false;
+    }
+  }
+
   function resolveLaunchFailure(status: number | undefined, detail: unknown): { rejected: boolean; message: string } {
     const admissionRejection = resourceLimitDetail(detail);
     const rejected = isClientRejection(status) || admissionRejection !== undefined;
@@ -211,12 +237,52 @@
       <h1>{bot.config.name}</h1>
       <p>Configuration and strategy are saved together before a run can start.</p>
     </div>
-    <button onclick={runBot} disabled={running || hasUnsavedChanges} aria-busy={running}>
-      <PlayIcon aria-hidden="true" size={17} weight="fill" />
-      {running ? BOT_DETAIL_COPY.STARTING : BOT_DETAIL_COPY.RUN}
-    </button>
+    <div class="bot-actions">
+      <button
+        class="danger-action"
+        onclick={() => {
+          confirmingDelete = true;
+          error = "";
+        }}
+        disabled={saving || running || confirmingDelete || deleting}
+        aria-expanded={confirmingDelete}
+        aria-controls="delete-bot-confirmation"
+      >
+        <TrashIcon aria-hidden="true" size={17} />
+        {BOT_DETAIL_COPY.DELETE}
+      </button>
+      <button
+        onclick={runBot}
+        disabled={running || saving || hasUnsavedChanges || confirmingDelete || deleting}
+        aria-busy={running}
+      >
+        <PlayIcon aria-hidden="true" size={17} weight="fill" />
+        {running ? BOT_DETAIL_COPY.STARTING : BOT_DETAIL_COPY.RUN}
+      </button>
+    </div>
   </header>
 
+  {#if confirmingDelete}
+    <section id="delete-bot-confirmation" class="delete-bot-confirmation" aria-labelledby="delete-bot-heading">
+      <h2 id="delete-bot-heading">{BOT_DETAIL_COPY.DELETE}: {bot.config.name}</h2>
+      <p>{BOT_DETAIL_COPY.DELETE_DESCRIPTION}</p>
+      <div class="bot-actions">
+        <button
+          class="secondary"
+          onclick={() => {
+            confirmingDelete = false;
+            error = "";
+          }}
+          disabled={deleting}
+        >
+          {BOT_DETAIL_COPY.DELETE_CANCEL}
+        </button>
+        <button class="danger-action" onclick={deleteBot} disabled={deleting} aria-busy={deleting}>
+          {deleting ? BOT_DETAIL_COPY.DELETING : BOT_DETAIL_COPY.DELETE_CONFIRM}
+        </button>
+      </div>
+    </section>
+  {/if}
   {#if error}<p class="notice error" role="alert">{error}</p>{/if}
   {#if hasUnsavedChanges}
     <p class="notice unsaved-notice">{BOT_DETAIL_COPY.UNSAVED_RUN_BLOCK}</p>
@@ -231,7 +297,7 @@
       configServerIssues = [];
     }}
     busy={saving}
-    disabled={!hasUnsavedChanges}
+    disabled={!hasUnsavedChanges || running || confirmingDelete || deleting}
     submitLabel={BOT_DETAIL_COPY.SAVE_CHANGES}
     busyLabel={BOT_DETAIL_COPY.SAVING_CHANGES}
     serverIssues={configServerIssues}
@@ -277,3 +343,24 @@
     {/if}
   </LaunchForm>
 {/if}
+
+<style>
+  .bot-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .delete-bot-confirmation {
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-surface);
+    background: var(--danger-surface);
+  }
+
+  .delete-bot-confirmation p {
+    margin: 0.75rem 0 1rem;
+  }
+</style>

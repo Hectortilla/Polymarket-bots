@@ -1,5 +1,5 @@
 import { isAccountAction, isAccountStatus } from "$lib/auth/recovery/validation";
-import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from "$lib/api/http";
+import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { isAccountUsage } from "$lib/limits/validation";
 import { isCurrentUser, isLogoutResponse } from "$lib/auth/validation";
 import { isArrayOf } from "$lib/valueGuards";
@@ -33,6 +33,12 @@ export async function validateOperationResponse(
   },
 ): Promise<Response> {
   if (!response.ok || options.url === runtimeContract.apiPaths.runEventsStream) {
+    return response;
+  }
+  if (options.url === runtimeContract.apiPaths.bot && options.method === "DELETE") {
+    if (response.status !== HTTP_STATUS.NO_CONTENT) {
+      throw new Error("Bot deletion must return an empty success response");
+    }
     return response;
   }
   const contentType = response.headers.get(CONTENT_TYPE_HEADER) ?? "";

@@ -13,6 +13,7 @@ import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
 
 const mocks = vi.hoisted(() => ({
   createRevision: vi.fn(),
+  deleteBot: vi.fn(),
   goto: vi.fn(),
   launchRun: vi.fn(),
   listBots: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("$app/state", () => ({
 }));
 vi.mock("$lib/api/generated", () => ({
   createBotGraphRevisionApiV1BotsBotIdGraphRevisionsPost: mocks.createRevision,
+  deleteBotApiV1BotsBotIdDelete: mocks.deleteBot,
   launchBotRunApiV1BotsBotIdRunsPost: mocks.launchRun,
   listBotsApiV1BotsGet: mocks.listBots,
   listBotDefinitionsApiV1BotDefinitionsGet: mocks.listDefinitions,
@@ -418,4 +420,63 @@ it("shows returned capacity detail and clears its rejected launch key", async ()
   expect(headers[IDEMPOTENCY_KEY_HEADER]).not.toBe(firstKey);
   expect(headers[IDEMPOTENCY_RECOVERY_HEADER]).toBe(String(false));
   expect(mocks.goto).not.toHaveBeenCalled();
+});
+
+it("requires confirmation, supports cancellation, and disables launches during deletion", async () => {
+  mocks.readBot.mockResolvedValue({ data: BOT });
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  let finishDelete!: (response: unknown) => void;
+  mocks.deleteBot.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finishDelete = resolve;
+      }),
+  );
+  render(Page);
+  const deleteButton = await screen.findByRole("button", { name: BOT_DETAIL_COPY.DELETE });
+  await fireEvent.click(deleteButton);
+  expect(screen.getByText(BOT_DETAIL_COPY.DELETE_DESCRIPTION)).toBeTruthy();
+  expect(mocks.deleteBot).not.toHaveBeenCalled();
+  await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CANCEL }));
+  expect(screen.queryByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM })).toBeNull();
+  expect(mocks.deleteBot).not.toHaveBeenCalled();
+  await fireEvent.click(deleteButton);
+  await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM }));
+  expect(screen.getByRole("button", { name: BOT_DETAIL_COPY.RUN })).toBeDisabled();
+  expect(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETING })).toBeDisabled();
+  expect(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CANCEL })).toBeDisabled();
+  expect(mocks.deleteBot).toHaveBeenCalledExactlyOnceWith({ path: { bot_id: BOT.id } });
+  finishDelete({ response: { status: HTTP_STATUS.NO_CONTENT } });
+  await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith("/"));
+});
+
+it.each([HTTP_STATUS.CONFLICT, HTTP_STATUS.SERVICE_UNAVAILABLE])(
+  "keeps the editor after deletion is rejected with %s",
+  async (status) => {
+    mocks.readBot.mockResolvedValue({ data: BOT });
+    mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+    mocks.deleteBot.mockResolvedValue({ response: { status } });
+    render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: BOT_DETAIL_COPY.DELETE }));
+    await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      status === HTTP_STATUS.CONFLICT ? BOT_DETAIL_COPY.DELETE_ACTIVE_RUNS : BOT_DETAIL_COPY.DELETE_ERROR,
+    );
+    expect(mocks.goto).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM })).toBeEnabled();
+  },
+);
+
+it("recovers a lost deletion response through an explicit retry", async () => {
+  mocks.readBot.mockResolvedValue({ data: BOT });
+  mocks.listDefinitions.mockResolvedValue({ data: [DEFINITION] });
+  mocks.deleteBot.mockRejectedValueOnce(new TypeError("network failed"));
+  mocks.deleteBot.mockResolvedValueOnce({ response: { status: HTTP_STATUS.NOT_FOUND } });
+  render(Page);
+  await fireEvent.click(await screen.findByRole("button", { name: BOT_DETAIL_COPY.DELETE }));
+  await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(BOT_DETAIL_COPY.DELETE_ERROR);
+  expect(mocks.goto).not.toHaveBeenCalled();
+  await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM }));
+  await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith("/"));
 });

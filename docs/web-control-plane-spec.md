@@ -37,7 +37,8 @@ tenancy, billing and live trading remain outside this product.
 - Public-internet exposure without an external access boundary.
 - Live trading or web collection of wallet/CLOB credentials.
 - Pause, resume, automatic restart, or restoration of bot-local paper state.
-- Scheduling, deletion, retention management, or bulk actions.
+- Scheduling or bulk actions. Later extensions below define account/data lifecycle
+  and saved-bot deletion; users do not configure retention policy.
 - A user-facing bot catalog or isolated graph-template management workflow.
 - Template revision history, template-to-bot propagation, graph deduplication,
   or retained template provenance.
@@ -462,3 +463,18 @@ reviewed, email and incident ownership are tested, and deployment/backups are
 installed. The [release checklist](beta-launch.md) owns final acceptance evidence
 and the separate deliberate ingress-opening step. Coding completion does not
 publish the service.
+
+
+## Saved-bot soft deletion
+
+On a saved bot page, **Delete bot** opens an explicit confirmation explaining that
+past runs remain. Every run must first be terminal; queued, starting, running,
+stop-requested and stopping runs all block deletion. The user stops runs through
+the existing run controls and retries deletion after they finish.
+
+Confirmed deletion hides the configuration from the workspace and graph-copy
+choices and prevents further edits or launches. The bot row and graph revisions
+stay in the system. Old runs, their executed graphs and events remain visible to
+their owner under the existing retention policy, with a deleted-configuration
+label on run detail. Deleted bots no longer consume the visible saved-bot allowance.
+Account erasure still removes retained bot data through its established lifecycle.

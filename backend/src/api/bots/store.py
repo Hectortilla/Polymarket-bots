@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from api.bots.contracts import BotGraphRevisionRead, BotRead
+from api.bots.errors import BotHasActiveRunsError
 from api.bots.models import BotGraphRevisionRow, BotRow
 from api.bots.revisions import (
     FIRST_GRAPH_REVISION_NUMBER,
@@ -19,6 +20,8 @@ from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.limits.policy import PAPER_BETA
 from api.limits.resources import SavedResourceAllowance
 from api.runs.contracts import PaperRunConfig
+from api.runs.models import RunRow
+from api.runs.status import TERMINAL_RUN_STATUSES
 
 
 class BotStore:
@@ -26,12 +29,12 @@ class BotStore:
         self._session = session
         self._owner_user_id = owner_user_id
         self._owned_bots_statement = select(BotRow).where(
-            BotRow.owner_user_id == owner_user_id
+            BotRow.owner_user_id == owner_user_id, BotRow.deleted_at.is_(None)
         )
         self._owned_revisions_statement = (
             select(BotGraphRevisionRow)
             .join(BotRow, BotRow.id == BotGraphRevisionRow.bot_id)
-            .where(BotRow.owner_user_id == owner_user_id)
+            .where(BotRow.owner_user_id == owner_user_id, BotRow.deleted_at.is_(None))
         )
 
     async def create(
@@ -86,6 +89,31 @@ class BotStore:
                 for row in rows
             ]
         )
+
+    async def soft_delete(self, bot_id: UUID) -> bool:
+        # Launches and edits take this same lock before committing their writes.
+        row = (
+            await self._session.execute(
+                self._owned_bots_statement.where(BotRow.id == bot_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return False
+        active_run = await self._session.scalar(
+            select(RunRow.id)
+            .where(
+                RunRow.bot_id == bot_id,
+                RunRow.status.not_in(TERMINAL_RUN_STATUSES),
+            )
+            .limit(1)
+        )
+        if active_run is not None:
+            raise BotHasActiveRunsError
+        row.deleted_at = system_now_utc()
+        row.updated_at = row.deleted_at
+        self._session.add(row)
+        await self._session.commit()
+        return True
 
     async def update_config(
         self,

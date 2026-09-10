@@ -29,7 +29,11 @@
     "ACCOUNT_SUSPENDED": "account_suspended",
     "INVALID_CONFIGURATION": "invalid_configuration"
   },
+  "botDeletion": {
+    "activeRunsDetail": "Stop all active runs and wait for them to finish before deleting this bot."
+  },
   "httpStatus": {
+    "NO_CONTENT": 204,
     "GONE": 410,
     "BAD_REQUEST": 400,
     "UNAUTHORIZED": 401,

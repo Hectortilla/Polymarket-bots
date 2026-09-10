@@ -1997,6 +1997,10 @@ export type RunName = string;
  */
 export type RunRead = {
     /**
+     * Bot Deleted
+     */
+    bot_deleted?: boolean;
+    /**
      * Bot Graph Revision Id
      */
     bot_graph_revision_id?: string | null;
@@ -3010,6 +3014,60 @@ export type CreateBotApiV1BotsPostResponses = {
 };
 
 export type CreateBotApiV1BotsPostResponse = CreateBotApiV1BotsPostResponses[keyof CreateBotApiV1BotsPostResponses];
+
+export type DeleteBotApiV1BotsBotIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Bot Id
+         */
+        bot_id: string;
+    };
+    query?: never;
+    url: '/api/v1/bots/{bot_id}';
+};
+
+export type DeleteBotApiV1BotsBotIdDeleteErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type DeleteBotApiV1BotsBotIdDeleteError = DeleteBotApiV1BotsBotIdDeleteErrors[keyof DeleteBotApiV1BotsBotIdDeleteErrors];
+
+export type DeleteBotApiV1BotsBotIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteBotApiV1BotsBotIdDeleteResponse = DeleteBotApiV1BotsBotIdDeleteResponses[keyof DeleteBotApiV1BotsBotIdDeleteResponses];
 
 export type ReadBotApiV1BotsBotIdGetData = {
     body?: never;

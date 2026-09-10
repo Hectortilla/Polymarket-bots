@@ -43,7 +43,9 @@ class SavedResourceAllowance:
         return await self._session.scalar(
             select(func.count())
             .select_from(BotRow)
-            .where(BotRow.owner_user_id == self._owner_user_id)
+            .where(
+                BotRow.owner_user_id == self._owner_user_id, BotRow.deleted_at.is_(None)
+            )
         )
 
     async def count_templates(self) -> int:

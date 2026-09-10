@@ -10,6 +10,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from api.auth.models import UserRow
 from api.auth.schema import USERS_TABLE, UserColumn
+from api.bots.models import BotRow
 from api.events.store import EventStore
 from api.operations.models import OperationControlRow
 from api.operations.schema import (
@@ -47,6 +48,7 @@ def test_repeated_upgrade_preserves_accounts_and_terminal_history(limits_service
             async with sessions() as session:
                 assert await session.get(UserRow, user_id) is not None
                 row = await session.get(RunRow, run_id)
+                assert (await session.get(BotRow, row.bot_id)).deleted_at is None
                 assert (
                     row.launch_key
                     is row.execution_token
@@ -62,7 +64,7 @@ def test_initial_revision_is_the_only_head_and_supports_offline_sql():
     output = StringIO()
     config = Config(Path(__file__).parents[2] / "alembic.ini", output_buffer=output)
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
-    assert len(revisions) == 1
+    assert [item.revision for item in revisions] == ["0001"]
     assert revisions[0].down_revision is None
     config.set_main_option("sqlalchemy.url", "postgresql+asyncpg://")
     command.upgrade(config, "head", sql=True)
