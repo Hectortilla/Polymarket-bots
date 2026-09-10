@@ -44,7 +44,7 @@
       grid: { left: 44, right: 16, top: 42, bottom: 28 },
       legend: { top: 0, textStyle: { color: "#b8bfbb" } },
       tooltip: { trigger: "axis" },
-      xAxis: { type: "time", axisLabel: { color: "#7e8781" } },
+      xAxis: { type: "time", axisLabel: { color: "#7e8781", hideOverlap: true } },
       yAxis: {
         type: "value",
         min: OUTCOME_PRICE_FLOOR,

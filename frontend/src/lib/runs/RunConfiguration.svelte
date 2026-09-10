@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { BotDefinitionDescriptor, PaperRunConfig } from "$lib/api/generated";
   import { BOT_BUILDER_COPY } from "$lib/bots/copy";
+  import RunSection from "./RunSection.svelte";
   import ConfigurationValue from "$lib/catalog/ConfigurationValue.svelte";
   import {
     fieldLabel,
@@ -21,14 +22,12 @@
   const values = $derived(descriptor ? launchInputsFromConfig(descriptor, config) : config);
 </script>
 
-<section class="builder-section configuration-section" aria-labelledby="run-configuration-heading">
-  <header class="builder-section-heading">
-    <div>
-      <h2 id="run-configuration-heading">{BOT_BUILDER_COPY.CONFIGURATION}</h2>
-      <p>Settings captured when this run was created. Later bot edits do not change them.</p>
-    </div>
-    <span class="save-state">Read only</span>
-  </header>
+<RunSection
+  title={BOT_BUILDER_COPY.CONFIGURATION}
+  headingId="run-configuration-heading"
+  description="Settings captured when this run was created. Later bot edits do not change them."
+  annotation="Read only"
+>
   <dl class="form-grid">
     {#each fields as [name, field] (name)}
       {@const schema = descriptor ? resolvedFieldSchema(descriptor, field) : field}
@@ -38,7 +37,7 @@
       </div>
     {/each}
   </dl>
-</section>
+</RunSection>
 
 <style>
   .configuration-value {

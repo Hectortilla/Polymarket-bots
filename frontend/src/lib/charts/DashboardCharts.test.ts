@@ -100,7 +100,7 @@ describe("dashboard controls and layout", () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: resetControlName }).disabled).toBe(true);
   });
 
-  it("stacks the market and executable-equity charts", async () => {
+  it("places executable equity before market prices", async () => {
     installBrowserObservers();
     const view = render(DashboardCharts, {
       samples: [],
@@ -121,6 +121,10 @@ describe("dashboard controls and layout", () => {
     const grid = view.container.querySelector(".dashboard-grid");
 
     expect(grid?.getAttribute("data-layout")).toBe("stacked");
+    expect([...grid!.querySelectorAll("h2")].map((heading) => heading.textContent)).toEqual([
+      DASHBOARD_COPY.EQUITY,
+      DASHBOARD_COPY.MARKET_PRICES,
+    ]);
   });
 
   it("presents durable samples as history for a terminal run", async () => {
@@ -170,6 +174,30 @@ describe("dashboard controls and layout", () => {
 
     expect(view.container.querySelector(`[aria-label="${DASHBOARD_COPY.WALLET_TIMELINE_ARIA_LABEL}"]`)).toBeTruthy();
     expect(view.container.textContent).not.toContain(DASHBOARD_COPY.NO_WALLETS);
+  });
+
+  it("ignores chart and wallet shortcuts while its tab is inactive and preserves the view", async () => {
+    installBrowserObservers();
+    const props = {
+      samples: [chartSample(1_000, "100")],
+      walletTimelinePoints: [],
+      configuredWallets: Array.from({ length: 7 }, (_, i) => `wallet-${i}`),
+    };
+    const view = render(DashboardCharts, props);
+    FakeIntersectionObserver.current.trigger(true);
+    await tick();
+    await fireEvent.keyDown(window, { key: DASHBOARD_KEY.view });
+    const next = screen.getByRole<HTMLButtonElement>("button", {
+      name: `${DASHBOARD_KEY.nextWalletPage} · ${DASHBOARD_COPY.WALLET_CONTROL_NEXT}`,
+    });
+    await view.rerender({ ...props, active: false });
+    await fireEvent.keyDown(window, { key: DASHBOARD_KEY.view });
+    await fireEvent.keyDown(window, { key: DASHBOARD_KEY.nextWalletPage });
+    expect(screen.getByRole("heading", { name: DASHBOARD_COPY.WALLET_ACTIVITY })).toBeTruthy();
+    expect(next.disabled).toBe(false);
+    await view.rerender({ ...props, active: true });
+    await fireEvent.keyDown(window, { key: DASHBOARD_KEY.nextWalletPage });
+    expect(next.disabled).toBe(true);
   });
 
   it("freezes chart options offscreen and catches up once on re-entry", async () => {

@@ -1,4 +1,8 @@
 export const RUN_DETAIL_COPY = {
+  LIVE_DATA: "Live data",
+  TABS_LABEL: "Run views",
+  SHOW_EVENTS: "Show events",
+  HIDE_EVENTS: "Hide events",
   NOT_FOUND: "Run not found. Older history may have expired; return to your workspace for retained runs.",
   RUN_LOAD_ERROR: "The run could not be loaded.",
   STREAM_RECONNECTING: "Live updates are unavailable. Reconnecting…",

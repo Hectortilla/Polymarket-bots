@@ -1,3 +1,4 @@
+import { DASHBOARD_COPY } from "$lib/charts/copy";
 import { RUN_GUIDE_COPY } from "$lib/runs/runGuide";
 import { STREAM_CONNECTION_STATE, type StreamConnectionState } from "$lib/runs/events";
 import { ADD_NODE_LABEL } from "$lib/catalog/NodePalette.svelte";
@@ -154,6 +155,8 @@ describe("run detail page", () => {
       return () => {};
     });
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
+    await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
     const configuration = await screen.findByRole("region", { name: BOT_BUILDER_COPY.CONFIGURATION });
     expect([...configuration.querySelectorAll("dt")].map((field) => field.textContent)).toEqual(
       launchFields(GRAPH_DEFINITION).map(([name, field]) => fieldLabel(name, field)),
@@ -163,7 +166,8 @@ describe("run detail page", () => {
     expect(configuration.querySelectorAll("input, select, textarea, pre")).toHaveLength(0);
     expect(configuration.textContent).not.toContain(JSON.stringify(TEST_GRAPH));
     const graphSection = screen.getByRole("heading", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH }).closest("section")!;
-    expect(configuration.compareDocumentPosition(graphSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(graphSection.compareDocumentPosition(configuration) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await fireEvent.click(screen.getByRole("tab", { name: RUN_DETAIL_COPY.LIVE_DATA }));
     expect(screen.getByRole("region", { name: "Timing" })).toBeTruthy();
   });
 
@@ -175,6 +179,7 @@ describe("run detail page", () => {
       return () => {};
     });
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     await screen.findByRole("heading", { name: GRAPHLESS_RUN.config.name });
     connectionState(STREAM_CONNECTION_STATE.RECONNECTING);
     expect(await screen.findByText(RUN_DETAIL_COPY.STREAM_RECONNECTING)).toBeTruthy();
@@ -183,6 +188,7 @@ describe("run detail page", () => {
   });
   it("renders the saved-bot link and immutable historical graph snapshot", async () => {
     render(Page);
+    await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
     const botLink = await screen.findByRole("link", {
       name: RUN_DETAIL_COPY.BOT_CONFIGURATION,
     });
@@ -212,6 +218,7 @@ describe("run detail page", () => {
       return () => {};
     });
     render(Page);
+    await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
     await screen.findByRole("heading", { name: GRAPHLESS_RUN.config.name });
     expect(
       screen.queryByRole("heading", {
@@ -223,8 +230,10 @@ describe("run detail page", () => {
   it("reports when the executed graph catalog cannot be loaded", async () => {
     mocks.listDefinitions.mockRejectedValue(new Error("catalog unavailable"));
     render(Page);
+    await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
     expect((await screen.findByRole("alert")).textContent).toContain(RUN_DETAIL_COPY.GRAPH_LOAD_ERROR);
-    expect(document.querySelector(".historical-graph pre")).toBeNull();
+    expect(screen.getByRole("region", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH }).querySelector("pre")).toBeNull();
+    await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
     const configuration = screen.getByRole("region", { name: BOT_BUILDER_COPY.CONFIGURATION });
     expect(configuration.textContent).toContain(RUN.config.max_order_size);
     expect(configuration.textContent).not.toContain(JSON.stringify(TEST_GRAPH));
@@ -252,6 +261,7 @@ describe("run detail page", () => {
       return () => {};
     });
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     const row = (await screen.findByText(eventSummary(failedLifecycle))).closest("tr");
     expect(row?.getAttribute("tabindex")).toBe("0");
     expect(row?.getAttribute("aria-describedby")).toBe(`event-failure-detail-${failedLifecycle.id}`);
@@ -311,6 +321,7 @@ describe("run detail interactions", () => {
   it("bounds streaming to one page, including hidden samples, and reloads evicted history", async () => {
     hydrateActive(progressPage(1));
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     await screen.findByText(loadedEventsLabel(EVENT_PAGE_SIZE));
     const durable = mocks.loadRun.mock.calls[0][2];
     durable(chartSampleEvent(EVENT_PAGE_SIZE + 1));
@@ -327,6 +338,7 @@ describe("run detail interactions", () => {
   it("lets an initially empty window fill before evicting events", async () => {
     hydrateActive();
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS);
     const durable = mocks.loadRun.mock.calls[0][2];
     progressPage(1).forEach(durable);
@@ -347,6 +359,7 @@ describe("run detail interactions", () => {
       }>();
       mocks.loadOlderEvents.mockReturnValue(request.promise);
       render(Page);
+      await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
       const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
       const durable = mocks.loadRun.mock.calls[0][2];
       await fireEvent.click(button);
@@ -365,6 +378,7 @@ describe("run detail interactions", () => {
     const request = deferred<never>();
     mocks.loadOlderEvents.mockReturnValue(request.promise);
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
     const durable = mocks.loadRun.mock.calls[0][2];
     await fireEvent.click(button);
@@ -381,6 +395,7 @@ describe("run detail interactions", () => {
   it("shows an empty progress state for a page containing only chart samples", async () => {
     hydrateActive([chartSampleEvent(2)], 2);
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     expect(await screen.findByText(RUN_DETAIL_COPY.NO_PROGRESS_EVENTS)).toBeTruthy();
     expect(screen.getByText(loadedEventsLabel(0))).toBeTruthy();
     expect(screen.queryByText(EVENT_KIND.chartSample)).toBeNull();
@@ -393,6 +408,7 @@ describe("run detail interactions", () => {
     }>();
     mocks.stopRun.mockReturnValue(request.promise);
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     const stop = await screen.findByRole("button", {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
@@ -414,6 +430,7 @@ describe("run detail interactions", () => {
     hydrateActive();
     mocks.stopRun.mockRejectedValue(new Error("unavailable"));
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     const stop = await screen.findByRole("button", {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
@@ -439,6 +456,7 @@ describe("run detail interactions", () => {
     });
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     const view = render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     await screen.findByRole("button", {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
@@ -488,6 +506,7 @@ describe("run detail interactions", () => {
     hydrateActive([lifecycleEvent(2, RUN_STATUS.RUNNING), chartSampleEvent(3)], 7);
     mocks.loadOlderEvents.mockRejectedValueOnce(new Error("unavailable"));
     render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
     const button = await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER });
     await fireEvent.click(button);
     expect(await screen.findByText(RUN_DETAIL_COPY.LOAD_ERROR)).toBeTruthy();
@@ -526,5 +545,77 @@ it("keeps the historical graph visible after its bot is deleted and removes the 
   expect(await screen.findByRole("heading", { name: RUN.config.name })).toBeTruthy();
   expect(await screen.findByText(RUN_DETAIL_COPY.BOT_DELETED)).toBeTruthy();
   expect(screen.queryByRole("link", { name: RUN_DETAIL_COPY.BOT_CONFIGURATION })).toBeNull();
+  await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
   expect(screen.getByText(RUN_DETAIL_COPY.EXECUTED_GRAPH)).toBeTruthy();
+});
+
+it("separates live data from configuration and preserves disclosures across tabs", async () => {
+  render(Page);
+  const liveTab = await screen.findByRole("tab", { name: RUN_DETAIL_COPY.LIVE_DATA });
+  const setupTab = screen.getByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION });
+  expect(liveTab.getAttribute("aria-selected")).toBe("true");
+  expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+  expect(screen.queryByRole("region", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH })).toBeNull();
+  expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent?.trim())).toEqual([
+    DASHBOARD_COPY.EQUITY,
+    DASHBOARD_COPY.MARKET_PRICES,
+    "Timing",
+  ]);
+  const eventsToggle = screen.getByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS });
+  expect(eventsToggle.getAttribute("aria-expanded")).toBe("false");
+  await fireEvent.click(eventsToggle);
+  await fireEvent.click(setupTab);
+  expect(setupTab.getAttribute("aria-selected")).toBe("true");
+  expect(screen.queryByRole("region", { name: DASHBOARD_COPY.ARIA_LABEL })).toBeNull();
+  expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent?.trim())).toEqual([
+    RUN_DETAIL_COPY.EXECUTED_GRAPH,
+    BOT_BUILDER_COPY.CONFIGURATION,
+  ]);
+  const configurationToggle = await screen.findByRole("button", { name: BOT_BUILDER_COPY.CONFIGURATION });
+  expect(configurationToggle.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("region", { name: BOT_BUILDER_COPY.CONFIGURATION }).querySelector("dt")).toBeTruthy();
+  await fireEvent.click(configurationToggle);
+  await fireEvent.click(liveTab);
+  expect(screen.getByRole("button", { name: RUN_DETAIL_COPY.HIDE_EVENTS }).getAttribute("aria-expanded")).toBe("true");
+  await fireEvent.click(setupTab);
+  expect(configurationToggle.getAttribute("aria-expanded")).toBe("false");
+  const graphToggle = screen.getByRole("button", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH });
+  await fireEvent.click(graphToggle);
+  expect(screen.queryByRole("group", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH })).toBeNull();
+  await fireEvent.click(graphToggle);
+  expect(await screen.findByRole("group", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH })).toBeTruthy();
+});
+
+it("supports arrow, Home and End navigation with one tab stop", async () => {
+  render(Page);
+  const liveTab = await screen.findByRole("tab", { name: RUN_DETAIL_COPY.LIVE_DATA });
+  const setupTab = screen.getByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION });
+  for (const [origin, key, target] of [
+    [liveTab, "ArrowRight", setupTab],
+    [setupTab, "ArrowRight", liveTab],
+    [liveTab, "ArrowLeft", setupTab],
+    [setupTab, "Home", liveTab],
+    [liveTab, "End", setupTab],
+  ] as const) {
+    await fireEvent.keyDown(origin, { key });
+    expect(document.activeElement).toBe(target);
+    expect(target.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getAllByRole("tab").filter((tab) => tab.tabIndex === 0)).toEqual([target]);
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(target.id);
+  }
+});
+
+it("continues ingesting run events while viewing configuration", async () => {
+  hydrateActive();
+  render(Page);
+  await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
+  const durable = mocks.loadRun.mock.calls[0][2];
+  durable(lifecycleEvent(1, RUN_STATUS.STOPPED));
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel! })).toBeNull(),
+  );
+  await fireEvent.click(screen.getByRole("tab", { name: RUN_DETAIL_COPY.LIVE_DATA }));
+  await fireEvent.click(screen.getByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
+  expect(screen.getByText(eventSummary(lifecycleEvent(1, RUN_STATUS.STOPPED)))).toBeTruthy();
+  expect(mocks.loadRun).toHaveBeenCalledOnce();
 });

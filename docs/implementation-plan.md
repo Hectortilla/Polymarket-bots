@@ -1473,8 +1473,15 @@ Status: implemented; updated by the same configuration simplification.
 - Fit graphs after all nodes are measured when entering a bot or run. Historical
   graphs support pan, zoom and Fit View while remaining locked against edits.
 - Present run configuration in the builder's field order and responsive layout,
-  with plain values and readable selection lists instead of graph JSON. Timing
-  follows the configuration and executed graph as its own section.
+  with plain values and readable selection lists instead of graph JSON.
+- Split run detail into Live data (initially selected) and Configuration tabs.
+  Live data presents executable equity, market prices, Events, and timing;
+  Configuration presents the immutable executed graph and settings, initially
+  expanded. Both tabs preserve disclosure state and streaming continues when
+  viewing settings; hidden chart shortcuts are inactive.
+- Events starts collapsed and opens to the right of the charts, including stream
+  health and paginated progress events; charts narrow to accommodate it. On
+  mobile Events opens below the charts.
 - Show active, queued and saved-bot allowances only; no template counter or limit.
 
 Acceptance covers exact JSON and decimal preservation, independent copied bots,

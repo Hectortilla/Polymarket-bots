@@ -20,11 +20,13 @@
   const MIN_WINDOW_POINTS = 12;
 
   let {
+    active = true,
     samples,
     walletTimelinePoints,
     configuredWallets = [],
     terminal = false,
   }: {
+    active?: boolean;
     samples: ChartSamplePayload[];
     walletTimelinePoints: WalletChartPointPayload[];
     configuredWallets?: string[];
@@ -49,13 +51,14 @@
     return [chartStartMs, Math.max(chartStartMs + 1, chartEndMs)] as const;
   });
   $effect(() => {
-    if (!panelInObservationRange) return;
+    if (!active || !panelInObservationRange) return;
     renderedSamples = samples;
     renderedWalletTimelinePoints = walletTimelinePoints;
   });
 
   onMount(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (!active) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       handleControl(event.key.toLowerCase());
     };
@@ -85,48 +88,64 @@
 </script>
 
 <section bind:this={panel} class="dashboard-panel" aria-label={DASHBOARD_COPY.ARIA_LABEL}>
-  <div class="dashboard-toolbar">
-    <div>
-      <p class="page-kicker">{terminal ? DASHBOARD_COPY.RUN_HISTORY : DASHBOARD_COPY.LIVE}</p>
-      <h2>{view === "market" ? DASHBOARD_COPY.MARKET_PRICES : DASHBOARD_COPY.WALLET_ACTIVITY}</h2>
-    </div>
-    <div class="dashboard-controls" aria-label={DASHBOARD_COPY.CONTROLS_ARIA_LABEL}>
-      <button
-        class:active={view === "wallet"}
-        onclick={() => handleControl(DASHBOARD_KEY.view)}
-        title={`Keyboard: ${DASHBOARD_KEY.view}`}>{DASHBOARD_KEY.view} · {DASHBOARD_COPY.CONTROL_VIEW}</button
-      >
-      <button
-        onclick={() => handleControl(DASHBOARD_KEY.closer)}
-        disabled={zoom === MIN_TIME_ZOOM_LEVEL}
-        title={`Keyboard: ${DASHBOARD_KEY.closer}`}>{DASHBOARD_KEY.closer} · {DASHBOARD_COPY.CONTROL_CLOSER}</button
-      >
-      <button
-        onclick={() => handleControl(DASHBOARD_KEY.wider)}
-        disabled={zoom === MAX_TIME_ZOOM_LEVEL}
-        title={`Keyboard: ${DASHBOARD_KEY.wider}`}>{DASHBOARD_KEY.wider} · {DASHBOARD_COPY.CONTROL_WIDER}</button
-      >
-      <button
-        onclick={() => handleControl(DASHBOARD_KEY.reset)}
-        disabled={zoom === INITIAL_TIME_ZOOM_LEVEL}
-        title={`Keyboard: ${DASHBOARD_KEY.reset}`}>{DASHBOARD_KEY.reset} · {DASHBOARD_COPY.CONTROL_RESET}</button
-      >
-    </div>
-  </div>
-
-  {#if !chartsActivated}
-    <div class="dashboard-viewport-placeholder" aria-hidden="true"></div>
-  {:else if chartSamples.length === 0 && renderedWalletTimelinePoints.length === 0 && configuredWallets.length === 0}
-    <p class="chart-empty">
-      {terminal ? DASHBOARD_COPY.NO_SAMPLES : DASHBOARD_COPY.WAITING_FOR_SAMPLE}
-    </p>
-  {:else}
-    <div class="dashboard-grid" data-layout="stacked">
+  <div class="dashboard-grid" data-layout="stacked">
+    <section class="chart-section" aria-labelledby="equity-chart-heading">
+      <div class="dashboard-toolbar">
+        <div>
+          <h2 id="equity-chart-heading">{DASHBOARD_COPY.EQUITY}</h2>
+          <p class="chart-context">{terminal ? DASHBOARD_COPY.RUN_HISTORY : DASHBOARD_COPY.LIVE}</p>
+        </div>
+        <div class="dashboard-controls" aria-label={DASHBOARD_COPY.CONTROLS_ARIA_LABEL}>
+          <button
+            onclick={() => handleControl(DASHBOARD_KEY.closer)}
+            disabled={zoom === MIN_TIME_ZOOM_LEVEL}
+            title={`Keyboard: ${DASHBOARD_KEY.closer}`}>{DASHBOARD_KEY.closer} · {DASHBOARD_COPY.CONTROL_CLOSER}</button
+          >
+          <button
+            onclick={() => handleControl(DASHBOARD_KEY.wider)}
+            disabled={zoom === MAX_TIME_ZOOM_LEVEL}
+            title={`Keyboard: ${DASHBOARD_KEY.wider}`}>{DASHBOARD_KEY.wider} · {DASHBOARD_COPY.CONTROL_WIDER}</button
+          >
+          <button
+            onclick={() => handleControl(DASHBOARD_KEY.reset)}
+            disabled={zoom === INITIAL_TIME_ZOOM_LEVEL}
+            title={`Keyboard: ${DASHBOARD_KEY.reset}`}>{DASHBOARD_KEY.reset} · {DASHBOARD_COPY.CONTROL_RESET}</button
+          >
+        </div>
+      </div>
+      <div class="equity-chart">
+        {#if !chartsActivated}
+          <div class="skeleton chart-placeholder" aria-hidden="true"></div>
+        {:else if chartSamples.length === 0}
+          <p class="chart-empty">{terminal ? DASHBOARD_COPY.NO_SAMPLES : DASHBOARD_COPY.WAITING_FOR_SAMPLE}</p>
+        {:else}
+          <EquityChart samples={chartSamples} />
+        {/if}
+      </div>
+    </section>
+    <section class="chart-section" aria-labelledby="market-chart-heading">
+      <div class="dashboard-toolbar">
+        <h2 id="market-chart-heading">
+          {view === "market" ? DASHBOARD_COPY.MARKET_PRICES : DASHBOARD_COPY.WALLET_ACTIVITY}
+        </h2>
+        <div class="dashboard-controls">
+          <button
+            class:active={view === "wallet"}
+            onclick={() => handleControl(DASHBOARD_KEY.view)}
+            title={`Keyboard: ${DASHBOARD_KEY.view}`}>{DASHBOARD_KEY.view} · {DASHBOARD_COPY.CONTROL_VIEW}</button
+          >
+        </div>
+      </div>
       <div class="primary-chart">
-        {#if view === "market"}
+        {#if !chartsActivated}
+          <div class="skeleton chart-placeholder" aria-hidden="true"></div>
+        {:else if chartSamples.length === 0 && renderedWalletTimelinePoints.length === 0 && configuredWallets.length === 0}
+          <p class="chart-empty">{terminal ? DASHBOARD_COPY.NO_SAMPLES : DASHBOARD_COPY.WAITING_FOR_SAMPLE}</p>
+        {:else if view === "market"}
           <MarketChart samples={chartSamples} />
         {:else}
           <WalletChart
+            {active}
             points={renderedWalletTimelinePoints}
             {configuredWallets}
             startMs={chartTimeRangeMs[0]}
@@ -134,10 +153,6 @@
           />
         {/if}
       </div>
-      <div class="equity-chart">
-        <div class="chart-label">{DASHBOARD_COPY.EQUITY}</div>
-        <EquityChart samples={chartSamples} />
-      </div>
-    </div>
-  {/if}
+    </section>
+  </div>
 </section>

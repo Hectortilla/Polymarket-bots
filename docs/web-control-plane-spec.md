@@ -190,7 +190,19 @@ the latest saved configuration; historical run configuration never changes.
 
 Run configuration uses the builder's field order and responsive layout with
 read-only text values. Selection lists stay readable, and graph JSON is omitted
-in favor of the executed graph viewer. Timing follows as a separate section.
+in favor of the executed graph viewer. Run detail has two compact tabs beneath
+the shared run heading and stop action. Live data is initially selected and
+contains executable equity, market prices (or followed-wallet activity), Events,
+and timing. Configuration contains the immutable executed graph and saved
+settings, both initially expanded with independent disclosure controls.
+Events starts collapsed beside the charts and expands horizontally into a
+right-hand column, narrowing the plots. It contains stream health and scrollable,
+paginated progress events. Below 768px, Events opens below the charts.
+Switching tabs preserves chart controls and disclosure state; event ingestion
+continues in both tabs. Hidden charts ignore keyboard shortcuts. The graph mounts
+on the first Configuration visit so its viewport can be measured correctly.
+Tabs support arrow keys, Home, End, and a single keyboard tab stop.
+Section headings, dividers, and spacing share one visual treatment.
 Both bot and run graphs fit automatically once all nodes and the viewport are
 ready. Run graphs allow pan, zoom and Fit View without enabling graph edits.
 

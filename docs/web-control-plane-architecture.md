@@ -626,7 +626,16 @@ dependency error.
   option updates, resize, and dispose. Pages and domain components do not call
   ECharts lifecycle APIs.
 - Keep market, equity, and wallet option building in their respective domain
-  components. The combined chart component owns layout/toggle composition only.
+  components. The combined chart component owns layout/toggle composition only,
+  placing executable equity before market prices. Run detail owns the Events
+  drawer and tab state; opening Events changes the chart column width and the
+  existing chart ResizeObserver handles resizing. The Live data panel stays
+  mounted while hidden, retaining controls and receiving streamed data; its
+  inactive flag disables chart and wallet keyboard shortcuts and chart option
+  updates. Configuration mounts on its first visit so the graph fits a visible
+  viewport, then retains its graph and disclosure state across tab switches.
+  Timing, historical graph, and configuration share a run-section disclosure
+  component and start expanded.
 
 ## Deployment Configuration
 

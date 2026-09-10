@@ -105,11 +105,13 @@
   const WALLET_LANES_PER_PAGE = 6;
 
   let {
+    active = true,
     points,
     configuredWallets = [],
     startMs,
     endMs,
   }: {
+    active?: boolean;
     points: WalletChartPointPayload[];
     configuredWallets?: string[];
     startMs: number;
@@ -129,6 +131,7 @@
 
   onMount(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (!active) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       changeWalletPage(event.key.toLowerCase());
     };

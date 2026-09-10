@@ -14,7 +14,7 @@
       animation: false,
       grid: { left: 56, right: 16, top: 16, bottom: 28 },
       tooltip: { trigger: "axis" },
-      xAxis: { type: "time", axisLabel: { color: "#7e8781" } },
+      xAxis: { type: "time", axisLabel: { color: "#7e8781", hideOverlap: true } },
       yAxis: { type: "value", scale: true, axisLabel: { color: "#7e8781" } },
       series: [
         {
