@@ -30,7 +30,7 @@
   .public-page {
     max-width: 850px;
     margin-inline: auto;
-    padding-block: 3rem;
+    padding-block: 1rem;
   }
   header {
     margin-bottom: 3rem;
@@ -57,6 +57,7 @@
   }
   .public-page :global(h2) {
     font-size: 1.4rem;
+    margin-bottom: 12px;
   }
   .public-page :global(a) {
     text-underline-offset: 0.2em;

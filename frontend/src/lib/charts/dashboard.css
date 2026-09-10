@@ -1,7 +1,7 @@
 .dashboard-panel {
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  padding: 40px 0;
+  padding: 28px 0;
 }
 
 .dashboard-toolbar {
@@ -102,6 +102,11 @@
 }
 
 @media (max-width: 767px) {
+  .dashboard-controls button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
   .dashboard-toolbar {
     align-items: flex-start;
     flex-direction: column;

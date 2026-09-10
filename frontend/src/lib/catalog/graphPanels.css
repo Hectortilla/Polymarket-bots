@@ -1,7 +1,7 @@
 .graph-panel {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-surface);
   background: var(--surface-raised);
 }
 .graph-panel > summary {

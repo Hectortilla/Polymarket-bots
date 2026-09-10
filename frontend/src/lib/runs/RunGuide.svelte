@@ -23,8 +23,18 @@
 
 <style>
   .run-guide {
-    border-block: 1px solid var(--line);
-    padding-block: 1rem;
-    margin-block: 1.5rem;
+    padding-block: 0;
+    margin-block: 0;
+  }
+  h2 {
+    margin-bottom: 12px;
+  }
+  p {
+    margin-bottom: 8px;
+    max-width: 85ch;
+    font-size: 0.875rem;
+  }
+  p:last-child {
+    margin-bottom: 0;
   }
 </style>

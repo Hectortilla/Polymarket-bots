@@ -320,7 +320,7 @@
   .suggestions {
     margin-top: 8px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-surface);
     overflow: hidden;
     background: var(--surface-raised);
   }
@@ -348,6 +348,7 @@
     justify-content: space-between;
     gap: 16px;
     text-align: left;
+    white-space: normal;
     background: transparent;
     border: 0;
     border-top: 1px solid var(--line);
@@ -401,7 +402,7 @@
     width: 28px;
     height: 28px;
     border: 1px solid var(--line);
-    border-radius: 7px;
+    border-radius: var(--radius-control);
   }
   .refine-hint,
   .selection-hint,
@@ -432,7 +433,7 @@
     gap: 12px;
     padding: 12px;
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-control);
     background: var(--surface-input);
   }
   .selected-mark {
@@ -447,7 +448,8 @@
     display: grid;
     place-items: center;
     padding: 8px;
-    min-height: 34px;
+    min-height: 44px;
+    min-width: 44px;
     background: transparent;
     color: var(--text-muted);
     border: 0;

@@ -282,7 +282,7 @@
   </section>
 
   {#if run.graph}
-    <section class="detail-section configuration-panel historical-graph">
+    <section class="historical-graph">
       <div class="section-heading">
         <h2 id="executed-graph-heading">
           {executedRunGraphRevisionLabel(run.graph_revision)}

@@ -397,7 +397,7 @@
     gap: 0.2rem;
     overflow: hidden;
     border: 1px solid var(--line-strong);
-    border-radius: 0.65rem;
+    border-radius: var(--radius-surface);
     padding: 0.3rem;
     background: rgb(16 20 17 / 0.92);
     box-shadow: 0 0.75rem 2rem rgb(4 8 6 / 0.32);
@@ -409,7 +409,7 @@
     width: 2rem;
     height: 2rem;
     border: 0;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-control);
     padding: 0.5rem;
     color: var(--text-muted);
     background: transparent;

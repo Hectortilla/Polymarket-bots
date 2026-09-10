@@ -83,7 +83,7 @@
 
 <svelte:head><title>{ONBOARDING_COPY.START} | {SERVICE_NAME}</title></svelte:head>
 <section class="guided-bot">
-  <a href={NAVIGATION_PATH.HOME}>{NAVIGATION_LABEL.BACK_TO_BOTS}</a>
+  <a class="back-link" href={NAVIGATION_PATH.HOME}>{NAVIGATION_LABEL.BACK_TO_BOTS}</a>
   <h1>{ONBOARDING_COPY.START}</h1>
   <p>{ONBOARDING_COPY.PAPER_ONLY}</p>
   <AccountUsage />
@@ -106,7 +106,7 @@
     <!-- Keep LaunchForm mounted so Back preserves the entered settings. -->
     <div hidden={step !== ONBOARDING_STEP.EXAMPLE}>
       <fieldset disabled={saving}>
-        <legend>{ONBOARDING_COPY.CHOOSE}</legend>
+        <legend class="sr-only">{ONBOARDING_COPY.CHOOSE}</legend>
         {#each descriptor.graph_examples ?? [] as option, index}
           <label
             ><input type="radio" name="example" value={index} bind:group={exampleIndex} />
@@ -152,7 +152,19 @@
   .guided-bot {
     max-width: 840px;
     margin: 0 auto;
-    padding-block: 2rem;
+    padding-block: 0;
+  }
+  .guided-bot > :global(.allowance) {
+    margin-block: 24px;
+  }
+  .guided-bot > h2 {
+    margin-bottom: 24px;
+  }
+  .guided-bot > p:last-child {
+    margin-top: 24px;
+  }
+  .guided-bot > div > .secondary {
+    margin-top: 16px;
   }
   fieldset {
     border: 0;
@@ -165,10 +177,24 @@
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 0.4rem 0.75rem;
-    padding-block: 0.75rem;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    cursor: pointer;
+  }
+  label:has(input:checked) {
+    border-color: var(--accent);
+  }
+  label input {
+    grid-row: 1 / 3;
+    margin-top: 2px;
   }
   label span {
     grid-column: 2;
+  }
+  nav {
+    margin-block: 24px;
   }
   ol {
     padding-left: 1.2rem;

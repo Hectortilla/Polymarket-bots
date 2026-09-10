@@ -94,8 +94,10 @@
         <span aria-hidden="true">{HOME_COLUMN_LABEL.UPDATED}</span>
       </div>
       {#if visibleBots.length === 0}
-        <p class="empty-state">{HOME_COPY.CREATE_FIRST_BOT}</p>
-        <p><a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a></p>
+        <div class="empty-state home-empty-state">
+          <p>{HOME_COPY.CREATE_FIRST_BOT}</p>
+          <a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a>
+        </div>
       {:else}
         {#each visibleBots as bot (bot.id)}
           {@const recentRun = latestRun(bot.id)}

@@ -62,7 +62,7 @@
     width: 15rem;
     overflow: visible;
     border: 1px solid var(--line-strong);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-surface);
     background: var(--surface-raised);
     box-shadow: 0 0.5rem 1.5rem rgb(8 15 30 / 12%);
   }

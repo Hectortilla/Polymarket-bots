@@ -1,6 +1,6 @@
 .account-panel {
   width: min(100%, 440px);
-  margin: 64px auto;
+  margin: 32px auto;
 }
 .account-panel h1 {
   margin: 12px 0 20px;
@@ -10,8 +10,21 @@
 }
 .account-panel form {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   margin: 32px 0;
+}
+.account-panel form > input + label,
+.account-panel form > label + label {
+  margin-top: 12px;
+}
+.account-panel form > button[type="submit"] {
+  margin-top: 12px;
+}
+.account-panel form .notice {
+  margin: 8px 0;
+}
+.account-panel h2 {
+  margin-block: 28px 12px;
 }
 .account-panel label {
   font-weight: 600;
@@ -28,6 +41,6 @@
 }
 @media (max-width: 600px) {
   .account-panel {
-    margin: 32px auto;
+    margin: 16px auto;
   }
 }

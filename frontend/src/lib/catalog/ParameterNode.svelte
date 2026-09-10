@@ -31,7 +31,7 @@
     width: 14rem;
     padding: 0.8rem;
     border: 1px solid var(--line-strong);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-surface);
     background: var(--surface-raised);
     display: grid;
     gap: 0.5rem;

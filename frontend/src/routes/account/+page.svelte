@@ -120,11 +120,13 @@
     <button type="submit" disabled={busy}>{busy ? AUTH_COPY.BUSY : ACCOUNT_COPY.CHANGE_PASSWORD}</button>
     <button
       type="button"
+      class="secondary"
       disabled={busy || !currentPassword}
       onclick={() => void revokeSessions(SESSION_REVOCATION.OTHER)}>{ACCOUNT_COPY.REVOKE_OTHER}</button
     >
     <button
       type="button"
+      class="secondary"
       disabled={busy || !currentPassword}
       onclick={() => void revokeSessions(SESSION_REVOCATION.ALL)}>{ACCOUNT_COPY.REVOKE_ALL}</button
     >

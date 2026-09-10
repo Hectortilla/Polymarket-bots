@@ -58,7 +58,6 @@
 <section class="account-panel">
   <p class="eyebrow">Your private workspace</p>
   <h1>{title}</h1>
-  {#if !registering}<p><a href={runtimeContract.accountManagement.forgotPath}>{ACCOUNT_COPY.FORGOT}</a></p>{/if}
   <p>
     {registering
       ? "Save your bots and follow your paper runs in one place. Registration signs you in immediately. Verify your email in Account settings before launching a run."
@@ -88,7 +87,7 @@
     />
     {#if registering}
       <p class="field-help">
-        Use {runtimeContract.auth.passwordMinLength}–{runtimeContract.auth.passwordMaxLength} characters.
+        Use {runtimeContract.auth.passwordMinLength}-{runtimeContract.auth.passwordMaxLength} characters.
       </p>
     {/if}
     {#if error}<p role="alert" class="notice error">{error}</p>{/if}

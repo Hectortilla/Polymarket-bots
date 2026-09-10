@@ -1,12 +1,12 @@
 .run-heading {
-  margin-bottom: 64px;
-  padding-top: 16px;
-  padding-bottom: 40px;
+  margin-bottom: var(--section-gap);
+  padding-top: 0;
+  padding-bottom: 28px;
 }
 
 .run-heading h1 {
   max-width: 880px;
-  font-size: clamp(2.5rem, 5vw, 3.75rem);
+  font-size: clamp(2rem, 3.5vw, 2.75rem);
   overflow-wrap: anywhere;
 }
 
@@ -40,7 +40,7 @@
 .historical-graph {
   border: 1px solid var(--line);
   border-radius: var(--radius-surface);
-  padding: 32px;
+  padding: 24px;
 }
 
 .detail-grid {
@@ -109,7 +109,7 @@ dd {
 
 .stream-health-panel {
   border-bottom: 1px solid var(--line);
-  padding-bottom: 40px;
+  padding-bottom: 28px;
 }
 
 .health-stale {
@@ -176,12 +176,16 @@ dd {
 }
 
 @media (max-width: 767px) {
+  .historical-graph {
+    padding: 20px 16px;
+  }
+
   .run-heading {
-    margin-bottom: 48px;
+    margin-bottom: var(--section-gap);
   }
 
   .run-heading h1 {
-    font-size: clamp(2.25rem, 11vw, 3rem);
+    font-size: clamp(1.9rem, 7vw, 2.5rem);
   }
 
   .section-actions {

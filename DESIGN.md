@@ -2,13 +2,13 @@
 
 ## 1. Visual Theme and Atmosphere
 
-Polybot is a calm technical workspace for one trusted operator. It should feel
+Polybot is a calm technical workspace for paper-trading users. It should feel
 precise, quiet, and dependable, like a well-designed development tool rather
 than a trading spectacle.
 
-- **Design variance: 5/10.** Layouts use clear structure with modest asymmetry
-  in page headings and editor composition.
-- **Motion intensity: 4/10.** Motion communicates loading, state changes, and
+- **Design variance: 3/10.** Layouts favor consistent alignment and predictable
+  spacing across page headings, forms, and editor composition.
+- **Motion intensity: 2/10.** Motion communicates loading, state changes, and
   interaction feedback. It never competes with market or run information.
 - **Visual density: 6/10.** The bot list and run views support quick scanning,
   while configuration fields and the graph canvas have enough room to work.
@@ -26,8 +26,11 @@ than a trading spectacle.
 - **Muted Ink** (`#858F89`): helper text, timestamps, and inactive metadata.
 - **Quiet Line** (`rgba(235, 244, 239, 0.10)`): section structure.
 - **Strong Line** (`rgba(235, 244, 239, 0.18)`): control boundaries.
-- **Signal Lime** (`#C7E76B`): the only accent, used for primary actions,
-  active controls, connections, and focus rings.
+- **Brand Lime** (`#C7E76B`): the preserved logo mark and brand hover.
+- **Quiet Sage** (`#AFC4B8`): active controls, connections, and focus rings.
+- **Action Silver Sage** (`#D0DAD3`): primary action fill, with `#18211C` text;
+  hover uses `#E0E7E2`. This restrained green-neutral family supports the logo
+  without turning every action into a bright green signal.
 - **Danger Rose** (`#E1A6A0`): destructive actions and errors only. It is a
   semantic status color, not a competing brand accent.
 - **Warning Sand** (`#D1BA82`) and **Success Sage** (`#91BDA5`): semantic run
@@ -59,17 +62,23 @@ Never use pure black, neon glows, purple gradients, or unrelated accent colors.
 
 ## 5. Component Styling
 
-- **Buttons:** 10px radius, minimum 44px target, flat fill or quiet outline.
-  Primary buttons use Signal Lime with dark text. Active feedback translates
+- **Buttons:** 5px radius, minimum 44px target, flat fill or quiet outline.
+  Primary buttons use Action Silver Sage with dark text. Sign out, session
+  revocation, refresh, and graph reset use quiet secondary outlines. Active feedback translates
   down by 1px and scales to 0.98.
-- **Surfaces:** 14px radius when a boundary is necessary. Most sections use a
-  top rule and whitespace instead of a card.
+- **Surfaces:** 8px radius when a boundary is necessary. Most sections use a
+  top rule and whitespace instead of a card. Data lists and tables always
+  use a 0px radius, including their outer containers.
 - **Status badges:** full-pill shape is allowed only because status is a compact
   semantic token. Do not use pills for ordinary labels.
 - **Inputs:** labels above controls, helper text beneath the label, errors below
-  the control. Inputs use 10px radius and a visible lime focus ring.
+  the control. Inputs use 5px radius and a visible sage focus ring. Native selects retain
+  their dropdown indicator. Radio buttons and checkboxes use compact 20px
+  controls inside labeled targets, never full-width text-input dimensions.
 - **Bot list:** one responsive structured list with column headers on wide
   screens and labeled stacked values on narrow screens. The row is the target.
+- **Allowance:** current usage stays visible, with full run limits and retention
+  guidance inside a keyboard-accessible disclosure.
 - **Run history:** a compact table with responsive stacked rows below 768px.
 - **Graph canvas:** a large bounded workspace. Node addition and viewport
   controls remain close to the canvas. Graph validation stays beside it.
@@ -83,15 +92,27 @@ Never use pure black, neon glows, purple gradients, or unrelated accent colors.
 - Contain pages at 1240px with 32px desktop gutters and 16px mobile gutters.
 - Page headings are left aligned. The sole primary action sits at the upper
   right on wide screens and becomes full width on mobile.
-- Multi-column layouts collapse to one column below 768px.
+- Form columns collapse below 768px. Data lists use labeled stacked values
+  at that breakpoint and a single-column row below 421px.
 - Never allow horizontal page scrolling. The graph canvas may pan internally.
-- Keep the sticky application header at 64px or less.
-- Every interactive control has at least a 44px touch target.
+- Keep the desktop application header at 64px. At 960px and below, navigation
+  occupies a second compact row to avoid squeezing links or overflowing.
+  At 600px and below, omit the email from the header.
+- Page sections use a 40px gap, reduced to 32px below 768px. Apply this rule
+  only to adjacent top-level page sections. Nested forms own their grid gaps;
+  never combine inherited section margins with those gaps.
+- Main padding is 32px above and 80px below on desktop; 24px and 56px on
+  mobile. Heading-to-content spacing follows the section gap.
+- Configuration fields use 24px grid gaps and 8px label/control gaps.
+  Graph source controls use the same 8px internal rhythm.
+- Standard actions have a 44px target. Compact table and chart actions may
+  be 36px on desktop but expand to 44px on mobile; graph handles retain
+  the graph library interaction model.
 
 ## 7. Motion and Interaction
 
 - Use a 180ms ease-out transition for hover, focus, and selection feedback.
-- Page content may enter once with a small opacity and vertical transform.
+- Keep static page content still. Use motion only for feedback and loading.
 - Skeleton shimmer communicates loading only.
 - Animate only transform and opacity.
 - Honor `prefers-reduced-motion` and collapse transitions to effectively instant.
@@ -122,3 +143,18 @@ Never use pure black, neon glows, purple gradients, or unrelated accent colors.
 - No custom cursor, scroll cue, or gratuitous animation.
 - No em dash or en dash in visible copy.
 
+
+## 10. September 2026 Spacing Audit
+
+The refresh preserves routes, primary navigation labels, field order, the green
+logo, and the existing dark theme. The implementation remains native Svelte/CSS
+with the installed Geist and Phosphor assets. Marketing hero, imagery, animation,
+and design-system migration prescriptions from the inspiration skills do not
+apply to these operational screens.
+
+Fixed global nested-section margin leakage, tablet run-list minimum-width
+overflow, unpadded empty-state content, missing graph-source field gaps,
+conflicting historical-graph panel padding, oversized radio controls, duplicate
+password-recovery navigation, and independently hardcoded graph-control radii.
+Shared palette and spacing values live in `frontend/src/app.css`; component
+styles own their internal layout. Trading, account, and API contracts are unchanged.

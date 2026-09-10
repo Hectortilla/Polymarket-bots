@@ -82,7 +82,7 @@
           >{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP]}</a
         ><a href={PUBLIC_INFORMATION_PATH.SUPPORT}>{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.SUPPORT]}</a><a
           href={runtimeContract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a
-        ><button onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button>
+        ><button class="secondary" onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button>
       </div>
     {/if}
   </div>
@@ -94,7 +94,7 @@
   {:else if $accountError}
     <p role="alert" class="notice error">{$accountError}</p>
     <button onclick={() => void accountSession.restore()}>Retry session</button>
-    <button onclick={() => void accountSession.signOut()}>Retry sign out</button>
+    <button class="secondary" onclick={() => void accountSession.signOut()}>Retry sign out</button>
   {:else if !$accountReady}
     <p role="status">Restoring your session…</p>
   {:else if $account || isAccountPath(page.url.pathname)}
