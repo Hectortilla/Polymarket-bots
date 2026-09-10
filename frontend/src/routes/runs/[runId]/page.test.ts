@@ -5,7 +5,7 @@ import { ADD_NODE_LABEL } from "$lib/catalog/NodePalette.svelte";
 import { VALUATION_STATUS } from "$lib/charts/contracts";
 import { eventSummary } from "$lib/runs/eventSummary";
 import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
-import type { LiveRunEvent } from "$lib/api/generated";
+import type { ActivitySeverity, LiveRunEvent } from "$lib/api/generated";
 import { LIVE_EVENT_KIND } from "$lib/runs/eventKinds";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -318,6 +318,40 @@ function expectProgressWindow(firstId: number, count: number): void {
   );
 }
 describe("run detail interactions", () => {
+  it("hides routine activity by default and reveals diagnostics without refetching", async () => {
+    const activity: PersistedDurableEvent = {
+      id: 2,
+      run_id: RUN.id,
+      occurred_at: RUN.created_at,
+      kind: EVENT_KIND.botActivity,
+      payload: {
+        message: "[buy] Skipped: disabled",
+        severity: runtimeContract.activitySeverity.INFO as ActivitySeverity,
+      },
+    };
+    hydrateActive([lifecycleEvent(1, RUN_STATUS.RUNNING), activity]);
+    render(Page);
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
+    expect(screen.queryByText(activity.payload.message)).toBeNull();
+    expect(screen.getByText(loadedEventsLabel(1))).toBeTruthy();
+    const diagnostics = screen.getByRole("checkbox", { name: RUN_DETAIL_COPY.SHOW_DIAGNOSTICS });
+    await fireEvent.click(diagnostics);
+    expect(screen.getByText(activity.payload.message)).toBeTruthy();
+    expect(screen.getByText(loadedEventsLabel(2))).toBeTruthy();
+    await fireEvent.click(diagnostics);
+    const durable = mocks.loadRun.mock.calls[0][2];
+    durable({ ...activity, id: 3, payload: { ...activity.payload, message: "Routine streamed update" } });
+    durable({
+      ...activity,
+      id: 4,
+      payload: { message: "Trading unavailable", severity: runtimeContract.activitySeverity.ERROR },
+    });
+    expect(await screen.findByText("Trading unavailable")).toBeTruthy();
+    expect(screen.queryByText("Routine streamed update")).toBeNull();
+    expect(screen.getByText(loadedEventsLabel(2))).toBeTruthy();
+    expect(mocks.loadOlderEvents).not.toHaveBeenCalled();
+  });
+
   it("bounds streaming to one page, including hidden samples, and reloads evicted history", async () => {
     hydrateActive(progressPage(1));
     render(Page);
@@ -474,6 +508,8 @@ describe("run detail interactions", () => {
       },
     });
     expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_UNAVAILABLE)).toBeTruthy();
+    expect(screen.queryByText("17")).toBeNull();
+    await fireEvent.click(screen.getByRole("checkbox", { name: RUN_DETAIL_COPY.SHOW_DIAGNOSTICS }));
     expect(await screen.findByText("17")).toBeTruthy();
     live({
       kind: LIVE_EVENT_KIND.streamHealth,

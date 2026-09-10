@@ -39,6 +39,7 @@
   import RunStatusBadge from "$lib/runs/RunStatusBadge.svelte";
   import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
   import { eventFailureDetail, eventSummary } from "$lib/runs/eventSummary";
+  import { eventLabel, isUserFacingEvent } from "$lib/runs/eventFeed";
   import { loadAndContinueRunDetail, loadOlderRunEvents } from "$lib/runs/hydrate";
   import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
   import { formatTime } from "$lib/time";
@@ -57,6 +58,7 @@
   let dashboard = $state<DashboardHistory>(emptyDashboardHistory());
   let loading = $state(true);
   let eventsOpen = $state(false);
+  let showDiagnostics = $state(false);
   let stopping = $state(false);
   let loadingOlderEvents = $state(false);
   let loadedEventPages = 1;
@@ -69,7 +71,9 @@
   let definitionFailed = $state(false);
   let closeStream = () => {};
 
-  const progressEvents = $derived(events.filter((event) => event.kind !== EVENT_KIND.chartSample));
+  const progressEvents = $derived(
+    events.filter((event) => (showDiagnostics ? event.kind !== EVENT_KIND.chartSample : isUserFacingEvent(event))),
+  );
   const statusPresentation = $derived(run ? RUN_STATUS_PRESENTATION[run.status] : undefined);
   const configuredWallets = $derived(run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? []);
 
@@ -336,6 +340,11 @@
           >
         </div>
         <div id="run-events-content" class="events-drawer-content" hidden={!eventsOpen}>
+          <p class="events-description">{RUN_DETAIL_COPY.EVENTS_DESCRIPTION}</p>
+          <label class="events-diagnostics-toggle">
+            <input type="checkbox" bind:checked={showDiagnostics} />
+            {RUN_DETAIL_COPY.SHOW_DIAGNOSTICS}
+          </label>
           <section class="stream-health-panel" aria-label="Live stream health">
             <div class="section-heading">
               <h3>Stream health</h3>
@@ -345,7 +354,7 @@
                   : RUN_GUIDE_COPY.BOOK_UNAVAILABLE}
               </span>
             </div>
-            {#if dashboard.streamHealth}
+            {#if showDiagnostics && dashboard.streamHealth}
               <dl class="health-metrics">
                 <div>
                   <dt>Queue</dt>
@@ -391,7 +400,9 @@
               </div>
             </div>
             {#if progressEvents.length === 0}
-              <p class="empty-state">{RUN_DETAIL_COPY.NO_PROGRESS_EVENTS}</p>
+              <p class="empty-state">
+                {showDiagnostics ? RUN_DETAIL_COPY.NO_DIAGNOSTIC_EVENTS : RUN_DETAIL_COPY.NO_PROGRESS_EVENTS}
+              </p>
             {:else}
               <div class="table-wrap event-table">
                 <table aria-label="Durable progress events">
@@ -406,7 +417,9 @@
                         aria-describedby={failureDetail === null ? undefined : failureDetailId}
                       >
                         <td data-label="Time">{formatTime(event.occurred_at)}</td>
-                        <td data-label="Kind"><span class="event-kind">{event.kind}</span></td>
+                        <td data-label="Kind"
+                          ><span class="event-kind">{showDiagnostics ? event.kind : eventLabel(event)}</span></td
+                        >
                         <td
                           class="event-detail-cell"
                           class:failure-detail-host={failureDetail !== null}

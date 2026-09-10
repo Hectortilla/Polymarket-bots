@@ -1100,6 +1100,10 @@ Minimum deliverable:
   samples and never auto-fetch the complete run.
 - Exclude `chart.sample` from the Durable progress table and its loaded-event
   count, while retaining those samples for chart history and event pagination.
+  The current Events drawer further defaults to user-facing order outcomes,
+  errors/warnings, lifecycle changes, and settlements with paper positions;
+  **Show diagnostics** reveals other non-chart events and detailed health metrics.
+  This display filter does not change persistence or the bounded pagination policy.
 - Bound the browser's retained durable events to the loaded page count times
   the API's default page size (including hidden chart samples). Streaming drops
   the oldest overflow and moves the older-page cursor to the oldest retained

@@ -1,3 +1,7 @@
+import Decimal from "decimal.js";
+import type { FillEvent } from "$lib/api/generated";
+import runtimeContract from "$lib/runtimeContract.fixture.json";
+import { SIDE } from "$lib/sides";
 import { EVENT_KIND, INITIAL_EVENT_CURSOR, type PersistedDurableEvent } from "./durableEvents";
 import { RUN_STATUS, runStatusLabel } from "./status";
 
@@ -15,8 +19,14 @@ export function eventSummary(event: PersistedDurableEvent): string {
       return fillSummary(event.payload.fill);
     case EVENT_KIND.brokerFailure:
       return event.payload.error;
-    case EVENT_KIND.marketSettlement:
-      return `${event.payload.settlement.resolution.market_slug} / ${event.payload.settlement.resolution.winning_outcome}`;
+    case EVENT_KIND.marketSettlement: {
+      const settlement = event.payload.settlement;
+      const payout = settlement.paper_positions.reduce(
+        (total, position) => total.plus(position.cash_payout_usdc),
+        new Decimal(0),
+      );
+      return `${settlement.resolution.market_slug} · ${settlement.resolution.winning_outcome} won · Payout ${payout} USDC`;
+    }
     case EVENT_KIND.portfolioSnapshot:
       return `Cash ${event.payload.cash_usdc} USDC`;
     case EVENT_KIND.walletTimeline:
@@ -70,11 +80,17 @@ function latestRuntimeFailureBefore(
   return detail;
 }
 
-function fillSummary(
-  fill: Extract<PersistedDurableEvent, { kind: typeof EVENT_KIND.brokerFill }>["payload"]["fill"],
-): string {
+function fillSummary(fill: FillEvent): string {
+  const side = fill.side === SIDE.buy ? "Buy" : "Sell";
   const rejection = [fill.reject_reason, fill.reject_message]
     .filter((detail): detail is string => Boolean(detail))
     .join(": ");
-  return `${fill.status} / ${fill.filled_size} filled${rejection ? ` / ${rejection}` : ""}`;
+  const status = fill.status === runtimeContract.orderStatus.PARTIAL ? "partially filled" : fill.status;
+  const quantity =
+    fill.status === runtimeContract.orderStatus.PARTIAL
+      ? `${fill.filled_size} of ${fill.requested_size} shares`
+      : `${fill.filled_size} shares filled`;
+  const execution =
+    fill.average_price === null ? quantity : `${quantity} at ${fill.average_price} USDC · Fee ${fill.fee_usdc} USDC`;
+  return `${side} ${status} · ${execution}${rejection ? ` · ${rejection}` : ""} · Token ${fill.token_id}`;
 }

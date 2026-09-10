@@ -11,7 +11,10 @@ export const RUN_DETAIL_COPY = {
   LOAD_EARLIER: "Load earlier events",
   LOAD_ERROR: "Older durable events could not be loaded.",
   LOADING: "Loading…",
-  NO_PROGRESS_EVENTS: "No progress events in the loaded history.",
+  NO_PROGRESS_EVENTS: "No trades, settlements, warnings, errors, or run status changes in the loaded history.",
+  NO_DIAGNOSTIC_EVENTS: "No events in the loaded history.",
+  SHOW_DIAGNOSTICS: "Show diagnostics",
+  EVENTS_DESCRIPTION: "Trades, settlements, warnings, errors, and run status changes. Enable diagnostics for routine activity.",
 
   BOT_DELETED: "Bot configuration deleted",
   BOT_CONFIGURATION: "Bot configuration",

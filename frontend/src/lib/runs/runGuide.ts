@@ -24,7 +24,7 @@ export const RUN_GUIDE_COPY = {
   BALANCES:
     "Paper cash, positions, fees and equity are simulated. Equity can be unavailable when a position cannot be valued; unavailable is not zero.",
   EVENTS:
-    "Progress shows orders, fills, and available skipped/rejected-action reasons. A disabled condition can produce no action or progress entry. Loaded counts cover the visible history window.",
+    "Events shows trade outcomes, settlements, warnings, errors, and run status changes. Enable Show diagnostics for submitted orders and skipped-action reasons. Counts cover loaded history only.",
 } as const;
 
 export function runGuidance(

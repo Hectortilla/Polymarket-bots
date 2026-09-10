@@ -196,8 +196,17 @@ contains executable equity, market prices (or followed-wallet activity), Events,
 and timing. Configuration contains the immutable executed graph and saved
 settings, both initially expanded with independent disclosure controls.
 Events starts collapsed beside the charts and expands horizontally into a
-right-hand column, narrowing the plots. It contains stream health and scrollable,
-paginated progress events. Below 768px, Events opens below the charts.
+right-hand column, narrowing the plots. Its default feed shows buy/sell fills
+(including partial fills), rejected or canceled orders, order/run errors,
+warning/error bot activity, run status changes, and settlements involving paper
+positions. Fill details include side, quantity, execution price, fee, and token;
+settlements include the cash payout. Routine skips, submitted-order notices,
+bootstrap progress, portfolio snapshots, followed-wallet trades, and stream
+telemetry are available through an opt-in **Show diagnostics** checkbox.
+Book availability remains visible; detailed stream metrics require diagnostics.
+Chart samples stay out of both event views. Filtering applies to the loaded
+history only, and the count reflects the selected view; **Load earlier events**
+continues to retrieve older unfiltered pages. Below 768px, Events opens below the charts.
 Switching tabs preserves chart controls and disclosure state; event ingestion
 continues in both tabs. Hidden charts ignore keyboard shortcuts. The graph mounts
 on the first Configuration visit so its viewport can be measured correctly.

@@ -263,6 +263,9 @@ changing terminal activation settings.
 Run detail combines bounded durable reload history with live market,
 executable-equity, followed-wallet, and stream-health updates. Its visible
 controls mirror the terminal dashboard's `z`/`x`/`r`/`v`/`j`/`k` keys.
+The Events drawer defaults to order outcomes, errors/warnings, run status changes,
+and settlements involving the bot's positions. **Show diagnostics** reveals
+routine activity and detailed stream metrics within the loaded history.
 Failed rows in Recent Runs show the latest durable runtime error together with
 the recorded failure outcome on hover or keyboard focus.
 

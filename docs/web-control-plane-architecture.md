@@ -603,6 +603,14 @@ dependency error.
   not reset the advanced cursor or introduce a history gap. Terminal hydration
   does not open a stream, and receipt of a terminal lifecycle event closes the
   current stream.
+- Filter the run Events drawer through `frontend/src/lib/runs/eventFeed.ts`.
+  The default view retains fills, partial fills, rejected/canceled orders,
+  broker/run failures, warning/error activity, lifecycle changes, and settlements
+  with paper positions. Diagnostics reveals the other non-chart events and
+  detailed health metrics. This is a presentation filter: durable ingestion,
+  chart history, SSE cursors, persistence, and page capacity remain unchanged.
+  Hidden events still consume page capacity, so older meaningful events may
+  require **Load earlier events**. Counts reflect only the selected view.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
 - Render the market-slug widget as a multi-market combobox in create and edit

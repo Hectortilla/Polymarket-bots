@@ -12,7 +12,9 @@ type BrokerFillEvent = Extract<PersistedDurableEvent, { kind: typeof EVENT_KIND.
 
 describe("event summary", () => {
   it("includes a fill rejection reason and message when provided", () => {
-    expect(eventSummary(rejectedFill())).toBe("rejected / 0 filled / bad_size: order size is below the market minimum");
+    expect(eventSummary(rejectedFill())).toBe(
+      "Buy rejected · 0 shares filled · bad_size: order size is below the market minimum · Token token",
+    );
   });
 
   it("does not add an empty rejection detail to a completed fill", () => {
@@ -26,7 +28,24 @@ describe("event summary", () => {
       reject_message: null,
     };
 
-    expect(eventSummary(fill)).toBe("filled / 5 filled");
+    expect(eventSummary(fill)).toBe("Buy filled · 5 shares filled at 0.5 USDC · Fee 0 USDC · Token token");
+  });
+
+  it("identifies partial sells with the executed quantity, price, and fee", () => {
+    const event = rejectedFill();
+    event.payload.fill = {
+      ...event.payload.fill,
+      side: SIDE.sell,
+      status: runtimeContract.orderStatus.PARTIAL as OrderStatus,
+      filled_size: "2",
+      average_price: "0.6",
+      fee_usdc: "0.012",
+      reject_reason: null,
+      reject_message: null,
+    };
+    expect(eventSummary(event)).toBe(
+      "Sell partially filled · 2 of 5 shares at 0.6 USDC · Fee 0.012 USDC · Token token",
+    );
   });
 
   it("prefers the latest runtime error and retains a distinct recorded outcome", () => {
