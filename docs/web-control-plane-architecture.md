@@ -1,11 +1,11 @@
 # Web Control Plane v0 Architecture and API
 
-Status: Slices 12A–12F, 13A–13F and 14–21 are implemented.
+Status: Slices 12A–12F, 13A–13F and 14–23 are implemented.
 This document is the single technical contract for the product in
 `web-control-plane-spec.md`.
 
 The [public paper-beta roadmap](implementation-plan.md#public-paper-trading-beta-roadmap)
-continues with planned Slices 22–23 after the delivered deployment, resource-limit, reliable-lifecycle, account-recovery, operations and data-lifecycle foundation. It covers production
+includes delivered Slices 22–23 for guided onboarding and public information alongside the deployment, resource-limit, reliable-lifecycle, account-recovery, operations and data-lifecycle foundation. It covers production
 operation, resource limits, reliability, recovery, data lifecycle and launch
 workflows. Adopt each slice's technical contracts here during implementation;
 current private access, ownership and paper execution remain unchanged until the
@@ -432,11 +432,10 @@ auto-drains the complete run history.
 
 The `wallet.timeline` payload contract includes the canonical projected chart
 point, so reload does not reconstruct labels, source keys, or decimal notionals
-for rendering in the browser. Known persistence limitation: current wallet source
-keys use a NUL separator, which PostgreSQL JSONB rejects. The event-view integration
-check exposed this pre-existing serialization issue; selection changes leave the
-storage format unchanged. Wallet-kind SQL classification is tested independently
-of payload persistence until that serialization issue is resolved. Browser ingress verifies the stored point against
+for rendering in the browser. Wallet source keys use a printable colon separator,
+parsed at its first occurrence so source IDs can contain colons. NUL is rejected
+in both components. Real PostgreSQL integration tests persist and reload timeline
+points, copied orders and fills with their source identities intact. Browser ingress verifies the stored point against
 its trade using the generated wallet-label and source-key policy, then renders
 the canonical point unchanged. The terminal `stream.health` event is likewise the reload
 fallback until a newer live health frame arrives.
@@ -523,7 +522,7 @@ All remaining routes require a session except minimal health readiness.
 Resource IDs are scoped to the current owner and return 404 when inaccessible.
 
 
-- `POST /graphs/preview`: validate a draft graph and synthetic event, then return node results and intended orders without any broker submission, persistence, or network reads.
+- `POST /graphs/preview`: validate a draft graph and synthetic event, then return node results and intended orders without any broker submission, persistence, or network reads. Normalize synthetic identifiers and portfolio token IDs at request ingress; reject blank IDs, normalized duplicates and average prices outside the outcome-price range.
 
 The route prefix `/api/v1` is defined here once. The current API has only:
 
@@ -628,8 +627,9 @@ dependency error.
   pagination progress, and chart controls survive mode switches.
 - Event persistence, retention, and live dashboard cadence are unchanged. Diagnostic
   rows remain stored for explicit retrieval; default HTTP/SSE delivery excludes them.
-- Use Ajv only for immediate form feedback against the catalog schema. Do not
-  create a parallel TypeScript form contract.
+- Validate incoming catalog JSON Schema structure with Ajv before rendering forms,
+  and reuse that schema for immediate form feedback. Do not create a parallel
+  TypeScript form contract.
 - Render the market-slug widget as a multi-market combobox in create and edit
   forms: 300ms debounce, cancellation and stale-result protection, keyboard
   navigation, event/question/slug/date metadata, removable selected rows,
@@ -1133,12 +1133,12 @@ another; confirmed rejections stay retryable. This does not claim durable save
 idempotency across reloads. The existing saved-bot page owns explicit launch,
 verification, market validation, capacity and paper gates.
 
-The run-reading guide derives status and loaded order/fill counts from the
-existing dashboard contracts. It distinguishes missing/stale book reports,
-reconnection and failures from a condition that may legitimately be waiting.
-Counts describe the loaded history window, and cached health is identified as
-last reported rather than asserted current. No graph debugger or new strategy
-engine is introduced.
+The run detail page presents lifecycle status, charts and an expandable Events
+panel. Stream health distinguishes reported usable books from missing or stale
+reports; diagnostics expose the underlying counters. Order results and failures
+remain visible in the loaded event history. Stop controls follow the lifecycle
+contract, and reload restores durable results and terminal status. The page does
+not imply that a strategy must submit an order whenever a book arrives.
 
 Browser acceptance supplies deterministic normalized books to the real catalog
 bot, `BotRunner`, paper broker, observable broker and execution lease coordinator.
@@ -1168,3 +1168,7 @@ browser contract; `$lib/serviceIdentity` supplies shared browser branding.
 The public support page has no submitting form while its mailbox is unconfigured.
 The release checklist in [beta launch](beta-launch.md) requires replacing these
 placeholders and testing contact delivery before the private ingress can open.
+
+Event-page response guards and durable-page normalization share one parser. The
+same event, pagination cursor and stream cursor checks apply whether the caller
+supplies an expected run ID or only validates the response shape.

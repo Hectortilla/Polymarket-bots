@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import require_nonnegative_timestamp_ms
 
 from .prices import (
     OUTCOME_PRICE_CEILING,
@@ -50,7 +50,7 @@ class MarketResolutionEvent:
         )
         object.__setattr__(self, "token_ids", token_ids)
         object.__setattr__(self, "winning_token_id", winning_token_id)
-        require_nonnegative_timestamp(
+        require_nonnegative_timestamp_ms(
             self.resolved_at_ms, "market resolution timestamp"
         )
         if not self.source:

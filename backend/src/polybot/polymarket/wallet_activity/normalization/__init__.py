@@ -5,7 +5,7 @@ from dataclasses import replace
 from polybot.framework.events import Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent, WalletTradeKind
 from polybot.framework.wallets import validate_wallet_address
-from polybot.polymarket.normalization.values import normalize_text_or_none
+from polybot.polymarket.normalization.market_data_fields import normalize_text_or_none
 from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
@@ -26,11 +26,11 @@ from polybot.polymarket.wallet_activity.normalization.identity import (
     _normalized_transaction_hash,
 )
 from polybot.polymarket.wallet_activity.normalization.source_fields import (
-    _decimal,
     _get_trade_field,
     _has_trade_field,
     _normalized_trade_size,
     _timestamp_ms,
+    require_market_decimal,
 )
 
 
@@ -51,7 +51,7 @@ def normalize_wallet_trade(
     )
     price = _get_trade_field(source, ACTIVITY_PRICE_FIELD)
     normalized_size = size
-    normalized_price = _decimal(price)
+    normalized_price = require_market_decimal(price)
     trade_timestamp_ms = _timestamp_ms(
         _get_trade_field(source, SDK_TIMESTAMP_ATTRIBUTE)
     )

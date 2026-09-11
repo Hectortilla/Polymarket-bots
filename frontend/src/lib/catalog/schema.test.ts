@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { BotDefinitionDescriptor, PaperRunConfig } from "$lib/api/generated";
+import { GRAPH_NODE_TYPE } from "./graphContracts";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
-import {
-  BOT_DEFINITION_LABEL,
-  launchInputsFromConfig,
-  launchValidator,
-  SELECTION_MODE,
-  WIDGET_KIND,
-  WIDGET_SCHEMA_KEY,
-} from "./schema";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from "$lib/catalog/schema/contracts";
+import { launchInputsFromConfig } from "$lib/catalog/schema/inputs";
+import { launchValidator } from "$lib/catalog/schema/validation";
 
 type StreamRelation = PaperRunConfig["stream_rules"][number]["relation"];
 
@@ -30,7 +26,7 @@ describe("launch schema validation", () => {
           value: {
             discriminator: {
               propertyName: "type",
-              mapping: { constant: "#/$defs/ConstantValue" },
+              mapping: { [GRAPH_NODE_TYPE.constant]: "#/$defs/ConstantValue" },
             },
             oneOf: [{ $ref: "#/$defs/ConstantValue" }],
           },
@@ -40,7 +36,7 @@ describe("launch schema validation", () => {
             type: "object",
             additionalProperties: false,
             required: ["type"],
-            properties: { type: { type: "string", const: "constant" } },
+            properties: { type: { type: "string", const: GRAPH_NODE_TYPE.constant } },
           },
         },
       },
@@ -48,7 +44,7 @@ describe("launch schema validation", () => {
 
     const validator = launchValidator(descriptor);
 
-    expect(validator({ value: { type: "constant" } })).toBe(true);
+    expect(validator({ value: { type: GRAPH_NODE_TYPE.constant } })).toBe(true);
     expect(validator({ value: { type: "other" } })).toBe(false);
   });
 

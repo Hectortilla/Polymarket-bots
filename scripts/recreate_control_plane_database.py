@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 from pathlib import Path
@@ -9,12 +10,11 @@ from typing import cast
 
 from alembic import command
 from alembic.config import Config
+from api.database import DATABASE_URL_ENV, async_database_url
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import create_async_engine
-
-from api.database import DATABASE_URL_ENV, async_database_url
 
 MAINTENANCE_DATABASE = "postgres"
 PROTECTED_DATABASES = frozenset({MAINTENANCE_DATABASE, "template0", "template1"})
@@ -64,7 +64,7 @@ def _upgrade_to_head(target_url: URL) -> None:
     command.upgrade(config, "head")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     raw_url = os.getenv(DATABASE_URL_ENV)
     if raw_url is None:
         raise SystemExit(f"{DATABASE_URL_ENV} is not configured")
@@ -73,6 +73,16 @@ def main() -> int:
         target_url, maintenance_url = _database_urls(raw_url)
     except ValueError as error:
         raise SystemExit(str(error)) from error
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--confirm-database",
+        required=True,
+        help="Exact disposable database name to erase",
+    )
+    args = parser.parse_args(argv)
+    if args.confirm_database != target_url.database:
+        raise SystemExit("confirmation must match the exact database name")
 
     safe_url = target_url.render_as_string(hide_password=True)
     print(f"Recreating {safe_url}")

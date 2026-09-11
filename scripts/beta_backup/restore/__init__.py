@@ -11,7 +11,6 @@ from scripts.beta_backup.restore.decrypt import DecryptedArchive
 from scripts.beta_backup.restore.destination import RestoreDestination
 from scripts.beta_release import BetaRelease
 
-
 RESTORE_PROJECT_PREFIX = "polybot-restore-"
 
 
@@ -26,8 +25,8 @@ class BetaRestore:
     def restore(self) -> tuple[str, float]:
         started_at_monotonic = monotonic()
         release = BetaRelease(self.manifest, self.project)
-        database = ComposeDatabase(release)
-        destination = RestoreDestination(release)
+        database = ComposeDatabase(release.compose)
+        destination = RestoreDestination(release.compose)
         with self._archive.open() as plaintext:
             destination.prepare()
             database.restore(plaintext)

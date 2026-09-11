@@ -1,3 +1,4 @@
+import { ACCOUNT_COPY } from "../src/lib/auth/recovery/copy";
 import { PUBLIC_COPY } from "../src/lib/public/copy";
 import { test, expect } from "@playwright/test";
 import {
@@ -87,7 +88,7 @@ test("public claims and links reflect paper-only operation and the generated dat
   await page.goto(PUBLIC_INFORMATION_PATH.HELP);
   await expect(page.getByText(PUBLIC_COPY.SAVE_BEFORE_RUN, { exact: true })).toBeVisible();
   await expect(page.getByText(PUBLIC_COPY.LINK_LIFETIME, { exact: false })).toBeVisible();
-  await expect(page.getByRole("link", { name: PUBLIC_COPY.RESET, exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: ACCOUNT_COPY.RESET_TITLE, exact: true })).toHaveAttribute(
     "href",
     contract.accountManagement.forgotPath,
   );

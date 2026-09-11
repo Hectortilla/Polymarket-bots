@@ -50,6 +50,7 @@ from polybot.performance.contracts.files import (
 )
 from polybot.performance.contracts.run import PerformanceRunStatus
 from polybot.performance.contracts.valuation_status import ValuationStatus
+from polybot.polymarket.resolution_status import ResolutionStatus
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.sessions import INTERRUPTED_SESSION_REASON
 from polybot.recording.archive.writer import RecordingArchive
@@ -64,6 +65,7 @@ from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
 )
+from polybot.recording.contracts.kinds import PayloadKind
 from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
@@ -577,7 +579,8 @@ def test_semantic_preflight_rejects_malformed_event_before_bot_hooks(
     connection = sqlite3.connect(archive.path)
     try:
         connection.execute(
-            "UPDATE events SET payload_json = '{}' WHERE payload_kind = 'public_trade'"
+            "UPDATE events SET payload_json = '{}' WHERE payload_kind = ?",
+            (PayloadKind.PUBLIC_TRADE.value,),
         )
         connection.commit()
     finally:
@@ -799,7 +802,7 @@ def test_resolved_metadata_and_resolution_at_initial_timestamp_are_replayed(
         )
     resolved_metadata = replace(
         _metadata(),
-        resolution_status="resolved",
+        resolution_status=ResolutionStatus.RESOLVED,
         resolution_source="synthetic",
         resolved=True,
         winning_token_id=UP_TOKEN,

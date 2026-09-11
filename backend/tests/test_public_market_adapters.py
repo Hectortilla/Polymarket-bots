@@ -58,17 +58,16 @@ from polymarket.models.clob.market_events import (
 from polymarket.models.clob.order_book import OrderBook, OrderBookLevel
 from polymarket.models.gamma.event import Event
 from polymarket.models.gamma.market import (
-    FeeSchedule,
+    Market as SdkMarket,
+)
+from polymarket.models.gamma.market import (
     MarketOutcome,
     MarketOutcomes,
     MarketState,
-    MarketTrading,
-)
-from polymarket.models.gamma.market import (
-    Market as SdkMarket,
 )
 from polymarket.models.gamma.search import SearchResults
 from polymarket.pagination import Page
+from sdk_market_fixture import sdk_market
 
 
 def _search_client(markets: tuple[SdkMarket, ...], *, has_more: bool = False):
@@ -81,7 +80,7 @@ def _search_client(markets: tuple[SdkMarket, ...], *, has_more: bool = False):
 
 
 def test_search_flattens_deduplicates_limits_and_preserves_relevance() -> None:
-    alpha, beta = _sdk_market("alpha"), _sdk_market("beta")
+    alpha, beta = sdk_market("alpha"), sdk_market("beta")
     client = _search_client((beta, beta, alpha))
     result = asyncio.run(MarketDiscovery(client).search("typed topic", 1))
     assert [market.slug for market in result.markets] == ["beta"]
@@ -145,20 +144,22 @@ def test_pinned_sdk_parses_documented_search_payload_for_the_selector() -> None:
         {"accepting_orders": False},
         {"enable_order_book": False},
         {"archived": True},
+        {"archived": None},
+        {"archived": "false"},
         {"active": None},
     ],
 )
 def test_search_excludes_unavailable_markets(state) -> None:
-    source = _sdk_market("closed")
+    source = sdk_market("closed")
     source = source.model_copy(update={"state": source.state.model_copy(update=state)})
-    client = _search_client((source, _sdk_market("open")))
+    client = _search_client((source, sdk_market("open")))
     result = asyncio.run(MarketDiscovery(client).search("topic", 10))
     assert [market.slug for market in result.markets] == ["open"]
 
 
 def test_search_skips_malformed_hits_but_rejects_conflicting_metadata() -> None:
-    source = _sdk_market("alpha")
-    malformed = _sdk_market("bad", no_token_id=None)
+    source = sdk_market("alpha")
+    malformed = sdk_market("bad", no_token_id=None)
     result = asyncio.run(
         MarketDiscovery(_search_client((malformed, source))).search("topic", 10)
     )
@@ -190,7 +191,7 @@ def test_search_preserves_upstream_pagination_hint() -> None:
 
 
 def test_discovery_lookup_preserves_closed_and_omits_missing_markets() -> None:
-    source = _sdk_market("closed")
+    source = sdk_market("closed")
     source = source.model_copy(
         update={"state": source.state.model_copy(update={"closed": True})}
     )
@@ -623,8 +624,8 @@ class FakePublicClient:
 
 def test_gamma_normalizes_sdk_market_and_rejects_missing_token_id() -> None:
     async def run() -> tuple[Market, MarketDataIssue]:
-        valid = _sdk_market("alpha")
-        invalid = _sdk_market("broken", no_token_id=None)
+        valid = sdk_market("alpha")
+        invalid = sdk_market("broken", no_token_id=None)
         client = GammaClient(
             FakePublicClient(  # type: ignore[arg-type]
                 markets={"alpha": [valid], "broken": [invalid]},
@@ -643,7 +644,7 @@ def test_gamma_normalizes_sdk_market_and_rejects_missing_token_id() -> None:
 
 
 def test_gamma_preserves_external_outcome_labels() -> None:
-    source = _sdk_market("up-down").model_copy(
+    source = sdk_market("up-down").model_copy(
         update={
             "outcomes": MarketOutcomes(
                 yes=MarketOutcome(label="Up", tokenId="yes-up-down"),
@@ -667,7 +668,7 @@ def test_gamma_preserves_external_outcome_labels() -> None:
 
 
 def test_gamma_preserves_arbitrary_winning_outcome_label() -> None:
-    source = _sdk_market("threshold").model_copy(
+    source = sdk_market("threshold").model_copy(
         update={
             "state": MarketState(negRisk=False, closed=True),
             "outcomes": MarketOutcomes(
@@ -698,7 +699,7 @@ def test_gamma_preserves_arbitrary_winning_outcome_label() -> None:
 
 
 def test_gamma_preserves_nontradable_state_without_inventing_settlement() -> None:
-    source = _sdk_market("closed-without-payout").model_copy(
+    source = sdk_market("closed-without-payout").model_copy(
         update={
             "state": MarketState(
                 active=False,
@@ -732,7 +733,7 @@ def test_gamma_normalizes_missing_trading_limits_as_unknown() -> None:
             FakePublicClient(  # type: ignore[arg-type]
                 markets={
                     "alpha": [
-                        _sdk_market(
+                        sdk_market(
                             "alpha",
                             minimum_order_size=None,
                             minimum_tick_size=None,
@@ -750,7 +751,7 @@ def test_gamma_normalizes_missing_trading_limits_as_unknown() -> None:
 
 
 def test_gamma_rejects_malformed_nested_market_payload() -> None:
-    malformed = _sdk_market("malformed").model_copy(update={"outcomes": None})
+    malformed = sdk_market("malformed").model_copy(update={"outcomes": None})
 
     async def run() -> MarketDataIssue:
         client = GammaClient(
@@ -789,9 +790,9 @@ def test_gamma_resolves_multiple_slugs_and_retries_future_market() -> None:
     ]:
         fake = FakePublicClient(
             markets={
-                "alpha": [_sdk_market("alpha")],
+                "alpha": [sdk_market("alpha")],
                 "missing": [None],
-                "future": [None, _sdk_market("future")],
+                "future": [None, sdk_market("future")],
             }
         )
         client = GammaClient(fake)  # type: ignore[arg-type]
@@ -877,7 +878,7 @@ def test_gamma_splits_slug_batches_at_api_array_limit() -> None:
 def test_gamma_retries_unresolved_slugs_as_closed_markets() -> None:
     async def run() -> tuple[Market | None, list[bool | None]]:
         fake = FakePublicClient(
-            markets={"closed": [_sdk_market("closed")]},
+            markets={"closed": [sdk_market("closed")]},
             closed_markets=frozenset({"closed"}),
         )
         resolved = await GammaClient(fake).find_many(("closed",))  # type: ignore[arg-type]
@@ -1564,44 +1565,6 @@ def test_market_stream_requires_a_baseline_after_an_unrouteable_book_frame() -> 
     assert stream.last_book_gap.condition_id is None
 
 
-def _sdk_market(
-    slug: str,
-    *,
-    no_token_id: str | None = "no-token",
-    minimum_order_size: str | None = "1",
-    minimum_tick_size: str | None = "0.01",
-) -> SdkMarket:
-    return SdkMarket.model_construct(
-        id=f"id-{slug}",
-        slug=slug,
-        condition_id=f"condition-{slug}",
-        question=f"Question {slug}?",
-        events=(),
-        state=MarketState(
-            active=True,
-            closed=False,
-            acceptingOrders=True,
-            enableOrderBook=True,
-            negRisk=False,
-        ),
-        outcomes=MarketOutcomes(
-            yes=MarketOutcome(label=YES_OUTCOME, tokenId=f"yes-{slug}"),
-            no=MarketOutcome(label=NO_OUTCOME, tokenId=no_token_id),
-        ),
-        trading=MarketTrading(
-            minimumOrderSize=minimum_order_size,
-            minimumTickSize=minimum_tick_size,
-            feesEnabled=True,
-            feeSchedule=FeeSchedule(
-                exponent=2,
-                rate=Decimal("0.05"),
-                takerOnly=True,
-                rebateRate=Decimal("0"),
-            ),
-        ),
-    )
-
-
 def _market(slug: str) -> Market:
     return Market(
         condition_id=f"condition-{slug}",
@@ -1649,10 +1612,71 @@ def _level(price: str, size: str) -> OrderBookLevel:
 
 @pytest.mark.parametrize("status", sorted(FINAL_RESOLUTION_STATUSES))
 def test_terminal_metadata_without_unambiguous_payouts_is_rejected(status):
-    market = _sdk_market("terminal")
+    market = sdk_market("terminal")
     market = market.model_copy(
         update={"resolution": SimpleNamespace(uma_resolution_status=status)}
     )
     with pytest.raises(MarketDataError) as rejected:
         normalize_market(market)
     assert rejected.value.issue is MarketDataIssue.AMBIGUOUS_MARKET_METADATA
+
+
+def test_duplicate_outcome_tokens_are_ambiguous() -> None:
+    source = sdk_market("alpha", no_token_id="yes-alpha")
+    with pytest.raises(MarketDataError) as caught:
+        normalize_market(source)
+    assert caught.value.issue is MarketDataIssue.AMBIGUOUS_MARKET_METADATA
+
+
+@pytest.mark.parametrize(
+    "update", [{"fees_enabled": "true"}, {"fees_enabled": True, "fee_schedule": None}]
+)
+def test_invalid_fee_metadata_is_rejected(update) -> None:
+    source = sdk_market("alpha")
+    source = source.model_copy(
+        update={"trading": source.trading.model_copy(update=update)}
+    )
+    with pytest.raises(MarketDataError) as caught:
+        normalize_market(source)
+    assert caught.value.issue is MarketDataIssue.INVALID_MARKET_PARAMETERS
+
+
+def test_clob_rejects_other_asset_in_correct_condition() -> None:
+    source = _order_book(bids=(("0.4", "1"),), asks=(("0.6", "1"),))
+    source = source.model_copy(update={"token_id": "other-token"})
+    client = ClobClient(FakePublicClient(book=source), markets=(_market("alpha"),))
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(client.latest("yes-alpha"))
+    assert caught.value.issue is MarketDataIssue.BOOK_IDENTITY_MISMATCH
+
+
+def test_clob_not_found_is_normal_book_absence() -> None:
+    client = ClobClient(FakePublicClient(), markets=(_market("alpha"),))
+    assert asyncio.run(client.latest("yes-alpha")) is None
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_gamma_rejects_unrequested_or_conflicting_rows(conflicting: bool) -> None:
+    first = sdk_market("alpha")
+    rows = (
+        (first, first.model_copy(update={"condition_id": "other-condition"}))
+        if conflicting
+        else (sdk_market("other"),)
+    )
+    client = FakePublicClient()
+    client.list_markets = lambda **kwargs: FakePaginator(rows)
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(GammaClient(client).find_many(("alpha",)))
+    assert caught.value.issue is MarketDataIssue.AMBIGUOUS_MARKET_METADATA
+
+
+def test_discovery_rejects_naive_vendor_end_date():
+    source = sdk_market("dated")
+    source = source.model_copy(
+        update={
+            "state": source.state.model_copy(update={"end_date": datetime(2026, 1, 1)})
+        }
+    )
+    with pytest.raises(MarketDataError) as caught:
+        normalize_suggestion(source)
+    assert caught.value.issue is MarketDataIssue.INVALID_MARKET_PARAMETERS

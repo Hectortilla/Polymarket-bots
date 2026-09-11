@@ -7,7 +7,12 @@ from inspect import signature
 from typing import get_type_hints
 
 from polybot.execution.broker import Broker
-from polybot.framework.events import FillEvent, OrderRequest, Side
+from polybot.framework.events import (
+    ORDER_REQUEST_SIDE_FIELD,
+    FillEvent,
+    OrderRequest,
+    Side,
+)
 
 from api.catalog.graphs._annotations import (
     scalar_type_for_annotation,
@@ -51,7 +56,7 @@ def discover_broker_actions() -> tuple[DiscoveredBrokerAction, ...]:
 
     order_hints = get_type_hints(OrderRequest)
     order_fields = fields(OrderRequest)
-    if order_hints.get("side") is not Side:
+    if order_hints.get(ORDER_REQUEST_SIDE_FIELD) is not Side:
         raise TypeError("OrderRequest.side must use Side")
     inputs = (
         DiscoveredActionInput(
@@ -63,7 +68,7 @@ def discover_broker_actions() -> tuple[DiscoveredBrokerAction, ...]:
         *(
             _describe_order_input(field.name, order_hints[field.name], field.default)
             for field in order_fields
-            if field.name != "side"
+            if field.name != ORDER_REQUEST_SIDE_FIELD
         ),
     )
     return tuple(

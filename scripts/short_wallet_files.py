@@ -22,14 +22,14 @@ def main(argv: list[str]) -> int:
     else:
         rows = load_wallet_scan_report_rows(sys.stdin)
 
-    rows.sort(key=lambda r: r["net"], reverse=SORT_DESCENDING)
+    rows.sort(key=lambda r: r.net_cash_usdc, reverse=SORT_DESCENDING)
 
     for rank, row in enumerate(rows, start=1):
         print(
-            f"{rank:>3}. {row['wallet']}  net={row['net']:+,.2f}  "
-            f"hedge={row['hedge']:.2f}  vol={row['volume']:,}  "
-            f"trade_density={row['trade_density']:.2f}  "
-            f"{row['label']:<5}  {row['reason']}"
+            f"{rank:>3}. {row.wallet}  net={row.net_cash_usdc:+,.2f}  "
+            f"hedge={row.hedge_score:.2f}  vol={row.traded_volume_usdc:,}  "
+            f"trade_density={row.trade_density:.2f}  "
+            f"{row.label:<5}  {row.reason}"
         )
 
     return 0

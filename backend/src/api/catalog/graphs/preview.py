@@ -8,7 +8,9 @@ from typing import Any, Self, get_type_hints
 from polybot.framework.base import BaseBot
 from polybot.framework.config.constants import DEFAULT_EVENT_MAX_AGE_MS
 from polybot.framework.events import OrderRequest
-from polybot.framework.events.books import BookSnapshot
+from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.framework.events.prices import is_outcome_price
+from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.portfolio import PortfolioPosition, PortfolioSnapshot
 from polybot.framework.wallets import validate_wallet_address
@@ -36,10 +38,13 @@ class PreviewPortfolio(BaseModel):
     @model_validator(mode="after")
     def _validate_positions(self) -> Self:
         tokens: set[str] = set()
+        normalized: list[PortfolioPosition] = []
         for position in self.positions:
-            if not position.token_id or position.token_id in tokens:
+            token_id = _preview_identifier(position.token_id, "Portfolio token ID")
+            if token_id in tokens:
                 raise ValueError("Portfolio tokens must be nonempty and unique")
-            tokens.add(position.token_id)
+            tokens.add(token_id)
+            normalized.append(replace(position, token_id=token_id))
             if (
                 not position.size.is_finite()
                 or position.average_entry_price is not None
@@ -48,6 +53,11 @@ class PreviewPortfolio(BaseModel):
                 raise ValueError("Portfolio numbers must be finite")
             if (position.size == 0) != (position.average_entry_price is None):
                 raise ValueError("Only nonzero positions have an average entry price")
+            if position.average_entry_price is not None and not is_outcome_price(
+                position.average_entry_price
+            ):
+                raise ValueError("Portfolio average entry price must be in (0, 1]")
+        object.__setattr__(self, "positions", tuple(normalized))
         return self
 
     def snapshot(self) -> PortfolioSnapshot:
@@ -84,10 +94,17 @@ class GraphPreviewRequest(BaseModel):
     def _validate_event_semantics(self) -> None:
         event = self._event
         if isinstance(event, BookSnapshot):
-            event = replace(event, token_id=event.token_id.strip())
+            event = replace(
+                event,
+                token_id=_preview_identifier(event.token_id, "Preview book token ID"),
+                condition_id=_optional_preview_identifier(
+                    event.condition_id, "Preview condition ID"
+                ),
+                market_slug=_optional_preview_identifier(
+                    event.market_slug, "Preview market slug"
+                ),
+            )
             self._event = event
-            if not event.token_id:
-                raise ValueError("Preview book token ID must be nonempty")
             issue = event.validation_issue(self.now_ms, DEFAULT_EVENT_MAX_AGE_MS)
             if issue is not None:
                 raise ValueError(issue.value)
@@ -95,12 +112,38 @@ class GraphPreviewRequest(BaseModel):
             event = replace(
                 event,
                 wallet=validate_wallet_address(event.wallet),
-                token_id=event.token_id.strip(),
+                token_id=_preview_identifier(event.token_id, "Preview token ID"),
+                condition_id=_preview_identifier(
+                    event.condition_id, "Preview condition ID"
+                ),
+                source_id=_preview_identifier(event.source_id, "Preview source ID"),
+                market_slug=_optional_preview_identifier(
+                    event.market_slug, "Preview market slug"
+                ),
             )
             self._event = event
             issue = event.validation_issue(self.now_ms, DEFAULT_EVENT_MAX_AGE_MS)
             if issue is not None:
                 raise ValueError(issue.value)
+
+        elif isinstance(event, MarketResolutionEvent):
+            self._event = replace(
+                event,
+                condition_id=_preview_identifier(
+                    event.condition_id, "Preview condition ID"
+                ),
+                market_slug=_preview_identifier(
+                    event.market_slug, "Preview market slug"
+                ),
+                source=_preview_identifier(event.source, "Preview resolution source"),
+            )
+        elif isinstance(event, BookGapEvent):
+            self._event = replace(
+                event,
+                condition_id=_optional_preview_identifier(
+                    event.condition_id, "Preview condition ID"
+                ),
+            )
 
     @property
     def event(self) -> object | None:
@@ -111,3 +154,14 @@ class GraphPreviewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     nodes: tuple[GraphNodeEvaluationRead, ...]
     intended_orders: tuple[OrderRequest, ...]
+
+
+def _preview_identifier(value: str, label: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{label} must be nonempty")
+    return normalized
+
+
+def _optional_preview_identifier(value: str | None, label: str) -> str | None:
+    return None if value is None else _preview_identifier(value, label)

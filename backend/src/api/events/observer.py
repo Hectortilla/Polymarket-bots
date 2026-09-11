@@ -29,7 +29,8 @@ from api.operations.observations.contracts import FailureObservation, Observatio
 from api.operations.observations.sink import OPERATION_LOG
 
 from .contracts import DurableEvent
-from .projection import project_live_chart_events, project_runtime_event_to_durable
+from .projection import project_runtime_event_to_durable
+from .projection.live import project_live_chart_events
 from .writer import RunEventWriter
 
 MAX_PENDING_EVENTS = 256

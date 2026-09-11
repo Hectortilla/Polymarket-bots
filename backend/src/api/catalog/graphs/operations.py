@@ -46,10 +46,10 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
         GraphScalarType.BOOLEAN,
         GraphScalarType.STRING,
     )
-    scalar = tuple(GraphScalarType)
-    context = input_port(GraphPort.CONTEXT, GRAPH_CONTEXT_PORT_TYPE)
-    result = (output_port(GraphPort.RESULT, boolean),)
-    value = (output_port(GraphPort.VALUE, number),)
+    all_scalar_types = tuple(GraphScalarType)
+    context_input_descriptor = input_port(GraphPort.CONTEXT, GRAPH_CONTEXT_PORT_TYPE)
+    result_output_descriptors = (output_port(GraphPort.RESULT, boolean),)
+    value_output_descriptors = (output_port(GraphPort.VALUE, number),)
     descriptors: list[GraphOperationDescriptor] = []
 
     def add(
@@ -88,17 +88,22 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
                 input_port(input_handle_id, boolean)
                 for input_handle_id in DEFAULT_BOOLEAN_INPUT_IDS
             ),
-            result,
+            result_output_descriptors,
             expandable=True,
             minimum_inputs=MIN_BOOLEAN_INPUTS,
             maximum_inputs=MAX_BOOLEAN_INPUTS,
         )
-    add(GraphOperation.NOT, "Logic", (input_port(GraphPort.VALUE, boolean),), result)
+    add(
+        GraphOperation.NOT,
+        "Logic",
+        (input_port(GraphPort.VALUE, boolean),),
+        result_output_descriptors,
+    )
     add(
         GraphOperation.IS_PRESENT,
         "Logic",
-        (input_port(GraphPort.VALUE, *scalar),),
-        result,
+        (input_port(GraphPort.VALUE, *all_scalar_types),),
+        result_output_descriptors,
     )
     add(
         GraphOperation.BETWEEN,
@@ -111,15 +116,15 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
                 GraphPort.MAXIMUM,
             )
         ),
-        result,
+        result_output_descriptors,
     )
     add(
         GraphOperation.SELECT,
         "Logic",
         (
             input_port(GraphPort.CONDITION, boolean),
-            input_port(GraphPort.WHEN_TRUE, *scalar),
-            input_port(GraphPort.WHEN_FALSE, *scalar),
+            input_port(GraphPort.WHEN_TRUE, *all_scalar_types),
+            input_port(GraphPort.WHEN_FALSE, *all_scalar_types),
         ),
         (output_port(GraphPort.VALUE, number),),
         selectable_scalar_type=True,
@@ -136,7 +141,7 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
             op,
             "Math",
             (input_port(GraphPort.LEFT, number), input_port(GraphPort.RIGHT, number)),
-            value,
+            value_output_descriptors,
         )
     add(
         GraphOperation.CLAMP,
@@ -149,7 +154,7 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
                 GraphPort.MAXIMUM,
             )
         ),
-        value,
+        value_output_descriptors,
     )
     add(
         GraphOperation.ROUND,
@@ -165,20 +170,20 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
                 description="Nonnegative decimal places; ties round away from zero.",
             ),
         ),
-        value,
+        value_output_descriptors,
     )
     add(
         GraphOperation.RANDOM_NUMBER,
         "Math",
         (
-            context,
+            context_input_descriptor,
             input_port(
                 GraphPort.ENABLED,
                 boolean,
                 description="Draw once when enabled: 0 inclusive to 1 exclusive. Uses the run random source.",
             ),
         ),
-        value,
+        value_output_descriptors,
     )
     for op in (
         GraphOperation.COOLDOWN,
@@ -186,7 +191,7 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
         GraphOperation.DEDUPLICATE,
     ):
         inputs = (
-            context,
+            context_input_descriptor,
             input_port(GraphPort.ENABLED, boolean),
             input_port(GraphPort.KEY, string),
         )
@@ -202,11 +207,11 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
             )
         if op is GraphOperation.ONCE:
             inputs += (input_port(GraphPort.RESET, boolean, required=False),)
-        add(op, "Event controls", inputs, result)
+        add(op, "Event controls", inputs, result_output_descriptors)
     add(
         GraphOperation.POSITION,
         "Portfolio",
-        (context, input_port(GraphPort.TOKEN_ID, string)),
+        (context_input_descriptor, input_port(GraphPort.TOKEN_ID, string)),
         (
             output_port(GraphPort.SIZE, number),
             output_port(GraphPort.HAS_POSITION, boolean),
@@ -216,14 +221,14 @@ def operation_descriptors() -> tuple[GraphOperationDescriptor, ...]:
     add(
         GraphOperation.BALANCE,
         "Portfolio",
-        (context,),
+        (context_input_descriptor,),
         (output_port(GraphPort.AVAILABLE_CASH, number),),
     )
     for op in (GraphOperation.INSPECT, GraphOperation.LOG):
         add(
             op,
             "Diagnostics",
-            (context, input_port(GraphPort.VALUE, *scalar)),
+            (context_input_descriptor, input_port(GraphPort.VALUE, *all_scalar_types)),
             (),
             terminal=True,
         )

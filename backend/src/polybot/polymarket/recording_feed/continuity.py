@@ -12,7 +12,6 @@ from polybot.recording.contracts.anomalies import (
     CaptureFailureKind,
     RevisionFingerprint,
 )
-from polybot.recording.contracts.book import BookDeltaPayload
 
 
 class CaptureContinuityError(MarketDataError):
@@ -88,30 +87,3 @@ class SplitRevisionContext:
             dropped_count_after=dropped_count_after,
             elapsed_seconds=elapsed_seconds,
         )
-
-
-def delta_revision_fingerprint(
-    event: CapturedMarketEvent,
-) -> RevisionFingerprint | None:
-    payload = event.payload
-    condition_id = event.identity.condition_id
-    source_timestamp_ms = event.source_timestamp_ms
-    if (
-        not isinstance(payload, BookDeltaPayload)
-        or condition_id is None
-        or source_timestamp_ms is None
-    ):
-        return None
-    source_hashes: dict[str, str] = {}
-    for change in payload.changes:
-        source_hash = change.source_hash
-        if source_hash is None:
-            return None
-        existing = source_hashes.setdefault(change.token_id, source_hash)
-        if existing != source_hash:
-            return None
-    return RevisionFingerprint(
-        condition_id=condition_id,
-        source_timestamp_ms=source_timestamp_ms,
-        source_hashes=tuple(source_hashes.items()),
-    )

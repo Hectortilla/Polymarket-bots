@@ -191,22 +191,20 @@ def test_runner_rejects_book_when_market_lookup_is_unavailable(
         async def find_by_slug(self, slug: str) -> Market | None:
             raise MarketDataTransportError("market lookup unavailable")
 
-    async def run() -> tuple[DispatchOutcome, list[str]]:
+    async def run() -> list[str]:
         configured = _with_config(
             dummy_context,
             _bot_config("multi", markets=("btc",)),
         )
         ctx = replace(configured, markets=UnavailableMarkets())
         bot = RecordingMarketBot(books=[], wallet_trades=[])
-        outcome = await BotRunner(bot, ctx, now_ms_fn=lambda: 1_000).dispatch_book(
-            _book("btc")
-        )
-        return outcome, bot.books
+        with pytest.raises(MarketDataTransportError, match="market lookup unavailable"):
+            await BotRunner(bot, ctx, now_ms_fn=lambda: 1_000).dispatch_book(
+                _book("btc")
+            )
+        return bot.books
 
-    outcome, books = asyncio.run(run())
-
-    assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
-    assert books == []
+    assert asyncio.run(run()) == []
 
 
 def test_runner_rejects_future_dated_book(dummy_context: BotContext) -> None:

@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import Decimal from "decimal.js";
 
 import { isOutcomePrice } from "$lib/outcomePrices";
@@ -29,6 +30,7 @@ export function isOrderRequest(order: Record<string, unknown>): boolean {
 }
 
 export function isBrokerFillPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "BrokerFillPayload")) return false;
   return (
     isRecord(payload.order) &&
     isOrderRequest(payload.order) &&

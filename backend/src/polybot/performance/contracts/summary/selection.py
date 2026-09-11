@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from polybot.backtesting.contracts import BacktestGapPolicy
+from polybot.integers import is_nonnegative_int, is_positive_int
 from polybot.recording.contracts.session import SessionIntegrityStatus
 
 from ..files import PerformanceSelectionField
@@ -161,7 +162,7 @@ def _optional_positive_int(payload: Mapping[str, object], key: str) -> int | Non
     value = payload.get(key)
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if not is_positive_int(value):
         raise ValueError(f"performance summary {key} must be positive or null")
     return value
 
@@ -173,7 +174,7 @@ def _optional_nonnegative_int(
     value = payload.get(key)
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if not is_nonnegative_int(value):
         raise ValueError(f"performance summary {key} must be nonnegative or null")
     return value
 
@@ -196,10 +197,7 @@ def _optional_enum(
 
 def _positive_int_tuple(payload: Mapping[str, object], key: str) -> tuple[int, ...]:
     value = payload.get(key)
-    if not isinstance(value, list) or any(
-        isinstance(item, bool) or not isinstance(item, int) or item <= 0
-        for item in value
-    ):
+    if not isinstance(value, list) or any(not is_positive_int(item) for item in value):
         raise ValueError(f"performance summary {key} must be positive integer values")
     normalized = tuple(value)
     if normalized != tuple(sorted(set(normalized))):

@@ -10,6 +10,7 @@ class RunFailureReason(StrEnum):
 
 
 NEW_RUN_GUIDANCE = "Start a new run to continue."
+DURATION_EXPIRED_DETAIL = "Paper-run duration allowance reached. " + NEW_RUN_GUIDANCE
 INTERRUPTION_DETAIL = (
     "Paper run interrupted because its worker stopped or lost its execution lease. "
     "Committed history is preserved. " + NEW_RUN_GUIDANCE

@@ -18,7 +18,7 @@ from api.http.routes.paths import (
     api_route_path,
 )
 from api.market_selection import MAX_SELECTED_MARKETS
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from polybot.polymarket.discovery_contracts import MarketSearchResults
 from polybot.polymarket.errors import MarketDataTransportError
@@ -38,7 +38,7 @@ def test_search_normalizes_query_and_returns_typed_markets() -> None:
         api_route_path(MARKET_SEARCH_PATH), params={"q": "  election  "}
     )
 
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"markets": [asdict(market)], "has_more": False}
     discovery.search.assert_awaited_once_with("election", DEFAULT_MARKET_SEARCH_LIMIT)
 
@@ -60,7 +60,8 @@ def test_invalid_queries_do_not_call_upstream(params) -> None:
     discovery = market_discovery()
     client = TestClient(create_app(market_discovery=discovery))
     assert (
-        client.get(api_route_path(MARKET_SEARCH_PATH), params=params).status_code == 422
+        client.get(api_route_path(MARKET_SEARCH_PATH), params=params).status_code
+        == status.HTTP_422_UNPROCESSABLE_CONTENT
     )
     discovery.search.assert_not_called()
 
@@ -75,7 +76,7 @@ def test_lookup_trims_deduplicates_and_preserves_closed_markets() -> None:
         api_route_path(MARKET_LOOKUP_PATH),
         json={"slugs": [" closed ", "closed", "missing"]},
     )
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert response.json() == [asdict(market)]
     discovery.resolve.assert_awaited_once_with(("closed", "missing"))
 
@@ -93,7 +94,10 @@ def test_lookup_trims_deduplicates_and_preserves_closed_markets() -> None:
 def test_lookup_rejects_invalid_payload(body) -> None:
     discovery = market_discovery()
     client = TestClient(create_app(market_discovery=discovery))
-    assert client.post(api_route_path(MARKET_LOOKUP_PATH), json=body).status_code == 422
+    assert (
+        client.post(api_route_path(MARKET_LOOKUP_PATH), json=body).status_code
+        == status.HTTP_422_UNPROCESSABLE_CONTENT
+    )
     discovery.resolve.assert_not_called()
 
 
@@ -107,7 +111,7 @@ def test_discovery_failure_returns_safe_service_unavailable() -> None:
         client.post(api_route_path(MARKET_LOOKUP_PATH), json={"slugs": ["topic"]}),
     )
     for response in responses:
-        assert response.status_code == 503
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert response.json() == {"detail": MARKET_DISCOVERY_UNAVAILABLE_DETAIL}
 
 
@@ -140,4 +144,4 @@ def test_save_fails_closed_when_lookup_is_unavailable() -> None:
     config = NodeBasedLaunchInputs(name="test", market_slugs=("new",)).to_run_config()
     with pytest.raises(HTTPException) as failure:
         asyncio.run(validate_new_market_selections(config, discovery))
-    assert failure.value.status_code == 503
+    assert failure.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE

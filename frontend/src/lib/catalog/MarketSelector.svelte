@@ -177,7 +177,7 @@
       aria-invalid={invalid}
       autocomplete="off"
       maxlength={limits.maximumQueryLength}
-      placeholder={atLimit ? "Selection limit reached" : "Search markets by name or topic…"}
+      placeholder={atLimit ? "Selection limit reached" : MARKET_SELECTOR_COPY.PLACEHOLDER}
       disabled={disabled || atLimit}
       onfocus={() => (open = true)}
       oninput={() => (open = true)}

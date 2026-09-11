@@ -21,7 +21,7 @@
   import NodeGraphInput from "$lib/catalog/NodeGraphInput.svelte";
   import { cloneNodeGraph, hasGraphCapability } from "$lib/catalog/graphContracts";
   import { type GraphValidationIssue } from "$lib/catalog/graphValidation";
-  import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema";
+  import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from "$lib/navigation";
 
   let descriptor = $state<BotDefinitionDescriptor>();

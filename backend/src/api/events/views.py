@@ -7,6 +7,11 @@ from polybot.framework.events import OrderStatus
 from sqlalchemy import and_, or_
 from sqlalchemy.sql.elements import ColumnElement
 
+from api.events.contracts.payloads.base import (
+    ACTIVITY_SEVERITY_FIELD,
+    BROKER_FILL_STATUS_PATH,
+    SETTLEMENT_PAPER_POSITIONS_PATH,
+)
 from api.events.kinds import EventKind
 from api.events.models import EventRow
 
@@ -17,7 +22,6 @@ class EventView(StrEnum):
     DASHBOARD = "dashboard"
 
 
-DASHBOARD_SSE_EVENT = "dashboard"
 DASHBOARD_EVENT_KINDS = (
     EventKind.CHART_SAMPLE,
     EventKind.WALLET_TIMELINE,
@@ -37,17 +41,18 @@ def event_selection(view: EventView) -> ColumnElement[bool]:
         ),
         and_(
             EventRow.kind == EventKind.BROKER_FILL,
-            EventRow.payload["fill"]["status"].as_string() != OrderStatus.ACCEPTED,
+            EventRow.payload[BROKER_FILL_STATUS_PATH].as_string()
+            != OrderStatus.ACCEPTED,
         ),
         and_(
             EventRow.kind == EventKind.BOT_ACTIVITY,
-            EventRow.payload["severity"]
+            EventRow.payload[ACTIVITY_SEVERITY_FIELD]
             .as_string()
             .in_((ActivitySeverity.WARNING, ActivitySeverity.ERROR)),
         ),
         and_(
             EventRow.kind == EventKind.MARKET_SETTLEMENT,
-            EventRow.payload["settlement"]["paper_positions"][0]
+            EventRow.payload[SETTLEMENT_PAPER_POSITIONS_PATH][0]
             .as_string()
             .is_not(None),
         ),

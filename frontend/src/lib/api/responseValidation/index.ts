@@ -7,14 +7,12 @@ import { isRecord } from "$lib/valueGuards";
 
 import { validateOperationResponse } from "$lib/api/responseValidation/operations";
 
-import {
-  isBot,
-  isDefinition,
-  isHealthResponse,
-  isMarketSearchResults,
-  isMarketSuggestion,
-  isRun,
-} from "$lib/api/responseValidation/resources";
+import { isBot } from "./bots";
+import { isDefinition } from "./catalog";
+import { isHealthResponse } from "./health";
+import { isMarketSearchResults } from "./markets";
+import { isMarketSuggestion } from "./markets";
+import { isRun } from "./runs";
 
 import { isEventPage, isRunEvent } from "$lib/api/responseValidation/events";
 

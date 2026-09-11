@@ -80,7 +80,7 @@ from .models import (
     RecordingSession,
     RecordingSessionStatistics,
 )
-from .primitives import _nonnegative_timestamp, _positive_int, _required_text
+from .primitives import _nonnegative_timestamp_ms, _positive_int, _required_text
 from .schema import SCHEMA_VERSION
 from .selection import ArchiveSelection
 from .sessions import _recover_interrupted_session, _session_from_row
@@ -400,7 +400,7 @@ class RecordingReader:
         allow_gaps: bool = False,
     ) -> MarketMetadataPayload | None:
         normalized_condition = _required_text(condition_id, "condition ID")
-        _nonnegative_timestamp(observed_at_ms, "market lookup timestamp")
+        _nonnegative_timestamp_ms(observed_at_ms, "market lookup timestamp")
         with self._lock:
             self._ensure_open()
             if not allow_gaps:
@@ -473,7 +473,7 @@ class RecordingReader:
         """Return metadata plus the latest ordered tick and resolution state."""
 
         normalized_condition = _required_text(condition_id, "condition ID")
-        _nonnegative_timestamp(observed_at_ms, "market-state timestamp")
+        _nonnegative_timestamp_ms(observed_at_ms, "market-state timestamp")
         normalized_cutoff = (
             self._replay_cutoff_sequence
             if sequence_cutoff is None
@@ -752,7 +752,7 @@ class RecordingReader:
         at_ms: int | None = None,
     ) -> tuple[MarketMetadataPayload, ...]:
         if at_ms is not None:
-            _nonnegative_timestamp(at_ms, "unresolved-market timestamp")
+            _nonnegative_timestamp_ms(at_ms, "unresolved-market timestamp")
         with self._lock:
             self._ensure_open()
             return _unresolved_markets(

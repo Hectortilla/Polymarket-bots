@@ -64,6 +64,7 @@ PAPER_MAX_ORDER_SIZE = Decimal("240")
 RECOVERED_MAX_ORDER_SIZE = Decimal("240")
 
 LEADER_ENTRY_REASON = "btc_5m_leader_momentum_entry"
+LEADER_STOP_REASON = "btc_5m_leader_momentum_stop"
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,7 +457,7 @@ class WinnerTradingBot(BaseBot):
                 size=position.size,
                 market_slug=market.slug,
                 condition_id=market.condition_id,
-                reason="btc_5m_leader_momentum_stop",
+                reason=LEADER_STOP_REASON,
             )
         )
         remaining = position.size - fill.filled_size

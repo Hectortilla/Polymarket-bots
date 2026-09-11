@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from polybot.framework.wallets import normalize_wallet_address
+from polybot.polymarket.wallet_reports.contracts import PROXY_WALLET_FIELD, PositionRow
+
 from scripts.wallet_analysis.contracts import (
     HEDGE_AVERAGE_METRIC,
     NET_CASH_METRIC,
@@ -11,7 +13,6 @@ from scripts.wallet_analysis.contracts import (
     WalletMetrics,
     WalletVerdict,
 )
-from scripts.wallet_payload_contracts import PROXY_WALLET_FIELD, PositionRow
 from scripts.wallet_scan_report import format_wallet_scan_record
 
 
@@ -35,9 +36,9 @@ def result_note(
 ) -> str:
     return format_wallet_scan_record(
         label=verdict,
-        net=metrics[NET_CASH_METRIC],
-        hedge=metrics[HEDGE_AVERAGE_METRIC],
-        volume=metrics[VOLUME_METRIC],
+        net_cash_usdc=metrics[NET_CASH_METRIC],
+        hedge_score=metrics[HEDGE_AVERAGE_METRIC],
+        traded_volume_usdc=metrics[VOLUME_METRIC],
         market_trade_pct=market_share,
         trade_density=trades_per_day,
         reason=reason,

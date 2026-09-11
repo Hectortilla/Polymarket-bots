@@ -12,13 +12,13 @@ from api.lifecycle.policy import (
     RECOVERY_POINT_HOURS,
     RECOVERY_TIME_HOURS,
 )
+from polybot.persistence.hashing import SHA256_ALGORITHM
 
 from scripts.beta_backup.archive_name import (
-    ArchiveName,
-    ARCHIVE_CHECKSUM_ALGORITHM,
     ARCHIVE_CHECKSUM_HEX_LENGTH,
     BACKUP_ARCHIVE_PREFIX,
     BACKUP_ARCHIVE_SUFFIX,
+    ArchiveName,
 )
 from scripts.beta_backup.archives import BackupArchives
 from scripts.beta_backup.backup import BetaBackup
@@ -26,7 +26,7 @@ from scripts.beta_backup.database import ComposeDatabase
 from scripts.beta_backup.policy import AGE_BINARY, BACKUP_PROCESS_TIMEOUT_SECONDS
 from scripts.beta_backup.restore import BetaRestore
 from scripts.beta_backup.restore.destination import RestoreDestination
-from scripts.beta_release import DOCKER_CONTEXT_ENV, DOCKER_HOST_ENV, BetaRelease
+from scripts.compose_project import DOCKER_CONTEXT_ENV, DOCKER_HOST_ENV, ComposeProject
 
 
 def archive(directory, created):
@@ -36,7 +36,7 @@ def archive(directory, created):
         / ArchiveName(
             created,
             uuid4(),
-            hashlib.new(ARCHIVE_CHECKSUM_ALGORITHM, content).hexdigest(),
+            hashlib.new(SHA256_ALGORITHM, content).hexdigest(),
         ).format()
     )
     path.write_bytes(content)
@@ -160,7 +160,7 @@ def test_existing_restore_destination_never_starts_services():
     ):
         with pytest.raises(ValueError):
             RestoreDestination(release).prepare()
-    release.compose.assert_not_called()
+    release.run.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -216,7 +216,7 @@ def test_restore_failure_after_preparation_never_claims_success(
 @pytest.mark.parametrize("override", [DOCKER_HOST_ENV, DOCKER_CONTEXT_ENV])
 def test_backup_target_rejects_ambient_docker_overrides(monkeypatch, override):
     monkeypatch.setenv(override, "unintended-target")
-    release = object.__new__(BetaRelease)
+    release = object.__new__(ComposeProject)
     with pytest.raises(ValueError):
         release.require_local_docker()
 
@@ -224,16 +224,16 @@ def test_backup_target_rejects_ambient_docker_overrides(monkeypatch, override):
 def test_backup_target_rejects_remote_context_and_pins_local_socket(monkeypatch):
     monkeypatch.delenv(DOCKER_HOST_ENV, raising=False)
     monkeypatch.delenv(DOCKER_CONTEXT_ENV, raising=False)
-    release = object.__new__(BetaRelease)
+    release = object.__new__(ComposeProject)
     release._docker_host = None
     with patch(
-        "scripts.beta_release.subprocess.check_output",
+        "scripts.compose_project.subprocess.check_output",
         return_value="ssh://unintended-host",
     ):
         with pytest.raises(ValueError):
             release.require_local_docker()
     with patch(
-        "scripts.beta_release.subprocess.check_output",
+        "scripts.compose_project.subprocess.check_output",
         return_value="unix:///fixture/docker.sock",
     ):
         release.require_local_docker()
@@ -295,12 +295,12 @@ def test_verified_docker_endpoint_is_pinned_on_dump_and_restore_commands(
 ):
     monkeypatch.delenv(DOCKER_HOST_ENV, raising=False)
     monkeypatch.delenv(DOCKER_CONTEXT_ENV, raising=False)
-    release = object.__new__(BetaRelease)
+    release = object.__new__(ComposeProject)
     release._docker_host = None
     release.project = "isolated-backup-test"
     release.manifest = tmp_path / "manifest"
     socket = "unix:///fixture/docker.sock"
-    with patch("scripts.beta_release.subprocess.check_output", return_value=socket):
+    with patch("scripts.compose_project.subprocess.check_output", return_value=socket):
         database = ComposeDatabase(release)
     monkeypatch.setenv(DOCKER_HOST_ENV, "ssh://later-host")
     monkeypatch.setenv(DOCKER_CONTEXT_ENV, "later-context")

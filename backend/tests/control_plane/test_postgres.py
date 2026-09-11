@@ -72,6 +72,7 @@ from api.runs.schema import (
 )
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
+from fastapi import status
 from httpx import ASGITransport, AsyncClient
 from polybot.cli.observability.broker import ObservableBroker
 from polybot.framework.context import BotContext
@@ -552,7 +553,7 @@ def test_launch_endpoint_waits_for_committed_bot_snapshot() -> None:
 
                 response = await asyncio.wait_for(launch_task, timeout=2)
 
-        assert response.status_code == 202
+        assert response.status_code == status.HTTP_202_ACCEPTED
         launched = RunRead.model_validate(response.json())
         assert launcher.called.is_set()
         assert launcher.run == launched

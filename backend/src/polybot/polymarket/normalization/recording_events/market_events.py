@@ -3,6 +3,14 @@ from __future__ import annotations
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.markets import Market
+from polybot.polymarket.normalization.market_data_fields import (
+    optional_nonnegative_market_decimal,
+    optional_positive_market_decimal,
+    require_outcome_price,
+    require_positive_market_decimal,
+    require_text,
+    validate_optional_text,
+)
 from polybot.polymarket.normalization.recording_events.fields import normalize_side
 from polybot.polymarket.normalization.recording_events.identity import (
     _condition_id,
@@ -11,14 +19,6 @@ from polybot.polymarket.normalization.recording_events.identity import (
     _token_ids,
 )
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
-from polybot.polymarket.normalization.values import (
-    _optional_non_negative_decimal,
-    _optional_positive_decimal,
-    _positive_decimal,
-    _probability,
-    require_text,
-    validate_optional_text,
-)
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.recording.contracts.book import (
     TickSizeChangePayload,
@@ -49,10 +49,10 @@ def _trade_event(
         identity=_identity(market, token_id),
         payload=PublicTradePayload(
             token_id=token_id,
-            price=_probability(payload.price, "trade price"),
-            size=_positive_decimal(payload.size, "trade size"),
+            price=require_outcome_price(payload.price, "trade price"),
+            size=require_positive_market_decimal(payload.size, "trade size"),
             side=normalize_side(payload.side),
-            fee_rate_bps=_optional_non_negative_decimal(
+            fee_rate_bps=optional_nonnegative_market_decimal(
                 payload.fee_rate_bps,
                 "trade fee rate",
             ),
@@ -76,11 +76,13 @@ def _tick_size_event(
         identity=_identity(market, token_id),
         payload=TickSizeChangePayload(
             token_id=token_id,
-            old_tick_size=_optional_positive_decimal(
+            old_tick_size=optional_positive_market_decimal(
                 payload.old_tick_size,
                 "old tick size",
             ),
-            new_tick_size=_positive_decimal(payload.new_tick_size, "new tick size"),
+            new_tick_size=require_positive_market_decimal(
+                payload.new_tick_size, "new tick size"
+            ),
         ),
     )
 

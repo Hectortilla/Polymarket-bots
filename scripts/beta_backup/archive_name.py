@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
+from polybot.persistence.hashing import SHA256_ALGORITHM
+
 BACKUP_ARCHIVE_PREFIX = "polybot-"
 BACKUP_ARCHIVE_SUFFIX = ".dump.age"
-ARCHIVE_CHECKSUM_ALGORITHM = "sha256"
+
 
 ARCHIVE_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
-ARCHIVE_CHECKSUM_HEX_LENGTH = hashlib.new(ARCHIVE_CHECKSUM_ALGORITHM).digest_size * 2
+ARCHIVE_CHECKSUM_HEX_LENGTH = hashlib.new(SHA256_ALGORITHM).digest_size * 2
 
 
 @dataclass(frozen=True)

@@ -1,11 +1,13 @@
 """SSE framing for durable and live run events."""
 
 from collections.abc import Iterator
+from typing import Final
 
 from api.events.contracts import LiveRunEvent, PersistedDurableEvent, RunLifecycleEvent
 from api.events.delivery import EventDelivery
 from api.events.ids import require_persisted_event_id
-from api.events.views import DASHBOARD_SSE_EVENT
+
+DASHBOARD_SSE_EVENT: Final = "dashboard"
 
 SSE_IDLE_COMMENT = ": keep-alive\n\n"
 SSE_ID_FIELD = "id"

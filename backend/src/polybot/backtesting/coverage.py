@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import (
+    require_nonnegative_timestamp_ms,
+    timestamp_bounds_are_ordered,
+)
 from polybot.recording.contracts.records import CoverageGapRecord
 
 
@@ -16,9 +19,9 @@ class ReplayCoverage:
         start_at_ms: int,
         end_at_ms: int,
     ) -> None:
-        require_nonnegative_timestamp(start_at_ms, "replay coverage start")
-        require_nonnegative_timestamp(end_at_ms, "replay coverage end")
-        if end_at_ms < start_at_ms:
+        require_nonnegative_timestamp_ms(start_at_ms, "replay coverage start")
+        require_nonnegative_timestamp_ms(end_at_ms, "replay coverage end")
+        if not timestamp_bounds_are_ordered(start_at_ms, end_at_ms):
             raise ValueError("replay coverage end cannot precede its start")
         if not isinstance(records, tuple) or not all(
             isinstance(record, CoverageGapRecord) for record in records
@@ -142,7 +145,7 @@ class ReplayCoverage:
         self,
         observed_at_ms: int,
     ) -> tuple[CoverageGapRecord, ...]:
-        require_nonnegative_timestamp(observed_at_ms, "replay coverage boundary")
+        require_nonnegative_timestamp_ms(observed_at_ms, "replay coverage boundary")
         records: list[CoverageGapRecord] = []
         while (
             next_start_at_ms := self.next_start_at_ms
@@ -154,7 +157,7 @@ class ReplayCoverage:
         self,
         observed_at_ms: int,
     ) -> tuple[CoverageGapRecord, ...]:
-        require_nonnegative_timestamp(observed_at_ms, "replay coverage boundary")
+        require_nonnegative_timestamp_ms(observed_at_ms, "replay coverage boundary")
         start = self._next_end_index
         while (
             next_end_at_ms := self.next_end_at_ms

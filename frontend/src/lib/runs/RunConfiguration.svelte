@@ -1,15 +1,12 @@
 <script lang="ts">
+  import { RUN_COPY } from "$lib/runs/copy";
   import type { BotDefinitionDescriptor, PaperRunConfig } from "$lib/api/generated";
   import { BOT_BUILDER_COPY } from "$lib/bots/copy";
   import RunSection from "./RunSection.svelte";
   import ConfigurationValue from "$lib/catalog/ConfigurationValue.svelte";
-  import {
-    fieldLabel,
-    isWideLaunchField,
-    launchFields,
-    launchInputsFromConfig,
-    resolvedFieldSchema,
-  } from "$lib/catalog/schema";
+  import { fieldLabel, isWideLaunchField } from "$lib/catalog/schema/presentation";
+  import { launchFields, resolvedFieldSchema } from "$lib/catalog/schema/fields";
+  import { launchInputsFromConfig } from "$lib/catalog/schema/inputs";
 
   let { config, descriptor }: { config: PaperRunConfig; descriptor?: BotDefinitionDescriptor } = $props();
   const fields = $derived(
@@ -26,7 +23,7 @@
   title={BOT_BUILDER_COPY.CONFIGURATION}
   headingId="run-configuration-heading"
   description="Settings captured when this run was created. Later bot edits do not change them."
-  annotation="Read only"
+  annotation={RUN_COPY.READ_ONLY}
 >
   <dl class="form-grid">
     {#each fields as [name, field] (name)}

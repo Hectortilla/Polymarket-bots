@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { FORM_COPY } from "$lib/formCopy";
   import { SERVICE_NAME } from "$lib/serviceIdentity";
   import { onMount, tick } from "svelte";
   import { goto } from "$app/navigation";
   import { listBotDefinitionsApiV1BotDefinitionsGet, type GraphExample } from "$lib/api/generated";
   import { hasGraphCapability, type GraphCapableDefinition } from "$lib/catalog/graphContracts";
   import LaunchForm from "$lib/catalog/LaunchForm.svelte";
-  import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema";
+  import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
   import { type GraphValidationIssue } from "$lib/catalog/graphValidation";
   import { SavedBotDraft } from "$lib/bots/savedDraft";
   import { DraftSaveFeedback } from "$lib/bots/savedDraft/feedback";
@@ -91,7 +92,7 @@
   {#if loading}<p role="status">{ONBOARDING_COPY.LOADING}</p>
   {:else if !descriptor || !example}
     <p role="alert">{error || ONBOARDING_COPY.LOAD_ERROR}</p>
-    <button onclick={loadOnboardingExamples}>{ONBOARDING_COPY.RETRY}</button>
+    <button onclick={loadOnboardingExamples}>{FORM_COPY.TRY_AGAIN}</button>
   {:else}
     <nav aria-label="Setup progress">
       <ol>

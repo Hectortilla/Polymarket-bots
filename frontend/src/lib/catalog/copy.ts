@@ -1,4 +1,4 @@
-export const LAUNCH_FORM_COPY = { SAVE_BOT: "Save bot" } as const;
+export const LAUNCH_FORM_COPY = { SAVE_BOT: "Save bot", SAVING: "Saving…" } as const;
 
 export const GRAPH_FIELD_COPY = {
   COMPARISON_OPERATOR: "Comparison operator",
@@ -22,6 +22,7 @@ export const GRAPH_PREVIEW_COPY = {
 } as const;
 
 export const MARKET_SELECTOR_COPY = {
+  PLACEHOLDER: "Search markets by name or topic…",
   NO_RESULTS: "No available markets found. Try a different name or topic.",
 
   SEARCH_ERROR: "Search is unavailable. Please try again.",

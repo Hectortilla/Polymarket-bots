@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import type { PersistedDurableEvent } from "$lib/api/generated";
 
 import runtimeContract from "$lib/runtimeContract.fixture.json";
@@ -25,11 +26,18 @@ export function isDurableEventPayload(kind: PersistedDurableEvent["kind"], paylo
     case EVENT_KIND.botActivity:
       return isActivityPayload(payload);
     case EVENT_KIND.brokerOrder:
-      return isRecord(payload.order) && isOrderRequest(payload.order);
+      return (
+        hasOnlyResponseFields(payload, "BrokerOrderPayload") && isRecord(payload.order) && isOrderRequest(payload.order)
+      );
     case EVENT_KIND.brokerFill:
       return isBrokerFillPayload(payload);
     case EVENT_KIND.brokerFailure:
-      return isRecord(payload.order) && isOrderRequest(payload.order) && isNonemptyString(payload.error);
+      return (
+        hasOnlyResponseFields(payload, "BrokerFailurePayload") &&
+        isRecord(payload.order) &&
+        isOrderRequest(payload.order) &&
+        isNonemptyString(payload.error)
+      );
     case EVENT_KIND.marketSettlement:
       return isMarketSettlementPayload(payload);
     case EVENT_KIND.portfolioSnapshot:
@@ -39,7 +47,7 @@ export function isDurableEventPayload(kind: PersistedDurableEvent["kind"], paylo
     case EVENT_KIND.streamHealth:
       return isStreamHealthPayload(payload);
     case EVENT_KIND.runFailure:
-      return isNonemptyString(payload.error);
+      return hasOnlyResponseFields(payload, "RunFailurePayload") && isNonemptyString(payload.error);
     case EVENT_KIND.chartSample:
       return isChartSamplePayload(payload);
     default:

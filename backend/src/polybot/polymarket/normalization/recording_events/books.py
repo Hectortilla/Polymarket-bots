@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from polybot.polymarket.markets import Market
 from polybot.polymarket.normalization.book import normalize_price_change_level
+from polybot.polymarket.normalization.market_data_fields import (
+    optional_outcome_payout,
+    require_outcome_price,
+    require_positive_market_decimal,
+    validate_optional_text,
+)
 from polybot.polymarket.normalization.recording_events.fields import normalize_side
 from polybot.polymarket.normalization.recording_events.identity import (
     _condition_id,
@@ -9,12 +15,6 @@ from polybot.polymarket.normalization.recording_events.identity import (
     _token_id,
 )
 from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
-from polybot.polymarket.normalization.values import (
-    _optional_probability,
-    _positive_decimal,
-    _probability,
-    validate_optional_text,
-)
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
@@ -63,8 +63,8 @@ def _price_change_event(
                 price=level.price,
                 size=level.size,
                 source_hash=validate_optional_text(source.hash, "price-change hash"),
-                best_bid=_optional_probability(source.best_bid, "best bid"),
-                best_ask=_optional_probability(source.best_ask, "best ask"),
+                best_bid=optional_outcome_payout(source.best_bid, "best bid"),
+                best_ask=optional_outcome_payout(source.best_ask, "best ask"),
             )
         )
     return CapturedMarketEvent(
@@ -77,7 +77,7 @@ def _price_change_event(
 def _levels(source: tuple[OrderBookLevel, ...]) -> tuple[RecordedBookLevel, ...]:
     levels: list[RecordedBookLevel] = []
     for level in source:
-        price = _probability(level.price, "book price")
-        size = _positive_decimal(level.size, "book size")
+        price = require_outcome_price(level.price, "book price")
+        size = require_positive_market_decimal(level.size, "book size")
         levels.append(RecordedBookLevel(price=price, size=size))
     return tuple(levels)

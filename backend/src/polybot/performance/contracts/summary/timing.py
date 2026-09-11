@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from polybot.framework.timestamps import timestamp_bounds_are_ordered
+
 from ..files import PerformanceTimingField
 from ..parsing import nonnegative_int, require_exact_keys
 
@@ -28,7 +30,7 @@ class PerformanceTimingSummary:
             PerformanceTimingField.VIRTUAL_DURATION_MS,
         )
         if (
-            ended_at_ms < started_at_ms
+            not timestamp_bounds_are_ordered(started_at_ms, ended_at_ms)
             or virtual_duration_ms != ended_at_ms - started_at_ms
         ):
             raise ValueError("performance summary timing is inconsistent")

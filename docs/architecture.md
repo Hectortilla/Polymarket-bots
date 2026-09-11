@@ -1058,3 +1058,42 @@ alongside operational monitoring. `scripts.beta_backup` and the host systemd
 timers own encrypted database backups; PostgreSQL remains the durable source and
 Redis is restored empty. No Polymarket adapter or framework contract changes.
 Approved policy and recovery evidence belong to [the data lifecycle runbook](beta-data-lifecycle.md).
+
+## Full-repository maintainability follow-up (2026-09-11)
+
+`AsyncRecordingWriter` keeps its public submission and sequence API at the
+`recording.writer` package root; its queue processor owns command execution and
+failure draining. `PendingReplayEvents` owns ordered replay queues, while the
+scheduler retains admission, coverage and settlement coordination.
+`PerformanceOrderRecorder` owns order rows and counters. `BacktestReplay` owns one
+reader/config/bot replay workflow without moving archive or accounting algorithms
+out of their existing modules. `StreamEventDispatcher` owns the collaborators for
+one runtime subscription generation and preserves transport failures.
+
+The application projects durable runtime events separately from live dashboard
+frames. Runtime-to-run status conversion is explicit; the worker still owns the
+final durable outcome. Catalog schema parsing, input projection, validation and
+presentation have separate frontend owners. Backend-derived allowed-field
+contracts and OpenAPI parity tests supplement semantic response validation.
+Login and registration own their API actions and destinations and share credential
+entry presentation. Wallet report SDK models are confined to
+`polybot.polymarket.wallet_reports`, with normalized typed rows passed to scripts.
+
+Strict JSON encoding rejects non-finite values before atomic file replacement.
+Paper portfolio transitions validate execution amounts before calculating cash,
+and wallet source keys are safe for PostgreSQL JSONB without changing the source
+activity hash. Live opt-in and execution authorization remain the existing gates.
+
+Replay bootstrap timestamps describe the time at which continuously covered archive
+state is reconstructed. They do not replace stored source-event timestamps. An
+unchanged book remains current reconstructed state while the archive proves
+continuity; blackout, generation and baseline guards still block admission when
+that evidence is missing. This preserves the Slice 9B replay contract.
+
+Required Gamma transport failures in book and wallet dispatch propagate to the
+runtime failure boundary rather than being labeled missing metadata. Recording
+capture shutdown drains every pump even when a close fails and surfaces the first
+failure to finalization, preventing a falsely clean archive session.
+
+Performance sampling rejects out-of-order timestamps before valuing the portfolio
+or replacing executable marks. Rejected samples preserve both marks and curve state.

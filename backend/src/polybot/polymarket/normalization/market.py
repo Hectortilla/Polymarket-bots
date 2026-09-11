@@ -16,11 +16,11 @@ from polybot.polymarket.resolution_status import FINAL_RESOLUTION_STATUSES
 
 from polymarket.models.gamma.market import Market as SdkMarket
 
-from .values import (
-    _nested_value,
-    _non_negative_decimal,
-    _optional_boolean,
-    _optional_positive_decimal,
+from .market_data_fields import (
+    nested_market_value,
+    optional_market_boolean,
+    optional_positive_market_decimal,
+    require_nonnegative_market_decimal,
     require_text,
 )
 
@@ -56,22 +56,22 @@ class SdkOutcomeSelector(StrEnum):
 
 def normalize_market(source: SdkMarket) -> Market:
     condition_id = require_text(
-        _nested_value(source, SdkMarketField.CONDITION_ID),
+        nested_market_value(source, SdkMarketField.CONDITION_ID),
         "market condition ID",
         issue=MarketDataIssue.MISSING_CONDITION_ID,
     )
     slug = require_text(
-        _nested_value(source, SdkMarketField.SLUG),
+        nested_market_value(source, SdkMarketField.SLUG),
         "market slug",
         issue=MarketDataIssue.MISSING_MARKET_SLUG,
     )
     question = require_text(
-        _nested_value(source, SdkMarketField.QUESTION),
+        nested_market_value(source, SdkMarketField.QUESTION),
         "market question",
         issue=MarketDataIssue.MISSING_QUESTION,
     )
     first_token_id = require_text(
-        _nested_value(
+        nested_market_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.YES,
@@ -81,7 +81,7 @@ def normalize_market(source: SdkMarket) -> Market:
         issue=MarketDataIssue.MISSING_TOKEN_ID,
     )
     second_token_id = require_text(
-        _nested_value(
+        nested_market_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.NO,
@@ -91,7 +91,7 @@ def normalize_market(source: SdkMarket) -> Market:
         issue=MarketDataIssue.MISSING_TOKEN_ID,
     )
     first_label = require_text(
-        _nested_value(
+        nested_market_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.YES,
@@ -101,7 +101,7 @@ def normalize_market(source: SdkMarket) -> Market:
         issue=MarketDataIssue.INVALID_MARKET_PARAMETERS,
     )
     second_label = require_text(
-        _nested_value(
+        nested_market_value(
             source,
             SdkMarketField.OUTCOMES,
             SdkOutcomeSelector.NO,
@@ -115,47 +115,47 @@ def normalize_market(source: SdkMarket) -> Market:
             MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
             "market outcomes must have distinct token IDs",
         )
-    minimum_tick_size = _optional_positive_decimal(
-        _nested_value(
+    minimum_tick_size = optional_positive_market_decimal(
+        nested_market_value(
             source,
             SdkMarketField.TRADING,
             SdkMarketField.MINIMUM_TICK_SIZE,
         ),
         "minimum tick size",
     )
-    minimum_order_size = _optional_positive_decimal(
-        _nested_value(
+    minimum_order_size = optional_positive_market_decimal(
+        nested_market_value(
             source,
             SdkMarketField.TRADING,
             SdkMarketField.MINIMUM_ORDER_SIZE,
         ),
         "minimum order size",
     )
-    active = _optional_boolean(
-        _nested_value(source, SdkMarketField.STATE, SdkMarketField.ACTIVE),
+    active = optional_market_boolean(
+        nested_market_value(source, SdkMarketField.STATE, SdkMarketField.ACTIVE),
         "market active state",
     )
-    closed = _optional_boolean(
-        _nested_value(source, SdkMarketField.STATE, SdkMarketField.CLOSED),
+    closed = optional_market_boolean(
+        nested_market_value(source, SdkMarketField.STATE, SdkMarketField.CLOSED),
         "market closed state",
     )
-    order_book_enabled = _optional_boolean(
-        _nested_value(
+    order_book_enabled = optional_market_boolean(
+        nested_market_value(
             source,
             SdkMarketField.STATE,
             SdkMarketField.ENABLE_ORDER_BOOK,
         ),
         "market order-book state",
     )
-    accepting_orders = _optional_boolean(
-        _nested_value(
+    accepting_orders = optional_market_boolean(
+        nested_market_value(
             source,
             SdkMarketField.STATE,
             SdkMarketField.ACCEPTING_ORDERS,
         ),
         "market order-acceptance state",
     )
-    neg_risk = _nested_value(
+    neg_risk = nested_market_value(
         source,
         SdkMarketField.STATE,
         SdkMarketField.NEG_RISK,
@@ -166,7 +166,7 @@ def normalize_market(source: SdkMarket) -> Market:
             "market negative-risk flag is missing",
         )
 
-    fees_enabled = _nested_value(
+    fees_enabled = nested_market_value(
         source,
         SdkMarketField.TRADING,
         SdkMarketField.FEES_ENABLED,
@@ -179,7 +179,7 @@ def normalize_market(source: SdkMarket) -> Market:
 
     fee_rate = Decimal("0")
     if fees_enabled:
-        fee_schedule = _nested_value(
+        fee_schedule = nested_market_value(
             source,
             SdkMarketField.TRADING,
             SdkMarketField.FEE_SCHEDULE,
@@ -189,8 +189,8 @@ def normalize_market(source: SdkMarket) -> Market:
                 MarketDataIssue.INVALID_MARKET_PARAMETERS,
                 "fee-enabled market has no fee schedule",
             )
-        fee_rate = _non_negative_decimal(
-            _nested_value(fee_schedule, SdkMarketField.RATE),
+        fee_rate = require_nonnegative_market_decimal(
+            nested_market_value(fee_schedule, SdkMarketField.RATE),
             "fee rate",
         )
 
@@ -235,19 +235,19 @@ def _resolved_outcome_from_source(
     second_label: str,
 ) -> tuple[bool, str | None, str | None]:
     """Interpret Gamma settlement fields only when they identify one winner."""
-    first_price = _nested_value(
+    first_price = nested_market_value(
         source,
         SdkMarketField.OUTCOMES,
         SdkOutcomeSelector.YES,
         SdkMarketField.PRICE,
     )
-    second_price = _nested_value(
+    second_price = nested_market_value(
         source,
         SdkMarketField.OUTCOMES,
         SdkOutcomeSelector.NO,
         SdkMarketField.PRICE,
     )
-    resolution_status = _nested_value(
+    resolution_status = nested_market_value(
         source,
         SdkMarketField.RESOLUTION,
         SdkMarketField.UMA_RESOLUTION_STATUS,

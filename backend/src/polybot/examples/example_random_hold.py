@@ -31,23 +31,27 @@ def select_random_hold_token(
 class RandomHoldState:
     selected_token_id: str | None
     position_size: Decimal
-    bought_at: float | None
+    bought_at_monotonic_seconds: float | None
     sell_in_flight: bool
 
     def decision(
         self,
         book: BookSnapshot,
         *,
-        now: float,
+        now_monotonic_seconds: float,
         hold_seconds: float,
     ) -> RandomHoldAction | None:
         if book.token_id != self.selected_token_id:
             return None
         if self.position_size == 0:
             return "buy"
-        if self.sell_in_flight or self.bought_at is None:
+        if self.sell_in_flight or self.bought_at_monotonic_seconds is None:
             return None
-        return "sell" if now - self.bought_at >= hold_seconds else None
+        return (
+            "sell"
+            if now_monotonic_seconds - self.bought_at_monotonic_seconds >= hold_seconds
+            else None
+        )
 
 
 class ExampleRandomHoldBot(BaseBot):
@@ -70,13 +74,13 @@ class ExampleRandomHoldBot(BaseBot):
         self.hold_seconds = hold_seconds
         self.order_size = order_size
         self._rng = rng
-        self._monotonic = monotonic_fn
+        self._monotonic_seconds_fn = monotonic_fn
         self._market_slug: str | None = None
         self._condition_id: str | None = None
         self._token_ids: tuple[str, str] | None = None
         self._selected_token_id: str | None = None
         self._position_size = Decimal("0")
-        self._bought_at: float | None = None
+        self._bought_at_monotonic_seconds: float | None = None
         self._sell_in_flight = False
 
     async def on_book(
@@ -103,9 +107,13 @@ class ExampleRandomHoldBot(BaseBot):
         action = RandomHoldState(
             self._selected_token_id,
             self._position_size,
-            self._bought_at,
+            self._bought_at_monotonic_seconds,
             self._sell_in_flight,
-        ).decision(book, now=self._now(ctx), hold_seconds=self.hold_seconds)
+        ).decision(
+            book,
+            now_monotonic_seconds=self._now_monotonic_seconds(ctx),
+            hold_seconds=self.hold_seconds,
+        )
         if action == "buy":
             await self._buy(ctx, book)
             return
@@ -117,7 +125,7 @@ class ExampleRandomHoldBot(BaseBot):
             return
         if self._position_size == 0:
             self._selected_token_id = None
-            self._bought_at = None
+            self._bought_at_monotonic_seconds = None
 
     async def _load_market(self, ctx: BotContext, market_slug: str) -> None:
         if market_slug == self._market_slug:
@@ -128,7 +136,7 @@ class ExampleRandomHoldBot(BaseBot):
         self._token_ids = None if market is None else market.token_ids
         self._selected_token_id = None
         self._position_size = Decimal("0")
-        self._bought_at = None
+        self._bought_at_monotonic_seconds = None
         self._sell_in_flight = False
 
     async def _buy(self, ctx: BotContext, book: BookSnapshot) -> None:
@@ -148,7 +156,7 @@ class ExampleRandomHoldBot(BaseBot):
         )
         if fill.has_execution:
             self._position_size = fill.filled_size
-            self._bought_at = self._now(ctx)
+            self._bought_at_monotonic_seconds = self._now_monotonic_seconds(ctx)
 
     async def _sell(self, ctx: BotContext, book: BookSnapshot) -> None:
         if not book.bids:
@@ -172,9 +180,9 @@ class ExampleRandomHoldBot(BaseBot):
         self._position_size = max(Decimal("0"), self._position_size - fill.filled_size)
         if self._position_size == 0:
             self._selected_token_id = None
-            self._bought_at = None
+            self._bought_at_monotonic_seconds = None
 
-    def _now(self, ctx: BotContext) -> float:
-        if self._monotonic is not None:
-            return self._monotonic()
+    def _now_monotonic_seconds(self, ctx: BotContext) -> float:
+        if self._monotonic_seconds_fn is not None:
+            return self._monotonic_seconds_fn()
         return ctx.clock.now_ms() / 1000

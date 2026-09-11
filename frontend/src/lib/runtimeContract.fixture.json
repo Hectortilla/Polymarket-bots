@@ -48,6 +48,335 @@
     "backupRetentionDays": 14,
     "auditRetentionDays": 90
   },
+  "strictResponseFields": {
+    "models": {
+      "BotActivityPayload": [
+        "message",
+        "severity"
+      ],
+      "BrokerFailurePayload": [
+        "error",
+        "order"
+      ],
+      "BrokerFillPayload": [
+        "fill",
+        "latency_ms",
+        "order",
+        "portfolio"
+      ],
+      "BrokerOrderPayload": [
+        "order"
+      ],
+      "ChartSamplePayload": [
+        "equity",
+        "markets",
+        "sampled_at_ms"
+      ],
+      "EquityChartPayload": [
+        "point",
+        "sampled_at_ms"
+      ],
+      "EquityChartPointPayload": [
+        "status",
+        "value"
+      ],
+      "GraphValueRead": [
+        "input_handle_id",
+        "message",
+        "reason",
+        "status",
+        "value"
+      ],
+      "LiveEquityChartEvent": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "LiveMarketChartEvent": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "LiveStreamHealthEvent": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "LiveWalletChartEvent": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "MarketChartPayload": [
+        "points",
+        "sampled_at_ms"
+      ],
+      "MarketChartPointPayload": [
+        "label",
+        "markers",
+        "status",
+        "token_id",
+        "value"
+      ],
+      "MarketSettlementPayload": [
+        "portfolio",
+        "settlement"
+      ],
+      "PersistedBotActivityEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedBrokerFailureEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedBrokerFillEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedBrokerOrderEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedChartSampleEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedMarketSettlementEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedPortfolioSnapshotEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedRunBootstrapEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedRunFailureEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedRunLifecycleEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedStreamHealthEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PersistedWalletTimelineEvent": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "PortfolioSnapshotPayload": [
+        "cash_usdc",
+        "cumulative_fees_usdc",
+        "positions"
+      ],
+      "RunBootstrapPayload": [
+        "completed",
+        "phase",
+        "total"
+      ],
+      "RunEventPage": [
+        "events",
+        "next_before_event_id",
+        "stream_cursor"
+      ],
+      "RunFailurePayload": [
+        "error"
+      ],
+      "RunStartedPayload": [
+        "initial_cash_usdc",
+        "mode",
+        "name",
+        "status"
+      ],
+      "RunStatusPayload": [
+        "status"
+      ],
+      "StreamHealthPayload": [
+        "book_coalesced_count",
+        "book_dispatch_lag_ms",
+        "book_received_count",
+        "book_stale",
+        "peak_queue_depth",
+        "queue_depth"
+      ],
+      "WalletChartPayload": [
+        "points",
+        "sampled_at_ms"
+      ],
+      "WalletChartPointPayload": [
+        "accepted",
+        "market_label",
+        "notional",
+        "side",
+        "source_key",
+        "trade_timestamp_ms",
+        "wallet"
+      ],
+      "WalletTimelinePayload": [
+        "outcome",
+        "point",
+        "trade"
+      ]
+    },
+    "durable": {
+      "bot.activity": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "broker.failure": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "broker.fill": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "broker.order": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "chart.sample": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "market.settlement": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "portfolio.snapshot": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "run.bootstrap": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "run.failure": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "run.lifecycle": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "stream.health": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "wallet.timeline": [
+        "id",
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ]
+    },
+    "live": {
+      "chart.equity": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "chart.market": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "chart.wallet": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ],
+      "stream.health.live": [
+        "kind",
+        "occurred_at",
+        "payload",
+        "run_id"
+      ]
+    }
+  },
   "accountManagement": {
     "accountPath": "/account",
     "forgotPath": "/forgot-password",
@@ -56,6 +385,7 @@
     "tokenPattern": "[A-Za-z0-9_-]{43}",
     "tokenLifetimeSeconds": 1800,
     "tokenLifetimeMinutes": 30,
+    "reauthenticationFailedDetail": "Current password or session is invalid. Sign in and try again.",
     "sessionRevocation": {
       "OTHER": "other",
       "ALL": "all"
@@ -66,7 +396,11 @@
     }
   },
   "auth": {
-    "csrfSafeMethods": ["GET", "HEAD", "OPTIONS"],
+    "csrfSafeMethods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
     "jsonContentType": "application/json",
     "contentTypeHeader": "Content-Type",
     "passwordMinLength": 15,
@@ -156,7 +490,10 @@
     "firstWalletNotionalTier": 1,
     "nonpositiveMaxNotionalThreshold": "0",
     "walletNotionalTierDenominator": 3,
-    "walletNotionalTierUpperNumerators": [1, 2],
+    "walletNotionalTierUpperNumerators": [
+      1,
+      2
+    ],
     "walletBucketPolicy": {
       "clampToLastColumn": true,
       "rounding": "floor"
@@ -165,6 +502,12 @@
       "FLOOR": "floor"
     },
     "walletNotionalTierUpperBoundInclusive": true,
+    "walletLabelPolicy": {
+      "maximumLength": 12,
+      "prefixLength": 6,
+      "suffixLength": 4,
+      "ellipsis": "\u2026"
+    },
     "walletMarketLabelPolicy": {
       "ellipsis": "\u2026",
       "maximumTokenLength": 12,
@@ -273,8 +616,13 @@
     "tokenCount": 2
   },
   "chartValueStatus": {
-    "nullValue": ["unavailable"],
-    "valueRequired": ["fresh", "stale"]
+    "nullValue": [
+      "unavailable"
+    ],
+    "valueRequired": [
+      "fresh",
+      "stale"
+    ]
   },
   "portfolio": {
     "emptyPositionRequiresNullPrice": true,
@@ -307,8 +655,16 @@
   },
   "runStatus": {
     "initial": "starting",
-    "stoppable": ["queued", "running", "starting"],
-    "terminal": ["failed", "interrupted", "stopped"],
+    "stoppable": [
+      "queued",
+      "running",
+      "starting"
+    ],
+    "terminal": [
+      "failed",
+      "interrupted",
+      "stopped"
+    ],
     "values": {
       "QUEUED": "queued",
       "STARTING": "starting",
@@ -344,6 +700,7 @@
     "BACKFILL": "backfill",
     "RECONCILIATION": "reconciliation"
   },
-  "walletSourceKeySeparator": "\u0000",
+  "walletSourceKeySeparator": ":",
+  "walletSourceKeyForbiddenCharacter": "\u0000",
   "walletAddressPattern": "^(?:0x[a-fA-F0-9]{40})$"
 }

@@ -11,6 +11,7 @@ from api.catalog.graphs.examples import GRAPH_EXAMPLES
 from api.catalog.graphs.values import (
     GraphNodeType,
     GraphOperation,
+    GraphPort,
     GraphScalarType,
 )
 from pydantic import ValidationError
@@ -51,7 +52,7 @@ def _graph_cases() -> tuple[tuple[str, dict[str, object]], ...]:
     size = next(
         node for node in incompatible_edge["nodes"] if node["id"] == "constant-size"
     )
-    size["data"] = {"scalar_type": "boolean", "value": True}
+    size["data"] = {"scalar_type": GraphScalarType.BOOLEAN, "value": True}
 
     orphan_processing_node = deepcopy(valid)
     orphan_processing_node["nodes"] = [
@@ -137,7 +138,10 @@ def _mvp_cases() -> list[tuple[str, dict[str, object]]]:
         ],
     )
     for trigger in ("first", "second"):
-        for source, handle in ((trigger, "context"), ("shared", "value")):
+        for source, handle in (
+            (trigger, GraphPort.CONTEXT),
+            ("shared", GraphPort.VALUE),
+        ):
             diagnostics["edges"].append(
                 dict(
                     id=f"{source}-{trigger}",
@@ -150,7 +154,7 @@ def _mvp_cases() -> list[tuple[str, dict[str, object]]]:
     cases.append(("shared parameter across diagnostic-only branches", diagnostics))
     invalid_context = deepcopy(diagnostics)
     invalid_context["edges"][0]["source"] = "shared"
-    invalid_context["edges"][0]["source_handle"] = "value"
+    invalid_context["edges"][0]["source_handle"] = GraphPort.VALUE
     cases.append(("Number is not Context", invalid_context))
     cross_trigger = deepcopy(diagnostics)
     cross_trigger["nodes"][2] = dict(
@@ -167,12 +171,12 @@ def _mvp_cases() -> list[tuple[str, dict[str, object]]]:
             data=dict(scalar_type=GraphScalarType.NUMBER, value="2"),
         )
     )
-    for handle in ("left", "right"):
+    for handle in (GraphPort.LEFT, GraphPort.RIGHT):
         cross_trigger["edges"].append(
             dict(
                 id=handle,
                 source="constant",
-                source_handle="value",
+                source_handle=GraphPort.VALUE,
                 target="shared",
                 target_handle=handle,
             )
@@ -180,7 +184,9 @@ def _mvp_cases() -> list[tuple[str, dict[str, object]]]:
     cases.append(("processing cannot join triggers", cross_trigger))
     cycle = deepcopy(examples[0][1])
     next(e for e in cycle["edges"] if e["target"] == "flat")["source"] = "enter"
-    next(e for e in cycle["edges"] if e["target"] == "flat")["source_handle"] = "result"
+    next(e for e in cycle["edges"] if e["target"] == "flat")["source_handle"] = (
+        GraphPort.RESULT
+    )
     cases.append(("MVP processing cycle", cycle))
     return cases
 

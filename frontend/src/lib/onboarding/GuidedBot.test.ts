@@ -1,7 +1,8 @@
+import { FORM_COPY } from "$lib/formCopy";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
-import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema/contracts";
 import contract from "$lib/runtimeContract.fixture.json";
 import { RESOURCE_LIMIT_DETAIL } from "$lib/limits/testFixtures";
 import { ONBOARDING_COPY } from "./copy";
@@ -70,7 +71,7 @@ it("loads examples with retry and preserves a route back to existing bots", asyn
     "href",
     NAVIGATION_PATH.HOME,
   );
-  await fireEvent.click(screen.getByRole("button", { name: ONBOARDING_COPY.RETRY }));
+  await fireEvent.click(screen.getByRole("button", { name: FORM_COPY.TRY_AGAIN }));
   expect(await screen.findByRole("radio")).toBeChecked();
 });
 it("does not persist before review, retains settings on Back, and saves without launch", async () => {
@@ -145,7 +146,7 @@ it.each([{ definitions: [] }, { definitions: [{ ...definition, graph_examples: [
     mocks.definitions.mockResolvedValue({ data: definitions });
     render(GuidedBot);
     expect(await screen.findByRole("alert")).toHaveTextContent(ONBOARDING_COPY.LOAD_ERROR);
-    expect(screen.getByRole("button", { name: ONBOARDING_COPY.RETRY })).toBeEnabled();
+    expect(screen.getByRole("button", { name: FORM_COPY.TRY_AGAIN })).toBeEnabled();
   },
 );
 it("reviews and saves the selected second example", async () => {

@@ -7,6 +7,7 @@ import { AUTH_COPY } from "../src/lib/auth/copy";
 import { REGISTER_PATH } from "../src/lib/auth/navigation";
 import { NAVIGATION_PATH } from "../src/lib/navigation";
 import { ONBOARDING_COPY } from "../src/lib/onboarding/copy";
+import { RUN_DETAIL_COPY } from "../src/routes/runs/[runId]/copy";
 import { RUN_GUIDE_COPY } from "../src/lib/runs/runGuide";
 import { BOT_DETAIL_COPY } from "../src/routes/bots/[botId]/copy";
 import { MARKET_SELECTOR_COPY } from "../src/lib/catalog/copy";
@@ -16,9 +17,9 @@ import { RUN_STATUS, RUN_STATUS_PRESENTATION } from "../src/lib/runs/status";
 const RUN_READY_TIMEOUT_MS = 20_000;
 
 const expectations = {
-  action: { guidance: RUN_GUIDE_COPY.ACTIONS, recoverSearch: true },
-  waiting: { guidance: RUN_GUIDE_COPY.WAITING, recoverSearch: false },
-} satisfies Record<keyof typeof fixture.cases, { guidance: string; recoverSearch: boolean }>;
+  action: { recoverSearch: true },
+  waiting: { recoverSearch: false },
+} satisfies Record<keyof typeof fixture.cases, { recoverSearch: boolean }>;
 
 for (const scenario of Object.keys(expectations) as (keyof typeof expectations)[]) {
   const { marketSlug, expectedFillCount } = fixture.cases[scenario];
@@ -68,18 +69,24 @@ for (const scenario of Object.keys(expectations) as (keyof typeof expectations)[
     expect(await (await page.request.get(contract.apiPaths.runs)).json()).toEqual([]);
     await page.getByRole("button", { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
     await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
-    const guide = page.getByRole("region", { name: RUN_GUIDE_COPY.HEADING });
-    await expect(guide).toContainText(expected.guidance, { timeout: RUN_READY_TIMEOUT_MS });
-    await expect(guide).toContainText(`${RUN_GUIDE_COPY.LOADED_FILLS}: ${expectedFillCount}`);
-    await expect(guide).toContainText(RUN_GUIDE_COPY.BALANCES);
+    await page.getByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }).click();
+    await expect(page.getByText(RUN_GUIDE_COPY.BOOK_REPORTED, { exact: true })).toBeVisible({
+      timeout: RUN_READY_TIMEOUT_MS,
+    });
+    await expect(page.getByText(/shares filled/)).toHaveCount(expectedFillCount, { timeout: RUN_READY_TIMEOUT_MS });
     expect(await horizontalOverflowingElements(page)).toEqual([]);
     await page
       .getByRole("button", { name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!, exact: true })
       .click();
-    await expect(guide).toContainText(RUN_GUIDE_COPY.STOPPED, { timeout: RUN_READY_TIMEOUT_MS });
+    await expect(
+      page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first(),
+    ).toBeVisible({ timeout: RUN_READY_TIMEOUT_MS });
     await page.reload();
-    await expect(guide).toContainText(RUN_GUIDE_COPY.STOPPED, { timeout: RUN_READY_TIMEOUT_MS });
-    await expect(guide).toContainText(`${RUN_GUIDE_COPY.LOADED_FILLS}: ${expectedFillCount}`);
+    await page.getByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }).click();
+    await expect(
+      page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first(),
+    ).toBeVisible({ timeout: RUN_READY_TIMEOUT_MS });
+    await expect(page.getByText(/shares filled/)).toHaveCount(expectedFillCount);
   });
 }
 

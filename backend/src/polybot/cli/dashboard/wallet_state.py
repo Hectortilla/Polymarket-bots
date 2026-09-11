@@ -21,9 +21,6 @@ class DashboardWalletTimeline(DashboardWallets):
             return 0
         return self._maximum_page(lanes_per_page)
 
-    def _maximum_page(self, lanes_per_page: int) -> int:
-        return max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)
-
     def page(self, direction: int, lanes_per_page: int) -> bool:
         if lanes_per_page <= 0:
             return False
@@ -42,3 +39,6 @@ class DashboardWalletTimeline(DashboardWallets):
             return False
         self.wallet_page = maximum
         return True
+
+    def _maximum_page(self, lanes_per_page: int) -> int:
+        return max(0, (len(self.wallet_lanes) - 1) // lanes_per_page)

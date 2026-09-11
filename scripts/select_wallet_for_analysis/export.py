@@ -5,8 +5,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from polybot.framework.wallets import normalize_wallet_address
-from scripts.polymarket_wallet_api import fetch_all_activity, fetch_gamma_market
-from scripts.polymarket_wallet_api.market_contracts import (
+from polybot.polymarket.wallet_activity.fields import ACTIVITY_TIMESTAMP_FIELD
+from polybot.polymarket.wallet_reports.activity import fetch_all_activity
+from polybot.polymarket.wallet_reports.contracts import (
+    ACTIVITY_SLUG_FIELD,
+    CONDITION_ID_FIELD,
+    ActivityRow,
+)
+from polybot.polymarket.wallet_reports.fields import ACTIVITY_TRUNCATED_FIELD
+from polybot.polymarket.wallet_reports.gamma import fetch_gamma_market
+from polybot.polymarket.wallet_reports.market_contracts import (
     MARKET_ACTIVE_FIELD,
     MARKET_CLOSED_FIELD,
     MARKET_END_DATE_FIELD,
@@ -15,11 +23,7 @@ from scripts.polymarket_wallet_api.market_contracts import (
     MARKET_START_DATE_FIELD,
     MARKET_WINNING_OUTCOME_FIELD,
 )
-from scripts.wallet_payload_contracts import (
-    ACTIVITY_SLUG_FIELD,
-    CONDITION_ID_FIELD,
-    ActivityRow,
-)
+
 from scripts.paths import RESULTS_DIR
 
 DATA_FILENAME_TEMPLATE = "data_{wallet_id}.json"
@@ -32,7 +36,7 @@ def export_activity(wallet: str) -> Path:
     payload = {
         "wallet": wallet,
         "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "truncated": truncated,
+        ACTIVITY_TRUNCATED_FIELD: truncated,
         "activity": [_enrich_activity_row(row, contexts) for row in activity],
         "market_context": list(contexts.values()),
     }
@@ -63,8 +67,8 @@ def _fetch_market_context(condition_id: str) -> dict[str, object]:
         "market_slug": market.get(ACTIVITY_SLUG_FIELD),
         "market_name": market.get(MARKET_QUESTION_FIELD)
         or market.get(ACTIVITY_SLUG_FIELD),
-        "market_start_timestamp": _timestamp(market.get(MARKET_START_DATE_FIELD)),
-        "market_end_timestamp": _timestamp(market.get(MARKET_END_DATE_FIELD)),
+        "market_start_timestamp": _epoch_seconds(market.get(MARKET_START_DATE_FIELD)),
+        "market_end_timestamp": _epoch_seconds(market.get(MARKET_END_DATE_FIELD)),
         "market_active": market.get(MARKET_ACTIVE_FIELD),
         "market_closed": market.get(MARKET_CLOSED_FIELD),
         "market_resolved_outcome": market.get(MARKET_WINNING_OUTCOME_FIELD),
@@ -72,7 +76,7 @@ def _fetch_market_context(condition_id: str) -> dict[str, object]:
     }
 
 
-def _timestamp(value: object) -> int | None:
+def _epoch_seconds(value: object) -> int | None:
     if isinstance(value, (int, float)):
         return int(value)
     if isinstance(value, str):
@@ -92,10 +96,12 @@ def _enrich_activity_row(
     if isinstance(condition_id, str) and condition_id in contexts:
         enriched.update(contexts[condition_id])
         enriched["market_context"] = contexts[condition_id]
-    timestamp = row.get("timestamp")
-    if timestamp is not None:
-        enriched["timestamp_ms"] = timestamp * 1000
-        start = enriched.get("market_start_timestamp")
-        if isinstance(start, int):
-            enriched["market_offset_seconds"] = timestamp - start
+    activity_timestamp_seconds = row.get(ACTIVITY_TIMESTAMP_FIELD)
+    if activity_timestamp_seconds is not None:
+        enriched["timestamp_ms"] = activity_timestamp_seconds * 1000
+        market_start_timestamp_seconds = enriched.get("market_start_timestamp")
+        if isinstance(market_start_timestamp_seconds, int):
+            enriched["market_offset_seconds"] = (
+                activity_timestamp_seconds - market_start_timestamp_seconds
+            )
     return enriched

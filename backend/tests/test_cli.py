@@ -40,7 +40,7 @@ from polybot.cli.observability.events import (
 )
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.cli.performance_chart.contracts import PerformanceChartError
-from polybot.cli.runner.dispatch import dispatch_stream_event
+from polybot.cli.runner.dispatch import StreamEventDispatcher
 from polybot.cli.runner.factory import RuntimeComponents, create_runtime
 from polybot.cli.streams.contracts import (
     BookGapStreamEvent,
@@ -434,7 +434,7 @@ def test_backtest_summary_labels_partial_recording_source(
 
     output = capsys.readouterr().out
     assert PARTIAL_RECORDING_WARNING in output
-    assert "incomplete" in output
+    assert SessionIntegrityStatus.INCOMPLETE.value in output
     assert "committed through 200" in output
 
 
@@ -611,14 +611,15 @@ def test_rejected_books_do_not_mark_followed_wallet_baselines() -> None:
             self.calls.append((token_id, price))
 
     async def run(outcome: DispatchOutcome, followed_wallets: FollowedWallets):
-        await dispatch_stream_event(
+        await StreamEventDispatcher(
             Runner(outcome),
-            BookStreamEvent(StreamKind.BOOK, _book("token", 1)),
             object(),
             gamma=object(),
             clob=object(),
             followed_wallets=followed_wallets,
-        )
+            registry=None,
+            resolution_service=None,
+        ).dispatch(BookStreamEvent(StreamKind.BOOK, _book("token", 1)))
 
     rejected = FollowedWallets()
     asyncio.run(run(DispatchOutcome.skipped(DispatchSkipReason.BOOK_STALE), rejected))
@@ -666,22 +667,24 @@ def test_wallet_trade_identity_is_validated_before_bot_or_follow_state() -> None
             market_slug="market",
         )
         mismatched = replace(matching, token_id="wrong-token")
-        matching_outcome = await dispatch_stream_event(
+        matching_outcome = await StreamEventDispatcher(
             runner,
-            WalletStreamEvent(StreamKind.WALLET, matching),
             object(),
             gamma=Gamma(),
             clob=Clob(),
             followed_wallets=followed,
-        )
-        mismatched_outcome = await dispatch_stream_event(
+            registry=None,
+            resolution_service=None,
+        ).dispatch(WalletStreamEvent(StreamKind.WALLET, matching))
+        mismatched_outcome = await StreamEventDispatcher(
             runner,
-            WalletStreamEvent(StreamKind.WALLET, mismatched),
             object(),
             gamma=Gamma(),
             clob=Clob(),
             followed_wallets=followed,
-        )
+            registry=None,
+            resolution_service=None,
+        ).dispatch(WalletStreamEvent(StreamKind.WALLET, mismatched))
         return matching_outcome, mismatched_outcome, runner.calls, len(followed.calls)
 
     matching_outcome, mismatched_outcome, runner_calls, recorded_count = asyncio.run(

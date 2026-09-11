@@ -197,3 +197,14 @@ it("uses snapshot watermarks and suppresses replay already present in each indep
   expect(onActivity.mock.calls.map(([event]) => event.id)).toEqual([11]);
   expect(onDashboard.mock.calls.map(([event]) => event.id)).toEqual([13]);
 });
+
+it.each([undefined, null, -1, 1.5, "7", 6])(
+  "rejects an invalid stream cursor %s before hydrating",
+  async (streamCursor) => {
+    vi.mocked(readRunApiV1RunsRunIdGet).mockResolvedValue({ data: RUN } as never);
+    vi.mocked(readRunEventsApiV1RunsRunIdEventsGet).mockResolvedValue({
+      data: { events: [EVENT], next_before_event_id: null, stream_cursor: streamCursor },
+    } as never);
+    await expect(hydrateRunDetail(RUN.id)).rejects.toThrow("Invalid run event stream cursor");
+  },
+);

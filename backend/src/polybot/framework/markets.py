@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from polybot.framework.timestamps import (
     MILLISECONDS_PER_SECOND,
-    require_nonnegative_timestamp,
+    require_nonnegative_timestamp_ms,
 )
 
 
@@ -56,10 +56,16 @@ class FixedBucketTiming:
 
     @classmethod
     def at(cls, now_ms: int, bucket_seconds: int) -> FixedBucketTiming:
-        require_nonnegative_timestamp(now_ms, "now_ms")
+        require_nonnegative_timestamp_ms(now_ms, "now_ms")
         if bucket_seconds <= 0:
             raise ValueError("bucket_seconds must be positive")
         return cls._at_valid_time(now_ms, bucket_seconds)
+
+    def allows_entry(self, *, delay_ms: int, cutoff_ms: int) -> bool:
+        """Whether a strategy's entry window remains open in this bucket."""
+        if delay_ms < 0 or cutoff_ms < 0:
+            raise ValueError("entry-window bounds must be nonnegative")
+        return self._allows_valid_entry(delay_ms, cutoff_ms)
 
     @classmethod
     def _at_valid_time(
@@ -77,12 +83,6 @@ class FixedBucketTiming:
             remaining_ms=bucket_ms - elapsed_ms,
             bucket_end_ms=bucket_start_ms + bucket_ms,
         )
-
-    def allows_entry(self, *, delay_ms: int, cutoff_ms: int) -> bool:
-        """Whether a strategy's entry window remains open in this bucket."""
-        if delay_ms < 0 or cutoff_ms < 0:
-            raise ValueError("entry-window bounds must be nonnegative")
-        return self._allows_valid_entry(delay_ms, cutoff_ms)
 
     def _allows_valid_entry(self, delay_ms: int, cutoff_ms: int) -> bool:
         return self.elapsed_ms >= delay_ms and self.remaining_ms > cutoff_ms

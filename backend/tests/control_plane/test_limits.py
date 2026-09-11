@@ -15,10 +15,7 @@ from api.auth.dependencies import application_authentication
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
 from api.events.writer import RunEventWriter
-from api.execution.worker.lifecycle import (
-    DURATION_EXPIRED_DETAIL,
-    RunLifecycleCoordinator,
-)
+from api.execution.worker.lifecycle import RunLifecycleCoordinator
 from api.http.app import create_app
 from api.http.lifecycle import ApiRunLifecycle
 from api.http.routes.paths import BOT_RUNS_PATH, USAGE_PATH, api_route_path
@@ -28,6 +25,7 @@ from api.limits.policy import PAPER_BETA
 from api.limits.redis.request_budgets import RequestRateLimiter
 from api.limits.redis.stream_admission import OpenStreamAdmission
 from api.limits.usage import AccountUsageReader
+from api.runs.failures import DURATION_EXPIRED_DETAIL
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
 from fastapi import Request, status

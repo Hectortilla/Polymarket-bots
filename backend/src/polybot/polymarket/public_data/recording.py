@@ -43,5 +43,6 @@ class RecordingPublicData:
             try:
                 await close_child()
             except BaseException:
+                # Finish every child and the shared lease even if a close is cancelled.
                 pass
         await self._client_lease.close()

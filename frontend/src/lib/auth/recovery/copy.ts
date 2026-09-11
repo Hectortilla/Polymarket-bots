@@ -2,6 +2,7 @@ import contract from "$lib/runtimeContract.fixture.json" with { type: "json" };
 
 export const ACCOUNT_COPY = {
   SETTINGS: "Account settings",
+  RESET_TITLE: "Reset your password",
   FORGOT: "Forgot password?",
   SEND_RESET: "Send reset link",
   SEND_VERIFICATION: "Send verification link",
@@ -17,7 +18,7 @@ export const ACCOUNT_COPY = {
   CHANGE_PASSWORD: "Change password",
   REVOKE_OTHER: "Sign out other sessions",
   REVOKE_ALL: "Sign out all sessions",
-  REAUTH_FAILED: "Current password or session is invalid. Sign in and try again.",
+  REAUTH_FAILED: contract.accountManagement.reauthenticationFailedDetail,
   DONE: "Your account was updated. Sign in with your password to continue.",
   OTHERS_DONE: "Other sessions have been signed out. This session remains active.",
   VERIFIED: "Your email is verified.",

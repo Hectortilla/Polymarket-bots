@@ -4,12 +4,11 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from pydantic import ValidationError
-
 from api.auth.config import AUTH_ALLOW_HTTP_ENV, AUTH_ORIGIN_ENV
 from api.database import DATABASE_URL_ENV
 from api.deployment.__main__ import main as deployment_main
 from api.deployment.secrets import configured_secret
+from api.deployment.services import DeploymentService
 from api.deployment.settings import (
     DEFAULT_HEARTBEAT_SECONDS,
     ENVIRONMENT_ENV,
@@ -19,7 +18,8 @@ from api.deployment.settings import (
     StartupSettings,
 )
 from api.execution.config import REDIS_URL_ENV
-from api.deployment.services import DeploymentService
+from pydantic import ValidationError
+
 from scripts.beta_release import APPLICATION_SERVICES, IMAGE_VARIABLES, BetaRelease
 
 
@@ -117,25 +117,33 @@ def test_failed_migration_never_activates_release_and_rollback_only_checks_schem
     tmp_path,
 ):
     release = BetaRelease(release_manifest(tmp_path), "polybot-test")
-    release.compose = Mock(
+    release.compose.run = Mock(
         side_effect=[None, None, None, None, RuntimeError("migration failed")]
     )
     with pytest.raises(RuntimeError):
         release.activate(rollback=False)
-    assert release.compose.call_args_list[2].args == ("stop", APPLICATION_SERVICES[0])
-    assert release.compose.call_args_list[3].args == ("stop", *APPLICATION_SERVICES[1:])
-    assert release.compose.call_args_list[-1].args[-1] == DeploymentService.MIGRATE
-    assert release.compose.call_count == 5
-    release.compose = Mock()
+    assert release.compose.run.call_args_list[2].args == (
+        "stop",
+        APPLICATION_SERVICES[0],
+    )
+    assert release.compose.run.call_args_list[3].args == (
+        "stop",
+        *APPLICATION_SERVICES[1:],
+    )
+    assert release.compose.run.call_args_list[-1].args[-1] == DeploymentService.MIGRATE
+    assert release.compose.run.call_count == 5
+    release.compose.run = Mock()
     release.activate(rollback=True)
-    assert release.compose.call_args_list[4].args == (
+    assert release.compose.run.call_args_list[4].args == (
         "run",
         "--rm",
         "--no-deps",
         DeploymentService.MIGRATE,
         DeploymentService.CHECK,
     )
-    assert not any("downgrade" in call.args for call in release.compose.call_args_list)
+    assert not any(
+        "downgrade" in call.args for call in release.compose.run.call_args_list
+    )
 
 
 def test_mutable_images_cannot_enter_release(tmp_path):
@@ -143,3 +151,14 @@ def test_mutable_images_cannot_enter_release(tmp_path):
     path.write_text(path.read_text().replace("sha256:" + "a" * 64, "latest", 1))
     with pytest.raises(ValueError, match="digest"):
         BetaRelease(path, "polybot-test")
+
+
+def test_rollback_schema_check_failure_never_activates_applications(tmp_path):
+    release = BetaRelease(release_manifest(tmp_path), "polybot-test")
+    release.compose.run = Mock(
+        side_effect=[None, None, None, None, RuntimeError("incompatible")]
+    )
+    with pytest.raises(RuntimeError, match="incompatible"):
+        release.activate(rollback=True)
+    assert release.compose.run.call_count == 5
+    assert release.compose.run.call_args.args[-1] is DeploymentService.CHECK

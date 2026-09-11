@@ -20,7 +20,10 @@ from polybot.recording.archive.integrity import (
     _validate_event_dependencies,
 )
 from polybot.recording.archive.lifecycle import _release_writer_lock
-from polybot.recording.archive.primitives import _nonnegative_timestamp, _required_text
+from polybot.recording.archive.primitives import (
+    _nonnegative_timestamp_ms,
+    _required_text,
+)
 from polybot.recording.archive.schema import (
     COVERAGE_GAPS_TABLE,
     EVENTS_TABLE,
@@ -317,7 +320,7 @@ class RecordingArchive:
                     else durable_boundary_ms
                 )
             else:
-                _nonnegative_timestamp(ended_at_ms, "archive end")
+                _nonnegative_timestamp_ms(ended_at_ms, "archive end")
                 if ended_at_ms < durable_boundary_ms:
                     raise ValueError("archive end cannot precede its durable boundary")
             session_state = (

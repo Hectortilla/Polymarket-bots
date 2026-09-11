@@ -5,6 +5,7 @@ import asyncio
 from fastapi import status
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from api.http.protocol import ASGI_HTTP_RESPONSE_START, ASGI_HTTP_SCOPE, ASGI_TYPE_FIELD
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.operations.observations.contracts import (
     FailureObservation,
@@ -23,14 +24,14 @@ class OperationalHttpMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope[ASGI_TYPE_FIELD] != ASGI_HTTP_SCOPE:
             await self.app(scope, receive, send)
             return
         error_recorded = False
 
         async def observe(message: Message) -> None:
             nonlocal error_recorded
-            if message["type"] == "http.response.start":
+            if message[ASGI_TYPE_FIELD] == ASGI_HTTP_RESPONSE_START:
                 response_status = message["status"]
                 if (
                     response_status >= status.HTTP_500_INTERNAL_SERVER_ERROR

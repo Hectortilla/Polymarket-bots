@@ -19,6 +19,7 @@ from polybot.framework.config.models import BotConfig
 from polybot.framework.context import BotContext
 from polybot.framework.events import Side
 from polybot.framework.streams import StreamRelation, StreamRule
+from polybot.recording.archive.columns import ArchiveColumn
 from polybot.recording.archive.errors import (
     ArchiveFormatError,
     ArchiveIntegrityError,
@@ -26,6 +27,7 @@ from polybot.recording.archive.errors import (
 )
 from polybot.recording.archive.reader import RecordingReader
 from polybot.recording.archive.writer import RecordingArchive
+from polybot.recording.contracts.anomalies import CaptureFailureKind
 from polybot.recording.contracts.book import (
     BookBaselinePayload,
     BookChange,
@@ -37,6 +39,7 @@ from polybot.recording.contracts.gaps import (
     CoverageGapPayload,
     CoverageGapReason,
 )
+from polybot.recording.contracts.kinds import PayloadKind
 from polybot.recording.contracts.market import (
     MarketIdentity,
     MarketMetadataPayload,
@@ -1712,8 +1715,8 @@ def test_auxiliary_row_corruption_prevents_replacement(
         if corruption == "event_tokens":
             connection.execute(
                 "DELETE FROM event_tokens WHERE sequence = ("
-                "SELECT sequence FROM events WHERE payload_kind = 'public_trade'"
-                ")"
+                "SELECT sequence FROM events WHERE payload_kind = ?)",
+                (PayloadKind.PUBLIC_TRADE.value,),
             )
         elif corruption == "checkpoint":
             for token_id in (UP_TOKEN, DOWN_TOKEN):
@@ -1744,14 +1747,20 @@ def test_auxiliary_row_corruption_prevents_replacement(
                 )
         else:
             connection.execute(
-                """
+                f"""
                 INSERT INTO capture_anomalies (
-                    session_id, subscription_generation, observed_at_ms,
-                    condition_id, market_slug, token_id, failure_kind,
-                    payload_json
-                ) VALUES (1, 2, ?, ?, ?, ?, 'split_revision_timeout', '{}')
+                    {ArchiveColumn.SESSION_ID}, {ArchiveColumn.SUBSCRIPTION_GENERATION}, {ArchiveColumn.OBSERVED_AT_MS},
+                    {ArchiveColumn.CONDITION_ID}, {ArchiveColumn.MARKET_SLUG}, {ArchiveColumn.TOKEN_ID}, {ArchiveColumn.FAILURE_KIND},
+                    {ArchiveColumn.PAYLOAD_JSON}
+                ) VALUES (1, 2, ?, ?, ?, ?, ?, '{{}}')
                 """,
-                (GAP_END_MS, CONDITION_ID, MARKET_SLUG, UP_TOKEN),
+                (
+                    GAP_END_MS,
+                    CONDITION_ID,
+                    MARKET_SLUG,
+                    UP_TOKEN,
+                    CaptureFailureKind.SPLIT_REVISION_TIMEOUT.value,
+                ),
             )
         connection.commit()
     finally:

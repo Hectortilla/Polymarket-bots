@@ -5,7 +5,7 @@ import { searchMarkets, type BotDefinitionDescriptor } from "$lib/api/generated"
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import LaunchForm from "./LaunchForm.svelte";
 import { LAUNCH_FORM_COPY } from "./copy";
-import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from "./schema";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from "$lib/catalog/schema/contracts";
 
 const WALLET = "0x0000000000000000000000000000000000000001";
 

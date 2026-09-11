@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import Decimal from "decimal.js";
 
 import { isOutcomePayout, isOutcomePrice } from "$lib/outcomePrices";
@@ -8,6 +9,7 @@ import { isNonemptyString, isNonnegativeInteger, isRecord } from "$lib/valueGuar
 import { isDecimal } from "$lib/decimalGuards";
 
 export function isPortfolioSnapshot(snapshot: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(snapshot, "PortfolioSnapshotPayload")) return false;
   const policy = runtimeContract.portfolio;
   if (
     !isDecimal(snapshot.cash_usdc) ||
@@ -36,6 +38,7 @@ export function isPortfolioSnapshot(snapshot: Record<string, unknown>): boolean 
 }
 
 export function isMarketSettlementPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "MarketSettlementPayload")) return false;
   return (
     isRecord(payload.settlement) &&
     isMarketSettlement(payload.settlement) &&

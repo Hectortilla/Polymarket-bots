@@ -3,15 +3,7 @@ from __future__ import annotations
 import pytest
 from polybot.framework.events import Side
 from polybot.framework.outcomes import YES_OUTCOME
-
-from scripts.wallet_analysis.cash_metrics import fee_paid, signed_cash
-from scripts.wallet_analysis.contracts import MarketMetrics
-from scripts.wallet_analysis.market_metrics import (
-    hedge_score,
-    market_trade_share,
-    weighted_hedge_score,
-)
-from scripts.wallet_payloads import (
+from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
@@ -20,8 +12,16 @@ from scripts.wallet_payloads import (
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
     CONDITION_ID_FIELD,
-    ENRICHED_MARKET_SLUG_FIELD,
-    ActivityType,
+)
+from polybot.polymarket.wallet_reports.contracts import ActivityType
+from polybot.polymarket.wallet_reports.fields import ENRICHED_MARKET_SLUG_FIELD
+
+from scripts.wallet_analysis.cash_metrics import fee_paid, signed_cash
+from scripts.wallet_analysis.contracts import MarketMetrics
+from scripts.wallet_analysis.market_metrics import (
+    hedge_score,
+    market_trade_share,
+    weighted_hedge_score,
 )
 
 

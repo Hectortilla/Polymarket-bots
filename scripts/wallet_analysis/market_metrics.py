@@ -2,14 +2,12 @@
 
 from collections.abc import Iterable, Mapping
 
-from scripts.wallet_payload_contracts import (
-    ACTIVITY_OUTCOME_FIELD,
+from polybot.polymarket.wallet_reports.contracts import (
     ACTIVITY_SLUG_FIELD,
-    ACTIVITY_TITLE_FIELD,
     CONDITION_ID_FIELD,
     ActivityRow,
 )
-from scripts.wallet_payload_fields import ENRICHED_MARKET_SLUG_FIELD
+from polybot.polymarket.wallet_reports.fields import ENRICHED_MARKET_SLUG_FIELD
 
 from .contracts import MarketMetrics
 

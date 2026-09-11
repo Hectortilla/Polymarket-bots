@@ -7,7 +7,7 @@ from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 
 from polymarket.models.clob.order_book import OrderBookLevel
 
-from .values import require_text
+from .market_data_fields import require_text
 
 
 def normalize_book(

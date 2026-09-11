@@ -1,14 +1,27 @@
 """Explicit runtime capability gate, checked before any hook can execute."""
 
 from api.catalog.graphs.values import GraphOperation
-from api.catalog.node_based.evaluator.context_operations import (
-    DIAGNOSTIC_OPERATIONS,
-    PORTFOLIO_OPERATIONS,
+
+from .arithmetic import BINARY_ARITHMETIC
+
+PORTFOLIO_OPERATIONS = frozenset((GraphOperation.POSITION, GraphOperation.BALANCE))
+DIAGNOSTIC_OPERATIONS = frozenset((GraphOperation.INSPECT, GraphOperation.LOG))
+EVENT_CONTROL_OPERATIONS = frozenset(
+    (GraphOperation.COOLDOWN, GraphOperation.ONCE, GraphOperation.DEDUPLICATE)
 )
-from api.catalog.node_based.evaluator.event_controls import (
-    EVENT_CONTROL_OPERATIONS,
+PURE_OPERATIONS = frozenset(
+    (
+        *BINARY_ARITHMETIC,
+        GraphOperation.AND,
+        GraphOperation.OR,
+        GraphOperation.NOT,
+        GraphOperation.IS_PRESENT,
+        GraphOperation.SELECT,
+        GraphOperation.BETWEEN,
+        GraphOperation.CLAMP,
+        GraphOperation.ROUND,
+    )
 )
-from api.catalog.node_based.evaluator.pure import PURE_OPERATIONS
 
 EXECUTABLE_OPERATIONS: frozenset[GraphOperation] = (
     PURE_OPERATIONS

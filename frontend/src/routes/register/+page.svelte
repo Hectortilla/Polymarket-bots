@@ -1,5 +1,5 @@
 <script lang="ts">
-  import AccountForm from "$lib/auth/AccountForm.svelte";
+  import RegistrationForm from "$lib/auth/RegistrationForm.svelte";
 </script>
 
-<AccountForm registering />
+<RegistrationForm />

@@ -2,16 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
 from pathlib import Path
-
-
-def archive_sha256(path: Path) -> str:
-    """Return the immutable source archive fingerprint stored in results."""
-    with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
-
 
 DEFAULT_BACKTEST_RESULTS_DIR = Path("data/backtests")
 

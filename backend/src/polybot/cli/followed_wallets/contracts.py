@@ -100,6 +100,25 @@ class WalletFollowState:
     def positions(self) -> tuple[FollowPosition, ...]:
         return tuple(self.replay_positions().values())
 
+    def settle(
+        self,
+        event: MarketResolutionEvent,
+    ) -> tuple[tuple[SettledPosition, ...], bool]:
+        if self.has_settlement(event.condition_id):
+            return (), False
+        calculation = self.calculate_settlement(event)
+        if calculation is None:
+            return (), False
+        self.apply_settlement(
+            calculation,
+            calculation.to_record(
+                condition_id=event.condition_id,
+                winning_token_id=event.winning_token_id,
+                resolved_at_ms=event.resolved_at_ms,
+            ),
+        )
+        return calculation.settled_positions, True
+
     def calculate_settlement(
         self,
         event: MarketResolutionEvent,
@@ -168,25 +187,6 @@ class WalletFollowState:
             self.baselines.pop(baseline.token_id, None)
         for movement in calculation.movements:
             self.movements.pop(movement.source_key, None)
-
-    def settle(
-        self,
-        event: MarketResolutionEvent,
-    ) -> tuple[tuple[SettledPosition, ...], bool]:
-        if self.has_settlement(event.condition_id):
-            return (), False
-        calculation = self.calculate_settlement(event)
-        if calculation is None:
-            return (), False
-        self.apply_settlement(
-            calculation,
-            calculation.to_record(
-                condition_id=event.condition_id,
-                winning_token_id=event.winning_token_id,
-                resolved_at_ms=event.resolved_at_ms,
-            ),
-        )
-        return calculation.settled_positions, True
 
     def _complete_accounting_inputs(
         self,

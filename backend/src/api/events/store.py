@@ -22,6 +22,7 @@ from api.events.pagination import (
     MAX_EVENT_PAGE_LIMIT,
     next_event_page_cursor,
 )
+from api.events.schema import EventColumn
 from api.events.views import EventView, event_selection
 
 
@@ -111,14 +112,14 @@ class EventStore:
     async def read_deliveries(
         self, run_id: UUID, *, after_event_id: int, view: EventView
     ) -> tuple[EventDelivery, ...]:
-        activity = event_selection(view)
+        activity_predicate = event_selection(view)
         rows = (
             await self._session.execute(
-                select(EventRow, activity.label("activity"))
+                select(EventRow, activity_predicate.label("activity"))
                 .where(
                     EventRow.run_id == run_id,
                     EventRow.id > after_event_id,
-                    or_(activity, event_selection(EventView.DASHBOARD)),
+                    or_(activity_predicate, event_selection(EventView.DASHBOARD)),
                 )
                 .order_by(EventRow.id)
                 .limit(MAX_EVENT_PAGE_LIMIT)
@@ -175,10 +176,10 @@ class EventStore:
     def _event_from_row(row: EventRow) -> PersistedDurableEvent:
         return PERSISTED_DURABLE_EVENT_ADAPTER.validate_python(
             {
-                "id": row.id,
-                "run_id": row.run_id,
+                EventColumn.ID: row.id,
+                EventColumn.RUN_ID: row.run_id,
                 EVENT_DISCRIMINATOR_FIELD: row.kind,
-                "occurred_at": row.occurred_at,
-                "payload": row.payload,
+                EventColumn.OCCURRED_AT: row.occurred_at,
+                EventColumn.PAYLOAD: row.payload,
             }
         )

@@ -1,3 +1,5 @@
+import { isEventPage } from "./responseValidation/events";
+import { isDefinition } from "./responseValidation/catalog";
 import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { describe, expect, it, vi } from "vitest";
 import { configureApiResponseValidation, validateControlPlaneResponse } from "$lib/api/responseValidation/index";
@@ -44,6 +46,26 @@ const DEFINITION = {
   wallet_selection: catalogContract.selectionMode.ABSENT,
 };
 describe("control-plane response validation", () => {
+  it.each([undefined, RUN_ID])("uses one page cursor contract with run scope %s", (expectedRunId) => {
+    const eventId = runtimeContract.durableEventIds.firstEventId;
+    const page = {
+      events: [
+        {
+          id: eventId,
+          kind: runtimeContract.eventKind.RUN_LIFECYCLE,
+          run_id: RUN_ID,
+          occurred_at: CREATED_AT,
+          payload: { status: runtimeContract.runStatus.values.RUNNING },
+        },
+      ],
+      stream_cursor: eventId + 1,
+      next_before_event_id: eventId + 1,
+    };
+    expect(isEventPage(page, expectedRunId)).toBe(false);
+    page.next_before_event_id = eventId;
+    expect(isEventPage(page, expectedRunId)).toBe(true);
+  });
+
   it("validates market suggestions for the exact discovery operation", async () => {
     configureApiResponseValidation();
     const market = {
@@ -543,3 +565,10 @@ it("rejects an unexpected successful bot response for deletion", async () => {
     }),
   ).rejects.toThrow("Bot deletion must return an empty success response");
 });
+
+it.each([{ type: 3 }, { properties: null }, { required: "field" }, { properties: { amount: { minimum: "zero" } } }])(
+  "rejects malformed catalog JSON Schema keywords: %j",
+  (inputSchema) => {
+    expect(isDefinition({ ...DEFINITION, input_schema: inputSchema })).toBe(false);
+  },
+);

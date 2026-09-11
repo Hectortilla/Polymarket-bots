@@ -6,11 +6,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
-from api.events.channels import (
-    decode_durable_wake_frame,
-    encode_durable_wake_frame,
-    encode_live_event_frame,
-)
+from api.events.channels import decode_durable_wake_frame, encode_durable_wake_frame
 from api.events.contracts import (
     EquityChartPayload,
     LiveEquityChartEvent,
@@ -29,6 +25,7 @@ from api.events.kinds import (
     EVENT_DISCRIMINATOR_FIELD,
     LiveEventKind,
 )
+from api.events.live_codec import encode_live_event_frame
 from api.events.pagination import MAX_EVENT_PAGE_LIMIT
 from api.http.sse import RunEventStreamer
 from api.http.sse.frames import (

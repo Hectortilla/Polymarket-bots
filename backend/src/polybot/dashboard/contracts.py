@@ -38,6 +38,10 @@ NONPOSITIVE_MAX_NOTIONAL_THRESHOLD = Decimal("0")
 WALLET_BUCKET_ROUNDING = BucketRounding.FLOOR
 WALLET_BUCKET_CLAMP_TO_LAST_COLUMN = True
 WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE = True
+WALLET_LABEL_MAXIMUM_LENGTH = 12
+WALLET_LABEL_PREFIX_LENGTH = 6
+WALLET_LABEL_SUFFIX_LENGTH = 4
+WALLET_LABEL_ELLIPSIS = "…"
 TOKEN_LABEL_MAXIMUM_LENGTH = 12
 TOKEN_LABEL_PREFIX_LENGTH = 7
 TOKEN_LABEL_SUFFIX_LENGTH = 4
@@ -125,6 +129,12 @@ def format_market_label(
     if market_slug and outcome:
         return f"{market_slug}{MARKET_LABEL_PART_SEPARATOR}{outcome}"
     return market_slug or outcome or format_token_label(token_id)
+
+
+def format_wallet_label(wallet: str) -> str:
+    if len(wallet) <= WALLET_LABEL_MAXIMUM_LENGTH:
+        return wallet
+    return f"{wallet[:WALLET_LABEL_PREFIX_LENGTH]}{WALLET_LABEL_ELLIPSIS}{wallet[-WALLET_LABEL_SUFFIX_LENGTH:]}"
 
 
 def scaled_chart_window_points(

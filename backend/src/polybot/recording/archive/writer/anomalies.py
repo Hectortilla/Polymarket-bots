@@ -11,7 +11,7 @@ from polybot.recording.archive.errors import (
 )
 from polybot.recording.archive.primitives import (
     _nonnegative_int,
-    _nonnegative_timestamp,
+    _nonnegative_timestamp_ms,
 )
 from polybot.recording.archive.schema import CAPTURE_ANOMALIES_TABLE
 from polybot.recording.contracts.anomalies import CaptureAnomalyPayload
@@ -37,7 +37,7 @@ def append_capture_anomaly(
         )
     if not isinstance(identity, MarketIdentity):
         raise ArchiveIntegrityError("capture anomaly identity is invalid")
-    _nonnegative_timestamp(observed_at_ms, "capture anomaly observation")
+    _nonnegative_timestamp_ms(observed_at_ms, "capture anomaly observation")
     _nonnegative_int(
         subscription_generation,
         "capture anomaly subscription generation",

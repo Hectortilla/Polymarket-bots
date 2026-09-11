@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from polybot.framework.events.books import BookSnapshot
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import require_nonnegative_timestamp_ms
 from polybot.polymarket.book_projector import BookDepthProjector
 from polybot.polymarket.markets import Market
 from polybot.polymarket.recording_events import CapturedMarketEvent
@@ -25,7 +25,7 @@ class CaptureDepth:
         return self._projector.baseline_token_ids
 
     def projected_books(self, observed_at_ms: int) -> tuple[BookSnapshot, ...]:
-        require_nonnegative_timestamp(observed_at_ms, "observation timestamp")
+        require_nonnegative_timestamp_ms(observed_at_ms, "observation timestamp")
         return self._projector.snapshots(received_at_ms=observed_at_ms)
 
     def apply(self, event: CapturedMarketEvent) -> None:

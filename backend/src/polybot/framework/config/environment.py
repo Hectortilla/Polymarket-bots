@@ -31,24 +31,6 @@ from .constants import (
 from .stream_rules import env_stream_rules
 
 
-def optional_env(key: str) -> str | None:
-    value = os.getenv(key)
-    if value is None or value.strip() == "":
-        return None
-    return value
-
-
-def parse_bool(value: str, *, key: str) -> bool:
-    normalized = value.lower()
-    if normalized not in {"true", "false"}:
-        raise ValueError(f"{key} must be true or false")
-    return normalized == "true"
-
-
-def env_bool(key: str) -> bool:
-    return parse_bool(os.getenv(key, "false"), key=key)
-
-
 def config_values_from_env() -> dict[str, Any]:
     """Read and parse environment values before model validation."""
 
@@ -92,3 +74,21 @@ def config_values_from_env() -> dict[str, Any]:
         "api_passphrase": optional_env(BOT_API_PASSPHRASE_ENV),
         "funder_address": optional_env(BOT_FUNDER_ADDRESS_ENV),
     }
+
+
+def optional_env(key: str) -> str | None:
+    value = os.getenv(key)
+    if value is None or value.strip() == "":
+        return None
+    return value
+
+
+def parse_bool(value: str, *, key: str) -> bool:
+    normalized = value.lower()
+    if normalized not in {"true", "false"}:
+        raise ValueError(f"{key} must be true or false")
+    return normalized == "true"
+
+
+def env_bool(key: str) -> bool:
+    return parse_bool(os.getenv(key, "false"), key=key)

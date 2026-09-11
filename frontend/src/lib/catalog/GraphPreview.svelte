@@ -2,6 +2,7 @@
   import { previewGraph, type GraphNodeCatalog, type GraphPreviewResponse, type NodeGraph } from "$lib/api/generated";
   import { requestErrorDetail, requestValidationIssues } from "$lib/api/requestErrors";
   import { GRAPH_FIELD_COPY, GRAPH_PREVIEW_COPY, intendedOrdersLabel } from "$lib/catalog/copy";
+  import { isNonnegativeInteger } from "$lib/valueGuards";
   import { untrack } from "svelte";
   import {
     DEFAULT_OPERATION_SCALAR_TYPE,
@@ -37,8 +38,7 @@
     result = undefined;
     try {
       const nowMs = Number(virtualTimestampText);
-      if (!Number.isSafeInteger(nowMs) || nowMs < 0)
-        throw new Error("Virtual time requires a nonnegative whole number.");
+      if (!isNonnegativeInteger(nowMs)) throw new Error("Virtual time requires a nonnegative whole number.");
       const snapshot = JSON.parse(JSON.stringify(graph)) as NodeGraph;
       const response = await previewGraph({
         body: {

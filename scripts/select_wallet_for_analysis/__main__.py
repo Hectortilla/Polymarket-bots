@@ -3,7 +3,7 @@ from __future__ import annotations
 import curses
 import sys
 
-from polymarket.errors import PolymarketError
+from polybot.polymarket.wallet_reports.errors import WalletReadError
 
 from scripts.select_wallet_for_analysis.command import print_codex_command
 from scripts.select_wallet_for_analysis.export import export_activity
@@ -15,9 +15,9 @@ def main() -> int:
     try:
         rows = load_good_wallet_rows()
         selected = curses.wrapper(pick_row_curses, rows)
-        wallet = str(selected["wallet"])
+        wallet = selected.wallet
         data_path = export_activity(wallet)
-    except (FileNotFoundError, ValueError, PolymarketError) as exc:
+    except (FileNotFoundError, ValueError, WalletReadError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     except KeyboardInterrupt:

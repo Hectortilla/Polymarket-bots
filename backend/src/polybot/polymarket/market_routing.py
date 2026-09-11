@@ -3,7 +3,7 @@ from __future__ import annotations
 from polybot.polymarket.markets import (
     Market,
 )
-from polybot.polymarket.normalization.values import validate_optional_text
+from polybot.polymarket.normalization.market_data_fields import validate_optional_text
 
 from polymarket.models.clob.market_events import (
     MarketBookEvent,

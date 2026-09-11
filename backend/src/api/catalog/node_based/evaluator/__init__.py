@@ -33,12 +33,14 @@ from api.catalog.graphs.values import (
 from api.catalog.node_based.evaluator.actions import (
     GraphActionResolver,
 )
-from api.catalog.node_based.evaluator.compiler import CompiledGraph
-from api.catalog.node_based.evaluator.context_operations import (
+from api.catalog.node_based.evaluator.capabilities import (
     DIAGNOSTIC_OPERATIONS,
+    EVENT_CONTROL_OPERATIONS,
     PORTFOLIO_OPERATIONS,
-    portfolio_outputs,
+    PURE_OPERATIONS,
 )
+from api.catalog.node_based.evaluator.compiler import CompiledGraph
+from api.catalog.node_based.evaluator.context_operations import portfolio_outputs
 from api.catalog.node_based.evaluator.contracts import (
     EvaluationFrame,
     GraphActionResult,
@@ -50,14 +52,8 @@ from api.catalog.node_based.evaluator.diagnostics import (
 from api.catalog.node_based.evaluator.eligibility import (
     event_skip_reason,
 )
-from api.catalog.node_based.evaluator.event_controls import (
-    EVENT_CONTROL_OPERATIONS,
-    EventControlState,
-)
-from api.catalog.node_based.evaluator.pure import (
-    PURE_OPERATIONS,
-    evaluate_pure,
-)
+from api.catalog.node_based.evaluator.event_controls import EventControlState
+from api.catalog.node_based.evaluator.pure import evaluate_pure
 from api.catalog.node_based.evaluator.values import RuntimeValue
 
 
@@ -205,9 +201,7 @@ class GraphEvaluator:
             await self._diagnostics.emit(
                 frame.ctx,
                 node.id,
-                f"{value.value if value.available else value.status.value}: {value.reason or ''}".rstrip(
-                    ": "
-                ),
+                _diagnostic_message(value),
             )
             # Diagnostic values appear in traces but are not connectable outputs.
             return {"inspected": value}
@@ -248,20 +242,9 @@ class GraphEvaluator:
                 result = decision
             elif self._preview:
                 intended.append(decision.order)
-                frame.action_results.append(
-                    GraphActionResult(node.id, skip_reason=GraphReason.PLANNED)
-                )
-                return {
-                    GraphPort.STATUS: RuntimeValue(GraphValueStatus.PLANNED.value),
-                    GraphPort.FILLED_SIZE: RuntimeValue(
-                        None, GraphValueStatus.PLANNED, GraphReason.PLANNED
-                    ),
-                    GraphPort.AVERAGE_PRICE: RuntimeValue(
-                        None, GraphValueStatus.PLANNED, GraphReason.PLANNED
-                    ),
-                    GraphPort.SKIP_REASON: RuntimeValue.from_value(None),
-                    GraphPort.REJECT_REASON: RuntimeValue.from_value(None),
-                }
+                result = GraphActionResult(node.id, skip_reason=GraphReason.PLANNED)
+                frame.action_results.append(result)
+                return _action_outputs(result)
             else:
                 try:
                     fill = await frame.ctx.broker.submit(decision.order)
@@ -283,23 +266,7 @@ class GraphEvaluator:
             await self._diagnostics.emit(
                 frame.ctx, node.id, f"Rejected: {fill.reject_reason}"
             )
-        return {
-            GraphPort.STATUS: RuntimeValue(
-                fill.status.value
-                if fill is not None
-                else GraphValueStatus.SKIPPED.value
-            ),
-            GraphPort.FILLED_SIZE: RuntimeValue.from_value(
-                fill.filled_size if fill is not None else None
-            ),
-            GraphPort.AVERAGE_PRICE: RuntimeValue.from_value(
-                fill.average_price if fill is not None else None
-            ),
-            GraphPort.SKIP_REASON: RuntimeValue.from_value(result.skip_reason),
-            GraphPort.REJECT_REASON: RuntimeValue.from_value(
-                fill.reject_reason if fill is not None else None
-            ),
-        }
+        return _action_outputs(result)
 
     def _input(
         self, node_id: str, handle_id: str, frame: EvaluationFrame
@@ -328,3 +295,39 @@ def _comparison_result(
     if not right.available:
         return right
     return RuntimeValue(compare_non_null_values(operator, left.value, right.value))
+
+
+def _diagnostic_message(value: RuntimeValue) -> str:
+    displayed = value.value if value.available else value.status.value
+    return f"{displayed}: {value.reason or ''}".rstrip(": ")
+
+
+def _action_outputs(result: GraphActionResult) -> dict[str, RuntimeValue]:
+    if result.skip_reason is GraphReason.PLANNED:
+        return {
+            GraphPort.STATUS: RuntimeValue(GraphValueStatus.PLANNED.value),
+            GraphPort.FILLED_SIZE: RuntimeValue(
+                None, GraphValueStatus.PLANNED, GraphReason.PLANNED
+            ),
+            GraphPort.AVERAGE_PRICE: RuntimeValue(
+                None, GraphValueStatus.PLANNED, GraphReason.PLANNED
+            ),
+            GraphPort.SKIP_REASON: RuntimeValue.from_value(None),
+            GraphPort.REJECT_REASON: RuntimeValue.from_value(None),
+        }
+    fill = result.fill
+    return {
+        GraphPort.STATUS: RuntimeValue(
+            fill.status.value if fill is not None else GraphValueStatus.SKIPPED.value
+        ),
+        GraphPort.FILLED_SIZE: RuntimeValue.from_value(
+            fill.filled_size if fill is not None else None
+        ),
+        GraphPort.AVERAGE_PRICE: RuntimeValue.from_value(
+            fill.average_price if fill is not None else None
+        ),
+        GraphPort.SKIP_REASON: RuntimeValue.from_value(result.skip_reason),
+        GraphPort.REJECT_REASON: RuntimeValue.from_value(
+            fill.reject_reason if fill is not None else None
+        ),
+    }

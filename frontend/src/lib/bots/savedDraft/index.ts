@@ -1,5 +1,5 @@
 import { createBotApiV1BotsPost, type BotRead, type NodeGraph } from "$lib/api/generated";
-import type { LaunchInputs } from "$lib/catalog/schema";
+import type { LaunchInputs } from "$lib/catalog/schema/contracts";
 import { DraftSaveFailure } from "./failure";
 import { resolveDraftWrite } from "./write";
 

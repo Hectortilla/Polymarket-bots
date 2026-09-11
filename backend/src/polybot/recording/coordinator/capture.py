@@ -19,7 +19,7 @@ from polybot.recording.contracts.gaps import CoverageGapReason
 from polybot.recording.contracts.payloads import ResolutionPayload
 from polybot.recording.contracts.records import RecordedEvent
 from polybot.recording.writer import AsyncRecordingWriter
-from polybot.recording.writer_contracts import PendingRecordingEvent
+from polybot.recording.writer.contracts import PendingRecordingEvent
 
 from .state import CaptureStopped, ControlMessage, ResolutionStored, TrackedMarket
 

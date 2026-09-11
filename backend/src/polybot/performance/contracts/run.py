@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from polybot.backtesting.contracts import BacktestGapPolicy
-from polybot.framework.timestamps import require_nonnegative_timestamp
-from polybot.integers import validate_positive_int
+from polybot.framework.timestamps import require_nonnegative_timestamp_ms
+from polybot.integers import is_positive_int, validate_positive_int
 from polybot.recording.contracts.coverage_selection import (
     normalize_coverage_gap_selection,
 )
@@ -103,9 +103,9 @@ class RunSelection:
     def __post_init__(self) -> None:
         if self.session_id is not None:
             validate_positive_int(self.session_id, "performance session ID")
-        require_nonnegative_timestamp(self.start_ms, "performance start timestamp")
+        require_nonnegative_timestamp_ms(self.start_ms, "performance start timestamp")
         if self.end_ms is not None:
-            require_nonnegative_timestamp(self.end_ms, "performance end timestamp")
+            require_nonnegative_timestamp_ms(self.end_ms, "performance end timestamp")
             if self.end_ms < self.start_ms:
                 raise ValueError("performance end timestamp must not precede start")
         if any(not slug.strip() for slug in self.market_slugs):
@@ -172,6 +172,6 @@ class PerformanceCounters:
 
 
 def _positive_count(count: int) -> int:
-    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+    if not is_positive_int(count):
         raise ValueError("performance counter increments must be positive")
     return count

@@ -40,7 +40,7 @@ from api.events.pagination import (
     DEFAULT_EVENT_PAGE_LIMIT,
     NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX,
 )
-from api.events.views import DASHBOARD_SSE_EVENT, EventView
+from api.events.views import EventView
 from api.http.contracts import HealthResponse
 from api.http.protocol import (
     CONTENT_TYPE_HEADER,
@@ -65,6 +65,7 @@ from api.http.routes.paths import (
     USAGE_PATH,
     api_route_path,
 )
+from api.http.sse.frames import DASHBOARD_SSE_EVENT
 from api.lifecycle import policy as lifecycle_policy
 from api.lifecycle.http import ACCOUNT_DELETION_PATH
 from api.limits.errors import ResourceLimitCode
@@ -102,6 +103,10 @@ from polybot.dashboard.contracts import (
     TOKEN_LABEL_SUFFIX_LENGTH,
     WALLET_BUCKET_CLAMP_TO_LAST_COLUMN,
     WALLET_BUCKET_ROUNDING,
+    WALLET_LABEL_ELLIPSIS,
+    WALLET_LABEL_MAXIMUM_LENGTH,
+    WALLET_LABEL_PREFIX_LENGTH,
+    WALLET_LABEL_SUFFIX_LENGTH,
     WALLET_NOTIONAL_TIER_COUNT,
     WALLET_NOTIONAL_TIER_DENOMINATOR,
     WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE,
@@ -136,6 +141,7 @@ from polybot.framework.events.prices import (
 )
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.framework.events.wallet_trades import (
+    WALLET_SOURCE_KEY_FORBIDDEN_CHARACTER,
     WALLET_SOURCE_KEY_SEPARATOR,
     WalletTradeKind,
 )
@@ -145,6 +151,8 @@ from polybot.framework.streams import (
 )
 from polybot.framework.wallets import WALLET_ADDRESS_SCHEMA_PATTERN
 from polybot.performance.contracts.valuation_status import ValuationStatus
+
+from control_plane.response_field_contract import response_field_contract
 
 FRONTEND_RUN_CONTRACT_PATH = (
     Path(__file__).parents[3]
@@ -181,6 +189,7 @@ def frontend_run_contract() -> dict[str, object]:
             "backupRetentionDays": lifecycle_policy.BACKUP_RETENTION_DAYS,
             "auditRetentionDays": lifecycle_policy.OPERATOR_AUDIT_RETENTION_DAYS,
         },
+        "strictResponseFields": response_field_contract(),
         "accountManagement": {
             "accountPath": account_policy.BROWSER_ACCOUNT_PATH,
             "forgotPath": account_policy.BROWSER_FORGOT_PATH,
@@ -189,6 +198,7 @@ def frontend_run_contract() -> dict[str, object]:
             "tokenPattern": ACCOUNT_TOKEN_PATTERN,
             "tokenLifetimeSeconds": account_policy.TOKEN_LIFETIME_SECONDS,
             "tokenLifetimeMinutes": account_policy.TOKEN_LIFETIME_MINUTES,
+            "reauthenticationFailedDetail": account_policy.REAUTHENTICATION_FAILED_DETAIL,
             "sessionRevocation": _enum_values(account_policy.SessionRevocation),
             "revokesCurrentSession": {
                 scope.value: scope.revokes_current
@@ -279,6 +289,12 @@ def frontend_run_contract() -> dict[str, object]:
             "walletNotionalTierUpperBoundInclusive": (
                 WALLET_NOTIONAL_TIER_UPPER_BOUND_INCLUSIVE
             ),
+            "walletLabelPolicy": {
+                "maximumLength": WALLET_LABEL_MAXIMUM_LENGTH,
+                "prefixLength": WALLET_LABEL_PREFIX_LENGTH,
+                "suffixLength": WALLET_LABEL_SUFFIX_LENGTH,
+                "ellipsis": WALLET_LABEL_ELLIPSIS,
+            },
             "walletMarketLabelPolicy": {
                 "ellipsis": TOKEN_LABEL_ELLIPSIS,
                 "maximumTokenLength": TOKEN_LABEL_MAXIMUM_LENGTH,
@@ -365,6 +381,7 @@ def frontend_run_contract() -> dict[str, object]:
         "valuationStatus": _enum_values(ValuationStatus),
         "walletTradeKind": _enum_values(WalletTradeKind),
         "walletSourceKeySeparator": WALLET_SOURCE_KEY_SEPARATOR,
+        "walletSourceKeyForbiddenCharacter": WALLET_SOURCE_KEY_FORBIDDEN_CHARACTER,
         "walletAddressPattern": WALLET_ADDRESS_SCHEMA_PATTERN,
     }
 

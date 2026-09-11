@@ -8,7 +8,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TypedDict
 
-from scripts.wallet_payload_contracts import ActivityRow, ActivityType
+from polybot.framework.events import Side
+from polybot.polymarket.wallet_activity.fields import (
+    ACTIVITY_OUTCOME_FIELD,
+    ACTIVITY_SIDE_FIELD,
+    ACTIVITY_SIZE_FIELD,
+)
+from polybot.polymarket.wallet_reports.contracts import ActivityRow, ActivityType
 
 PNL_SIGNIFICANCE_THRESHOLD = 0.005
 ACTIVITY_METRIC = "activity"
@@ -77,7 +83,21 @@ class WalletMetrics(TypedDict):
 
 @dataclass(slots=True)
 class MarketMetrics:
-    cash: float = 0.0
+    net_cash_flow_usdc: float = 0.0
     signed_position_sizes_by_outcome: defaultdict[str, float] = field(
         default_factory=lambda: defaultdict(float)
     )
+
+    def record_position_delta(
+        self,
+        row: ActivityRow,
+        activity_type: ActivityType,
+    ) -> None:
+        outcome = str(row.get(ACTIVITY_OUTCOME_FIELD, "?"))
+        size = row.get(ACTIVITY_SIZE_FIELD, 0.0)
+        if activity_type is ActivityType.TRADE:
+            self.signed_position_sizes_by_outcome[outcome] += (
+                size if row[ACTIVITY_SIDE_FIELD] is Side.BUY else -size
+            )
+        elif activity_type in (ActivityType.REDEEM, ActivityType.MERGE):
+            self.signed_position_sizes_by_outcome[outcome] -= size

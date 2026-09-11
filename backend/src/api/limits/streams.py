@@ -6,6 +6,13 @@ import anyio
 from starlette.responses import StreamingResponse
 from starlette.types import Message, Send
 
+from api.http.protocol import (
+    ASGI_BODY_FIELD,
+    ASGI_HTTP_RESPONSE_BODY,
+    ASGI_HTTP_RESPONSE_START,
+    ASGI_MORE_BODY_FIELD,
+    ASGI_TYPE_FIELD,
+)
 from api.limits.redis.stream_admission import StreamLease
 
 STREAM_CLOSE_TIMEOUT_SECONDS = 1
@@ -25,7 +32,7 @@ class LimitedStreamResponse(StreamingResponse):
         async def tracked_send(message: Message) -> None:
             nonlocal response_started
             await send(message)
-            if message["type"] == "http.response.start":
+            if message[ASGI_TYPE_FIELD] == ASGI_HTTP_RESPONSE_START:
                 response_started = True
 
         try:
@@ -40,7 +47,11 @@ class LimitedStreamResponse(StreamingResponse):
                     raise TimeoutError("stream admission expired before response start")
                 with anyio.move_on_after(STREAM_CLOSE_TIMEOUT_SECONDS):
                     await send(
-                        {"type": "http.response.body", "body": b"", "more_body": False}
+                        {
+                            ASGI_TYPE_FIELD: ASGI_HTTP_RESPONSE_BODY,
+                            ASGI_BODY_FIELD: b"",
+                            ASGI_MORE_BODY_FIELD: False,
+                        }
                     )
         finally:
             with anyio.fail_after(STREAM_CLOSE_TIMEOUT_SECONDS, shield=True):

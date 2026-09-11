@@ -15,7 +15,6 @@ from polybot.recording.trim_planning.candidates import TrimCandidates
 from polybot.recording.trim_planning.coverage import TrimCoverage
 from polybot.recording.trim_planning.intervals import (
     CleanInterval,
-    candidate_sort_key,
     clean_intervals,
 )
 
@@ -79,7 +78,7 @@ class RecordingTrimPlanner:
         expanded_intervals: set[CleanInterval] = set()
         failures: list[str] = []
         while candidates:
-            candidate = min(candidates, key=candidate_sort_key)
+            candidate = min(candidates, key=CleanInterval.candidate_sort_key)
             candidates.remove(candidate)
             recovery_suffixes = TrimCandidates(self._reader).recovery_boundary_suffixes(
                 interval=candidate,

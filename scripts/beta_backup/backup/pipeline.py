@@ -34,7 +34,7 @@ class EncryptedDump:
                     self._database.dump_command(),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
-                    env=self._database.release.environment,
+                    env=self._database.project.environment,
                 )
                 encryption_process = subprocess.Popen(
                     [

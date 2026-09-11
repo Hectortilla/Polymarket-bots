@@ -6,11 +6,7 @@ from uuid import UUID
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.events.channels import (
-    encode_durable_wake_frame,
-    encode_live_event_frame,
-    run_event_channel,
-)
+from api.events.channels import encode_durable_wake_frame, run_event_channel
 from api.events.contracts import (
     DurableEvent,
     LiveRunEvent,
@@ -18,6 +14,7 @@ from api.events.contracts import (
 )
 from api.events.health.writer import RunHealthWriter
 from api.events.ids import require_persisted_event_id
+from api.events.live_codec import encode_live_event_frame
 from api.events.store import EventStore
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.runs.lease import ExecutionLease

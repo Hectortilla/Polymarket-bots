@@ -8,12 +8,13 @@ from uuid import uuid4
 import pytest
 from api.database import async_database_url
 from api.events.contracts import DURABLE_EVENT_ADAPTER
+from api.events.ids import FIRST_EVENT_CURSOR
 from api.events.kinds import EventKind
 from api.events.models import EventRow
 from api.events.schema import RUN_EVENTS_TABLE_NAME, EventColumn
 from api.events.store import EventStore
-from api.events.views import DASHBOARD_SSE_EVENT, EventView, event_selection
-from api.http.sse.frames import event_frames
+from api.events.views import EventView, event_selection
+from api.http.sse.frames import DASHBOARD_SSE_EVENT, event_frames
 from api.runs.status import RunStatus
 from polybot.cli.observability.states import BootstrapPhase
 from polybot.execution.paper.portfolio import PAPER_SETTLEMENT_OWNER
@@ -119,7 +120,7 @@ def test_history_and_replay_share_selection_before_pagination():
                         if view is EventView.DASHBOARD:
                             continue
                         deliveries = await store.read_deliveries(
-                            run_id, after_event_id=0, view=view
+                            run_id, after_event_id=FIRST_EVENT_CURSOR, view=view
                         )
                         assert [
                             d.event.id for d in deliveries if not d.dashboard_only
@@ -190,7 +191,9 @@ def test_history_and_replay_share_selection_before_pagination():
                     empty = await store.read_page(
                         uuid4(), before_event_id=None, limit=2
                     )
-                    assert empty.events == () and empty.stream_cursor == 0
+                    assert (
+                        empty.events == () and empty.stream_cursor == FIRST_EVENT_CURSOR
+                    )
                     assert empty.next_before_event_id is None
         finally:
             await engine.dispose()

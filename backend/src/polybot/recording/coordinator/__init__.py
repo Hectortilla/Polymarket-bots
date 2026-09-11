@@ -116,13 +116,7 @@ class RecordingCoordinator:
             return False
         if not self._plan_slugs:
             return False
-        return all(
-            (condition_id := self._condition_by_slug.get(slug)) is not None
-            and self._tracked[condition_id].terminal_claimed
-            and self._tracked[condition_id].capture is None
-            and condition_id not in self._terminal_metadata_pending
-            for slug in self._plan_slugs
-        )
+        return all(self._is_terminal_plan_slug(slug) for slug in self._plan_slugs)
 
     async def start(
         self,
@@ -546,25 +540,44 @@ class RecordingCoordinator:
             tracked.gap_ids,
         )
 
+    def _is_terminal_plan_slug(self, slug: str) -> bool:
+        condition_id = self._condition_by_slug.get(slug)
+        if condition_id is None:
+            return False
+        tracked = self._tracked[condition_id]
+        return (
+            tracked.terminal_claimed
+            and tracked.capture is None
+            and condition_id not in self._terminal_metadata_pending
+        )
+
     async def _close_capture(self, tracked: TrackedMarket) -> None:
         async with self._record_lock:
             capture = tracked.capture
             pump = tracked.pump
             tracked.capture = None
             tracked.pump = None
-        if capture is not None:
-            await capture.close()
-        if pump is not None and pump is not asyncio.current_task():
-            if not pump.done():
-                pump.cancel()
-            await asyncio.gather(pump, return_exceptions=True)
+        try:
+            if capture is not None:
+                await capture.close()
+        finally:
+            # A failed close must still drain its pump; a pump cannot await itself.
+            if pump is not None and pump is not asyncio.current_task():
+                if not pump.done():
+                    pump.cancel()
+                await asyncio.gather(pump, return_exceptions=True)
 
     async def _close_all_captures(self) -> None:
+        first_error: BaseException | None = None
         for tracked in tuple(self._tracked.values()):
             try:
                 await self._close_capture(tracked)
-            except Exception:
-                pass
+            except BaseException as error:
+                # Finish every capture, then prevent a falsely clean finalization.
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
 
     def _raise_writer_failure(self) -> None:
         failure = self._writer.failure

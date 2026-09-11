@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+from api.auth.config import AUTH_ORIGIN_ENV
 from api.auth.mail.config import SMTP_FROM_ENV, SMTP_HOST_ENV
 from api.auth.policy import LOGIN_PATH, LOGOUT_PATH, REGISTER_PATH
 from api.auth.recovery.policy import VERIFY_COMPLETE_PATH, VERIFY_REQUEST_PATH
@@ -16,11 +17,12 @@ from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.deployment.services import (
     APPLICATION_SERVICES,
-    DeploymentService,
     ENTRYPOINT_SERVICE,
     POSTGRES_SERVICE,
     REDIS_SERVICE,
+    DeploymentService,
 )
+from api.deployment.settings import RELEASE_ID_ENV
 from api.execution.policy import WORKER_STOP_GRACE_SECONDS
 from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.http.routes.events import LAST_EVENT_ID_HEADER
@@ -38,6 +40,7 @@ from api.http.routes.paths import (
 from api.limits.policy import PAPER_BETA
 from api.runs.lease_policy import DEFAULT_LEASE_SECONDS
 from api.runs.status import RunStatus
+from fastapi import status
 
 from control_plane.account_mail_fixture import (
     MAILBOX_EMAIL_PARAMETER,
@@ -45,7 +48,8 @@ from control_plane.account_mail_fixture import (
     MAILBOX_PATH,
 )
 from control_plane.browser_limits_fixture import CLEAR_LIMITS_PATH
-from scripts.beta_release import COMPOSE_FILE, REPOSITORY, BetaRelease
+from scripts.beta_release import BetaRelease
+from scripts.compose_project import COMPOSE_FILE, REPOSITORY
 
 STAGING_ORIGIN = "https://localhost:8443"
 TEST_PASSWORD = "disposable staging password 123"
@@ -141,10 +145,10 @@ class DeploymentSmoke:
         for tag in ("postgres:17", "redis:7-alpine"):
             self.command("docker", "pull", tag)
         self.values = {
-            "POLYBOT_RELEASE_ID": subprocess.check_output(
+            RELEASE_ID_ENV: subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], text=True
             ).strip(),
-            "POLYBOT_AUTH_ORIGIN": STAGING_ORIGIN,
+            AUTH_ORIGIN_ENV: STAGING_ORIGIN,
             SMTP_HOST_ENV: "smtp.invalid",
             SMTP_FROM_ENV: "accounts@example.com",
             "POLYBOT_HTTPS_PORT": "8443",
@@ -253,7 +257,8 @@ class DeploymentSmoke:
             response.raise_for_status()
             bot_id = response.json()["id"]
             assert (
-                second.get(api_route_path(BOT_PATH, bot_id=bot_id)).status_code == 404
+                second.get(api_route_path(BOT_PATH, bot_id=bot_id)).status_code
+                == status.HTTP_404_NOT_FOUND
             )
             runs = []
             for _ in range(PAPER_BETA.active_runs + 1):
@@ -286,7 +291,8 @@ class DeploymentSmoke:
             assert self.run_status(first, queued) == RunStatus.STOPPED
             active = next(run_id for run_id in runs if run_id != queued)
             assert (
-                second.get(api_route_path(RUN_PATH, run_id=active)).status_code == 404
+                second.get(api_route_path(RUN_PATH, run_id=active)).status_code
+                == status.HTTP_404_NOT_FOUND
             )
             # Repeated independent HTTP requests reach the shared database through
             # the multi-worker proxy and restore committed progress.
@@ -387,7 +393,10 @@ class DeploymentSmoke:
         def healthy():
             try:
                 with self.client() as client:
-                    return client.get(api_route_path(HEALTH_PATH)).status_code == 200
+                    return (
+                        client.get(api_route_path(HEALTH_PATH)).status_code
+                        == status.HTTP_200_OK
+                    )
             except httpx.TransportError:
                 return False
 

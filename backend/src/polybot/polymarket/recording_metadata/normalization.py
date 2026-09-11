@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.normalization.market import normalize_market
-from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
-from polybot.polymarket.normalization.values import (
-    _non_negative_decimal,
-    _optional_boolean,
-    _optional_probability,
+from polybot.polymarket.normalization.market_data_fields import (
+    optional_market_boolean,
+    optional_outcome_payout,
+    require_nonnegative_market_decimal,
     require_text,
     validate_optional_text,
 )
+from polybot.polymarket.normalization.timestamps import datetime_to_epoch_ms
 from polybot.recording.contracts.market import (
     FeeScheduleMetadata,
     MarketEventMetadata,
@@ -43,12 +43,12 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
         MarketOutcomeMetadata(
             label=market.outcomes[0].label,
             token_id=market.outcomes[0].token_id,
-            price=_optional_probability(outcomes.yes.price, "first outcome price"),
+            price=optional_outcome_payout(outcomes.yes.price, "first outcome price"),
         ),
         MarketOutcomeMetadata(
             label=market.outcomes[1].label,
             token_id=market.outcomes[1].token_id,
-            price=_optional_probability(outcomes.no.price, "second outcome price"),
+            price=optional_outcome_payout(outcomes.no.price, "second outcome price"),
         ),
     )
     fee_schedule = _fee_schedule(trading.fee_schedule)
@@ -67,17 +67,17 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
         question=market.question,
         events=events,
         outcomes=outcome_metadata,
-        active=_optional_boolean(state.active, "active state"),
-        closed=_optional_boolean(state.closed, "closed state"),
-        archived=_optional_boolean(state.archived, "archived state"),
+        active=optional_market_boolean(state.active, "active state"),
+        closed=optional_market_boolean(state.closed, "closed state"),
+        archived=optional_market_boolean(state.archived, "archived state"),
         start_at_ms=datetime_to_epoch_ms(state.start_date),
         end_at_ms=datetime_to_epoch_ms(state.end_date),
         closed_at_ms=datetime_to_epoch_ms(state.closed_time),
-        order_book_enabled=_optional_boolean(
+        order_book_enabled=optional_market_boolean(
             state.enable_order_book,
             "order-book state",
         ),
-        accepting_orders=_optional_boolean(
+        accepting_orders=optional_market_boolean(
             state.accepting_orders,
             "order-acceptance state",
         ),
@@ -88,7 +88,7 @@ def normalize_recording_market(source: SdkMarket) -> RecordingMarket:
             "seconds delay",
         ),
         neg_risk=market.neg_risk,
-        fees_enabled=_optional_boolean(trading.fees_enabled, "fee-enabled state"),
+        fees_enabled=optional_market_boolean(trading.fees_enabled, "fee-enabled state"),
         fee_type=validate_optional_text(trading.fee_type, "fee type"),
         fee_schedule=fee_schedule,
         fee_rate=market.fee_rate,
@@ -145,10 +145,10 @@ def _fee_schedule(source: object) -> FeeScheduleMetadata | None:
             "market fee schedule taker-only flag is malformed",
         )
     return FeeScheduleMetadata(
-        exponent=_non_negative_decimal(exponent, "fee exponent"),
-        rate=_non_negative_decimal(rate, "fee rate"),
+        exponent=require_nonnegative_market_decimal(exponent, "fee exponent"),
+        rate=require_nonnegative_market_decimal(rate, "fee rate"),
         taker_only=taker_only,
-        rebate_rate=_non_negative_decimal(rebate_rate, "fee rebate rate"),
+        rebate_rate=require_nonnegative_market_decimal(rebate_rate, "fee rebate rate"),
     )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
 from polybot.polymarket.markets import Market
-from polybot.polymarket.normalization.values import require_text
+from polybot.polymarket.normalization.market_data_fields import require_text
 from polybot.recording.contracts.market import MarketIdentity
 
 

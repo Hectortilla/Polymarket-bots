@@ -30,12 +30,9 @@
   import { hasGraphCapability } from "$lib/catalog/graphContracts";
   import { graphValidationIssues, type GraphValidationIssue } from "$lib/catalog/graphValidation";
   import { nodeGraphsEqual } from "$lib/catalog/nodeGraphEquality";
-  import {
-    launchInputsFromConfig,
-    launchRequestValidationIssues,
-    type LaunchInputs,
-    type LaunchValidationIssue,
-  } from "$lib/catalog/schema";
+  import { launchInputsFromConfig } from "$lib/catalog/schema/inputs";
+  import { launchRequestValidationIssues } from "$lib/catalog/schema/validation";
+  import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
   import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from "$lib/navigation";
   import { formatTime } from "$lib/time";
   import { BOT_DETAIL_COPY } from "./copy";

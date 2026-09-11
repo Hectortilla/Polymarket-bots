@@ -12,8 +12,8 @@ from api.lifecycle.commands import (
 from api.lifecycle.http import ACCOUNT_DELETION_PATH
 from api.limits.policy import PAPER_BETA
 from fastapi import status
+from polybot.persistence.hashing import SHA256_ALGORITHM
 
-from scripts.beta_backup.archive_name import ARCHIVE_CHECKSUM_ALGORITHM
 from scripts.beta_backup.commands import BackupCommand
 from scripts.beta_backup.policy import (
     BACKUP_PROCESS_TIMEOUT_SECONDS,
@@ -62,7 +62,7 @@ def lifecycle_policy_summary():
 def test_lifecycle_disclosures_and_commands_match_policy():
     runbook = RUNBOOK.read_text()
     assert lifecycle_policy_table() in runbook
-    assert f"`{ARCHIVE_CHECKSUM_ALGORITHM}` digest" in runbook
+    assert f"`{SHA256_ALGORITHM}` digest" in runbook
     for path in (
         RUNBOOK,
         Path("docs/web-control-plane-spec.md"),

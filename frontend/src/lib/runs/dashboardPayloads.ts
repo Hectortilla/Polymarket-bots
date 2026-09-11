@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import type { DispatchSkipReason, Side } from "$lib/api/generated";
 import { MAX_CHART_TOKENS, MAX_WALLET_TIMELINE_EVENTS } from "$lib/charts/contracts";
 import { isOutcomePrice } from "$lib/outcomePrices";
@@ -28,6 +29,7 @@ type ValidWalletTrade = Record<string, unknown> & {
 };
 
 export function isChartSamplePayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "ChartSamplePayload")) return false;
   return (
     isNonnegativeInteger(payload.sampled_at_ms) &&
     Array.isArray(payload.markets) &&
@@ -38,6 +40,7 @@ export function isChartSamplePayload(payload: Record<string, unknown>): boolean 
 }
 
 export function isMarketChartPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "MarketChartPayload")) return false;
   return (
     isNonnegativeInteger(payload.sampled_at_ms) &&
     Array.isArray(payload.points) &&
@@ -47,10 +50,12 @@ export function isMarketChartPayload(payload: Record<string, unknown>): boolean 
 }
 
 export function isEquityChartPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "EquityChartPayload")) return false;
   return isNonnegativeInteger(payload.sampled_at_ms) && isEquityPoint(payload.point);
 }
 
 export function isWalletChartPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "WalletChartPayload")) return false;
   return (
     isNonnegativeInteger(payload.sampled_at_ms) &&
     Array.isArray(payload.points) &&
@@ -60,6 +65,7 @@ export function isWalletChartPayload(payload: Record<string, unknown>): boolean 
 }
 
 export function isWalletTimelinePayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "WalletTimelinePayload")) return false;
   if (!isRecord(payload.trade) || !isWalletChartPoint(payload.point)) return false;
   const trade = payload.trade;
   if (!isWalletTrade(trade)) return false;
@@ -68,6 +74,7 @@ export function isWalletTimelinePayload(payload: Record<string, unknown>): boole
 }
 
 export function isStreamHealthPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "StreamHealthPayload")) return false;
   return (
     isNonnegativeInteger(payload.queue_depth) &&
     isNonnegativeInteger(payload.peak_queue_depth) &&
@@ -81,6 +88,7 @@ export function isStreamHealthPayload(payload: Record<string, unknown>): boolean
 function isMarketPoint(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyResponseFields(value, "MarketChartPointPayload") &&
     isNonemptyString(value.token_id) &&
     isNonemptyString(value.label) &&
     isChartValueStatus(value.value, value.status) &&
@@ -90,12 +98,17 @@ function isMarketPoint(value: unknown): boolean {
 }
 
 function isEquityPoint(value: unknown): boolean {
-  return isRecord(value) && isChartValueStatus(value.value, value.status);
+  return (
+    isRecord(value) &&
+    hasOnlyResponseFields(value, "EquityChartPointPayload") &&
+    isChartValueStatus(value.value, value.status)
+  );
 }
 
 function isWalletChartPoint(value: unknown): value is Record<string, unknown> {
   return (
     isRecord(value) &&
+    hasOnlyResponseFields(value, "WalletChartPointPayload") &&
     isNonemptyString(value.source_key) &&
     isWalletAddress(value.wallet) &&
     isNonnegativeInteger(value.trade_timestamp_ms) &&
@@ -115,8 +128,11 @@ function isWalletTrade(trade: Record<string, unknown>): trade is ValidWalletTrad
     isPositiveDecimal(trade.size) &&
     isOutcomePrice(trade.price) &&
     isNonemptyString(trade.source_id) &&
-    !trade.source_id.includes(WALLET_SOURCE_KEY_SEPARATOR) &&
+    !trade.source_id.includes(runtimeContract.walletSourceKeyForbiddenCharacter) &&
     (trade.market_slug === undefined || trade.market_slug === null || typeof trade.market_slug === "string") &&
+    (trade.transaction_hash === undefined ||
+      trade.transaction_hash === null ||
+      typeof trade.transaction_hash === "string") &&
     (trade.outcome === undefined || trade.outcome === null || typeof trade.outcome === "string") &&
     isNonnegativeInteger(trade.trade_timestamp_ms) &&
     isNonnegativeInteger(trade.observed_at_ms) &&

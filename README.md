@@ -131,9 +131,12 @@ including the former `0002` head; do not stamp them or expect an upgrade to
 rebuild an already-applied initial revision:
 
 ```sh
-uv run --env-file .env python -m scripts.recreate_control_plane_database
+uv run --env-file .env python -m scripts.recreate_control_plane_database \
+  --confirm-database YOUR_DISPOSABLE_DATABASE_NAME
 ```
 
+Replace the confirmation value with the exact database name in `POLYBOT_DATABASE_URL`;
+a missing or mismatched confirmation exits before any database operation.
 This command deletes the configured database, including all bots, runs and accounts.
 This reset is appropriate for the current disposable local data. Once a deployment
 retains important data, preserve it with forward migrations and backups. Downgrading

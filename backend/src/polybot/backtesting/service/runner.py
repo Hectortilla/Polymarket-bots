@@ -21,9 +21,7 @@ from polybot.recording.archive.errors import (
 )
 from polybot.recording.archive.reader import RecordingReader
 
-from .artifacts import start_backtest_artifacts
-from .execution import execute_replay
-from .setup import prepare_replay
+from .replay import BacktestReplay
 
 
 async def run_backtest(
@@ -58,21 +56,10 @@ async def run_backtest(
 
     try:
         try:
-            prepared = await prepare_replay(reader, bot, config, options)
-            started_artifacts = await start_backtest_artifacts(
-                reader,
-                config,
-                bot_spec=bot_spec,
-                options=options,
-                prepared=prepared,
-            )
-            execution = await execute_replay(
-                reader,
-                bot,
-                config,
-                prepared=prepared,
-                artifacts=started_artifacts.artifacts,
-            )
+            replay = BacktestReplay(reader, bot, config, options, bot_spec=bot_spec)
+            prepared = await replay.prepare()
+            started_artifacts = await replay.start_artifacts(prepared)
+            execution = await replay.execute(prepared, started_artifacts.artifacts)
             return BacktestResult(
                 selection=prepared.selection,
                 results_dir=started_artifacts.results_dir,

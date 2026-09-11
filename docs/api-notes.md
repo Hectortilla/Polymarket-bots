@@ -504,3 +504,30 @@ PolymarketDocs MCP confirmed that Python realtime uses the official async
 The web beta caps its existing condition-keyed registry before growing that
 subscription. No endpoint, SDK model, transport, authentication or fee behavior
 changes; no direct-integration exception is needed.
+
+### Wallet-report adapter verification (2026-09-11)
+
+PolymarketDocs MCP and the pinned official `polymarket-client==0.1.0b17`
+implementation were checked for Gamma lookup, positions/activity pagination and
+SDK market projection. The report adapters now live inside
+`polybot.polymarket.wallet_reports`; scripts consume typed internal rows.
+Gamma slug lookup uses the official keyword-only `get_market(slug=...)` method.
+Position reads consume the official item iterator through all pages. Market
+outcomes are projected to labels, state dates to validated timezone-aware ISO
+text, and winners through the existing normalized market contract.
+
+Malformed or wrong-wallet rows fail the complete report read with an owned error;
+service failure is distinct from an empty result or a Gamma 404. The documented
+activity history limit remains an explicit truncated result. Wallet dispatch
+preserves metadata validation skips but propagates transport failures to the
+runtime failure boundary. No custom transport, SDK replacement, new endpoint or
+protocol exception was introduced. Local verification evidence is recorded in
+`data/reviews/full-style-20260911/protocol-evidence.md`.
+
+The final discovery-boundary audit additionally verified official MarketState
+`archived: bool | None` and `end_date: datetime | None` against
+https://docs.polymarket.com/market-data/market-details. Search requires explicit
+`archived=False`; missing or malformed archival state cannot produce an open
+suggestion. Optional end dates pass the shared timezone/range validation before
+entering the internal suggestion contract. Invalid search hits use the existing
+skip policy and exact lookup retains its existing typed validation failure.

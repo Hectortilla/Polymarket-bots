@@ -30,6 +30,7 @@ from polybot.polymarket.recording_metadata.normalization import (
     normalize_recording_market,
 )
 from polybot.polymarket.recording_metadata.resolver import RecordingMarketResolver
+from polybot.polymarket.resolution_status import ResolutionStatus
 from polybot.recording.contracts.anomalies import (
     CaptureFailureKind,
     RevisionFingerprint,
@@ -984,7 +985,7 @@ def test_recording_metadata_preserves_rich_gamma_fields() -> None:
     assert resolved.metadata.fee_schedule.rebate_rate == Decimal("0.005")
     assert resolved.metadata.question_id == "question-resolved"
     assert resolved.metadata.neg_risk_request_id == "request-resolved"
-    assert resolved.metadata.resolution_status == "settled"
+    assert resolved.metadata.resolution_status == ResolutionStatus.SETTLED
     assert resolved.metadata.resolution_source == "official source"
     assert resolved.metadata.resolved_by == "0xresolver"
     assert resolved.metadata.winning_token_id == "up-token"

@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { BotDefinitionDescriptor, GraphExample } from "$lib/api/generated";
-  import { fieldLabel, launchFields, resolvedFieldSchema, type LaunchInputs } from "$lib/catalog/schema";
+  import { fieldLabel } from "$lib/catalog/schema/presentation";
+  import { launchFields, resolvedFieldSchema } from "$lib/catalog/schema/fields";
+  import { type LaunchInputs } from "$lib/catalog/schema/contracts";
   import { ONBOARDING_COPY } from "./copy";
   let {
     descriptor,

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ from polybot.framework.outcomes import YES_OUTCOME
 from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
+    ACTIVITY_SIDE_FIELD,
     ACTIVITY_SIZE_FIELD,
     ACTIVITY_SLUG_FIELD,
     ACTIVITY_TIMESTAMP_FIELD,
@@ -15,36 +17,37 @@ from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_TRANSACTION_HASH_FIELD,
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
+    CONDITION_ID_FIELD,
     PROXY_WALLET_FIELD,
 )
-from polymarket.models.data.activity import TradeActivity
-from polymarket.models.data.portfolio import Position
-from polymarket.models.gamma.market import Market
-
-from scripts.polymarket_wallet_api.activity_payloads import activity_payload
-from scripts.polymarket_wallet_api.gamma import (
-    fetch_gamma_market,
-    gamma_condition_id,
-)
-from scripts.polymarket_wallet_api.market_payloads import market_payload
-from scripts.polymarket_wallet_api.position_payloads import position_payload
-from scripts.wallet_payload_fields import (
+from polybot.polymarket.wallet_reports.activity_payloads import activity_payload
+from polybot.polymarket.wallet_reports.fields import (
     POSITION_CASH_PNL_FIELD,
     POSITION_CURRENT_VALUE_FIELD,
     POSITION_REALIZED_PNL_FIELD,
     POSITION_SIZE_FIELD,
 )
-from scripts.wallet_payloads import (
-    ACTIVITY_SIDE_FIELD,
-    CONDITION_ID_FIELD,
+from polybot.polymarket.wallet_reports.gamma import (
+    fetch_gamma_market,
+    gamma_condition_id,
+)
+from polybot.polymarket.wallet_reports.market_payloads import market_payload
+from polybot.polymarket.wallet_reports.normalization.activity import (
     normalize_activity_rows,
+)
+from polybot.polymarket.wallet_reports.normalization.positions import (
     normalize_position_rows,
 )
+from polybot.polymarket.wallet_reports.position_payloads import position_payload
+from polymarket.models.data.activity import TradeActivity
+from polymarket.models.data.portfolio import Position
+from polymarket.models.gamma.market import Market
+from sdk_market_fixture import sdk_market
 
 
 def test_sdk_trade_model_normalizes_to_analysis_contract() -> None:
     model = TradeActivity.model_construct(
-        wallet="0xwallet",
+        wallet="0x" + "a" * 40,
         timestamp=datetime.fromtimestamp(1, timezone.utc),
         transaction_hash="0xtx",
         type="TRADE",
@@ -61,7 +64,7 @@ def test_sdk_trade_model_normalizes_to_analysis_contract() -> None:
     rows = normalize_activity_rows([activity_payload(model)])
     assert rows == [
         {
-            PROXY_WALLET_FIELD: "0xwallet",
+            PROXY_WALLET_FIELD: "0x" + "a" * 40,
             CONDITION_ID_FIELD: "condition",
             ACTIVITY_TRANSACTION_HASH_FIELD: "0xtx",
             ACTIVITY_TYPE_FIELD: "TRADE",
@@ -80,7 +83,7 @@ def test_sdk_trade_model_normalizes_to_analysis_contract() -> None:
 
 def test_sdk_position_model_normalizes_to_analysis_contract() -> None:
     model = Position.model_construct(
-        wallet="0xwallet",
+        wallet="0x" + "a" * 40,
         condition_id="condition",
         size=Decimal("2"),
         current_value=Decimal("1"),
@@ -90,7 +93,7 @@ def test_sdk_position_model_normalizes_to_analysis_contract() -> None:
     rows = normalize_position_rows([position_payload(model)])
     assert rows == [
         {
-            PROXY_WALLET_FIELD: "0xwallet",
+            PROXY_WALLET_FIELD: "0x" + "a" * 40,
             CONDITION_ID_FIELD: "condition",
             POSITION_SIZE_FIELD: 2.0,
             POSITION_CURRENT_VALUE_FIELD: 1.0,
@@ -101,28 +104,14 @@ def test_sdk_position_model_normalizes_to_analysis_contract() -> None:
 
 
 def test_sdk_market_model_normalizes_condition_identifier() -> None:
-    model = Market.model_construct(
-        condition_id="condition",
-        slug="market",
-        question="Question?",
-        state=None,
-        schedule=None,
-        resolution=None,
-        outcomes=None,
-    )
-    assert market_payload(model)[CONDITION_ID_FIELD] == "condition"
+    model = sdk_market("market")
+    payload = market_payload(model)
+    assert payload[CONDITION_ID_FIELD] == "condition-market"
+    assert json.loads(json.dumps(payload)) == payload
 
 
 def test_gamma_lookup_uses_the_shared_condition_identifier_contract() -> None:
-    market = Market.model_construct(
-        condition_id="condition",
-        slug="market",
-        question="Question?",
-        state=None,
-        schedule=None,
-        resolution=None,
-        outcomes=None,
-    )
+    market = sdk_market("market")
     event = SimpleNamespace(
         slug="market",
         markets=[market],
@@ -131,11 +120,11 @@ def test_gamma_lookup_uses_the_shared_condition_identifier_contract() -> None:
     client = _GammaClient(event, market)
 
     assert gamma_condition_id("market", client_factory=lambda: client) == (
-        "condition",
+        "condition-market",
         False,
     )
     assert fetch_gamma_market(
-        "condition",
+        "condition-market",
         client_factory=lambda: client,
     ) == market_payload(market)
 
@@ -151,8 +140,9 @@ class _GammaClient:
     def __exit__(self, *_: object) -> None:
         return None
 
-    def list_events(self, **_: object) -> "_FirstPage":
-        return _FirstPage(self.event)
+    def get_market(self, *, slug: str) -> Market:
+        assert slug == self.market.slug
+        return self.market
 
     def list_markets(self, **_: object) -> "_FirstPage":
         return _FirstPage(self.market)

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
-from polybot.integers import validate_positive_int
+from polybot.framework.timestamps import require_nonnegative_timestamp_ms
+from polybot.integers import validate_nonnegative_int, validate_positive_int
 
 
 def _required_text(value: object, name: str) -> str:
@@ -27,10 +27,12 @@ def _positive_int(value: object, name: str) -> int:
     return value
 
 
-def _nonnegative_timestamp(value: object, name: str) -> int:
+def _nonnegative_timestamp_ms(value: object, name: str) -> int:
     parsed = _strict_int(value, name)
-    return require_nonnegative_timestamp(parsed, name)
+    return require_nonnegative_timestamp_ms(parsed, name)
 
 
 def _nonnegative_int(value: object, name: str) -> int:
-    return _nonnegative_timestamp(value, name)
+    parsed = _strict_int(value, name)
+    validate_nonnegative_int(parsed, name)
+    return parsed

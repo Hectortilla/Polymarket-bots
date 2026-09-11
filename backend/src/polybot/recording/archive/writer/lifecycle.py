@@ -23,7 +23,10 @@ from polybot.recording.archive.lifecycle import (
     open_exclusive_connection,
 )
 from polybot.recording.archive.paths import SQLITE_SIDECAR_SUFFIXES
-from polybot.recording.archive.primitives import _nonnegative_timestamp, _required_text
+from polybot.recording.archive.primitives import (
+    _nonnegative_timestamp_ms,
+    _required_text,
+)
 from polybot.recording.archive.rows import _latest_metadata
 from polybot.recording.archive.schema import (
     SCHEMA_VERSION,
@@ -65,7 +68,7 @@ def create_session(
 ) -> ArchiveSession:
     archive_path = _archive_path(path)
     normalized_target = _required_text(target_identity, "target identity")
-    _nonnegative_timestamp(started_at_ms, "session start")
+    _nonnegative_timestamp_ms(started_at_ms, "session start")
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         descriptor = os.open(
@@ -132,7 +135,7 @@ def resume_session(
 ) -> ArchiveSession:
     archive_path = _archive_path(path)
     normalized_target = _required_text(target_identity, "target identity")
-    _nonnegative_timestamp(started_at_ms, "session start")
+    _nonnegative_timestamp_ms(started_at_ms, "session start")
     if not archive_path.is_file():
         raise ArchiveFormatError(f"recording archive does not exist: {archive_path}")
     lock_file = None

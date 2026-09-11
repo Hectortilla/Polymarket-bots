@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 
 import { isInteger, isNonemptyString, isOneOf } from "$lib/valueGuards";
@@ -12,7 +13,8 @@ const BOOTSTRAP_PHASES = Object.values(runtimeContract.bootstrapPhase);
 export function isLifecyclePayload(payload: Record<string, unknown>): boolean {
   const hasStartedFields =
     payload.name !== undefined || payload.mode !== undefined || payload.initial_cash_usdc !== undefined;
-  if (!hasStartedFields) return isRunStatus(payload.status);
+  if (!hasStartedFields) return hasOnlyResponseFields(payload, "RunStatusPayload") && isRunStatus(payload.status);
+  if (!hasOnlyResponseFields(payload, "RunStartedPayload")) return false;
   return (
     (payload.status === undefined || payload.status === INITIAL_RUN_STATUS) &&
     isNonemptyString(payload.name) &&
@@ -22,6 +24,7 @@ export function isLifecyclePayload(payload: Record<string, unknown>): boolean {
 }
 
 export function isBootstrapPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "RunBootstrapPayload")) return false;
   if (!isOneOf(payload.phase, BOOTSTRAP_PHASES) || !isInteger(payload.completed) || !isInteger(payload.total))
     return false;
   const policy = runtimeContract.bootstrapProgress;
@@ -33,5 +36,6 @@ export function isBootstrapPayload(payload: Record<string, unknown>): boolean {
 }
 
 export function isActivityPayload(payload: Record<string, unknown>): boolean {
+  if (!hasOnlyResponseFields(payload, "BotActivityPayload")) return false;
   return isNonemptyString(payload.message) && isOneOf(payload.severity, ACTIVITY_SEVERITIES);
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fieldLabel } from "./schema";
+  import { fieldLabel } from "$lib/catalog/schema/presentation";
 
   let { value }: { value: unknown } = $props();
 </script>

@@ -1,6 +1,5 @@
 """Pure scalar operations with numeric preconditions checked before formulas."""
 
-import operator
 from decimal import ROUND_HALF_UP, Decimal, DecimalException, localcontext
 
 from api.catalog.graphs.numbers import (
@@ -13,27 +12,7 @@ from api.catalog.graphs.value_status import GraphValueStatus
 from api.catalog.graphs.values import GraphOperation, GraphPort
 from api.catalog.node_based.evaluator.values import RuntimeValue
 
-BINARY_ARITHMETIC = {
-    GraphOperation.ADD: operator.add,
-    GraphOperation.SUBTRACT: operator.sub,
-    GraphOperation.MULTIPLY: operator.mul,
-    GraphOperation.DIVIDE: operator.truediv,
-    GraphOperation.MIN: min,
-    GraphOperation.MAX: max,
-}
-PURE_OPERATIONS = frozenset(
-    (
-        *BINARY_ARITHMETIC,
-        GraphOperation.AND,
-        GraphOperation.OR,
-        GraphOperation.NOT,
-        GraphOperation.IS_PRESENT,
-        GraphOperation.SELECT,
-        GraphOperation.BETWEEN,
-        GraphOperation.CLAMP,
-        GraphOperation.ROUND,
-    )
-)
+from .arithmetic import BINARY_ARITHMETIC
 
 
 def evaluate_pure(

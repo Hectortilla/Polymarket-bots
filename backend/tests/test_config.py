@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from polybot.framework.config.constants import (
 )
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
+from polybot.framework.streams import StreamRelation, StreamRule
 
 FUNDER_ADDRESS = "0x00000000000000000000000000000000000000f0"
 
@@ -37,9 +39,18 @@ def test_config_reads_env_and_per_bot_overrides(
     monkeypatch.setenv(BOT_MODE_ENV, BotMode.LIVE.value)
     monkeypatch.setenv(
         BOT_STREAM_RULES_ENV,
-        '[{"relation":"filtered","market_slugs":["btc-up","eth-up"],'
-        '"wallet_addresses":["0x0000000000000000000000000000000000000001",'
-        '"0x0000000000000000000000000000000000000002"]}]',
+        json.dumps(
+            [
+                StreamRule(
+                    StreamRelation.FILTERED,
+                    market_slugs=("btc-up", "eth-up"),
+                    wallet_addresses=(
+                        "0x0000000000000000000000000000000000000001",
+                        "0x0000000000000000000000000000000000000002",
+                    ),
+                ).to_dict()
+            ]
+        ),
     )
     monkeypatch.setenv(BOT_MAX_ORDER_SIZE_ENV, "4")
     monkeypatch.setenv(BOT_MAX_SLIPPAGE_PCT_ENV, "0.01")

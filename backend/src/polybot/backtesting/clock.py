@@ -7,7 +7,8 @@ from collections.abc import Awaitable, Callable
 from polybot.framework.clock import ClockDataExhaustedError
 from polybot.framework.timestamps import (
     MILLISECONDS_PER_SECOND,
-    require_nonnegative_timestamp,
+    require_nonnegative_timestamp_ms,
+    timestamp_bounds_are_ordered,
 )
 
 AdvanceFn = Callable[[int], Awaitable[None]]
@@ -15,8 +16,8 @@ AdvanceFn = Callable[[int], Awaitable[None]]
 
 class ReplayClock:
     def __init__(self, start_at_ms: int, end_at_ms: int) -> None:
-        require_nonnegative_timestamp(start_at_ms, "replay start timestamp")
-        if end_at_ms < start_at_ms:
+        require_nonnegative_timestamp_ms(start_at_ms, "replay start timestamp")
+        if not timestamp_bounds_are_ordered(start_at_ms, end_at_ms):
             raise ValueError("replay clock bounds are invalid")
         self._now_ms = start_at_ms
         self._end_at_ms = end_at_ms

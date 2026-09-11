@@ -1,3 +1,4 @@
+import { MARKET_SELECTOR_COPY } from "../src/lib/catalog/copy";
 import accountContract from "./accountContract.fixture.json" with { type: "json" };
 import { verifyNewAccount } from "./accountHelpers";
 import { test, expect, type Page } from "@playwright/test";
@@ -37,7 +38,7 @@ async function authenticate(page: Page, email: string, registration = false) {
 async function configureBot(page: Page, name: string) {
   await page.goto(NAVIGATION_PATH.NEW_BOT);
   await page.getByLabel("Name", { exact: true }).fill(name);
-  await page.getByPlaceholder("Search markets by name or topic…").fill("browser");
+  await page.getByPlaceholder(MARKET_SELECTOR_COPY.PLACEHOLDER).fill("browser");
   await page.getByRole("option").filter({ hasText: "Will browser-market happen?" }).click();
 }
 
@@ -55,7 +56,7 @@ test("two accounts keep editor, copies, runs and history private across reload a
   expect(privateRequests).toEqual([]);
   await authenticate(page, FIRST_EMAIL, true);
   await expect(page.getByRole("region", { name: ALLOWANCE_COPY.HEADING })).toContainText(
-    `0 / ${contract.resourcePolicy.active_runs} active`,
+    `0/${contract.resourcePolicy.active_runs} active`,
   );
   await page.reload();
   await expect(page.getByText(FIRST_EMAIL, { exact: true })).toBeVisible();

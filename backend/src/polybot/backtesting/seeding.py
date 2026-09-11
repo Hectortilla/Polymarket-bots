@@ -2,6 +2,9 @@
 
 import hashlib
 
+BROKER_SEED_PURPOSE = "broker"
+STRATEGY_SEED_PURPOSE = "strategy"
+
 
 def derived_seed(seed: int, purpose: str) -> int:
     """Derive an independent deterministic random stream from one run seed."""

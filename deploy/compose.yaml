@@ -34,6 +34,7 @@ services:
     restart: unless-stopped
     environment:
       POLYBOT_AUTH_ORIGIN: ${POLYBOT_AUTH_ORIGIN:?HTTPS origin required}
+      POLYBOT_ENTRYPOINT_HEALTH_PATH: /healthz
     # Public binding remains unavailable until the final beta acceptance gate.
     ports: ['127.0.0.1:${POLYBOT_HTTPS_PORT:-8443}:${POLYBOT_HTTPS_PORT:-8443}']
     networks:
@@ -43,7 +44,7 @@ services:
     depends_on:
       api: {condition: service_healthy}
     healthcheck:
-      test: [CMD, wget, --quiet, --spider, 'http://127.0.0.1:8080/healthz']
+      test: [CMD-SHELL, 'wget --quiet --spider "http://127.0.0.1:8080$${POLYBOT_ENTRYPOINT_HEALTH_PATH}"']
       interval: 5s
       timeout: 3s
       retries: 12

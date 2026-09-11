@@ -2337,6 +2337,26 @@ so no PolymarketDocs check was required. Support/operator placeholders remain an
 approved exception to launch readiness, not authorization to publish. No public
 ingress, account invitation or production deployment was performed.
 
+## Full-repository review follow-up (2026-09-11)
+
+This maintenance pass follows all 51 repository style rules across existing code;
+it does not add a product slice. Coherent owners now cover writer processing,
+replay queues and workflow, order accounting, stream dispatch, event projection,
+wallet report normalization, deployment commands and frontend form/schema work.
+Shared contracts and primitive validation rules are reused at their owning
+boundaries. Wallet source keys now persist through PostgreSQL JSONB, malformed
+wallet-report reads surface failures, and paper accounting rejects invalid fees
+before state changes. Database recreation requires exact target-name confirmation. Catalog schemas and
+synthetic preview identities are validated at ingress; failed capture shutdown
+marks the archive failed, and rejected performance samples preserve cached marks.
+
+Validation includes official-SDK adapter branches, real PostgreSQL event round
+trips and schema gates, frontend/backend response parity, chart-history retries,
+authentication destinations, browser onboarding, packaging and the affected style
+reviewer reruns. The documentation-drift audit covers README, architecture/API
+notes, web architecture, graph migration guidance and exported contracts. No live
+trading, public ingress or deployment is part of this maintenance pass.
+
 ## Later Product Features
 
 After the public paper beta, consider browser backtesting over available

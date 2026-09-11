@@ -6,9 +6,6 @@ from api.catalog.graphs.reasons import GraphReason
 from api.catalog.graphs.values import GraphOperation, GraphPort
 from api.catalog.node_based.evaluator.values import RuntimeValue
 
-PORTFOLIO_OPERATIONS = frozenset((GraphOperation.POSITION, GraphOperation.BALANCE))
-DIAGNOSTIC_OPERATIONS = frozenset((GraphOperation.INSPECT, GraphOperation.LOG))
-
 
 def portfolio_outputs(
     operation: GraphOperation,

@@ -12,10 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from api.auth.streams import StreamAuthorization
-from api.events.channels import (
-    decode_durable_wake_frame,
-    decode_live_event_frame,
-)
+from api.events.channels import decode_durable_wake_frame
+from api.events.live_codec import decode_live_event_frame
 from api.events.views import EventView
 from api.http.sse.frames import SSE_IDLE_COMMENT, sse_frame
 from api.http.sse.replay import RunEventReplay

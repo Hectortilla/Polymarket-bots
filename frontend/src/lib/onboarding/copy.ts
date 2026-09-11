@@ -11,7 +11,6 @@ export const ONBOARDING_COPY = {
   LOADING: "Loading examples…",
   LOAD_ERROR: "Examples are unavailable. Try again, or return to your bots.",
   SAVE_ERROR: "The bot could not be saved. Your choices are still here; review them and retry.",
-  RETRY: "Try again",
   NO_LAUNCH: "Saving creates a private bot. Nothing runs until you choose Run bot on its saved page.",
   PARAMETERS: "Example conditions",
   PAPER_ONLY:

@@ -9,7 +9,15 @@ from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.recording.clock import ObservationClock
 from polybot.recording.duration import parse_duration_seconds
-from polybot.recording.identity import bot_target_identity, static_target_identity
+from polybot.recording.identity import (
+    TARGET_IDENTITY_BOT_SPEC_FIELD,
+    TARGET_IDENTITY_CONFIGURATION_FIELD,
+    TARGET_IDENTITY_KIND_FIELD,
+    TARGET_IDENTITY_MARKET_SLUGS_FIELD,
+    TargetIdentityKind,
+    bot_target_identity,
+    static_target_identity,
+)
 from polybot.recording.planning import (
     ORDERING_DISABLED_MESSAGE,
     WALLET_ACTIVITY_DISABLED_MESSAGE,
@@ -129,19 +137,16 @@ def test_target_identity_is_canonical_and_excludes_credentials() -> None:
     identity = bot_target_identity("example:create", config)
 
     parsed = json.loads(identity)
-    assert parsed["kind"] == "bot"
-    assert parsed["spec"] == "example:create"
-    assert parsed["config"]["stream_rules"] == [
-        {
-            "market_slugs": ["btc"],
-            "relation": "independent",
-            "wallet_addresses": [],
-        }
+    assert parsed[TARGET_IDENTITY_KIND_FIELD] == TargetIdentityKind.BOT
+    assert parsed[TARGET_IDENTITY_BOT_SPEC_FIELD] == "example:create"
+    assert parsed[TARGET_IDENTITY_CONFIGURATION_FIELD]["stream_rules"] == [
+        config.stream_rules[0].to_dict()
     ]
     assert "secret" not in identity
-    assert static_target_identity(("btc", "eth")) == (
-        '{"kind":"static","market_slugs":["btc","eth"]}'
-    )
+    assert json.loads(static_target_identity(("btc", "eth"))) == {
+        TARGET_IDENTITY_KIND_FIELD: TargetIdentityKind.STATIC,
+        TARGET_IDENTITY_MARKET_SLUGS_FIELD: ["btc", "eth"],
+    }
     assert static_target_identity(("eth", "btc")) == static_target_identity(
         ("btc", "eth")
     )

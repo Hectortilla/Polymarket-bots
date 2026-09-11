@@ -6,6 +6,13 @@ from fastapi import HTTPException, status
 from starlette.types import Message, Receive
 
 from api.auth.policy import AUTH_BODY_MAX_BYTES, AUTH_BODY_TOO_LARGE_DETAIL
+from api.http.protocol import (
+    ASGI_BODY_FIELD,
+    ASGI_HTTP_DISCONNECT,
+    ASGI_HTTP_REQUEST,
+    ASGI_MORE_BODY_FIELD,
+    ASGI_TYPE_FIELD,
+)
 
 
 @dataclass
@@ -19,18 +26,22 @@ class AuthRequestBody:
         body = bytearray()
         while True:
             message = await receive()
-            if message["type"] == "http.disconnect":
+            if message[ASGI_TYPE_FIELD] == ASGI_HTTP_DISCONNECT:
                 return None
-            body.extend(message.get("body", b""))
+            body.extend(message.get(ASGI_BODY_FIELD, b""))
             if len(body) > AUTH_BODY_MAX_BYTES:
                 raise HTTPException(
                     status.HTTP_413_CONTENT_TOO_LARGE, AUTH_BODY_TOO_LARGE_DETAIL
                 )
-            if not message.get("more_body", False):
+            if not message.get(ASGI_MORE_BODY_FIELD, False):
                 return cls(bytes(body), receive)
 
     async def receive(self) -> Message:
         if self.delivered:
             return await self.receive_remaining()
         self.delivered = True
-        return {"type": "http.request", "body": self.content, "more_body": False}
+        return {
+            ASGI_TYPE_FIELD: ASGI_HTTP_REQUEST,
+            ASGI_BODY_FIELD: self.content,
+            ASGI_MORE_BODY_FIELD: False,
+        }

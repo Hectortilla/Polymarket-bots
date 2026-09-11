@@ -3,14 +3,15 @@ from __future__ import annotations
 import curses
 
 from scripts.select_wallet_for_analysis.rows import SORT_CHOICES, format_row, sort_rows
+from scripts.wallet_scan_report import WalletScanRecord, WalletScanSortField
 
 
-def pick_row_curses(stdscr, rows: list[dict[str, object]]) -> dict[str, object]:
+def pick_row_curses(stdscr, rows: list[WalletScanRecord]) -> WalletScanRecord:
     if not rows:
         raise ValueError("no wallets found")
     curses.curs_set(0)
     stdscr.keypad(True)
-    sort_key, reverse, selected, top = "net", True, 0, 0
+    sort_key, reverse, selected, top = WalletScanSortField.NET, True, 0, 0
     sorted_rows = sort_rows(rows, sort_key, reverse)
     while True:
         stdscr.erase()

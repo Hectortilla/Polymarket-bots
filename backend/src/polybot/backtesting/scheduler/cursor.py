@@ -94,6 +94,7 @@ class ReplayCursor:
         item: RecordedEvent | _ReplayFailure | _ReplayEnd,
     ) -> bool:
         future = asyncio.run_coroutine_threadsafe(self._queue.put(item), loop)
+        # Poll so aclose can interrupt a producer blocked by the bounded queue.
         while not self._stop.is_set():
             try:
                 future.result(timeout=REPLAY_QUEUE_POLL_INTERVAL_SECONDS)

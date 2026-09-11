@@ -6,7 +6,7 @@
   import { DASHBOARD_COPY } from "./copy";
 
   export function equityChartOption(samples: ChartSamplePayload[]): EChartsCoreOption {
-    const data = (status: AvailableValuationStatus) =>
+    const seriesDataForStatus = (status: AvailableValuationStatus) =>
       samples.map((sample) => [
         sample.sampled_at_ms,
         sample.equity.status === status && sample.equity.value !== null ? Number(sample.equity.value) : null,
@@ -27,16 +27,16 @@
           showSymbol: false,
           itemStyle: { color: CHART_COLORS.buy },
           lineStyle: { color: CHART_COLORS.buy, width: 2 },
-          data: data(VALUATION_STATUS.fresh),
+          data: seriesDataForStatus(VALUATION_STATUS.fresh),
         },
         {
           id: "equity:stale",
-          name: "Stale estimate",
+          name: DASHBOARD_COPY.STALE_ESTIMATE,
           type: "line",
           showSymbol: false,
           itemStyle: { color: CHART_COLORS.buy },
           lineStyle: { color: CHART_COLORS.buy, opacity: 0.4, type: "dashed", width: 2 },
-          data: data(VALUATION_STATUS.stale),
+          data: seriesDataForStatus(VALUATION_STATUS.stale),
         },
       ],
     };

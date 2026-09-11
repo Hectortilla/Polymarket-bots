@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+from polybot.framework.timestamps import timestamp_bounds_are_ordered
 from polybot.recording.archive.columns import ArchiveColumn
 from polybot.recording.archive.schema import BOOK_CHECKPOINTS_TABLE
 
@@ -19,7 +20,7 @@ from .coverage import reject_known_gaps
 from .errors import ArchiveIntegrityError
 from .markets import market_at
 from .primitives import (
-    _nonnegative_timestamp,
+    _nonnegative_timestamp_ms,
     _positive_int,
     _required_text,
     _strict_int,
@@ -61,7 +62,7 @@ def checkpoint_before(
     """Return the newest token checkpoint at or before one observation time."""
 
     normalized_token = _required_text(token_id, "token ID")
-    _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+    _nonnegative_timestamp_ms(observed_at_ms, "checkpoint lookup timestamp")
     normalized_session = (
         None if session_id is None else _positive_int(session_id, "session ID")
     )
@@ -119,7 +120,7 @@ def checkpoint_pair_before(
     """Return the newest same-boundary checkpoint pair for one market."""
 
     normalized_condition = _required_text(condition_id, "condition ID")
-    _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+    _nonnegative_timestamp_ms(observed_at_ms, "checkpoint lookup timestamp")
     normalized_session = (
         None if session_id is None else _positive_int(session_id, "session ID")
     )
@@ -145,7 +146,7 @@ def checkpoint_pair_at(
     """Return a same-boundary checkpoint pair exactly at one observation time."""
 
     normalized_condition = _required_text(condition_id, "condition ID")
-    _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
+    _nonnegative_timestamp_ms(observed_at_ms, "checkpoint lookup timestamp")
     normalized_session = (
         None if session_id is None else _positive_int(session_id, "session ID")
     )
@@ -172,9 +173,9 @@ def checkpoint_pair_at_or_after(
     """Return the first same-boundary checkpoint pair in an inclusive range."""
 
     normalized_condition = _required_text(condition_id, "condition ID")
-    _nonnegative_timestamp(observed_at_ms, "checkpoint lookup timestamp")
-    _nonnegative_timestamp(end_at_ms, "checkpoint lookup end")
-    if end_at_ms < observed_at_ms:
+    _nonnegative_timestamp_ms(observed_at_ms, "checkpoint lookup timestamp")
+    _nonnegative_timestamp_ms(end_at_ms, "checkpoint lookup end")
+    if not timestamp_bounds_are_ordered(observed_at_ms, end_at_ms):
         raise ValueError("checkpoint lookup end cannot precede its start")
     normalized_session = (
         None if session_id is None else _positive_int(session_id, "session ID")

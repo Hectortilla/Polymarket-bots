@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { FORM_COPY } from "$lib/formCopy";
   import { SERVICE_NAME } from "$lib/serviceIdentity";
   import { ONBOARDING_COPY } from "$lib/onboarding/copy";
   import AccountUsage from "$lib/limits/AccountUsage.svelte";
@@ -74,7 +75,7 @@
 {#if error}
   <div class="notice-with-action">
     <p class="notice error" role="alert">{error}</p>
-    <button class="secondary" onclick={loadHome}>Try again</button>
+    <button class="secondary" onclick={loadHome}>{FORM_COPY.TRY_AGAIN}</button>
   </div>
 {:else if loading}
   <div class="loading-state" aria-live="polite">

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from polybot.cli.terminal import format_bytes, format_duration, format_timestamp
 from polybot.recording.presentation import ARCHIVE_SIZE_LABEL
 from rich.panel import Panel
 from rich.table import Table
@@ -21,9 +22,6 @@ from .terminal import (
     MUTED_STYLE,
     SUCCESS_STYLE,
     WARNING_STYLE,
-    format_bytes,
-    format_duration,
-    format_timestamp,
     recording_console,
 )
 

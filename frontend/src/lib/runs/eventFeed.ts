@@ -1,3 +1,4 @@
+import { RUN_COPY } from "$lib/runs/copy";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { EVENT_KIND, type PersistedDurableEvent } from "./durableEvents";
 
@@ -26,7 +27,7 @@ export function eventLabel(event: PersistedDurableEvent): string {
     case EVENT_KIND.walletTimeline:
       return "Followed wallet trade";
     case EVENT_KIND.streamHealth:
-      return "Stream health";
+      return RUN_COPY.STREAM_HEALTH;
     case EVENT_KIND.chartSample:
       return "Chart update";
   }

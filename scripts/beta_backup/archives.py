@@ -1,14 +1,14 @@
 """Only completed, checksum-valid archives can satisfy the backup recovery point."""
 
-import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from api.lifecycle.policy import BACKUP_RETENTION_DAYS, RECOVERY_POINT_HOURS
+from polybot.persistence.hashing import sha256_file
 
-from scripts.beta_backup.archive_name import ARCHIVE_CHECKSUM_ALGORITHM, ArchiveName
+from scripts.beta_backup.archive_name import ArchiveName
 from scripts.beta_backup.paths import PrivateBackupPath
 
 
@@ -19,7 +19,7 @@ class BackupArchives:
     def publish(self, source: Path, snapshot_started_at: datetime) -> Path:
         destination = (
             self.directory
-            / ArchiveName(snapshot_started_at, uuid4(), self.checksum(source)).format()
+            / ArchiveName(snapshot_started_at, uuid4(), sha256_file(source)).format()
         )
         os.replace(source, destination)
         directory_fd = os.open(self.directory, os.O_RDONLY)
@@ -45,17 +45,12 @@ class BackupArchives:
         ):
             if (
                 cutoff <= archive.snapshot_started_at <= now
-                and self.checksum(path) == archive.checksum
+                and sha256_file(path) == archive.checksum
             ):
                 return
         raise RuntimeError(
             "no intact completed backup within the recovery-point target"
         )
-
-    @staticmethod
-    def checksum(path: Path) -> str:
-        with path.open("rb") as archive:
-            return hashlib.file_digest(archive, ARCHIVE_CHECKSUM_ALGORITHM).hexdigest()
 
     def _completed(self):
         for path in self.directory.iterdir():

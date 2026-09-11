@@ -16,7 +16,7 @@ from api.execution.policy import RUNTIME_CLEANUP_SECONDS
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.limits.policy import PAPER_BETA
 from api.runs.failures import (
-    NEW_RUN_GUIDANCE,
+    DURATION_EXPIRED_DETAIL,
     ExecutionOwnershipLost,
     RunFailureReason,
     RunSnapshotError,
@@ -32,7 +32,6 @@ from .runtime import run_claimed_bot
 
 WORKER_POLL_INTERVAL_SECONDS = DEFAULT_HEARTBEAT_SECONDS
 PAPER_RUN_FAILURE_REASON = "paper run failed"
-DURATION_EXPIRED_DETAIL = "Paper-run duration allowance reached. " + NEW_RUN_GUIDANCE
 
 
 class RunLifecycleCoordinator:

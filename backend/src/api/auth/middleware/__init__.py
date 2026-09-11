@@ -10,7 +10,8 @@ from api.auth.middleware.body import AuthRequestBody
 from api.auth.middleware.csrf import require_same_origin_json
 from api.auth.policy import AUTH_ATTEMPT_LIMITS, RATE_LIMIT_DETAIL
 from api.auth.throttle import AuthRateLimiter
-from api.http.protocol import RETRY_AFTER_HEADER
+from api.http.errors import HTTP_ERROR_DETAIL_FIELD
+from api.http.protocol import ASGI_HTTP_SCOPE, ASGI_TYPE_FIELD, RETRY_AFTER_HEADER
 
 
 class AuthBoundaryMiddleware:
@@ -18,7 +19,7 @@ class AuthBoundaryMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope[ASGI_TYPE_FIELD] != ASGI_HTTP_SCOPE:
             await self.app(scope, receive, send)
             return
         request = Request(scope)
@@ -43,7 +44,7 @@ class AuthBoundaryMiddleware:
                 receive = body.receive
         except HTTPException as error:
             await JSONResponse(
-                {"detail": error.detail},
+                {HTTP_ERROR_DETAIL_FIELD: error.detail},
                 status_code=error.status_code,
                 headers=error.headers,
             )(scope, receive, send)

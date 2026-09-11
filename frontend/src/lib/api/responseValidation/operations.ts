@@ -1,5 +1,5 @@
 import { isAccountAction, isAccountStatus } from "$lib/auth/recovery/validation";
-import { CONTENT_TYPE_HEADER, HTTP_STATUS, JSON_CONTENT_TYPE } from "$lib/api/http";
+import { CONTENT_TYPE_HEADER, HTTP_STATUS, HTTP_METHOD, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { isAccountUsage } from "$lib/limits/validation";
 import { isCurrentUser, isLogoutResponse } from "$lib/auth/validation";
 import { isArrayOf } from "$lib/valueGuards";
@@ -10,14 +10,12 @@ import { isRecord } from "$lib/valueGuards";
 
 import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph";
 
-import {
-  isBot,
-  isDefinition,
-  isHealthResponse,
-  isMarketSearchResults,
-  isMarketSuggestion,
-  isRun,
-} from "$lib/api/responseValidation/resources";
+import { isBot } from "./bots";
+import { isDefinition } from "./catalog";
+import { isHealthResponse } from "./health";
+import { isMarketSearchResults } from "./markets";
+import { isMarketSuggestion } from "./markets";
+import { isRun } from "./runs";
 
 import { isEventPage } from "$lib/api/responseValidation/events";
 
@@ -33,7 +31,7 @@ export async function validateOperationResponse(
   if (!response.ok || options.url === runtimeContract.apiPaths.runEventsStream) {
     return response;
   }
-  if (options.url === runtimeContract.apiPaths.bot && options.method === "DELETE") {
+  if (options.url === runtimeContract.apiPaths.bot && options.method === HTTP_METHOD.DELETE) {
     if (response.status !== HTTP_STATUS.NO_CONTENT) {
       throw new Error("Bot deletion must return an empty success response");
     }
@@ -80,7 +78,7 @@ function isExpectedOperationResponse(
   if (url === paths.marketLookup) return isArrayOf(data, isMarketSuggestion);
   if (url === paths.botDefinitions) return isArrayOf(data, isDefinition);
   if (url === paths.bots) {
-    return method === "GET" ? isArrayOf(data, isBot) : isRecord(data) && isBot(data);
+    return method === HTTP_METHOD.GET ? isArrayOf(data, isBot) : isRecord(data) && isBot(data);
   }
   if (url === paths.bot) return isRecord(data) && isBot(data);
   if (url === paths.botRuns) return isRecord(data) && isRun(data);

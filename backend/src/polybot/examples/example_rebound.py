@@ -72,19 +72,6 @@ class ExampleReboundBot(BaseBot):
         self._token_id: str | None = None
         self._rebound_state = ReboundState()
 
-    def order_for_book(
-        self,
-        book: BookSnapshot,
-        max_order_size: Decimal,
-    ) -> OrderRequest | None:
-        order, self._rebound_state = self._rebound_state.order_for_book(
-            book,
-            token_id=self._token_id,
-            order_size=self.order_size,
-            max_order_size=max_order_size,
-        )
-        return order
-
     async def on_book(
         self,
         ctx: BotContext,
@@ -113,3 +100,16 @@ class ExampleReboundBot(BaseBot):
     async def on_book_gap(self, ctx: BotContext, gap: BookGapEvent) -> None:
         if gap.affects(self._condition_id):
             self._rebound_state = ReboundState()
+
+    def order_for_book(
+        self,
+        book: BookSnapshot,
+        max_order_size: Decimal,
+    ) -> OrderRequest | None:
+        order, self._rebound_state = self._rebound_state.order_for_book(
+            book,
+            token_id=self._token_id,
+            order_size=self.order_size,
+            max_order_size=max_order_size,
+        )
+        return order

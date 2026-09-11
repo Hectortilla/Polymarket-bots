@@ -24,15 +24,6 @@ class EquityCurveMetrics:
     last_timestamp_ms: int | None = None
     final_valuation: PortfolioValuation | None = None
 
-    def after_sample(
-        self,
-        timestamp_ms: int,
-        valuation: PortfolioValuation,
-    ) -> EquityCurveMetrics:
-        if self.last_timestamp_ms is not None and timestamp_ms < self.last_timestamp_ms:
-            raise ValueError("equity sample timestamps must be nondecreasing")
-        return self._after_ordered_sample(timestamp_ms, valuation)
-
     @property
     def history_status(self) -> ValuationStatus:
         return history_valuation_status(
@@ -44,7 +35,7 @@ class EquityCurveMetrics:
     def drawdown_status(self) -> ValuationStatus:
         return self.history_status
 
-    def _after_ordered_sample(
+    def after_sample(
         self,
         timestamp_ms: int,
         valuation: PortfolioValuation,

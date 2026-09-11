@@ -10,10 +10,11 @@ from polybot.framework.events.prices import (
     OUTCOME_PRICE_FLOOR,
     is_outcome_price,
 )
-from polybot.framework.timestamps import is_nonnegative_timestamp
+from polybot.framework.timestamps import is_nonnegative_timestamp_ms
 from polybot.framework.wallets import normalize_wallet_address
 
-WALLET_SOURCE_KEY_SEPARATOR: Final = "\0"
+WALLET_SOURCE_KEY_SEPARATOR: Final = ":"
+WALLET_SOURCE_KEY_FORBIDDEN_CHARACTER: Final = "\0"
 
 
 class WalletTradeKind(StrEnum):
@@ -47,17 +48,15 @@ class WalletTradeEvent:
     def is_valid(self) -> bool:
         try:
             return (
-                bool(self.wallet)
+                _valid_source_key_components(self.wallet, self.source_id)
                 and bool(self.condition_id)
                 and bool(self.token_id)
                 and isinstance(self.side, Side)
                 and self.size.is_finite()
                 and self.size > OUTCOME_PRICE_FLOOR
                 and is_outcome_price(self.price)
-                and bool(self.source_id)
-                and WALLET_SOURCE_KEY_SEPARATOR not in self.source_id
-                and is_nonnegative_timestamp(self.trade_timestamp_ms)
-                and is_nonnegative_timestamp(self.observed_at_ms)
+                and is_nonnegative_timestamp_ms(self.trade_timestamp_ms)
+                and is_nonnegative_timestamp_ms(self.observed_at_ms)
                 and self.observed_at_ms >= self.trade_timestamp_ms
             )
         except (AttributeError, InvalidOperation, TypeError, ValueError):
@@ -92,10 +91,8 @@ class WalletTradeEvent:
 
 
 def wallet_source_key(wallet: str, source_id: str) -> str:
-    if not source_id or WALLET_SOURCE_KEY_SEPARATOR in source_id:
-        raise ValueError(
-            "wallet trade source ID must not contain the source-key separator"
-        )
+    if not _valid_source_key_components(wallet, source_id):
+        raise ValueError("wallet trade source key requires valid wallet and source ID")
     return f"{normalize_wallet_address(wallet)}{WALLET_SOURCE_KEY_SEPARATOR}{source_id}"
 
 
@@ -106,15 +103,22 @@ def source_key_belongs_to_wallet(wallet: str, source_key: str) -> bool:
 
 
 def parse_wallet_source_key(source_key: str) -> tuple[str, str] | None:
-    """Parse the single-separator wallet/source identifier used for deduping."""
+    """Parse a wallet/source identifier, allowing separators inside the source ID."""
     if not isinstance(source_key, str):
         return None
     wallet, separator, source_id = source_key.partition(WALLET_SOURCE_KEY_SEPARATOR)
-    if (
-        not separator
-        or not wallet
-        or not source_id
-        or WALLET_SOURCE_KEY_SEPARATOR in source_id
-    ):
+    if not separator or not _valid_source_key_components(wallet, source_id):
         return None
     return normalize_wallet_address(wallet), source_id
+
+
+def _valid_source_key_components(wallet: str, source_id: str) -> bool:
+    return (
+        isinstance(wallet, str)
+        and bool(wallet.strip())
+        and WALLET_SOURCE_KEY_SEPARATOR not in wallet
+        and WALLET_SOURCE_KEY_FORBIDDEN_CHARACTER not in wallet
+        and isinstance(source_id, str)
+        and bool(source_id)
+        and WALLET_SOURCE_KEY_FORBIDDEN_CHARACTER not in source_id
+    )

@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import (
+    require_nonnegative_timestamp_ms,
+    timestamp_bounds_are_ordered,
+)
 from polybot.integers import validate_nonnegative_int, validate_positive_int
 
 from ..contracts.kinds import PayloadKind
@@ -25,10 +28,12 @@ class RecordingSession:
 
     def __post_init__(self) -> None:
         validate_positive_int(self.session_id, "recording session ID")
-        require_nonnegative_timestamp(self.started_at_ms, "recording session start")
+        require_nonnegative_timestamp_ms(self.started_at_ms, "recording session start")
         if self.ended_at_ms is not None:
-            require_nonnegative_timestamp(self.ended_at_ms, "recording session end")
-        if self.ended_at_ms is not None and self.ended_at_ms < self.started_at_ms:
+            require_nonnegative_timestamp_ms(self.ended_at_ms, "recording session end")
+        if self.ended_at_ms is not None and not timestamp_bounds_are_ordered(
+            self.started_at_ms, self.ended_at_ms
+        ):
             raise ValueError("recording session ends before it starts")
         if not self.recorder_version or not self.sdk_version:
             raise ValueError("recording session version provenance is incomplete")
@@ -115,7 +120,9 @@ class RecordingMarketStatistics:
             raise ValueError("recording market statistics require market identity")
         if self.event_count <= 0:
             raise ValueError("recording market statistics require events")
-        if self.start_at_ms < 0 or self.end_at_ms < self.start_at_ms:
+        if self.start_at_ms < 0 or not timestamp_bounds_are_ordered(
+            self.start_at_ms, self.end_at_ms
+        ):
             raise ValueError("recording market statistics have invalid bounds")
 
     @property

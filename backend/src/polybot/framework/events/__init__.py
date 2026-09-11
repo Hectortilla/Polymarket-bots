@@ -4,10 +4,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from polybot.framework.events.amounts import require_nonnegative_execution_amount
 from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.timestamps import (
-    require_nonnegative_timestamp,
+    require_nonnegative_timestamp_ms,
 )
 
 
@@ -81,6 +82,9 @@ class FillRejectReason(StrEnum):
     BACKTEST_COVERAGE_GAP = "backtest_coverage_gap"
 
 
+ORDER_REQUEST_SIDE_FIELD = "side"
+
+
 @dataclass(frozen=True, slots=True)
 class OrderRequest:
     token_id: str
@@ -110,7 +114,7 @@ class FillEvent:
     def __post_init__(self) -> None:
         if not isinstance(self.status, OrderStatus):
             raise ValueError("fill status must be an OrderStatus")
-        require_nonnegative_timestamp(self.received_at_ms, "fill timestamp")
+        require_nonnegative_timestamp_ms(self.received_at_ms, "fill timestamp")
         policy = FILL_STATUS_POLICIES[self.status]
         if policy.requires_reject_details:
             self._validate_order_id()
@@ -208,8 +212,7 @@ class FillEvent:
             ("filled size", self.filled_size),
             ("fee", self.fee_usdc),
         ):
-            if not isinstance(value, Decimal) or not value.is_finite() or value < 0:
-                raise ValueError(f"fill {name} must be a finite nonnegative Decimal")
+            require_nonnegative_execution_amount(value, name)
 
     def _validate_amounts(self) -> None:
         if (

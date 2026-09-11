@@ -207,7 +207,7 @@ def test_nullable_required_action_input_has_stable_skip_reason() -> None:
     assert result.action_results[0].skip_reason is (
         GraphActionSkipReason.REQUIRED_INPUT_UNAVAILABLE
     )
-    assert result.action_results[0].missing_input_handle_id == "price"
+    assert result.action_results[0].missing_input_handle_id == GraphPort.PRICE
 
 
 def test_sell_action_extracts_best_bid_and_propagates_optional_identity() -> None:

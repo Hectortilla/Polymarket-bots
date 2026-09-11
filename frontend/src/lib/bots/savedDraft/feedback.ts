@@ -1,6 +1,7 @@
 import type { NodeGraph } from "$lib/api/generated";
 import { graphValidationIssues, type GraphValidationIssue } from "$lib/catalog/graphValidation";
-import { launchRequestValidationIssues, type LaunchValidationIssue } from "$lib/catalog/schema";
+import { launchRequestValidationIssues } from "$lib/catalog/schema/validation";
+import { type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
 import { resourceLimitDetail } from "$lib/limits/validation";
 import { DraftSaveFailure } from "./failure";
 

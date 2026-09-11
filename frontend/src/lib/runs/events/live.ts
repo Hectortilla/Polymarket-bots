@@ -1,3 +1,4 @@
+import { hasOnlyEventFields } from "$lib/api/responseValidation/fields";
 import type { LiveRunEvent } from "$lib/api/generated";
 import { isFiniteDateTime, isRecord } from "$lib/valueGuards";
 import {
@@ -19,7 +20,11 @@ export function liveRunEvent(data: unknown, runId: string): LiveRunEvent | null 
   )
     return null;
   const payload = candidate.payload;
-  if (!isLiveKind(candidate.kind) || !isLivePayload(candidate.kind, payload)) {
+  if (
+    !isLiveKind(candidate.kind) ||
+    !hasOnlyEventFields(candidate, candidate.kind, "live") ||
+    !isLivePayload(candidate.kind, payload)
+  ) {
     return null;
   }
   return candidate as unknown as LiveRunEvent;

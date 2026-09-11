@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import runtimeContract from "$lib/runtimeContract.fixture.json";
   import type { WalletChartPointPayload } from "$lib/api/generated";
   import { SIDE } from "$lib/sides";
   import Decimal from "decimal.js";
@@ -12,7 +13,7 @@
     sides: Set<WalletChartPointPayload["side"]>;
     skipped: boolean;
   };
-  const WALLET_LABEL_MAX_LENGTH = 12;
+  const walletLabelPolicy = runtimeContract.dashboard.walletLabelPolicy;
 
   export function walletChartOption(
     points: WalletChartPointPayload[],
@@ -83,7 +84,9 @@
   }
 
   function shortWallet(wallet: string): string {
-    return wallet.length <= WALLET_LABEL_MAX_LENGTH ? wallet : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
+    return wallet.length <= walletLabelPolicy.maximumLength
+      ? wallet
+      : `${wallet.slice(0, walletLabelPolicy.prefixLength)}${walletLabelPolicy.ellipsis}${wallet.slice(-walletLabelPolicy.suffixLength)}`;
   }
 
   function walletSymbolSize(notional: Decimal, maximumNotional: Decimal): number {

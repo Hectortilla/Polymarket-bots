@@ -27,6 +27,7 @@ from polybot.polymarket.public_data.recording import RecordingPublicData
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed.continuity import CaptureContinuityError
 from polybot.polymarket.recording_metadata.contracts import RecordingMarket
+from polybot.polymarket.resolution_status import ResolutionStatus
 from polybot.recording import entrypoint
 from polybot.recording.archive.errors import ArchiveExistsError
 from polybot.recording.archive.paths import RECORDING_ARCHIVE_SUFFIX
@@ -78,7 +79,7 @@ from polybot.recording.service.recorder import (
 )
 from polybot.recording.service.resume import read_resume_state
 from polybot.recording.writer import AsyncRecordingWriter
-from polybot.recording.writer_contracts import (
+from polybot.recording.writer.contracts import (
     OpenedCoverageGap,
     PendingRecordingEvent,
     RecordingCheckpointWrite,
@@ -2519,7 +2520,7 @@ def _recording_market(
         fee_rate=market.fee_rate,
         question_id=None,
         neg_risk_request_id=None,
-        resolution_status="resolved" if resolved else None,
+        resolution_status=ResolutionStatus.RESOLVED if resolved else None,
         resolution_source=None,
         resolved_by=None,
         resolved=resolved,
@@ -2764,3 +2765,41 @@ def test_capture_ending_before_baselines_records_incomplete_coverage(tmp_path):
         assert session.integrity_status is SessionIntegrityStatus.INCOMPLETE
         assert session.clean_close is True
         assert gap.gap.reason is CoverageGapReason.CAPTURE_ENDED
+
+
+def test_failed_capture_close_drains_all_pumps_and_marks_archive_failed(tmp_path):
+    path = tmp_path / "failed-close.sqlite3"
+
+    async def run():
+        operations = []
+        markets = tuple(_recording_market(slug) for slug in ("alpha", "beta"))
+        archive = RecordingArchive.create(
+            path, target_identity="close-test", started_at_ms=1_000
+        )
+        writer = AsyncRecordingWriter(archive)
+        writer.start()
+        provider = MutablePlanProvider(_plan(("alpha", "beta")))
+        resolver = MutableResolver({market.market.slug: market for market in markets})
+        feed = FakeFeed(operations)
+        coordinator = _coordinator(provider, resolver, feed, writer)
+        await coordinator.start(provider.current_plan, markets)
+        pumps = [tracked.pump for tracked in coordinator._tracked.values()]
+
+        async def fail_close():
+            raise RuntimeError("required capture close failed")
+
+        feed.captures[0].close = fail_close
+        with pytest.raises(RuntimeError, match="required capture close failed"):
+            await finish_recording(coordinator, writer, clean=True)
+        assert feed.captures[1].closed
+        assert all(pump is None or pump.done() for pump in pumps)
+        assert all(
+            tracked.capture is None and tracked.pump is None
+            for tracked in coordinator._tracked.values()
+        )
+
+    asyncio.run(run())
+    with RecordingReader(path) as reader:
+        (session,) = reader.sessions()
+        assert not session.clean_close
+        assert session.integrity_status is SessionIntegrityStatus.FAILED

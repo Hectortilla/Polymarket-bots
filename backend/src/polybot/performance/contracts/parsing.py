@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from decimal import Decimal, InvalidOperation
 
+from polybot.integers import is_nonnegative_int
+
 MAX_PERSISTED_DECIMAL_ADJUSTED_EXPONENT = 308
 MAX_PERSISTED_DECIMAL_DIGITS = 308
 
@@ -77,7 +79,7 @@ def finite_decimal_text(value: str, key: str) -> str:
 
 def nonnegative_int(payload: Mapping[str, object], key: str) -> int:
     value = payload.get(key)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if not is_nonnegative_int(value):
         raise ValueError(f"performance summary {key} must be nonnegative")
     return value
 

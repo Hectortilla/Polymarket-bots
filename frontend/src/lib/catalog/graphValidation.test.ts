@@ -28,7 +28,7 @@ describe("graph validation presentation", () => {
       {
         detail: [
           {
-            loc: ["body", "graph", "nodes", 1, "constant", "data", "number", "value"],
+            loc: ["body", "graph", "nodes", 1, GRAPH_NODE_TYPE.constant, "data", GRAPH_SCALAR_TYPE.number, "value"],
             msg: "Value error, Number must be finite and within the supported range",
             type: "value_error",
           },

@@ -1,3 +1,3 @@
 export const FORM_COPY = {
-  SAVING: "Saving…",
+  TRY_AGAIN: "Try again",
 } as const;

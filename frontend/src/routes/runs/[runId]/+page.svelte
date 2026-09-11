@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { RUN_COPY } from "$lib/runs/copy";
   import { RUN_DETAIL_COPY, loadedEventsLabel } from "./copy";
   import { BOT_BUILDER_COPY } from "$lib/bots/copy";
   import ChartLineIcon from "phosphor-svelte/lib/ChartLineIcon";
@@ -42,7 +43,7 @@
   import { eventLabel } from "$lib/runs/eventFeed";
   import { loadAndContinueRunDetail, loadRunEvents } from "$lib/runs/hydrate";
   import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
-  import { EVENT_VIEW, type ActivityEventView } from "$lib/runs/eventViews";
+  import { EVENT_VIEW, type RunEventView } from "$lib/runs/eventViews";
   import { formatTime } from "$lib/time";
 
   const RUN_TAB = { LIVE: "run-live", CONFIGURATION: "run-configuration" } as const;
@@ -59,13 +60,13 @@
   let dashboard = $state<DashboardHistory>(emptyDashboardHistory());
   let loading = $state(true);
   let eventsOpen = $state(false);
-  let eventView = $state<ActivityEventView>(EVENT_VIEW.ACTIVITY);
+  let eventView = $state<RunEventView>(EVENT_VIEW.ACTIVITY);
   const showDiagnostics = $derived(eventView === EVENT_VIEW.DIAGNOSTICS);
   let changingView = $state(false);
   let requestedDiagnostics = $state(false);
   let nextDashboardEventId = $state<number | null>(null);
   let loadingOlderDashboard = $state(false);
-  let changeEventView: (view: ActivityEventView) => Promise<void> = async () => {};
+  let changeEventView: (view: RunEventView) => Promise<void> = async () => {};
   let stopping = $state(false);
   let loadingOlderEvents = $state(false);
   let loadedEventPages = 1;
@@ -411,7 +412,7 @@
           </label>
           <section class="stream-health-panel" aria-label="Live stream health">
             <div class="section-heading">
-              <h3>Stream health</h3>
+              <h3>{RUN_COPY.STREAM_HEALTH}</h3>
               <span class:health-stale={dashboard.streamHealth?.book_stale} class="section-count">
                 {hasReportedUsableBook(dashboard.streamHealth)
                   ? RUN_GUIDE_COPY.BOOK_REPORTED
@@ -542,7 +543,7 @@
           headingId="executed-graph-heading"
           description="The exact strategy used by this run. Pan and zoom to explore; editing is disabled."
           descriptionId="executed-graph-description"
-          annotation="Read only"
+          annotation={RUN_COPY.READ_ONLY}
         >
           {#if executedGraphCatalog}
             <NodeGraphInput

@@ -6,7 +6,6 @@ export const PUBLIC_COPY = {
   SUPPORT: "Support and feedback",
   DATA_POLICY: "data policy",
   RECOVER: "Reset a forgotten password",
-  RESET: "Reset your password",
   SIMULATION:
     "Paper orders do not place real orders or move funds. Simulated fills, fees, latency and balances do not establish real liquidity, queue priority, execution quality or future performance. This beta offers neither live execution nor a strategy marketplace.",
   SAVE_BEFORE_RUN:

@@ -13,7 +13,7 @@ import {
 } from "./durableEvents";
 import { openRunEventStream, type EventStreamOpener, type StreamConnectionState } from "./events";
 import { isTerminalRunStatus } from "./status";
-import { EVENT_VIEW, type ActivityEventView } from "./eventViews";
+import { EVENT_VIEW, type RunEventView } from "./eventViews";
 import type { EventView } from "$lib/api/generated";
 import { HTTP_STATUS } from "$lib/api/http";
 
@@ -25,10 +25,7 @@ export type RunHydration = PersistedEventPage & {
   dashboardPage: PersistedEventPage;
 };
 
-export async function hydrateRunDetail(
-  runId: string,
-  view: ActivityEventView = EVENT_VIEW.ACTIVITY,
-): Promise<RunHydration> {
+export async function hydrateRunDetail(runId: string, view: RunEventView = EVENT_VIEW.ACTIVITY): Promise<RunHydration> {
   let run = await readRun(runId);
   const [page, dashboardPage] = await Promise.all([
     loadRunEvents(run.id, view),
@@ -61,7 +58,7 @@ export async function loadAndContinueRunDetail(
   onLiveEvent: (event: LiveRunEvent) => void,
   openStream: EventStreamOpener = openRunEventStream,
   onConnectionState?: (state: StreamConnectionState) => void,
-  view: ActivityEventView = EVENT_VIEW.ACTIVITY,
+  view: RunEventView = EVENT_VIEW.ACTIVITY,
   onDashboardEvent: (event: PersistedDurableEvent) => void = () => {},
 ): Promise<() => void> {
   const hydration = await hydrateRunDetail(runId, view);

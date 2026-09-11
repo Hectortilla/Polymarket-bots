@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from polybot.framework.timestamps import (
     NANOSECONDS_PER_MILLISECOND,
-    require_nonnegative_timestamp,
+    require_nonnegative_timestamp_ms,
 )
 
 
@@ -35,5 +35,5 @@ class ObservationClock:
 
     def advance_to(self, observed_at_ms: int) -> None:
         """Keep a resumed archive monotonic across process clock anchors."""
-        require_nonnegative_timestamp(observed_at_ms, "observation clock floor")
+        require_nonnegative_timestamp_ms(observed_at_ms, "observation clock floor")
         self._floor_ms = max(self._floor_ms, observed_at_ms)

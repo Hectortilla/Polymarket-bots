@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from .json_codec import loads_json
+from .json_codec import dumps_json, loads_json
 
 
 class AtomicJsonFile:
@@ -27,18 +26,21 @@ class AtomicJsonFile:
         return payload
 
     def write(self, payload: dict[str, Any]) -> None:
+        serialized = dumps_json(payload)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=self.path.parent,
-            prefix=f".{self.path.name}.",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(payload, temporary, sort_keys=True, separators=(",", ":"))
-            temporary.flush()
+        temporary_path: Path | None = None
         try:
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(serialized)
+                temporary.flush()
             os.replace(temporary_path, self.path)
         finally:
-            temporary_path.unlink(missing_ok=True)
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)

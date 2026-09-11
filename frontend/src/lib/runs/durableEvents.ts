@@ -1,3 +1,4 @@
+import { hasOnlyEventFields, hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import type {
   EventCursorValue,
   PersistedDurableEvent as GeneratedPersistedDurableEvent,
@@ -41,7 +42,12 @@ export function eventCursorQuery(afterEventId: number, view: EventCursorQuery["v
 }
 
 export function persistedDurableEvent(value: unknown, runId: string): PersistedDurableEvent | null {
-  if (!isRecord(value) || !isDurableEventKind(value.kind) || !isRecord(value.payload)) {
+  if (
+    !isRecord(value) ||
+    !isDurableEventKind(value.kind) ||
+    !isRecord(value.payload) ||
+    !hasOnlyEventFields(value, value.kind, "durable")
+  ) {
     return null;
   }
   const event = value as unknown as GeneratedPersistedDurableEvent;
@@ -77,10 +83,11 @@ export function isPersistedEventId(value: unknown): value is number {
 
 export function requirePersistedDurableEvents(
   events: GeneratedPersistedDurableEvent[],
-  runId: string,
+  runId?: string,
 ): PersistedDurableEvent[] {
   return events.map((event) => {
-    const persisted = persistedDurableEvent(event, runId);
+    const expectedRunId = runId ?? event?.run_id;
+    const persisted = typeof expectedRunId === "string" ? persistedDurableEvent(event, expectedRunId) : null;
     if (persisted === null) throw new Error("Invalid persisted run event");
     return persisted;
   });
@@ -90,7 +97,7 @@ export function requirePersistedEventPage(page: RunEventPage, runId: string): Pe
   return parsePersistedEventPage(page, runId);
 }
 
-export function persistedEventPage(value: unknown, runId: string): PersistedEventPage | null {
+export function persistedEventPage(value: unknown, runId?: string): PersistedEventPage | null {
   try {
     return parsePersistedEventPage(value, runId);
   } catch {
@@ -110,8 +117,8 @@ function isDurableEventKind(kind: unknown): kind is GeneratedPersistedDurableEve
   return Object.values(EVENT_KIND).includes(kind as never);
 }
 
-function parsePersistedEventPage(value: unknown, runId: string): PersistedEventPage {
-  if (!isRecord(value) || !Array.isArray(value.events)) {
+function parsePersistedEventPage(value: unknown, runId?: string): PersistedEventPage {
+  if (!isRecord(value) || !hasOnlyResponseFields(value, "RunEventPage") || !Array.isArray(value.events)) {
     throw new Error("Invalid run event page");
   }
   const events = requirePersistedDurableEvents(value.events as GeneratedPersistedDurableEvent[], runId);

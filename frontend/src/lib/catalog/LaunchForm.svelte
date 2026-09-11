@@ -4,23 +4,13 @@
   import { tick, type Snippet } from "svelte";
 
   import type { BotDefinitionDescriptor } from "$lib/api/generated";
-  import { FORM_COPY } from "$lib/formCopy";
   import { LAUNCH_FORM_COPY } from "./copy";
   import MarketSelector from "./MarketSelector.svelte";
-  import {
-    WIDGET_KIND,
-    fieldLabel,
-    initialLaunchInputs,
-    isWideLaunchField,
-    launchFields,
-    launchValidationIssues,
-    launchValidator,
-    resolvedFieldSchema,
-    selectionExplanation,
-    widgetKind,
-    type LaunchInputs,
-    type LaunchValidationIssue,
-  } from "./schema";
+  import { WIDGET_KIND, type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
+  import { fieldLabel, isWideLaunchField, selectionExplanation } from "$lib/catalog/schema/presentation";
+  import { initialLaunchInputs } from "$lib/catalog/schema/inputs";
+  import { launchFields, resolvedFieldSchema, widgetKind } from "$lib/catalog/schema/fields";
+  import { launchValidationIssues, launchValidator, visibleLaunchIssues } from "$lib/catalog/schema/validation";
 
   let {
     descriptor,
@@ -29,7 +19,7 @@
     disabled = false,
     initialInputs,
     submitLabel = LAUNCH_FORM_COPY.SAVE_BOT,
-    busyLabel = FORM_COPY.SAVING,
+    busyLabel = LAUNCH_FORM_COPY.SAVING,
     onchange,
     serverIssues = [],
     showSelectionNotes = true,
@@ -60,10 +50,7 @@
   let touchedFields = $state<Set<string>>(new Set());
   let submitted = $state(false);
   let formElement: HTMLFormElement;
-  const visibleIssues = $derived([
-    ...localIssues.filter((issue) => (issue.field ? submitted || touchedFields.has(issue.field) : submitted)),
-    ...serverIssues,
-  ]);
+  const visibleIssues = $derived(visibleLaunchIssues(localIssues, serverIssues, touchedFields, submitted));
   const formIssues = $derived(visibleIssues.filter((issue) => issue.field === undefined));
 
   $effect(() => {
@@ -79,6 +66,18 @@
       onchange?.(inputs);
     }
   });
+
+  async function submit(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    submitted = true;
+    localIssues = launchValidationIssues(validator, inputs);
+    if (localIssues.length === 0) {
+      await onsubmit(inputs);
+      return;
+    }
+    await tick();
+    formElement.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }
 
   function update(name: string, value: unknown): void {
     inputs = { ...inputs, [name]: value };
@@ -112,18 +111,6 @@
 
   function parseFieldInput(field: AnySchemaObject, value: string): string | number {
     return inputType(field) === "number" && value !== "" ? Number(value) : value;
-  }
-
-  async function submit(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    submitted = true;
-    localIssues = launchValidationIssues(validator, inputs);
-    if (localIssues.length === 0) {
-      await onsubmit(inputs);
-      return;
-    }
-    await tick();
-    formElement.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }
 
   function issuesForField(name: string): LaunchValidationIssue[] {

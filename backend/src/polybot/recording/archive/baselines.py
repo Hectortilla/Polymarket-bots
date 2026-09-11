@@ -6,12 +6,13 @@ import sqlite3
 from collections.abc import Mapping
 
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
+from polybot.framework.timestamps import timestamp_bounds_are_ordered
 from polybot.recording.archive.columns import ArchiveColumn
 from polybot.recording.archive.schema import EVENT_TOKENS_TABLE, EVENTS_TABLE
 
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketMetadataPayload
-from .primitives import _nonnegative_int, _nonnegative_timestamp, _positive_int
+from .primitives import _nonnegative_int, _nonnegative_timestamp_ms, _positive_int
 
 
 def has_complete_baseline_pair(
@@ -54,9 +55,9 @@ def first_complete_baseline_pair_at_or_after(
 
     if not isinstance(market, MarketMetadataPayload):
         raise ValueError("baseline-pair market metadata is invalid")
-    _nonnegative_timestamp(start_at_ms, "baseline-pair start")
-    _nonnegative_timestamp(end_at_ms, "baseline-pair end")
-    if end_at_ms < start_at_ms:
+    _nonnegative_timestamp_ms(start_at_ms, "baseline-pair start")
+    _nonnegative_timestamp_ms(end_at_ms, "baseline-pair end")
+    if not timestamp_bounds_are_ordered(start_at_ms, end_at_ms):
         raise ValueError("baseline-pair selection cannot end before it starts")
     normalized_session = (
         None if session_id is None else _positive_int(session_id, "session ID")

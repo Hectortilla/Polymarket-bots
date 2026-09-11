@@ -156,13 +156,6 @@
     );
   }
 
-  function pruneConnections(): void {
-    const count = edges.length;
-    edges = edges.filter((edge) => connectionIsValid(edge, nodes, [], catalogSnapshot, parameters));
-    connectionNotice =
-      count > edges.length ? `${count - edges.length} incompatible connection(s) removed after this change.` : "";
-  }
-
   function setOperationData(nodeId: string, data: GraphOperationNodeData): void {
     if (readOnly) return;
     nodes = nodes.map((node) =>
@@ -184,6 +177,12 @@
     if (readOnly) return;
     if (edges.length >= catalogContract.nodeGraph.maximumEdges) return;
     edges = addEdge(connection, edges);
+  }
+  function pruneConnections(): void {
+    const count = edges.length;
+    edges = edges.filter((edge) => connectionIsValid(edge, nodes, [], catalogSnapshot, parameters));
+    connectionNotice =
+      count > edges.length ? `${count - edges.length} incompatible connection(s) removed after this change.` : "";
   }
 </script>
 

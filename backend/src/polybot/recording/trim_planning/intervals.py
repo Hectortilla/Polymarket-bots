@@ -14,9 +14,8 @@ class CleanInterval:
     def duration_ms(self) -> int:
         return self.end_at_ms - self.start_at_ms
 
-
-def candidate_sort_key(value: CleanInterval) -> tuple[int, int, int]:
-    return (-value.duration_ms, value.start_at_ms, value.end_at_ms)
+    def candidate_sort_key(self) -> tuple[int, int, int]:
+        return (-self.duration_ms, self.start_at_ms, self.end_at_ms)
 
 
 def clean_intervals(

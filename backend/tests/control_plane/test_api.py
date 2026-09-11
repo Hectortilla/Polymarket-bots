@@ -98,7 +98,7 @@ def test_launch_list_detail_and_ingress_rejection(
     bot = _create_bot(client)
     launched = client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"]))
 
-    assert launched.status_code == 202
+    assert launched.status_code == status.HTTP_202_ACCEPTED
     run = launched.json()
     assert run["definition_id"] == WINNER_DEFINITION_ID
     assert run["bot_id"] == bot["id"]
@@ -121,8 +121,8 @@ def test_launch_list_detail_and_ingress_rejection(
         },
     )
 
-    assert versioned.status_code == 422
-    assert untrusted.status_code == 422
+    assert versioned.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert untrusted.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert len(state.bots) == 1
     assert len(state.runs) == 1
     assert len(launcher.run_ids) == 1
@@ -202,7 +202,7 @@ def test_catalog_route_and_unknown_definition(
         json={**_bot_body(), "definition_id": "missing"},
     )
 
-    assert definitions.status_code == 200
+    assert definitions.status_code == status.HTTP_200_OK
     assert WINNER_DEFINITION_ID in {
         definition["definition_id"] for definition in definitions.json()
     }
@@ -219,7 +219,7 @@ def test_catalog_route_and_unknown_definition(
         for definition in definitions.json()
         if definition["definition_id"] != NODE_BASED_DEFINITION_ID
     )
-    assert missing.status_code == 404
+    assert missing.status_code == status.HTTP_404_NOT_FOUND
     assert state.runs == {}
     assert launcher.run_ids == []
 
@@ -259,12 +259,12 @@ def test_node_graph_saved_bot_persists_exact_snapshot_and_rejects_invalid_graph(
         json={**_bot_body(), "graph": threshold_buy_graph()},
     )
 
-    assert launched.status_code == 202
+    assert launched.status_code == status.HTTP_202_ACCEPTED
     assert launched.json()["config"]["graph"] == graph
-    assert rejected_graph.status_code == 422
-    assert rejected_inputs.status_code == 422
-    assert missing_template.status_code == 422
-    assert forbidden_template.status_code == 422
+    assert rejected_graph.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert rejected_inputs.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert missing_template.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert forbidden_template.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert len(state.runs) == 1
     assert launcher.run_ids == [launched.json()["id"]]
 
@@ -293,7 +293,7 @@ def test_saved_bot_rejects_unavailable_additions_without_writing(
         },
     )
     for response in (rejected_create, rejected_update):
-        assert response.status_code == 422
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert (
             response.json()["detail"][0]["msg"] == MARKET_SELECTION_UNAVAILABLE_DETAIL
         )
@@ -321,7 +321,9 @@ def test_missing_saved_bot_routes_have_no_side_effects(
         client.post(api_route_path(BOT_RUNS_PATH, bot_id=missing_id)),
     )
 
-    assert all(response.status_code == 404 for response in responses)
+    assert all(
+        response.status_code == status.HTTP_404_NOT_FOUND for response in responses
+    )
     assert state.bots == {}
     assert state.runs == {}
     assert launcher.run_ids == []
@@ -357,8 +359,8 @@ def test_run_launch_rejects_inconsistent_persisted_graph_contracts(
     missing_revision = client.post(api_route_path(BOT_RUNS_PATH, bot_id=graph_bot_id))
     forbidden_revision = client.post(api_route_path(BOT_RUNS_PATH, bot_id=plain_bot_id))
 
-    assert missing_revision.status_code == 409
-    assert forbidden_revision.status_code == 409
+    assert missing_revision.status_code == status.HTTP_409_CONFLICT
+    assert forbidden_revision.status_code == status.HTTP_409_CONFLICT
     assert state.runs == {}
     assert launcher.run_ids == []
 
@@ -433,7 +435,7 @@ def test_launcher_failure_is_visible_and_sanitized(
     bot = _create_bot(client)
     response = client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"]))
 
-    assert response.status_code == 202
+    assert response.status_code == status.HTTP_202_ACCEPTED
     run = response.json()
     assert run["status"] == RunStatus.QUEUED
     assert run["failure_detail"] is None
@@ -498,7 +500,7 @@ def test_health_requires_postgres_and_redis(
         redis=_Redis(ready=False),
     )
     response = unavailable_redis.get(api_route_path(HEALTH_PATH))
-    assert response.status_code == 503
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json() == {"detail": SERVICE_UNAVAILABLE_DETAIL}
 
     unavailable_database = _client(
@@ -506,7 +508,7 @@ def test_health_requires_postgres_and_redis(
         _State(database_ready=False),
     )
     response = unavailable_database.get(api_route_path(HEALTH_PATH))
-    assert response.status_code == 503
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json() == {"detail": SERVICE_UNAVAILABLE_DETAIL}
 
 
@@ -530,14 +532,14 @@ def test_stream_prefers_last_event_id_header(
         headers={LAST_EVENT_ID_HEADER: "2"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert cursors == [2]
 
     fallback = client.get(
         api_route_path(RUN_EVENTS_STREAM_PATH, run_id=run_id),
         params={"after_event_id": 3},
     )
-    assert fallback.status_code == 200
+    assert fallback.status_code == status.HTTP_200_OK
     assert cursors == [2, 3]
 
 
@@ -548,17 +550,18 @@ def test_missing_run_event_routes_and_pagination_bounds(
     missing_id = uuid4()
 
     assert (
-        client.post(api_route_path(RUN_STOP_PATH, run_id=missing_id)).status_code == 404
+        client.post(api_route_path(RUN_STOP_PATH, run_id=missing_id)).status_code
+        == status.HTTP_404_NOT_FOUND
     )
     assert (
         client.get(api_route_path(RUN_EVENTS_PATH, run_id=missing_id)).status_code
-        == 404
+        == status.HTTP_404_NOT_FOUND
     )
     assert (
         client.get(
             api_route_path(RUN_EVENTS_STREAM_PATH, run_id=missing_id)
         ).status_code
-        == 404
+        == status.HTTP_404_NOT_FOUND
     )
     owned_run_id = _create_run(client)["id"]
     assert (
@@ -566,14 +569,14 @@ def test_missing_run_event_routes_and_pagination_bounds(
             api_route_path(RUN_EVENTS_PATH, run_id=owned_run_id),
             params={"before_event_id": FIRST_EVENT_CURSOR - 1},
         ).status_code
-        == 422
+        == status.HTTP_422_UNPROCESSABLE_CONTENT
     )
     assert (
         client.get(
             api_route_path(RUN_EVENTS_PATH, run_id=owned_run_id),
             params={"before_event_id": MAX_DURABLE_EVENT_ID + 1},
         ).status_code
-        == 422
+        == status.HTTP_422_UNPROCESSABLE_CONTENT
     )
     for invalid_limit in (MIN_EVENT_PAGE_LIMIT - 1, MAX_EVENT_PAGE_LIMIT + 1):
         assert (
@@ -581,14 +584,14 @@ def test_missing_run_event_routes_and_pagination_bounds(
                 api_route_path(RUN_EVENTS_PATH, run_id=owned_run_id),
                 params={"limit": invalid_limit},
             ).status_code
-            == 422
+            == status.HTTP_422_UNPROCESSABLE_CONTENT
         )
     assert (
         client.get(
             api_route_path(RUN_EVENTS_STREAM_PATH, run_id=owned_run_id),
             headers={LAST_EVENT_ID_HEADER: str(MAX_DURABLE_EVENT_ID + 1)},
         ).status_code
-        == 422
+        == status.HTTP_422_UNPROCESSABLE_CONTENT
     )
 
 
@@ -615,7 +618,7 @@ def test_event_route_returns_bounded_newest_page_and_older_cursor(
         params={"before_event_id": 2, "limit": 2},
     )
 
-    assert newest.status_code == 200
+    assert newest.status_code == status.HTTP_200_OK
     assert [event["id"] for event in newest.json()["events"]] == [2, 3]
     assert newest.json()["next_before_event_id"] == 2
     assert [event["id"] for event in older.json()["events"]] == [1]
@@ -636,17 +639,17 @@ def test_event_route_forwards_selected_view_and_snapshot_cursor(monkeypatch):
         response = client.get(
             api_route_path(RUN_EVENTS_PATH, run_id=run_id), params={"view": view.value}
         )
-        assert response.status_code == 200
+        assert response.status_code == status.HTTP_200_OK
         assert response.json()["stream_cursor"] == 17
         assert read_page.call_args.kwargs["view"] is view
     response = client.get(api_route_path(RUN_EVENTS_PATH, run_id=run_id))
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert read_page.call_args.kwargs["view"] is EventView.ACTIVITY
     assert (
         client.get(
             api_route_path(RUN_EVENTS_PATH, run_id=run_id), params={"view": "invalid"}
         ).status_code
-        == 422
+        == status.HTTP_422_UNPROCESSABLE_CONTENT
     )
 
 
@@ -836,14 +839,14 @@ def _bot_body(*, name: str = "winner") -> dict[str, object]:
 
 def _create_bot(client: TestClient, *, name: str = "winner") -> dict[str, object]:
     response = client.post(api_route_path(BOTS_PATH), json=_bot_body(name=name))
-    assert response.status_code == 201
+    assert response.status_code == status.HTTP_201_CREATED
     return response.json()
 
 
 def _create_run(client: TestClient, *, name: str = "winner") -> dict[str, object]:
     bot = _create_bot(client, name=name)
     response = client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"]))
-    assert response.status_code == 202
+    assert response.status_code == status.HTTP_202_ACCEPTED
     return response.json()
 
 
@@ -1149,3 +1152,22 @@ def test_atomic_bot_save_rejects_invalid_graph_without_changing_settings(monkeyp
     )
     second = client.post(api_route_path(BOT_RUNS_PATH, bot_id=bot["id"])).json()
     assert second["config"] == saved.json()["config"]
+
+
+@pytest.mark.parametrize("view", [None, EventView.DIAGNOSTICS])
+def test_stream_forwards_event_view_and_defaults_to_activity(monkeypatch, view):
+    observed = []
+
+    async def stream(self, after_event_id):
+        observed.append(self._replay._view)
+        yield ": complete\n\n"
+
+    client = _client(monkeypatch, _State())
+    monkeypatch.setattr(events_routes.RunEventStreamer, "stream", stream)
+    run_id = _create_run(client)["id"]
+    response = client.get(
+        api_route_path(RUN_EVENTS_STREAM_PATH, run_id=run_id),
+        params={} if view is None else {"view": view},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert observed == [EventView.ACTIVITY if view is None else view]

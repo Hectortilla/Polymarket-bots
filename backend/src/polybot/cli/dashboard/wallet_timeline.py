@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from decimal import Decimal
 
+from polybot.dashboard.contracts import format_wallet_label
 from polybot.dashboard.wallets import (
     WalletTimelineEvent,
     wallet_bucket_index,
@@ -65,7 +66,9 @@ def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
     ]
     for wallet in lanes:
         buckets = events_by_lane.get(wallet, {})
-        row = Text(f"{short_wallet(wallet):<{WALLET_LANE_LABEL_WIDTH}}", style="cyan")
+        row = Text(
+            f"{format_wallet_label(wallet):<{WALLET_LANE_LABEL_WIDTH}}", style="cyan"
+        )
         for bucket in range(columns):
             glyph, style = wallet_bucket_glyph(
                 buckets.get(bucket, ()), maximum_notional
@@ -141,7 +144,3 @@ def wallet_lane_summary(buckets: dict[int, list[WalletTimelineEvent]]) -> str:
     sells = len(events) - buys
     notional = sum((event.notional for event in events), Decimal("0"))
     return f" B{buys} S{sells} ${notional:.0f}"
-
-
-def short_wallet(wallet: str) -> str:
-    return wallet if len(wallet) <= 12 else f"{wallet[:6]}…{wallet[-4:]}"

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from polybot.execution.paper.continuity import BookContinuity
 from polybot.framework.events.books import BookSnapshot
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import require_nonnegative_timestamp_ms
 from polybot.polymarket.markets import Market
 from polybot.recording.contracts.book import BookDeltaPayload
 from polybot.recording.contracts.records import CoverageGapRecord, RecordedEvent
@@ -107,7 +107,7 @@ class CoverageBlackouts:
         catalog: MarketCatalog,
         books: ProjectedBookReplay,
     ) -> tuple[BookSnapshot, ...]:
-        require_nonnegative_timestamp(
+        require_nonnegative_timestamp_ms(
             observed_at_ms,
             "blackout recovery timestamp",
         )

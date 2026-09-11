@@ -6,6 +6,7 @@ import json
 from enum import StrEnum
 
 from polybot.framework.config.models import BotConfig
+from polybot.persistence.json_codec import dumps_json
 
 TARGET_IDENTITY_KIND_FIELD = "kind"
 TARGET_IDENTITY_BOT_SPEC_FIELD = "spec"
@@ -19,7 +20,7 @@ class TargetIdentityKind(StrEnum):
 
 
 def bot_target_identity(spec: str, config: BotConfig) -> str:
-    return _canonical_identity(
+    return dumps_json(
         {
             TARGET_IDENTITY_KIND_FIELD: TargetIdentityKind.BOT.value,
             TARGET_IDENTITY_BOT_SPEC_FIELD: spec,
@@ -29,7 +30,7 @@ def bot_target_identity(spec: str, config: BotConfig) -> str:
 
 
 def static_target_identity(market_slugs: tuple[str, ...]) -> str:
-    return _canonical_identity(
+    return dumps_json(
         {
             TARGET_IDENTITY_KIND_FIELD: TargetIdentityKind.STATIC.value,
             TARGET_IDENTITY_MARKET_SLUGS_FIELD: sorted(set(market_slugs)),
@@ -58,7 +59,3 @@ def describe_target_identity(target_identity: str) -> str:
     ):
         return "static " + ", ".join(market_slugs)
     return target_identity
-
-
-def _canonical_identity(payload: dict[str, object]) -> str:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))

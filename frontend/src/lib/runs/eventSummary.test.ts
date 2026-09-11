@@ -13,7 +13,7 @@ type BrokerFillEvent = Extract<PersistedDurableEvent, { kind: typeof EVENT_KIND.
 describe("event summary", () => {
   it("includes a fill rejection reason and message when provided", () => {
     expect(eventSummary(rejectedFill())).toBe(
-      "Buy rejected · 0 shares filled · bad_size: order size is below the market minimum · Token token",
+      `Buy rejected · 0 shares filled · ${runtimeContract.fillRejectReason.BAD_SIZE}: order size is below the market minimum · Token token`,
     );
   });
 

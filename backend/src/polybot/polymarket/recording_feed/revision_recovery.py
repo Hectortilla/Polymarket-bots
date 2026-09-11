@@ -9,7 +9,6 @@ from polybot.polymarket.errors import (
 from polybot.polymarket.recording_events import CapturedMarketEvent
 from polybot.polymarket.recording_feed.continuity import (
     SplitRevisionContext,
-    delta_revision_fingerprint,
 )
 from polybot.polymarket.stream_diagnostics import (
     require_monotonic_dropped_count,
@@ -47,7 +46,7 @@ class SplitRevisionRecovery:
         context = SplitRevisionContext(
             crossed_error=crossed_error,
             first_fragment=first,
-            expected_fingerprint=delta_revision_fingerprint(first),
+            expected_fingerprint=first.delta_revision_fingerprint(),
             projected_books=self._depth.projected_books(first.source_timestamp_ms or 0),
             dropped_count_before=dropped_count_before,
             started_at_monotonic_seconds=started_at_monotonic_seconds,
@@ -96,7 +95,7 @@ class SplitRevisionRecovery:
                     CaptureFailureKind.SPLIT_REVISION_MISMATCH,
                     dropped_count_after=self._source.dropped_count,
                 )
-            actual_fingerprint = delta_revision_fingerprint(continuation)
+            actual_fingerprint = continuation.delta_revision_fingerprint()
             is_match = required_fingerprint.accepts_continuation(
                 actual_fingerprint,
                 known_source_hashes=known_source_hashes,

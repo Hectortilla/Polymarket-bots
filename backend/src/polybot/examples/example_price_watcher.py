@@ -24,23 +24,6 @@ class ExamplePriceWatcher(BaseBot):
         self._market_slug: str | None = None
         self._token_id: str | None = None
 
-    def order_for_book(
-        self,
-        book: BookSnapshot,
-        max_order_size: Decimal,
-    ) -> OrderRequest | None:
-        if book.token_id != self._token_id or not book.asks:
-            return None
-        best_ask = min(book.asks, key=lambda level: level.price)
-        if best_ask.price > PRICE_TRIGGER:
-            return None
-        return OrderRequest(
-            token_id=self._token_id,
-            side=Side.BUY,
-            price=best_ask.price,
-            size=min(best_ask.size, max_order_size),
-        )
-
     async def on_book(
         self,
         ctx: BotContext,
@@ -63,3 +46,20 @@ class ExamplePriceWatcher(BaseBot):
         order = self.order_for_book(book, ctx.config.max_order_size)
         if order is not None:
             await ctx.broker.submit(order)
+
+    def order_for_book(
+        self,
+        book: BookSnapshot,
+        max_order_size: Decimal,
+    ) -> OrderRequest | None:
+        if book.token_id != self._token_id or not book.asks:
+            return None
+        best_ask = min(book.asks, key=lambda level: level.price)
+        if best_ask.price > PRICE_TRIGGER:
+            return None
+        return OrderRequest(
+            token_id=self._token_id,
+            side=Side.BUY,
+            price=best_ask.price,
+            size=min(best_ask.size, max_order_size),
+        )

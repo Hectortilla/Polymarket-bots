@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from api.catalog.graphs.preview_samples import DEFAULT_PREVIEW_CASH
 from api.catalog.graphs.values import GraphPort
+from fastapi import status
 from polybot.framework.base import BaseBot
 from polybot.framework.config.constants import DEFAULT_EVENT_MAX_AGE_MS
 from polybot.framework.events.wallet_trades import WalletTradeValidationIssue
@@ -525,11 +526,11 @@ def test_preview_http_endpoint_and_sample_errors():
     fixture = preview_fixture()
     client = TestClient(create_app())
     response = client.post(api_route_path(GRAPH_PREVIEW_PATH), json=fixture["request"])
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert response.json() == fixture["response"]
     fixture["request"]["payload"]["received_at_ms"] = "not-a-time"
     response = client.post(api_route_path(GRAPH_PREVIEW_PATH), json=fixture["request"])
-    assert response.status_code == 422
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert any(
         "received_at_ms" in str(issue["loc"]) for issue in response.json()["detail"]
     )
@@ -843,3 +844,79 @@ def test_preview_normalizes_external_identity_fields(hook):
     assert request.event.token_id == original_token
     if hook == BaseBot.on_wallet_trade.__name__:
         assert request.event.wallet == "0x" + "a" * 40
+
+
+@pytest.mark.parametrize(
+    "invalid_port, invalid_value",
+    [
+        (GraphPort.KEY, RuntimeValue(" ")),
+        (GraphPort.KEY, RuntimeValue.invalid(GraphReason.INVALID_KEY)),
+        (GraphPort.DURATION_MS, RuntimeValue(Decimal("1.5"))),
+    ],
+)
+@pytest.mark.parametrize("existing_claims", [False, True])
+def test_invalid_control_inputs_do_not_create_or_expire_claims(
+    invalid_port, invalid_value, existing_claims
+):
+    claims = {"node": {"expired": 1}} if existing_claims else {}
+    state = EventControlState(claims=claims)
+    inputs = {
+        GraphPort.ENABLED: RuntimeValue(True),
+        GraphPort.KEY: RuntimeValue("next"),
+        GraphPort.DURATION_MS: RuntimeValue(Decimal(10)),
+        invalid_port: invalid_value,
+    }
+    result = state.evaluate("node", GraphOperation.COOLDOWN, inputs, 100)
+    assert not result.available
+    assert state.claims == ({"node": {"expired": 1}} if existing_claims else {})
+
+
+@pytest.mark.parametrize(
+    "hook, field",
+    [
+        (BaseBot.on_wallet_trade.__name__, "condition_id"),
+        (BaseBot.on_wallet_trade.__name__, "source_id"),
+        (BaseBot.on_market_resolved.__name__, "condition_id"),
+        (BaseBot.on_market_resolved.__name__, "market_slug"),
+        (BaseBot.on_book_gap.__name__, "condition_id"),
+    ],
+)
+def test_preview_rejects_blank_event_identifiers(hook, field):
+    trigger = next(
+        item for item in GRAPH_NODE_CATALOG.triggers if item.hook_name == hook
+    )
+    payload = {**trigger.sample_payload, field: "   "}
+    graph = dict(
+        nodes=[
+            dict(
+                id="trigger",
+                type=GraphNodeType.TRIGGER,
+                position=dict(x=0, y=0),
+                data=dict(hook_name=hook),
+            )
+        ]
+    )
+    with pytest.raises(ValueError, match="nonempty"):
+        GraphPreviewRequest(
+            graph=graph, hook_name=hook, payload=payload, now_ms=trigger.sample_time_ms
+        )
+
+
+@pytest.mark.parametrize("price", ["0", "-0.1", "1.1"])
+def test_preview_rejects_out_of_range_average_entry_prices(price):
+    with pytest.raises(ValueError, match="average entry price"):
+        PreviewPortfolio(
+            positions=[dict(token_id="token", size="1", average_entry_price=price)]
+        )
+
+
+def test_preview_normalizes_portfolio_token_ids_and_rejects_duplicate_or_blank_ids():
+    position = dict(token_id=" token ", size="1", average_entry_price="0.4")
+    assert (
+        PreviewPortfolio(positions=[position]).snapshot().positions[0].token_id
+        == "token"
+    )
+    with pytest.raises(ValueError, match="unique"):
+        PreviewPortfolio(positions=[position, {**position, "token_id": "token"}])
+    with pytest.raises(ValueError, match="nonempty"):
+        PreviewPortfolio(positions=[{**position, "token_id": "   "}])

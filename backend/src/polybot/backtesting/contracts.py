@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from polybot.framework.timestamps import require_nonnegative_timestamp
+from polybot.framework.timestamps import (
+    require_nonnegative_timestamp_ms,
+    timestamp_bounds_are_ordered,
+)
 from polybot.integers import validate_positive_int
 from polybot.performance.contracts.sampling import (
     DEFAULT_REPORT_INTERVAL_MS,
@@ -68,13 +71,13 @@ class BacktestOptions:
         if self.session_id is not None:
             validate_positive_int(self.session_id, "backtest session ID")
         if self.start_at_ms is not None:
-            require_nonnegative_timestamp(self.start_at_ms, "backtest start")
+            require_nonnegative_timestamp_ms(self.start_at_ms, "backtest start")
         if self.end_at_ms is not None:
-            require_nonnegative_timestamp(self.end_at_ms, "backtest end")
+            require_nonnegative_timestamp_ms(self.end_at_ms, "backtest end")
         if (
             self.start_at_ms is not None
             and self.end_at_ms is not None
-            and self.end_at_ms < self.start_at_ms
+            and not timestamp_bounds_are_ordered(self.start_at_ms, self.end_at_ms)
         ):
             raise ValueError("backtest end cannot precede its start")
         if isinstance(self.seed, bool) or not isinstance(self.seed, int):

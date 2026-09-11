@@ -10,7 +10,10 @@ from polybot.recording.archive.errors import (
     ArchiveIntegrityError,
     RecordingArchiveError,
 )
-from polybot.recording.archive.primitives import _nonnegative_timestamp, _positive_int
+from polybot.recording.archive.primitives import (
+    _nonnegative_timestamp_ms,
+    _positive_int,
+)
 from polybot.recording.archive.rows import _typed_payload
 from polybot.recording.archive.schema import COVERAGE_GAPS_TABLE, EVENTS_TABLE
 from polybot.recording.contracts.gaps import CoverageGapPayload
@@ -20,7 +23,7 @@ from polybot.recording.serialization.entrypoints import payload_json
 
 def close_gap(connection: sqlite3.Connection, gap_id: int, *, ended_at_ms: int) -> None:
     _positive_int(gap_id, "coverage gap ID")
-    _nonnegative_timestamp(ended_at_ms, "coverage gap end")
+    _nonnegative_timestamp_ms(ended_at_ms, "coverage gap end")
     row = connection.execute(
         f"""
         SELECT {ArchiveColumn.EVENT_SEQUENCE}, {ArchiveColumn.PAYLOAD_JSON}

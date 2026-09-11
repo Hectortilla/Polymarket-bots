@@ -82,6 +82,7 @@ packages = [
   "polybot.performance.contracts.summary",
   "polybot.persistence",
   "polybot.recording",
+    "polybot.recording.writer",
   "polybot.recording.archive",
   "polybot.recording.contracts",
   "polybot.recording.coordinator",
@@ -121,6 +122,7 @@ packages = [
   "api.catalog.node_based.evaluator",
   "api.runs",
   "api.events",
+    "api.events.projection",
   "api.events.health",
   "api.events.contracts",
   "api.execution",
@@ -131,7 +133,8 @@ packages = [
     "scripts.beta_backup.backup",
     "scripts.beta_backup.restore",
   "scripts.select_wallet_for_analysis",
-  "scripts.polymarket_wallet_api",
+  "polybot.polymarket.wallet_reports",
+    "polybot.polymarket.wallet_reports.normalization",
   "scripts.wallets_finder",
   "scripts.wallet_analysis",
 ]
@@ -140,7 +143,6 @@ packages = [
 "" = "backend/src"
 scripts = "scripts"
 "scripts.select_wallet_for_analysis" = "scripts/select_wallet_for_analysis"
-"scripts.polymarket_wallet_api" = "scripts/polymarket_wallet_api"
 "scripts.wallets_finder" = "scripts/wallets_finder"
 "scripts.wallet_analysis" = "scripts/wallet_analysis"
 

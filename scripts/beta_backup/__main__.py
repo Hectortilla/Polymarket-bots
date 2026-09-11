@@ -8,7 +8,8 @@ from scripts.beta_backup.backup import BetaBackup
 from scripts.beta_backup.commands import BackupCommand
 from scripts.beta_backup.database import ComposeDatabase
 from scripts.beta_backup.restore import BetaRestore
-from scripts.beta_release import DEFAULT_COMPOSE_PROJECT, BetaRelease
+from scripts.beta_release import BetaRelease
+from scripts.compose_project import DEFAULT_COMPOSE_PROJECT
 
 
 def main() -> None:
@@ -34,7 +35,7 @@ def main() -> None:
             print("Backup recovery-point target is satisfied.")
         elif command is BackupCommand.CREATE:
             archive = BetaBackup(
-                ComposeDatabase(BetaRelease(args.manifest, args.project)),
+                ComposeDatabase(BetaRelease(args.manifest, args.project).compose),
                 args.directory,
                 args.recipients,
             ).create()

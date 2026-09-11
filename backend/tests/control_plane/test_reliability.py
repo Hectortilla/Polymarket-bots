@@ -22,6 +22,7 @@ from api.runs.lease_policy import DEFAULT_LEASE_SECONDS
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
+from fastapi import status
 from httpx import ASGITransport, AsyncClient
 from polybot.cli.observability.events import StreamHealth
 from polybot.framework.clock import system_now_utc
@@ -244,7 +245,11 @@ def test_owned_http_launch_retries_after_lost_response_and_bot_edit(limits_servi
                     client.post(route, headers=headers),
                     client.post(route, headers=headers),
                 )
-                assert original.status_code == retry.status_code == 202
+                assert (
+                    original.status_code
+                    == retry.status_code
+                    == status.HTTP_202_ACCEPTED
+                )
                 assert original.json()["id"] == retry.json()["id"]
                 app.state.launcher.launch.assert_awaited_once()
                 async with sessions() as session:
@@ -269,13 +274,15 @@ def test_owned_http_launch_retries_after_lost_response_and_bot_edit(limits_servi
                     await client.post(
                         route, headers={IDEMPOTENCY_KEY_HEADER: "malformed"}
                     )
-                ).status_code == 422
+                ).status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
             async with AsyncClient(
                 transport=ASGITransport(account_app(sessions, redis, other)),
                 base_url="http://test",
                 headers=TEST_HEADERS,
             ) as client:
-                assert (await client.post(route, headers=headers)).status_code == 404
+                assert (
+                    await client.post(route, headers=headers)
+                ).status_code == status.HTTP_404_NOT_FOUND
 
     asyncio.run(scenario())
 

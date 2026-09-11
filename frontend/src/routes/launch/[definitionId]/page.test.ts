@@ -1,3 +1,4 @@
+import { botPath } from "$lib/navigation";
 import { HTTP_STATUS } from "$lib/api/http";
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from "$lib/limits/testFixtures";
 import { DRAFT_SAVE_UNCERTAIN_COPY } from "$lib/bots/savedDraft/feedback";
@@ -6,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/sv
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BotDefinitionDescriptor, BotRead } from "$lib/api/generated";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
-import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema/contracts";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 const mocks = vi.hoisted(() => ({
   createBot: vi.fn(),
@@ -83,7 +84,7 @@ describe("unified bot creation page", () => {
         },
       });
     });
-    expect(mocks.goto).toHaveBeenCalledWith("/bots/eeeeeeee-0000-0000-0000-000000000001");
+    expect(mocks.goto).toHaveBeenCalledWith(botPath("eeeeeeee-0000-0000-0000-000000000001"));
   });
   it("offers existing bots as graph starting points without exposing templates", async () => {
     loadBuilder([SOURCE_BOT]);

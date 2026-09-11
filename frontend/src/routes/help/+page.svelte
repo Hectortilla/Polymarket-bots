@@ -54,7 +54,7 @@
   <section>
     <h2>Account access and deletion</h2>
     <p>
-      <a href={contract.accountManagement.forgotPath}>{PUBLIC_COPY.RESET}</a> using your registered mailbox. {PUBLIC_COPY.LINK_LIFETIME}
+      <a href={contract.accountManagement.forgotPath}>{ACCOUNT_COPY.RESET_TITLE}</a> using your registered mailbox. {PUBLIC_COPY.LINK_LIFETIME}
       Password reset revokes existing sessions. Signed-in {ACCOUNT_COPY.SETTINGS} support password changes, session revocation
       and password-confirmed account deletion.
     </p>

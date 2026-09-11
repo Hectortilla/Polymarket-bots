@@ -1,6 +1,4 @@
-from scripts.wallet_analysis.contracts import NET_CASH_METRIC
-from scripts.wallet_analysis.metrics import compute_metrics
-from scripts.wallet_payloads import (
+from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
@@ -11,14 +9,23 @@ from scripts.wallet_payloads import (
     ACTIVITY_TYPE_FIELD,
     ACTIVITY_USDC_SIZE_FIELD,
     CONDITION_ID_FIELD,
+    PROXY_WALLET_FIELD,
+)
+from polybot.polymarket.wallet_reports.fields import (
     POSITION_CASH_PNL_FIELD,
     POSITION_CURRENT_VALUE_FIELD,
     POSITION_REALIZED_PNL_FIELD,
     POSITION_SIZE_FIELD,
-    PROXY_WALLET_FIELD,
+)
+from polybot.polymarket.wallet_reports.normalization.activity import (
     normalize_activity_rows,
+)
+from polybot.polymarket.wallet_reports.normalization.positions import (
     normalize_position_rows,
 )
+
+from scripts.wallet_analysis.contracts import NET_CASH_METRIC
+from scripts.wallet_analysis.metrics import compute_metrics
 
 
 def test_activity_normalization_rejects_unknown_trade_side() -> None:
@@ -60,7 +67,7 @@ def test_position_normalization_requires_nonnegative_size_and_value() -> None:
         normalize_position_rows(
             [
                 {
-                    PROXY_WALLET_FIELD: "0xwallet",
+                    PROXY_WALLET_FIELD: "0x" + "a" * 40,
                     CONDITION_ID_FIELD: "condition",
                     POSITION_SIZE_FIELD: -1,
                     POSITION_CURRENT_VALUE_FIELD: 1,
@@ -97,7 +104,7 @@ def test_activity_normalization_rejects_missing_trade_identity() -> None:
 
 def _trade_payload(**overrides: object) -> list[dict[str, object]]:
     payload = {
-        PROXY_WALLET_FIELD: "0xwallet",
+        PROXY_WALLET_FIELD: "0x" + "a" * 40,
         CONDITION_ID_FIELD: "condition",
         ACTIVITY_TRANSACTION_HASH_FIELD: "transaction",
         ACTIVITY_TOKEN_ID_FIELD: "token",

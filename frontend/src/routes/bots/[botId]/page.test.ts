@@ -1,3 +1,4 @@
+import { runPath, NAVIGATION_PATH } from "$lib/navigation";
 import { IDEMPOTENCY_KEY_HEADER, IDEMPOTENCY_RECOVERY_HEADER, HTTP_STATUS } from "$lib/api/http";
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from "$lib/limits/testFixtures";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
@@ -7,7 +8,7 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
 import { GRAPH_VALIDATION_COPY } from "$lib/catalog/graphValidation";
 import { ADD_NODE_LABEL } from "$lib/catalog/NodePalette.svelte";
-import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE } from "$lib/catalog/schema/contracts";
 const mocks = vi.hoisted(() => ({
   deleteBot: vi.fn(),
   goto: vi.fn(),
@@ -100,7 +101,7 @@ describe("saved-bot detail page", () => {
       path: { bot_id: BOT.id },
       headers: { [IDEMPOTENCY_KEY_HEADER]: expect.any(String), [IDEMPOTENCY_RECOVERY_HEADER]: String(false) },
     });
-    expect(mocks.goto).toHaveBeenCalledWith("/runs/bbbbbbbb-0000-0000-0000-000000000001");
+    expect(mocks.goto).toHaveBeenCalledWith(runPath("bbbbbbbb-0000-0000-0000-000000000001"));
   });
   it("saves the complete configuration atomically before allowing the newest graph to run", async () => {
     const graphBot = {
@@ -391,7 +392,7 @@ it("requires confirmation, supports cancellation, and disables launches during d
   expect(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CANCEL })).toBeDisabled();
   expect(mocks.deleteBot).toHaveBeenCalledExactlyOnceWith({ path: { bot_id: BOT.id } });
   finishDelete({ response: { status: HTTP_STATUS.NO_CONTENT } });
-  await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith("/"));
+  await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(NAVIGATION_PATH.HOME));
 });
 it.each([HTTP_STATUS.CONFLICT, HTTP_STATUS.SERVICE_UNAVAILABLE])(
   "keeps the editor after deletion is rejected with %s",
@@ -420,5 +421,5 @@ it("recovers a lost deletion response through an explicit retry", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(BOT_DETAIL_COPY.DELETE_ERROR);
   expect(mocks.goto).not.toHaveBeenCalled();
   await fireEvent.click(screen.getByRole("button", { name: BOT_DETAIL_COPY.DELETE_CONFIRM }));
-  await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith("/"));
+  await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(NAVIGATION_PATH.HOME));
 });

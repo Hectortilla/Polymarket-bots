@@ -11,19 +11,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BotDefinitionDescriptor, RunRead } from "$lib/api/generated";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
-import {
-  BOT_DEFINITION_LABEL,
-  SELECTION_MODE,
-  WIDGET_KIND,
-  WIDGET_SCHEMA_KEY,
-  fieldLabel,
-  launchFields,
-} from "$lib/catalog/schema";
+import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from "$lib/catalog/schema/contracts";
+import { fieldLabel } from "$lib/catalog/schema/presentation";
+import { launchFields } from "$lib/catalog/schema/fields";
 import { BOT_BUILDER_COPY } from "$lib/bots/copy";
 import { botPath } from "$lib/navigation";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { formatTime } from "$lib/time";
-import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
+import { EVENT_KIND, INITIAL_EVENT_CURSOR, type PersistedDurableEvent } from "$lib/runs/durableEvents";
 import { EVENT_VIEW } from "$lib/runs/eventViews";
 import { RUN_STATUS } from "$lib/runs/status";
 const mocks = vi.hoisted(() => ({
@@ -124,7 +119,7 @@ beforeEach(() => {
   mocks.listDefinitions.mockResolvedValue({ data: [GRAPH_DEFINITION] });
   mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
     hydrate({
-      dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+      dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
       run: RUN,
       events: [],
       nextBeforeEventId: null,
@@ -143,7 +138,7 @@ describe("run detail page", () => {
     const markets = ["historical-market-one", "historical-market-two"];
     mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
       hydrate({
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
         run: {
           ...RUN,
           config: {
@@ -184,7 +179,7 @@ describe("run detail page", () => {
     mocks.loadRun.mockImplementation(async (_runId, hydrate, _durable, _live, _open, onConnectionState) => {
       connectionState = onConnectionState;
       hydrate({
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
         run: GRAPHLESS_RUN,
         events: [],
         nextBeforeEventId: null,
@@ -228,7 +223,7 @@ describe("run detail page", () => {
   it("omits historical graph details for an ordinary run", async () => {
     mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
       hydrate({
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
         run: GRAPHLESS_RUN,
         events: [],
         nextBeforeEventId: null,
@@ -268,7 +263,7 @@ describe("run detail page", () => {
     };
     mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
       hydrate({
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
         run: {
           ...GRAPHLESS_RUN,
           status: RUN_STATUS.FAILED,
@@ -322,7 +317,7 @@ function chartSampleEvent(id: number): PersistedDurableEvent {
 function hydrateActive(events: PersistedDurableEvent[] = [], cursor: number | null = null) {
   mocks.loadRun.mockImplementation(async (_id, hydrate) => {
     hydrate({
-      dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+      dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
       run: ACTIVE_RUN,
       events,
       nextBeforeEventId: cursor,
@@ -350,7 +345,7 @@ describe("run detail interactions", () => {
         run: ACTIVE_RUN,
         events: [lifecycleEvent(1, RUN_STATUS.RUNNING)],
         nextBeforeEventId: null,
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
       });
       return oldClose;
     });
@@ -372,7 +367,7 @@ describe("run detail interactions", () => {
         run: ACTIVE_RUN,
         events: [activity],
         nextBeforeEventId: null,
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
       });
       return vi.fn();
     });
@@ -518,7 +513,7 @@ describe("run detail interactions", () => {
       durable = onDurable;
       live = onLive;
       hydrate({
-        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+        dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
         run: ACTIVE_RUN,
         events: [],
         nextBeforeEventId: null,
@@ -615,7 +610,7 @@ describe("run detail interactions", () => {
 it("keeps the historical graph visible after its bot is deleted and removes the configuration link", async () => {
   mocks.loadRun.mockImplementation(async (_runId, hydrate) => {
     hydrate({
-      dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: 0 },
+      dashboardPage: { events: [], nextBeforeEventId: null, streamCursor: INITIAL_EVENT_CURSOR },
       run: { ...RUN, bot_deleted: true },
       events: [],
       nextBeforeEventId: null,
@@ -699,4 +694,31 @@ it("continues ingesting run events while viewing configuration", async () => {
   await fireEvent.click(screen.getByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS }));
   expect(screen.getByText(eventSummary(lifecycleEvent(1, RUN_STATUS.STOPPED)))).toBeTruthy();
   expect(mocks.loadRun).toHaveBeenCalledOnce();
+});
+
+it.each([false, true])("loads earlier chart data and allows retry after failure=%s", async (failFirst) => {
+  mocks.loadRun.mockImplementation(async (_id, hydrate) => {
+    hydrate({
+      run: RUN,
+      events: [],
+      nextBeforeEventId: null,
+      dashboardPage: { events: [], nextBeforeEventId: 10, streamCursor: 10 },
+    });
+    return () => {};
+  });
+  if (failFirst) mocks.loadOlderEvents.mockRejectedValueOnce(new Error("offline"));
+  mocks.loadOlderEvents.mockResolvedValueOnce({ events: [], nextBeforeEventId: 5, streamCursor: 10 });
+  mocks.loadOlderEvents.mockResolvedValueOnce({ events: [], nextBeforeEventId: null, streamCursor: 10 });
+  render(Page);
+  await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER_DASHBOARD }));
+  if (failFirst) {
+    expect(await screen.findByText(RUN_DETAIL_COPY.LOAD_ERROR)).toBeTruthy();
+    await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER_DASHBOARD }));
+  }
+  await waitFor(() => expect(mocks.loadOlderEvents).toHaveBeenCalledWith(RUN.id, EVENT_VIEW.DASHBOARD, 10));
+  await fireEvent.click(await screen.findByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER_DASHBOARD }));
+  await waitFor(() => expect(mocks.loadOlderEvents).toHaveBeenLastCalledWith(RUN.id, EVENT_VIEW.DASHBOARD, 5));
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: RUN_DETAIL_COPY.LOAD_EARLIER_DASHBOARD })).toBeNull(),
+  );
 });

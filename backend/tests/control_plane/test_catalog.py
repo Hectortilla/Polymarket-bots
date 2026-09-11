@@ -414,7 +414,7 @@ def test_graph_catalog_preserves_enum_schema() -> None:
     assert trigger is not None and trigger.payload is not None
     side = trigger.payload.field_for_path(GraphFieldPath(segments=("side",)))
     assert side is not None
-    assert side.value_schema["enum"] == ["BUY", "SELL"]
+    assert side.value_schema["enum"] == [side.value for side in Side]
 
 
 def test_graph_catalog_recurses_through_nested_dataclasses() -> None:

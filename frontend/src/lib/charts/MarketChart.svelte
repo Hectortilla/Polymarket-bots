@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { DASHBOARD_COPY } from "./copy";
   import type { ChartSamplePayload, MarketChartPointPayload } from "$lib/api/generated";
   import { SIDE } from "$lib/sides";
   import { MAX_CHART_TOKENS, OUTCOME_PRICE_CEILING, OUTCOME_PRICE_FLOOR, VALUATION_STATUS } from "./contracts";
@@ -86,7 +87,7 @@
       return [sample.sampled_at_ms, point?.value == null ? null : Number(point.value)];
     });
     const markers = marketFillMarkers(samples, points, label);
-    const data = (status: typeof VALUATION_STATUS.fresh | typeof VALUATION_STATUS.stale) =>
+    const seriesDataForStatus = (status: typeof VALUATION_STATUS.fresh | typeof VALUATION_STATUS.stale) =>
       marketPricePoints.map(([time, value], sampleIndex) => [
         time,
         points[sampleIndex]?.status === status ? value : null,
@@ -100,7 +101,7 @@
         connectNulls: false,
         itemStyle: { color },
         lineStyle: { color, width: 2 },
-        data: data(VALUATION_STATUS.fresh),
+        data: seriesDataForStatus(VALUATION_STATUS.fresh),
       },
       {
         id: `market:${tokenId}:stale`,
@@ -110,7 +111,7 @@
         silent: true,
         itemStyle: { color },
         lineStyle: { color, opacity: 0.4, type: "dashed", width: 2 },
-        data: data(VALUATION_STATUS.stale),
+        data: seriesDataForStatus(VALUATION_STATUS.stale),
       },
       {
         id: `market:${tokenId}:fills`,
@@ -187,7 +188,7 @@
     >
       <span><i class="chart-key-buy" aria-hidden="true"></i>Buy fill</span>
       <span><i class="chart-key-sell" aria-hidden="true"></i>Sell fill</span>
-      <span><i class="chart-key-stale" aria-hidden="true"></i>Stale estimate</span>
+      <span><i class="chart-key-stale" aria-hidden="true"></i>{DASHBOARD_COPY.STALE_ESTIMATE}</span>
     </div>
   {:else}
     <p class="chart-empty">No market prices in this time window.</p>

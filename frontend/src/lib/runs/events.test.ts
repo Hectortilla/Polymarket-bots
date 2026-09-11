@@ -572,7 +572,7 @@ it("routes named dashboard frames separately while sharing the reconnect cursor"
   const activity = vi.fn();
   const dashboard = vi.fn();
   openRunEventStream(RUN_ID, 4, activity, vi.fn(), undefined, {
-    view: runtimeContract.eventView.DIAGNOSTICS as import("./eventViews").ActivityEventView,
+    view: runtimeContract.eventView.DIAGNOSTICS as import("./eventViews").RunEventView,
     onDashboardEvent: dashboard,
   });
   const source = FakeEventSource.current;

@@ -131,13 +131,7 @@ class ArchiveMarketState:
         *,
         received_at_ms: int,
     ) -> tuple[BookSnapshot, ...]:
-        markets = tuple(
-            market
-            for slug in sorted(market_slugs)
-            if (market := self.market_for_slug(slug)) is not None
-            and not self._catalog.is_resolved(market.condition_id)
-            and not self._blackouts.is_blacked_out(market.condition_id)
-        )
+        markets = self._eligible_markets_for_bootstrap(market_slugs)
         return self._book_replay.bootstrap_books(
             markets,
             received_at_ms=received_at_ms,
@@ -230,3 +224,17 @@ class ArchiveMarketState:
         market = self._catalog.require_market(condition_id)
         if self.has_complete_book(market.slug):
             self._book_replay.mark_bootstrapped(condition_id)
+
+    def _eligible_markets_for_bootstrap(
+        self, market_slugs: set[str] | frozenset[str]
+    ) -> tuple[Market, ...]:
+        markets = []
+        for slug in sorted(market_slugs):
+            market = self.market_for_slug(slug)
+            if (
+                market is not None
+                and not self._catalog.is_resolved(market.condition_id)
+                and not self._blackouts.is_blacked_out(market.condition_id)
+            ):
+                markets.append(market)
+        return tuple(markets)

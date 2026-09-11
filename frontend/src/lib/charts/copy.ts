@@ -1,4 +1,5 @@
 export const DASHBOARD_COPY = {
+  STALE_ESTIMATE: "Stale estimate",
   ARIA_LABEL: "Run dashboard",
   CONTROLS_ARIA_LABEL: "Dashboard controls",
   CONTROL_CLOSER: "closer",

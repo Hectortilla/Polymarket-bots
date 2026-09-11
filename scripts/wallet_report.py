@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from scripts.terminal import bad, dim, good, heading, warn
 from scripts.wallet_analysis.classification import (
     HEDGE_SCORE_THRESHOLD,
@@ -22,21 +20,6 @@ from scripts.wallet_analysis.market_metrics import market_trade_share
 
 GOOD_VERDICT = "Good for the trader"
 BAD_VERDICT = "Bad"
-
-
-def format_signed_net_cash(value: float) -> str:
-    rendered = f"{value:+,.2f}"
-    return (
-        good(rendered)
-        if value > PNL_SIGNIFICANCE_THRESHOLD
-        else bad(rendered)
-        if value < -PNL_SIGNIFICANCE_THRESHOLD
-        else dim(rendered)
-    )
-
-
-def verdict_label(is_good: bool) -> str:
-    return good(GOOD_VERDICT) if is_good else bad(BAD_VERDICT)
 
 
 def print_wallet_report(
@@ -76,3 +59,18 @@ def print_wallet_report(
         f"VERDICT        : {verdict_label(classification.is_good)} "
         f"({classification.explanation})"
     )
+
+
+def format_signed_net_cash(value: float) -> str:
+    rendered = f"{value:+,.2f}"
+    return (
+        good(rendered)
+        if value > PNL_SIGNIFICANCE_THRESHOLD
+        else bad(rendered)
+        if value < -PNL_SIGNIFICANCE_THRESHOLD
+        else dim(rendered)
+    )
+
+
+def verdict_label(is_good: bool) -> str:
+    return good(GOOD_VERDICT) if is_good else bad(BAD_VERDICT)

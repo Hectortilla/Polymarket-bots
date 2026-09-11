@@ -10,6 +10,8 @@ from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.streams import StreamRelation, StreamRule
 
+CROSS_MARKET_SIGNAL_REASON_PREFIX = "cross_market_signal"
+
 
 @dataclass(frozen=True, slots=True)
 class CrossMarketRule:
@@ -25,6 +27,38 @@ class ExampleMultiMarketBot(BaseBot):
     def __init__(self, rules: tuple[CrossMarketRule, ...]) -> None:
         self.rules = rules
         self._target_token_ids: dict[str, str | None] = {}
+
+    async def current_stream_rules(
+        self,
+        ctx: BotContext,
+        now_ms: int,
+    ) -> tuple[StreamRule, ...]:
+        slugs = {rule.signal_slug for rule in self.rules}
+        slugs.update(rule.target_slug for rule in self.rules)
+        return (StreamRule(StreamRelation.INDEPENDENT, tuple(sorted(slugs))),)
+
+    async def on_book(
+        self,
+        ctx: BotContext,
+        book: BookSnapshot,
+    ) -> DispatchSkipReason | None:
+        if book.market_slug is None:
+            return
+        for rule in self.rules:
+            if rule.target_slug not in self._target_token_ids:
+                market = await ctx.markets.find_by_slug(rule.target_slug)
+                self._target_token_ids[rule.target_slug] = (
+                    None
+                    if market is None
+                    else market.token_id_for_outcome(rule.target_outcome_label)
+                )
+        if not ctx.is_book_current(book):
+            return DispatchSkipReason.BOOK_STALE
+        for order in self.orders_for_book(book, ctx.config.max_order_size):
+            if not ctx.is_book_current(book):
+                return DispatchSkipReason.BOOK_STALE
+            await ctx.broker.submit(order)
+        return None
 
     def orders_for_book(
         self,
@@ -64,37 +98,5 @@ class ExampleMultiMarketBot(BaseBot):
             price=rule.order_price,
             size=min(rule.max_size, max_order_size),
             market_slug=rule.target_slug,
-            reason=f"cross_market_signal:{rule.signal_slug}",
+            reason=f"{CROSS_MARKET_SIGNAL_REASON_PREFIX}:{rule.signal_slug}",
         )
-
-    async def current_stream_rules(
-        self,
-        ctx: BotContext,
-        now_ms: int,
-    ) -> tuple[StreamRule, ...]:
-        slugs = {rule.signal_slug for rule in self.rules}
-        slugs.update(rule.target_slug for rule in self.rules)
-        return (StreamRule(StreamRelation.INDEPENDENT, tuple(sorted(slugs))),)
-
-    async def on_book(
-        self,
-        ctx: BotContext,
-        book: BookSnapshot,
-    ) -> DispatchSkipReason | None:
-        if book.market_slug is None:
-            return
-        for rule in self.rules:
-            if rule.target_slug not in self._target_token_ids:
-                market = await ctx.markets.find_by_slug(rule.target_slug)
-                self._target_token_ids[rule.target_slug] = (
-                    None
-                    if market is None
-                    else market.token_id_for_outcome(rule.target_outcome_label)
-                )
-        if not ctx.is_book_current(book):
-            return DispatchSkipReason.BOOK_STALE
-        for order in self.orders_for_book(book, ctx.config.max_order_size):
-            if not ctx.is_book_current(book):
-                return DispatchSkipReason.BOOK_STALE
-            await ctx.broker.submit(order)
-        return None

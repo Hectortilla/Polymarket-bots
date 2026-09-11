@@ -4,7 +4,7 @@ from decimal import Decimal
 from hashlib import sha256
 
 from polybot.framework.wallets import normalize_wallet_address
-from polybot.polymarket.normalization.values import normalize_text_or_none
+from polybot.polymarket.normalization.market_data_fields import normalize_text_or_none
 
 WALLET_TRADE_SOURCE_ID_VERSION = "wallet-trade-v1"
 

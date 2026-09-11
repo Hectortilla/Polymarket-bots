@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from polybot.framework.timestamps import timestamp_bounds_are_ordered
 from polybot.integers import validate_nonnegative_int
 
 from .validation import normalize_optional_text_fields, normalize_text_tuple
@@ -41,7 +42,7 @@ class CoverageGapPayload:
         validate_nonnegative_int(self.started_at_ms, "coverage gap start")
         if self.ended_at_ms is not None:
             validate_nonnegative_int(self.ended_at_ms, "coverage gap end")
-            if self.ended_at_ms < self.started_at_ms:
+            if not timestamp_bounds_are_ordered(self.started_at_ms, self.ended_at_ms):
                 raise ValueError("coverage gap cannot end before it starts")
         for name in (
             "affected_condition_ids",

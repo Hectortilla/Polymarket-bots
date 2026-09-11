@@ -6,6 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
+from polybot.framework.timestamps import timestamp_bounds_are_ordered
 from polybot.recording.archive.columns import ArchiveColumn
 
 from ..contracts.anomalies import CaptureFailureKind
@@ -14,49 +15,12 @@ from .errors import ArchiveFormatError, CaptureAnomalyJournalUnavailableError
 from .lifecycle import _open_readonly_connection
 from .models import RecordingFeatureProvenance, RecordingSession
 from .primitives import (
-    _nonnegative_timestamp,
+    _nonnegative_timestamp_ms,
     _required_text,
 )
 from .rows import _capture_anomaly_from_row
 from .schema import CAPTURE_ANOMALIES_TABLE
 from .sessions import select_session
-
-
-def select_overlapping_recording_sessions(
-    sessions: tuple[RecordingSession, ...],
-    *,
-    start_at_ms: int | None,
-    end_at_ms: int | None,
-    session_id: int | None,
-) -> tuple[RecordingSession, ...]:
-    if session_id is not None:
-        return tuple(
-            session for session in sessions if session.session_id == session_id
-        )
-    return tuple(
-        session
-        for session in sessions
-        if (end_at_ms is None or session.started_at_ms <= end_at_ms)
-        and (
-            start_at_ms is None
-            or session.ended_at_ms is None
-            or session.ended_at_ms >= start_at_ms
-        )
-    )
-
-
-def capture_anomaly_journal_available(
-    sessions: tuple[RecordingSession, ...],
-    provenance: RecordingFeatureProvenance | None,
-    session_id: int,
-) -> bool:
-    """Return whether diagnostic rows are available for one selected session."""
-
-    selected_session = select_session(sessions, session_id)
-    return (
-        provenance is not None
-        and selected_session.session_id >= provenance.available_from_session_id
-    )
 
 
 def iter_capture_anomalies(
@@ -76,10 +40,14 @@ def iter_capture_anomalies(
     """Stream filtered quarantined diagnostics from one reader snapshot."""
 
     if start_at_ms is not None:
-        _nonnegative_timestamp(start_at_ms, "capture anomaly selection start")
+        _nonnegative_timestamp_ms(start_at_ms, "capture anomaly selection start")
     if end_at_ms is not None:
-        _nonnegative_timestamp(end_at_ms, "capture anomaly selection end")
-    if start_at_ms is not None and end_at_ms is not None and end_at_ms < start_at_ms:
+        _nonnegative_timestamp_ms(end_at_ms, "capture anomaly selection end")
+    if (
+        start_at_ms is not None
+        and end_at_ms is not None
+        and not timestamp_bounds_are_ordered(start_at_ms, end_at_ms)
+    ):
         raise ValueError("capture anomaly selection cannot end before it starts")
     normalized_session = (
         None if session_id is None else select_session(sessions, session_id).session_id
@@ -120,6 +88,43 @@ def iter_capture_anomalies(
         immutable=immutable,
         clauses=clauses,
         parameters=tuple(parameters),
+    )
+
+
+def select_overlapping_recording_sessions(
+    sessions: tuple[RecordingSession, ...],
+    *,
+    start_at_ms: int | None,
+    end_at_ms: int | None,
+    session_id: int | None,
+) -> tuple[RecordingSession, ...]:
+    if session_id is not None:
+        return tuple(
+            session for session in sessions if session.session_id == session_id
+        )
+    return tuple(
+        session
+        for session in sessions
+        if (end_at_ms is None or session.started_at_ms <= end_at_ms)
+        and (
+            start_at_ms is None
+            or session.ended_at_ms is None
+            or session.ended_at_ms >= start_at_ms
+        )
+    )
+
+
+def capture_anomaly_journal_available(
+    sessions: tuple[RecordingSession, ...],
+    provenance: RecordingFeatureProvenance | None,
+    session_id: int,
+) -> bool:
+    """Return whether diagnostic rows are available for one selected session."""
+
+    selected_session = select_session(sessions, session_id)
+    return (
+        provenance is not None
+        and selected_session.session_id >= provenance.available_from_session_id
     )
 
 

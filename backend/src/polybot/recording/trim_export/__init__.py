@@ -32,6 +32,7 @@ def build_trimmed_archive(
         synthetic_event_count = TrimBootstrap(source).write(plan, archive)
         archive.close(ended_at_ms=plan.end_at_ms)
     except BaseException as error:
+        # Best-effort closure must preserve the original trim or cancellation failure.
         with suppress(Exception):
             archive.close(clean=False, failure_reason=f"trim failed: {error}")
         raise

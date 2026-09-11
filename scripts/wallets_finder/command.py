@@ -5,17 +5,19 @@ from __future__ import annotations
 import argparse
 import time
 
-from polymarket.errors import PolymarketError
 from polybot.examples.btc_five_minute_market import BTC_FIVE_MINUTE_BUCKET_SECONDS
 from polybot.framework.clock import system_now_utc
-
-from scripts.paths import BAD_FILE, GOOD_FILE
-from scripts.polymarket_wallet_api import (
-    fetch_all_activity,
+from polybot.polymarket.wallet_reports.activity import fetch_all_activity
+from polybot.polymarket.wallet_reports.errors import WalletReadError
+from polybot.polymarket.wallet_reports.fields import POSITION_SIZE_FIELD
+from polybot.polymarket.wallet_reports.gamma import gamma_condition_id
+from polybot.polymarket.wallet_reports.positions import (
     fetch_market_positions,
     fetch_positions,
-    gamma_condition_id,
 )
+
+from scripts.paths import BAD_FILE, GOOD_FILE
+from scripts.terminal import bad, dim, heading, warn
 from scripts.wallet_analysis.classification import classify_wallet_candidate
 from scripts.wallet_analysis.contracts import (
     ACTIVITY_SPAN_HOURS_METRIC,
@@ -25,7 +27,6 @@ from scripts.wallet_analysis.contracts import (
 )
 from scripts.wallet_analysis.market_metrics import market_trade_share
 from scripts.wallet_analysis.metrics import compute_metrics
-from scripts.terminal import bad, dim, heading, warn
 from scripts.wallet_report import print_wallet_report, verdict_label
 from scripts.wallet_results import append_wallet_result, load_seen_wallets
 from scripts.wallets_finder.records import result_note, unique_holders
@@ -68,7 +69,7 @@ def scan_market(
     print(f"  condition: {condition_id}")
     try:
         positions = fetch_market_positions(condition_id)
-    except PolymarketError as error:
+    except WalletReadError as error:
         print(bad(f"  Failed to fetch market positions: {error}"))
         return 0
     processed = load_seen_wallets(GOOD_FILE) | load_seen_wallets(BAD_FILE)
@@ -81,7 +82,7 @@ def scan_market(
         try:
             activity, truncated = fetch_all_activity(wallet)
             wallet_positions = fetch_positions(wallet)
-        except PolymarketError as error:
+        except WalletReadError as error:
             print(warn(f"error {wallet}: {error} (skipped)"))
             continue
         metrics = compute_metrics(activity, wallet_positions, truncated)
@@ -109,7 +110,7 @@ def scan_market(
         )
         processed.add(wallet)
         completed += 1
-        size = float(holder_position.get("size") or 0)
+        size = float(holder_position.get(POSITION_SIZE_FIELD) or 0)
         print(
             f"{wallet} size={size:,.0f} "
             f"net={float(metrics[NET_CASH_METRIC]):+,.2f} "
@@ -141,7 +142,7 @@ def run_scan(
     scan_market(slug, condition_id, limit, verbose)
 
 
-def run_forever(limit: int, verbose: bool, buffer: int = 10) -> None:
+def run_forever(limit: int, verbose: bool, buffer_seconds: int = 10) -> None:
     print(heading("Watching BTC Up/Down 5m. Ctrl-C to stop."))
     last_slug = None
     try:
@@ -152,7 +153,7 @@ def run_forever(limit: int, verbose: bool, buffer: int = 10) -> None:
                 last_slug = slug
             elif not condition_id:
                 print(warn(f"[{system_now_utc():%H:%M:%S}] could not resolve {slug}"))
-            time.sleep(seconds_to_next_window(buffer))
+            time.sleep(seconds_to_next_window(buffer_seconds))
     except KeyboardInterrupt:
         print("stopped.")
 

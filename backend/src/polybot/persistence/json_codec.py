@@ -1,4 +1,4 @@
-"""Strict JSON decoding for durable and configuration inputs."""
+"""Strict JSON encoding and decoding for durable and configuration inputs."""
 
 from __future__ import annotations
 
@@ -13,6 +13,17 @@ class DuplicateJsonKeyError(ValueError):
 
 class NonFiniteJsonNumberError(ValueError):
     pass
+
+
+def dumps_json(value: object, *, ensure_ascii: bool = True) -> str:
+    """Encode deterministic compact JSON that the strict decoder can read."""
+    return json.dumps(
+        value,
+        ensure_ascii=ensure_ascii,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def loads_json(raw: str) -> object:

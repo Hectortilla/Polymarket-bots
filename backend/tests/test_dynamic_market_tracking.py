@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -14,7 +15,7 @@ from polybot.cli.observability.events import StreamReceived
 from polybot.cli.observability.observer import RuntimeObserver
 from polybot.cli.resolution.reconciliation import reconcile_resolutions
 from polybot.cli.resolution.settlement import ResolutionSettlementService
-from polybot.cli.runner.wallet_dispatch import dispatch_wallet_trade
+from polybot.cli.runner.dispatch import StreamEventDispatcher
 from polybot.cli.streams.contracts import (
     ResolutionStreamEvent,
     StreamSourceSpec,
@@ -46,13 +47,24 @@ from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.outcomes import NO_OUTCOME, YES_OUTCOME
 from polybot.framework.runner import BotRunner
 from polybot.framework.streams import StreamPlan, StreamRelation, StreamRule
-from polybot.polymarket.errors import MarketDataTransportError
+from polybot.polymarket.errors import (
+    MarketDataError,
+    MarketDataIssue,
+    MarketDataTransportError,
+)
 from polybot.polymarket.markets import Market, MarketOutcome
 from polybot.polymarket.normalization.recording_events.market_events import (
     MARKET_WEBSOCKET_SOURCE,
 )
-from polybot.polymarket.positions.client import PositionClient
+from polybot.polymarket.positions.client import POSITIONS_PAGE_SIZE, PositionClient
 from polybot.polymarket.positions.contracts import Position
+from polybot.polymarket.positions.fields import (
+    POSITIONS_REQUEST_MARKET_FIELD,
+    POSITIONS_REQUEST_PAGE_SIZE_FIELD,
+    POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD,
+    POSITIONS_REQUEST_USER_FIELD,
+)
+from polybot.polymarket.positions.normalization import normalize_position
 from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
 from polybot.polymarket.ws_market import MarketStream
 from polymarket import PolymarketError
@@ -166,14 +178,15 @@ def test_wallet_dispatch_records_trade_and_registers_market_after_acceptance(
     clob = Clob()
 
     outcome = asyncio.run(
-        dispatch_wallet_trade(
+        StreamEventDispatcher(
             runner,
-            event,
-            gamma=Gamma(),  # type: ignore[arg-type]
-            clob=clob,  # type: ignore[arg-type]
+            object(),
+            gamma=Gamma(),
+            clob=clob,
             registry=registry,
             followed_wallets=tracker,
-        )
+            resolution_service=None,
+        ).dispatch_wallet_trade(event)
     )
 
     assert outcome.accepted
@@ -200,14 +213,15 @@ def test_wallet_dispatch_rejects_trade_without_market_slug(
         replace(_trade("missing-slug", Side.BUY, "1", "0.4", 1_000), market_slug=None),
     )
     outcome = asyncio.run(
-        dispatch_wallet_trade(
+        StreamEventDispatcher(
             BotRunner(BaseBot(), dummy_context, now_ms_fn=lambda: 1_000),
-            event,
-            gamma=Gamma(),  # type: ignore[arg-type]
-            clob=Clob(),  # type: ignore[arg-type]
+            object(),
+            gamma=Gamma(),
+            clob=Clob(),
             registry=None,
             followed_wallets=None,
-        )
+            resolution_service=None,
+        ).dispatch_wallet_trade(event)
     )
 
     assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
@@ -252,16 +266,19 @@ def test_wallet_dispatch_rejects_conflicting_registry_metadata_before_execution(
             )
 
     outcome = asyncio.run(
-        dispatch_wallet_trade(
-            Runner(),  # type: ignore[arg-type]
+        StreamEventDispatcher(
+            Runner(),
+            object(),
+            gamma=Gamma(),
+            clob=Clob(),
+            registry=registry,
+            followed_wallets=FollowedWallets(),
+            resolution_service=None,
+        ).dispatch_wallet_trade(
             WalletStreamEvent(
                 StreamKind.WALLET,
                 _trade("conflicting-market", Side.BUY, "1", "0.4", 1_000),
-            ),
-            gamma=Gamma(),  # type: ignore[arg-type]
-            clob=Clob(),  # type: ignore[arg-type]
-            registry=registry,
-            followed_wallets=FollowedWallets(),  # type: ignore[arg-type]
+            )
         )
     )
 
@@ -284,16 +301,19 @@ def test_wallet_dispatch_skips_terminal_market_before_metadata_or_routing(
             raise AssertionError("resolved trades must not register CLOB metadata")
 
     outcome = asyncio.run(
-        dispatch_wallet_trade(
+        StreamEventDispatcher(
             BotRunner(BaseBot(), dummy_context, now_ms_fn=lambda: 1_000),
+            object(),
+            gamma=Gamma(),
+            clob=Clob(),
+            registry=registry,
+            followed_wallets=None,
+            resolution_service=None,
+        ).dispatch_wallet_trade(
             WalletStreamEvent(
                 StreamKind.WALLET,
                 _trade("resolved", Side.BUY, "1", "0.4", 1_000),
-            ),
-            gamma=Gamma(),  # type: ignore[arg-type]
-            clob=Clob(),  # type: ignore[arg-type]
-            registry=registry,
-            followed_wallets=None,
+            )
         )
     )
 
@@ -1156,25 +1176,31 @@ def test_data_client_passes_filtered_market_condition_ids_to_sdk() -> None:
 
     assert client.requests == [
         {
-            "user": WALLET,
-            "market": ("condition-allowed", "condition-other"),
-            "size_threshold": 0,
-            "page_size": 100,
+            POSITIONS_REQUEST_USER_FIELD: WALLET,
+            POSITIONS_REQUEST_MARKET_FIELD: ("condition-allowed", "condition-other"),
+            POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD: 0,
+            POSITIONS_REQUEST_PAGE_SIZE_FIELD: POSITIONS_PAGE_SIZE,
         }
     ]
 
     client.requests.clear()
     asyncio.run(PositionClient(client).positions(WALLET))
-    assert client.requests == [{"user": WALLET, "size_threshold": 0, "page_size": 100}]
+    assert client.requests == [
+        {
+            POSITIONS_REQUEST_USER_FIELD: WALLET,
+            POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD: 0,
+            POSITIONS_REQUEST_PAGE_SIZE_FIELD: POSITIONS_PAGE_SIZE,
+        }
+    ]
 
     mixed_case_wallet = "0x" + "Ab" * 20
     client.requests.clear()
     asyncio.run(PositionClient(client).positions(mixed_case_wallet))
     assert client.requests == [
         {
-            "user": mixed_case_wallet.lower(),
-            "size_threshold": 0,
-            "page_size": 100,
+            POSITIONS_REQUEST_USER_FIELD: mixed_case_wallet.lower(),
+            POSITIONS_REQUEST_SIZE_THRESHOLD_FIELD: 0,
+            POSITIONS_REQUEST_PAGE_SIZE_FIELD: POSITIONS_PAGE_SIZE,
         }
     ]
 
@@ -1316,15 +1342,113 @@ def test_wallet_cap_is_checked_before_clob_mutation_or_bot_dispatch():
         runner = AsyncMock()
         event = _trade("capacity", Side.BUY, "1", "0.4", 1_000)
         with pytest.raises(TrackedMarketLimitExceeded):
-            await dispatch_wallet_trade(
+            await StreamEventDispatcher(
                 runner,
-                WalletStreamEvent(StreamKind.WALLET, event),
+                object(),
                 gamma=gamma,
                 clob=clob,
                 registry=registry,
                 followed_wallets=None,
-            )
+                resolution_service=None,
+            ).dispatch_wallet_trade(WalletStreamEvent(StreamKind.WALLET, event))
         runner.dispatch_wallet_trade.assert_not_awaited()
         clob.add_market.assert_not_called()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("field", ["avg_price", "cur_price"])
+@pytest.mark.parametrize("price", ["-0.1", "1.1", "NaN", "Infinity"])
+def test_position_prices_must_be_finite_outcome_prices(field: str, price: str) -> None:
+    source = SimpleNamespace(
+        wallet=WALLET,
+        token_id="token",
+        condition_id="condition",
+        slug="market",
+        size=Decimal("2"),
+        avg_price=Decimal("0.3"),
+        cur_price=Decimal("0.4"),
+        outcome=YES_OUTCOME,
+    )
+    setattr(source, field, Decimal(price))
+    with pytest.raises(MarketDataError) as caught:
+        normalize_position(source, requested_wallet=WALLET, requested_conditions=None)
+    assert caught.value.issue is MarketDataIssue.INVALID_POSITION
+
+
+def test_position_duplicate_tokens_across_pages_fail_closed() -> None:
+    source = SimpleNamespace(
+        wallet=WALLET,
+        token_id="token",
+        condition_id="condition",
+        slug="market",
+        size=Decimal("2"),
+        avg_price=Decimal("0.3"),
+        cur_price=Decimal("0.4"),
+        outcome=YES_OUTCOME,
+    )
+
+    class Client:
+        def list_positions(self, **kwargs):
+            async def pages():
+                yield SimpleNamespace(items=[source])
+                yield SimpleNamespace(items=[source])
+
+            return pages()
+
+    with pytest.raises(MarketDataError) as caught:
+        asyncio.run(PositionClient(Client()).positions(WALLET))
+    assert caught.value.issue is MarketDataIssue.INVALID_POSITION
+
+
+def test_wallet_metadata_transport_failure_reaches_runtime_boundary():
+    gamma = AsyncMock()
+    gamma.find_by_slug.side_effect = MarketDataTransportError("unavailable")
+    runner = AsyncMock()
+    clob = Mock()
+    dispatcher = StreamEventDispatcher(
+        runner,
+        object(),
+        gamma=gamma,
+        clob=clob,
+        registry=None,
+        followed_wallets=None,
+        resolution_service=None,
+    )
+    event = WalletStreamEvent(
+        StreamKind.WALLET, _trade("unavailable", Side.BUY, "1", "0.4", 1_000)
+    )
+    with pytest.raises(MarketDataTransportError):
+        asyncio.run(dispatcher.dispatch_wallet_trade(event))
+    runner.dispatch_wallet_trade.assert_not_awaited()
+    clob.add_market.assert_not_called()
+
+
+def test_wallet_rejected_metadata_skips_before_registration_or_execution():
+    gamma = AsyncMock()
+    gamma.find_by_slug.side_effect = MarketDataError(
+        MarketDataIssue.AMBIGUOUS_MARKET_METADATA, "conflicting outcomes"
+    )
+    runner = AsyncMock()
+    clob = Mock()
+    registry = TrackedMarketRegistry()
+    followed_wallets = Mock()
+    dispatcher = StreamEventDispatcher(
+        runner,
+        object(),
+        gamma=gamma,
+        clob=clob,
+        registry=registry,
+        followed_wallets=followed_wallets,
+        resolution_service=None,
+    )
+    event = WalletStreamEvent(
+        StreamKind.WALLET, _trade("invalid-metadata", Side.BUY, "1", "0.4", 1_000)
+    )
+    outcome = asyncio.run(dispatcher.dispatch_wallet_trade(event))
+    assert outcome.skip_reason is DispatchSkipReason.MARKET_METADATA_MISSING
+    gamma.find_by_slug.assert_awaited_once_with(event.event.market_slug)
+    assert runner.mock_calls == []
+    assert clob.mock_calls == []
+    assert registry.entries == ()
+    assert followed_wallets.mock_calls == []

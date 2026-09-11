@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from math import isfinite
 
 from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
-from polybot.polymarket.normalization.values import normalize_text_or_none
+from polybot.polymarket.normalization.market_data_fields import normalize_text_or_none
 from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_SIDE_FIELD,
     ACTIVITY_SIZE_FIELD,
@@ -85,7 +85,7 @@ def _timestamp_ms(value: object) -> int | None:
     )
 
 
-def _decimal(value: object) -> Decimal | None:
+def require_market_decimal(value: object) -> Decimal | None:
     try:
         result = value if isinstance(value, Decimal) else Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
@@ -107,8 +107,8 @@ def _aliases_agree(name: str, primary: object, secondary: object) -> bool:
 
 def _normalized_trade_size(size: object, shares: object) -> Decimal | None:
     """Accept one size field, or two agreeing representations of it."""
-    normalized_size = _decimal(size)
-    normalized_shares = _decimal(shares)
+    normalized_size = require_market_decimal(size)
+    normalized_shares = require_market_decimal(shares)
     if size is None:
         return normalized_shares
     if shares is None:

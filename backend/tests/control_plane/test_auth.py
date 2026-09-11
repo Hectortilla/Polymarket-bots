@@ -41,6 +41,7 @@ from api.bots.models import BotRow
 from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.events.contracts import RunLifecycleEvent, RunStatusPayload
+from api.events.delivery import EventDelivery
 from api.events.ids import FIRST_EVENT_CURSOR
 from api.http.app import create_app
 from api.http.protocol import (
@@ -636,7 +637,13 @@ def test_replay_stops_before_the_next_frame_after_session_revocation(services):
             for event_id in (1, 2)
         )
         streamer = RunEventStreamer(run_id, AsyncMock(), factory, redis, authorization)
-        with patch.object(RunEventReplay, "read", AsyncMock(return_value=events)):
+        with patch.object(
+            RunEventReplay,
+            "read",
+            AsyncMock(
+                return_value=tuple(EventDelivery(event, False) for event in events)
+            ),
+        ):
             stream = streamer.stream(FIRST_EVENT_CURSOR)
             with patch("api.auth.streams.monotonic", return_value=0):
                 assert "id: 1" in await anext(stream)

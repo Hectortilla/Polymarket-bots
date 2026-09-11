@@ -27,6 +27,7 @@ from polybot.performance.artifacts.errors import (
 from polybot.performance.artifacts.lifecycle import (
     PerformanceArtifacts,
 )
+from polybot.performance.artifacts.sampling import PerformanceValuationSampler
 from polybot.performance.contracts.files import (
     EQUITY_FILE_NAME,
     ORDERS_FILE_NAME,
@@ -122,6 +123,31 @@ def test_valuation_labels_cached_marks_stale_and_missing_marks_unavailable() -> 
     assert unavailable.status is ValuationStatus.UNAVAILABLE
     assert unavailable.equity_usdc is None
     assert unavailable.positions[0].market_value_usdc is None
+
+
+def test_out_of_order_sample_preserves_marks_and_curve() -> None:
+    sampler = PerformanceValuationSampler(
+        initial_cash_usdc=Decimal("100"),
+        max_book_age_ms=1_000,
+    )
+    portfolio = PaperPortfolio(
+        cash_usdc=Decimal("90"),
+        positions={"held": PaperPosition("held", Decimal("2"), Decimal("0.50"))},
+    )
+    sampler.record_book(_book("held", "0.40", "0.60", received_at_ms=1_000))
+    sampler.sample(1_000, SampleReason.START, portfolio)
+    previous_curve = sampler.curve
+    sampler.record_book(_book("held", "0.30", "0.50", received_at_ms=900))
+
+    with pytest.raises(ValueError, match="timestamps must be nondecreasing"):
+        sampler.sample(999, SampleReason.MANUAL, portfolio)
+
+    assert sampler.curve is previous_curve
+    assert sampler.last_executable_marks == {"held": Decimal("0.40")}
+    sample = sampler.sample(1_000, SampleReason.MANUAL, portfolio)
+    assert sample.valuation.equity_usdc == Decimal("90.60")
+    assert sampler.last_executable_marks == {"held": Decimal("0.30")}
+    assert sampler.curve.sample_count == 2
 
 
 def test_performance_artifacts_stream_exact_rows_and_finalize_summary(

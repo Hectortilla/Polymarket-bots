@@ -76,8 +76,8 @@ def _read_equity(
                     raise PerformanceChartError(
                         f"performance equity row {line_number} is incomplete"
                     )
-                timestamp = _timestamp(row[EquityField.TIMESTAMP_MS], line_number)
-                if timestamps_ms and timestamp < timestamps_ms[-1]:
+                timestamp_ms = _timestamp_ms(row[EquityField.TIMESTAMP_MS], line_number)
+                if timestamps_ms and timestamp_ms < timestamps_ms[-1]:
                     raise PerformanceChartError(
                         "performance equity timestamp moves backward at row "
                         f"{line_number}"
@@ -94,7 +94,7 @@ def _read_equity(
                     last_value = value
                     pnl_values.append(value)
                     stale_samples.append(status is not ValuationStatus.FRESH)
-                timestamps_ms.append(timestamp)
+                timestamps_ms.append(timestamp_ms)
     except PerformanceChartError:
         raise
     except (OSError, UnicodeError, csv.Error) as error:
@@ -106,22 +106,22 @@ def _read_equity(
     return timestamps_ms, pnl_values, stale_samples
 
 
-def _timestamp(value: str, line_number: int) -> int:
+def _timestamp_ms(value: str, line_number: int) -> int:
     try:
-        timestamp = int(value)
+        timestamp_ms = int(value)
     except ValueError as error:
         raise PerformanceChartError(
             f"performance equity timestamp is invalid at row {line_number}"
         ) from error
-    if timestamp < 0:
+    if timestamp_ms < 0:
         raise PerformanceChartError(
             f"performance equity timestamp is negative at row {line_number}"
         )
-    if timestamp > MAX_CHART_TIMESTAMP_MS:
+    if timestamp_ms > MAX_CHART_TIMESTAMP_MS:
         raise PerformanceChartError(
             f"performance equity timestamp is outside chart range at row {line_number}"
         )
-    return timestamp
+    return timestamp_ms
 
 
 def _valuation_status(value: str, line_number: int) -> ValuationStatus:

@@ -9,7 +9,7 @@ from polybot.framework.events.prices import (
 )
 from polybot.framework.wallets import normalize_wallet_address
 from polybot.polymarket.errors import MarketDataError, MarketDataIssue
-from polybot.polymarket.normalization.values import normalize_text_or_none
+from polybot.polymarket.normalization.market_data_fields import normalize_text_or_none
 
 from .contracts import Position
 from .fields import (

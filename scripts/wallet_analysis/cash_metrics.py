@@ -1,7 +1,7 @@
 """Cash-flow and fee calculations for wallet activity."""
 
 from polybot.framework.events import Side
-from scripts.wallet_payload_contracts import (
+from polybot.polymarket.wallet_reports.contracts import (
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
     ACTIVITY_SIZE_FIELD,

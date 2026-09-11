@@ -71,5 +71,20 @@ def test_main_recreates_before_applying_migrations(
     monkeypatch.setattr(database_recreation, "_recreate_database", recreate)
     monkeypatch.setattr(database_recreation, "_upgrade_to_head", upgrade)
 
-    assert main() == 0
+    assert main(["--confirm-database", "polybot_dev"]) == 0
     assert [call[0] for call in calls] == ["recreate", "upgrade"]
+
+
+@pytest.mark.parametrize("arguments", [[], ["--confirm-database", "another_database"]])
+def test_recreation_requires_exact_name_confirmation(monkeypatch, arguments) -> None:
+    monkeypatch.setenv(
+        DATABASE_URL_ENV, "postgresql://polybot:secret@localhost/polybot_dev"
+    )
+
+    def forbidden(*args):
+        raise AssertionError("must not start database work before confirmation")
+
+    monkeypatch.setattr(database_recreation, "_recreate_database", forbidden)
+    monkeypatch.setattr(database_recreation, "_upgrade_to_head", forbidden)
+    with pytest.raises(SystemExit):
+        main(arguments)

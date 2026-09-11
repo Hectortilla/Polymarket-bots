@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import { isOutcomePrice } from "$lib/outcomePrices";
 
 import { isOptionalNullable } from "$lib/valueGuards";
@@ -253,15 +254,21 @@ function isGraphPreviewNode(node: Record<string, unknown>): boolean {
     isOneOf(node.status, Object.values(catalogContract.graphValueStatus)) &&
     isOptionalNullable(node.reason, isGraphEvaluationReason) &&
     isRecord(node.outputs) &&
-    Object.values(node.outputs).every(isGraphPreviewOutput)
+    Object.values(node.outputs).every(isGraphValueRead)
   );
 }
 
-function isGraphPreviewOutput(output: unknown): boolean {
+export function isGraphValueRead(output: unknown): boolean {
   return (
     isRecord(output) &&
+    hasOnlyResponseFields(output, "GraphValueRead") &&
+    isOptionalNullable(output.input_handle_id, (handle) => typeof handle === "string") &&
+    isOptionalNullable(output.message, (message) => typeof message === "string") &&
     isOneOf(output.status, Object.values(catalogContract.graphValueStatus)) &&
-    (output.value === null || typeof output.value === "boolean" || typeof output.value === "string") &&
+    (output.value === undefined ||
+      output.value === null ||
+      typeof output.value === "boolean" ||
+      typeof output.value === "string") &&
     isOptionalNullable(output.reason, isGraphEvaluationReason)
   );
 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from polybot.framework.timestamps import timestamp_bounds_are_ordered
 from polybot.recording.archive.columns import ArchiveColumn
 from polybot.recording.archive.schema import EVENT_TOKENS_TABLE, EVENTS_TABLE
 
@@ -12,7 +13,7 @@ from ..contracts.gaps import CoverageGapPayload
 from ..contracts.kinds import PayloadKind
 from ..contracts.market import MarketIdentity
 from ..coverage import CoverageScope
-from .primitives import _nonnegative_timestamp, _positive_int, _required_text
+from .primitives import _nonnegative_timestamp_ms, _positive_int, _required_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,13 +39,13 @@ class ArchiveSelection:
         token_id: str | None,
     ) -> ArchiveSelection:
         if start_at_ms is not None:
-            _nonnegative_timestamp(start_at_ms, "selection start")
+            _nonnegative_timestamp_ms(start_at_ms, "selection start")
         if end_at_ms is not None:
-            _nonnegative_timestamp(end_at_ms, "selection end")
+            _nonnegative_timestamp_ms(end_at_ms, "selection end")
         if (
             start_at_ms is not None
             and end_at_ms is not None
-            and end_at_ms < start_at_ms
+            and not timestamp_bounds_are_ordered(start_at_ms, end_at_ms)
         ):
             raise ValueError("recording selection cannot end before it starts")
         return cls(

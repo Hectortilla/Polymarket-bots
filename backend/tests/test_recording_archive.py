@@ -14,6 +14,7 @@ from polybot.polymarket.normalization.recording_events.market_events import (
     MARKET_WEBSOCKET_SOURCE,
 )
 from polybot.polymarket.resolution import GAMMA_RECONCILIATION_SOURCE
+from polybot.recording.archive.columns import ArchiveColumn
 from polybot.recording.archive.errors import (
     ArchiveCoverageError,
     ArchiveExistsError,
@@ -611,9 +612,9 @@ def test_capture_anomaly_journal_is_non_replayable_and_filterable(tmp_path) -> N
 @pytest.mark.parametrize(
     ("column", "tampered_value"),
     [
-        ("condition_id", "wrong-condition"),
-        ("market_slug", "wrong-slug"),
-        ("token_id", "down-token"),
+        (ArchiveColumn.CONDITION_ID, "wrong-condition"),
+        (ArchiveColumn.MARKET_SLUG, "wrong-slug"),
+        (ArchiveColumn.TOKEN_ID, "down-token"),
     ],
 )
 def test_reader_rejects_tampered_capture_anomaly_identity_index(
@@ -633,7 +634,7 @@ def test_reader_rejects_tampered_capture_anomaly_identity_index(
 
     connection = sqlite3.connect(path)
     connection.execute(
-        f"UPDATE capture_anomalies SET {column} = ? WHERE anomaly_id = 1",
+        f"UPDATE capture_anomalies SET {column} = ? WHERE {ArchiveColumn.ANOMALY_ID} = 1",
         (tampered_value,),
     )
     connection.commit()

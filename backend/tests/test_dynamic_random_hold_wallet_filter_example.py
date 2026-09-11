@@ -7,9 +7,8 @@ from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_SLUG_PREFIX,
 )
 from polybot.examples.example_dynamic_random_hold_wallet_filter_copy import (
+    CopyPositionBook,
     ExampleDynamicRandomHoldWalletFilterBot,
-    copy_trade_decision,
-    positions_after_copy_fill,
 )
 from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
@@ -95,39 +94,23 @@ def test_wallet_filter_bot_tracks_positions_per_wallet_and_caps_sells(
 
 def test_copy_trade_transition_is_pure_and_bounded() -> None:
     buy = _wallet_trade(wallet=WALLETS[0])
-    decision = copy_trade_decision(
-        buy,
-        applied_source_ids=frozenset(),
-        open_positions={},
-    )
-
+    original = CopyPositionBook()
+    decision = original.decision(buy)
     assert decision is not None
     assert decision.order.size == Decimal("25")
-    after_buy = positions_after_copy_fill(
-        {},
-        decision,
-        side=Side.BUY,
-        filled_size=Decimal("10"),
-    )
-
+    after_buy = original.after_fill(decision, side=Side.BUY, filled_size=Decimal("10"))
+    assert original.open_positions == {}
+    assert original.applied_source_ids == frozenset()
+    assert after_buy.decision(buy) is None
     sell = _wallet_trade(wallet=WALLETS[0], side=Side.SELL, price=Decimal("0.80"))
-    sell_decision = copy_trade_decision(
-        sell,
-        applied_source_ids=frozenset({buy.source_key}),
-        open_positions=after_buy,
-    )
-
+    sell_decision = after_buy.decision(sell)
     assert sell_decision is not None
     assert sell_decision.order.size == Decimal("10")
-    assert (
-        positions_after_copy_fill(
-            after_buy,
-            sell_decision,
-            side=Side.SELL,
-            filled_size=Decimal("10"),
-        )
-        == {}
+    closed = after_buy.after_fill(
+        sell_decision, side=Side.SELL, filled_size=Decimal("10")
     )
+    assert closed.open_positions == {}
+    assert after_buy.open_positions[decision.position_key] == Decimal("10")
 
 
 def _wallet_trade(

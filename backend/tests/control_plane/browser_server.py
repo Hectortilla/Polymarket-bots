@@ -41,7 +41,7 @@ def main():
     url = disposable_postgres_url(raw_url)
     redis_url = disposable_redis_url(os.environ["POLYBOT_BROWSER_REDIS_URL"])
     os.environ[DATABASE_URL_ENV] = raw_url
-    recreate_database()
+    recreate_database(["--confirm-database", url.database])
     redis = Redis.from_url(redis_url)
 
     async def clear_auth_limits():

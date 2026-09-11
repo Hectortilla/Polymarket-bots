@@ -25,6 +25,7 @@ from polybot.recording.contracts.records import (
     BookCheckpoint,
     RecordedEvent,
 )
+from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.recording.identity import static_target_identity
 from polybot.recording.inspect import RECORDING_INSPECTOR_TITLE
 from polybot.recording.inspection import inspect_recording
@@ -235,7 +236,10 @@ def test_inspection_takes_a_point_in_time_snapshot_of_an_active_archive(
         archive.close(ended_at_ms=1_001)
 
     assert inspection.replay_event_count == 1
-    assert inspection.sessions[0].statistics.session.integrity_status.value == "active"
+    assert (
+        inspection.sessions[0].statistics.session.integrity_status
+        is SessionIntegrityStatus.ACTIVE
+    )
 
 
 def test_cli_prints_general_recording_information(
@@ -260,7 +264,7 @@ def test_cli_prints_general_recording_information(
     assert "Markets" in output
     assert MARKET_SLUG in output
     assert "Coverage gaps" in output
-    assert "sdk_queue_drop" in output
+    assert CoverageGapReason.SDK_QUEUE_DROP.value in output
     assert "Detected gaps require a clean selected range" in output
     assert "does not prove exchange-complete" not in output
 

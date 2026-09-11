@@ -32,10 +32,8 @@ from api.events.kinds import (
     LiveEventKind,
 )
 from api.events.observer import WebRuntimeObserver
-from api.events.projection import (
-    project_live_chart_events,
-    project_runtime_event_to_durable,
-)
+from api.events.projection import RUNTIME_RUN_STATUS, project_runtime_event_to_durable
+from api.events.projection.live import project_live_chart_events
 from api.events.store import EventStore
 from api.events.writer import RunEventWriter
 from api.runs.status import RunStatus
@@ -1072,3 +1070,16 @@ def test_wallet_timeline_normalizes_persisted_wallet_case():
         payload[field]["wallet"] = "  0x" + "A" * 40 + "  "
     decoded = WalletTimelinePayload.model_validate(payload)
     assert decoded.trade.wallet == decoded.point.wallet == "0x" + "a" * 40
+
+
+def test_runtime_status_projection_is_exhaustive_and_keeps_terminal_ownership() -> None:
+    assert set(RUNTIME_RUN_STATUS) == set(RuntimeState)
+    for state in RuntimeState:
+        projected = project_runtime_event_to_durable(
+            uuid4(), RuntimeStateChanged(state, 1.0)
+        )
+        if state is RuntimeState.STOPPED:
+            assert projected == ()
+        else:
+            assert len(projected) == 1
+            assert projected[0].payload.status is RUNTIME_RUN_STATUS[state]

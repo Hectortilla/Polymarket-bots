@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from polybot.framework.events import Side
+from polybot.framework.events.amounts import require_nonnegative_execution_amount
 from polybot.framework.events.resolutions import (
     MarketResolutionEvent,
     SettledPosition,
@@ -106,18 +107,29 @@ class PaperPortfolio:
         average_price: Decimal,
         fee_usdc: Decimal,
     ) -> tuple[Decimal, Decimal, PaperPosition]:
+        require_nonnegative_execution_amount(fee_usdc, "fee")
+        updated_position = self.position(token_id).after_fill(
+            side=side,
+            filled_size=filled_size,
+            fill_price=average_price,
+        )
         cash_delta = filled_size * average_price
         updated_cash = (
             self.cash_usdc - cash_delta - fee_usdc
             if side is Side.BUY
             else self.cash_usdc + cash_delta - fee_usdc
         )
-        updated_position = self.position(token_id).after_fill(
-            side=side,
-            filled_size=filled_size,
-            fill_price=average_price,
-        )
         return updated_cash, self.cumulative_fees_usdc + fee_usdc, updated_position
+
+    def settle_market(
+        self,
+        event: MarketResolutionEvent,
+    ) -> tuple[SettledPosition, ...]:
+        calculation = self.calculate_settlement(event)
+        for token_id in calculation.settled_token_ids:
+            self.positions.pop(token_id, None)
+        self.cash_usdc += calculation.cash_delta
+        return calculation.settled_positions
 
     def calculate_settlement(
         self,
@@ -151,13 +163,3 @@ class PaperPortfolio:
             cash_delta=cash_delta,
             settled_token_ids=frozenset(settled_token_ids),
         )
-
-    def settle_market(
-        self,
-        event: MarketResolutionEvent,
-    ) -> tuple[SettledPosition, ...]:
-        calculation = self.calculate_settlement(event)
-        for token_id in calculation.settled_token_ids:
-            self.positions.pop(token_id, None)
-        self.cash_usdc += calculation.cash_delta
-        return calculation.settled_positions

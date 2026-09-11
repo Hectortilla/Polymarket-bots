@@ -20,16 +20,18 @@ class StreamAuthorization:
         self._session_factory = session_factory
         self._token = token
         self._user_id = user_id
-        self._next_session_recheck_at = 0.0
+        self._next_session_recheck_monotonic_seconds = 0.0
 
     async def allowed(self) -> bool:
-        now = monotonic()
+        now_monotonic_seconds = monotonic()
         # Bound revocation latency without querying PostgreSQL for every frame.
-        if now < self._next_session_recheck_at:
+        if now_monotonic_seconds < self._next_session_recheck_monotonic_seconds:
             return True
         async with self._session_factory() as session:
             user = await AuthStore(session).current_user(self._token)
         if user is None or user.id != self._user_id:
             return False
-        self._next_session_recheck_at = now + SESSION_RECHECK_SECONDS
+        self._next_session_recheck_monotonic_seconds = (
+            now_monotonic_seconds + SESSION_RECHECK_SECONDS
+        )
         return True

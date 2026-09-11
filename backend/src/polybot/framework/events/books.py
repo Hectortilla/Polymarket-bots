@@ -9,8 +9,8 @@ from polybot.framework.events.book_validation import BookValidationIssue
 from polybot.framework.events.prices import is_outcome_price
 from polybot.framework.graph import graph_output
 from polybot.framework.timestamps import (
-    is_nonnegative_timestamp,
-    require_nonnegative_timestamp,
+    is_nonnegative_timestamp_ms,
+    require_nonnegative_timestamp_ms,
 )
 
 BOOK_LEVEL_SIZE_FLOOR = Decimal("0")
@@ -39,7 +39,7 @@ class BookGapEvent:
     def __post_init__(self) -> None:
         if self.condition_id is not None and not self.condition_id:
             raise ValueError("book-gap condition ID must be non-empty")
-        require_nonnegative_timestamp(self.observed_at_ms, "book-gap timestamp")
+        require_nonnegative_timestamp_ms(self.observed_at_ms, "book-gap timestamp")
         if not isinstance(self.reason, BookGapReason):
             raise ValueError("book-gap reason must be a BookGapReason")
 
@@ -95,6 +95,12 @@ class BookSnapshot:
         """Return the lowest executable BUY-side level."""
         return min(self.asks, key=lambda level: level.price, default=None)
 
+    def has_market_identity(self) -> bool:
+        return all(
+            isinstance(identity, str) and bool(identity.strip())
+            for identity in (self.token_id, self.market_slug, self.condition_id)
+        )
+
     def is_fresh(self, now_ms: int, max_age_ms: int) -> bool:
         age_ms = now_ms - self.received_at_ms
         return 0 <= age_ms <= max_age_ms
@@ -110,10 +116,6 @@ class BookSnapshot:
             and self._has_unique_prices(self.bids)
             and self._has_unique_prices(self.asks)
         )
-
-    @staticmethod
-    def _has_unique_prices(levels: tuple[BookLevel, ...]) -> bool:
-        return len({level.price for level in levels}) == len(levels)
 
     def is_crossed(self) -> bool:
         best_bid = self.best_bid
@@ -150,7 +152,7 @@ class BookSnapshot:
         now_ms: int,
         max_age_ms: int,
     ) -> BookValidationIssue | None:
-        if not is_nonnegative_timestamp(self.received_at_ms):
+        if not is_nonnegative_timestamp_ms(self.received_at_ms):
             return BookValidationIssue.BAD_TIMESTAMP
         if self.received_at_ms > now_ms:
             return BookValidationIssue.FUTURE_DATED
@@ -161,3 +163,7 @@ class BookSnapshot:
         if self.is_crossed():
             return BookValidationIssue.CROSSED
         return None
+
+    @staticmethod
+    def _has_unique_prices(levels: tuple[BookLevel, ...]) -> bool:
+        return len({level.price for level in levels}) == len(levels)

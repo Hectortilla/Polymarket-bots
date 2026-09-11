@@ -5,20 +5,20 @@ import subprocess
 from api.deployment.services import POSTGRES_SERVICE
 
 from scripts.beta_backup.policy import BACKUP_PROCESS_TIMEOUT_SECONDS
-from scripts.beta_release import REPOSITORY, BetaRelease
+from scripts.compose_project import REPOSITORY, ComposeProject
 
 POSTGRES_USER = "polybot"
 POSTGRES_DATABASE = "polybot"
 
 
 class ComposeDatabase:
-    def __init__(self, release: BetaRelease) -> None:
-        release.require_local_docker()
-        self.release = release
+    def __init__(self, project: ComposeProject) -> None:
+        project.require_local_docker()
+        self.project = project
 
     def restore(self, source) -> None:
         subprocess.run(
-            self.release.command(
+            self.project.command(
                 "exec",
                 "-T",
                 POSTGRES_SERVICE,
@@ -37,12 +37,12 @@ class ComposeDatabase:
             stderr=subprocess.DEVNULL,
             check=True,
             timeout=BACKUP_PROCESS_TIMEOUT_SECONDS,
-            env=self.release.environment,
+            env=self.project.environment,
             cwd=REPOSITORY,
         )
 
     def dump_command(self) -> list[str]:
-        return self.release.command(
+        return self.project.command(
             "exec",
             "-T",
             POSTGRES_SERVICE,

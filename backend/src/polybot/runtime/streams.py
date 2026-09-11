@@ -20,7 +20,7 @@ from polybot.cli.observability.portfolio_bootstrap import (
 )
 from polybot.cli.resolution.reconciliation import reconcile_resolutions
 from polybot.cli.resolution.settlement import ResolutionSettlementService
-from polybot.cli.runner.dispatch import dispatch_stream_event
+from polybot.cli.runner.dispatch import StreamEventDispatcher
 from polybot.cli.runner.factory import RuntimeComponents
 from polybot.cli.runner.health import stream_health
 from polybot.cli.runner.streams import compile_selectors
@@ -115,6 +115,15 @@ async def run_runtime_streams(
                 "the bot declared no current market or wallet subscriptions"
             )
 
+        dispatcher = StreamEventDispatcher(
+            runner,
+            wallet_stream,
+            gamma=runtime.gamma,
+            clob=runtime.clob,
+            registry=runtime.registry,
+            followed_wallets=runtime.followed_wallets,
+            resolution_service=resolution_service,
+        )
         stream_events = merge_streams(streams, telemetry=telemetry)
         next_event = asyncio.create_task(anext(stream_events))
         position_book_bootstrap = asyncio.create_task(
@@ -150,16 +159,7 @@ async def run_runtime_streams(
                     observer,
                     StreamReceived(stream_event, monotonic()),
                 )
-                outcome = await dispatch_stream_event(
-                    runner,
-                    stream_event,
-                    wallet_stream,
-                    gamma=runtime.gamma,
-                    clob=runtime.clob,
-                    registry=runtime.registry,
-                    followed_wallets=runtime.followed_wallets,
-                    resolution_service=resolution_service,
-                )
+                outcome = await dispatcher.dispatch(stream_event)
                 await track_paper_positions(
                     runtime.paper_broker,
                     runtime.registry,

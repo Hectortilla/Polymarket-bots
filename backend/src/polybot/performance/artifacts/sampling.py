@@ -68,6 +68,11 @@ class PerformanceValuationSampler:
         reason: SampleReason,
         portfolio: PortfolioLike,
     ) -> PortfolioSample:
+        if (
+            self._curve.last_timestamp_ms is not None
+            and timestamp_ms < self._curve.last_timestamp_ms
+        ):
+            raise ValueError("equity sample timestamps must be nondecreasing")
         valuation_result = value_portfolio(
             portfolio,
             self._books,

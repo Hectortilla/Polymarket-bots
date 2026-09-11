@@ -4,7 +4,7 @@
 }
 
 http://127.0.0.1:8080 {
-    respond /healthz 200
+    respond {$POLYBOT_ENTRYPOINT_HEALTH_PATH} 200
 }
 
 {$POLYBOT_AUTH_ORIGIN} {

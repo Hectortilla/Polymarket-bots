@@ -9,7 +9,7 @@ from polybot.recording.archive.schema import SESSIONS_TABLE
 
 from .errors import ArchiveFormatError
 from .models import RecordingFeatureProvenance
-from .primitives import _nonnegative_timestamp, _positive_int, _required_text
+from .primitives import _nonnegative_timestamp_ms, _positive_int, _required_text
 from .provenance import RECORDER_DISTRIBUTION, distribution_version
 from .schema import CAPTURE_ANOMALIES_TABLE, RECORDING_FEATURES_TABLE
 
@@ -96,7 +96,7 @@ def _capture_anomaly_journal_provenance(
                 row[ArchiveColumn.AVAILABLE_FROM_SESSION_ID],
                 "feature activation session ID",
             ),
-            enabled_at_ms=_nonnegative_timestamp(
+            enabled_at_ms=_nonnegative_timestamp_ms(
                 row[ArchiveColumn.ENABLED_AT_MS],
                 "feature activation timestamp",
             ),

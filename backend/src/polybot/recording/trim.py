@@ -7,19 +7,13 @@ from pathlib import Path
 
 from polybot.backtesting.contracts import BacktestError
 from polybot.cli.arguments import positive_int
+from polybot.cli.terminal import format_bytes, format_duration
 from polybot.recording.presentation import ARCHIVE_SIZE_LABEL
 from rich.panel import Panel
 from rich.table import Table
 
 from .archive.errors import RecordingArchiveError
-from .terminal import (
-    ACCENT_STYLE,
-    SUCCESS_STYLE,
-    WARNING_STYLE,
-    format_bytes,
-    format_duration,
-    recording_console,
-)
+from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_console
 from .trim_contracts import (
     RecordingTrimError,
     RecordingTrimPlan,

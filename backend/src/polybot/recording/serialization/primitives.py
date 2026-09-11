@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import json
+from polybot.persistence.json_codec import dumps_json
 
 from .parsing import load_json_value, require_text
 
 
 def canonical_json(value: object) -> str:
     try:
-        return json.dumps(
-            value,
-            ensure_ascii=False,
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        return dumps_json(value, ensure_ascii=False)
     except (TypeError, ValueError) as error:
         raise ValueError("recording payload is not JSON serializable") from error
 

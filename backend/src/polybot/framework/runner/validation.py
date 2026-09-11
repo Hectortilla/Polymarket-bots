@@ -16,7 +16,7 @@ def book_skip_reason(
     now_ms: int,
     max_age_ms: int,
 ) -> DispatchSkipReason | None:
-    if not _has_market_identity(book):
+    if not book.has_market_identity():
         return DispatchSkipReason.MARKET_METADATA_MISSING
     issue = book.validation_issue(now_ms, max_age_ms)
     return None if issue is None else DispatchSkipReason(issue.value)
@@ -44,10 +44,3 @@ def book_market_identity_skip_reason(
     ):
         return DispatchSkipReason.BOOK_IDENTITY_MISMATCH
     return None
-
-
-def _has_market_identity(book: BookSnapshot) -> bool:
-    return all(
-        isinstance(identity, str) and bool(identity.strip())
-        for identity in (book.token_id, book.market_slug, book.condition_id)
-    )

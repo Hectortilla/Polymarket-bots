@@ -118,16 +118,6 @@ class CatalogEntry:
     def requires_graph(self) -> bool:
         return self.graph_capability is not None
 
-    def require_graph_value(
-        self,
-        graph_value: GraphValue | None,
-    ) -> GraphValue | None:
-        if self.requires_graph and graph_value is None:
-            raise GraphRequirementError(graph_required=True)
-        if not self.requires_graph and graph_value is not None:
-            raise GraphRequirementError(graph_required=False)
-        return graph_value
-
     def create_bot(
         self,
         config: BotConfig,
@@ -138,6 +128,16 @@ class CatalogEntry:
             return self.graph_capability.factory(cast(NodeGraph, graph))
         assert self.factory is not None
         return self.factory(config)
+
+    def require_graph_value(
+        self,
+        graph_value: GraphValue | None,
+    ) -> GraphValue | None:
+        if self.requires_graph and graph_value is None:
+            raise GraphRequirementError(graph_required=True)
+        if not self.requires_graph and graph_value is not None:
+            raise GraphRequirementError(graph_required=False)
+        return graph_value
 
 
 CATALOG: dict[str, CatalogEntry] = {

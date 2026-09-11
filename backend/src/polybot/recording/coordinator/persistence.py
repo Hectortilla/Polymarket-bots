@@ -16,7 +16,7 @@ from polybot.recording.contracts.gaps import (
 from polybot.recording.contracts.market import MarketIdentity
 from polybot.recording.contracts.payloads import ResolutionPayload
 from polybot.recording.writer import AsyncRecordingWriter
-from polybot.recording.writer_contracts import (
+from polybot.recording.writer.contracts import (
     RecordingCheckpointWrite,
     RecordingEventWrite,
 )

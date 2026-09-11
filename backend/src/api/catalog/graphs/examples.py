@@ -3,9 +3,13 @@
 from polybot.framework.base import BaseBot
 from pydantic import BaseModel
 
+from api.catalog.graphs.book_paths import (
+    BOOK_BEST_ASK_PRICE_PATH,
+    BOOK_BEST_BID_PRICE_PATH,
+    BOOK_TOKEN_ID_PATH,
+)
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.graphs.operations import DEFAULT_BOOLEAN_INPUT_IDS
-from api.catalog.graphs.types import GraphFieldPath
 from api.catalog.graphs.values import (
     GraphBrokerAction,
     GraphComparisonOperator,
@@ -73,8 +77,13 @@ class _ExampleBuilder:
         inputs: dict[str, tuple[str, str]],
     ) -> None:
         self.node(node_id, GraphNodeType.OPERATION, dict(operation=operation))
-        for name, (source_node_id, source_handle_id) in inputs.items():
-            self.connect(source_node_id, source_handle_id, node_id, name)
+        for target_input_handle_id, (
+            source_node_id,
+            source_handle_id,
+        ) in inputs.items():
+            self.connect(
+                source_node_id, source_handle_id, node_id, target_input_handle_id
+            )
 
     def parameter(self, node_id: str, name: str, value: str) -> None:
         self.parameters.append(
@@ -101,20 +110,20 @@ class _ExampleBuilder:
         self,
         node_id: str,
         action: GraphBrokerAction,
-        enabled: tuple[str, str],
-        price: str,
-        size: tuple[str, str],
+        enabled_source_ref: tuple[str, str],
+        price_source_handle_id: str,
+        size_source_ref: tuple[str, str],
     ) -> None:
         self.node(node_id, GraphNodeType.BROKER_ACTION, dict(action=action))
-        self.connect(*enabled, node_id, GraphPort.ENABLED)
+        self.connect(*enabled_source_ref, node_id, GraphPort.ENABLED)
         self.connect(
             "book",
-            GraphFieldPath(segments=("token_id",)).handle_id,
+            BOOK_TOKEN_ID_PATH.handle_id,
             node_id,
             GraphPort.TOKEN_ID,
         )
-        self.connect("book", price, node_id, GraphPort.PRICE)
-        self.connect(*size, node_id, GraphPort.SIZE)
+        self.connect("book", price_source_handle_id, node_id, GraphPort.PRICE)
+        self.connect(*size_source_ref, node_id, GraphPort.SIZE)
 
     def graph(self) -> NodeGraph:
         return NodeGraph.model_validate(
@@ -134,7 +143,7 @@ def entry_exit_example() -> GraphExample:
             GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
             GraphPort.TOKEN_ID: (
                 "book",
-                GraphFieldPath(segments=("token_id",)).handle_id,
+                BOOK_TOKEN_ID_PATH.handle_id,
             ),
         },
     )
@@ -146,7 +155,7 @@ def entry_exit_example() -> GraphExample:
     builder.comparison(
         "cheap",
         GraphComparisonOperator.LESS_THAN_OR_EQUAL,
-        ("book", GraphFieldPath(segments=("best_ask", "price")).handle_id),
+        ("book", BOOK_BEST_ASK_PRICE_PATH.handle_id),
         ("entry", GraphPort.VALUE),
     )
     builder.operation(
@@ -164,7 +173,7 @@ def entry_exit_example() -> GraphExample:
             GraphPort.LEFT: ("budget", GraphPort.VALUE),
             GraphPort.RIGHT: (
                 "book",
-                GraphFieldPath(segments=("best_ask", "price")).handle_id,
+                BOOK_BEST_ASK_PRICE_PATH.handle_id,
             ),
         },
     )
@@ -172,13 +181,13 @@ def entry_exit_example() -> GraphExample:
         "buy",
         GraphBrokerAction.SUBMIT_BUY,
         ("enter", GraphPort.RESULT),
-        GraphFieldPath(segments=("best_ask", "price")).handle_id,
+        BOOK_BEST_ASK_PRICE_PATH.handle_id,
         ("shares", GraphPort.VALUE),
     )
     builder.comparison(
         "expensive",
         GraphComparisonOperator.GREATER_THAN_OR_EQUAL,
-        ("book", GraphFieldPath(segments=("best_bid", "price")).handle_id),
+        ("book", BOOK_BEST_BID_PRICE_PATH.handle_id),
         ("exit", GraphPort.VALUE),
     )
     builder.operation(
@@ -193,7 +202,7 @@ def entry_exit_example() -> GraphExample:
         "sell",
         GraphBrokerAction.SUBMIT_SELL,
         ("leave", GraphPort.RESULT),
-        GraphFieldPath(segments=("best_bid", "price")).handle_id,
+        BOOK_BEST_BID_PRICE_PATH.handle_id,
         ("position", GraphPort.SIZE),
     )
     return GraphExample(
@@ -218,7 +227,7 @@ def multiple_conditions_example() -> GraphExample:
             GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
             GraphPort.TOKEN_ID: (
                 "book",
-                GraphFieldPath(segments=("token_id",)).handle_id,
+                BOOK_TOKEN_ID_PATH.handle_id,
             ),
         },
     )
@@ -236,7 +245,7 @@ def multiple_conditions_example() -> GraphExample:
     builder.comparison(
         "cheap",
         GraphComparisonOperator.LESS_THAN_OR_EQUAL,
-        ("book", GraphFieldPath(segments=("best_ask", "price")).handle_id),
+        ("book", BOOK_BEST_ASK_PRICE_PATH.handle_id),
         ("entry", GraphPort.VALUE),
     )
     builder.operation(
@@ -257,7 +266,7 @@ def multiple_conditions_example() -> GraphExample:
         {
             GraphPort.CONTEXT: ("book", GraphPort.CONTEXT),
             GraphPort.ENABLED: ("conditions", GraphPort.RESULT),
-            GraphPort.KEY: ("book", GraphFieldPath(segments=("token_id",)).handle_id),
+            GraphPort.KEY: ("book", BOOK_TOKEN_ID_PATH.handle_id),
             GraphPort.DURATION_MS: ("cooldown_ms", GraphPort.VALUE),
         },
     )
@@ -268,7 +277,7 @@ def multiple_conditions_example() -> GraphExample:
             GraphPort.LEFT: ("budget", GraphPort.VALUE),
             GraphPort.RIGHT: (
                 "book",
-                GraphFieldPath(segments=("best_ask", "price")).handle_id,
+                BOOK_BEST_ASK_PRICE_PATH.handle_id,
             ),
         },
     )
@@ -276,7 +285,7 @@ def multiple_conditions_example() -> GraphExample:
         "buy",
         GraphBrokerAction.SUBMIT_BUY,
         ("gate", GraphPort.RESULT),
-        GraphFieldPath(segments=("best_ask", "price")).handle_id,
+        BOOK_BEST_ASK_PRICE_PATH.handle_id,
         ("shares", GraphPort.VALUE),
     )
     builder.operation(
@@ -296,17 +305,17 @@ def multiple_conditions_example() -> GraphExample:
 
 def random_example() -> GraphExample:
     builder = _ExampleBuilder()
-    context = ("book", GraphPort.CONTEXT)
-    token = ("book", GraphFieldPath(segments=("token_id",)).handle_id)
-    ask = GraphFieldPath(segments=("best_ask", "price")).handle_id
-    bid = GraphFieldPath(segments=("best_bid", "price")).handle_id
+    book_context_ref = ("book", GraphPort.CONTEXT)
+    book_token_id_ref = ("book", BOOK_TOKEN_ID_PATH.handle_id)
+    best_ask_handle_id = BOOK_BEST_ASK_PRICE_PATH.handle_id
+    best_bid_handle_id = BOOK_BEST_BID_PRICE_PATH.handle_id
     builder.parameter("shares", "Order size (shares)", "5")
     builder.parameter("cooldown_ms", "Cooldown milliseconds", "5000")
     builder.parameter("probability", "Trade probability (0–1)", "0.5")
     builder.operation(
         "position",
         GraphOperation.POSITION,
-        {GraphPort.CONTEXT: context, GraphPort.TOKEN_ID: token},
+        {GraphPort.CONTEXT: book_context_ref, GraphPort.TOKEN_ID: book_token_id_ref},
     )
     builder.operation(
         "flat",
@@ -316,22 +325,25 @@ def random_example() -> GraphExample:
     builder.operation(
         "quoted",
         GraphOperation.IS_PRESENT,
-        {GraphPort.VALUE: ("book", ask)},
+        {GraphPort.VALUE: ("book", best_ask_handle_id)},
     )
     builder.operation(
         "gate",
         GraphOperation.COOLDOWN,
         {
-            GraphPort.CONTEXT: context,
+            GraphPort.CONTEXT: book_context_ref,
             GraphPort.ENABLED: ("quoted", GraphPort.RESULT),
-            GraphPort.KEY: token,
+            GraphPort.KEY: book_token_id_ref,
             GraphPort.DURATION_MS: ("cooldown_ms", GraphPort.VALUE),
         },
     )
     builder.operation(
         "random",
         GraphOperation.RANDOM_NUMBER,
-        {GraphPort.CONTEXT: context, GraphPort.ENABLED: ("gate", GraphPort.RESULT)},
+        {
+            GraphPort.CONTEXT: book_context_ref,
+            GraphPort.ENABLED: ("gate", GraphPort.RESULT),
+        },
     )
     builder.comparison(
         "trade",
@@ -351,7 +363,7 @@ def random_example() -> GraphExample:
         "buy",
         GraphBrokerAction.SUBMIT_BUY,
         ("enter", GraphPort.RESULT),
-        ask,
+        best_ask_handle_id,
         ("shares", GraphPort.VALUE),
     )
     builder.operation(
@@ -366,7 +378,7 @@ def random_example() -> GraphExample:
         "sell",
         GraphBrokerAction.SUBMIT_SELL,
         ("leave", GraphPort.RESULT),
-        bid,
+        best_bid_handle_id,
         ("position", GraphPort.SIZE),
     )
     return GraphExample(

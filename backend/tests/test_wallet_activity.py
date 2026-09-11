@@ -690,3 +690,12 @@ def test_wallet_ingress_rejects_malformed_address(wallet):
         source_id="transaction",
     )
     assert normalize_stream_event(event, observed_at_ms=2) is None
+
+
+def test_requested_wallet_cannot_receive_another_wallet_trade() -> None:
+    requested = "0x" + "ab" * 20
+    other = "0x" + "cd" * 20
+    client = PolymarketWalletActivityClient(PollingClient((_row(other, "tx-other"),)))
+    with pytest.raises(WalletActivityError) as caught:
+        asyncio.run(client.latest_trades(requested))
+    assert caught.value.issue is WalletActivityIssue.WALLET_READ_FAILED
