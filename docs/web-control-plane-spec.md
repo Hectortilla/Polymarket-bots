@@ -204,9 +204,14 @@ settlements include the cash payout. Routine skips, submitted-order notices,
 bootstrap progress, portfolio snapshots, followed-wallet trades, and stream
 telemetry are available through an opt-in **Show diagnostics** checkbox.
 Book availability remains visible; detailed stream metrics require diagnostics.
-Chart samples stay out of both event views. Filtering applies to the loaded
-history only, and the count reflects the selected view; **Load earlier events**
-continues to retrieve older unfiltered pages. Below 768px, Events opens below the charts.
+The backend selects activity or diagnostics before pagination and live delivery;
+chart samples stay out of both activity views. **Load earlier events** retrieves
+older rows from the selected view. Dashboard samples, wallet history, and health
+load through independent dashboard pages, with **Load earlier chart data** for
+older chart history. One SSE connection carries the selected activity plus
+separately marked dashboard-only events and live updates. Switching diagnostics
+loads a fresh selected page and replaces the subscription only after successful
+hydration; failure keeps the previous feed active. Counts reflect selected activity. Below 768px, Events opens below the charts.
 Switching tabs preserves chart controls and disclosure state; event ingestion
 continues in both tabs. Hidden charts ignore keyboard shortcuts. The graph mounts
 on the first Configuration visit so its viewport can be measured correctly.
@@ -232,8 +237,8 @@ The technical chart cadence, persistence, and stream contract is owned by
 ## Availability
 
 Committed progress survives reload and reconnect; ephemeral frames are not
-recoverable. Reload immediately restores only the newest bounded event page,
-and the operator explicitly requests older progress. While streaming, the
+recoverable. Reload restores bounded activity and dashboard pages independently,
+and the operator explicitly requests older activity or chart history. While streaming, the
 browser keeps a rolling window sized to the loaded event pages, forgetting the
 oldest overflow locally; the operator can fetch those stored events again.
 Chart rendering retains a bounded terminal-equivalent history rather than

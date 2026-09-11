@@ -16,6 +16,7 @@ from api.events.channels import (
     decode_durable_wake_frame,
     decode_live_event_frame,
 )
+from api.events.views import EventView
 from api.http.sse.frames import SSE_IDLE_COMMENT, sse_frame
 from api.http.sse.replay import RunEventReplay
 from api.http.sse.subscription import RunSubscription
@@ -34,11 +35,13 @@ class RunEventStreamer:
         session_factory: async_sessionmaker[AsyncSession],
         redis: Redis,
         authorization: StreamAuthorization,
+        *,
+        view: EventView = EventView.ACTIVITY,
     ) -> None:
         self._authorization = authorization
         self._run_id = run_id
         self._request = request
-        self._replay = RunEventReplay(run_id, session_factory)
+        self._replay = RunEventReplay(run_id, session_factory, view=view)
         self._redis = redis
 
     async def stream(self, after_event_id: int) -> AsyncIterator[str]:

@@ -9,12 +9,14 @@ export const RUN_DETAIL_COPY = {
   STOP_ERROR: "The stop request could not be sent.",
   SENDING: "Sending…",
   LOAD_EARLIER: "Load earlier events",
+  LOAD_EARLIER_DASHBOARD: "Load earlier chart data",
   LOAD_ERROR: "Older durable events could not be loaded.",
   LOADING: "Loading…",
   NO_PROGRESS_EVENTS: "No trades, settlements, warnings, errors, or run status changes in the loaded history.",
   NO_DIAGNOSTIC_EVENTS: "No events in the loaded history.",
   SHOW_DIAGNOSTICS: "Show diagnostics",
-  EVENTS_DESCRIPTION: "Trades, settlements, warnings, errors, and run status changes. Enable diagnostics for routine activity.",
+  EVENTS_DESCRIPTION:
+    "Trades, settlements, warnings, errors, and run status changes. Enable diagnostics for routine activity.",
 
   BOT_DELETED: "Bot configuration deleted",
   BOT_CONFIGURATION: "Bot configuration",

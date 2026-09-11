@@ -33,10 +33,11 @@ export type PersistedDurableEvent =
 export type PersistedEventPage = {
   events: PersistedDurableEvent[];
   nextBeforeEventId: number | null;
+  streamCursor: number;
 };
 
-export function eventCursorQuery(afterEventId: number): EventCursorQuery {
-  return { after_event_id: afterEventId };
+export function eventCursorQuery(afterEventId: number, view: EventCursorQuery["view"]): EventCursorQuery {
+  return { after_event_id: afterEventId, view };
 }
 
 export function persistedDurableEvent(value: unknown, runId: string): PersistedDurableEvent | null {
@@ -119,5 +120,11 @@ function parsePersistedEventPage(value: unknown, runId: string): PersistedEventP
   if (nextBeforeEventId !== null && (!isPersistedEventId(nextBeforeEventId) || nextBeforeEventId !== cursorEvent?.id)) {
     throw new Error("Invalid run event page cursor");
   }
-  return { events, nextBeforeEventId };
+  const streamCursor = value.stream_cursor;
+  if (
+    (streamCursor !== INITIAL_EVENT_CURSOR && !isPersistedEventId(streamCursor)) ||
+    (streamCursor as number) < latestEventCursor(events)
+  )
+    throw new Error("Invalid run event stream cursor");
+  return { events, nextBeforeEventId, streamCursor: streamCursor as number };
 }

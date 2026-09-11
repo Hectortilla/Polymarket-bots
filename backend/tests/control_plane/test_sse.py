@@ -18,6 +18,7 @@ from api.events.contracts import (
     RunStatusPayload,
 )
 from api.events.contracts.payloads.chart import EquityChartPointPayload
+from api.events.delivery import EventDelivery
 from api.events.ids import (
     FIRST_DURABLE_EVENT_ID,
     FIRST_EVENT_CURSOR,
@@ -92,10 +93,13 @@ def test_persisted_event_without_id_is_rejected_at_sse_boundary(
 
     async def read_events(*args, **kwargs):
         return (
-            RunLifecycleEvent(
-                run_id=run_id,
-                occurred_at=datetime.now(UTC),
-                payload=RunStatusPayload(status=RunStatus.RUNNING),
+            EventDelivery(
+                RunLifecycleEvent(
+                    run_id=run_id,
+                    occurred_at=datetime.now(UTC),
+                    payload=RunStatusPayload(status=RunStatus.RUNNING),
+                ),
+                False,
             ),
         )
 
@@ -347,12 +351,15 @@ async def _collect(
     ]
 
 
-def _event(run_id: UUID, event_id: int, status: RunStatus) -> RunLifecycleEvent:
-    return RunLifecycleEvent(
-        id=event_id,
-        run_id=run_id,
-        occurred_at=datetime.now(UTC),
-        payload=RunStatusPayload(status=status),
+def _event(run_id: UUID, event_id: int, status: RunStatus) -> EventDelivery:
+    return EventDelivery(
+        RunLifecycleEvent(
+            id=event_id,
+            run_id=run_id,
+            occurred_at=datetime.now(UTC),
+            payload=RunStatusPayload(status=status),
+        ),
+        False,
     )
 
 

@@ -8,13 +8,11 @@ export const HOME_COPY = {
 
 export const HOME_COLUMN_LABEL = {
   BOT_AND_MARKETS: "Bot and markets",
+  BOT_NAME: "Bot name",
   CREATED: "Created",
   ENDED: "Ended",
   EQUITY: "Equity",
-  GRAPH: "Graph",
   LATEST_RUN: "Latest run",
-  MAX_ORDER: "Max order",
-  RUN: "Run",
   STATUS: "Status",
   UPDATED: "Updated",
 } as const;

@@ -127,6 +127,7 @@ describe("control-plane response validation", () => {
           payload: { status: runtimeContract.runStatus.values.RUNNING },
         },
       ],
+      stream_cursor: runtimeContract.durableEventIds.maximumEventId,
       next_before_event_id: null,
     };
     const liveEvent = {
@@ -205,6 +206,7 @@ describe("control-plane response validation", () => {
           payload: { status: runtimeContract.runStatus.values.RUNNING },
         },
       ],
+      stream_cursor: runtimeContract.durableEventIds.maximumEventId,
       next_before_event_id: runtimeContract.durableEventIds.firstEventId,
     };
     await expect(
@@ -343,6 +345,7 @@ describe("control-plane response validation", () => {
             payload: { status: runtimeContract.runStatus.values.RUNNING },
           },
         ],
+        stream_cursor: runtimeContract.durableEventIds.maximumEventId,
         next_before_event_id: null,
       }),
     ).rejects.toThrow("failed runtime validation");

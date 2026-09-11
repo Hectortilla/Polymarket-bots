@@ -39,9 +39,10 @@
   import RunStatusBadge from "$lib/runs/RunStatusBadge.svelte";
   import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
   import { eventFailureDetail, eventSummary } from "$lib/runs/eventSummary";
-  import { eventLabel, isUserFacingEvent } from "$lib/runs/eventFeed";
-  import { loadAndContinueRunDetail, loadOlderRunEvents } from "$lib/runs/hydrate";
+  import { eventLabel } from "$lib/runs/eventFeed";
+  import { loadAndContinueRunDetail, loadRunEvents } from "$lib/runs/hydrate";
   import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
+  import { EVENT_VIEW, type ActivityEventView } from "$lib/runs/eventViews";
   import { formatTime } from "$lib/time";
 
   const RUN_TAB = { LIVE: "run-live", CONFIGURATION: "run-configuration" } as const;
@@ -58,7 +59,13 @@
   let dashboard = $state<DashboardHistory>(emptyDashboardHistory());
   let loading = $state(true);
   let eventsOpen = $state(false);
-  let showDiagnostics = $state(false);
+  let eventView = $state<ActivityEventView>(EVENT_VIEW.ACTIVITY);
+  const showDiagnostics = $derived(eventView === EVENT_VIEW.DIAGNOSTICS);
+  let changingView = $state(false);
+  let requestedDiagnostics = $state(false);
+  let nextDashboardEventId = $state<number | null>(null);
+  let loadingOlderDashboard = $state(false);
+  let changeEventView: (view: ActivityEventView) => Promise<void> = async () => {};
   let stopping = $state(false);
   let loadingOlderEvents = $state(false);
   let loadedEventPages = 1;
@@ -71,14 +78,13 @@
   let definitionFailed = $state(false);
   let closeStream = () => {};
 
-  const progressEvents = $derived(
-    events.filter((event) => (showDiagnostics ? event.kind !== EVENT_KIND.chartSample : isUserFacingEvent(event))),
-  );
   const statusPresentation = $derived(run ? RUN_STATUS_PRESENTATION[run.status] : undefined);
   const configuredWallets = $derived(run?.config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []) ?? []);
 
   onMount(() => {
     let disposed = false;
+    let activeConnection = 0;
+    let requestedConnection = 0;
     const liveBatcher = createLiveDashboardBatcher((liveEvents) => {
       if (!disposed) dashboard = mergeLiveEvents(dashboard, liveEvents);
     });
@@ -88,46 +94,73 @@
       loading = false;
       return liveBatcher.dispose;
     }
-    void loadAndContinueRunDetail(
-      runId,
-      (hydration) => {
-        if (!disposed) {
-          run = hydration.run;
-          events = hydration.events;
-          dashboard = mergeDurableEvents(emptyDashboardHistory(), hydration.events);
-          nextBeforeEventId = hydration.nextBeforeEventId;
-          definitionLoading = true;
-          void loadExecutedDefinition(hydration.run.definition_id)
-            .then((definition) => {
-              if (!disposed) executedDefinition = definition;
-            })
-            .catch(() => {
-              if (!disposed) {
-                definitionFailed = true;
-              }
-            })
-            .finally(() => {
-              if (!disposed) definitionLoading = false;
-            });
-        }
-      },
-      appendDurableEvent,
-      liveBatcher.push,
-      undefined,
-      (state) => {
-        if (!disposed) streamReconnecting = state === STREAM_CONNECTION_STATE.RECONNECTING;
-      },
-    )
-      .then((close) => {
-        if (disposed) close();
+    changeEventView = async (view) => {
+      if (changingView || loadingOlderEvents || loadingOlderDashboard) return;
+      const connection = ++requestedConnection;
+      changingView = true;
+      error = "";
+      try {
+        const close = await loadAndContinueRunDetail(
+          runId,
+          (hydration) => {
+            if (disposed || connection !== requestedConnection) return;
+            closeStream();
+            activeConnection = connection;
+            eventView = view;
+            streamReconnecting = false;
+            const firstLoad = run === undefined;
+            run = hydration.run;
+            events = hydration.events;
+            loadedEventPages = 1;
+            nextBeforeEventId = hydration.nextBeforeEventId;
+            // Preserve chart controls/history when the activity mode changes.
+            dashboard = mergeDurableEvents(dashboard, hydration.dashboardPage.events);
+            dashboard = mergeDurableEvents(dashboard, hydration.events);
+            if (firstLoad) nextDashboardEventId = hydration.dashboardPage.nextBeforeEventId;
+            if (!executedDefinition && !definitionLoading) {
+              definitionLoading = true;
+              void loadExecutedDefinition(hydration.run.definition_id)
+                .then((definition) => {
+                  if (!disposed) executedDefinition = definition;
+                })
+                .catch(() => {
+                  if (!disposed) definitionFailed = true;
+                })
+                .finally(() => {
+                  if (!disposed) definitionLoading = false;
+                });
+            }
+          },
+          (event) => {
+            if (!disposed && activeConnection === connection) appendDurableEvent(event);
+          },
+          (event) => {
+            if (!disposed && activeConnection === connection) liveBatcher.push(event);
+          },
+          undefined,
+          (state) => {
+            if (!disposed && activeConnection === connection)
+              streamReconnecting = state === STREAM_CONNECTION_STATE.RECONNECTING;
+          },
+          view,
+          (event) => {
+            if (!disposed && activeConnection === connection) dashboard = mergeDurableEvents(dashboard, [event]);
+          },
+        );
+        if (disposed || connection !== requestedConnection) close();
         else closeStream = close;
-      })
-      .catch((caught) => {
-        error = caught instanceof RunNotFoundError ? RUN_DETAIL_COPY.NOT_FOUND : RUN_DETAIL_COPY.RUN_LOAD_ERROR;
-      })
-      .finally(() => {
-        loading = false;
-      });
+      } catch (caught) {
+        if (!disposed)
+          error = caught instanceof RunNotFoundError ? RUN_DETAIL_COPY.NOT_FOUND : RUN_DETAIL_COPY.RUN_LOAD_ERROR;
+      } finally {
+        if (!disposed) {
+          loading = false;
+          changingView = false;
+          requestedDiagnostics = showDiagnostics;
+        }
+      }
+    };
+    void changeEventView(EVENT_VIEW.ACTIVITY);
 
     return () => {
       disposed = true;
@@ -210,7 +243,7 @@
   }
 
   async function loadOlderEvents(): Promise<void> {
-    if (!run || nextBeforeEventId === null || loadingOlderEvents) return;
+    if (!run || nextBeforeEventId === null || loadingOlderEvents || changingView) return;
     loadingOlderEvents = true;
     error = "";
     // Reserve the next page while fetching so streamed events cannot leave a gap
@@ -218,7 +251,7 @@
     loadedEventPages += 1;
     const beforeEventId = nextBeforeEventId;
     try {
-      const older = await loadOlderRunEvents(run.id, beforeEventId);
+      const older = await loadRunEvents(run.id, eventView, beforeEventId);
       // If streaming filled the expanded window already, this page is outside it.
       if (nextBeforeEventId === beforeEventId) {
         events = [...older.events, ...events];
@@ -231,6 +264,20 @@
     } finally {
       trimEventWindow();
       loadingOlderEvents = false;
+    }
+  }
+  async function loadOlderDashboard(): Promise<void> {
+    if (!run || nextDashboardEventId === null || loadingOlderDashboard || changingView) return;
+    loadingOlderDashboard = true;
+    const before = nextDashboardEventId;
+    try {
+      const older = await loadRunEvents(run.id, EVENT_VIEW.DASHBOARD, before);
+      dashboard = mergeDurableEvents(dashboard, older.events);
+      if (nextDashboardEventId === before) nextDashboardEventId = older.nextBeforeEventId;
+    } catch {
+      error = RUN_DETAIL_COPY.LOAD_ERROR;
+    } finally {
+      loadingOlderDashboard = false;
     }
   }
 </script>
@@ -315,14 +362,25 @@
     tabindex="0"
   >
     <div class="run-monitoring" class:events-open={eventsOpen}>
-      <DashboardCharts
-        active={selectedTab === RUN_TAB.LIVE}
-        samples={dashboard.samples}
-        walletTimelinePoints={dashboard.walletTimelinePoints}
-        {configuredWallets}
-        terminal={statusPresentation?.terminal ?? false}
-      />
+      <div class="run-charts">
+        <DashboardCharts
+          active={selectedTab === RUN_TAB.LIVE}
+          samples={dashboard.samples}
+          walletTimelinePoints={dashboard.walletTimelinePoints}
+          {configuredWallets}
+          terminal={statusPresentation?.terminal ?? false}
+        />
 
+        {#if nextDashboardEventId !== null}
+          <button
+            class="secondary compact"
+            onclick={loadOlderDashboard}
+            disabled={loadingOlderDashboard || changingView}
+          >
+            {loadingOlderDashboard ? RUN_DETAIL_COPY.LOADING : RUN_DETAIL_COPY.LOAD_EARLIER_DASHBOARD}
+          </button>
+        {/if}
+      </div>
       <aside class="events-drawer" aria-label="Run events">
         <div class="events-drawer-heading">
           <button
@@ -335,14 +393,20 @@
             <SidebarSimpleIcon size={20} aria-hidden="true" />
             <span>Events</span>
           </button>
-          <span class="section-count" title={loadedEventsLabel(progressEvents.length)}
-            >{eventsOpen ? loadedEventsLabel(progressEvents.length) : progressEvents.length}</span
+          <span class="section-count" title={loadedEventsLabel(events.length)}
+            >{eventsOpen ? loadedEventsLabel(events.length) : events.length}</span
           >
         </div>
         <div id="run-events-content" class="events-drawer-content" hidden={!eventsOpen}>
           <p class="events-description">{RUN_DETAIL_COPY.EVENTS_DESCRIPTION}</p>
           <label class="events-diagnostics-toggle">
-            <input type="checkbox" bind:checked={showDiagnostics} />
+            <input
+              type="checkbox"
+              bind:checked={requestedDiagnostics}
+              disabled={changingView || loadingOlderEvents || loadingOlderDashboard}
+              onchange={(event) =>
+                void changeEventView(event.currentTarget.checked ? EVENT_VIEW.DIAGNOSTICS : EVENT_VIEW.ACTIVITY)}
+            />
             {RUN_DETAIL_COPY.SHOW_DIAGNOSTICS}
           </label>
           <section class="stream-health-panel" aria-label="Live stream health">
@@ -391,7 +455,7 @@
                   <button
                     class="secondary compact"
                     onclick={loadOlderEvents}
-                    disabled={loadingOlderEvents}
+                    disabled={loadingOlderEvents || changingView}
                     aria-busy={loadingOlderEvents}
                   >
                     {loadingOlderEvents ? RUN_DETAIL_COPY.LOADING : RUN_DETAIL_COPY.LOAD_EARLIER}
@@ -399,7 +463,7 @@
                 {/if}
               </div>
             </div>
-            {#if progressEvents.length === 0}
+            {#if events.length === 0}
               <p class="empty-state">
                 {showDiagnostics ? RUN_DETAIL_COPY.NO_DIAGNOSTIC_EVENTS : RUN_DETAIL_COPY.NO_PROGRESS_EVENTS}
               </p>
@@ -408,7 +472,7 @@
                 <table aria-label="Durable progress events">
                   <thead><tr><th>Time</th><th>Kind</th><th>Detail</th></tr></thead>
                   <tbody>
-                    {#each progressEvents as event (event.id)}
+                    {#each events as event (event.id)}
                       {@const failureDetail = eventFailureDetail(event, events, run.failure_detail)}
                       {@const failureDetailId = `event-failure-detail-${event.id}`}
                       <tr

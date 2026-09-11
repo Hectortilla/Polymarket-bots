@@ -709,7 +709,10 @@ The private control plane presents configuration and graph design as one bot:
 Rerunning the bot uses its latest saved configuration. Earlier runs retain their
 original settings and graph after the bot changes. Edit history between runs is
 not retained. Only saved bots count toward the saved-resource allowance.
-On the home page, failed Runs rows expose the latest durable runtime
+On the home page, bot configurations show the bot name and markets, latest run
+status, and update time. Runs show the bot name copied at launch, so renaming a
+bot does not change historical run names. Neither table shows revision numbers.
+Failed Runs rows expose the latest durable runtime
 error and the recorded failure outcome on hover or keyboard focus.
 
 

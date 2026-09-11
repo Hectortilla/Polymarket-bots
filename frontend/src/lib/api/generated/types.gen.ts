@@ -316,6 +316,11 @@ export type ErrorResponse = {
 export type EventCursorValue = number;
 
 /**
+ * EventView
+ */
+export type EventView = 'activity' | 'diagnostics' | 'dashboard';
+
+/**
  * FillEvent
  */
 export type FillEvent = {
@@ -1897,6 +1902,7 @@ export type RunEventPage = {
      */
     events: Array<PersistedDurableEvent>;
     next_before_event_id: DurableEventId | null;
+    stream_cursor: EventCursorValue;
 };
 
 /**
@@ -3429,6 +3435,7 @@ export type ReadRunEventsApiV1RunsRunIdEventsGetData = {
          * Limit
          */
         limit?: number;
+        view?: EventView;
     };
     url: '/api/v1/runs/{run_id}/events';
 };
@@ -3486,6 +3493,10 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetData = {
         run_id: string;
     };
     query?: {
+        /**
+         * View
+         */
+        view?: 'activity' | 'diagnostics';
         after_event_id?: EventCursorValue;
     };
     url: '/api/v1/runs/{run_id}/events/stream';

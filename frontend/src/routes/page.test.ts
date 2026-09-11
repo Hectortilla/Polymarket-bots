@@ -16,7 +16,7 @@ vi.mock("$lib/api/generated", () => ({
   listRunsApiV1RunsGet: mocks.listRuns,
 }));
 import Page from "./+page.svelte";
-import { HOME_COPY, botRowLabel, runRowLabel } from "./homeCopy";
+import { HOME_COLUMN_LABEL, HOME_COPY, botRowLabel, runRowLabel } from "./homeCopy";
 const BOT = {
   id: "aaaaaaaa-0000-0000-0000-000000000001",
   definition_id: "node-based-bot",
@@ -85,19 +85,26 @@ describe("bots home", () => {
     expect(screen.getByRole("heading", { name: HOME_COPY.CONFIGURED_BOTS, level: 2 })).toBeTruthy();
   });
   it("shows configured bots as scannable rows with their operational context", async () => {
-    loadHome({ bots: [BOT], runs: [RUN] });
+    const renamedBot = { ...BOT, config: { ...BOT.config, name: "Renamed BTC buyer" } };
+    loadHome({ bots: [renamedBot], runs: [RUN] });
     render(Page);
-    const botLink = await screen.findByRole("link", { name: botRowLabel(BOT.config.name) });
+    const botLink = await screen.findByRole("link", { name: botRowLabel(renamedBot.config.name) });
     expect(botLink.getAttribute("href")).toBe(botPath(BOT.id));
-    expect(within(botLink).getByText(BOT.config.name)).toBeTruthy();
+    expect(within(botLink).getByText(renamedBot.config.name)).toBeTruthy();
     expect(within(botLink).getByText("btc-updown-5m-test")).toBeTruthy();
-    expect(within(botLink).getByText("Saved configuration")).toBeTruthy();
+    expect(Array.from(botLink.children, (cell) => cell.getAttribute("data-label"))).toEqual([
+      HOME_COLUMN_LABEL.BOT_AND_MARKETS,
+      HOME_COLUMN_LABEL.LATEST_RUN,
+      HOME_COLUMN_LABEL.UPDATED,
+    ]);
     expect(within(botLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
     const runLink = screen.getByRole("link", {
       name: runRowLabel(RUN.config.name, formatTime(RUN.created_at)),
     });
     expect(runLink.getAttribute("href")).toBe(runPath(RUN.id));
     expect(within(runLink).getByText(RUN.config.name)).toBeTruthy();
+    expect(within(runLink).getByText(RUN.config.name)).toHaveAttribute("data-label", HOME_COLUMN_LABEL.BOT_NAME);
+    expect(within(runLink).queryByText(renamedBot.config.name)).toBeNull();
     expect(within(runLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
     expect(within(runLink).getByText(`${RUN.latest_equity} / ${VALUATION_STATUS.fresh}`)).toBeTruthy();
     const runTimes = runLink.querySelectorAll("time");

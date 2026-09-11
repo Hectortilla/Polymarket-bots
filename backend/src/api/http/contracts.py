@@ -34,6 +34,7 @@ class RunEventPage(BaseModel):
 
     events: tuple[PersistedDurableEvent, ...]
     next_before_event_id: DurableEventId | None
+    stream_cursor: EventCursorValue
 
 
 HEALTH_STATUS_OK = "ok"

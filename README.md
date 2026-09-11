@@ -265,7 +265,9 @@ executable-equity, followed-wallet, and stream-health updates. Its visible
 controls mirror the terminal dashboard's `z`/`x`/`r`/`v`/`j`/`k` keys.
 The Events drawer defaults to order outcomes, errors/warnings, run status changes,
 and settlements involving the bot's positions. **Show diagnostics** reveals
-routine activity and detailed stream metrics within the loaded history.
+routine activity and detailed stream metrics. The backend filters history and SSE
+before delivery; dashboard history has independent pagination, so hidden skips
+and chart samples cannot crowd trades out of the activity feed.
 Failed rows in Recent Runs show the latest durable runtime error together with
 the recorded failure outcome on hover or keyboard focus.
 

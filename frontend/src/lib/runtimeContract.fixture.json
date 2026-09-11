@@ -81,6 +81,12 @@
     "WARNING": "warning",
     "ERROR": "error"
   },
+  "eventView": {
+    "ACTIVITY": "activity",
+    "DIAGNOSTICS": "diagnostics",
+    "DASHBOARD": "dashboard"
+  },
+  "dashboardSseEvent": "dashboard",
   "apiPaths": {
     "accountStatus": "/api/v1/auth/account",
     "requestAccountDeletion": "/api/v1/account/deletion",

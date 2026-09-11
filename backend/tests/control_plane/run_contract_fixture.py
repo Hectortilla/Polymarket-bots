@@ -40,6 +40,7 @@ from api.events.pagination import (
     DEFAULT_EVENT_PAGE_LIMIT,
     NEXT_EVENT_PAGE_CURSOR_EVENT_INDEX,
 )
+from api.events.views import DASHBOARD_SSE_EVENT, EventView
 from api.http.contracts import HealthResponse
 from api.http.protocol import (
     CONTENT_TYPE_HEADER,
@@ -205,6 +206,8 @@ def frontend_run_contract() -> dict[str, object]:
             "sessionRecheckMs": SESSION_RECHECK_SECONDS * 1000,
         },
         "activitySeverity": _enum_values(ActivitySeverity),
+        "eventView": _enum_values(EventView),
+        "dashboardSseEvent": DASHBOARD_SSE_EVENT,
         "apiPaths": {
             "accountStatus": api_route_path(account_policy.ACCOUNT_PATH),
             "requestAccountDeletion": api_route_path(ACCOUNT_DELETION_PATH),

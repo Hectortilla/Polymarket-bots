@@ -89,8 +89,6 @@
     <div class="data-list bot-list">
       <div class="data-list-header bot-list-header">
         <span aria-hidden="true">{HOME_COLUMN_LABEL.BOT_AND_MARKETS}</span>
-        <span aria-hidden="true">{HOME_COLUMN_LABEL.MAX_ORDER}</span>
-        <span aria-hidden="true">{HOME_COLUMN_LABEL.GRAPH}</span>
         <span aria-hidden="true">{HOME_COLUMN_LABEL.LATEST_RUN}</span>
         <span aria-hidden="true">{HOME_COLUMN_LABEL.UPDATED}</span>
       </div>
@@ -108,10 +106,6 @@
                 <strong class="data-list-title">{bot.config.name}</strong>
                 <small>{marketScope(bot)}</small>
               </span>
-              <span class="data-list-value" data-label={HOME_COLUMN_LABEL.MAX_ORDER}>
-                {bot.config.max_order_size}
-              </span>
-              <span class="data-list-value" data-label={HOME_COLUMN_LABEL.GRAPH}> Saved configuration </span>
               <span class="bot-status" data-label={HOME_COLUMN_LABEL.LATEST_RUN}>
                 {#if recentRun}
                   <RunStatusBadge status={recentRun.status} />
@@ -140,7 +134,7 @@
     {:else}
       <div class="data-list run-list">
         <div class="data-list-header run-list-header" aria-hidden="true">
-          <span>{HOME_COLUMN_LABEL.RUN}</span>
+          <span>{HOME_COLUMN_LABEL.BOT_NAME}</span>
           <span>{HOME_COLUMN_LABEL.STATUS}</span>
           <span>{HOME_COLUMN_LABEL.EQUITY}</span>
           <span>{HOME_COLUMN_LABEL.CREATED}</span>
@@ -159,7 +153,7 @@
             aria-label={runRowLabel(run.config.name, formatTime(run.created_at))}
             aria-describedby={failureDetail === null ? undefined : failureDetailId}
           >
-            <strong class="data-list-title" data-label={HOME_COLUMN_LABEL.RUN}>
+            <strong class="data-list-title" data-label={HOME_COLUMN_LABEL.BOT_NAME}>
               {run.config.name}
             </strong>
             <span class:failure-detail-host={failureDetail !== null} data-label={HOME_COLUMN_LABEL.STATUS}>

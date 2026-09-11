@@ -161,6 +161,10 @@
   flex-wrap: wrap;
 }
 
+.run-charts {
+  min-width: 0;
+}
+
 .events-description {
   margin: 0 0 12px;
   color: var(--text-muted);

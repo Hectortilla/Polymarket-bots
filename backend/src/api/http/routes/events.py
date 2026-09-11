@@ -1,6 +1,6 @@
 """Durable run-event replay and SSE endpoints."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, status
@@ -17,6 +17,7 @@ from api.events.contracts import (
 from api.events.ids import FIRST_EVENT_CURSOR
 from api.events.pagination import DEFAULT_EVENT_PAGE_LIMIT
 from api.events.store import EventStore
+from api.events.views import EventView
 from api.http.contracts import (
     EventCursorValue,
     EventPageLimitValue,
@@ -60,6 +61,7 @@ async def read_run_events(
     user: CurrentUserDependency,
     before_event_id: EventCursorValue | None = None,
     limit: EventPageLimitValue = DEFAULT_EVENT_PAGE_LIMIT,
+    view: EventView = EventView.ACTIVITY,
 ) -> RunEventPage:
     async with session_factory() as session:
         await require_stored_run(session, run_id, user.id)
@@ -67,6 +69,7 @@ async def read_run_events(
             run_id,
             before_event_id=before_event_id,
             limit=limit,
+            view=view,
         )
     return RunEventPage(
         events=tuple(
@@ -74,6 +77,7 @@ async def read_run_events(
             for event in page.events
         ),
         next_before_event_id=page.next_before_event_id,
+        stream_cursor=page.stream_cursor,
     )
 
 
@@ -108,6 +112,7 @@ async def stream_run_events(
     user: CurrentUserDependency,
     redis: RedisDependency,
     lease: StreamLeaseDependency,
+    view: Literal[EventView.ACTIVITY, EventView.DIAGNOSTICS] = EventView.ACTIVITY,
     after_event_id: Annotated[EventCursorValue, Query()] = FIRST_EVENT_CURSOR,
     last_event_id: Annotated[
         EventCursorValue | None,
@@ -121,6 +126,7 @@ async def stream_run_events(
         session_factory,
         redis,
         StreamAuthorization(session_factory, request.state.session_token, user.id),
+        view=view,
     )
     return LimitedStreamResponse(
         streamer.stream(cursor),

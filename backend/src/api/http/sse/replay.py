@@ -5,16 +5,22 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.events.contracts import PersistedDurableEvent
+from api.events.delivery import EventDelivery
 from api.events.pagination import MAX_EVENT_PAGE_LIMIT
 from api.events.store import EventStore
+from api.events.views import EventView
 from api.http.sse.frames import event_frames
 
 
 class RunEventReplay:
     def __init__(
-        self, run_id: UUID, session_factory: async_sessionmaker[AsyncSession]
+        self,
+        run_id: UUID,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        view: EventView = EventView.ACTIVITY,
     ) -> None:
+        self._view = view
         self._run_id = run_id
         self._session_factory = session_factory
 
@@ -38,9 +44,10 @@ class RunEventReplay:
         self,
         *,
         after_event_id: int,
-    ) -> tuple[PersistedDurableEvent, ...]:
+    ) -> tuple[EventDelivery, ...]:
         async with self._session_factory() as session:
-            return await EventStore(session).read(
+            return await EventStore(session).read_deliveries(
                 self._run_id,
                 after_event_id=after_event_id,
+                view=self._view,
             )

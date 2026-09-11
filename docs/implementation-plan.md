@@ -1098,18 +1098,22 @@ Minimum deliverable:
   the browser has loaded. Older-page requests may expand history, but retain at
   most the shared `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable
   samples and never auto-fetch the complete run.
-- Exclude `chart.sample` from the Durable progress table and its loaded-event
-  count, while retaining those samples for chart history and event pagination.
-  The current Events drawer further defaults to user-facing order outcomes,
-  errors/warnings, lifecycle changes, and settlements with paper positions;
-  **Show diagnostics** reveals other non-chart events and detailed health metrics.
-  This display filter does not change persistence or the bounded pagination policy.
-- Bound the browser's retained durable events to the loaded page count times
-  the API's default page size (including hidden chart samples). Streaming drops
-  the oldest overflow and moves the older-page cursor to the oldest retained
-  event, allowing dropped events to be fetched again. An older-page request
-  reserves another page while pending and releases it on failure; chart history
-  keeps its independent bounds and persisted events are unaffected.
+- The backend owns one SQL event-selection policy for history and SSE. Default
+  activity selects order outcomes, errors/warnings, lifecycle changes, and
+  settlements with paper positions. Diagnostics selects other non-chart events.
+  Apply selection before LIMIT, not to an already-paginated result.
+- Load dashboard history independently with a dashboard view. Chart samples never
+  occupy activity pages. One SSE connection delivers activity and named dashboard-only
+  durable frames alongside live dashboard updates, with shared reconnect IDs.
+- Pages include a run-wide snapshot watermark. Hydration replays from the smaller
+  activity/dashboard watermark and suppresses already-hydrated deliveries by channel.
+  Diagnostics switches rehydrate the selected view before replacing the active stream;
+  failed switches retain the previous feed and chart history stays intact.
+- Bound retained activity to loaded activity pages times the API default page size.
+  Streaming evicts the oldest overflow and advances the older-page cursor. Reserve
+  capacity during older-page requests and release it on failure. Dashboard history
+  has separate older-page requests and its existing chart bounds. Persistence and
+  retention are unchanged; no view auto-fetches complete run history.
 - Add one thin `EChart.svelte` lifecycle wrapper and focused market, equity,
   and wallet option builders. The combined component only composes layout and
   the market/wallet toggle.

@@ -2,6 +2,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import api.http.dependencies as dependencies_module
@@ -41,6 +42,7 @@ from api.events.pagination import (
     next_event_page_cursor,
 )
 from api.events.store import StoredEventPage
+from api.events.views import EventView
 from api.http.app import app
 from api.http.contracts import HealthResponse
 from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
@@ -72,8 +74,8 @@ from api.runs.contracts import PaperRunConfig, RunRead
 from api.runs.failures import LaunchAttemptUnavailable
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
-from polybot.performance.contracts.valuation_status import ValuationStatus
 from fastapi import status
+from polybot.performance.contracts.valuation_status import ValuationStatus
 
 from control_plane.auth_fixtures import TEST_USER_ID
 from control_plane.auth_fixtures import authenticated_test_client as TestClient
@@ -620,6 +622,34 @@ def test_event_route_returns_bounded_newest_page_and_older_cursor(
     assert older.json()["next_before_event_id"] is None
 
 
+def test_event_route_forwards_selected_view_and_snapshot_cursor(monkeypatch):
+    state = _State()
+    client = _client(monkeypatch, state)
+    run_id = _create_run(client)["id"]
+    read_page = AsyncMock(
+        return_value=StoredEventPage(
+            events=(), next_before_event_id=None, stream_cursor=17
+        )
+    )
+    monkeypatch.setattr(_EventStore, "read_page", read_page)
+    for view in EventView:
+        response = client.get(
+            api_route_path(RUN_EVENTS_PATH, run_id=run_id), params={"view": view.value}
+        )
+        assert response.status_code == 200
+        assert response.json()["stream_cursor"] == 17
+        assert read_page.call_args.kwargs["view"] is view
+    response = client.get(api_route_path(RUN_EVENTS_PATH, run_id=run_id))
+    assert response.status_code == 200
+    assert read_page.call_args.kwargs["view"] is EventView.ACTIVITY
+    assert (
+        client.get(
+            api_route_path(RUN_EVENTS_PATH, run_id=run_id), params={"view": "invalid"}
+        ).status_code
+        == 422
+    )
+
+
 def test_event_route_enforces_default_page_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -973,7 +1003,7 @@ class _EventStore:
     def __init__(self, session: _Session, owner_user_id=None) -> None:
         self.state = session.state
 
-    async def read_page(self, run_id, *, before_event_id, limit):
+    async def read_page(self, run_id, *, before_event_id, limit, view):
         events = tuple(
             event
             for event in self.state.events
@@ -987,6 +1017,10 @@ class _EventStore:
         ascending_page = tuple(reversed(page))
         return StoredEventPage(
             events=ascending_page,
+            stream_cursor=max(
+                (event.id for event in self.state.events if event.run_id == run_id),
+                default=FIRST_EVENT_CURSOR,
+            ),
             next_before_event_id=next_event_page_cursor(
                 tuple(event.id for event in ascending_page if event.id is not None),
                 has_more=has_more,

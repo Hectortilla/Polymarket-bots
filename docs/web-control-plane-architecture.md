@@ -425,14 +425,18 @@ accepted runtime events
 `LiveStreamHealthEvent`. The event persistence section owns which inputs are
 durable. The browser merges its detailed in-memory live window with loaded
 durable samples but preserves their different resolution. On initial hydration
-it uses only the newest bounded durable-event page. Explicit older-page requests
+it uses the newest bounded dashboard event page, independently of activity history. Explicit older-page requests
 may expand chart history, but the chart retains at most the shared
 `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable samples and never
 auto-drains the complete run history.
 
-Each durable `wallet.timeline` payload stores the canonical projected chart
+The `wallet.timeline` payload contract includes the canonical projected chart
 point, so reload does not reconstruct labels, source keys, or decimal notionals
-for rendering in the browser. Browser ingress verifies the stored point against
+for rendering in the browser. Known persistence limitation: current wallet source
+keys use a NUL separator, which PostgreSQL JSONB rejects. The event-view integration
+check exposed this pre-existing serialization issue; selection changes leave the
+storage format unchanged. Wallet-kind SQL classification is tested independently
+of payload persistence until that serialization issue is resolved. Browser ingress verifies the stored point against
 its trade using the generated wallet-label and source-key policy, then renders
 the canonical point unchanged. The terminal `stream.health` event is likewise the reload
 fallback until a newer live health frame arrives.
@@ -539,11 +543,18 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 - `GET /runs` — active runs plus retained terminal history from `HistorySelection`, newest first.
 - `GET /runs/{run_id}` — one run; Slice 12E adds its event-derived summary.
 - `POST /runs/{run_id}/stop` — idempotently request/complete stop.
-- `GET /runs/{run_id}/events?before_event_id=&limit=` — the newest bounded
-  durable-event page before an optional exclusive cursor, returned in ascending
-  display order with the next older cursor.
-- `GET /runs/{run_id}/events/stream` — durable replay/continuation SSE; Slice
-  12E adds ephemeral live chart and stream-health frames.
+- `GET /runs/{run_id}/events?view=activity&before_event_id=&limit=` — selected
+  durable events before an optional exclusive cursor, in ascending display order.
+  `activity` is the default; `diagnostics` includes all non-chart events;
+  `dashboard` selects chart samples, wallet timeline, and final stream health.
+  Selection happens in SQL before LIMIT. Each page includes `next_before_event_id`
+  and a run-wide `stream_cursor` watermark captured before its bounded query.
+- `GET /runs/{run_id}/events/stream?view=activity` — the selected activity or
+  diagnostics feed plus dashboard and ephemeral live chart/health updates on one
+  SSE connection. `Last-Event-ID` overrides the initial `after_event_id`.
+  Dashboard-only durable deliveries use the named `dashboard` SSE event; activity
+  and live frames use the default message channel. All durable frames share IDs,
+  including dashboard-only deliveries; live frames have no ID.
 - `GET /health` — database and Redis readiness for the private deployment.
 
 Both event routes require the run to exist and return the normal small `404`
@@ -593,24 +604,30 @@ dependency error.
   them to route state, including JSON content type, non-empty bodies, finite
   state values, nested stream rules, and discriminated graph nodes. The
   EventSource adapter performs the equivalent durable/live event validation.
-- Hydrate run detail from the newest bounded durable-event page, open SSE after
-  that page's newest ID for race-free continuation, and request older pages only
-  from the exclusive cursor. Retain at most the loaded page count times the
-  API default event-page limit, including hidden chart samples. Streaming evicts
-  the oldest overflow and sets that cursor to the oldest retained event so
-  evicted history remains accessible. Reserve a page during an older-page fetch,
-  rolling back that capacity on failure; a response overtaken by streaming must
-  not reset the advanced cursor or introduce a history gap. Terminal hydration
-  does not open a stream, and receipt of a terminal lifecycle event closes the
-  current stream.
-- Filter the run Events drawer through `frontend/src/lib/runs/eventFeed.ts`.
-  The default view retains fills, partial fills, rejected/canceled orders,
+- `api.events.views.event_selection` owns the SQL selection policy used by
+  paginated history and durable SSE replay. Replay selects the union of the
+  requested view and dashboard rows, marking dashboard-only deliveries with the
+  same predicate rather than reimplementing classification in Python or TypeScript.
+  Default activity includes fills/partial fills, rejected/canceled orders,
   broker/run failures, warning/error activity, lifecycle changes, and settlements
-  with paper positions. Diagnostics reveals the other non-chart events and
-  detailed health metrics. This is a presentation filter: durable ingestion,
-  chart history, SSE cursors, persistence, and page capacity remain unchanged.
-  Hidden events still consume page capacity, so older meaningful events may
-  require **Load earlier events**. Counts reflect only the selected view.
+  with paper positions. The frontend only formats the supplied activity rows.
+- Hydrate activity and dashboard pages independently. Each query captures the
+  run watermark first and excludes rows newer than that watermark. Open SSE after
+  the smaller watermark and suppress callbacks already represented by each page.
+  This preserves commits between the two snapshots without replaying existing rows.
+  Terminal hydration opens no stream; terminal lifecycle delivery closes it.
+- Bound retained activity to loaded activity pages times the shared page limit.
+  Dashboard-only deliveries cannot consume this capacity or evict trades. Streaming
+  evicts oldest activity overflow and advances its older-page cursor. Reserve a
+  page while fetching older activity; roll back on failure and ignore a response
+  overtaken by streaming. Dashboard history uses independent pagination and the
+  existing chart and wallet bounds; neither history auto-drains all stored events.
+- Switching diagnostics hydrates the requested view, then replaces the old stream
+  and resets activity pagination. Old connection callbacks are ignored. Failed
+  hydration keeps the previous view and subscription. Dashboard history, its
+  pagination progress, and chart controls survive mode switches.
+- Event persistence, retention, and live dashboard cadence are unchanged. Diagnostic
+  rows remain stored for explicit retrieval; default HTTP/SSE delivery excludes them.
 - Use Ajv only for immediate form feedback against the catalog schema. Do not
   create a parallel TypeScript form contract.
 - Render the market-slug widget as a multi-market combobox in create and edit

@@ -609,6 +609,15 @@
         "minimum": 0.0,
         "type": "integer"
       },
+      "EventView": {
+        "enum": [
+          "activity",
+          "diagnostics",
+          "dashboard"
+        ],
+        "title": "EventView",
+        "type": "string"
+      },
       "FillEvent": {
         "properties": {
           "average_price": {
@@ -3670,11 +3679,15 @@
                 "type": "null"
               }
             ]
+          },
+          "stream_cursor": {
+            "$ref": "#/components/schemas/EventCursorValue"
           }
         },
         "required": [
           "events",
-          "next_before_event_id"
+          "next_before_event_id",
+          "stream_cursor"
         ],
         "title": "RunEventPage",
         "type": "object"
@@ -6852,6 +6865,15 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EventView",
+              "default": "activity"
+            }
           }
         ],
         "responses": {
@@ -6958,6 +6980,20 @@
             "schema": {
               "format": "uuid",
               "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "activity",
+              "enum": [
+                "activity",
+                "diagnostics"
+              ],
+              "title": "View",
               "type": "string"
             }
           },

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -13,6 +14,7 @@ from api.events.contracts import (
     PersistedDurableEvent,
     RunFailureEvent,
 )
+from api.events.delivery import EventDelivery
 from api.events.ids import FIRST_EVENT_CURSOR, is_durable_event_id
 from api.events.kinds import EVENT_DISCRIMINATOR_FIELD, EventKind
 from api.events.models import EventRow
@@ -20,12 +22,14 @@ from api.events.pagination import (
     MAX_EVENT_PAGE_LIMIT,
     next_event_page_cursor,
 )
+from api.events.views import EventView, event_selection
 
 
 @dataclass(frozen=True, slots=True)
 class StoredEventPage:
     events: tuple[PersistedDurableEvent, ...]
     next_before_event_id: int | None
+    stream_cursor: int
 
 
 class EventStore:
@@ -70,8 +74,19 @@ class EventStore:
         *,
         before_event_id: int | None,
         limit: int,
+        view: EventView = EventView.ACTIVITY,
     ) -> StoredEventPage:
-        statement = select(EventRow).where(EventRow.run_id == run_id)
+        # Bound the query to the watermark captured before reading the page.
+        # Replaying from it cannot miss commits concurrent with hydration.
+        cursor = (
+            await self._session.scalar(
+                select(func.max(EventRow.id)).where(EventRow.run_id == run_id)
+            )
+            or FIRST_EVENT_CURSOR
+        )
+        statement = select(EventRow).where(
+            EventRow.run_id == run_id, EventRow.id <= cursor, event_selection(view)
+        )
         if before_event_id is not None:
             statement = statement.where(EventRow.id < before_event_id)
         rows = tuple(
@@ -86,10 +101,32 @@ class EventStore:
         events = tuple(self._event_from_row(row) for row in reversed(page_rows))
         return StoredEventPage(
             events=events,
+            stream_cursor=cursor,
             next_before_event_id=next_event_page_cursor(
                 tuple(event.id for event in events),
                 has_more=has_more,
             ),
+        )
+
+    async def read_deliveries(
+        self, run_id: UUID, *, after_event_id: int, view: EventView
+    ) -> tuple[EventDelivery, ...]:
+        activity = event_selection(view)
+        rows = (
+            await self._session.execute(
+                select(EventRow, activity.label("activity"))
+                .where(
+                    EventRow.run_id == run_id,
+                    EventRow.id > after_event_id,
+                    or_(activity, event_selection(EventView.DASHBOARD)),
+                )
+                .order_by(EventRow.id)
+                .limit(MAX_EVENT_PAGE_LIMIT)
+            )
+        ).all()
+        return tuple(
+            EventDelivery(self._event_from_row(row), not is_activity)
+            for row, is_activity in rows
         )
 
     async def latest_chart_samples(

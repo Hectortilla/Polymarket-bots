@@ -21,6 +21,10 @@ class FakeEventSource {
   onerror: (() => void) | null = null;
   onopen: (() => void) | null = null;
   close = vi.fn();
+  listeners = new Map<string, (message: MessageEvent) => void>();
+  addEventListener(name: string, callback: (message: MessageEvent) => void) {
+    this.listeners.set(name, callback);
+  }
 
   constructor(readonly url: string) {
     FakeEventSource.current = this;
@@ -562,3 +566,39 @@ it("closes the real stream adapter when restoration confirms session expiry", as
 function emit(event: object): void {
   FakeEventSource.current.onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }));
 }
+
+it("routes named dashboard frames separately while sharing the reconnect cursor", () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const activity = vi.fn();
+  const dashboard = vi.fn();
+  openRunEventStream(RUN_ID, 4, activity, vi.fn(), undefined, {
+    view: runtimeContract.eventView.DIAGNOSTICS as import("./eventViews").ActivityEventView,
+    onDashboardEvent: dashboard,
+  });
+  const source = FakeEventSource.current;
+  const sample = {
+    id: 8,
+    kind: EVENT_KIND.chartSample,
+    run_id: RUN_ID,
+    occurred_at: "2026-09-11T00:00:00Z",
+    payload: { sampled_at_ms: 1, markets: [], equity: { value: "100", status: VALUATION_STATUS.fresh } },
+  };
+  const message = new MessageEvent("message", { data: JSON.stringify(sample) });
+  source.listeners.get(runtimeContract.dashboardSseEvent)?.(message);
+  source.listeners.get(runtimeContract.dashboardSseEvent)?.(message);
+  source.onmessage?.(
+    new MessageEvent("message", {
+      data: JSON.stringify({
+        ...sample,
+        id: 12,
+        kind: EVENT_KIND.runLifecycle,
+        payload: { status: RUN_STATUS.STOPPED },
+      }),
+    }),
+  );
+  expect(dashboard).toHaveBeenCalledOnce();
+  expect(activity).toHaveBeenCalledOnce();
+  expect(activity.mock.calls[0][0].id).toBe(12);
+  expect(source.close).toHaveBeenCalledOnce();
+  expect(new URL(source.url, "http://localhost").searchParams.get("view")).toBe(runtimeContract.eventView.DIAGNOSTICS);
+});
