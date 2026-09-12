@@ -50,29 +50,11 @@
   },
   "strictResponseFields": {
     "models": {
-      "AccountActionResponse": [
-        "accepted"
-      ],
-      "AccountStatus": [
-        "email_verified",
-        "verification_required"
-      ],
-      "AccountUsage": [
-        "active_runs",
-        "policy",
-        "queued_runs",
-        "retained_runs",
-        "saved_bots"
-      ],
-      "BotActivityPayload": [
-        "message",
-        "severity"
-      ],
-      "BotCreate": [
-        "definition_id",
-        "graph",
-        "inputs"
-      ],
+      "AccountActionResponse": ["accepted"],
+      "AccountStatus": ["email_verified", "verification_required"],
+      "AccountUsage": ["active_runs", "policy", "queued_runs", "retained_runs", "saved_bots"],
+      "BotActivityPayload": ["message", "severity"],
+      "BotCreate": ["definition_id", "graph", "inputs"],
       "BotDefinitionDescriptor": [
         "definition_id",
         "description",
@@ -85,66 +67,20 @@
         "starter_graph",
         "wallet_selection"
       ],
-      "BotRead": [
-        "config",
-        "created_at",
-        "definition_id",
-        "id",
-        "updated_at"
-      ],
-      "BotUpdate": [
-        "graph",
-        "inputs"
-      ],
-      "BrokerFailurePayload": [
-        "error",
-        "order"
-      ],
-      "BrokerFillPayload": [
-        "fill",
-        "latency_ms",
-        "order",
-        "portfolio"
-      ],
-      "BrokerOrderPayload": [
-        "order"
-      ],
-      "ChangePasswordRequest": [
-        "current_password",
-        "new_password"
-      ],
-      "ChartSamplePayload": [
-        "equity",
-        "markets",
-        "sampled_at_ms"
-      ],
-      "Credentials": [
-        "email",
-        "password"
-      ],
-      "CurrentUser": [
-        "email",
-        "id"
-      ],
-      "EmailRequest": [
-        "email"
-      ],
-      "EquityChartPayload": [
-        "point",
-        "sampled_at_ms"
-      ],
-      "EquityChartPointPayload": [
-        "status",
-        "value"
-      ],
-      "ErrorResponse": [
-        "code",
-        "detail"
-      ],
-      "GraphBooleanConstantData": [
-        "scalar_type",
-        "value"
-      ],
+      "BotRead": ["config", "created_at", "definition_id", "id", "updated_at"],
+      "BotUpdate": ["graph", "inputs"],
+      "BrokerFailurePayload": ["error", "order"],
+      "BrokerFillPayload": ["fill", "latency_ms", "order", "portfolio"],
+      "BrokerOrderPayload": ["order"],
+      "ChangePasswordRequest": ["current_password", "new_password"],
+      "ChartSamplePayload": ["equity", "markets", "sampled_at_ms"],
+      "Credentials": ["email", "password"],
+      "CurrentUser": ["email", "id"],
+      "EmailRequest": ["email"],
+      "EquityChartPayload": ["point", "sampled_at_ms"],
+      "EquityChartPointPayload": ["status", "value"],
+      "ErrorResponse": ["code", "detail"],
+      "GraphBooleanConstantData": ["scalar_type", "value"],
       "GraphBrokerActionDescriptor": [
         "action",
         "display_name",
@@ -154,51 +90,14 @@
         "outputs",
         "side"
       ],
-      "GraphBrokerActionNode": [
-        "data",
-        "id",
-        "position",
-        "type"
-      ],
-      "GraphBrokerActionNodeData": [
-        "action"
-      ],
-      "GraphComparisonDescriptor": [
-        "display_name",
-        "inputs",
-        "node_type",
-        "operator",
-        "output"
-      ],
-      "GraphComparisonNode": [
-        "data",
-        "id",
-        "position",
-        "type"
-      ],
-      "GraphComparisonNodeData": [
-        "operator"
-      ],
-      "GraphConstantDescriptor": [
-        "default_value",
-        "display_name",
-        "node_type",
-        "output",
-        "scalar_type"
-      ],
-      "GraphConstantNode": [
-        "data",
-        "id",
-        "position",
-        "type"
-      ],
-      "GraphEdge": [
-        "id",
-        "source",
-        "source_handle",
-        "target",
-        "target_handle"
-      ],
+      "GraphBrokerActionNode": ["data", "id", "position", "type"],
+      "GraphBrokerActionNodeData": ["action"],
+      "GraphComparisonDescriptor": ["display_name", "inputs", "node_type", "operator", "output"],
+      "GraphComparisonNode": ["data", "id", "position", "type"],
+      "GraphComparisonNodeData": ["operator"],
+      "GraphConstantDescriptor": ["default_value", "display_name", "node_type", "output", "scalar_type"],
+      "GraphConstantNode": ["data", "id", "position", "type"],
+      "GraphEdge": ["id", "source", "source_handle", "target", "target_handle"],
       "GraphFieldDescriptor": [
         "collection",
         "display_name",
@@ -209,9 +108,7 @@
         "value_schema",
         "value_type"
       ],
-      "GraphFieldPath": [
-        "segments"
-      ],
+      "GraphFieldPath": ["segments"],
       "GraphInputDescriptor": [
         "description",
         "display_name",
@@ -223,24 +120,9 @@
         "scalar_types",
         "whole_number"
       ],
-      "GraphNodeCatalog": [
-        "broker_actions",
-        "comparisons",
-        "constants",
-        "operations",
-        "sample_positions",
-        "triggers"
-      ],
-      "GraphNodeEvaluationRead": [
-        "node_id",
-        "outputs",
-        "reason",
-        "status"
-      ],
-      "GraphNumberConstantData": [
-        "scalar_type",
-        "value"
-      ],
+      "GraphNodeCatalog": ["broker_actions", "comparisons", "constants", "operations", "sample_positions", "triggers"],
+      "GraphNodeEvaluationRead": ["node_id", "outputs", "reason", "status"],
+      "GraphNumberConstantData": ["scalar_type", "value"],
       "GraphOperationDescriptor": [
         "category",
         "display_name",
@@ -254,60 +136,17 @@
         "selectable_scalar_type",
         "terminal"
       ],
-      "GraphOperationNode": [
-        "data",
-        "id",
-        "position",
-        "type"
-      ],
-      "GraphOperationNodeData": [
-        "input_ids",
-        "operation",
-        "scalar_type"
-      ],
-      "GraphOutputDescriptor": [
-        "display_name",
-        "handle_id",
-        "nullable",
-        "scalar_type"
-      ],
-      "GraphParameter": [
-        "data",
-        "id",
-        "name"
-      ],
-      "GraphParameterNode": [
-        "data",
-        "id",
-        "position",
-        "type"
-      ],
-      "GraphParameterNodeData": [
-        "parameter_id"
-      ],
-      "GraphPayloadDescriptor": [
-        "fields",
-        "type_name"
-      ],
-      "GraphPosition": [
-        "x",
-        "y"
-      ],
-      "GraphPreviewRequest": [
-        "graph",
-        "hook_name",
-        "now_ms",
-        "payload",
-        "portfolio"
-      ],
-      "GraphPreviewResponse": [
-        "intended_orders",
-        "nodes"
-      ],
-      "GraphStringConstantData": [
-        "scalar_type",
-        "value"
-      ],
+      "GraphOperationNode": ["data", "id", "position", "type"],
+      "GraphOperationNodeData": ["input_ids", "operation", "scalar_type"],
+      "GraphOutputDescriptor": ["display_name", "handle_id", "nullable", "scalar_type"],
+      "GraphParameter": ["data", "id", "name"],
+      "GraphParameterNode": ["data", "id", "position", "type"],
+      "GraphParameterNodeData": ["parameter_id"],
+      "GraphPayloadDescriptor": ["fields", "type_name"],
+      "GraphPosition": ["x", "y"],
+      "GraphPreviewRequest": ["graph", "hook_name", "now_ms", "payload", "portfolio"],
+      "GraphPreviewResponse": ["intended_orders", "nodes"],
+      "GraphStringConstantData": ["scalar_type", "value"],
       "GraphTriggerDescriptor": [
         "context_handle_id",
         "context_type_name",
@@ -317,79 +156,21 @@
         "sample_payload",
         "sample_time_ms"
       ],
-      "GraphTriggerNode": [
-        "data",
-        "id",
-        "position",
-        "type"
-      ],
-      "GraphTriggerNodeData": [
-        "hook_name"
-      ],
-      "GraphValueRead": [
-        "input_handle_id",
-        "message",
-        "reason",
-        "status",
-        "value"
-      ],
-      "HealthResponse": [
-        "status"
-      ],
-      "LiveEquityChartEvent": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "LiveMarketChartEvent": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "LiveStreamHealthEvent": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "LiveWalletChartEvent": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "LoginCredentials": [
-        "email",
-        "password"
-      ],
-      "LogoutResponse": [
-        "logged_out"
-      ],
-      "MarketChartPayload": [
-        "points",
-        "sampled_at_ms"
-      ],
-      "MarketChartPointPayload": [
-        "label",
-        "markers",
-        "status",
-        "token_id",
-        "value"
-      ],
-      "MarketLookupRequest": [
-        "slugs"
-      ],
-      "MarketSettlementPayload": [
-        "portfolio",
-        "settlement"
-      ],
-      "NodeGraph": [
-        "edges",
-        "nodes",
-        "parameters"
-      ],
+      "GraphTriggerNode": ["data", "id", "position", "type"],
+      "GraphTriggerNodeData": ["hook_name"],
+      "GraphValueRead": ["input_handle_id", "message", "reason", "status", "value"],
+      "HealthResponse": ["status"],
+      "LiveEquityChartEvent": ["kind", "occurred_at", "payload", "run_id"],
+      "LiveMarketChartEvent": ["kind", "occurred_at", "payload", "run_id"],
+      "LiveStreamHealthEvent": ["kind", "occurred_at", "payload", "run_id"],
+      "LiveWalletChartEvent": ["kind", "occurred_at", "payload", "run_id"],
+      "LoginCredentials": ["email", "password"],
+      "LogoutResponse": ["logged_out"],
+      "MarketChartPayload": ["points", "sampled_at_ms"],
+      "MarketChartPointPayload": ["label", "markers", "status", "token_id", "value"],
+      "MarketLookupRequest": ["slugs"],
+      "MarketSettlementPayload": ["portfolio", "settlement"],
+      "NodeGraph": ["edges", "nodes", "parameters"],
       "PaperBetaPolicy": [
         "active_runs",
         "expensive_requests_per_minute",
@@ -420,123 +201,26 @@
         "paper_portfolio_usdc",
         "stream_rules"
       ],
-      "PersistedBotActivityEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedBrokerFailureEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedBrokerFillEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedBrokerOrderEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedChartSampleEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedMarketSettlementEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedPortfolioSnapshotEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedRunBootstrapEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedRunFailureEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedRunLifecycleEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedStreamHealthEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PersistedWalletTimelineEvent": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "PortfolioSnapshotPayload": [
-        "cash_usdc",
-        "cumulative_fees_usdc",
-        "positions"
-      ],
-      "PreviewPortfolio": [
-        "available_cash",
-        "positions"
-      ],
-      "ReauthenticateRequest": [
-        "current_password"
-      ],
-      "RedeemRequest": [
-        "new_password",
-        "token"
-      ],
-      "RevokeSessionsRequest": [
-        "current_password",
-        "scope"
-      ],
-      "RunBootstrapPayload": [
-        "completed",
-        "phase",
-        "total"
-      ],
-      "RunEventPage": [
-        "events",
-        "next_before_event_id",
-        "stream_cursor"
-      ],
-      "RunFailurePayload": [
-        "error"
-      ],
+      "PersistedBotActivityEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedBrokerFailureEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedBrokerFillEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedBrokerOrderEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedChartSampleEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedMarketSettlementEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedPortfolioSnapshotEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedRunBootstrapEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedRunFailureEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedRunLifecycleEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedStreamHealthEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PersistedWalletTimelineEvent": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "PortfolioSnapshotPayload": ["cash_usdc", "cumulative_fees_usdc", "positions"],
+      "PreviewPortfolio": ["available_cash", "positions"],
+      "ReauthenticateRequest": ["current_password"],
+      "RedeemRequest": ["new_password", "token"],
+      "RevokeSessionsRequest": ["current_password", "scope"],
+      "RunBootstrapPayload": ["completed", "phase", "total"],
+      "RunEventPage": ["events", "next_before_event_id", "stream_cursor"],
+      "RunFailurePayload": ["error"],
       "RunRead": [
         "bot_deleted",
         "bot_id",
@@ -553,15 +237,8 @@
         "started_at",
         "status"
       ],
-      "RunStartedPayload": [
-        "initial_cash_usdc",
-        "mode",
-        "name",
-        "status"
-      ],
-      "RunStatusPayload": [
-        "status"
-      ],
+      "RunStartedPayload": ["initial_cash_usdc", "mode", "name", "status"],
+      "RunStatusPayload": ["status"],
       "StreamHealthPayload": [
         "book_coalesced_count",
         "book_dispatch_lag_ms",
@@ -570,10 +247,7 @@
         "peak_queue_depth",
         "queue_depth"
       ],
-      "WalletChartPayload": [
-        "points",
-        "sampled_at_ms"
-      ],
+      "WalletChartPayload": ["points", "sampled_at_ms"],
       "WalletChartPointPayload": [
         "accepted",
         "market_label",
@@ -583,126 +257,28 @@
         "trade_timestamp_ms",
         "wallet"
       ],
-      "WalletLookupRequest": [
-        "addresses"
-      ],
-      "WalletTimelinePayload": [
-        "outcome",
-        "point",
-        "trade"
-      ]
+      "WalletLookupRequest": ["addresses"],
+      "WalletTimelinePayload": ["outcome", "point", "trade"]
     },
     "durable": {
-      "bot.activity": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "broker.failure": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "broker.fill": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "broker.order": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "chart.sample": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "market.settlement": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "portfolio.snapshot": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "run.bootstrap": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "run.failure": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "run.lifecycle": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "stream.health": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "wallet.timeline": [
-        "id",
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ]
+      "bot.activity": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "broker.failure": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "broker.fill": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "broker.order": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "chart.sample": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "market.settlement": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "portfolio.snapshot": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "run.bootstrap": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "run.failure": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "run.lifecycle": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "stream.health": ["id", "kind", "occurred_at", "payload", "run_id"],
+      "wallet.timeline": ["id", "kind", "occurred_at", "payload", "run_id"]
     },
     "live": {
-      "chart.equity": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "chart.market": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "chart.wallet": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ],
-      "stream.health.live": [
-        "kind",
-        "occurred_at",
-        "payload",
-        "run_id"
-      ]
+      "chart.equity": ["kind", "occurred_at", "payload", "run_id"],
+      "chart.market": ["kind", "occurred_at", "payload", "run_id"],
+      "chart.wallet": ["kind", "occurred_at", "payload", "run_id"],
+      "stream.health.live": ["kind", "occurred_at", "payload", "run_id"]
     }
   },
   "accountManagement": {
@@ -724,11 +300,7 @@
     }
   },
   "auth": {
-    "csrfSafeMethods": [
-      "GET",
-      "HEAD",
-      "OPTIONS"
-    ],
+    "csrfSafeMethods": ["GET", "HEAD", "OPTIONS"],
     "jsonContentType": "application/json",
     "contentTypeHeader": "Content-Type",
     "passwordMinLength": 15,
@@ -820,10 +392,7 @@
     "firstWalletNotionalTier": 1,
     "nonpositiveMaxNotionalThreshold": "0",
     "walletNotionalTierDenominator": 3,
-    "walletNotionalTierUpperNumerators": [
-      1,
-      2
-    ],
+    "walletNotionalTierUpperNumerators": [1, 2],
     "walletBucketPolicy": {
       "clampToLastColumn": true,
       "rounding": "floor"
@@ -946,13 +515,8 @@
     "tokenCount": 2
   },
   "chartValueStatus": {
-    "nullValue": [
-      "unavailable"
-    ],
-    "valueRequired": [
-      "fresh",
-      "stale"
-    ]
+    "nullValue": ["unavailable"],
+    "valueRequired": ["fresh", "stale"]
   },
   "portfolio": {
     "emptyPositionRequiresNullPrice": true,
@@ -985,16 +549,8 @@
   },
   "runStatus": {
     "initial": "starting",
-    "stoppable": [
-      "queued",
-      "running",
-      "starting"
-    ],
-    "terminal": [
-      "failed",
-      "interrupted",
-      "stopped"
-    ],
+    "stoppable": ["queued", "running", "starting"],
+    "terminal": ["failed", "interrupted", "stopped"],
     "values": {
       "QUEUED": "queued",
       "STARTING": "starting",
