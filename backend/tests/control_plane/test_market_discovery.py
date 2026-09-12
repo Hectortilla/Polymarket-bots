@@ -3,11 +3,11 @@ from dataclasses import asdict
 
 import pytest
 from api.catalog.inputs import NodeBasedLaunchInputs
-from api.http.market_contracts import (
-    DEFAULT_MARKET_SEARCH_LIMIT,
-    MARKET_DISCOVERY_UNAVAILABLE_DETAIL,
-    MAX_MARKET_SEARCH_LENGTH,
-    MAX_MARKET_SEARCH_LIMIT,
+from api.http.market_contracts import MARKET_DISCOVERY_UNAVAILABLE_DETAIL
+from api.http.search_contracts import (
+    DEFAULT_DISCOVERY_SEARCH_LIMIT,
+    MAX_DISCOVERY_SEARCH_LENGTH,
+    MAX_DISCOVERY_SEARCH_LIMIT,
 )
 from api.http.routes.bots.market_validation import (
     validate_new_market_selections,
@@ -40,7 +40,9 @@ def test_search_normalizes_query_and_returns_typed_markets() -> None:
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"markets": [asdict(market)], "has_more": False}
-    discovery.search.assert_awaited_once_with("election", DEFAULT_MARKET_SEARCH_LIMIT)
+    discovery.search.assert_awaited_once_with(
+        "election", DEFAULT_DISCOVERY_SEARCH_LIMIT
+    )
 
 
 @pytest.mark.parametrize(
@@ -49,9 +51,9 @@ def test_search_normalizes_query_and_returns_typed_markets() -> None:
         {},
         {"q": " "},
         {"q": "x"},
-        {"q": "x" * (MAX_MARKET_SEARCH_LENGTH + 1)},
+        {"q": "x" * (MAX_DISCOVERY_SEARCH_LENGTH + 1)},
         {"q": "abc", "limit": 0},
-        {"q": "abc", "limit": MAX_MARKET_SEARCH_LIMIT + 1},
+        {"q": "abc", "limit": MAX_DISCOVERY_SEARCH_LIMIT + 1},
         {"q": "abc", "limit": "1.5"},
         {"q": "abc", "unknown": "true"},
     ],

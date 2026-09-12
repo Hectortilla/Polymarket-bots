@@ -224,8 +224,13 @@ event-driven fixed-side paper broker actions, editable graph
 storage, reusable saved bots, and complete immutable run snapshots. The
 browser presents one node-based bot workspace: configuration and graph editing
 live in the same form, and a new graph can start fresh or copy another bot.
-Its Markets field searches through the backend and supports multiple removable
-selections; bot configuration still stores exact market slugs.
+Its Markets and Wallets fields search through the backend and support multiple
+removable selections. Markets accept text, numeric market IDs, condition IDs,
+and token IDs; configuration still stores exact market slugs. Wallets accept
+public names and full wallet addresses; configuration stores normalized trading
+wallet addresses, never display names. Optional node-bot wallets are watched
+across markets through the existing independent stream rule. Saving, reloading,
+copying, and queueing a run preserve those addresses in the configuration snapshot.
 
 Install and verify the frontend from `frontend/`:
 

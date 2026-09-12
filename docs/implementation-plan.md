@@ -1530,6 +1530,41 @@ OpenAPI/client fixtures describe the selector consistently. Earlier numbered
 slice scopes remain historical; this follow-up does not alter them.
 
 
+## Wallet Search and Identifier Selection Follow-Up (2026-09-12)
+
+Status: implemented. Verification: 1,531 backend tests passed with disposable
+PostgreSQL/Redis; 387 frontend tests, type checks, generated-client consistency,
+and production build passed. After the live token-ID finding, all 93 relevant
+market adapter/endpoint regressions passed again. Live public SDK name, wallet
+address, market ID, condition ID, token ID and hydration checks succeeded.
+
+Scope: extend the market selector pattern to wallets and accept explicit market
+identifiers; no numbered runtime slice, migration, or live execution change.
+
+- Add authenticated bounded wallet search/hydration endpoints with the existing
+  expensive-request budget and a lifespan-owned official SDK adapter.
+- Resolve public names and full wallet addresses into normalized trading-wallet
+  addresses. Preserve explicit addresses without profiles; fail on infrastructure
+  errors and never silently rewrite a saved identity during metadata hydration.
+- Route market numeric IDs, condition IDs and token IDs through exact official
+  SDK lookups, check response identity, and retain canonical slug persistence and
+  fail-closed trading availability.
+- Share the frontend selector interaction, including debounce, cancellation,
+  keyboard selection, multiple/removable selections, hydration and retry states.
+- Add optional wallets to node-bot launch inputs; the existing independent stream
+  rule follows wallets across markets. Saved configurations, copies, and immutable
+  run snapshots retain addresses; the worker uses the existing wallet input path.
+- Verify SDK adapters, HTTP ingress/failures, generated response validation,
+  components and configuration snapshots, plus backend/frontend regressions.
+
+PolymarketDocs MCP checks completed; no integration exception. Exact wallet IDs
+mean full addresses. Arbitrary numeric profile/user-ID resolution is not exposed
+by the documented official API. See `docs/api-notes.md` for endpoint evidence.
+
+Documentation-drift audit: README, architecture, author guide, API notes, web
+specification/architecture, catalog selection metadata and generated OpenAPI/client
+contracts now describe both selectors and the node-bot wallet configuration.
+
 ## Saved-bot deletion follow-up
 
 Status: implemented September 10, 2026; extends Slices 13D–13F with the approved

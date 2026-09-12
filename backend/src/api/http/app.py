@@ -3,6 +3,7 @@
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from polybot.polymarket.discovery import MarketDiscovery
+from polybot.polymarket.wallet_discovery import WalletDiscovery
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -25,6 +26,7 @@ from api.http.routes.graph_preview import (
 )
 from api.http.routes.health import router as health_router
 from api.http.routes.markets import router as markets_router
+from api.http.routes.wallets import router as wallets_router
 from api.http.routes.paths import API_PREFIX
 from api.http.routes.runs import router as runs_router
 from api.operations.http import OperationalHttpMiddleware
@@ -46,6 +48,7 @@ def create_app(
     redis: Redis | None = None,
     launcher: RunLauncher | None = None,
     market_discovery: MarketDiscovery | None = None,
+    wallet_discovery: WalletDiscovery | None = None,
 ) -> FastAPI:
     application = FastAPI(
         title="Polybot Control Plane",
@@ -77,6 +80,8 @@ def create_app(
         application.state.launcher = launcher
     if market_discovery is not None:
         application.state.market_discovery = market_discovery
+    if wallet_discovery is not None:
+        application.state.wallet_discovery = wallet_discovery
     for router in (
         auth_router,
         recovery_router,
@@ -85,6 +90,7 @@ def create_app(
         graph_preview_router,
         catalog_router,
         markets_router,
+        wallets_router,
         bots_router,
         runs_router,
         events_router,

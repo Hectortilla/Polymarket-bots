@@ -90,6 +90,13 @@
     "maximumLimit": 20,
     "maximumSelections": 10
   },
+  "walletSearch": {
+    "minimumQueryLength": 2,
+    "maximumQueryLength": 200,
+    "defaultLimit": 12,
+    "maximumLimit": 20,
+    "maximumSelections": 2
+  },
   "widgetSchemaKey": "x-widget",
   "graphFieldPathSeparator": ".",
   "graphFieldPathSegmentPattern": "^[A-Za-z_][A-Za-z0-9_]*$",

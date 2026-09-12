@@ -86,10 +86,19 @@ The initial catalog is exactly:
 | `btc-five-minute-market-watcher` | `polybot.examples.btc_5m:create` | bot-managed | absent | non-trading |
 | `dynamic-random-hold-example` | `polybot.examples.example_dynamic_random_hold:create` | bot-managed | absent | example |
 | `dynamic-wallet-filter-copy-example` | `polybot.examples.example_dynamic_random_hold_wallet_filter_copy:create` | bot-managed | user-configured | example |
-| `node-based-bot` | `api.catalog.node_based.bot:NodeBasedBot` | user-configured | absent | standard |
+| `node-based-bot` | `api.catalog.node_based.bot:NodeBasedBot` | user-configured | user-configured | standard |
 
 `polybot.my_bot:create` is an alias of the winner strategy and is not another
 catalog entry.
+
+The node-based configuration form includes optional **Wallets** alongside
+**Markets**. Both are searchable multi-select fields backed by the API. Wallets
+accept public names and full wallet addresses; market search also accepts numeric
+market IDs, condition IDs and token IDs. Selections save canonical wallet
+addresses and market slugs, not names or search queries. Wallets are followed
+across markets through the independent stream rule; graph wallet-trade triggers
+use the existing runtime event path. Reloading, copying and run snapshots preserve
+selected addresses. Profile labels are fetched for display and need not be saved.
 
 ## Saved Bot and Run
 

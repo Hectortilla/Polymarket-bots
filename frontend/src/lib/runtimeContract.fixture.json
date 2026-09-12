@@ -441,6 +441,8 @@
     "bots": "/api/v1/bots",
     "health": "/api/v1/health",
     "usage": "/api/v1/usage",
+    "walletSearch": "/api/v1/wallets/search",
+    "walletLookup": "/api/v1/wallets/lookup",
     "marketSearch": "/api/v1/markets/search",
     "marketLookup": "/api/v1/markets/lookup",
     "runEvents": "/api/v1/runs/{run_id}/events",

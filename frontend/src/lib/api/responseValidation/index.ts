@@ -1,3 +1,4 @@
+import { isWalletSuggestion, isWalletSearchResults } from "./wallets";
 import { isAccountAction, isAccountStatus } from "$lib/auth/recovery/validation";
 import { isCurrentUser, isLogoutResponse } from "$lib/auth/validation";
 import { client } from "$lib/api/generated/client.gen";
@@ -34,7 +35,7 @@ export async function validateControlPlaneResponse(data: unknown): Promise<void>
 }
 
 function isListItem(value: unknown): boolean {
-  return isRecord(value) && (isDefinition(value) || isBot(value) || isRun(value) || isMarketSuggestion(value));
+  return isRecord(value) && (isDefinition(value) || isBot(value) || isRun(value) || isMarketSuggestion(value) || isWalletSuggestion(value));
 }
 
 function isObjectResponse(value: Record<string, unknown>): boolean {
@@ -51,6 +52,7 @@ function isObjectResponse(value: Record<string, unknown>): boolean {
     isRunEvent(value) ||
     isHealthResponse(value) ||
     isMarketSearchResults(value) ||
+    isWalletSearchResults(value) ||
     isGraphPreviewResponse(value)
   );
 }

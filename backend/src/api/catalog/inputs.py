@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from polybot.framework.config.constants import (
     DEFAULT_DATA_TRADES_BUDGET,
     DEFAULT_EVENT_MAX_AGE_MS,
@@ -14,14 +12,10 @@ from polybot.framework.config.constants import (
     DEFAULT_PAPER_PORTFOLIO_USDC,
 )
 from polybot.framework.streams import StreamRelation, StreamRule
-from polybot.framework.wallets import (
-    WALLET_ADDRESS_SCHEMA_PATTERN,
-    validate_wallet_address,
-)
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.catalog.values import WIDGET_SCHEMA_KEY, WidgetKind
-from api.limits.policy import PAPER_BETA
+from api.wallet_selection import MAX_SELECTED_WALLETS, WalletAddress
 from api.market_selection import MAX_SELECTED_MARKETS, MarketSlug
 from api.runs.contracts import (
     DataTradesBudget,
@@ -31,16 +25,6 @@ from api.runs.contracts import (
     PositiveDecimal,
     RunName,
 )
-
-type WalletAddress = Annotated[
-    str,
-    StringConstraints(
-        strict=True,
-        strip_whitespace=True,
-        pattern=WALLET_ADDRESS_SCHEMA_PATTERN,
-    ),
-    AfterValidator(validate_wallet_address),
-]
 
 
 class PaperLaunchInputs(BaseModel):
@@ -92,7 +76,7 @@ class PaperLaunchInputs(BaseModel):
 class WalletPaperLaunchInputs(PaperLaunchInputs):
     wallet_addresses: tuple[WalletAddress, ...] = Field(
         min_length=1,
-        max_length=PAPER_BETA.followed_wallets_per_run,
+        max_length=MAX_SELECTED_WALLETS,
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.WALLET_ADDRESSES.value},
     )
 
@@ -113,11 +97,20 @@ class NodeBasedLaunchInputs(PaperLaunchInputs):
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.MARKET_SLUGS.value},
     )
 
+    wallet_addresses: tuple[WalletAddress, ...] = Field(
+        default=(),
+        title="Wallets",
+        description="Follow these wallets across markets. Wallet trade triggers receive their activity.",
+        max_length=MAX_SELECTED_WALLETS,
+        json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.WALLET_ADDRESSES.value},
+    )
+
     def _stream_rules(self) -> tuple[StreamRule, ...]:
         return (
             StreamRule(
                 relation=StreamRelation.INDEPENDENT,
                 market_slugs=self.market_slugs,
+                wallet_addresses=self.wallet_addresses,
             ),
         )
 

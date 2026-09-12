@@ -60,6 +60,22 @@ baselines, movement journals, and settlements in memory. A restart is a new
 paper run; it does not restore the bot, paper portfolio, or followed-wallet
 accounting.
 
+## Browser discovery and saved wallet selection
+
+Market and wallet search use lifespan-owned official SDK adapters, bounded HTTP
+contracts, and a shared frontend multi-select interaction. The frontend debounces
+requests and cancels stale work; the backend resolves identifiers and normalizes
+vendor models. Exact market identifiers become canonical slugs. Public profile
+names and wallet addresses become canonical trading-wallet addresses. A public
+profile lookup may map an owner address to its trading wallet during selection;
+metadata hydration never silently rewrites an existing saved address.
+
+Node-based launch inputs include optional wallets. Saved configurations and run
+snapshots retain those addresses in the existing independent `stream_rules`;
+worker conversion and runtime wallet watching consume the same rules. Selected
+wallets are watched across markets, alongside configured market feeds. No new
+persistence schema, activity transport, or live-trading behavior is introduced.
+
 ## Official Client Boundary
 
 Polymarket network adapters must be built on official Polymarket Python

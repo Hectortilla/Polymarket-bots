@@ -22,8 +22,8 @@ export const GRAPH_PREVIEW_COPY = {
 } as const;
 
 export const MARKET_SELECTOR_COPY = {
-  PLACEHOLDER: "Search markets by name or topic…",
-  NO_RESULTS: "No available markets found. Try a different name or topic.",
+  PLACEHOLDER: "Search markets by name, topic, or ID…",
+  NO_RESULTS: "No available markets found. Try a different name, topic, or ID.",
 
   SEARCH_ERROR: "Search is unavailable. Please try again.",
   RETRY_SEARCH: "Retry search",

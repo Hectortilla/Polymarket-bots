@@ -23,7 +23,7 @@ export function launchInputsFromConfig(descriptor: BotDefinitionDescriptor, conf
         return [name, [...new Set(config.stream_rules.flatMap((rule) => rule.market_slugs ?? []))]];
       }
       if (widget === WIDGET_KIND.WALLET_ADDRESSES) {
-        return [name, config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? [])];
+        return [name, [...new Set(config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []))]];
       }
       return [name, config[name as keyof PaperRunConfig]];
     }),

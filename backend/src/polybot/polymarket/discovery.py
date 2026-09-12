@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import re
+from http import HTTPStatus
 from dataclasses import replace
 
 from polybot.polymarket.client_lifecycle import PublicClientLease
@@ -14,9 +16,10 @@ from polybot.polymarket.errors import (
 from polybot.polymarket.gamma import _GammaMarketSourceClient
 from polybot.polymarket.normalization.discovery import normalize_suggestion
 
-from polymarket import AsyncPublicClient, PolymarketError
+from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
 
-DISCOVERY_TIMEOUT_SECONDS = 5
+from polybot.polymarket.discovery_policy import DISCOVERY_TIMEOUT_SECONDS
+
 ACTIVE_SEARCH_EVENTS = "active"
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,10 @@ class MarketDiscovery:
     async def search(self, query: str, limit: int) -> MarketSearchResults:
         try:
             async with asyncio.timeout(DISCOVERY_TIMEOUT_SECONDS):
+                if re.fullmatch(r"0x[a-fA-F0-9]{64}", query):
+                    return await self._search_identifier(query, condition=True)
+                if re.fullmatch(r"[0-9]+", query):
+                    return await self._search_identifier(query, condition=False)
                 page = await self._lease.client.search(
                     q=query,
                     events_status=ACTIVE_SEARCH_EVENTS,
@@ -86,3 +93,56 @@ class MarketDiscovery:
 
     async def close(self) -> None:
         await self._lease.close()
+
+    async def _search_identifier(
+        self, query: str, *, condition: bool
+    ) -> MarketSearchResults:
+        # Token IDs can exceed Gamma's integer range; query that index first.
+        paginator = (
+            self._lease.client.list_markets(condition_ids=(query,), page_size=2)
+            if condition
+            else self._lease.client.list_markets(clob_token_ids=(query,), page_size=2)
+        )
+        page = await paginator.first_page()
+        if page.has_more or len(page.items) > 1:
+            raise MarketDataError(
+                MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                "market ID lookup is ambiguous",
+            )
+        sources = list(page.items)
+        for source in sources:
+            matches = (
+                (source.condition_id or "").lower() == query.lower()
+                if condition
+                else any(
+                    token.token_id == query
+                    for token in (source.outcomes.yes, source.outcomes.no)
+                )
+            )
+            if not matches:
+                raise MarketDataError(
+                    MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                    "market ID lookup returned another market",
+                )
+        if not sources and not condition:
+            try:
+                source = await self._lease.client.get_market(id=query)
+            except RequestRejectedError as error:
+                if error.status != HTTPStatus.NOT_FOUND:
+                    raise
+            else:
+                if source.id != query:
+                    raise MarketDataError(
+                        MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
+                        "market ID lookup returned another market",
+                    )
+                sources.append(source)
+        choices = tuple(
+            normalize_suggestion(
+                source, event_title=source.events[0].title if source.events else None
+            )
+            for source in sources
+        )
+        return MarketSearchResults(
+            tuple(choice for choice in choices if choice.is_open_for_trading), False
+        )

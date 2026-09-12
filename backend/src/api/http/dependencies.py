@@ -2,11 +2,12 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
 from polybot.polymarket.discovery import MarketDiscovery
+from polybot.polymarket.wallet_discovery import WalletDiscovery
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -41,6 +42,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     owned_engine: AsyncEngine | None = None
     owned_redis: Redis | None = None
     owned_discovery: MarketDiscovery | None = None
+    owned_wallet_discovery: WalletDiscovery | None = None
     if not hasattr(app.state, "session_factory"):
         owned_engine = create_async_engine(
             app.state.startup_settings.database_url.get_secret_value(),
@@ -63,20 +65,24 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not hasattr(app.state, "market_discovery"):
         owned_discovery = MarketDiscovery()
         app.state.market_discovery = owned_discovery
+    if not hasattr(app.state, "wallet_discovery"):
+        owned_wallet_discovery = WalletDiscovery()
+        app.state.wallet_discovery = owned_wallet_discovery
     try:
         if startup_settings is not None and startup_settings.seed_development_account:
             async with app.state.session_factory() as session:
                 await DevelopmentAccountStore(session).ensure_account()
         yield
     finally:
-        try:
-            if owned_discovery is not None:
-                await owned_discovery.close()
-        finally:
-            if owned_redis is not None:
-                await owned_redis.aclose()
+        async with AsyncExitStack() as cleanup:
             if owned_engine is not None:
-                await owned_engine.dispose()
+                cleanup.push_async_callback(owned_engine.dispose)
+            if owned_redis is not None:
+                cleanup.push_async_callback(owned_redis.aclose)
+            if owned_wallet_discovery is not None:
+                cleanup.push_async_callback(owned_wallet_discovery.close)
+            if owned_discovery is not None:
+                cleanup.push_async_callback(owned_discovery.close)
 
 
 def _default_launcher() -> RunLauncher:
@@ -101,6 +107,10 @@ def _market_discovery(request: Request) -> MarketDiscovery:
     return request.app.state.market_discovery
 
 
+def _wallet_discovery(request: Request) -> WalletDiscovery:
+    return request.app.state.wallet_discovery
+
+
 SessionFactoryDependency = Annotated[
     async_sessionmaker[AsyncSession],
     Depends(_session_factory),
@@ -108,3 +118,6 @@ SessionFactoryDependency = Annotated[
 RedisDependency = Annotated[Redis, Depends(_redis)]
 LauncherDependency = Annotated[RunLauncher, Depends(_launcher)]
 MarketDiscoveryDependency = Annotated[MarketDiscovery, Depends(_market_discovery)]
+
+
+WalletDiscoveryDependency = Annotated[WalletDiscovery, Depends(_wallet_discovery)]

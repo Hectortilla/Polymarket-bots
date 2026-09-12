@@ -1,3 +1,4 @@
+import { isWalletSuggestion, isWalletSearchResults } from "./wallets";
 import { isAccountAction, isAccountStatus } from "$lib/auth/recovery/validation";
 import { CONTENT_TYPE_HEADER, HTTP_STATUS, HTTP_METHOD, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { isAccountUsage } from "$lib/limits/validation";
@@ -74,6 +75,8 @@ function isExpectedOperationResponse(
   if (url === paths.logout) return isLogoutResponse(data);
   if ([paths.currentUser, paths.login, paths.register].includes(url)) return isCurrentUser(data);
   if (url === paths.graphPreview) return isRecord(data) && isGraphPreviewResponse(data);
+  if (url === paths.walletSearch) return isRecord(data) && isWalletSearchResults(data);
+  if (url === paths.walletLookup) return isArrayOf(data, isWalletSuggestion);
   if (url === paths.marketSearch) return isRecord(data) && isMarketSearchResults(data);
   if (url === paths.marketLookup) return isArrayOf(data, isMarketSuggestion);
   if (url === paths.botDefinitions) return isArrayOf(data, isDefinition);

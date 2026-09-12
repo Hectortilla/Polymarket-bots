@@ -5,6 +5,7 @@
 
   import type { BotDefinitionDescriptor } from "$lib/api/generated";
   import { LAUNCH_FORM_COPY } from "./copy";
+  import WalletSelector from "./WalletSelector.svelte";
   import MarketSelector from "./MarketSelector.svelte";
   import { WIDGET_KIND, type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
   import { fieldLabel, isWideLaunchField, selectionExplanation } from "$lib/catalog/schema/presentation";
@@ -86,16 +87,6 @@
     onchange?.(inputs);
   }
 
-  function updateList(name: string, value: string): void {
-    update(
-      name,
-      value
-        .split(/[\n,]/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    );
-  }
-
   function updateJson(name: string, value: string): void {
     try {
       update(name, JSON.parse(value));
@@ -172,15 +163,16 @@
               disabled={busy}
             />
           {:else if widget === WIDGET_KIND.WALLET_ADDRESSES}
-            <textarea
-              id={`${labelId}-input`}
-              rows="3"
-              value={Array.isArray(inputs[name]) ? inputs[name].join("\n") : ""}
-              oninput={(event) => updateList(name, event.currentTarget.value)}
-              placeholder="One wallet address per line"
-              aria-labelledby={labelId}
-              aria-describedby={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
-              aria-invalid={fieldIssues.length > 0}></textarea>
+            <WalletSelector
+              value={Array.isArray(inputs[name])
+                ? inputs[name].filter((value: unknown): value is string => typeof value === "string")
+                : []}
+              onchange={(addresses) => update(name, addresses)}
+              {labelId}
+              descriptionId={fieldDescription(helperId, hasHelper, errorId, fieldIssues.length > 0)}
+              invalid={fieldIssues.length > 0}
+              disabled={busy}
+            />
           {:else if widget === WIDGET_KIND.STREAM_RULES}
             <textarea
               id={`${labelId}-input`}

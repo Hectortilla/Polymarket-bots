@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { searchMarkets, type BotDefinitionDescriptor } from "$lib/api/generated";
+import { searchWallets, searchMarkets, type BotDefinitionDescriptor } from "$lib/api/generated";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import LaunchForm from "./LaunchForm.svelte";
 import { LAUNCH_FORM_COPY } from "./copy";
@@ -9,7 +9,12 @@ import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } 
 
 const WALLET = "0x0000000000000000000000000000000000000001";
 
-vi.mock("$lib/api/generated", () => ({ searchMarkets: vi.fn(), lookupMarkets: vi.fn() }));
+vi.mock("$lib/api/generated", () => ({
+  searchMarkets: vi.fn(),
+  lookupMarkets: vi.fn(),
+  searchWallets: vi.fn(),
+  lookupWallets: vi.fn(),
+}));
 
 afterEach(cleanup);
 
@@ -59,9 +64,12 @@ describe("LaunchForm", () => {
     await fireEvent.input(screen.getByLabelText("Max order size"), {
       target: { value: "0001.2300" },
     });
-    await fireEvent.input(screen.getByLabelText("Wallet addresses"), {
-      target: { value: WALLET },
-    });
+    vi.mocked(searchWallets).mockResolvedValue({
+      data: { wallets: [{ address: WALLET, name: "Trader" }], has_more: false },
+    } as Awaited<ReturnType<typeof searchWallets>>);
+    await fireEvent.focus(screen.getByLabelText("Wallet addresses"));
+    await fireEvent.input(screen.getByLabelText("Wallet addresses"), { target: { value: WALLET } });
+    await fireEvent.click(await screen.findByRole("option", { name: /Trader/ }));
     expect(screen.queryByLabelText("Market slugs")).toBeNull();
 
     await fireEvent.click(screen.getByRole("button", { name: LAUNCH_FORM_COPY.SAVE_BOT }));
@@ -145,9 +153,12 @@ describe("LaunchForm", () => {
       target: { value: "btc-updown-5m-test" },
     });
     await fireEvent.click(await screen.findByRole("option", { name: /Bitcoin up or down/ }));
-    await fireEvent.input(screen.getByLabelText("Wallet addresses"), {
-      target: { value: WALLET },
-    });
+    vi.mocked(searchWallets).mockResolvedValue({
+      data: { wallets: [{ address: WALLET, name: "Trader" }], has_more: false },
+    } as Awaited<ReturnType<typeof searchWallets>>);
+    await fireEvent.focus(screen.getByLabelText("Wallet addresses"));
+    await fireEvent.input(screen.getByLabelText("Wallet addresses"), { target: { value: WALLET } });
+    await fireEvent.click(await screen.findByRole("option", { name: /Trader/ }));
     await fireEvent.input(screen.getByLabelText("Stream rules"), {
       target: {
         value: JSON.stringify([

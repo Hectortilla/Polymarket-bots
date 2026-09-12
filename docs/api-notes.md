@@ -120,6 +120,50 @@ A live SDK request could not be verified from this environment due to a TLS
 hostname mismatch for `gamma-api.polymarket.com`. TLS verification was not
 disabled. Adapter and endpoint tests use deterministic SDK-shaped fixtures.
 
+### Wallet discovery and market identifier verification (2026-09-12)
+
+Verified through **PolymarketDocs MCP** before integration:
+[public search](https://docs.polymarket.com/api-reference/search/search-markets-events-and-profiles),
+[public profiles](https://docs.polymarket.com/api-reference/profiles/get-public-profile-by-wallet-address),
+[market by ID](https://docs.polymarket.com/api-reference/markets/get-market-by-id),
+and [market filters](https://docs.polymarket.com/api-reference/markets/list-markets).
+Inspected the pinned `polymarket-client==0.1.0b17` async client, profile/search
+models and Gamma market models. All operations use that SDK; no direct transport
+exception or dependency change is needed.
+
+Wallet text queries use `search(search_profiles=True, search_tags=False)` and
+consume one page. Profile `proxyWallet` is exposed by the SDK as `wallet`;
+normalization validates the address and returns `{address, name}`. Missing or
+invalid identities are skipped in text results; explicit malformed profile
+lookups fail closed. Addresses are deduplicated and lowercased. A private display
+name is replaced by the public pseudonym when present.
+
+Full wallet addresses use `get_public_profile(address)`, whose official contract
+accepts a proxy wallet or user address. Selection resolves to the returned trading
+wallet; a confirmed missing profile permits the explicit valid address without a
+label. Transport failures never become address fallback. Saved-address hydration
+retains the requested identity even if profile resolution points elsewhere.
+The documented exact wallet identifier is a full address; no public numeric
+profile/user-ID lookup is documented or implemented. Names/numeric text otherwise
+use the official text search without a guarantee of exact profile-ID matching.
+
+Market numeric queries first use `list_markets(clob_token_ids=...)`, then
+`get_market(id=...)` when no token matches. This avoids Gamma rejecting a large
+token ID as an invalid integer. Condition IDs use
+`list_markets(condition_ids=...)`. Responses must match the requested identifier;
+ambiguous matches fail closed. Existing normalized trading availability applies
+to exact results as well as text results. Both selectors have 2–200 character
+queries, at most 20 results (default 12), and a five-second adapter timeout.
+Wallet hydration is bounded by the existing followed-wallet allowance. The new
+HTTP routes use authentication, private response caching and the existing
+expensive-request rate budget. Public names are never runtime selectors.
+
+Live read-only SDK smoke checks succeeded on September 12 for market/profile
+text search, exact numeric market/condition/token IDs, wallet addresses and saved
+wallet hydration. The earlier September 7 TLS limitation did not recur. The live
+token-ID check caught Gamma's integer rejection and informed the lookup order;
+adapter tests cover this case without introducing direct HTTP calls.
+
 Gamma API: `https://gamma-api.polymarket.com`
 
 - Market and event discovery.

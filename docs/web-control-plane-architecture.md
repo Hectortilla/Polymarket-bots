@@ -528,6 +528,8 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 
 - `GET /bot-definitions` — all public descriptors in display order.
 - `GET /usage` — authenticated account allowances and current owned resource counts.
+- `GET /wallets/search?q=...&limit=...` — find public profiles or an exact wallet address.
+- `POST /wallets/lookup` — hydrate selected wallet addresses without rewriting them.
 - `GET /markets/search?q=&limit=` — bounded active market suggestions via the official SDK.
 - `POST /markets/lookup` — read-only exact metadata lookup for selected slugs.
 - `POST /bots` — validate and atomically save settings and graph.
@@ -559,9 +561,24 @@ The route prefix `/api/v1` is defined here once. The current API has only:
 Both event routes require the run to exist and return the normal small `404`
 when it does not.
 
+Wallet discovery adds `GET /wallets/search?q=...&limit=...` and
+`POST /wallets/lookup` with `{addresses: [...]}`. Search returns
+`{wallets: [{address, name}], has_more}`; lookup returns the wallet list. `name`
+is nullable. Queries use the same bounds and timeout as market discovery;
+lookup accepts 1 through `MAX_SELECTED_WALLETS` validated addresses. Both routes
+are authenticated and charged to the expensive-request budget, with safe 503
+responses on upstream failure. Search resolves owner addresses to trading wallets;
+hydration preserves saved identities. The frontend shares debounce, cancellation,
+keyboard navigation, removable selections, and metadata hydration with Markets.
+Node-bot inputs expose optional `wallet_addresses`; configuration saves normalized
+addresses in the independent stream rule, and immutable run snapshots feed the
+existing worker's wallet watching. No migration is required.
+
 Market discovery uses a lifespan-owned async SDK adapter. Search accepts a
 trimmed 2–200 character query and 1–20 results (default 12), fetches one upstream
-page with a five-second timeout, and returns `{markets, has_more}`. Each market
+page with a five-second timeout, and returns `{markets, has_more}`. Numeric
+market IDs, condition IDs, and token IDs take exact SDK lookup paths and return
+canonical slugs under the same trading-availability checks. Each market
 contains `slug`, `condition_id`, `question`, nullable `event_title` and
 `end_date`, and `is_open_for_trading`. Lookup accepts a nonempty `{slugs: [...]}` bounded by `MAX_SELECTED_MARKETS`,
 deduplicates trimmed slugs, omits missing markets, and retains unavailable

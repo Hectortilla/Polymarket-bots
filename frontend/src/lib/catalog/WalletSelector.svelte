@@ -1,6 +1,6 @@
 <script lang="ts">
   import SelectionSearch from "./SelectionSearch.svelte";
-  import { marketSelection } from "./marketSelection";
+  import { walletSelection } from "./walletSelection";
   let props: {
     value: string[];
     onchange: (values: string[]) => void;
@@ -11,4 +11,4 @@
   } = $props();
 </script>
 
-<SelectionSearch source={marketSelection} {...props} />
+<SelectionSearch source={walletSelection} {...props} />

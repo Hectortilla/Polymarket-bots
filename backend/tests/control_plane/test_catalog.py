@@ -216,7 +216,7 @@ def test_node_based_definition_owns_graph_catalog_starter_and_market_rule() -> N
     )
 
     assert descriptor.market_selection is SelectionMode.USER_CONFIGURED
-    assert descriptor.wallet_selection is SelectionMode.ABSENT
+    assert descriptor.wallet_selection is SelectionMode.USER_CONFIGURED
     assert "graph" not in descriptor.input_schema["properties"]
     assert descriptor.graph_catalog == GRAPH_NODE_CATALOG
     assert descriptor.starter_graph == STARTER_NODE_GRAPH

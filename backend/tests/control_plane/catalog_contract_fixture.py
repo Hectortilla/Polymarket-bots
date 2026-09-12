@@ -51,11 +51,13 @@ from api.catalog.values import (
     SelectionMode,
     WidgetKind,
 )
-from api.http.market_contracts import (
-    DEFAULT_MARKET_SEARCH_LIMIT,
-    MAX_MARKET_SEARCH_LENGTH,
-    MAX_MARKET_SEARCH_LIMIT,
-    MIN_MARKET_SEARCH_LENGTH,
+
+from api.wallet_selection import MAX_SELECTED_WALLETS
+from api.http.search_contracts import (
+    MIN_DISCOVERY_SEARCH_LENGTH,
+    MAX_DISCOVERY_SEARCH_LENGTH,
+    DEFAULT_DISCOVERY_SEARCH_LIMIT,
+    MAX_DISCOVERY_SEARCH_LIMIT,
 )
 from api.market_selection import MAX_SELECTED_MARKETS
 
@@ -88,11 +90,18 @@ def frontend_catalog_contract() -> dict[str, object]:
         "maximumParameters": MAX_GRAPH_PARAMETERS,
         "maximumParameterNameLength": MAX_PARAMETER_NAME_LENGTH,
         "marketSearch": {
-            "minimumQueryLength": MIN_MARKET_SEARCH_LENGTH,
-            "maximumQueryLength": MAX_MARKET_SEARCH_LENGTH,
-            "defaultLimit": DEFAULT_MARKET_SEARCH_LIMIT,
-            "maximumLimit": MAX_MARKET_SEARCH_LIMIT,
+            "minimumQueryLength": MIN_DISCOVERY_SEARCH_LENGTH,
+            "maximumQueryLength": MAX_DISCOVERY_SEARCH_LENGTH,
+            "defaultLimit": DEFAULT_DISCOVERY_SEARCH_LIMIT,
+            "maximumLimit": MAX_DISCOVERY_SEARCH_LIMIT,
             "maximumSelections": MAX_SELECTED_MARKETS,
+        },
+        "walletSearch": {
+            "minimumQueryLength": MIN_DISCOVERY_SEARCH_LENGTH,
+            "maximumQueryLength": MAX_DISCOVERY_SEARCH_LENGTH,
+            "defaultLimit": DEFAULT_DISCOVERY_SEARCH_LIMIT,
+            "maximumLimit": MAX_DISCOVERY_SEARCH_LIMIT,
+            "maximumSelections": MAX_SELECTED_WALLETS,
         },
         "widgetSchemaKey": WIDGET_SCHEMA_KEY,
         "graphFieldPathSeparator": GRAPH_FIELD_PATH_SEPARATOR,

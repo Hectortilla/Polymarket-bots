@@ -2126,6 +2126,8 @@ export type ValidationError = {
  */
 export type ValuationStatus = 'fresh' | 'stale' | 'unavailable';
 
+export type WalletAddress = string;
+
 /**
  * WalletChartPayload
  */
@@ -2169,6 +2171,44 @@ export type WalletChartPointPayload = {
      * Wallet
      */
     wallet: string;
+};
+
+/**
+ * WalletLookupRequest
+ */
+export type WalletLookupRequest = {
+    /**
+     * Addresses
+     */
+    addresses: Array<WalletAddress>;
+};
+
+/**
+ * WalletSearchResults
+ */
+export type WalletSearchResults = {
+    /**
+     * Has More
+     */
+    has_more: boolean;
+    /**
+     * Wallets
+     */
+    wallets: Array<WalletSuggestion>;
+};
+
+/**
+ * WalletSuggestion
+ */
+export type WalletSuggestion = {
+    /**
+     * Address
+     */
+    address: string;
+    /**
+     * Name
+     */
+    name: string | null;
 };
 
 /**
@@ -3626,3 +3666,96 @@ export type ReadUsageResponses = {
 };
 
 export type ReadUsageResponse = ReadUsageResponses[keyof ReadUsageResponses];
+
+export type LookupWalletsData = {
+    body: WalletLookupRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/wallets/lookup';
+};
+
+export type LookupWalletsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type LookupWalletsError = LookupWalletsErrors[keyof LookupWalletsErrors];
+
+export type LookupWalletsResponses = {
+    /**
+     * Response Lookup Wallets
+     *
+     * Successful Response
+     */
+    200: Array<WalletSuggestion>;
+};
+
+export type LookupWalletsResponse = LookupWalletsResponses[keyof LookupWalletsResponses];
+
+export type SearchWalletsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Q
+         */
+        q: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/wallets/search';
+};
+
+export type SearchWalletsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Too Many Requests
+     */
+    429: ErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type SearchWalletsError = SearchWalletsErrors[keyof SearchWalletsErrors];
+
+export type SearchWalletsResponses = {
+    /**
+     * Successful Response
+     */
+    200: WalletSearchResults;
+};
+
+export type SearchWalletsResponse = SearchWalletsResponses[keyof SearchWalletsResponses];

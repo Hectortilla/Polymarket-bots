@@ -41,11 +41,19 @@ market to its token ID; do not assume every market uses `Yes` and `No`.
 
 ## Rules For Bot Files
 
-In the web bot builder, the Markets selector searches by name or topic and
-stores exact slugs in the existing stream rules. Multiple selections are
+In the web bot builder, the Markets selector searches by name, topic, numeric
+market ID, condition ID, or token ID and stores exact slugs in the existing stream rules. Multiple selections are
 supported. Newly added selections must resolve to available markets when the
 bot is saved; existing unavailable selections remain visible and removable.
 This UI discovery does not change CLI selectors or dynamic bot-generated slugs.
+
+The Wallets selector searches public names or full `0x` wallet addresses and
+stores normalized trading-wallet addresses in `stream_rules`. Node-based bots
+may select wallets in addition to their required markets. The independent rule
+watches those wallets across markets, so `on_wallet_trade` graph triggers can
+receive their activity. Public profile labels are display metadata and are
+rehydrated on reload; a missing label does not erase a selected address.
+Selecting wallets supplies events; trading still depends on the graph's actions.
 
 - Keep each bot in one short file.
 - Put strategy decisions in event hooks.

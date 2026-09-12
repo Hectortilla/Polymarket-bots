@@ -30,6 +30,7 @@ def test_complete_snapshots_survive_edits_queueing_and_duplicate_launch(
                     {
                         "name": "original",
                         "market_slugs": ["fixture"],
+                        "wallet_addresses": ["0x" + "ab" * 20],
                         "max_order_size": "2.500",
                     }
                 )
@@ -46,7 +47,21 @@ def test_complete_snapshots_survive_edits_queueing_and_duplicate_launch(
                     bot, launch_key=launch_key
                 )
                 # Build an independent edited graph; typed graph nodes are frozen.
-                edited = bot.config.model_copy(update={"name": "edited"}, deep=True)
+                edited = bot.config.model_copy(
+                    update={
+                        "name": "edited",
+                        "stream_rules": CATALOG[NODE_BASED_DEFINITION_ID]
+                        .parse_config(
+                            {
+                                "name": "edited",
+                                "market_slugs": ["fixture"],
+                                "wallet_addresses": ["0x" + "cd" * 20],
+                            }
+                        )
+                        .stream_rules,
+                    },
+                    deep=True,
+                )
                 edited_graph = graph.model_dump(mode="json")
                 edited_graph["nodes"][1]["position"]["x"] += 42
                 edited.graph = NodeGraph.model_validate(edited_graph)
@@ -79,7 +94,13 @@ def test_copying_configuration_creates_an_independent_bot(limits_services):
             graph = NodeGraph.model_validate(threshold_buy_graph())
             config = (
                 CATALOG[NODE_BASED_DEFINITION_ID]
-                .parse_config({"name": "source", "market_slugs": ["fixture"]})
+                .parse_config(
+                    {
+                        "name": "source",
+                        "market_slugs": ["fixture"],
+                        "wallet_addresses": ["0x" + "ab" * 20],
+                    }
+                )
                 .model_copy(update={"graph": graph}, deep=True)
             )
             async with sessions() as session:

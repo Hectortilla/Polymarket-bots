@@ -16,6 +16,8 @@ from api.http.routes.paths import (
     GRAPH_PREVIEW_PATH,
     MARKET_LOOKUP_PATH,
     MARKET_SEARCH_PATH,
+    WALLET_SEARCH_PATH,
+    WALLET_LOOKUP_PATH,
     READ_USAGE_OPERATION_ID,
     USAGE_PATH,
     api_route_path,
@@ -31,7 +33,16 @@ from api.operations.http import ADMISSION_REJECTION_SCOPE_KEY
 
 EXPENSIVE_MUTATION_METHODS = frozenset({HTTPMethod.POST, HTTPMethod.PATCH})
 EXPENSIVE_READ_PATHS = frozenset(
-    map(api_route_path, (MARKET_SEARCH_PATH, MARKET_LOOKUP_PATH, GRAPH_PREVIEW_PATH))
+    map(
+        api_route_path,
+        (
+            MARKET_SEARCH_PATH,
+            MARKET_LOOKUP_PATH,
+            WALLET_SEARCH_PATH,
+            WALLET_LOOKUP_PATH,
+            GRAPH_PREVIEW_PATH,
+        ),
+    )
 )
 RESOURCE_STATUS = {
     ResourceLimitCode.USER_ALLOWANCE: status.HTTP_429_TOO_MANY_REQUESTS,
