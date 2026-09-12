@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from polybot.framework.config.models import BotConfig
 from polybot.persistence.json_codec import dumps_json
+
+if TYPE_CHECKING:
+    from polybot.framework.config.models import BotConfig
+
 
 TARGET_IDENTITY_KIND_FIELD = "kind"
 TARGET_IDENTITY_BOT_SPEC_FIELD = "spec"

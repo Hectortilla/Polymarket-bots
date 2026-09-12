@@ -14,7 +14,7 @@ from scripts.wallet_scan_report import (
 def test_scan_record_round_trip_and_sort_fields_preserve_types():
     record = WalletScanRecord(
         wallet="0x" + "a" * 40,
-        label=WalletVerdict.GOOD,
+        verdict=WalletVerdict.GOOD,
         net_cash_usdc=12.5,
         hedge_score=0.1,
         traded_volume_usdc=20,

@@ -54,7 +54,7 @@ from polybot.recording.contracts.records import (
     RecordedEvent,
 )
 from polybot.recording.contracts.session import SessionIntegrityStatus
-from polybot.recording.serialization.entrypoints import payload_json
+from polybot.recording.serialization.payloads import payload_json
 from polybot.recording.trim_contracts import (
     DEFAULT_TRIM_BACKUP_SUFFIX,
     RecordingTrimError,

@@ -64,18 +64,7 @@ def compute_metrics(
     traded_volume_usdc = sum(row[ACTIVITY_USDC_SIZE_FIELD] for row in aggregate.trades)
     fees = sum(fee_paid(row) for row in aggregate.trades)
     open_value = sum(position[POSITION_CURRENT_VALUE_FIELD] for position in positions)
-    span_hours = max(
-        (
-            (
-                max(aggregate.activity_timestamps_seconds)
-                - min(aggregate.activity_timestamps_seconds)
-            )
-            / 3600
-        )
-        if aggregate.activity_timestamps_seconds
-        else 0,
-        1e-9,
-    )
+    span_hours = _activity_span_hours(aggregate.activity_timestamps_seconds)
     return {
         ACTIVITY_COUNT_METRIC: len(activity),
         TRADE_COUNT_METRIC: len(aggregate.trades),
@@ -177,3 +166,12 @@ def _activity_timestamp_seconds_as_datetime(
 
 def _activity_market_key(row: ActivityRow) -> str:
     return row[CONDITION_ID_FIELD]
+
+
+def _activity_span_hours(activity_timestamps_seconds: list[int]) -> float:
+    span_seconds = (
+        max(activity_timestamps_seconds) - min(activity_timestamps_seconds)
+        if activity_timestamps_seconds
+        else 0
+    )
+    return max(span_seconds / 3600, 1e-9)

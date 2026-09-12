@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import signal
-from collections.abc import Callable
 
+from polybot.framework.lifecycle import install_signal_handlers, set_event_after_seconds
 from polybot.polymarket.public_data.recording import RecordingPublicData
 from polybot.recording.coordinator import RecordingCoordinator
 from polybot.recording.writer import AsyncRecordingWriter
@@ -18,11 +17,11 @@ async def run_until_stopped(
 ) -> None:
     """Run the coordinator until a signal or optional duration ends it."""
     shutdown = asyncio.Event()
-    remove_signal_handlers = install_signal_handlers(shutdown)
+    remove_signal_handlers = install_signal_handlers(shutdown, required=False)
     duration_task = (
         None
         if duration_seconds is None
-        else asyncio.create_task(set_after(duration_seconds, shutdown))
+        else asyncio.create_task(set_event_after_seconds(duration_seconds, shutdown))
     )
     try:
         await coordinator.run(shutdown)
@@ -31,29 +30,6 @@ async def run_until_stopped(
         if duration_task is not None:
             duration_task.cancel()
             await asyncio.gather(duration_task, return_exceptions=True)
-
-
-def install_signal_handlers(shutdown: asyncio.Event) -> Callable[[], None]:
-    """Install best-effort shutdown handlers and return their remover."""
-    loop = asyncio.get_running_loop()
-    installed: list[signal.Signals] = []
-    for signum in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(signum, shutdown.set)
-        except (NotImplementedError, RuntimeError):
-            continue
-        installed.append(signum)
-
-    def remove() -> None:
-        for signum in installed:
-            loop.remove_signal_handler(signum)
-
-    return remove
-
-
-async def set_after(seconds: int, event: asyncio.Event) -> None:
-    await asyncio.sleep(seconds)
-    event.set()
 
 
 async def finish_recording(

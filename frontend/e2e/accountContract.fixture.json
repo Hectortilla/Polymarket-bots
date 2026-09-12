@@ -1,4 +1,12 @@
 {
+  "wallet": {
+    "address": "0xabababababababababababababababababababab",
+    "name": "Browser trader"
+  },
+  "selectorLabels": {
+    "markets": "Markets",
+    "wallets": "Wallets"
+  },
   "mailboxPath": "/api/v1/__test/account-mail",
   "clearLimitsPath": "/api/v1/__test/account-limits",
   "mailboxEmailParameter": "email",

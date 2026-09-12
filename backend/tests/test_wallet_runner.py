@@ -28,6 +28,14 @@ class RecordingBot(BaseBot):
         self.stopped += 1
 
 
+def test_framework_trade_canonicalizes_wallet_before_routing_and_projection():
+    trade = _wallet_trade("source", wallet="0xLEADER")
+    assert trade.wallet == "0xleader"
+    assert trade.is_valid()
+    malformed = replace(trade, wallet=None)
+    assert not malformed.is_valid()
+
+
 def test_runner_dispatches_wallet_trade_once(dummy_context: BotContext) -> None:
     async def run() -> tuple[bool, bool, list[str]]:
         bot = RecordingBot(seen=[])

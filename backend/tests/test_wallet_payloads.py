@@ -1,9 +1,12 @@
+import pytest
 from polybot.polymarket.wallet_activity.fields import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
     ACTIVITY_SIDE_FIELD,
     ACTIVITY_SIZE_FIELD,
+    ACTIVITY_SLUG_FIELD,
     ACTIVITY_TIMESTAMP_FIELD,
+    ACTIVITY_TITLE_FIELD,
     ACTIVITY_TOKEN_ID_FIELD,
     ACTIVITY_TRANSACTION_HASH_FIELD,
     ACTIVITY_TYPE_FIELD,
@@ -117,3 +120,19 @@ def _trade_payload(**overrides: object) -> list[dict[str, object]]:
     }
     payload.update(overrides)
     return [payload]
+
+
+@pytest.mark.parametrize("field", [ACTIVITY_SLUG_FIELD, ACTIVITY_TITLE_FIELD])
+@pytest.mark.parametrize(
+    "value,expected", [(None, None), ("  useful text  ", "useful text"), ("   ", "")]
+)
+def test_optional_activity_text_is_normalized(field, value, expected):
+    assert (
+        normalize_activity_rows(_trade_payload(**{field: value}))[0][field] == expected
+    )
+
+
+@pytest.mark.parametrize("field", [ACTIVITY_SLUG_FIELD, ACTIVITY_TITLE_FIELD])
+@pytest.mark.parametrize("value", [123, True, {}, []])
+def test_optional_activity_text_rejects_non_text(field, value):
+    assert normalize_activity_rows(_trade_payload(**{field: value})) == []

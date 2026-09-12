@@ -9,19 +9,20 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from polybot.cli.arguments import parse_duration_seconds
 from polybot.cli.config import DEFAULT_DOTENV_PATH, load_dotenv, parse_overrides
 from polybot.cli.factories import load_bot
 from polybot.framework.config.mode import BotMode
 from polybot.framework.config.models import BotConfig
 from polybot.recording.archive.paths import RECORDING_ARCHIVE_SUFFIX
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .duration import parse_duration_seconds
 from .identity import bot_target_identity, static_target_identity
 from .planning import StaticStreamPlanProvider
 from .service.recorder import record_markets
-from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_console
+from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE
 
 RECORDING_CONFIG_NAME = "market-recorder"
 DEFAULT_RECORDINGS_DIR = Path("data/recordings")
@@ -89,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     except KeyboardInterrupt:
-        recording_console().print(
+        Console().print(
             Panel.fit(
                 "[bold yellow]Recording interrupted[/]\n"
                 f"[dim]Committed data remains at[/] {output_path}",
@@ -98,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    recording_console().print(
+    Console().print(
         Panel.fit(
             f"[bold green]Recording complete[/]\n[dim]Archive[/] {output_path}",
             border_style=SUCCESS_STYLE,
@@ -203,7 +204,7 @@ def _print_recording_start(
         else f"{duration_seconds:,} seconds",
     )
     details.add_row("Mode", "Resume existing archive" if resume else "New archive")
-    recording_console().print(
+    Console().print(
         Panel(
             details,
             border_style=ACCENT_STYLE,

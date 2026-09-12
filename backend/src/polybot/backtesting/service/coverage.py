@@ -46,19 +46,6 @@ def selected_coverage_gaps(
     return gaps_affecting_markets(records, markets)
 
 
-def activate_bootstrap_blackouts(
-    state: ArchiveMarketState,
-    coverage: ReplayCoverage | None,
-    *,
-    through_ms: int,
-) -> None:
-    """Apply gap starts that predate a replay boundary."""
-    if coverage is None:
-        return
-    for record in coverage.pop_start_records_through(through_ms):
-        state.begin_blackout(record)
-
-
 def advance_bootstrap_coverage(
     state: ArchiveMarketState,
     clock: ReplayClock,
@@ -80,3 +67,16 @@ def advance_bootstrap_coverage(
         )
         if coverage.pop_end_records_through(boundary_ms):
             state.recover_books_at(boundary_ms)
+
+
+def activate_bootstrap_blackouts(
+    state: ArchiveMarketState,
+    coverage: ReplayCoverage | None,
+    *,
+    through_ms: int,
+) -> None:
+    """Apply gap starts that predate a replay boundary."""
+    if coverage is None:
+        return
+    for record in coverage.pop_start_records_through(through_ms):
+        state.begin_blackout(record)

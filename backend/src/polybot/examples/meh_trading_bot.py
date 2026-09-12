@@ -24,6 +24,7 @@ from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolution_tokens import MARKET_RESOLUTION_TOKEN_COUNT
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
+from polybot.framework.position_transition import remaining_long_position_size
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
 
@@ -224,7 +225,7 @@ class MehTradingBot(BaseBot):
                 reason=TAKE_PROFIT_EXIT_REASON,
             )
         )
-        remaining = position.size - fill.filled_size
+        remaining = remaining_long_position_size(position.size, fill.filled_size)
         self._position = (
             None
             if remaining <= 0

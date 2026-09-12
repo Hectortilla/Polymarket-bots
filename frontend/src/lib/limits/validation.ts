@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import type { AccountUsage } from "$lib/api/generated";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { isRecord } from "$lib/valueGuards";
@@ -11,6 +12,8 @@ const USAGE_COUNT_FIELDS = [
 
 export function isAccountUsage(value: unknown): value is AccountUsage {
   if (!isRecord(value) || !isRecord(value.policy)) return false;
+  if (!hasOnlyResponseFields(value, "AccountUsage") || !hasOnlyResponseFields(value.policy, "PaperBetaPolicy"))
+    return false;
   const policy = value.policy;
   return (
     Object.keys(runtimeContract.resourcePolicy).every(

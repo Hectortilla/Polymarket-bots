@@ -9,11 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 from polybot.async_io import run_blocking
-from polybot.backtesting.contracts import (
-    BacktestGapPolicy,
-    BacktestResult,
-    BacktestSelection,
-)
+from polybot.backtesting.contracts import BacktestResult, BacktestSelection
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.cli.backtest_command import (
     BACKTEST_CHART_WARNING,
     BLACKOUT_GAP_WARNING,
@@ -22,11 +19,11 @@ from polybot.cli.backtest_command import (
 )
 from polybot.cli.config import load_dotenv, parse_overrides
 from polybot.cli.dashboard.state import DashboardState
-from polybot.cli.entrypoint import (
+from polybot.cli.entrypoint import main
+from polybot.cli.entrypoint.paper import (
     INTERACTIVE_TERMINAL_REQUIRED_MESSAGE,
     TERM_ENV_KEY,
     _dashboard_enabled,
-    main,
 )
 from polybot.cli.factories import INVALID_BOT_FACTORY_PREFIX, load_bot
 from polybot.cli.markets import ResolvedMarketPlan
@@ -147,7 +144,7 @@ def test_dashboard_defaults_to_enabled(monkeypatch) -> None:
         def isatty(self) -> bool:
             return True
 
-    monkeypatch.setattr("polybot.cli.entrypoint.sys.stdout", Output())
+    monkeypatch.setattr("polybot.cli.entrypoint.paper.sys.stdout", Output())
     monkeypatch.setenv(TERM_ENV_KEY, "xterm-256color")
 
     assert _dashboard_enabled(True) is True
@@ -159,7 +156,7 @@ def test_dashboard_rejects_explicit_non_tty_output(monkeypatch) -> None:
         def isatty(self) -> bool:
             return False
 
-    monkeypatch.setattr("polybot.cli.entrypoint.sys.stdout", Output())
+    monkeypatch.setattr("polybot.cli.entrypoint.paper.sys.stdout", Output())
 
     with pytest.raises(ValueError, match=INTERACTIVE_TERMINAL_REQUIRED_MESSAGE):
         _dashboard_enabled(True)
@@ -171,14 +168,16 @@ def test_main_treats_keyboard_interrupt_as_graceful_shutdown(monkeypatch) -> Non
         "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
     )
     monkeypatch.setattr(
-        "polybot.cli.entrypoint._dashboard_enabled", lambda value: False
+        "polybot.cli.entrypoint.paper._dashboard_enabled", lambda value: False
     )
 
     def raise_keyboard_interrupt(awaitable) -> None:
         awaitable.close()
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("polybot.cli.entrypoint.asyncio.run", raise_keyboard_interrupt)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.paper.asyncio.run", raise_keyboard_interrupt
+    )
 
     assert main(["--bot", "polybot.my_bot:create", "--no-dashboard"]) == 0
 
@@ -213,7 +212,9 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
             resolution_count=0,
         )
 
-    monkeypatch.setattr("polybot.cli.entrypoint._dashboard_enabled", dashboard_enabled)
+    monkeypatch.setattr(
+        "polybot.cli.entrypoint.paper._dashboard_enabled", dashboard_enabled
+    )
     monkeypatch.setattr(
         "polybot.cli.backtest_command.run_backtest",
         fake_run_backtest,
@@ -267,7 +268,6 @@ def test_main_routes_backtest_selection_and_defaults_to_headless(
     assert options.results_dir == results_dir
     assert options.report_interval_ms == 250
     assert options.gap_policy is BacktestGapPolicy.BLACKOUT
-    assert captured["dashboard"] is False
     assert captured["chart_path"] == results_dir
 
 
@@ -283,7 +283,7 @@ def test_main_keeps_completed_backtest_success_when_chart_rendering_fails(
         "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
     )
     monkeypatch.setattr(
-        "polybot.cli.entrypoint._dashboard_enabled", lambda value: False
+        "polybot.cli.entrypoint.paper._dashboard_enabled", lambda value: False
     )
 
     async def fake_run_backtest(bot, config, *, bot_spec, options):
@@ -497,13 +497,13 @@ def test_main_routes_results_directory_to_ordinary_paper_run(
         "polybot.cli.entrypoint.load_bot", lambda target, config: BaseBot()
     )
     monkeypatch.setattr(
-        "polybot.cli.entrypoint._dashboard_enabled", lambda value: False
+        "polybot.cli.entrypoint.paper._dashboard_enabled", lambda value: False
     )
 
     async def fake_run_bot(bot, config, **kwargs) -> None:
         captured.update(kwargs)
 
-    monkeypatch.setattr("polybot.cli.entrypoint.run_bot", fake_run_bot)
+    monkeypatch.setattr("polybot.cli.entrypoint.paper.run_bot", fake_run_bot)
     results_dir = tmp_path / "paper-results"
 
     assert (

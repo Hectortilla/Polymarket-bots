@@ -7,7 +7,6 @@ from pathlib import Path
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.deployment.settings import DEFAULT_STORAGE_PROBE_PATH
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.operations.alerts import ALERT_DEFINITIONS
 from api.operations.alerts.policy import ALERT_OWNER
@@ -20,6 +19,7 @@ from api.operations.observations.contracts import (
 )
 from api.operations.observations.sink import OPERATION_LOG
 from api.operations.state import OperationControlMissing
+from api.operations.storage_policy import DEFAULT_STORAGE_PROBE_PATH
 from api.operations.telemetry.errors import TelemetryDataError
 
 MONITOR_INTERVAL_SECONDS = 5

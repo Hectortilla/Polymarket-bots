@@ -19,6 +19,7 @@ from polybot.framework.context import BotContext
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.framework.markets import market_bucket_slug
+from polybot.framework.position_transition import remaining_long_position_size
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.framework.wallets import normalize_wallet_address
 
@@ -47,7 +48,7 @@ class CopyPositionBook:
         if trade.source_key in self.applied_source_ids:
             return None
         position_key = (
-            normalize_wallet_address(trade.wallet),
+            trade.wallet,
             trade.condition_id,
             trade.token_id,
         )
@@ -73,7 +74,7 @@ class CopyPositionBook:
         if side is Side.BUY:
             updated[decision.position_key] = decision.open_size + filled_size
         else:
-            remaining = max(Decimal("0"), decision.open_size - filled_size)
+            remaining = remaining_long_position_size(decision.open_size, filled_size)
             if remaining:
                 updated[decision.position_key] = remaining
             else:

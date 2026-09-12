@@ -10,7 +10,7 @@ from polybot.recording.contracts.kinds import PayloadKind
 from polybot.recording.contracts.market import MarketIdentity, MarketMetadataPayload
 from polybot.recording.contracts.payloads import event_token_ids
 from polybot.recording.contracts.records import BookCheckpoint, RecordedEvent
-from polybot.recording.serialization.entrypoints import payload_from_json, payload_json
+from polybot.recording.serialization.payloads import payload_from_json, payload_json
 from polybot.recording.trim_contracts import RecordingTrimError
 from polybot.recording.trim_validation.state import (
     checkpoint_matches_projected_state,

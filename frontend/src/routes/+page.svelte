@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { METADATA_COPY } from "$lib/metadataCopy";
+
   import { FORM_COPY } from "$lib/formCopy";
   import { SERVICE_NAME } from "$lib/serviceIdentity";
   import { ONBOARDING_COPY } from "$lib/onboarding/copy";
@@ -91,7 +93,7 @@
       <div class="data-list-header bot-list-header">
         <span aria-hidden="true">{HOME_COLUMN_LABEL.BOT_AND_MARKETS}</span>
         <span aria-hidden="true">{HOME_COLUMN_LABEL.LATEST_RUN}</span>
-        <span aria-hidden="true">{HOME_COLUMN_LABEL.UPDATED}</span>
+        <span aria-hidden="true">{METADATA_COPY.UPDATED}</span>
       </div>
       {#if visibleBots.length === 0}
         <div class="empty-state home-empty-state">
@@ -114,7 +116,7 @@
                   <span class="muted-value">{HOME_COPY.NOT_RUN_YET}</span>
                 {/if}
               </span>
-              <time class="data-list-value" data-label={HOME_COLUMN_LABEL.UPDATED} datetime={bot.updated_at}>
+              <time class="data-list-value" data-label={METADATA_COPY.UPDATED} datetime={bot.updated_at}>
                 {formatTime(bot.updated_at)}
               </time>
             </a>
@@ -138,8 +140,8 @@
           <span>{HOME_COLUMN_LABEL.BOT_NAME}</span>
           <span>{HOME_COLUMN_LABEL.STATUS}</span>
           <span>{HOME_COLUMN_LABEL.EQUITY}</span>
-          <span>{HOME_COLUMN_LABEL.CREATED}</span>
-          <span>{HOME_COLUMN_LABEL.ENDED}</span>
+          <span>{METADATA_COPY.CREATED}</span>
+          <span>{METADATA_COPY.ENDED}</span>
         </div>
         {#each visibleRuns as run (run.id)}
           {@const failureDetail =
@@ -167,10 +169,10 @@
               {run.latest_equity ?? PRESENTATION_COPY.NOT_AVAILABLE}
               {run.equity_status ? ` / ${run.equity_status}` : ""}
             </span>
-            <time class="data-list-value" data-label={HOME_COLUMN_LABEL.CREATED} datetime={run.created_at}>
+            <time class="data-list-value" data-label={METADATA_COPY.CREATED} datetime={run.created_at}>
               {formatTime(run.created_at)}
             </time>
-            <time class="data-list-value" data-label={HOME_COLUMN_LABEL.ENDED} datetime={run.ended_at ?? undefined}>
+            <time class="data-list-value" data-label={METADATA_COPY.ENDED} datetime={run.ended_at ?? undefined}>
               {formatTime(run.ended_at)}
             </time>
           </a>

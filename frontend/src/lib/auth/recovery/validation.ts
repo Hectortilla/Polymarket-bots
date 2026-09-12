@@ -13,7 +13,3 @@ export function isAccountStatus(value: unknown): value is AccountStatus {
     typeof value.verification_required === "boolean"
   );
 }
-
-export function passwordsMatch(password: string, confirmation: string): boolean {
-  return password === confirmation;
-}

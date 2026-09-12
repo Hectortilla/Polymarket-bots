@@ -13,6 +13,8 @@ from api.http.routes.paths import (
     BOT_RUNS_PATH,
     MARKET_SEARCH_PATH,
     USAGE_PATH,
+    WALLET_LOOKUP_PATH,
+    WALLET_SEARCH_PATH,
     api_route_path,
 )
 from api.limits.errors import ResourceLimitCode
@@ -197,7 +199,17 @@ def test_usage_counts_only_owned_terminal_runs(limits_services):
     asyncio.run(scenario())
 
 
-def test_market_search_consumes_expensive_budget_before_discovery(limits_services):
+@pytest.mark.parametrize(
+    "path,method",
+    [
+        (MARKET_SEARCH_PATH, "GET"),
+        (WALLET_SEARCH_PATH, "GET"),
+        (WALLET_LOOKUP_PATH, "POST"),
+    ],
+)
+def test_discovery_consumes_expensive_budget_before_upstream(
+    limits_services, path, method
+):
     async def scenario():
         async with resource_services(limits_services) as (sessions, redis):
             user, _ = await account_bot(sessions)
@@ -208,11 +220,20 @@ def test_market_search_consumes_expensive_budget_before_discovery(limits_service
             app = account_app(sessions, redis, user)
             discovery = AsyncMock()
             app.state.market_discovery = discovery
+            app.state.wallet_discovery = discovery
             async with AsyncClient(
-                transport=ASGITransport(app=app), base_url=TEST_ORIGIN
+                transport=ASGITransport(app=app),
+                base_url=TEST_ORIGIN,
+                headers=TEST_HEADERS,
             ) as client:
-                response = await client.get(
-                    api_route_path(MARKET_SEARCH_PATH), params={"q": "market"}
+                response = await client.request(
+                    method,
+                    api_route_path(path),
+                    **(
+                        {"params": {"q": "market"}}
+                        if method == "GET"
+                        else {"json": {"addresses": ["0x" + "ab" * 20]}}
+                    ),
                 )
             assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
             assert response.json()["code"] == ResourceLimitCode.USER_ALLOWANCE

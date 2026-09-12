@@ -86,14 +86,14 @@
           <label class:boolean-value={parameter.data.scalar_type === GRAPH_SCALAR_TYPE.boolean}
             ><span>{GRAPH_FIELD_COPY.VALUE}</span>
             {#if parameter.data.scalar_type === GRAPH_SCALAR_TYPE.boolean}<input
-                aria-label="Parameter value"
+                aria-label={GRAPH_FIELD_COPY.PARAMETER_VALUE}
                 type="checkbox"
                 checked={parameter.data.value}
                 disabled={readOnly}
                 onchange={(event) => setValue(parameter.id, parameter.data, event.currentTarget)}
               />
             {:else}<input
-                aria-label="Parameter value"
+                aria-label={GRAPH_FIELD_COPY.PARAMETER_VALUE}
                 type="text"
                 value={parameter.data.value}
                 disabled={readOnly}

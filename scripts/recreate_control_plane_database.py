@@ -21,16 +21,40 @@ PROTECTED_DATABASES = frozenset({MAINTENANCE_DATABASE, "template0", "template1"}
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def main(argv: list[str] | None = None) -> int:
+    raw_url = os.getenv(DATABASE_URL_ENV)
+    if raw_url is None:
+        raise SystemExit(f"{DATABASE_URL_ENV} is not configured")
+
+    try:
+        target_url, maintenance_url = _database_urls(raw_url)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--confirm-database",
+        required=True,
+        help="Exact disposable database name to erase",
+    )
+    args = parser.parse_args(argv)
+    if args.confirm_database != target_url.database:
+        raise SystemExit("confirmation must match the exact database name")
+
+    safe_url = target_url.render_as_string(hide_password=True)
+    print(f"Recreating {safe_url}")
+    asyncio.run(_recreate_database(target_url, maintenance_url))
+    _upgrade_to_head(target_url)
+    print("Database recreated and migrated to Alembic head")
+    return 0
+
+
 def _database_urls(raw_url: str) -> tuple[URL, URL]:
     target_url = async_database_url(raw_url)
     database_name = cast(str, target_url.database)
     if database_name.lower() in PROTECTED_DATABASES:
         raise ValueError(f"refusing to recreate protected database {database_name!r}")
     return target_url, target_url.set(database=MAINTENANCE_DATABASE)
-
-
-def _quoted_database_name(database_name: str) -> str:
-    return postgresql.dialect().identifier_preparer.quote_identifier(database_name)
 
 
 async def _recreate_database(target_url: URL, maintenance_url: URL) -> None:
@@ -64,32 +88,8 @@ def _upgrade_to_head(target_url: URL) -> None:
     command.upgrade(config, "head")
 
 
-def main(argv: list[str] | None = None) -> int:
-    raw_url = os.getenv(DATABASE_URL_ENV)
-    if raw_url is None:
-        raise SystemExit(f"{DATABASE_URL_ENV} is not configured")
-
-    try:
-        target_url, maintenance_url = _database_urls(raw_url)
-    except ValueError as error:
-        raise SystemExit(str(error)) from error
-
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--confirm-database",
-        required=True,
-        help="Exact disposable database name to erase",
-    )
-    args = parser.parse_args(argv)
-    if args.confirm_database != target_url.database:
-        raise SystemExit("confirmation must match the exact database name")
-
-    safe_url = target_url.render_as_string(hide_password=True)
-    print(f"Recreating {safe_url}")
-    asyncio.run(_recreate_database(target_url, maintenance_url))
-    _upgrade_to_head(target_url)
-    print("Database recreated and migrated to Alembic head")
-    return 0
+def _quoted_database_name(database_name: str) -> str:
+    return postgresql.dialect().identifier_preparer.quote_identifier(database_name)
 
 
 if __name__ == "__main__":

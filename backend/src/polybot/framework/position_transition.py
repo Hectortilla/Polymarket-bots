@@ -65,6 +65,14 @@ def transition_signed_position(
     return SignedPositionTransition(next_size, next_basis, realized_delta)
 
 
+def remaining_long_position_size(
+    current_size: Decimal, filled_size: Decimal
+) -> Decimal:
+    """Apply a validated sell result without turning a long holding into a short."""
+    _validate_long_position_reduction(current_size, filled_size)
+    return max(ZERO_POSITION_SIZE, current_size - filled_size)
+
+
 def _weighted_basis(
     current_size: Decimal,
     current_average_basis: Decimal | None,
@@ -126,3 +134,18 @@ def _validate_transition_inputs(
         or current_average_basis <= ZERO_POSITION_SIZE
     ):
         raise ValueError("average basis must be positive and finite")
+
+
+def _validate_long_position_reduction(
+    current_size: Decimal, filled_size: Decimal
+) -> None:
+    for name, value in (
+        ("long position size", current_size),
+        ("sell fill size", filled_size),
+    ):
+        if (
+            not isinstance(value, Decimal)
+            or not value.is_finite()
+            or value < ZERO_POSITION_SIZE
+        ):
+            raise ValueError(f"{name} must be finite and nonnegative")

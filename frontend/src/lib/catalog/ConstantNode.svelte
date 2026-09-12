@@ -13,13 +13,13 @@
   import { graphNumberIsValid } from "./numberValue";
 
   import type { GraphConstantNodeData } from "$lib/api/generated";
-  import { constantForNode } from "$lib/catalog/nodeGraph/catalog";
+
   import { constantDataFromInput, constantInput } from "./constantNode";
   import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
   let { id, data }: { id: string; data: GraphConstantNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
-  const descriptor = $derived(constantForNode(editor.catalog, data));
+  const descriptor = $derived(editor.resolver.constantForNode(data));
   const numberInvalid = $derived(data.scalar_type === GRAPH_SCALAR_TYPE.number && !graphNumberIsValid(data.value));
   const inputControl = $derived(constantInput(data.scalar_type));
 

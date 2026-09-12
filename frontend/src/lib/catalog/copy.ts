@@ -1,6 +1,7 @@
 export const LAUNCH_FORM_COPY = { SAVE_BOT: "Save bot", SAVING: "Saving…" } as const;
 
 export const GRAPH_FIELD_COPY = {
+  PARAMETER_VALUE: "Parameter value",
   COMPARISON_OPERATOR: "Comparison operator",
   PARAMETER_TYPE: "Parameter type",
 
@@ -11,6 +12,9 @@ export const GRAPH_FIELD_COPY = {
 } as const;
 
 export const GRAPH_PREVIEW_COPY = {
+  AVAILABLE_CASH: "Available cash",
+  SAMPLE_EVENT: "Sample event",
+  SAMPLE_POSITIONS: "Sample positions",
   UNAVAILABLE: "Unavailable",
 
   PREVIEW: "Preview decisions",
@@ -21,13 +25,13 @@ export const GRAPH_PREVIEW_COPY = {
   ERROR: "Preview failed. Check the sample inputs.",
 } as const;
 
+export const GRAPH_NODE_COPY = { COMPARISON: "Comparison" } as const;
+
 export const MARKET_SELECTOR_COPY = {
   PLACEHOLDER: "Search markets by name, topic, or ID…",
   NO_RESULTS: "No available markets found. Try a different name, topic, or ID.",
 
   SEARCH_ERROR: "Search is unavailable. Please try again.",
-  RETRY_SEARCH: "Retry search",
-  RETRY_DETAILS: "Retry details",
   UNAVAILABLE: "No longer available for trading",
   MISSING: "Market not found — remove or replace this selection",
   LOOKUP_ERROR: "Selected market details could not be loaded. Your selections are preserved.",

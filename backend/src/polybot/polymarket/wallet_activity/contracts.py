@@ -33,7 +33,13 @@ class WalletTradeBatch:
 
 
 class WalletTradeSource(Protocol):
-    def trades(self, wallets: frozenset[str]) -> AsyncIterable[object]: ...
+    """Normalized push trades with a nonempty transaction_hash.
+
+    The stream adapter stamps ingestion time and rebuilds canonical source IDs
+    so polling and push delivery share one deduplication identity.
+    """
+
+    def trades(self, wallets: frozenset[str]) -> AsyncIterable[WalletTradeEvent]: ...
 
 
 class WalletDataClient(Protocol):

@@ -28,16 +28,16 @@ from api.catalog.graphs.contracts.limits import (
     MIN_NODE_GRAPH_NODES,
     NO_INPUT_CONNECTIONS,
 )
-from api.catalog.graphs.contracts.nodes import (
-    GraphBrokerActionNode,
-    GraphComparisonNode,
-    GraphConstantNode,
-    GraphNode,
-    GraphOperationNode,
+from api.catalog.graphs.contracts.nodes import GraphNode
+from api.catalog.graphs.contracts.nodes.actions import GraphBrokerActionNode
+from api.catalog.graphs.contracts.nodes.comparisons import GraphComparisonNode
+from api.catalog.graphs.contracts.nodes.constants import GraphConstantNode
+from api.catalog.graphs.contracts.nodes.operations import GraphOperationNode
+from api.catalog.graphs.contracts.nodes.parameters import (
     GraphParameter,
     GraphParameterNode,
-    GraphTriggerNode,
 )
+from api.catalog.graphs.contracts.nodes.triggers import GraphTriggerNode
 from api.catalog.graphs.operations import (
     OPERATION_DESCRIPTORS,
 )

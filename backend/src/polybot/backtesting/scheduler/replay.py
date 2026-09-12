@@ -136,7 +136,7 @@ class ReplayScheduler:
             ):
                 replayed_event = await self._cursor.pop()
                 if replayed_event is not None:
-                    self._apply_callback_latency_event(replayed_event)
+                    self._apply_event_mutation(replayed_event)
                     handled = True
             if self._next_plan_refresh_ms <= target_ms and (
                 next_event_observed_at_ms is None
@@ -164,10 +164,6 @@ class ReplayScheduler:
         new_slugs = await self._refresh_admissions()
         await self._enqueue_bootstraps(new_slugs)
         self._enqueue_newly_admitted_resolution(mutation)
-
-    def _apply_callback_latency_event(self, event: RecordedEvent) -> None:
-        """Apply an event while a strategy callback owns plan refresh timing."""
-        self._apply_event_mutation(event)
 
     def _apply_event_mutation(
         self,

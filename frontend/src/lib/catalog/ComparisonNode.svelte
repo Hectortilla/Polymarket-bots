@@ -1,17 +1,19 @@
 <script lang="ts">
+  import { GRAPH_NODE_COPY } from "./copy";
+
   import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
   import { Handle, Position } from "@xyflow/svelte";
   import { getContext } from "svelte";
   import NodeIssues from "./NodeIssues.svelte";
 
   import type { GraphComparisonNodeData } from "$lib/api/generated";
-  import { comparisonForNode } from "$lib/catalog/nodeGraph/catalog";
+
   import { GRAPH_NODE_TYPE } from "./graphContracts";
   import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
   let { id, data }: { id: string; data: GraphComparisonNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
-  const descriptor = $derived(comparisonForNode(editor.catalog, data));
+  const descriptor = $derived(editor.resolver.comparisonForNode(data));
   const nodeKind = GRAPH_NODE_TYPE.comparison;
 
   function updateOperator(event: Event): void {
@@ -26,7 +28,7 @@
 
 <section class="functional-node" aria-label={`${descriptor.display_name} ${nodeKind} node`}>
   <header>
-    <strong>Comparison</strong>
+    <strong>{GRAPH_NODE_COPY.COMPARISON}</strong>
     <span>{nodeKind}</span>
   </header>
   <label class="operator-control nodrag nowheel">

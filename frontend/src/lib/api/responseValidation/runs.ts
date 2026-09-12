@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { isUuid, isNonemptyString, isFiniteDateTime, isOneOf, isRecord, isOptionalNullable } from "$lib/valueGuards";
 import { isDecimal } from "$lib/decimalGuards";
@@ -9,6 +10,7 @@ const VALUATION_STATUSES = Object.values(runtimeContract.valuationStatus);
 
 export function isRun(value: Record<string, unknown>): boolean {
   return (
+    hasOnlyResponseFields(value, "RunRead") &&
     isUuid(value.id) &&
     isUuid(value.bot_id) &&
     (value.bot_deleted === undefined || typeof value.bot_deleted === "boolean") &&

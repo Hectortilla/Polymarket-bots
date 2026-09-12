@@ -1,3 +1,4 @@
+import type { PersistedDurableEvent, LiveRunEvent } from "$lib/api/generated";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 
 export function hasOnlyResponseFields(
@@ -10,8 +11,8 @@ export function hasOnlyResponseFields(
 
 export function hasOnlyEventFields(
   value: Record<string, unknown>,
-  kind: string,
-  delivery: "durable" | "live",
+  ...[kind, delivery]:
+    [NonNullable<PersistedDurableEvent["kind"]>, "durable"] | [NonNullable<LiveRunEvent["kind"]>, "live"]
 ): boolean {
   const models = runtimeContract.strictResponseFields[delivery] as Record<string, readonly string[]>;
   const fields = models[kind];

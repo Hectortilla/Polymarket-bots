@@ -25,7 +25,8 @@ from api.runs.failures import (
 from api.runs.lease import ExecutionLease
 from api.runs.lease_policy import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_LEASE_SECONDS
 from api.runs.status import RunStatus
-from api.runs.store import OwnedRunStore, RunStore
+from api.runs.store import RunStore
+from api.runs.store.owned import OwnedRunStore
 
 from .fill_ownership import FillOwnership
 from .runtime import run_claimed_bot

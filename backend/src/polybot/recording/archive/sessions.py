@@ -45,6 +45,27 @@ def select_session(
     raise ArchiveFormatError(f"recording session {normalized_session} does not exist")
 
 
+def mark_interrupted_session(
+    connection: sqlite3.Connection, session_id: int, ended_at_ms: int
+) -> None:
+    """Stage the interrupted state inside the caller-owned transaction."""
+    connection.execute(
+        f"""
+        UPDATE {SESSIONS_TABLE}
+        SET {ArchiveColumn.ENDED_AT_MS} = ?, {ArchiveColumn.CLEAN_CLOSE} = ?, {ArchiveColumn.INTEGRITY_STATUS} = ?,
+            {ArchiveColumn.FAILURE_REASON} = ?
+        WHERE {ArchiveColumn.SESSION_ID} = ?
+        """,
+        (
+            *SessionState.interrupted(
+                ended_at_ms=ended_at_ms,
+                failure_reason=INTERRUPTED_SESSION_REASON,
+            ).database_values(),
+            session_id,
+        ),
+    )
+
+
 def _insert_session(connection: sqlite3.Connection, started_at_ms: int) -> int:
     cursor = connection.execute(
         f"""
@@ -83,21 +104,7 @@ def _recover_interrupted_session(connection: sqlite3.Connection) -> None:
     )
     try:
         connection.execute("BEGIN IMMEDIATE")
-        connection.execute(
-            f"""
-            UPDATE {SESSIONS_TABLE}
-            SET {ArchiveColumn.ENDED_AT_MS} = ?, {ArchiveColumn.CLEAN_CLOSE} = ?, {ArchiveColumn.INTEGRITY_STATUS} = ?,
-                {ArchiveColumn.FAILURE_REASON} = ?
-            WHERE {ArchiveColumn.SESSION_ID} = ?
-            """,
-            (
-                *SessionState.interrupted(
-                    ended_at_ms=ended_at_ms,
-                    failure_reason=INTERRUPTED_SESSION_REASON,
-                ).database_values(),
-                session.session_id,
-            ),
-        )
+        mark_interrupted_session(connection, session.session_id, ended_at_ms)
         connection.commit()
     except sqlite3.Error as error:
         connection.rollback()

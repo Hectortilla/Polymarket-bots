@@ -12,3 +12,5 @@ type MarketSlug = Annotated[
 ]
 
 MAX_SELECTED_MARKETS = PAPER_BETA.tracked_markets_per_run
+
+MIN_SELECTED_MARKETS = 1

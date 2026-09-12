@@ -521,7 +521,6 @@ type.
 All remaining routes require a session except minimal health readiness.
 Resource IDs are scoped to the current owner and return 404 when inaccessible.
 
-
 - `POST /graphs/preview`: validate a draft graph and synthetic event, then return node results and intended orders without any broker submission, persistence, or network reads. Normalize synthetic identifiers and portfolio token IDs at request ingress; reject blank IDs, normalized duplicates and average prices outside the outcome-price range.
 
 The route prefix `/api/v1` is defined here once. The current API has only:
@@ -775,7 +774,6 @@ seed data, not an Alembic migration or a special login endpoint. Seed failures
 abort startup. Ordinary registration, cookies, CSRF, attempt limits and sessions
 continue through the existing auth boundaries.
 
-
 The application uses only
 ASGI client addresses; deploy Uvicorn with proxy headers disabled by default, or
 explicitly trust only a controlled reverse proxy that overwrites forwarded headers.
@@ -928,7 +926,7 @@ only authentication throttle keys. Active browser streams are checked across
 logout, external session revocation and cross-tab switching.
 
 The browser harness uses real PostgreSQL, Redis and auth/resource routes; only
-market discovery and execution delivery use test fixtures. No Polymarket protocol
+market/wallet discovery and execution delivery use test fixtures. No Polymarket protocol
 behavior changed, so a PolymarketDocs check is not required for this slice.
 
 ## Review follow-up — September 2026
@@ -947,8 +945,8 @@ Preview cash and operation scalar defaults have named catalog contracts.
 Backend event payload families and frontend durable-event validators separate
 lifecycle, broker, portfolio, and chart responsibilities behind one event dispatch
 boundary. Response validation checks complete bot configurations and run snapshots,
-including their nested graph. Canvas projections, factories, catalog
-lookup, and connection/port rules have distinct frontend modules. Home, bot
+including their nested graph. Canvas projections and factories have distinct frontend modules; the catalog
+resolver owns lookup and connection/port compatibility. Home, bot
 builder, run detail, chart dashboard, and failure-detail styles live near their
 owners; tokens, shell, reset, controls, and shared primitives remain global.
 
@@ -984,7 +982,6 @@ response completion or disconnect. Redis failures prevent admission; no in-memor
 fallback exists. The runtime's condition registry accepts an optional local cap,
 set by the web worker, and rejects additional unresolved conditions before any
 subscription grows. SDK transport and paper/live contracts remain unchanged.
-
 
 ## Slice 18: durable launch and run recovery
 
@@ -1189,3 +1186,27 @@ placeholders and testing contact delivery before the private ingress can open.
 Event-page response guards and durable-page normalization share one parser. The
 same event, pagination cursor and stream cursor checks apply whether the caller
 supplies an expected run ID or only validates the response shape.
+
+## Maintenance ownership boundaries
+
+The graph catalog's operation package owns descriptor construction, port helpers,
+semantic operation families and registry assembly. Node contracts separate their
+families from the discriminated union; example graph scenarios share a typed
+builder and model while the package root assembles the registry. These package
+moves preserve catalog ordering and the exported graph schema.
+
+`RunStore` owns run persistence orchestration and constructs the lease-bound
+`OwnedRunStore` worker capability. `RunTransitions` owns session-bound lifecycle
+transitions and their SQL commits. `RunRead.from_row` owns the public snapshot
+projection; `PaperRunConfig` owns the newly selected market delta used by saved-bot
+validation. Existing transaction and execution-lease boundaries remain intact.
+
+In the frontend, `LaunchFormSchema` binds field resolution, defaults, restoration
+and validation to one definition descriptor. `NodeGraphCatalog` binds node/port
+queries and connection compatibility to one catalog. `DashboardHistory` owns
+immutable durable/live merges. Selector query and selected-item hydration state
+have separate owners, and the palette separates catalog projection and grouping
+from keyboard interaction and rendering. Closed response fields are generated
+from OpenAPI and checked against the schema in parity tests. Graph response
+validation separates envelope, node, catalog and preview contracts; launch-field
+requiredness is queried from the same schema owner by rendering and validation.

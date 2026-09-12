@@ -12,6 +12,12 @@ from api.runs.store import RunStore
 RUN_NOT_FOUND_DETAIL = "run not found"
 
 
+async def require_stored_run(
+    session: AsyncSession, run_id: UUID, owner_user_id: UUID
+) -> RunRead:
+    return require_run(await RunStore(session).read_owned(run_id, owner_user_id))
+
+
 def require_run(run: RunRead | None) -> RunRead:
     if run is None:
         raise_run_not_found()
@@ -20,9 +26,3 @@ def require_run(run: RunRead | None) -> RunRead:
 
 def raise_run_not_found() -> Never:
     raise HTTPException(status.HTTP_404_NOT_FOUND, RUN_NOT_FOUND_DETAIL)
-
-
-async def require_stored_run(
-    session: AsyncSession, run_id: UUID, owner_user_id: UUID
-) -> RunRead:
-    return require_run(await RunStore(session).read_owned(run_id, owner_user_id))

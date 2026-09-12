@@ -9,7 +9,7 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 
 import { isRecord } from "$lib/valueGuards";
 
-import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph";
+import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph/preview";
 
 import { isBot } from "./bots";
 import { isDefinition } from "./catalog";

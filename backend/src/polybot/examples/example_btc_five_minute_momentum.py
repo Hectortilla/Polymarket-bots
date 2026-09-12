@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from decimal import Decimal
 
 from polybot.examples.btc_five_minute_market import (
     BTC_FIVE_MINUTE_SLUG_PREFIX,
@@ -25,6 +24,7 @@ from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
 from polybot.framework.events.resolutions import MarketResolutionEvent
 from polybot.framework.markets import FixedBucketTiming, market_bucket_slug
+from polybot.framework.position_transition import remaining_long_position_size
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.polymarket.markets import Market
 
@@ -253,7 +253,7 @@ class BtcFiveMinuteMomentumBot(BaseBot):
                 reason=reason,
             )
         )
-        remaining_size = max(Decimal("0"), position.size - fill.filled_size)
+        remaining_size = remaining_long_position_size(position.size, fill.filled_size)
         if remaining_size > 0:
             self._position = replace(position, size=remaining_size)
             return

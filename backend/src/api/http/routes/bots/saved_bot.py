@@ -40,7 +40,6 @@ from api.http.routes.paths import (
     UPDATE_BOT_OPERATION_ID,
 )
 
-
 router = APIRouter()
 
 
@@ -141,6 +140,8 @@ async def update_bot(
         config = parse_config(
             definition, request.inputs, request.graph, request.model_dump()
         )
-        await validate_new_market_selections(config, discovery, previous=bot.config)
+        await validate_new_market_selections(
+            config, discovery, previous_config=bot.config
+        )
         updated = await store.update_config(bot_id, config)
     return require_bot(updated)

@@ -17,7 +17,7 @@ import { isRun } from "./runs";
 
 import { isEventPage, isRunEvent } from "$lib/api/responseValidation/events";
 
-import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph";
+import { isGraphPreviewResponse } from "$lib/api/responseValidation/graph/preview";
 
 let responseInterceptorConfigured = false;
 
@@ -35,7 +35,10 @@ export async function validateControlPlaneResponse(data: unknown): Promise<void>
 }
 
 function isListItem(value: unknown): boolean {
-  return isRecord(value) && (isDefinition(value) || isBot(value) || isRun(value) || isMarketSuggestion(value) || isWalletSuggestion(value));
+  return (
+    isRecord(value) &&
+    (isDefinition(value) || isBot(value) || isRun(value) || isMarketSuggestion(value) || isWalletSuggestion(value))
+  );
 }
 
 function isObjectResponse(value: Record<string, unknown>): boolean {

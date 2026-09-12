@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE, HTTP_STATUS } from "$lib/api/http";
 import { validateOperationResponse } from "$lib/api/responseValidation/operations";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
-import { passwordsMatch } from "./validation";
+import { passwordsMatch } from "../validation";
 
 const paths = runtimeContract.apiPaths;
 const actionPaths = [

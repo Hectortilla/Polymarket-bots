@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from polybot.backtesting.contracts import BacktestGapPolicy
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.framework.timestamps import require_nonnegative_timestamp_ms
 from polybot.integers import is_positive_int, validate_positive_int
 from polybot.recording.contracts.coverage_selection import (

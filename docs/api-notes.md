@@ -109,7 +109,7 @@ duplicate suggestions fail closed. Search quality follows Gamma; no local
 substring matching or typo-tolerance guarantee is added.
 
 The API bounds the trimmed query to 2–200 characters and result limit to 1–20
-(default 12). One SDK page is fetched with a five-second operation timeout;
+(default 12). One SDK page is fetched with a 5-second operation timeout;
 `has_more` signals upstream or flattened-result truncation and the UI asks for
 a more specific query instead of scanning further pages. Exact saved-selection
 lookup reuses batched Gamma resolution, including its closed-market fallback,
@@ -153,7 +153,7 @@ token ID as an invalid integer. Condition IDs use
 `list_markets(condition_ids=...)`. Responses must match the requested identifier;
 ambiguous matches fail closed. Existing normalized trading availability applies
 to exact results as well as text results. Both selectors have 2–200 character
-queries, at most 20 results (default 12), and a five-second adapter timeout.
+queries, at most 20 results (default 12), and a 5-second adapter timeout.
 Wallet hydration is bounded by the existing followed-wallet allowance. The new
 HTTP routes use authentication, private response caching and the existing
 expensive-request rate budget. Public names are never runtime selectors.
@@ -575,3 +575,12 @@ https://docs.polymarket.com/market-data/market-details. Search requires explicit
 suggestion. Optional end dates pass the shared timezone/range validation before
 entering the internal suggestion contract. Invalid search hits use the existing
 skip policy and exact lookup retains its existing typed validation failure.
+
+The September 12 maintenance audit rechecked the official SDK discovery filters,
+profile lookup and wallet report model fields through PolymarketDocs. The pinned
+SDK and transport choices are unchanged. Wallet-report adapters preserve raw SDK
+identity types until normalization: missing or non-string condition/token/hash
+values invalidate the complete read instead of becoming plausible strings.
+Optional activity title/slug values must be text and are trimmed at ingress.
+Wallet polling failures surface through the existing supervisor rather than
+silently restarting the read loop.

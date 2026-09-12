@@ -59,6 +59,22 @@ class _BookFillInput:
     fill_time_ms: int
 
 
+@dataclass(slots=True)
+class _SourceClaim:
+    future: asyncio.Future[FillEvent]
+    applied_fill: FillEvent | None = None
+
+    def complete(self, fill: FillEvent) -> None:
+        if not self.future.done():
+            self.future.set_result(fill)
+
+    def fail(self, error: BaseException) -> None:
+        if not self.future.done():
+            self.future.set_exception(error)
+            # The owner raises separately; a claim need not have any waiters.
+            self.future.exception()
+
+
 class PaperBroker(Broker):
     def __init__(
         self,
@@ -86,7 +102,7 @@ class PaperBroker(Broker):
         self._order_ids = count(1)
         self._portfolio = PaperPortfolio(config.paper_portfolio_usdc)
         self._source_claim_lock = asyncio.Lock()
-        self._fills_by_source_id: dict[str, asyncio.Future[FillEvent]] = {}
+        self._fills_by_source_id: dict[str, _SourceClaim] = {}
         self._continuity_source = continuity_source
         self._settled_conditions: set[str] = set()
         self._position_market_refs: dict[str, tuple[str, str]] = {}
@@ -139,26 +155,29 @@ class PaperBroker(Broker):
             return await self._submit_once(order)
 
         async with self._source_claim_lock:
-            claimed_fill = self._fills_by_source_id.get(order.source_id)
-            owns_claim = claimed_fill is None
-            if owns_claim:
-                claimed_fill = asyncio.get_running_loop().create_future()
-                self._fills_by_source_id[order.source_id] = claimed_fill
+            claim = self._fills_by_source_id.get(order.source_id)
+            owns_claim = claim is None
+            if claim is None:
+                claim = _SourceClaim(asyncio.get_running_loop().create_future())
+                self._fills_by_source_id[order.source_id] = claim
 
         if not owns_claim:
             # A caller may cancel without abandoning the shared source-id claim.
-            return await asyncio.shield(claimed_fill)
+            return await asyncio.shield(claim.future)
 
         try:
             fill = await self._submit_once(order)
-            _complete_claim(claimed_fill, fill)
+            claim.complete(fill)
             return fill
         except BaseException as exc:
-            if not claimed_fill.done():
-                claimed_fill.set_exception(exc)
-            async with self._source_claim_lock:
-                if self._fills_by_source_id.get(order.source_id) is claimed_fill:
-                    self._fills_by_source_id.pop(order.source_id, None)
+            if claim.applied_fill is not None:
+                # Async scope cleanup may fail after the irreversible local fill.
+                # Keep its receipt so retrying cannot mutate the portfolio twice.
+                claim.complete(claim.applied_fill)
+            else:
+                claim.fail(exc)
+                if self._fills_by_source_id.get(order.source_id) is claim:
+                    self._fills_by_source_id.pop(order.source_id)
             raise
 
     async def cancel_all(self) -> None:
@@ -301,6 +320,11 @@ class PaperBroker(Broker):
                 average_price=fill.execution_price,
                 fee_usdc=fill.fee_usdc,
             )
+            if (
+                order.source_id
+                and (claim := self._fills_by_source_id.get(order.source_id)) is not None
+            ):
+                claim.applied_fill = fill
             if updated_position.size == 0:
                 self._position_market_refs.pop(order.token_id, None)
             else:
@@ -448,8 +472,3 @@ class PaperBroker(Broker):
             reject_reason=reject_reason,
             reject_message=reject_message,
         )
-
-
-def _complete_claim(future: asyncio.Future[FillEvent], fill: FillEvent) -> None:
-    if not future.done():
-        future.set_result(fill)

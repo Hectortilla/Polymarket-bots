@@ -1,8 +1,9 @@
+import { SELECTION_SEARCH_COPY } from "../src/lib/catalog/selectionSearch/copy";
 import { test, expect, type Page } from "@playwright/test";
 import fixture from "./onboardingContract.fixture.json" with { type: "json" };
 import browserContract from "./accountContract.fixture.json" with { type: "json" };
 import contract from "../src/lib/runtimeContract.fixture.json" with { type: "json" };
-import { verifyNewAccount } from "./accountHelpers";
+import { completeEmailVerification } from "./accountLinkFlows";
 import { AUTH_COPY } from "../src/lib/auth/copy";
 import { REGISTER_PATH } from "../src/lib/auth/navigation";
 import { NAVIGATION_PATH } from "../src/lib/navigation";
@@ -33,7 +34,7 @@ for (const scenario of Object.keys(expectations) as (keyof typeof expectations)[
     await page.getByLabel(AUTH_COPY.EMAIL, { exact: true }).fill(email);
     await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(password);
     await page.getByRole("button", { name: AUTH_COPY.REGISTER, exact: true }).click();
-    await verifyNewAccount(page, email, password);
+    await completeEmailVerification(page, email, password);
     await expect(page).toHaveURL(NAVIGATION_PATH.HOME);
     await page.getByRole("link", { name: ONBOARDING_COPY.START, exact: true }).click();
     await expect(page.getByRole("radio").first()).toBeChecked();
@@ -48,12 +49,12 @@ for (const scenario of Object.keys(expectations) as (keyof typeof expectations)[
         (route) => route.fulfill({ status: HTTP_STATUS.SERVICE_UNAVAILABLE, body: "{}" }),
         { times: 1 },
       );
-      await page.getByRole("combobox").fill(marketSlug);
+      await page.getByRole("combobox", { name: browserContract.selectorLabels.markets, exact: true }).fill(marketSlug);
       await expect(page.getByText(MARKET_SELECTOR_COPY.SEARCH_ERROR, { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: MARKET_SELECTOR_COPY.RETRY_SEARCH, exact: true }).click();
+      await page.getByRole("button", { name: SELECTION_SEARCH_COPY.RETRY_SEARCH, exact: true }).click();
       await expect(page.getByLabel("Name", { exact: true })).toHaveValue(`Guided ${scenario}`);
     } else {
-      await page.getByRole("combobox").fill(marketSlug);
+      await page.getByRole("combobox", { name: browserContract.selectorLabels.markets, exact: true }).fill(marketSlug);
     }
     await page
       .getByRole("option")

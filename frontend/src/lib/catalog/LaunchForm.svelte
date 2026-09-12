@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { LaunchFormSchema } from "$lib/catalog/schema";
+
   import "$lib/bots/builder.css";
   import type { AnySchemaObject } from "ajv";
   import { tick, type Snippet } from "svelte";
@@ -9,9 +11,9 @@
   import MarketSelector from "./MarketSelector.svelte";
   import { WIDGET_KIND, type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
   import { fieldLabel, isWideLaunchField, selectionExplanation } from "$lib/catalog/schema/presentation";
-  import { initialLaunchInputs } from "$lib/catalog/schema/inputs";
-  import { launchFields, resolvedFieldSchema, widgetKind } from "$lib/catalog/schema/fields";
-  import { launchValidationIssues, launchValidator, visibleLaunchIssues } from "$lib/catalog/schema/validation";
+
+  import { widgetKind } from "$lib/catalog/schema/fields";
+  import { launchValidationIssues, visibleLaunchIssues } from "$lib/catalog/schema/validation";
 
   let {
     descriptor,
@@ -42,9 +44,10 @@
     sectionDescription?: string;
     children?: Snippet;
   } = $props();
+  const launchSchema = $derived(new LaunchFormSchema(descriptor));
 
-  const fields = $derived(launchFields(descriptor));
-  const validator = $derived(launchValidator(descriptor));
+  const fields = $derived(launchSchema.fields());
+  const validator = $derived(launchSchema.validator());
   let inputs = $state<LaunchInputs>({});
   let activeInputsKey = $state("");
   let localIssues = $state<LaunchValidationIssue[]>([]);
@@ -56,7 +59,7 @@
 
   $effect(() => {
     // Compare serialized values so parent object identity changes do not erase edits.
-    const nextInputs = initialInputs ?? initialLaunchInputs(descriptor);
+    const nextInputs = initialInputs ?? launchSchema.initialInputs();
     const nextKey = `${descriptor.definition_id}:${JSON.stringify(nextInputs)}`;
     if (activeInputsKey !== nextKey) {
       activeInputsKey = nextKey;
@@ -96,7 +99,7 @@
   }
 
   function inputType(field: AnySchemaObject): string {
-    const type = resolvedFieldSchema(descriptor, field).type;
+    const type = launchSchema.resolveFieldSchema(field).type;
     return type === "integer" || type === "number" ? "number" : "text";
   }
 
@@ -138,7 +141,7 @@
     {/if}
     <div class="form-grid">
       {#each fields as [name, field] (name)}
-        {@const schema = resolvedFieldSchema(descriptor, field)}
+        {@const schema = launchSchema.resolveFieldSchema(field)}
         {@const widget = widgetKind(field)}
         {@const labelId = `field-${name}-label`}
         {@const helperId = `field-${name}-helper`}
@@ -199,8 +202,7 @@
               type={widget === WIDGET_KIND.DECIMAL ? "text" : inputType(field)}
               inputmode={widget === WIDGET_KIND.DECIMAL ? "decimal" : undefined}
               value={String(inputs[name] ?? "")}
-              required={Array.isArray(descriptor.input_schema.required) &&
-                descriptor.input_schema.required.includes(name)}
+              required={launchSchema.isRequired(name)}
               min={typeof schema.minimum === "number" ? schema.minimum : undefined}
               max={typeof schema.maximum === "number" ? schema.maximum : undefined}
               step={inputType(field) === "number" ? "1" : undefined}

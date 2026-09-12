@@ -1,22 +1,24 @@
 <script lang="ts">
+  import { LaunchFormSchema } from "$lib/catalog/schema";
+
   import { RUN_COPY } from "$lib/runs/copy";
   import type { BotDefinitionDescriptor, PaperRunConfig } from "$lib/api/generated";
   import { BOT_BUILDER_COPY } from "$lib/bots/copy";
   import RunSection from "./RunSection.svelte";
   import ConfigurationValue from "$lib/catalog/ConfigurationValue.svelte";
   import { fieldLabel, isWideLaunchField } from "$lib/catalog/schema/presentation";
-  import { launchFields, resolvedFieldSchema } from "$lib/catalog/schema/fields";
-  import { launchInputsFromConfig } from "$lib/catalog/schema/inputs";
 
   let { config, descriptor }: { config: PaperRunConfig; descriptor?: BotDefinitionDescriptor } = $props();
+  const launchSchema = $derived(descriptor ? new LaunchFormSchema(descriptor) : undefined);
+
   const fields = $derived(
     descriptor
-      ? launchFields(descriptor)
+      ? launchSchema!.fields()
       : Object.keys(config)
           .filter((name) => name !== "graph")
           .map((name) => [name, {}] as const),
   );
-  const values = $derived(descriptor ? launchInputsFromConfig(descriptor, config) : config);
+  const values = $derived(descriptor ? launchSchema!.inputsFromConfig(config) : config);
 </script>
 
 <RunSection
@@ -27,7 +29,7 @@
 >
   <dl class="form-grid">
     {#each fields as [name, field] (name)}
-      {@const schema = descriptor ? resolvedFieldSchema(descriptor, field) : field}
+      {@const schema = descriptor ? launchSchema!.resolveFieldSchema(field) : field}
       <div class="form-field" class:wide={isWideLaunchField(field) || name === "stream_rules"}>
         <dt class="field-label">{fieldLabel(name, schema)}</dt>
         <dd class="configuration-value"><ConfigurationValue value={values[name as keyof typeof values]} /></dd>

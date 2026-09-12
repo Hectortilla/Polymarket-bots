@@ -1,8 +1,9 @@
+import { NodeGraphCatalog } from "$lib/catalog/nodeGraph/catalog";
 import type { NodeGraph } from "$lib/api/generated";
 import { describe, expect, it } from "vitest";
 
 import { triggerAlreadyExists } from "$lib/catalog/nodeGraph/catalog";
-import { connectionIsValid } from "$lib/catalog/nodeGraph/connections";
+
 import { type CanvasEdge, type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
 import {
   createBrokerActionNode,
@@ -26,6 +27,7 @@ import {
   THRESHOLD_BUY_GRAPH,
   graphFieldHandle,
 } from "./nodeGraphTestFixtures";
+const catalogResolver = new NodeGraphCatalog(TEST_GRAPH_CATALOG);
 
 describe("node graph canvas adapter", () => {
   it("round-trips all node data and handles while stripping Flow-only state", () => {
@@ -150,12 +152,12 @@ describe("node graph canvas adapter", () => {
     const accepted: CanvasEdge[] = [];
 
     for (const edge of canvasEdges(THRESHOLD_BUY_GRAPH)) {
-      expect(connectionIsValid(edge, nodes, accepted, TEST_GRAPH_CATALOG)).toBe(true);
+      expect(catalogResolver.connectionIsValid(edge, nodes, accepted)).toBe(true);
       accepted.push(edge);
     }
 
     expect(
-      connectionIsValid(
+      catalogResolver.connectionIsValid(
         {
           id: "wrong-type",
           source: "on-book-trigger",
@@ -165,12 +167,11 @@ describe("node graph canvas adapter", () => {
         },
         nodes,
         [],
-        TEST_GRAPH_CATALOG,
       ),
     ).toBe(false);
 
     expect(
-      connectionIsValid(
+      catalogResolver.connectionIsValid(
         {
           source: "on-book-trigger",
           sourceHandle: graphFieldHandle(ON_BOOK_TRIGGER, "bids"),
@@ -179,7 +180,6 @@ describe("node graph canvas adapter", () => {
         },
         [...canvasNodes(TEST_GRAPH), createComparisonNode(canvasNodes(TEST_GRAPH), LESS_THAN_OR_EQUAL)],
         [],
-        TEST_GRAPH_CATALOG,
       ),
     ).toBe(false);
 
@@ -194,15 +194,12 @@ describe("node graph canvas adapter", () => {
       },
     ];
     for (const connection of invalidConnections) {
-      expect(connectionIsValid(connection, nodes, [], TEST_GRAPH_CATALOG)).toBe(false);
+      expect(catalogResolver.connectionIsValid(connection, nodes, [])).toBe(false);
     }
     expect(
-      connectionIsValid(
+      catalogResolver.connectionIsValid(canvasEdges(THRESHOLD_BUY_GRAPH)[1], nodes, [
         canvasEdges(THRESHOLD_BUY_GRAPH)[1],
-        nodes,
-        [canvasEdges(THRESHOLD_BUY_GRAPH)[1]],
-        TEST_GRAPH_CATALOG,
-      ),
+      ]),
     ).toBe(false);
   });
 });

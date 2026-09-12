@@ -1,7 +1,9 @@
-import { isLaunchInputSchema } from "$lib/catalog/schema/validation";
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
+import { isLaunchInputSchema } from "$lib/catalog/schema/engine";
 import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 import { isNonemptyString, isOneOf, isRecord, isArrayOf } from "$lib/valueGuards";
-import { isGraphCatalog, isNodeGraph } from "./graph";
+import { isNodeGraph } from "./graph";
+import { isGraphCatalog } from "./graph/catalog";
 
 const SELECTION_MODES = Object.values(catalogContract.selectionMode);
 
@@ -9,6 +11,7 @@ const DEFINITION_LABELS = Object.values(catalogContract.botDefinitionLabel);
 
 export function isDefinition(value: Record<string, unknown>): boolean {
   return (
+    hasOnlyResponseFields(value, "BotDefinitionDescriptor") &&
     isNonemptyString(value.definition_id) &&
     isNonemptyString(value.display_name) &&
     isNonemptyString(value.description) &&

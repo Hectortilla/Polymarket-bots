@@ -50,9 +50,51 @@
   },
   "strictResponseFields": {
     "models": {
+      "AccountActionResponse": [
+        "accepted"
+      ],
+      "AccountStatus": [
+        "email_verified",
+        "verification_required"
+      ],
+      "AccountUsage": [
+        "active_runs",
+        "policy",
+        "queued_runs",
+        "retained_runs",
+        "saved_bots"
+      ],
       "BotActivityPayload": [
         "message",
         "severity"
+      ],
+      "BotCreate": [
+        "definition_id",
+        "graph",
+        "inputs"
+      ],
+      "BotDefinitionDescriptor": [
+        "definition_id",
+        "description",
+        "display_name",
+        "graph_catalog",
+        "graph_examples",
+        "input_schema",
+        "label",
+        "market_selection",
+        "starter_graph",
+        "wallet_selection"
+      ],
+      "BotRead": [
+        "config",
+        "created_at",
+        "definition_id",
+        "id",
+        "updated_at"
+      ],
+      "BotUpdate": [
+        "graph",
+        "inputs"
       ],
       "BrokerFailurePayload": [
         "error",
@@ -67,10 +109,25 @@
       "BrokerOrderPayload": [
         "order"
       ],
+      "ChangePasswordRequest": [
+        "current_password",
+        "new_password"
+      ],
       "ChartSamplePayload": [
         "equity",
         "markets",
         "sampled_at_ms"
+      ],
+      "Credentials": [
+        "email",
+        "password"
+      ],
+      "CurrentUser": [
+        "email",
+        "id"
+      ],
+      "EmailRequest": [
+        "email"
       ],
       "EquityChartPayload": [
         "point",
@@ -80,12 +137,204 @@
         "status",
         "value"
       ],
+      "ErrorResponse": [
+        "code",
+        "detail"
+      ],
+      "GraphBooleanConstantData": [
+        "scalar_type",
+        "value"
+      ],
+      "GraphBrokerActionDescriptor": [
+        "action",
+        "display_name",
+        "inputs",
+        "method_name",
+        "node_type",
+        "outputs",
+        "side"
+      ],
+      "GraphBrokerActionNode": [
+        "data",
+        "id",
+        "position",
+        "type"
+      ],
+      "GraphBrokerActionNodeData": [
+        "action"
+      ],
+      "GraphComparisonDescriptor": [
+        "display_name",
+        "inputs",
+        "node_type",
+        "operator",
+        "output"
+      ],
+      "GraphComparisonNode": [
+        "data",
+        "id",
+        "position",
+        "type"
+      ],
+      "GraphComparisonNodeData": [
+        "operator"
+      ],
+      "GraphConstantDescriptor": [
+        "default_value",
+        "display_name",
+        "node_type",
+        "output",
+        "scalar_type"
+      ],
+      "GraphConstantNode": [
+        "data",
+        "id",
+        "position",
+        "type"
+      ],
+      "GraphEdge": [
+        "id",
+        "source",
+        "source_handle",
+        "target",
+        "target_handle"
+      ],
+      "GraphFieldDescriptor": [
+        "collection",
+        "display_name",
+        "handle_id",
+        "nullable",
+        "path",
+        "scalar_type",
+        "value_schema",
+        "value_type"
+      ],
+      "GraphFieldPath": [
+        "segments"
+      ],
+      "GraphInputDescriptor": [
+        "description",
+        "display_name",
+        "handle_id",
+        "maximum",
+        "minimum",
+        "nullable",
+        "required",
+        "scalar_types",
+        "whole_number"
+      ],
+      "GraphNodeCatalog": [
+        "broker_actions",
+        "comparisons",
+        "constants",
+        "operations",
+        "sample_positions",
+        "triggers"
+      ],
+      "GraphNodeEvaluationRead": [
+        "node_id",
+        "outputs",
+        "reason",
+        "status"
+      ],
+      "GraphNumberConstantData": [
+        "scalar_type",
+        "value"
+      ],
+      "GraphOperationDescriptor": [
+        "category",
+        "display_name",
+        "expandable",
+        "inputs",
+        "maximum_inputs",
+        "minimum_inputs",
+        "node_type",
+        "operation",
+        "outputs",
+        "selectable_scalar_type",
+        "terminal"
+      ],
+      "GraphOperationNode": [
+        "data",
+        "id",
+        "position",
+        "type"
+      ],
+      "GraphOperationNodeData": [
+        "input_ids",
+        "operation",
+        "scalar_type"
+      ],
+      "GraphOutputDescriptor": [
+        "display_name",
+        "handle_id",
+        "nullable",
+        "scalar_type"
+      ],
+      "GraphParameter": [
+        "data",
+        "id",
+        "name"
+      ],
+      "GraphParameterNode": [
+        "data",
+        "id",
+        "position",
+        "type"
+      ],
+      "GraphParameterNodeData": [
+        "parameter_id"
+      ],
+      "GraphPayloadDescriptor": [
+        "fields",
+        "type_name"
+      ],
+      "GraphPosition": [
+        "x",
+        "y"
+      ],
+      "GraphPreviewRequest": [
+        "graph",
+        "hook_name",
+        "now_ms",
+        "payload",
+        "portfolio"
+      ],
+      "GraphPreviewResponse": [
+        "intended_orders",
+        "nodes"
+      ],
+      "GraphStringConstantData": [
+        "scalar_type",
+        "value"
+      ],
+      "GraphTriggerDescriptor": [
+        "context_handle_id",
+        "context_type_name",
+        "hook_name",
+        "node_type",
+        "payload",
+        "sample_payload",
+        "sample_time_ms"
+      ],
+      "GraphTriggerNode": [
+        "data",
+        "id",
+        "position",
+        "type"
+      ],
+      "GraphTriggerNodeData": [
+        "hook_name"
+      ],
       "GraphValueRead": [
         "input_handle_id",
         "message",
         "reason",
         "status",
         "value"
+      ],
+      "HealthResponse": [
+        "status"
       ],
       "LiveEquityChartEvent": [
         "kind",
@@ -111,6 +360,13 @@
         "payload",
         "run_id"
       ],
+      "LoginCredentials": [
+        "email",
+        "password"
+      ],
+      "LogoutResponse": [
+        "logged_out"
+      ],
       "MarketChartPayload": [
         "points",
         "sampled_at_ms"
@@ -122,9 +378,47 @@
         "token_id",
         "value"
       ],
+      "MarketLookupRequest": [
+        "slugs"
+      ],
       "MarketSettlementPayload": [
         "portfolio",
         "settlement"
+      ],
+      "NodeGraph": [
+        "edges",
+        "nodes",
+        "parameters"
+      ],
+      "PaperBetaPolicy": [
+        "active_runs",
+        "expensive_requests_per_minute",
+        "followed_wallets_per_run",
+        "global_active_runs",
+        "global_expensive_requests_per_minute",
+        "global_open_streams",
+        "global_queued_runs",
+        "global_requests_per_minute",
+        "history_retention_days",
+        "open_streams",
+        "queued_runs",
+        "requests_per_minute",
+        "retained_runs",
+        "run_duration_seconds",
+        "saved_bots",
+        "tracked_markets_per_run"
+      ],
+      "PaperRunConfig": [
+        "data_trades_budget_per_10s",
+        "event_max_age_ms",
+        "graph",
+        "max_order_size",
+        "max_slippage_pct",
+        "name",
+        "paper_latency_jitter_ms",
+        "paper_latency_ms",
+        "paper_portfolio_usdc",
+        "stream_rules"
       ],
       "PersistedBotActivityEvent": [
         "id",
@@ -215,6 +509,21 @@
         "cumulative_fees_usdc",
         "positions"
       ],
+      "PreviewPortfolio": [
+        "available_cash",
+        "positions"
+      ],
+      "ReauthenticateRequest": [
+        "current_password"
+      ],
+      "RedeemRequest": [
+        "new_password",
+        "token"
+      ],
+      "RevokeSessionsRequest": [
+        "current_password",
+        "scope"
+      ],
       "RunBootstrapPayload": [
         "completed",
         "phase",
@@ -227,6 +536,22 @@
       ],
       "RunFailurePayload": [
         "error"
+      ],
+      "RunRead": [
+        "bot_deleted",
+        "bot_id",
+        "config",
+        "created_at",
+        "definition_id",
+        "ended_at",
+        "equity_status",
+        "failure_detail",
+        "heartbeat_at",
+        "id",
+        "latest_equity",
+        "latest_runtime_failure",
+        "started_at",
+        "status"
       ],
       "RunStartedPayload": [
         "initial_cash_usdc",
@@ -257,6 +582,9 @@
         "source_key",
         "trade_timestamp_ms",
         "wallet"
+      ],
+      "WalletLookupRequest": [
+        "addresses"
       ],
       "WalletTimelinePayload": [
         "outcome",

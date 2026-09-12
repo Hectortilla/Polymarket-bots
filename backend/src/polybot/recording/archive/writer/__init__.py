@@ -40,11 +40,8 @@ from polybot.recording.contracts.records import (
 )
 from polybot.recording.contracts.session import SessionState
 
-from .anomalies import append_capture_anomaly
-from .checkpoints import append_checkpoints
-from .events import insert_event
-from .gaps import close_gap
 from .lifecycle import ArchiveSession, create_session, resume_session
+from .persistence import ArchiveRowWriter
 
 
 class RecordingArchive:
@@ -56,6 +53,7 @@ class RecordingArchive:
         self._lock_file = session.lock_file
         self._target_identity = session.target_identity
         self._session_id = session.session_id
+        self._rows = ArchiveRowWriter(self._connection, self._session_id)
         self._session_started_at_ms = session.session_started_at_ms
         self._next_sequence = session.next_sequence
         self._last_observed_at_ms = session.last_observed_at_ms
@@ -175,7 +173,7 @@ class RecordingArchive:
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
                 for event in pending:
-                    insert_event(self._connection, event)
+                    self._rows.insert_event(event)
                 self._connection.commit()
             except (sqlite3.Error, ValueError) as error:
                 self._connection.rollback()
@@ -210,7 +208,7 @@ class RecordingArchive:
     def close_gap(self, gap_id: int, *, ended_at_ms: int) -> None:
         with self._lock:
             self._ensure_open()
-            return close_gap(self._connection, gap_id, ended_at_ms=ended_at_ms)
+            return self._rows.close_gap(gap_id, ended_at_ms=ended_at_ms)
 
     def append_capture_anomaly(
         self,
@@ -222,9 +220,7 @@ class RecordingArchive:
     ) -> CaptureAnomalyRecord:
         with self._lock:
             self._ensure_open()
-            return append_capture_anomaly(
-                self._connection,
-                self._session_id,
+            return self._rows.append_capture_anomaly(
                 anomaly,
                 observed_at_ms=observed_at_ms,
                 identity=identity,
@@ -288,7 +284,7 @@ class RecordingArchive:
                         "checkpoint requires a baseline in its subscription generation"
                     )
                 last_observed = checkpoint.observed_at_ms
-            append_checkpoints(self._connection, pending)
+            self._rows.append_checkpoints(pending)
             self._last_observed_at_ms = last_observed
 
     def close(

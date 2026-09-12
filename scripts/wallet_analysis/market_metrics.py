@@ -55,20 +55,6 @@ def _trade_matches_target_market(
     )
 
 
-def hedge_score(signed_position_sizes_by_outcome: Mapping[str, float]) -> float:
-    values = sorted(
-        (value for value in signed_position_sizes_by_outcome.values() if value > 0.5),
-        reverse=True,
-    )
-    if len(values) < 2:
-        return 0.0
-    return _hedge_score_for_two_positive_values(values[0], values[1])
-
-
-def _hedge_score_for_two_positive_values(first: float, second: float) -> float:
-    return 1 - abs(first - second) / (first + second)
-
-
 def weighted_hedge_score(markets: Iterable[MarketMetrics]) -> float:
     weighted_scores: list[float] = []
     total_weight = 0.0
@@ -85,3 +71,17 @@ def weighted_hedge_score(markets: Iterable[MarketMetrics]) -> float:
     if total_weight == 0:
         return 0.0
     return sum(weighted_scores) / total_weight
+
+
+def hedge_score(signed_position_sizes_by_outcome: Mapping[str, float]) -> float:
+    values = sorted(
+        (value for value in signed_position_sizes_by_outcome.values() if value > 0.5),
+        reverse=True,
+    )
+    if len(values) < 2:
+        return 0.0
+    return _hedge_score_for_two_positive_values(values[0], values[1])
+
+
+def _hedge_score_for_two_positive_values(first: float, second: float) -> float:
+    return 1 - abs(first - second) / (first + second)

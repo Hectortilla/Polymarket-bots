@@ -1,11 +1,10 @@
+import { LaunchFormSchema } from "$lib/catalog/schema";
 import { describe, expect, it } from "vitest";
 
 import type { BotDefinitionDescriptor, PaperRunConfig } from "$lib/api/generated";
 import { GRAPH_NODE_TYPE } from "./graphContracts";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from "$lib/catalog/schema/contracts";
-import { launchInputsFromConfig } from "$lib/catalog/schema/inputs";
-import { launchValidator } from "$lib/catalog/schema/validation";
 
 type StreamRelation = PaperRunConfig["stream_rules"][number]["relation"];
 
@@ -42,7 +41,7 @@ describe("launch schema validation", () => {
       },
     };
 
-    const validator = launchValidator(descriptor);
+    const validator = new LaunchFormSchema(descriptor).validator();
 
     expect(validator({ value: { type: GRAPH_NODE_TYPE.constant } })).toBe(true);
     expect(validator({ value: { type: "other" } })).toBe(false);
@@ -93,11 +92,49 @@ describe("launch schema validation", () => {
       paper_portfolio_usdc: "1000",
     };
 
-    expect(launchInputsFromConfig(descriptor, config)).toEqual({
+    expect(new LaunchFormSchema(descriptor).inputsFromConfig(config)).toEqual({
       name: "Reusable bot",
       market_slugs: ["market-a"],
       wallet_addresses: ["0x0000000000000000000000000000000000000001"],
       max_order_size: "2.500",
     });
+    const otherWallet = "0x0000000000000000000000000000000000000002";
+    const repeatedRules = {
+      ...config,
+      stream_rules: [
+        ...config.stream_rules,
+        { ...config.stream_rules[0], wallet_addresses: [otherWallet, ...config.stream_rules[0].wallet_addresses!] },
+      ],
+    };
+    expect(new LaunchFormSchema(descriptor).inputsFromConfig(repeatedRules).wallet_addresses).toEqual([
+      ...config.stream_rules[0].wallet_addresses!,
+      otherWallet,
+    ]);
   });
+});
+
+it("uses the same required fields for rendering and validation after selector filtering", () => {
+  const descriptor: BotDefinitionDescriptor = {
+    definition_id: "required-fields",
+    display_name: "Required fields",
+    description: "Schema requirement filtering",
+    label: BOT_DEFINITION_LABEL.EXAMPLE,
+    market_selection: SELECTION_MODE.ABSENT,
+    wallet_selection: SELECTION_MODE.ABSENT,
+    input_schema: {
+      type: "object",
+      required: ["name", "wallet_addresses"],
+      properties: {
+        name: { type: "string" },
+        wallet_addresses: { type: "array", [WIDGET_SCHEMA_KEY]: WIDGET_KIND.WALLET_ADDRESSES },
+      },
+    },
+  };
+  const schema = new LaunchFormSchema(descriptor);
+  expect(schema.isRequired("name")).toBe(true);
+  expect(schema.isRequired("wallet_addresses")).toBe(false);
+  expect(schema.isRequired("unknown")).toBe(false);
+  const validate = schema.validator();
+  expect(validate({ name: "Only editable required value" })).toBe(true);
+  expect(validate({})).toBe(false);
 });

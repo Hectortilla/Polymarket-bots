@@ -13,6 +13,7 @@ from polybot.polymarket.wallet_discovery_contracts import (
     WalletSearchResults,
     WalletSuggestion,
 )
+
 from polymarket import AsyncPublicClient, PolymarketError
 
 logger = logging.getLogger(__name__)
@@ -65,9 +66,7 @@ class WalletDiscovery:
                 )
                 # Hydration must never silently change a saved address to another wallet.
                 return tuple(
-                    choice
-                    if choice.address == address
-                    else WalletSuggestion(address, None)
+                    self._preserve_requested_address(choice, address)
                     for address, choice in zip(addresses, choices, strict=True)
                 )
         except (PolymarketError, TimeoutError, ValueError) as error:
@@ -82,3 +81,11 @@ class WalletDiscovery:
             # An explicit address remains selectable without a public profile.
             return WalletSuggestion(address, None)
         return normalize_wallet_suggestion(profile)
+
+    @staticmethod
+    def _preserve_requested_address(
+        choice: WalletSuggestion, address: str
+    ) -> WalletSuggestion:
+        if choice.address == address:
+            return choice
+        return WalletSuggestion(address, None)

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { resourceLimitDetail } from "$lib/limits/validation";
   import type { SelectionSource, SelectionSuggestion } from "./selectionSearch";
   import { Check, MagnifyingGlass, Plus, X } from "phosphor-svelte";
-  import { untrack } from "svelte";
+  import { SelectionQuery } from "./selectionSearch/query.svelte";
+  import { SelectionMetadata } from "./selectionSearch/metadata.svelte";
 
   let {
     source,
@@ -23,83 +23,27 @@
   } = $props();
 
   const limits = $derived(source.limits);
-  const debounceMilliseconds = 300;
   const listId = $derived(`${labelId}-options`);
   let input: HTMLInputElement;
-  let query = $state("");
+  const search = new SelectionQuery(() => source);
+  const selectedMetadata = new SelectionMetadata(
+    () => source,
+    () => value,
+  );
   let open = $state(false);
-  let loading = $state(false);
-  let searched = $state(false);
-  let searchError = $state("");
-  let retry = $state(0);
-  let results = $state<SelectionSuggestion[]>([]);
-  let hasMore = $state(false);
   let activeIndex = $state(-1);
-  let metadata = $state<Record<string, SelectionSuggestion>>({});
-  let missingMetadataIds = $state<string[]>([]);
-  let lookupError = $state(false);
-  let lookupRetry = $state(0);
   const atLimit = $derived(value.length >= limits.maximumSelections);
-  const selectedKey = $derived(JSON.stringify(value));
-
   $effect(() => {
-    const text = query.trim();
-    retry;
-    results = [];
+    search.query;
+    search.searchRetryRevision;
     activeIndex = -1;
-    searched = false;
-    searchError = "";
-    hasMore = false;
-    loading = text.length >= limits.minimumQueryLength;
-    if (text.length < limits.minimumQueryLength) return;
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const data = await source.search(text, controller.signal);
-        if (controller.signal.aborted) return;
-        results = data.items;
-        hasMore = data.has_more;
-        searched = true;
-      } catch (caught) {
-        if (!controller.signal.aborted) searchError = resourceLimitDetail(caught) ?? source.copy.SEARCH_ERROR;
-      } finally {
-        if (!controller.signal.aborted) loading = false;
-      }
-    }, debounceMilliseconds);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  });
-
-  $effect(() => {
-    const ids: string[] = JSON.parse(selectedKey);
-    lookupRetry;
-    const lookupIds = untrack(() => ids.filter((id) => !metadata[id]));
-    lookupError = false;
-    if (lookupIds.length === 0) return;
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const data = await source.lookup(lookupIds, controller.signal);
-        if (controller.signal.aborted) return;
-        metadata = {
-          ...metadata,
-          ...Object.fromEntries(data.map((item) => [item.id, item])),
-        };
-        missingMetadataIds = lookupIds.filter((id) => !data.some((item) => item.id === id));
-      } catch {
-        if (!controller.signal.aborted) lookupError = true;
-      }
-    })();
-    return () => controller.abort();
   });
 
   function select(item: SelectionSuggestion): void {
     if (disabled || atLimit || value.includes(item.id)) return;
-    metadata = { ...metadata, [item.id]: item };
+    selectedMetadata.remember(item);
     onchange([...value, item.id]);
-    query = "";
+    search.query = "";
     input.focus();
     // Close after focus so later pointer clicks cannot shift when suggestions blur away.
     open = false;
@@ -112,14 +56,14 @@
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       open = true;
-      if (results.length) {
+      if (search.results.length) {
         activeIndex = wrappedSelectionIndex(event.key === "ArrowDown");
         document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView?.({ block: "nearest" });
       }
     } else if (event.key === "Enter") {
       // Enter chooses a suggestion; it must never submit the surrounding form.
       event.preventDefault();
-      if (open && activeIndex >= 0 && results[activeIndex]) select(results[activeIndex]);
+      if (open && activeIndex >= 0 && search.results[activeIndex]) select(search.results[activeIndex]);
     }
   }
 
@@ -127,13 +71,13 @@
     // Keep focus on the stable input before the retry button disappears.
     input.focus();
     open = true;
-    retry += 1;
+    search.searchRetryRevision += 1;
   }
 
   function wrappedSelectionIndex(forward: boolean): number {
-    if (activeIndex < 0) return forward ? 0 : results.length - 1;
+    if (activeIndex < 0) return forward ? 0 : search.results.length - 1;
     const direction = forward ? 1 : -1;
-    return (activeIndex + direction + results.length) % results.length;
+    return (activeIndex + direction + search.results.length) % search.results.length;
   }
 </script>
 
@@ -148,7 +92,7 @@
     <input
       id={`${labelId}-input`}
       bind:this={input}
-      bind:value={query}
+      bind:value={search.query}
       role="combobox"
       aria-autocomplete="list"
       aria-expanded={open && !atLimit}
@@ -165,23 +109,23 @@
       oninput={() => (open = true)}
       {onkeydown}
     />
-    {#if loading}<span class="search-spinner" aria-label="Searching"></span>{/if}
+    {#if search.loading}<span class="search-spinner" aria-label="Searching"></span>{/if}
   </div>
 
   {#if open && !atLimit}
     <div class="suggestions">
       <div class="search-status" role="status" aria-live="polite">
-        {#if searchError}
-          <span>{searchError}</span>
+        {#if search.error}
+          <span>{search.error}</span>
           <button type="button" class="text-button" onclick={retrySearch}>{source.copy.RETRY_SEARCH}</button>
-        {:else if loading}
+        {:else if search.loading}
           Searching Polymarket…
-        {:else if query.trim().length < limits.minimumQueryLength}
+        {:else if search.query.trim().length < limits.minimumQueryLength}
           {source.copy.TYPE_HINT}
-        {:else if searched && results.length === 0}
+        {:else if search.searched && search.results.length === 0}
           {source.copy.NO_RESULTS}
-        {:else if results.length}
-          <span>{source.copy.RESULTS_LABEL}</span><span>{results.length} results</span>
+        {:else if search.results.length}
+          <span>{source.copy.RESULTS_LABEL}</span><span>{search.results.length} results</span>
         {/if}
       </div>
       <div
@@ -191,7 +135,7 @@
         aria-label={source.copy.RESULTS_LABEL}
         class="result-list"
       >
-        {#each results as item, index (item.id)}
+        {#each search.results as item, index (item.id)}
           {@const selected = value.includes(item.id)}
           {@const detail = item.detail}
           <button
@@ -222,7 +166,7 @@
           </button>
         {/each}
       </div>
-      {#if hasMore}<p class="refine-hint">More matches available. Refine your search to narrow the list.</p>{/if}
+      {#if search.hasMore}<p class="refine-hint">More matches available. Refine your search to narrow the list.</p>{/if}
     </div>
   {/if}
 
@@ -232,14 +176,15 @@
     </div>
     <ul class="selected-items" aria-label={source.copy.SELECTED_LABEL}>
       {#each value as id (id)}
-        {@const item = metadata[id]}
+        {@const item = selectedMetadata.items[id]}
         <li>
           <span class="selected-mark" aria-hidden="true"><Check size={15} /></span>
           <span class="selected-copy">
             <span class="question">{item?.title ?? id}</span>
             {#if item}<span class="id">{id}</span>{/if}
             {#if item && item.unavailable}<span class="unavailable">{source.copy.UNAVAILABLE}</span>
-            {:else if missingMetadataIds.includes(id)}<span class="unavailable">{source.copy.MISSING}</span>{/if}
+            {:else if selectedMetadata.missingIds.includes(id)}<span class="unavailable">{source.copy.MISSING}</span
+              >{/if}
           </span>
           <button
             type="button"
@@ -254,10 +199,12 @@
   {:else}
     <p class="selection-hint">{source.copy.SELECTION_HINT}</p>
   {/if}
-  {#if lookupError}
+  {#if selectedMetadata.failed}
     <p class="lookup-error" role="status">
       {source.copy.LOOKUP_ERROR}
-      <button type="button" class="text-button" onclick={() => (lookupRetry += 1)}>{source.copy.RETRY_DETAILS}</button>
+      <button type="button" class="text-button" onclick={() => (selectedMetadata.lookupRetryRevision += 1)}
+        >{source.copy.RETRY_DETAILS}</button
+      >
     </p>
   {/if}
 </div>

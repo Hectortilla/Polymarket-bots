@@ -65,12 +65,11 @@ from polybot.recording.contracts.records import (
 )
 from polybot.recording.contracts.session import SessionIntegrityStatus
 from polybot.recording.coverage import CoverageScope
-from polybot.recording.serialization.entrypoints import (
+from polybot.recording.serialization.anomalies import (
     capture_anomaly_from_json,
     capture_anomaly_json,
-    payload_from_json,
-    payload_json,
 )
+from polybot.recording.serialization.payloads import payload_from_json, payload_json
 from polybot.recording.serialization.registry import payload_kind
 from polybot.recording.writer import AsyncRecordingWriter
 

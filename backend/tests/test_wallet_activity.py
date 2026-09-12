@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from decimal import Decimal
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from polybot.framework.events import Side
@@ -615,7 +616,7 @@ def test_stream_propagates_push_failure_while_polling_is_active() -> None:
 
     async def run() -> None:
         stream = WalletActivityStream(
-            PolymarketWalletActivityClient(FakeClient(())),
+            PolymarketWalletActivityClient(PollingClient(())),
             selectors=(
                 WalletTradeSelector(
                     wallet="0xabababababababababababababababababababab"
@@ -699,3 +700,43 @@ def test_requested_wallet_cannot_receive_another_wallet_trade() -> None:
     with pytest.raises(WalletActivityError) as caught:
         asyncio.run(client.latest_trades(requested))
     assert caught.value.issue is WalletActivityIssue.WALLET_READ_FAILED
+
+
+def test_poll_failure_is_reported_and_other_poll_tasks_are_cancelled() -> None:
+    async def run() -> None:
+        peer_started = asyncio.Event()
+        peer_stopped = asyncio.Event()
+        failing_wallet = "0x" + "ab" * 20
+        other_wallet = "0x" + "cd" * 20
+        failure = WalletActivityError(
+            WalletActivityIssue.WALLET_READ_FAILED, "read failed"
+        )
+
+        async def latest(selector, **kwargs):
+            if selector.wallet == failing_wallet:
+                await peer_started.wait()
+                raise failure
+            peer_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                peer_stopped.set()
+
+        client = Mock(
+            spec=PolymarketWalletActivityClient,
+            latest_selector=AsyncMock(side_effect=latest),
+        )
+        stream = WalletActivityStream(
+            client,
+            selectors=(
+                WalletTradeSelector(wallet=failing_wallet),
+                WalletTradeSelector(wallet=other_wallet),
+            ),
+        )
+        with pytest.raises(WalletActivityError) as caught:
+            await asyncio.wait_for(anext(stream.trades()), timeout=1)
+        assert caught.value is failure
+        assert peer_stopped.is_set()
+        assert client.latest_selector.await_count == 2
+
+    asyncio.run(run())

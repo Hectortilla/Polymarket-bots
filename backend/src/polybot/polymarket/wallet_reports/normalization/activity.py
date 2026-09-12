@@ -5,6 +5,10 @@ from decimal import Decimal, InvalidOperation
 
 from polybot.framework.events import Side
 from polybot.framework.events.prices import is_outcome_price
+from polybot.polymarket.wallet_activity.fields import (
+    ACTIVITY_SLUG_FIELD,
+    ACTIVITY_TITLE_FIELD,
+)
 from polybot.polymarket.wallet_reports.contracts import (
     ACTIVITY_OUTCOME_FIELD,
     ACTIVITY_PRICE_FIELD,
@@ -50,6 +54,12 @@ def _normalize_activity_row(candidate: object) -> ActivityRow | None:
     row[PROXY_WALLET_FIELD] = proxy_wallet
     row[CONDITION_ID_FIELD] = condition_id
     row[ACTIVITY_TYPE_FIELD] = activity_type
+    for field in (ACTIVITY_TITLE_FIELD, ACTIVITY_SLUG_FIELD):
+        text = candidate.get(field)
+        if text is not None:
+            if not isinstance(text, str):
+                return None
+            row[field] = text.strip()
     raw_outcome = candidate.get(ACTIVITY_OUTCOME_FIELD)
     outcome = required_identifier(candidate, ACTIVITY_OUTCOME_FIELD)
     if raw_outcome is not None and outcome is None:

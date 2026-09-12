@@ -1,3 +1,4 @@
+import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { isNonemptyString, isNonnegativeInteger } from "$lib/valueGuards";
 import { isPositiveDecimal, isNonnegativeDecimal } from "$lib/decimalGuards";
@@ -6,6 +7,7 @@ import { isStreamRule } from "./streamRules";
 
 export function isPaperConfig(value: Record<string, unknown>): boolean {
   return (
+    hasOnlyResponseFields(value, "PaperRunConfig") &&
     (value.graph === null || value.graph === undefined || isNodeGraph(value.graph)) &&
     isNonemptyString(value.name) &&
     isPositiveDecimal(value.paper_portfolio_usdc) &&

@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { DashboardHistory } from "$lib/charts/history";
+
+  import { METADATA_COPY } from "$lib/metadataCopy";
+
   import { RUN_COPY } from "$lib/runs/copy";
   import { RUN_DETAIL_COPY, loadedEventsLabel } from "./copy";
   import { BOT_BUILDER_COPY } from "$lib/bots/copy";
@@ -27,12 +31,7 @@
   import NodeGraphInput from "$lib/catalog/NodeGraphInput.svelte";
   import { hasGraphCapability } from "$lib/catalog/graphContracts";
   import DashboardCharts from "$lib/charts/DashboardCharts.svelte";
-  import {
-    emptyDashboardHistory,
-    mergeDurableEvents,
-    mergeLiveEvents,
-    type DashboardHistory,
-  } from "$lib/charts/history";
+
   import { createLiveDashboardBatcher } from "$lib/charts/liveBatch";
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from "$lib/navigation";
   import runtimeContract from "$lib/runtimeContract.fixture.json";
@@ -41,7 +40,7 @@
   import { EVENT_KIND, type PersistedDurableEvent } from "$lib/runs/durableEvents";
   import { eventFailureDetail, eventSummary } from "$lib/runs/eventSummary";
   import { eventLabel } from "$lib/runs/eventFeed";
-  import { loadAndContinueRunDetail, loadRunEvents } from "$lib/runs/hydrate";
+  import { loadAndContinueRunDetail, loadRunEvents, type RunHydration } from "$lib/runs/hydrate";
   import { RUN_STATUS_PRESENTATION } from "$lib/runs/status";
   import { EVENT_VIEW, type RunEventView } from "$lib/runs/eventViews";
   import { formatTime } from "$lib/time";
@@ -57,7 +56,7 @@
 
   let run = $state<RunRead | undefined>();
   let events = $state<PersistedDurableEvent[]>([]);
-  let dashboard = $state<DashboardHistory>(emptyDashboardHistory());
+  let dashboard = $state<DashboardHistory>(new DashboardHistory());
   let loading = $state(true);
   let eventsOpen = $state(false);
   let eventView = $state<RunEventView>(EVENT_VIEW.ACTIVITY);
@@ -87,7 +86,7 @@
     let activeConnection = 0;
     let requestedConnection = 0;
     const liveBatcher = createLiveDashboardBatcher((liveEvents) => {
-      if (!disposed) dashboard = mergeLiveEvents(dashboard, liveEvents);
+      if (!disposed) dashboard = dashboard.mergeLiveEvents(liveEvents);
     });
     const runId = page.params.runId;
     if (!runId) {
@@ -100,38 +99,39 @@
       const connection = ++requestedConnection;
       changingView = true;
       error = "";
+      function handleHydratedRun(hydration: RunHydration): void {
+        if (disposed || connection !== requestedConnection) return;
+        closeStream();
+        activeConnection = connection;
+        eventView = view;
+        streamReconnecting = false;
+        const firstLoad = run === undefined;
+        run = hydration.run;
+        events = hydration.events;
+        loadedEventPages = 1;
+        nextBeforeEventId = hydration.nextBeforeEventId;
+        // Preserve chart controls/history when the activity mode changes.
+        dashboard = dashboard.mergeDurableEvents(hydration.dashboardPage.events);
+        dashboard = dashboard.mergeDurableEvents(hydration.events);
+        if (firstLoad) nextDashboardEventId = hydration.dashboardPage.nextBeforeEventId;
+        if (!executedDefinition && !definitionLoading) {
+          definitionLoading = true;
+          void loadExecutedDefinition(hydration.run.definition_id)
+            .then((definition) => {
+              if (!disposed) executedDefinition = definition;
+            })
+            .catch(() => {
+              if (!disposed) definitionFailed = true;
+            })
+            .finally(() => {
+              if (!disposed) definitionLoading = false;
+            });
+        }
+      }
       try {
         const close = await loadAndContinueRunDetail(
           runId,
-          (hydration) => {
-            if (disposed || connection !== requestedConnection) return;
-            closeStream();
-            activeConnection = connection;
-            eventView = view;
-            streamReconnecting = false;
-            const firstLoad = run === undefined;
-            run = hydration.run;
-            events = hydration.events;
-            loadedEventPages = 1;
-            nextBeforeEventId = hydration.nextBeforeEventId;
-            // Preserve chart controls/history when the activity mode changes.
-            dashboard = mergeDurableEvents(dashboard, hydration.dashboardPage.events);
-            dashboard = mergeDurableEvents(dashboard, hydration.events);
-            if (firstLoad) nextDashboardEventId = hydration.dashboardPage.nextBeforeEventId;
-            if (!executedDefinition && !definitionLoading) {
-              definitionLoading = true;
-              void loadExecutedDefinition(hydration.run.definition_id)
-                .then((definition) => {
-                  if (!disposed) executedDefinition = definition;
-                })
-                .catch(() => {
-                  if (!disposed) definitionFailed = true;
-                })
-                .finally(() => {
-                  if (!disposed) definitionLoading = false;
-                });
-            }
-          },
+          handleHydratedRun,
           (event) => {
             if (!disposed && activeConnection === connection) appendDurableEvent(event);
           },
@@ -145,7 +145,7 @@
           },
           view,
           (event) => {
-            if (!disposed && activeConnection === connection) dashboard = mergeDurableEvents(dashboard, [event]);
+            if (!disposed && activeConnection === connection) dashboard = dashboard.mergeDurableEvents([event]);
           },
         );
         if (disposed || connection !== requestedConnection) close();
@@ -201,7 +201,7 @@
   function appendDurableEvent(event: PersistedDurableEvent): void {
     events = [...events, event];
     trimEventWindow();
-    dashboard = mergeDurableEvents(dashboard, [event]);
+    dashboard = dashboard.mergeDurableEvents([event]);
     if (run && event.kind === EVENT_KIND.runLifecycle) {
       run = { ...run, status: event.payload.status };
     }
@@ -258,7 +258,7 @@
         events = [...older.events, ...events];
         nextBeforeEventId = older.nextBeforeEventId;
       }
-      dashboard = mergeDurableEvents(dashboard, older.events);
+      dashboard = dashboard.mergeDurableEvents(older.events);
     } catch {
       loadedEventPages -= 1;
       error = RUN_DETAIL_COPY.LOAD_ERROR;
@@ -273,7 +273,7 @@
     const before = nextDashboardEventId;
     try {
       const older = await loadRunEvents(run.id, EVENT_VIEW.DASHBOARD, before);
-      dashboard = mergeDurableEvents(dashboard, older.events);
+      dashboard = dashboard.mergeDurableEvents(older.events);
       if (nextDashboardEventId === before) nextDashboardEventId = older.nextBeforeEventId;
     } catch {
       error = RUN_DETAIL_COPY.LOAD_ERROR;
@@ -506,10 +506,10 @@
       </aside>
     </div>
     <div class="run-timing">
-      <RunSection title="Timing" headingId="run-timing-heading">
+      <RunSection title={RUN_DETAIL_COPY.TIMING} headingId="run-timing-heading">
         <dl class="timing-metrics">
           <div>
-            <dt>Created</dt>
+            <dt>{METADATA_COPY.CREATED}</dt>
             <dd>{formatTime(run.created_at)}</dd>
           </div>
           <div>
@@ -521,7 +521,7 @@
             <dd>{formatTime(run.heartbeat_at)}</dd>
           </div>
           <div>
-            <dt>Ended</dt>
+            <dt>{METADATA_COPY.ENDED}</dt>
             <dd>{formatTime(run.ended_at)}</dd>
           </div>
         </dl>

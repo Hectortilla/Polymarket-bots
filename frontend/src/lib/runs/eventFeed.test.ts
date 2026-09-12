@@ -1,3 +1,4 @@
+import { RUN_EVENT_COPY } from "./copy";
 import { describe, expect, it } from "vitest";
 import { EVENT_KIND, type PersistedDurableEvent } from "./durableEvents";
 import { eventLabel } from "./eventFeed";
@@ -28,7 +29,7 @@ describe("event presentation", () => {
         },
       },
     };
-    expect(eventLabel(event)).toBe("Settlement");
+    expect(eventLabel(event)).toBe(RUN_EVENT_COPY.SETTLEMENT);
     event.payload.settlement.paper_positions.push({
       owner: "paper",
       token_id: "no",

@@ -47,8 +47,6 @@ async def record_markets(
     """Record static or bot-planned markets into one replay-ready archive."""
     if (bot is None) == (not market_slugs):
         raise ValueError("provide either a bot or static market slugs")
-    if duration_seconds is not None and duration_seconds <= 0:
-        raise ValueError("recording duration must be positive")
 
     clock = ObservationClock()
     resume_state = (

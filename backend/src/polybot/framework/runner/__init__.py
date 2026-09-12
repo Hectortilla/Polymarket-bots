@@ -19,7 +19,6 @@ from polybot.framework.runner.validation import (
     wallet_trade_skip_reason,
 )
 from polybot.framework.streams import StreamPlan
-from polybot.framework.wallets import normalize_wallet_address
 
 
 class BotRunner:
@@ -155,8 +154,7 @@ class BotRunner:
         trade: WalletTradeEvent,
     ) -> DispatchSkipReason:
         if any(
-            normalize_wallet_address(trade.wallet) in rule.wallet_addresses
-            for rule in self.stream_plan.current
+            trade.wallet in rule.wallet_addresses for rule in self.stream_plan.current
         ):
             return DispatchSkipReason.MARKET_NOT_TRACKED
         if any(

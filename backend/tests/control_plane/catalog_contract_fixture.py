@@ -23,7 +23,7 @@ from api.catalog.graphs.numbers import (
     MAX_NUMBER_EXPONENT,
     MAX_NUMBER_TEXT_LENGTH,
 )
-from api.catalog.graphs.operations import MAX_BOOLEAN_INPUTS
+from api.catalog.graphs.operations.logic import MAX_BOOLEAN_INPUTS
 from api.catalog.graphs.preview_samples import DEFAULT_PREVIEW_CASH
 from api.catalog.graphs.value_status import GraphValueStatus
 from api.catalog.graphs.values import (
@@ -51,15 +51,14 @@ from api.catalog.values import (
     SelectionMode,
     WidgetKind,
 )
-
-from api.wallet_selection import MAX_SELECTED_WALLETS
 from api.http.search_contracts import (
-    MIN_DISCOVERY_SEARCH_LENGTH,
-    MAX_DISCOVERY_SEARCH_LENGTH,
     DEFAULT_DISCOVERY_SEARCH_LIMIT,
+    MAX_DISCOVERY_SEARCH_LENGTH,
     MAX_DISCOVERY_SEARCH_LIMIT,
+    MIN_DISCOVERY_SEARCH_LENGTH,
 )
 from api.market_selection import MAX_SELECTED_MARKETS
+from api.wallet_selection import MAX_SELECTED_WALLETS
 
 FRONTEND_CATALOG_CONTRACT_PATH = (
     Path(__file__).parents[3]

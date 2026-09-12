@@ -1,3 +1,4 @@
+import { METADATA_COPY } from "$lib/metadataCopy";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BotRead, RunRead, StreamRelation } from "$lib/api/generated";
@@ -95,7 +96,7 @@ describe("bots home", () => {
     expect(Array.from(botLink.children, (cell) => cell.getAttribute("data-label"))).toEqual([
       HOME_COLUMN_LABEL.BOT_AND_MARKETS,
       HOME_COLUMN_LABEL.LATEST_RUN,
-      HOME_COLUMN_LABEL.UPDATED,
+      METADATA_COPY.UPDATED,
     ]);
     expect(within(botLink).getByText(runStatusLabel(RUN.status))).toBeTruthy();
     const runLink = screen.getByRole("link", {

@@ -15,8 +15,7 @@ from polybot.framework.streams import StreamRelation, StreamRule
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.catalog.values import WIDGET_SCHEMA_KEY, WidgetKind
-from api.wallet_selection import MAX_SELECTED_WALLETS, WalletAddress
-from api.market_selection import MAX_SELECTED_MARKETS, MarketSlug
+from api.market_selection import MAX_SELECTED_MARKETS, MIN_SELECTED_MARKETS, MarketSlug
 from api.runs.contracts import (
     DataTradesBudget,
     NonnegativeDecimal,
@@ -24,6 +23,11 @@ from api.runs.contracts import (
     PaperRunConfig,
     PositiveDecimal,
     RunName,
+)
+from api.wallet_selection import (
+    MAX_SELECTED_WALLETS,
+    MIN_SELECTED_WALLETS,
+    WalletAddress,
 )
 
 
@@ -75,7 +79,7 @@ class PaperLaunchInputs(BaseModel):
 
 class WalletPaperLaunchInputs(PaperLaunchInputs):
     wallet_addresses: tuple[WalletAddress, ...] = Field(
-        min_length=1,
+        min_length=MIN_SELECTED_WALLETS,
         max_length=MAX_SELECTED_WALLETS,
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.WALLET_ADDRESSES.value},
     )
@@ -92,7 +96,7 @@ class WalletPaperLaunchInputs(PaperLaunchInputs):
 class NodeBasedLaunchInputs(PaperLaunchInputs):
     market_slugs: tuple[MarketSlug, ...] = Field(
         title="Markets",
-        min_length=1,
+        min_length=MIN_SELECTED_MARKETS,
         max_length=MAX_SELECTED_MARKETS,
         json_schema_extra={WIDGET_SCHEMA_KEY: WidgetKind.MARKET_SLUGS.value},
     )

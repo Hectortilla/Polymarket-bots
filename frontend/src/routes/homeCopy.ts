@@ -9,12 +9,9 @@ export const HOME_COPY = {
 export const HOME_COLUMN_LABEL = {
   BOT_AND_MARKETS: "Bot and markets",
   BOT_NAME: "Bot name",
-  CREATED: "Created",
-  ENDED: "Ended",
   EQUITY: "Equity",
   LATEST_RUN: "Latest run",
   STATUS: "Status",
-  UPDATED: "Updated",
 } as const;
 
 export function botRowLabel(name: string): string {

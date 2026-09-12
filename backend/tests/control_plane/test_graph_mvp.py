@@ -20,10 +20,8 @@ import pytest
 from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
 from api.catalog.graphs.catalog.triggers import GraphTriggerDescriptor
 from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.examples import (
-    entry_exit_example,
-    multiple_conditions_example,
-)
+from api.catalog.graphs.examples.entry_exit import entry_exit_example
+from api.catalog.graphs.examples.multiple_conditions import multiple_conditions_example
 from api.catalog.graphs.operations import OPERATION_DESCRIPTORS
 from api.catalog.graphs.preview import (
     GraphPreviewRequest,

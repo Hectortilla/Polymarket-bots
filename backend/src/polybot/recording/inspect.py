@@ -7,6 +7,7 @@ from pathlib import Path
 
 from polybot.cli.terminal import format_bytes, format_duration, format_timestamp
 from polybot.recording.presentation import ARCHIVE_SIZE_LABEL
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -22,7 +23,6 @@ from .terminal import (
     MUTED_STYLE,
     SUCCESS_STYLE,
     WARNING_STYLE,
-    recording_console,
 )
 
 RECORDING_INSPECTOR_TITLE = "Recording inspector"
@@ -48,7 +48,7 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 
 def _print_inspection(inspection: RecordingInspection) -> None:
-    console = recording_console()
+    console = Console()
     console.print(_archive_panel(inspection))
     console.print(_summary_panel(inspection))
     console.print(_sessions_panel(inspection))

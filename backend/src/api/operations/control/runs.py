@@ -10,14 +10,14 @@ from api.bots.models import BotRow
 from api.operations.schema import OperatorOutcome
 from api.runs.models import RunRow
 from api.runs.status import TERMINAL_RUN_STATUSES, RunStatus
-from api.runs.store import RunStore
+from api.runs.store.transitions import RunTransitions
 from api.runs.terminal import TerminalRunWriter
 
 
 class RunTermination:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
-        self._runs = RunStore(session)
+        self._run_transitions = RunTransitions(session)
         self._terminal = TerminalRunWriter(session)
 
     async def terminate_all(self) -> None:
@@ -46,7 +46,7 @@ class RunTermination:
                 if row.status is RunStatus.QUEUED
                 else RunStatus.INTERRUPTED
             )
-            terminal = await self._runs.transition_row(
+            terminal = await self._run_transitions.transition_row(
                 row.id, status, ended_at=system_now_utc()
             )
             if terminal is not None:

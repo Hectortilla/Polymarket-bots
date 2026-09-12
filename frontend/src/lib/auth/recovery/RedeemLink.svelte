@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { AccountLinkFlow } from "./flows";
-  import { passwordsMatch } from "./validation";
+  import { passwordsMatch } from "../validation";
   import { accountSession } from "../session";
   import { LOGIN_PATH } from "../navigation";
   import { AUTH_COPY } from "../copy";

@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { LaunchFormSchema } from "$lib/catalog/schema";
+
   import type { BotDefinitionDescriptor, GraphExample } from "$lib/api/generated";
   import { fieldLabel } from "$lib/catalog/schema/presentation";
-  import { launchFields, resolvedFieldSchema } from "$lib/catalog/schema/fields";
+
   import { type LaunchInputs } from "$lib/catalog/schema/contracts";
   import { ONBOARDING_COPY } from "./copy";
   let {
@@ -9,6 +11,7 @@
     example,
     inputs,
   }: { descriptor: BotDefinitionDescriptor; example: GraphExample; inputs: LaunchInputs } = $props();
+  const launchSchema = $derived(new LaunchFormSchema(descriptor));
 </script>
 
 <h3>{example.name}</h3>
@@ -24,9 +27,9 @@
 </dl>
 <h3>{ONBOARDING_COPY.SETTINGS}</h3>
 <dl>
-  {#each launchFields(descriptor) as [name, schema] (name)}
+  {#each launchSchema.fields() as [name, schema] (name)}
     <div>
-      <dt>{fieldLabel(name, resolvedFieldSchema(descriptor, schema))}</dt>
+      <dt>{fieldLabel(name, launchSchema.resolveFieldSchema(schema))}</dt>
       <dd>{Array.isArray(inputs[name]) ? inputs[name].join(", ") : String(inputs[name] ?? "")}</dd>
     </div>
   {/each}

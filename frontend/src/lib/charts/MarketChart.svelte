@@ -130,18 +130,29 @@
     label: string,
   ) {
     return points.flatMap((point, sampleIndex) =>
-      (point?.markers ?? []).map((side) => ({
-        name: `${label} ${side === SIDE.buy ? "buy" : "sell"} fill`,
-        value: [samples[sampleIndex].sampled_at_ms, point?.value == null ? null : Number(point.value)],
-        symbol: side === SIDE.buy ? "triangle" : "diamond",
-        itemStyle: {
-          color: side === SIDE.buy ? CHART_COLORS.buy : CHART_COLORS.sell,
-          borderColor: CHART_COLORS.surface,
-          borderWidth: 1.5,
-          opacity: 1,
-        },
-      })),
+      point
+        ? point.markers.map((side) => marketFillMarker(point, samples[sampleIndex].sampled_at_ms, label, side))
+        : [],
     );
+  }
+
+  function marketFillMarker(
+    point: MarketChartPointPayload,
+    sampledAtMs: number,
+    label: string,
+    side: MarketChartPointPayload["markers"][number],
+  ) {
+    return {
+      name: `${label} ${side === SIDE.buy ? "buy" : "sell"} fill`,
+      value: [sampledAtMs, point.value == null ? null : Number(point.value)],
+      symbol: side === SIDE.buy ? "triangle" : "diamond",
+      itemStyle: {
+        color: side === SIDE.buy ? CHART_COLORS.buy : CHART_COLORS.sell,
+        borderColor: CHART_COLORS.surface,
+        borderWidth: 1.5,
+        opacity: 1,
+      },
+    };
   }
 </script>
 

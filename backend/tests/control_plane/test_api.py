@@ -759,6 +759,8 @@ def test_application_lifespan_owns_default_resources(
     session_factory = object()
     launcher = _Launcher()
     discovery = market_discovery()
+    wallets = AsyncMock(spec=dependencies_module.WalletDiscovery)
+    monkeypatch.setattr(dependencies_module, "WalletDiscovery", lambda: wallets)
     monkeypatch.setattr(dependencies_module, "MarketDiscovery", lambda: discovery)
     settings = dependencies_module.StartupSettings(database_url="db", redis_url="redis")
     monkeypatch.setattr(
@@ -785,24 +787,29 @@ def test_application_lifespan_owns_default_resources(
         assert application.state.redis is redis
         assert application.state.launcher is launcher
         assert application.state.market_discovery is discovery
+        assert application.state.wallet_discovery is wallets
 
     assert engine.disposed is True
     assert redis.closed is True
     discovery.close.assert_awaited_once()
+    wallets.close.assert_awaited_once()
 
     injected_redis = _Redis()
     injected_discovery = market_discovery()
+    injected_wallets = AsyncMock()
     with TestClient(
         create_app(
             session_factory=object(),
             redis=injected_redis,
             launcher=_Launcher(),
             market_discovery=injected_discovery,
+            wallet_discovery=injected_wallets,
         )
     ):
         pass
     assert injected_redis.closed is False
     injected_discovery.close.assert_not_awaited()
+    injected_wallets.close.assert_not_awaited()
 
 
 def _client(

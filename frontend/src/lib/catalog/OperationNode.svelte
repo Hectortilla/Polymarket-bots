@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { GraphOperationNodeData, GraphScalarType } from "$lib/api/generated";
   import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
-  import { operationForNode } from "$lib/catalog/nodeGraph/catalog";
+
   import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
-  import { inputsForNode, outputsForNode } from "$lib/catalog/nodeGraph/ports";
+
   import { Handle, Position, useUpdateNodeInternals } from "@xyflow/svelte";
   import { getContext } from "svelte";
   import {
@@ -24,9 +24,9 @@
     type: GRAPH_NODE_TYPE.operation,
     position: { x: 0, y: 0 },
   });
-  const descriptor = $derived(operationForNode(editor.catalog, data));
-  const inputs = $derived(inputsForNode(node, editor.catalog));
-  const outputs = $derived(outputsForNode(node, editor.catalog));
+  const descriptor = $derived(editor.resolver.operationForNode(data));
+  const inputs = $derived(editor.resolver.inputsForNode(node));
+  const outputs = $derived(editor.resolver.outputsForNode(node));
   $effect(() => {
     inputs;
     outputs;

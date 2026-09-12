@@ -2392,6 +2392,40 @@ reviewer reruns. The documentation-drift audit covers README, architecture/API
 notes, web architecture, graph migration guidance and exported contracts. No live
 trading, public ingress or deployment is part of this maintenance pass.
 
+## Full-repository review follow-up (2026-09-12)
+
+This maintenance pass applies the verified findings from all 51 style reviewers,
+run in batches of 10. It adds no product slice. Graph descriptor families, node
+contracts and example scenarios now have semantic package owners. Run transitions
+and lease-bound worker writes have explicit persistence owners; archive row writes
+share their connection/session owner. CLI dispatch separates paper and backtest
+arguments while preserving the public flags.
+
+Frontend launch schemas and graph catalogs bind related queries to their owning
+contracts. Dashboard history owns immutable merges; selector request/hydration
+state and palette projection/grouping have separate responsibilities. Closed API
+response objects use generated field contracts. Shared copy, selection bounds,
+long-position reductions and shutdown hooks have one source of truth.
+
+Paper dedupe receipts survive cleanup failures after a fill, and required wallet
+polling failures reach the supervisor. SDK report normalization rejects malformed
+identities before financial analysis. Regression coverage includes concurrent fill
+retries, selector save/reload/launch, malformed exact identifiers, resource ownership,
+Redis admission budgets, response-schema parity and documented contract values.
+The documentation audit corrects filtered versus independent wallet routing and
+clarifies optional core-event slugs versus hosted dispatcher requirements.
+PolymarketDocs verification retained the pinned official SDK and existing protocol
+choices. No live execution, public ingress or deployment is part of this pass.
+
+Validation: 1,590 backend tests passed with PostgreSQL and Redis enabled;
+398 frontend tests and 12 browser tests passed. Svelte diagnostics, generated
+OpenAPI client parity, frontend and Python distribution builds, and isolated
+wheel imports passed. The documentation-drift audit checked moved module
+references, wallet routing/identity semantics, graph policy, discovery bounds,
+report cadence and deployment ports. The protocol-document
+checks completed without a blocker. Reconciliation and focused closing reviews
+left no accepted findings outstanding.
+
 ## Later Product Features
 
 After the public paper beta, consider browser backtesting over available

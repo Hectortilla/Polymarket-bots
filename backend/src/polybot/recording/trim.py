@@ -9,11 +9,12 @@ from polybot.backtesting.contracts import BacktestError
 from polybot.cli.arguments import positive_int
 from polybot.cli.terminal import format_bytes, format_duration
 from polybot.recording.presentation import ARCHIVE_SIZE_LABEL
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from .archive.errors import RecordingArchiveError
-from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE, recording_console
+from .terminal import ACCENT_STYLE, SUCCESS_STYLE, WARNING_STYLE
 from .trim_contracts import (
     RecordingTrimError,
     RecordingTrimPlan,
@@ -71,7 +72,7 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 def _print_result(result: RecordingTrimResult) -> None:
     plan = result.plan
-    console = recording_console()
+    console = Console()
     if not result.replaced:
         console.print(
             Panel.fit(
@@ -120,7 +121,7 @@ def _print_plan(plan: RecordingTrimPlan) -> None:
         str(plan.source_gap_count),
         format_bytes(plan.source_size_bytes),
     )
-    recording_console().print(
+    Console().print(
         Panel(table, border_style=ACCENT_STYLE, title="[bold]Trim plan[/]"),
     )
 

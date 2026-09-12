@@ -2,12 +2,17 @@
 
 import asyncio
 import logging
-import re
-from http import HTTPStatus
 from dataclasses import replace
+from http import HTTPStatus
 
 from polybot.polymarket.client_lifecycle import PublicClientLease
 from polybot.polymarket.discovery_contracts import MarketSearchResults, MarketSuggestion
+from polybot.polymarket.discovery_policy import (
+    CONDITION_ID_QUERY_PATTERN,
+    DISCOVERY_TIMEOUT_SECONDS,
+    IDENTIFIER_LOOKUP_PAGE_SIZE,
+    NUMERIC_MARKET_IDENTIFIER_QUERY_PATTERN,
+)
 from polybot.polymarket.errors import (
     MarketDataError,
     MarketDataIssue,
@@ -17,8 +22,7 @@ from polybot.polymarket.gamma import _GammaMarketSourceClient
 from polybot.polymarket.normalization.discovery import normalize_suggestion
 
 from polymarket import AsyncPublicClient, PolymarketError, RequestRejectedError
-
-from polybot.polymarket.discovery_policy import DISCOVERY_TIMEOUT_SECONDS
+from polymarket.models.gamma.market import Market as SdkMarket
 
 ACTIVE_SEARCH_EVENTS = "active"
 logger = logging.getLogger(__name__)
@@ -32,10 +36,10 @@ class MarketDiscovery:
     async def search(self, query: str, limit: int) -> MarketSearchResults:
         try:
             async with asyncio.timeout(DISCOVERY_TIMEOUT_SECONDS):
-                if re.fullmatch(r"0x[a-fA-F0-9]{64}", query):
-                    return await self._search_identifier(query, condition=True)
-                if re.fullmatch(r"[0-9]+", query):
-                    return await self._search_identifier(query, condition=False)
+                if CONDITION_ID_QUERY_PATTERN.fullmatch(query):
+                    return await self._search_identifier(query, is_condition_id=True)
+                if NUMERIC_MARKET_IDENTIFIER_QUERY_PATTERN.fullmatch(query):
+                    return await self._search_identifier(query, is_condition_id=False)
                 page = await self._lease.client.search(
                     q=query,
                     events_status=ACTIVE_SEARCH_EVENTS,
@@ -95,13 +99,17 @@ class MarketDiscovery:
         await self._lease.close()
 
     async def _search_identifier(
-        self, query: str, *, condition: bool
+        self, query: str, *, is_condition_id: bool
     ) -> MarketSearchResults:
         # Token IDs can exceed Gamma's integer range; query that index first.
         paginator = (
-            self._lease.client.list_markets(condition_ids=(query,), page_size=2)
-            if condition
-            else self._lease.client.list_markets(clob_token_ids=(query,), page_size=2)
+            self._lease.client.list_markets(
+                condition_ids=(query,), page_size=IDENTIFIER_LOOKUP_PAGE_SIZE
+            )
+            if is_condition_id
+            else self._lease.client.list_markets(
+                clob_token_ids=(query,), page_size=IDENTIFIER_LOOKUP_PAGE_SIZE
+            )
         )
         page = await paginator.first_page()
         if page.has_more or len(page.items) > 1:
@@ -111,20 +119,15 @@ class MarketDiscovery:
             )
         sources = list(page.items)
         for source in sources:
-            matches = (
-                (source.condition_id or "").lower() == query.lower()
-                if condition
-                else any(
-                    token.token_id == query
-                    for token in (source.outcomes.yes, source.outcomes.no)
-                )
+            matches = self._identifier_matches(
+                source, query, is_condition_id=is_condition_id
             )
             if not matches:
                 raise MarketDataError(
                     MarketDataIssue.AMBIGUOUS_MARKET_METADATA,
                     "market ID lookup returned another market",
                 )
-        if not sources and not condition:
+        if not sources and not is_condition_id:
             try:
                 source = await self._lease.client.get_market(id=query)
             except RequestRejectedError as error:
@@ -145,4 +148,15 @@ class MarketDiscovery:
         )
         return MarketSearchResults(
             tuple(choice for choice in choices if choice.is_open_for_trading), False
+        )
+
+    @staticmethod
+    def _identifier_matches(
+        source: SdkMarket, query: str, *, is_condition_id: bool
+    ) -> bool:
+        if is_condition_id:
+            return (source.condition_id or "").lower() == query.lower()
+        return any(
+            token.token_id == query
+            for token in (source.outcomes.yes, source.outcomes.no)
         )

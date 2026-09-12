@@ -1,10 +1,7 @@
+import { SELECTION_SEARCH_COPY } from "./selectionSearch/copy";
 import { lookupWallets, searchWallets, type WalletSuggestion } from "$lib/api/generated";
 import catalogContract from "./catalogContract.fixture.json";
 import type { SelectionSource, SelectionSuggestion } from "./selectionSearch";
-
-function suggestion(wallet: WalletSuggestion): SelectionSuggestion {
-  return { id: wallet.address, title: wallet.name ?? wallet.address };
-}
 
 export const walletSelection: SelectionSource = {
   limits: catalogContract.walletSearch,
@@ -12,8 +9,7 @@ export const walletSelection: SelectionSource = {
     PLACEHOLDER: "Search wallets by name or 0x address…",
     NO_RESULTS: "No wallets found. Try another name or paste a full wallet address.",
     SEARCH_ERROR: "Wallet search is unavailable. Please try again.",
-    RETRY_SEARCH: "Retry search",
-    RETRY_DETAILS: "Retry details",
+    ...SELECTION_SEARCH_COPY,
     UNAVAILABLE: "Wallet unavailable",
     MISSING: "Wallet details unavailable",
     LOOKUP_ERROR: "Selected wallet details could not be loaded. Your selections are preserved.",
@@ -35,3 +31,7 @@ export const walletSelection: SelectionSource = {
     return data.map(suggestion);
   },
 };
+
+function suggestion(wallet: WalletSuggestion): SelectionSuggestion {
+  return { id: wallet.address, title: wallet.name ?? wallet.address };
+}

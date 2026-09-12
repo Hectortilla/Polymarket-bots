@@ -14,10 +14,6 @@ def response_field_contract() -> dict[str, object]:
         name: list(schema["properties"])
         for name, schema in schemas.items()
         if schema.get("additionalProperties") is False
-        and (
-            name.endswith(("Payload", "Event"))
-            or name in {"GraphValueRead", "RunEventPage"}
-        )
     }
     return {
         "models": models,

@@ -4,12 +4,12 @@
   import NodeIssues from "./NodeIssues.svelte";
 
   import type { GraphBrokerActionNodeData } from "$lib/api/generated";
-  import { brokerActionForNode } from "$lib/catalog/nodeGraph/catalog";
+
   import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
   let { id = "", data }: { id?: string; data: GraphBrokerActionNodeData } = $props();
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
-  const descriptor = $derived(brokerActionForNode(editor.catalog, data));
+  const descriptor = $derived(editor.resolver.brokerActionForNode(data));
 </script>
 
 <section class="action-node" aria-label={`${descriptor.display_name} broker action node`}>

@@ -4,11 +4,11 @@ import asyncio
 import json
 
 import pytest
+from polybot.cli.arguments import parse_duration_seconds
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig
 from polybot.framework.streams import StreamRelation, StreamRule
 from polybot.recording.clock import ObservationClock
-from polybot.recording.duration import parse_duration_seconds
 from polybot.recording.identity import (
     TARGET_IDENTITY_BOT_SPEC_FIELD,
     TARGET_IDENTITY_CONFIGURATION_FIELD,

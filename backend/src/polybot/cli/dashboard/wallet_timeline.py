@@ -24,10 +24,6 @@ WALLET_LANE_LABEL_WIDTH = 13
 WALLET_LANE_SUMMARY_WIDTH = 21
 
 
-def wallet_lane_capacity(width: int, height: int) -> int:
-    return max(1, min(12, primary_chart_available_height(width, height) - 4))
-
-
 def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
     capacity = wallet_lane_capacity(width, height)
     maximum_page = state.wallets.maximum_page(capacity)
@@ -54,12 +50,7 @@ def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
         end_epoch_seconds,
         columns,
     )
-    bucket_notionals = [
-        sum(event.notional for event in events)
-        for lane_buckets in events_by_lane.values()
-        for events in lane_buckets.values()
-    ]
-    maximum_notional = max(bucket_notionals, default=Decimal("0"))
+    maximum_notional = _maximum_bucket_notional(events_by_lane)
     page_label = f" wallets {page + 1}/{maximum_page + 1}" if maximum_page else ""
     rows: list[Text] = [
         Text(f"Trade-time event timeline{page_label}", style="bold white")
@@ -78,6 +69,10 @@ def wallet_timeline(state: DashboardState, width: int, height: int) -> Group:
             row.append(wallet_lane_summary(buckets), style="dim")
         rows.append(row)
     return Group(header, *rows)
+
+
+def wallet_lane_capacity(width: int, height: int) -> int:
+    return max(1, min(12, primary_chart_available_height(width, height) - 4))
 
 
 def wallet_timeline_columns(state: DashboardState, width: int) -> int:
@@ -144,3 +139,14 @@ def wallet_lane_summary(buckets: dict[int, list[WalletTimelineEvent]]) -> str:
     sells = len(events) - buys
     notional = sum((event.notional for event in events), Decimal("0"))
     return f" B{buys} S{sells} ${notional:.0f}"
+
+
+def _maximum_bucket_notional(
+    events_by_lane: dict[str, dict[int, list[WalletTimelineEvent]]],
+) -> Decimal:
+    bucket_notionals = (
+        sum(event.notional for event in events)
+        for lane_buckets in events_by_lane.values()
+        for events in lane_buckets.values()
+    )
+    return max(bucket_notionals, default=Decimal("0"))

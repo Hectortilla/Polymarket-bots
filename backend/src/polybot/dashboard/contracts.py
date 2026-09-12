@@ -8,7 +8,6 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from polybot.framework.events.wallet_trades import WalletTradeEvent
-from polybot.framework.wallets import normalize_wallet_address
 
 if TYPE_CHECKING:
     from polybot.framework.events import Side
@@ -92,7 +91,7 @@ class WalletChartPoint:
     ) -> WalletChartPoint:
         return WalletChartPoint(
             source_key=trade.source_key,
-            wallet=normalize_wallet_address(trade.wallet),
+            wallet=trade.wallet,
             trade_timestamp_ms=trade.trade_timestamp_ms,
             side=trade.side,
             notional=trade.price * trade.size,

@@ -752,18 +752,24 @@ The default `BaseBot.current_stream_rules()` returns configured stream rules.
 The runner refreshes its stream plan before dispatch and routes events according
 to the active relation.
 
-Market-sensitive events must carry market identity:
+Market-sensitive inputs expose these market-identity fields:
 
 - `BookSnapshot.market_slug`
 - `BookSnapshot.condition_id`
-- `WalletTradeEvent.market_slug`
 - `WalletTradeEvent.condition_id`
 - `OrderRequest.market_slug`
 - `OrderRequest.condition_id`
 
-If a bot has no configured/current market set, the runner accepts all market
-events. Once a bot declares current markets, untagged events are rejected rather
-than guessed.
+Book and order slug/condition fields are optional at construction. Hosted books
+populate both; paper execution requires matching book/market metadata and checks
+order identifiers when supplied. An order may use the validated book's market
+when its own optional metadata is omitted.
+
+`WalletTradeEvent` also requires token identity. Its market slug is optional in
+the generic runner: a wallet-only rule can route an event by normalized wallet,
+condition and token. The hosted wallet dispatcher requires a slug to resolve and
+register the market before dispatch. Market-scoped routing rejects events without
+the slug needed to match that scope, rather than guessing their market.
 
 Cross-market strategies should use one event callback and branch on
 `event.market_slug`. A signal from one slug can submit an `OrderRequest` for a
@@ -813,10 +819,10 @@ wallets, trades from other addresses are rejected before dedupe and strategy
 logic. A bot may override `current_stream_rules()` for a deliberate
 runtime-managed leader set.
 
-Market and wallet routing are independent and cumulative. A wallet trade must
-match both the current wallet plan and the current market plan when both are
-declared. This permits one follower to watch many leaders across many markets
-without duplicating bot instances.
+Routing follows each stream rule's relation. A `filtered` rule requires a wallet
+trade to match both its wallet and market selectors. An `independent` rule accepts
+a match on either selector, and separate rules combine by union. This permits one
+follower to watch many leaders across many markets without duplicating bot instances.
 
 Wallet bootstrap follows the same distinction. An independent wallet selector
 loads all current positions. A filtered selector resolves its rule market slugs
@@ -958,7 +964,19 @@ Every normalized wallet trade must include:
 - Stable `source_id`.
 - Leader trade timestamp.
 - Local observed timestamp.
-- Transaction hash when available.
+- Transaction hash when available in a directly supplied framework event.
+
+The pluggable `WalletTradeSource.trades` contract yields normalized
+`WalletTradeEvent` objects with a nonempty transaction hash. The wallet activity
+adapter uses that hash and validated trade fields to construct its canonical
+source ID and local observed timestamp; a source cannot override this dedupe
+identity. String wallet addresses are canonicalized once when the framework
+event is constructed. Malformed non-string identities remain rejectable by the
+runner's stable data guard.
+
+Polling errors from the wallet adapter propagate to the stream supervisor, which
+cancels peer work and surfaces the failure. A failed poll is not an empty successful
+read and does not silently retry forever.
 
 The `source_id` is mandatory because activity sources can replay rows during
 polling, reconnect, or reconciliation. The runner dedupes by normalized wallet
@@ -999,8 +1017,11 @@ The [implementation checklist](graph-mvp-plan.md) records both delivery phases.
 
 Archive ownership is explicit. `RecordingArchive` remains the public writer and
 owns the connection, lease, sequence, admitted metadata, baseline generations,
-and write serialization. Its `archive/writer` package separates session setup,
-events, gaps, anomalies, and checkpoints. `ArchiveSelection` is the normalized
+and write serialization. Its `archive/writer` package separates session setup
+from `ArchiveRowWriter`, the connection/session-bound SQL owner for events, gaps,
+anomalies and checkpoints. The public writer retains locks and transaction
+boundaries. Replay payload JSON and capture anomaly JSON live with their
+respective serialization owners. `ArchiveSelection` is the normalized
 selection contract; query preparation shares one snapshot policy while each
 reader operation retains responsibility for closing its connection. Durable
 column names live in `archive/columns.py` and are consumed by DDL, row decoders,
@@ -1025,7 +1046,10 @@ and identity sections behind one dispatch boundary.
 
 Paper execution reads final metadata after the final book lookup, then rechecks
 book freshness at the current clock, locally known settlement, and book continuity
-without yielding before the fill calculation and portfolio mutation. Failed capture
+without yielding before the fill calculation and portfolio mutation. The broker
+records an applied fill on its source claim before leaving the asynchronous
+execution scope, so cleanup failure or cancellation cannot make a retry apply
+the same fill again. Pre-fill failures still release the claim for a valid retry. Failed capture
 acquisition and unexpected capture termination before initial baselines record
 coverage gaps, so a clean timed stop cannot claim complete coverage after those
 failures. Duplicate-source wallet receipts preserve the original timeline object

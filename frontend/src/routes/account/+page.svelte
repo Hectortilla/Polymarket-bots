@@ -16,7 +16,7 @@
   import { AUTH_COPY } from "$lib/auth/copy";
   import { ACCOUNT_COPY } from "$lib/auth/recovery/copy";
   import { EMAIL_VERIFICATION_FLOW } from "$lib/auth/recovery/flows";
-  import { passwordsMatch } from "$lib/auth/recovery/validation";
+  import { passwordsMatch } from "$lib/auth/validation";
   import { accountStatusMessage, SESSION_REVOCATION } from "$lib/auth/recovery/presentation";
   import { accountActionError } from "$lib/auth/recovery/result";
   import RequestLink from "$lib/auth/recovery/RequestLink.svelte";

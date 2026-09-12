@@ -93,11 +93,17 @@
         ></label
       >
       <label>Virtual time (milliseconds)<input type="text" bind:value={virtualTimestampText} /></label>
-      <label>Available cash<input type="text" bind:value={cash} /></label>
+      <label>{GRAPH_PREVIEW_COPY.AVAILABLE_CASH}<input type="text" bind:value={cash} /></label>
     </div>
     <div class="sample-fields">
-      <label>Sample event<textarea rows="9" bind:value={payloadText} spellcheck="false"></textarea></label>
-      <label>Sample positions<textarea rows="3" bind:value={positions} spellcheck="false"></textarea></label>
+      <label
+        >{GRAPH_PREVIEW_COPY.SAMPLE_EVENT}<textarea rows="9" bind:value={payloadText} spellcheck="false"
+        ></textarea></label
+      >
+      <label
+        >{GRAPH_PREVIEW_COPY.SAMPLE_POSITIONS}<textarea rows="3" bind:value={positions} spellcheck="false"
+        ></textarea></label
+      >
     </div>
     <div class="preview-submit">
       <small>Keep exact numeric amounts in quotation marks in sample JSON. Timestamps use whole numbers.</small>

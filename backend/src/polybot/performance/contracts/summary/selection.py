@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from polybot.backtesting.contracts import BacktestGapPolicy
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.integers import is_nonnegative_int, is_positive_int
 from polybot.recording.contracts.session import SessionIntegrityStatus
 

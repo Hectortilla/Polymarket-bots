@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { NodeGraphCatalog } from "$lib/catalog/nodeGraph/catalog";
+
   import {
     addEdge,
     Background,
@@ -22,7 +24,7 @@
     NodeGraph,
   } from "$lib/api/generated";
   import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
-  import { connectionIsValid } from "$lib/catalog/nodeGraph/connections";
+
   import { type CanvasEdge, type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
   import {
     createBrokerActionNode,
@@ -95,8 +97,10 @@
     [describedby, validationIssues.length > 0 ? validationSummaryId : undefined].filter(Boolean).join(" ") || undefined,
   );
 
+  const catalogResolver = new NodeGraphCatalog(catalogSnapshot);
   const editorContext: NodeGraphEditorContext = {
     catalog: catalogSnapshot,
+    resolver: catalogResolver,
     get readOnly() {
       return readOnly;
     },
@@ -152,7 +156,7 @@
     );
     nodes = updatedNodes;
     edges = edges.filter(
-      (edge) => edge.target !== nodeId || connectionIsValid(edge, updatedNodes, [], catalogSnapshot, parameters),
+      (edge) => edge.target !== nodeId || catalogResolver.connectionIsValid(edge, updatedNodes, [], parameters),
     );
   }
 
@@ -180,7 +184,7 @@
   }
   function pruneConnections(): void {
     const count = edges.length;
-    edges = edges.filter((edge) => connectionIsValid(edge, nodes, [], catalogSnapshot, parameters));
+    edges = edges.filter((edge) => catalogResolver.connectionIsValid(edge, nodes, [], parameters));
     connectionNotice =
       count > edges.length ? `${count - edges.length} incompatible connection(s) removed after this change.` : "";
   }
@@ -223,7 +227,7 @@
       {nodeTypes}
       isValidConnection={(connection) =>
         edges.length < catalogContract.nodeGraph.maximumEdges &&
-        connectionIsValid(connection, nodes, edges, catalogSnapshot, parameters)}
+        catalogResolver.connectionIsValid(connection, nodes, edges, parameters)}
       onconnect={connect}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly && edges.length < catalogContract.nodeGraph.maximumEdges}

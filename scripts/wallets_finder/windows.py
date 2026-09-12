@@ -9,6 +9,8 @@ from polybot.examples.btc_five_minute_market import (
 )
 from polybot.framework.markets import market_bucket_start_seconds
 
+DEFAULT_WINDOW_BUFFER_SECONDS = 10
+
 
 def current_bucket_start(now_seconds: float | None = None) -> int:
     timestamp_seconds = int(now_seconds if now_seconds is not None else time.time())
@@ -35,7 +37,8 @@ def window_label(slug: str) -> str:
 
 
 def seconds_to_next_window(
-    buffer_seconds: int = 10, now_seconds: float | None = None
+    buffer_seconds: int = DEFAULT_WINDOW_BUFFER_SECONDS,
+    now_seconds: float | None = None,
 ) -> float:
     current_time_seconds = time.time() if now_seconds is None else now_seconds
     boundary = (

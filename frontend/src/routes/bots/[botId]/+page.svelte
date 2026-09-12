@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { LaunchFormSchema } from "$lib/catalog/schema";
+
+  import { METADATA_COPY } from "$lib/metadataCopy";
+
   import { SERVICE_NAME } from "$lib/serviceIdentity";
   import { LaunchAttempt } from "$lib/bots/launchAttempt";
   import { HTTP_STATUS, isClientRejection } from "$lib/api/http";
@@ -30,7 +34,7 @@
   import { hasGraphCapability } from "$lib/catalog/graphContracts";
   import { graphValidationIssues, type GraphValidationIssue } from "$lib/catalog/graphValidation";
   import { nodeGraphsEqual } from "$lib/catalog/nodeGraphEquality";
-  import { launchInputsFromConfig } from "$lib/catalog/schema/inputs";
+
   import { launchRequestValidationIssues } from "$lib/catalog/schema/validation";
   import { type LaunchInputs, type LaunchValidationIssue } from "$lib/catalog/schema/contracts";
   import { NAVIGATION_LABEL, NAVIGATION_PATH, runPath } from "$lib/navigation";
@@ -80,7 +84,7 @@
       bots = botsResponse.data;
       descriptor = definitionsResponse.data.find((definition) => definition.definition_id === bot?.definition_id);
       if (!descriptor) throw new Error("definition missing");
-      savedInputs = launchInputsFromConfig(descriptor, bot.config);
+      savedInputs = new LaunchFormSchema(descriptor).inputsFromConfig(bot.config);
       editedInputs = savedInputs;
       savedGraph = bot.config.graph ?? undefined;
       editedGraph = savedGraph;
@@ -213,7 +217,7 @@
 {:else}
   <header class="bot-detail-heading page-heading">
     <div>
-      <p class="route-meta">Updated {formatTime(bot.updated_at)}</p>
+      <p class="route-meta">{METADATA_COPY.UPDATED} {formatTime(bot.updated_at)}</p>
       <h1>{bot.config.name}</h1>
       <p>Configuration and strategy are saved together before a run can start.</p>
     </div>

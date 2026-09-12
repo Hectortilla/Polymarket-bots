@@ -1,3 +1,4 @@
+import { GRAPH_SOURCE_COPY } from "$lib/bots/graphSource";
 import { botPath } from "$lib/navigation";
 import { HTTP_STATUS } from "$lib/api/http";
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from "$lib/limits/testFixtures";
@@ -89,7 +90,7 @@ describe("unified bot creation page", () => {
   it("offers existing bots as graph starting points without exposing templates", async () => {
     loadBuilder([SOURCE_BOT]);
     render(Page);
-    const source = await screen.findByLabelText("Starting point");
+    const source = await screen.findByLabelText(GRAPH_SOURCE_COPY.STARTING_POINT);
     await fireEvent.change(source, { target: { value: SOURCE_BOT.id } });
     await fireEvent.click(screen.getByRole("button", { name: BOT_BUILDER_COPY.COPY_GRAPH }));
     expect(screen.getByText(/Current source: Source bot/)).toBeTruthy();

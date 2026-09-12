@@ -15,7 +15,7 @@ from api.catalog.node_based.evaluator.contracts import GraphActionResult
 
 if TYPE_CHECKING:
     from api.catalog.graphs.catalog.functional import GraphBrokerActionDescriptor
-    from api.catalog.graphs.contracts.nodes import GraphBrokerActionNode
+    from api.catalog.graphs.contracts.nodes.actions import GraphBrokerActionNode
     from api.catalog.graphs.ports import GraphInputDescriptor
 
 type InputValueResolver = Callable[[str], object | None]

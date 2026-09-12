@@ -6,7 +6,7 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { isActivityPayload, isLifecyclePayload } from "$lib/runs/eventPayloads/lifecycle";
 import { isWalletTimelinePayload } from "$lib/runs/dashboardPayloads";
 import { isEventPage } from "./events";
-import { isGraphValueRead } from "./graph";
+import { isGraphValueRead } from "./graph/preview";
 
 const ajv = new Ajv({ strict: false, validateFormats: false });
 

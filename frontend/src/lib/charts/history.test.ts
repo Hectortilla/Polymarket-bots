@@ -1,3 +1,6 @@
+import { MAX_CHART_HISTORY_POINTS } from "$lib/charts/contracts";
+
+import { DashboardHistory } from "$lib/charts/history";
 import { describe, expect, it } from "vitest";
 
 import type { PersistedDurableEvent } from "$lib/api/generated";
@@ -7,25 +10,18 @@ import { LIVE_EVENT_KIND } from "$lib/runs/eventKinds";
 import runContract from "$lib/runtimeContract.fixture.json";
 import { SIDE } from "$lib/sides";
 import { VALUATION_STATUS } from "./contracts";
-import {
-  MAX_CHART_HISTORY_POINTS,
-  emptyDashboardHistory,
-  mergeDurableEvents,
-  mergeLiveEvent,
-  mergeLiveEvents,
-} from "./history";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
 
 describe("dashboard history", () => {
   it("bounds loaded durable samples and continues with live frames", () => {
     const durable = Array.from({ length: MAX_CHART_HISTORY_POINTS + 2 }, (_, index) => chartEvent(index + 1));
-    let history = mergeDurableEvents(emptyDashboardHistory(), requirePersistedDurableEvents(durable, RUN_ID));
+    let history = new DashboardHistory().mergeDurableEvents(requirePersistedDurableEvents(durable, RUN_ID));
 
     expect(history.samples).toHaveLength(MAX_CHART_HISTORY_POINTS);
     expect(history.samples[0].sampled_at_ms).toBe(3_000);
 
-    history = mergeLiveEvent(history, {
+    history = history.mergeLiveEvent({
       kind: LIVE_EVENT_KIND.equity,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
@@ -93,7 +89,7 @@ describe("dashboard history", () => {
       RUN_ID,
     );
 
-    const history = mergeDurableEvents(emptyDashboardHistory(), events);
+    const history = new DashboardHistory().mergeDurableEvents(events);
 
     expect(history.walletTimelinePoints).toEqual([
       {
@@ -110,8 +106,8 @@ describe("dashboard history", () => {
   });
 
   it("merges every live dashboard branch and upserts wallet sources", () => {
-    let history = emptyDashboardHistory();
-    history = mergeLiveEvent(history, {
+    let history = new DashboardHistory();
+    history = history.mergeLiveEvent({
       kind: LIVE_EVENT_KIND.market,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
@@ -128,7 +124,7 @@ describe("dashboard history", () => {
         ],
       },
     });
-    history = mergeLiveEvent(history, {
+    history = history.mergeLiveEvent({
       kind: LIVE_EVENT_KIND.equity,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
@@ -138,7 +134,7 @@ describe("dashboard history", () => {
       },
     });
     for (const notional of ["1", "2"]) {
-      history = mergeLiveEvent(history, {
+      history = history.mergeLiveEvent({
         kind: LIVE_EVENT_KIND.wallet,
         run_id: RUN_ID,
         occurred_at: "2026-08-23T00:00:00Z",
@@ -158,7 +154,7 @@ describe("dashboard history", () => {
         },
       });
     }
-    history = mergeLiveEvent(history, {
+    history = history.mergeLiveEvent({
       kind: LIVE_EVENT_KIND.streamHealth,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
@@ -182,7 +178,7 @@ describe("dashboard history", () => {
   });
 
   it("combines same-timestamp chart variants before committing the sample", () => {
-    const history = mergeLiveEvents(emptyDashboardHistory(), [
+    const history = new DashboardHistory().mergeLiveEvents([
       {
         kind: LIVE_EVENT_KIND.market,
         run_id: RUN_ID,
@@ -241,7 +237,7 @@ describe("dashboard history", () => {
   });
 
   it("preserves chart allocations for empty wallet and health-only frames", () => {
-    const initial = mergeLiveEvent(emptyDashboardHistory(), {
+    const initial = new DashboardHistory().mergeLiveEvent({
       kind: LIVE_EVENT_KIND.equity,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
@@ -250,7 +246,7 @@ describe("dashboard history", () => {
         point: { value: "100", status: VALUATION_STATUS.fresh },
       },
     });
-    const emptyWallet = mergeLiveEvent(initial, {
+    const emptyWallet = initial.mergeLiveEvent({
       kind: LIVE_EVENT_KIND.wallet,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
@@ -258,7 +254,7 @@ describe("dashboard history", () => {
     });
 
     expect(emptyWallet).toBe(initial);
-    const withHealth = mergeLiveEvent(emptyWallet, {
+    const withHealth = emptyWallet.mergeLiveEvent({
       kind: LIVE_EVENT_KIND.streamHealth,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",

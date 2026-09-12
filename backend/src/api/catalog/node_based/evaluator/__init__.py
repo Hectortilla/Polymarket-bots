@@ -10,14 +10,12 @@ from polybot.framework.events import OrderRequest
 from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
 from api.catalog.graphs.comparisons import compare_non_null_values
 from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.contracts.nodes import (
-    GraphBrokerActionNode,
-    GraphComparisonNode,
-    GraphConstantNode,
-    GraphOperationNode,
-    GraphParameterNode,
-    GraphTriggerNode,
-)
+from api.catalog.graphs.contracts.nodes.actions import GraphBrokerActionNode
+from api.catalog.graphs.contracts.nodes.comparisons import GraphComparisonNode
+from api.catalog.graphs.contracts.nodes.constants import GraphConstantNode
+from api.catalog.graphs.contracts.nodes.operations import GraphOperationNode
+from api.catalog.graphs.contracts.nodes.parameters import GraphParameterNode
+from api.catalog.graphs.contracts.nodes.triggers import GraphTriggerNode
 from api.catalog.graphs.evaluation_reasons import GraphActionSkipReason
 from api.catalog.graphs.reasons import GraphReason
 from api.catalog.graphs.results import GraphNodeEvaluationRead, GraphValueRead
@@ -27,6 +25,7 @@ from api.catalog.graphs.values import (
     GRAPH_COMPARISON_RESULT_HANDLE_ID,
     GRAPH_CONTEXT_HANDLE_ID,
     GRAPH_VALUE_HANDLE_ID,
+    GraphComparisonOperator,
     GraphOperation,
     GraphPort,
 )
@@ -288,7 +287,7 @@ def _read_value(value: RuntimeValue):
 
 
 def _comparison_result(
-    operator, left: RuntimeValue, right: RuntimeValue
+    operator: GraphComparisonOperator, left: RuntimeValue, right: RuntimeValue
 ) -> RuntimeValue:
     if not left.available:
         return left

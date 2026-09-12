@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from polybot.framework.config.constants import (
@@ -29,6 +29,9 @@ from api.catalog.values import DefinitionId
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.limits.policy import PAPER_BETA
 from api.runs import status as run_status
+
+if TYPE_CHECKING:
+    from api.runs.models import RunRow
 
 type RunName = Annotated[
     str,
@@ -68,6 +71,27 @@ class PaperRunConfig(BaseModel):
         return tuple(
             rule if isinstance(rule, StreamRule) else StreamRule.from_dict(rule)
             for rule in value
+        )
+
+    def new_market_slugs(
+        self, previous_config: PaperRunConfig | None = None
+    ) -> tuple[str, ...]:
+        previous_slugs = (
+            {
+                slug
+                for rule in previous_config.stream_rules
+                for slug in rule.market_slugs
+            }
+            if previous_config is not None
+            else set()
+        )
+        return tuple(
+            dict.fromkeys(
+                slug
+                for rule in self.stream_rules
+                for slug in rule.market_slugs
+                if slug not in previous_slugs
+            )
         )
 
     def require_subscription_allowance(self) -> None:
@@ -122,6 +146,21 @@ class RunRead(BaseModel):
     latest_runtime_failure: str | None = None
     latest_equity: Decimal | None = None
     equity_status: ValuationStatus | None = None
+
+    @classmethod
+    def from_row(cls, row: RunRow) -> RunRead:
+        return cls(
+            id=row.id,
+            bot_id=row.bot_id,
+            definition_id=row.definition_id,
+            config=PaperRunConfig.model_validate(row.config_snapshot),
+            status=row.status,
+            created_at=row.created_at,
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            heartbeat_at=row.heartbeat_at,
+            failure_detail=row.failure_detail,
+        )
 
     def with_event_summary(
         self,

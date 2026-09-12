@@ -340,8 +340,10 @@ class DashboardState:
     def average_broker_latency_ms(self) -> int | None:
         return self.stream_health.average_broker_latency_ms()
 
-    def stream_rate(self, kind: StreamKind, *, received: bool) -> float:
-        return self.stream_health.stream_rate(kind, received=received)
+    def stream_rate(self, kind: StreamKind, *, use_received_samples: bool) -> float:
+        return self.stream_health.stream_rate(
+            kind, use_received_samples=use_received_samples
+        )
 
     def latest_book_lag_ms(self) -> int | None:
         return self.stream_health.latest_book_lag_ms()

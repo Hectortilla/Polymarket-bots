@@ -14,9 +14,9 @@ import pytest
 from polybot.backtesting.contracts import (
     BacktestError,
     BacktestFailureReason,
-    BacktestGapPolicy,
     BacktestOptions,
 )
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.backtesting.selection import ReplaySelectionResolver
 from polybot.backtesting.selection.coverage import SelectionCoverage
 from polybot.backtesting.service.runner import run_backtest

@@ -3,6 +3,9 @@
 </script>
 
 <script lang="ts">
+  import { paletteItems, type PaletteItem } from "./nodePalette/items";
+  import { visiblePaletteGroups, operationGroups } from "./nodePalette/grouping";
+
   import CaretRightIcon from "phosphor-svelte/lib/CaretRightIcon";
   import { tick } from "svelte";
   import ArrowsLeftRightIcon from "phosphor-svelte/lib/ArrowsLeftRightIcon";
@@ -23,11 +26,8 @@
     GraphNodeCatalog,
     GraphTriggerDescriptor,
   } from "$lib/api/generated";
-  import { SIDE } from "$lib/sides";
   import { GRAPH_NODE_TYPE } from "$lib/catalog/graphContracts";
-  import { triggerAlreadyExists } from "$lib/catalog/nodeGraph/catalog";
   import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
-  import { GRAPH_SCALAR_TYPE } from "./graphContracts";
 
   let {
     catalog,
@@ -53,59 +53,6 @@
     onaddaction: (action: GraphBrokerActionDescriptor) => void;
   } = $props();
 
-  type NodeCategory = (typeof GRAPH_NODE_TYPE)[keyof typeof GRAPH_NODE_TYPE];
-  type PaletteIcon = "trigger" | "boolean" | "number" | "string" | "comparison" | "buy" | "sell";
-
-  type PaletteItem = {
-    id: string;
-    category: NodeCategory;
-    subgroup?: string;
-    icon: PaletteIcon;
-    name: string;
-    description: string;
-    meta: string;
-    searchTerms: string;
-    disabled: boolean;
-    select: () => void;
-  };
-
-  const categories = [
-    {
-      id: GRAPH_NODE_TYPE.operation,
-      label: "Operations",
-      description: "Calculate, control signals, query your portfolio, and inspect results.",
-    },
-    {
-      id: GRAPH_NODE_TYPE.parameter,
-      label: "Parameters",
-      description: "Reuse named strategy settings.",
-    },
-    {
-      id: GRAPH_NODE_TYPE.trigger,
-      label: "Triggers",
-      description: "Start a branch from a runtime event.",
-    },
-    {
-      id: GRAPH_NODE_TYPE.constant,
-      label: "Values",
-      description: "Supply a typed value to another node.",
-    },
-    {
-      id: GRAPH_NODE_TYPE.comparison,
-      label: "Comparisons",
-      description: "Compare compatible values.",
-    },
-    {
-      id: GRAPH_NODE_TYPE.brokerAction,
-      label: "Actions",
-      description: "Submit a fixed-side paper order.",
-    },
-  ] as const satisfies ReadonlyArray<{
-    id: NodeCategory;
-    label: string;
-    description: string;
-  }>;
-
   let open = $state(false);
   let query = $state("");
   let expandedGroups = $state<Record<string, boolean>>({ [GRAPH_NODE_TYPE.operation]: true });
@@ -115,134 +62,19 @@
   let opensAbove = $state(false);
   let panelMaxHeight = $state(544);
 
-  function comparisonPaletteItems(comparisons: GraphComparisonDescriptor[]): PaletteItem[] {
-    const defaultComparison = comparisons[0];
-    if (!defaultComparison) return [];
-    const operatorCount = comparisons.length;
-
-    return [
-      {
-        id: "comparison",
-        category: GRAPH_NODE_TYPE.comparison,
-        icon: "comparison",
-        name: "Comparison",
-        description: "Compare two compatible values with a selectable operator.",
-        meta: `${operatorCount} ${operatorCount === 1 ? "operator" : "operators"}`,
-        searchTerms: [
-          "comparison",
-          "logic",
-          ...comparisons.flatMap((comparison) => [comparison.display_name, comparison.operator]),
-        ].join(" "),
-        disabled: false,
-        select: () => onaddcomparison(defaultComparison),
-      },
-    ];
-  }
-
-  function constantIcon(constant: GraphConstantDescriptor): PaletteIcon {
-    switch (constant.scalar_type) {
-      case GRAPH_SCALAR_TYPE.boolean:
-        return "boolean";
-      case GRAPH_SCALAR_TYPE.number:
-        return "number";
-      case GRAPH_SCALAR_TYPE.string:
-        return "string";
-    }
-  }
-
-  function actionIcon(action: GraphBrokerActionDescriptor): PaletteIcon {
-    switch (action.side) {
-      case SIDE.buy:
-        return "buy";
-      case SIDE.sell:
-        return "sell";
-    }
-  }
-
-  const paletteItems = $derived<PaletteItem[]>([
-    ...(catalog.operations ?? []).map((operation) => ({
-      id: operation.operation,
-      category: GRAPH_NODE_TYPE.operation,
-      subgroup: operation.category,
-      icon: "comparison" as const,
-      name: operation.display_name,
-      description: operation.category,
-      meta: operation.category,
-      searchTerms: `${operation.display_name} ${operation.operation} ${operation.category}`,
-      disabled: additionDisabled,
-      select: () => onaddoperation(operation),
-    })),
-    ...parameters.map((parameter) => ({
-      id: parameter.id,
-      category: GRAPH_NODE_TYPE.parameter,
-      icon: "number" as const,
-      name: parameter.name,
-      description: "Named strategy parameter",
-      meta: parameter.data.scalar_type,
-      searchTerms: parameter.name,
-      disabled: additionDisabled,
-      select: () => onaddparameter(parameter),
-    })),
-    ...catalog.triggers.map((trigger) => ({
-      id: `trigger-${trigger.hook_name}`,
-      category: GRAPH_NODE_TYPE.trigger,
-      icon: "trigger" as const,
-      name: trigger.hook_name,
-      description: trigger.payload
-        ? `Start with ${trigger.payload.type_name} data.`
-        : "Start from a bot lifecycle event.",
-      meta: "event",
-      searchTerms: `${trigger.hook_name} ${trigger.payload?.type_name ?? ""}`,
-      disabled: additionDisabled || triggerAlreadyExists(nodes, trigger),
-      select: () => onaddtrigger(trigger),
-    })),
-    ...catalog.constants.map((constant) => ({
-      id: `constant-${constant.scalar_type}`,
-      category: GRAPH_NODE_TYPE.constant,
-      icon: constantIcon(constant),
-      name: constant.display_name,
-      description: `Use ${constant.scalar_type} as an input value.`,
-      meta: constant.scalar_type,
-      searchTerms: `${constant.display_name} ${constant.scalar_type}`,
-      disabled: additionDisabled,
-      select: () => onaddconstant(constant),
-    })),
-    ...comparisonPaletteItems(catalog.comparisons).map((item) => ({
-      ...item,
-      disabled: additionDisabled || item.disabled,
-    })),
-    ...catalog.broker_actions.map((action) => ({
-      id: `action-${action.action}`,
-      category: GRAPH_NODE_TYPE.brokerAction,
-      icon: actionIcon(action),
-      name: action.display_name,
-      description: `Submit a ${action.side} order through Broker.${action.method_name}.`,
-      meta: action.side,
-      searchTerms: `${action.display_name} ${action.action} ${action.side} ${action.method_name}`,
-      disabled: additionDisabled,
-      select: () => onaddaction(action),
-    })),
-  ]);
+  const items = $derived(
+    paletteItems(catalog, nodes, parameters, additionDisabled, {
+      onaddoperation,
+      onaddparameter,
+      onaddtrigger,
+      onaddconstant,
+      onaddcomparison,
+      onaddaction,
+    }),
+  );
 
   const normalizedQuery = $derived(query.trim().toLocaleLowerCase());
-  const visibleGroups = $derived(
-    categories
-      .map((category) => ({
-        ...category,
-        items: paletteItems.filter(
-          (item) => item.category === category.id && item.searchTerms.toLocaleLowerCase().includes(normalizedQuery),
-        ),
-      }))
-      .filter((category) => category.items.length > 0),
-  );
-  function operationGroups(items: PaletteItem[]) {
-    return [...new Set(items.map((item) => item.subgroup!))].map((label) => ({
-      id: `${GRAPH_NODE_TYPE.operation}-${encodeURIComponent(label)}`,
-      label,
-      items: items.filter((item) => item.subgroup === label),
-    }));
-  }
-
+  const visibleGroups = $derived(visiblePaletteGroups(items, normalizedQuery));
   function groupIsExpanded(id: string): boolean {
     return normalizedQuery ? (searchExpansion[id] ?? true) : (expandedGroups[id] ?? false);
   }

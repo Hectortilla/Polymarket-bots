@@ -1,42 +1,10 @@
-import Ajv, { type AnySchemaObject, type ErrorObject, type ValidateFunction } from "ajv";
-import type { BotDefinitionDescriptor } from "$lib/api/generated";
+import type { ErrorObject, ValidateFunction } from "ajv";
 import { GRAPH_REQUEST_FIELD, readableValidationMessage, requestValidationIssues } from "$lib/api/requestErrors";
 import { decodeJsonPointerSegment } from "$lib/jsonPointer";
-import { WIDGET_SCHEMA_KEY, type LaunchInputs, type LaunchValidationIssue } from "./contracts";
-import { launchFields } from "./fields";
+import { type LaunchInputs, type LaunchValidationIssue } from "./contracts";
 import { fieldLabel } from "./presentation";
 
-const ajv = new Ajv({ allErrors: true });
-
 const REQUEST_INPUTS_FIELD = "inputs";
-
-const OPENAPI_DISCRIMINATOR_KEY = "discriminator";
-
-ajv.addKeyword(OPENAPI_DISCRIMINATOR_KEY);
-ajv.addKeyword(WIDGET_SCHEMA_KEY);
-
-export function isLaunchInputSchema(schema: AnySchemaObject): boolean {
-  try {
-    return ajv.validateSchema(schema) === true;
-  } catch {
-    return false;
-  }
-}
-
-export function launchValidator(descriptor: BotDefinitionDescriptor): ValidateFunction<LaunchInputs> {
-  const schema = descriptor.input_schema as AnySchemaObject;
-  const fields = launchFields(descriptor);
-  const fieldNames = new Set(fields.map(([name]) => name));
-  const required = Array.isArray(schema.required)
-    ? schema.required.filter((name): name is string => typeof name === "string" && fieldNames.has(name))
-    : [];
-
-  return ajv.compile<LaunchInputs>({
-    ...schema,
-    properties: Object.fromEntries(fields),
-    required,
-  });
-}
 
 export function launchValidationIssues(
   validator: ValidateFunction<LaunchInputs>,

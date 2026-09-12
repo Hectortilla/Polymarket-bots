@@ -156,7 +156,7 @@ def test_corrupted_claim_snapshot_fails_once_and_releases_queue(limits_services)
                 )
                 with patch.object(
                     RunStore,
-                    "_read_row",
+                    "read_row",
                     side_effect=RunSnapshotError("fixture corrupt revision"),
                 ):
                     await coordinator.execute(run.id)

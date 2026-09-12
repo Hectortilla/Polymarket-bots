@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
@@ -196,6 +197,43 @@ def test_cancelled_duplicate_waiter_does_not_cancel_owned_fill() -> None:
     assert size == Decimal("1")
 
 
+@pytest.mark.parametrize("cancel_owner", [False, True])
+def test_applied_source_fill_survives_scope_cleanup_failure(cancel_owner: bool) -> None:
+    async def run() -> None:
+        cleaning = asyncio.Event()
+        release_cleanup = asyncio.Event()
+
+        @asynccontextmanager
+        async def execution_scope():
+            yield
+            cleaning.set()
+            await release_cleanup.wait()
+            raise RuntimeError("scope cleanup failed")
+
+        broker = _broker(
+            CountingBooks(snapshot=_book()), execution_scope=execution_scope
+        )
+        order = _order(source_id="cleanup-retry")
+        owner = asyncio.create_task(broker.submit(order))
+        await asyncio.wait_for(cleaning.wait(), timeout=1)
+        after_fill = broker.portfolio.snapshot()
+        waiter = asyncio.create_task(broker.submit(order))
+        await asyncio.sleep(0)
+        if cancel_owner:
+            owner.cancel()
+        else:
+            release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError if cancel_owner else RuntimeError):
+            await owner
+        receipt = await asyncio.wait_for(waiter, timeout=1)
+        assert await broker.submit(order) is receipt
+        assert receipt.filled_size == Decimal("1")
+        assert broker.portfolio.position("token").size == Decimal("1")
+        assert broker.portfolio.snapshot() == after_fill
+
+    asyncio.run(run())
+
+
 def test_book_is_refetched_and_revalidated_after_market_lookup() -> None:
     broker = _broker(
         SequencedBooks(
@@ -292,6 +330,7 @@ def _broker(
     *,
     sleep_fn=None,
     markets: MarketSource | None = None,
+    execution_scope=nullcontext,
 ) -> PaperBroker:
     market = Market(
         condition_id="condition",
@@ -318,6 +357,7 @@ def _broker(
         markets or MarketSource(market),
         sleep_fn=sleep_fn or _noop_sleep,
         now_ms_fn=lambda: 1_000,
+        execution_scope=execution_scope,
     )
 
 

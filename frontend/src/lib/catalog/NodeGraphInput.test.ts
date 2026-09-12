@@ -1,3 +1,5 @@
+import { PALETTE_CATEGORY_COPY } from "./nodePalette/copy";
+import { GRAPH_NODE_COPY } from "./copy";
 import { GRAPH_SCALAR_TYPE } from "./graphContracts";
 import { GRAPH_FIELD_COPY } from "$lib/catalog/copy";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
@@ -79,7 +81,7 @@ describe("node graph editor", () => {
       labelledby: "editor-label",
     });
 
-    for (const name of [NUMBER_CONSTANT.display_name, "Comparison", BUY_ACTION.display_name]) {
+    for (const name of [NUMBER_CONSTANT.display_name, GRAPH_NODE_COPY.COMPARISON, BUY_ACTION.display_name]) {
       await fireEvent.click(screen.getByRole("button", { name: ADD_NODE_LABEL }));
       await fireEvent.input(screen.getByRole("searchbox"), { target: { value: name } });
       await fireEvent.click(screen.getByRole("button", { name: `Add ${name}` }));
@@ -239,7 +241,7 @@ describe("node graph editor", () => {
       labelledby: "editor",
     });
     await fireEvent.click(screen.getByRole("button", { name: ADD_NODE_LABEL }));
-    const operations = screen.getByRole("button", { name: "Operations" });
+    const operations = screen.getByRole("button", { name: PALETTE_CATEGORY_COPY.OPERATIONS });
     const math = screen.getByRole("button", { name: "Math" });
     expect(operations.getAttribute("aria-expanded")).toBe("true");
     expect(math.getAttribute("aria-expanded")).toBe("false");
@@ -253,7 +255,7 @@ describe("node graph editor", () => {
     await fireEvent.input(screen.getByRole("searchbox"), { target: { value: "" } });
     expect(operations.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: "Add Multiply" })).toBeNull();
-    const values = screen.getByRole("button", { name: "Values" });
+    const values = screen.getByRole("button", { name: PALETTE_CATEGORY_COPY.VALUES });
     await fireEvent.click(values);
     expect(screen.getByRole("button", { name: `Add ${NUMBER_CONSTANT.display_name}` })).toBeTruthy();
   });

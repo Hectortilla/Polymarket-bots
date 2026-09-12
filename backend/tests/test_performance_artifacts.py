@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from polybot.backtesting.contracts import BacktestGapPolicy
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.cli.observability.events import (
     PortfolioPositionSnapshot,
     PortfolioSnapshot,

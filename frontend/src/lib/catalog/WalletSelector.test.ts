@@ -76,3 +76,17 @@ describe("WalletSelector", () => {
     expect(screen.queryByRole("option", { name: /Stale/ })).toBeNull();
   });
 });
+
+it("uses an unnamed wallet address in search results and saved removable chips", async () => {
+  const unnamed = { ...wallet, name: null };
+  vi.mocked(searchWallets).mockResolvedValue(results([unnamed]));
+  vi.mocked(lookupWallets).mockResolvedValue({ data: [unnamed] } as Awaited<ReturnType<typeof lookupWallets>>);
+  const onchange = vi.fn();
+  const mounted = render(WalletSelector, { value: [], onchange, labelId: "wallets" });
+  await search(unnamed.address);
+  await fireEvent.click(await screen.findByRole("option", { name: new RegExp(unnamed.address) }));
+  expect(onchange).toHaveBeenCalledWith([unnamed.address]);
+  await mounted.rerender({ value: [unnamed.address], onchange, labelId: "wallets" });
+  await fireEvent.click(await screen.findByRole("button", { name: `Remove ${unnamed.address}` }));
+  expect(onchange).toHaveBeenLastCalledWith([]);
+});

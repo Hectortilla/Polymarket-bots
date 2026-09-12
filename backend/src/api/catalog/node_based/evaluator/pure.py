@@ -1,9 +1,10 @@
 """Pure scalar operations with numeric preconditions checked before formulas."""
 
-from decimal import ROUND_HALF_UP, Decimal, DecimalException, localcontext
+from decimal import Decimal, DecimalException, localcontext
 
 from api.catalog.graphs.numbers import (
     GRAPH_NUMBER_CONTEXT,
+    GRAPH_ROUND_MODE,
     MAX_ROUND_DECIMAL_PLACES,
     whole_number,
 )
@@ -101,7 +102,7 @@ def _calculate(operation: GraphOperation, values: dict) -> object:
         )
     if operation is GraphOperation.ROUND:
         return values[GraphPort.VALUE].quantize(
-            Decimal(1).scaleb(-int(values[GraphPort.PLACES])), rounding=ROUND_HALF_UP
+            Decimal(1).scaleb(-int(values[GraphPort.PLACES])), rounding=GRAPH_ROUND_MODE
         )
     raise AssertionError(f"Missing pure operation: {operation}")
 

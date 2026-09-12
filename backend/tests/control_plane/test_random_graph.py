@@ -7,7 +7,8 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from api.catalog.graphs.examples import GRAPH_EXAMPLES, random_example
+from api.catalog.graphs.examples import GRAPH_EXAMPLES
+from api.catalog.graphs.examples.random import random_example
 from api.catalog.graphs.reasons import GraphReason
 from api.catalog.graphs.values import GraphPort
 from api.catalog.node_based.evaluator import GraphEvaluator

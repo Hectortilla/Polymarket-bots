@@ -1,3 +1,4 @@
+import { GRAPH_SOURCE_COPY } from "$lib/bots/graphSource";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import type { GraphExample, NodeGraph } from "$lib/api/generated";
@@ -21,7 +22,7 @@ describe("graph starting points", () => {
       onselect,
     });
     expect(screen.getByRole("option", { name: example.name })).toBeInTheDocument();
-    await fireEvent.change(screen.getByLabelText("Starting point"), {
+    await fireEvent.change(screen.getByLabelText(GRAPH_SOURCE_COPY.STARTING_POINT), {
       target: { value: "example-0" },
     });
     expect(screen.getByText(example.description)).toBeInTheDocument();

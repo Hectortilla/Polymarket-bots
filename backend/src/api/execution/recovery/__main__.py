@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-import signal
 
+from polybot.framework.lifecycle import install_signal_handlers
 from redis.asyncio import Redis
 
 from api.deployment.settings import StartupSettings
@@ -12,8 +12,8 @@ from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.execution.taskiq_app import TaskiqRunLauncher
 from api.execution.worker.database import create_worker_database
 from api.io_policy import REDIS_SOCKET_OPTIONS
-from api.operations.monitor import OperationMonitor
 from api.lifecycle.maintenance import DataMaintenance
+from api.operations.monitor import OperationMonitor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,10 +37,9 @@ async def serve_recovery(settings: StartupSettings) -> None:
     monitor_task = asyncio.create_task(monitor.serve())
     maintenance_task = asyncio.create_task(DataMaintenance(session_factory).serve())
     stopping = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stopping.set)
+    remove_signal_handlers = None
     try:
+        remove_signal_handlers = install_signal_handlers(stopping)
         while not stopping.is_set():
             for task in (monitor_task, maintenance_task):
                 if task.done():
@@ -55,6 +54,8 @@ async def serve_recovery(settings: StartupSettings) -> None:
             except TimeoutError:
                 continue
     finally:
+        if remove_signal_handlers is not None:
+            remove_signal_handlers()
         monitor_task.cancel()
         maintenance_task.cancel()
         await asyncio.gather(monitor_task, maintenance_task, return_exceptions=True)

@@ -9,6 +9,7 @@ from api.runs.contracts import RunRead
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
+from api.runs.store.transitions import RunTransitions
 from api.runs.terminal import TerminalRunWriter
 
 type ApiRunTransition = tuple[RunRead, int | None]
@@ -24,7 +25,7 @@ class ApiRunLifecycle:
         *,
         now: datetime,
     ) -> ApiRunTransition | None:
-        transition = await RunStore(self._session).request_stop_transition(
+        transition = await RunTransitions(self._session).request_stop_transition(
             run_id,
             now=now,
         )

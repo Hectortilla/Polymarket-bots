@@ -4,7 +4,7 @@ import contract from "../src/lib/runtimeContract.fixture.json" with { type: "jso
 import { ACCOUNT_COPY } from "../src/lib/auth/recovery/copy";
 import { AUTH_COPY } from "../src/lib/auth/copy";
 import { LOGIN_PATH, REGISTER_PATH } from "../src/lib/auth/navigation";
-import { receivedLink } from "./accountHelpers";
+import { readAccountLink } from "./accountLinkFlows";
 
 const PASSWORD = "browser recovery original password";
 const NEW_PASSWORD = "browser recovery replaced password";
@@ -29,7 +29,7 @@ test("mail reset removes URL secrets, rejects replay, and supports password/sess
   await page.getByLabel(AUTH_COPY.EMAIL, { exact: true }).fill(EMAIL);
   await page.getByRole("button", { name: ACCOUNT_COPY.SEND_RESET, exact: true }).click();
   await expect(page.getByRole("status")).toContainText(ACCOUNT_COPY.SENT);
-  const link = await receivedLink(page, EMAIL);
+  const link = await readAccountLink(page, EMAIL);
   const token = new URL(link).hash.slice(1);
   await page.goto(link);
   await expect(page).toHaveURL((url) => !url.hash && !url.search);

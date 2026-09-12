@@ -17,10 +17,8 @@ from ..contracts.records import (
     CaptureAnomalyRecord,
     RecordedEvent,
 )
-from ..serialization.entrypoints import (
-    capture_anomaly_from_json,
-    payload_from_json,
-)
+from ..serialization.anomalies import capture_anomaly_from_json
+from ..serialization.payloads import payload_from_json
 from .errors import ArchiveFormatError
 from .primitives import _optional_strict_int, _strict_int
 

@@ -24,10 +24,10 @@ describe("decision preview", () => {
       graph: fixture.request.graph as NodeGraph,
       catalog: TEST_GRAPH_CATALOG,
     });
-    expect(JSON.parse((screen.getByLabelText("Sample positions") as HTMLTextAreaElement).value)).toEqual(
-      TEST_GRAPH_CATALOG.sample_positions,
-    );
-    await fireEvent.input(screen.getByLabelText("Available cash"), {
+    expect(
+      JSON.parse((screen.getByLabelText(GRAPH_PREVIEW_COPY.SAMPLE_POSITIONS) as HTMLTextAreaElement).value),
+    ).toEqual(TEST_GRAPH_CATALOG.sample_positions);
+    await fireEvent.input(screen.getByLabelText(GRAPH_PREVIEW_COPY.AVAILABLE_CASH), {
       target: { value: "9007199254740993.01" },
     });
     await fireEvent.click(screen.getByRole("button", { name: GRAPH_PREVIEW_COPY.PREVIEW, hidden: true }));
@@ -45,7 +45,7 @@ describe("decision preview", () => {
       graph: fixture.request.graph as NodeGraph,
       catalog: TEST_GRAPH_CATALOG,
     });
-    await fireEvent.input(screen.getByLabelText("Sample event"), { target: { value: "{invalid" } });
+    await fireEvent.input(screen.getByLabelText(GRAPH_PREVIEW_COPY.SAMPLE_EVENT), { target: { value: "{invalid" } });
     await fireEvent.click(screen.getByRole("button", { name: GRAPH_PREVIEW_COPY.PREVIEW, hidden: true }));
     expect(previewGraph).not.toHaveBeenCalled();
     expect(screen.getByRole("alert", { hidden: true })).toBeTruthy();

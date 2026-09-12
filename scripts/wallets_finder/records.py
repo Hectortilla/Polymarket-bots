@@ -35,7 +35,7 @@ def result_note(
     reason: WalletClassificationReason,
 ) -> str:
     return format_wallet_scan_record(
-        label=verdict,
+        verdict=verdict,
         net_cash_usdc=metrics[NET_CASH_METRIC],
         hedge_score=metrics[HEDGE_AVERAGE_METRIC],
         traded_volume_usdc=metrics[VOLUME_METRIC],

@@ -43,6 +43,14 @@ class ReplayClock:
         self._now_ms = target_ms
 
     async def sleep(self, seconds: float) -> None:
+        target_ms = self._sleep_target_ms(seconds)
+        if self._advance is None:
+            self.move_to(target_ms)
+            return
+        await self._advance(target_ms)
+        self.move_to(target_ms)
+
+    def _sleep_target_ms(self, seconds: float) -> int:
         if seconds < 0:
             raise ValueError("clock sleep must be nonnegative")
         target_ms = self._now_ms + round(seconds * MILLISECONDS_PER_SECOND)
@@ -50,8 +58,4 @@ class ReplayClock:
             raise ClockDataExhaustedError(
                 "simulated latency extends beyond selected recording data"
             )
-        if self._advance is None:
-            self.move_to(target_ms)
-            return
-        await self._advance(target_ms)
-        self.move_to(target_ms)
+        return target_ms

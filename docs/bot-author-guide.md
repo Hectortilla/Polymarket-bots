@@ -517,6 +517,13 @@ non-essential: the runtime suppresses their lifecycle and event failures.
 
 ## Wallet-Following Bot
 
+A custom `WalletTradeSource.trades(wallets: frozenset[str])` yields normalized
+`WalletTradeEvent` objects with a nonempty transaction hash. The activity adapter assigns its
+canonical source ID and local observation time from validated trade identity;
+source-provided IDs do not replace that identity. Framework event construction
+canonicalizes string wallet addresses. Adapter polling failures propagate to the
+supervisor and cancel peer work instead of appearing as an empty read.
+
 ```python
 from decimal import Decimal
 

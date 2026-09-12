@@ -1,10 +1,16 @@
 """Shared replay capability checks used by CLI and backtest services."""
 
+from __future__ import annotations
+
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from polybot.framework.config.mode import BotMode
-from polybot.framework.config.models import BotConfig
-from polybot.framework.streams import StreamRule
+
+if TYPE_CHECKING:
+    from polybot.framework.config.models import BotConfig
+    from polybot.framework.streams import StreamRule
+
 
 LIVE_BACKTEST_UNSUPPORTED_MESSAGE = "backtesting cannot run with BOT_MODE=live"
 WALLET_REPLAY_UNSUPPORTED_MESSAGE = (

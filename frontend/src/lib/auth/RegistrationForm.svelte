@@ -22,7 +22,7 @@
 
 <svelte:head><title>Create your account | {SERVICE_NAME}</title></svelte:head>
 <section class="account-panel">
-  <p class="eyebrow">Your private workspace</p>
+  <p class="eyebrow">{AUTH_COPY.WORKSPACE_TAGLINE}</p>
   <h1>Create your account</h1>
   <p>
     Save your bots and follow your paper runs in one place. Registration signs you in immediately. Verify your email in

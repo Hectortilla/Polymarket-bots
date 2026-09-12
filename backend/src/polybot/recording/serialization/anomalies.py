@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import InvalidOperation
 from typing import Any
 
 from ..contracts.anomalies import (
@@ -17,6 +18,7 @@ from ..contracts.market import MarketIdentity
 from . import fields
 from .parsing import (
     decimal_to_json,
+    load_json_object,
     optional_decimal_from_json,
     optional_integer,
     optional_text,
@@ -26,7 +28,26 @@ from .parsing import (
     require_object,
     require_text,
 )
+from .primitives import canonical_json
 from .registry import decode_payload_data, encode_payload, payload_kind
+
+
+def capture_anomaly_json(anomaly: CaptureAnomalyPayload) -> str:
+    if not isinstance(anomaly, CaptureAnomalyPayload):
+        raise ValueError("capture anomaly payload is invalid")
+    return canonical_json(encode_capture_anomaly(anomaly))
+
+
+def capture_anomaly_from_json(raw_json: str) -> CaptureAnomalyPayload:
+    data = load_json_object(raw_json)
+    try:
+        return decode_capture_anomaly(data)
+    except (KeyError, TypeError, ValueError, InvalidOperation) as error:
+        if isinstance(error, ValueError) and str(error).startswith(
+            "recording capture anomaly"
+        ):
+            raise
+        raise ValueError("recording capture anomaly is malformed") from error
 
 
 def encode_capture_anomaly(anomaly: CaptureAnomalyPayload) -> dict[str, Any]:

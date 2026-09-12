@@ -27,7 +27,7 @@ from api.catalog.graphs.contracts.limits import (
     MAX_NODE_GRAPH_EDGES,
     MAX_NODE_GRAPH_NODES,
 )
-from api.catalog.graphs.contracts.nodes import (
+from api.catalog.graphs.contracts.nodes.constants import (
     GraphBooleanConstantData,
     GraphNumberConstantData,
     GraphStringConstantData,

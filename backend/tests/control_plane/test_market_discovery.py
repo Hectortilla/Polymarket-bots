@@ -4,11 +4,6 @@ from dataclasses import asdict
 import pytest
 from api.catalog.inputs import NodeBasedLaunchInputs
 from api.http.market_contracts import MARKET_DISCOVERY_UNAVAILABLE_DETAIL
-from api.http.search_contracts import (
-    DEFAULT_DISCOVERY_SEARCH_LIMIT,
-    MAX_DISCOVERY_SEARCH_LENGTH,
-    MAX_DISCOVERY_SEARCH_LIMIT,
-)
 from api.http.routes.bots.market_validation import (
     validate_new_market_selections,
 )
@@ -16,6 +11,11 @@ from api.http.routes.paths import (
     MARKET_LOOKUP_PATH,
     MARKET_SEARCH_PATH,
     api_route_path,
+)
+from api.http.search_contracts import (
+    DEFAULT_DISCOVERY_SEARCH_LIMIT,
+    MAX_DISCOVERY_SEARCH_LENGTH,
+    MAX_DISCOVERY_SEARCH_LIMIT,
 )
 from api.market_selection import MAX_SELECTED_MARKETS
 from fastapi import HTTPException, status
@@ -123,9 +123,13 @@ def test_save_validates_only_new_selections_and_preserves_old_ones() -> None:
     current = NodeBasedLaunchInputs(
         name="test", market_slugs=("old", "new")
     ).to_run_config()
-    asyncio.run(validate_new_market_selections(previous, discovery, previous=previous))
+    asyncio.run(
+        validate_new_market_selections(previous, discovery, previous_config=previous)
+    )
     discovery.resolve.assert_not_called()
-    asyncio.run(validate_new_market_selections(current, discovery, previous=previous))
+    asyncio.run(
+        validate_new_market_selections(current, discovery, previous_config=previous)
+    )
     discovery.resolve.assert_awaited_once_with(("new",))
 
 

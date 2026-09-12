@@ -5,11 +5,8 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from polybot.backtesting.contracts import (
-    BacktestGapPolicy,
-    BacktestOptions,
-    BacktestResult,
-)
+from polybot.backtesting.contracts import BacktestOptions, BacktestResult
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.backtesting.service.runner import run_backtest
 from polybot.framework.base import BaseBot
 from polybot.framework.config.models import BotConfig

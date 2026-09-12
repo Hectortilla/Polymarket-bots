@@ -41,18 +41,18 @@ def activity_payload(model: object) -> dict[str, object]:
             datetime_to_epoch_ms(activity_timestamp_seconds) / MILLISECONDS_PER_SECOND
         )
     return {
-        PROXY_WALLET_FIELD: str(getattr(model, SDK_WALLET_ATTRIBUTE, "") or ""),
+        PROXY_WALLET_FIELD: getattr(model, SDK_WALLET_ATTRIBUTE, ""),
         ACTIVITY_TIMESTAMP_FIELD: activity_timestamp_seconds,
-        CONDITION_ID_FIELD: str(getattr(model, SDK_CONDITION_ID_ATTRIBUTE, "") or ""),
-        ACTIVITY_TYPE_FIELD: str(getattr(model, SDK_ACTIVITY_TYPE_ATTRIBUTE, "")),
+        CONDITION_ID_FIELD: getattr(model, SDK_CONDITION_ID_ATTRIBUTE, ""),
+        ACTIVITY_TYPE_FIELD: getattr(model, SDK_ACTIVITY_TYPE_ATTRIBUTE, ""),
         ACTIVITY_SIZE_FIELD: getattr(model, SDK_SHARES_ATTRIBUTE, None),
         ACTIVITY_USDC_SIZE_FIELD: getattr(model, SDK_AMOUNT_ATTRIBUTE, None),
-        ACTIVITY_TRANSACTION_HASH_FIELD: str(
-            getattr(model, SDK_TRANSACTION_HASH_ATTRIBUTE, "") or ""
+        ACTIVITY_TRANSACTION_HASH_FIELD: getattr(
+            model, SDK_TRANSACTION_HASH_ATTRIBUTE, ""
         ),
         ACTIVITY_PRICE_FIELD: getattr(model, SDK_PRICE_ATTRIBUTE, None),
-        ACTIVITY_TOKEN_ID_FIELD: str(getattr(model, SDK_TOKEN_ID_ATTRIBUTE, "") or ""),
-        ACTIVITY_SIDE_FIELD: str(getattr(model, SDK_SIDE_ATTRIBUTE, "")),
+        ACTIVITY_TOKEN_ID_FIELD: getattr(model, SDK_TOKEN_ID_ATTRIBUTE, ""),
+        ACTIVITY_SIDE_FIELD: getattr(model, SDK_SIDE_ATTRIBUTE, ""),
         ACTIVITY_TITLE_FIELD: getattr(model, SDK_TITLE_ATTRIBUTE, None),
         ACTIVITY_SLUG_FIELD: getattr(model, SDK_SLUG_ATTRIBUTE, None),
         ACTIVITY_OUTCOME_FIELD: getattr(model, SDK_OUTCOME_ATTRIBUTE, None),

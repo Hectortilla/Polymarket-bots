@@ -26,10 +26,8 @@ from api.catalog.graphs.catalog.functional import (
     GraphConstantDescriptor,
 )
 from api.catalog.graphs.catalog.triggers import GraphTriggerDescriptor
-from api.catalog.graphs.operations import (
-    GraphOperationDescriptor,
-    operation_descriptors,
-)
+from api.catalog.graphs.operations import operation_descriptors
+from api.catalog.graphs.operations.descriptor import GraphOperationDescriptor
 from api.catalog.graphs.preview_samples import (
     PREVIEW_SAMPLE_POSITIONS,
 )

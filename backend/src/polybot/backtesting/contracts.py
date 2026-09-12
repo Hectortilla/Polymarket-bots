@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from polybot.backtesting.policy import BacktestGapPolicy
 from polybot.framework.timestamps import (
     require_nonnegative_timestamp_ms,
     timestamp_bounds_are_ordered,
@@ -29,16 +30,6 @@ class BacktestFailureReason(StrEnum):
     MISSING_MARKET_DATA = "missing_market_data"
     UNSUPPORTED_INPUT = "unsupported_input"
     EMPTY_SELECTION = "empty_selection"
-
-
-class BacktestGapPolicy(StrEnum):
-    STRICT = "strict"
-    BLACKOUT = "blackout"
-
-    @property
-    def allows_gaps(self) -> bool:
-        """Whether replay may retain and explicitly blackout coverage gaps."""
-        return self is BacktestGapPolicy.BLACKOUT
 
 
 class BacktestError(RuntimeError):

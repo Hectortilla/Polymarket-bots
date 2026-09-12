@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from polybot.recording.archive.columns import ArchiveColumn
 from polybot.recording.archive.errors import (
     ArchiveExistsError,
     ArchiveFormatError,
@@ -30,19 +29,18 @@ from polybot.recording.archive.primitives import (
 from polybot.recording.archive.rows import _latest_metadata
 from polybot.recording.archive.schema import (
     SCHEMA_VERSION,
-    SESSIONS_TABLE,
     SQLITE_APPLICATION_ID,
     ensure_capture_anomaly_schema,
     initialize_archive_schema,
 )
 from polybot.recording.archive.sessions import (
-    INTERRUPTED_SESSION_REASON,
     _insert_session,
     _latest_session,
+    mark_interrupted_session,
 )
 from polybot.recording.archive.snapshot import _last_observed_at_ms, _last_sequence
 from polybot.recording.contracts.market import MarketMetadataPayload
-from polybot.recording.contracts.session import SessionIntegrityStatus, SessionState
+from polybot.recording.contracts.session import SessionIntegrityStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,20 +163,8 @@ def resume_session(
         connection.execute("BEGIN IMMEDIATE")
         ensure_capture_anomaly_schema(connection)
         if prior_session.integrity_status is SessionIntegrityStatus.ACTIVE:
-            connection.execute(
-                f"""
-                UPDATE {SESSIONS_TABLE}
-                SET {ArchiveColumn.ENDED_AT_MS} = ?, {ArchiveColumn.CLEAN_CLOSE} = ?, {ArchiveColumn.INTEGRITY_STATUS} = ?,
-                    {ArchiveColumn.FAILURE_REASON} = ?
-                WHERE {ArchiveColumn.SESSION_ID} = ?
-                """,
-                (
-                    *SessionState.interrupted(
-                        ended_at_ms=resume_from_ms,
-                        failure_reason=INTERRUPTED_SESSION_REASON,
-                    ).database_values(),
-                    prior_session.session_id,
-                ),
+            mark_interrupted_session(
+                connection, prior_session.session_id, resume_from_ms
             )
         session_id = _insert_session(connection, started_at_ms)
         _enable_capture_anomaly_journal(

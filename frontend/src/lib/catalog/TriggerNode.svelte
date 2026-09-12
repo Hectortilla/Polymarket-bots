@@ -4,13 +4,13 @@
   import NodeIssues from "./NodeIssues.svelte";
 
   import type { GraphTriggerNodeData } from "$lib/api/generated";
-  import { triggerForNode } from "$lib/catalog/nodeGraph/catalog";
+
   import { NODE_GRAPH_EDITOR_CONTEXT, type NodeGraphEditorContext } from "./nodeGraphContext";
 
   let { id = "", data }: { id?: string; data: GraphTriggerNodeData } = $props();
 
   const editor = getContext<NodeGraphEditorContext>(NODE_GRAPH_EDITOR_CONTEXT);
-  const trigger = $derived(triggerForNode(editor.catalog, data));
+  const trigger = $derived(editor.resolver.triggerForNode(data));
 </script>
 
 <section class="trigger-node" aria-label={`${trigger.hook_name} trigger node`}>

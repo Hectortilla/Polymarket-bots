@@ -136,35 +136,29 @@ class WalletActivityStream:
     ) -> None:
         last_timestamp_ms = 0
         while True:
-            try:
-                await self._limiter.acquire()
-                now_ms = self._now_ms()
-                end_epoch_seconds = now_ms // MILLISECONDS_PER_SECOND
-                oldest_usable_ms = now_ms - self._max_trade_age_ms
-                start_epoch_seconds = max(
-                    0,
-                    max(last_timestamp_ms, oldest_usable_ms) // MILLISECONDS_PER_SECOND
-                    - 1,
+            await self._limiter.acquire()
+            now_ms = self._now_ms()
+            end_epoch_seconds = now_ms // MILLISECONDS_PER_SECOND
+            oldest_usable_ms = now_ms - self._max_trade_age_ms
+            start_epoch_seconds = max(
+                0,
+                max(last_timestamp_ms, oldest_usable_ms) // MILLISECONDS_PER_SECOND - 1,
+            )
+            assert self._client is not None
+            trades = await self._client.latest_selector(
+                selector,
+                start_epoch_seconds=start_epoch_seconds,
+                end_epoch_seconds=end_epoch_seconds,
+            )
+            for trade in trades:
+                if trade.trade_timestamp_ms < oldest_usable_ms:
+                    continue
+                await queue.put(trade)
+                last_timestamp_ms = max(
+                    last_timestamp_ms,
+                    trade.trade_timestamp_ms,
                 )
-                assert self._client is not None
-                trades = await self._client.latest_selector(
-                    selector,
-                    start_epoch_seconds=start_epoch_seconds,
-                    end_epoch_seconds=end_epoch_seconds,
-                )
-                for trade in trades:
-                    if trade.trade_timestamp_ms < oldest_usable_ms:
-                        continue
-                    await queue.put(trade)
-                    last_timestamp_ms = max(
-                        last_timestamp_ms,
-                        trade.trade_timestamp_ms,
-                    )
-                await self._wait_for_selector(selector)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                await asyncio.sleep(DATA_TRADES_RATE_LIMIT_WINDOW_SECONDS)
+            await self._wait_for_selector(selector)
 
     async def _wait_for_selector(self, selector: WalletTradeSelector) -> None:
         if (

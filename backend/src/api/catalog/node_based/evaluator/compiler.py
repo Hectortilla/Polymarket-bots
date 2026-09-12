@@ -7,15 +7,13 @@ from api.catalog.graphs.catalog import GRAPH_NODE_CATALOG
 from api.catalog.graphs.catalog.functional import GraphBrokerActionDescriptor
 from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.graphs.contracts.edges import GraphEdge
-from api.catalog.graphs.contracts.nodes import (
-    GraphBrokerActionNode,
-    GraphComparisonNode,
-    GraphConstantNode,
-    GraphNode,
-    GraphOperationNode,
-    GraphParameterNode,
-    GraphTriggerNode,
-)
+from api.catalog.graphs.contracts.nodes import GraphNode
+from api.catalog.graphs.contracts.nodes.actions import GraphBrokerActionNode
+from api.catalog.graphs.contracts.nodes.comparisons import GraphComparisonNode
+from api.catalog.graphs.contracts.nodes.constants import GraphConstantNode
+from api.catalog.graphs.contracts.nodes.operations import GraphOperationNode
+from api.catalog.graphs.contracts.nodes.parameters import GraphParameterNode
+from api.catalog.graphs.contracts.nodes.triggers import GraphTriggerNode
 from api.catalog.graphs.topology import GraphTopology
 from api.catalog.graphs.types import GraphHookName
 from api.catalog.graphs.values import GraphScalarType

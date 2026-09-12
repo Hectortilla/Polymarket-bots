@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from control_plane.account_mail_fixture import install_browser_mailbox
 from control_plane.browser_launcher import BrowserRunLauncher
 from control_plane.browser_limits_fixture import install_browser_limit_control
+from control_plane.browser_wallet_fixture import browser_wallet_discovery
 from control_plane.disposable_services import (
     clear_auth_attempts,
     disposable_postgres_url,
@@ -73,6 +74,7 @@ def main():
         redis=redis,
         launcher=launcher,
         market_discovery=discovery,
+        wallet_discovery=browser_wallet_discovery(),
         auth_settings=AuthSettings(args.origin, True),
     )
     launcher.install_lifespan(app)

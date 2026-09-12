@@ -1,20 +1,14 @@
+import { NodeGraphCatalog } from "$lib/catalog/nodeGraph/catalog";
 import type { GraphNodeCatalog, NodeGraph } from "$lib/api/generated";
-import {
-  brokerActionForNode,
-  comparisonForNode,
-  constantForNode,
-  operationForNode,
-  triggerForNode,
-} from "$lib/catalog/nodeGraph/catalog";
-import { connectionIsValid } from "$lib/catalog/nodeGraph/connections";
+
 import { type CanvasNode } from "$lib/catalog/nodeGraph/contracts";
-import { inputsForNode } from "$lib/catalog/nodeGraph/ports";
+
 import { canvasEdges, canvasNodes } from "$lib/catalog/nodeGraph/projections";
 import catalogContract from "./catalogContract.fixture.json";
 import { GRAPH_NODE_TYPE } from "./graphContracts";
 import { graphScalarValueIsValid } from "./scalarValue";
 
-const catalog = catalogContract.graphNodeCatalog as GraphNodeCatalog;
+const catalogResolver = new NodeGraphCatalog(catalogContract.graphNodeCatalog as GraphNodeCatalog);
 
 export function nodeGraphContractIsValid(graph: NodeGraph): boolean {
   try {
@@ -56,7 +50,7 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
   const edges = canvasEdges(graph);
   const acceptedEdges = [];
   for (const edge of edges) {
-    if (!connectionIsValid(edge, nodes, acceptedEdges, catalog, graph.parameters ?? [])) return false;
+    if (!catalogResolver.connectionIsValid(edge, nodes, acceptedEdges, graph.parameters ?? [])) return false;
     acceptedEdges.push(edge);
   }
 
@@ -75,30 +69,30 @@ function validateNodeGraphContract(graph: NodeGraph): boolean {
 function nodeMatchesCatalog(node: CanvasNode): boolean {
   switch (node.type) {
     case GRAPH_NODE_TYPE.operation: {
-      const descriptor = operationForNode(catalog, node.data);
+      const descriptor = catalogResolver.operationForNode(node.data);
       const ids = node.data.input_ids ?? [];
       return operationInputsMatchCatalog(ids, descriptor);
     }
     case GRAPH_NODE_TYPE.parameter:
       return true;
     case GRAPH_NODE_TYPE.trigger:
-      triggerForNode(catalog, node.data);
+      catalogResolver.triggerForNode(node.data);
       return true;
     case GRAPH_NODE_TYPE.constant:
-      constantForNode(catalog, node.data);
+      catalogResolver.constantForNode(node.data);
       return graphScalarValueIsValid(node.data.scalar_type, node.data.value);
     case GRAPH_NODE_TYPE.comparison:
-      comparisonForNode(catalog, node.data);
+      catalogResolver.comparisonForNode(node.data);
       return true;
     case GRAPH_NODE_TYPE.brokerAction:
-      brokerActionForNode(catalog, node.data);
+      catalogResolver.brokerActionForNode(node.data);
       return true;
   }
 }
 
 function requiredInputsConnected(nodes: CanvasNode[], edges: ReturnType<typeof canvasEdges>): boolean {
   for (const node of nodes) {
-    const inputs = inputsForNode(node, catalog);
+    const inputs = catalogResolver.inputsForNode(node);
     for (const input of inputs) {
       const count = edges.filter((edge) => edge.target === node.id && edge.targetHandle === input.handle_id).length;
       if (
@@ -111,7 +105,10 @@ function requiredInputsConnected(nodes: CanvasNode[], edges: ReturnType<typeof c
   return true;
 }
 
-function operationInputsMatchCatalog(ids: string[], descriptor: ReturnType<typeof operationForNode>): boolean {
+function operationInputsMatchCatalog(
+  ids: string[],
+  descriptor: ReturnType<NodeGraphCatalog["operationForNode"]>,
+): boolean {
   if (ids.length === 0) return true;
   if (!descriptor.expandable) return false;
   return (
@@ -123,7 +120,7 @@ function operationInputsMatchCatalog(ids: string[], descriptor: ReturnType<typeo
 
 function isTerminalNode(node: CanvasNode): boolean {
   if (node.type === GRAPH_NODE_TYPE.brokerAction) return true;
-  return node.type === GRAPH_NODE_TYPE.operation && !!operationForNode(catalog, node.data).terminal;
+  return node.type === GRAPH_NODE_TYPE.operation && !!catalogResolver.operationForNode(node.data).terminal;
 }
 
 function topologicalNodeOrder(

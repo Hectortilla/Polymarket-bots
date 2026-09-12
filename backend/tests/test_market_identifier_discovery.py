@@ -5,10 +5,11 @@ from http import HTTPStatus
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from polybot.polymarket.discovery import MarketDiscovery
+from polybot.polymarket.discovery_policy import IDENTIFIER_LOOKUP_PAGE_SIZE
+from polybot.polymarket.errors import MarketDataError, MarketDataTransportError
 from polymarket import RequestRejectedError
 from polymarket.pagination import Page
-from polybot.polymarket.discovery import MarketDiscovery
-from polybot.polymarket.errors import MarketDataError, MarketDataTransportError
 from sdk_market_fixture import sdk_market
 
 
@@ -50,7 +51,7 @@ def test_condition_and_token_ids_use_exact_sdk_filters(kind):
     assert result.markets[0].slug == "canonical"
     filters = {
         "condition_ids" if kind == "condition" else "clob_token_ids": (query,),
-        "page_size": 2,
+        "page_size": IDENTIFIER_LOOKUP_PAGE_SIZE,
     }
     client.list_markets.assert_called_once_with(**filters)
     client.search.assert_not_called()
@@ -83,13 +84,14 @@ def test_wrong_numeric_identity_fails_closed():
         ((sdk_market("one"), sdk_market("two")), False),
     ],
 )
-def test_wrong_or_ambiguous_condition_identity_fails_closed(items, has_more):
+@pytest.mark.parametrize("query", ["0x" + "ab" * 32, "123456789012345678901234567890"])
+def test_wrong_or_ambiguous_identifier_fails_closed(items, has_more, query):
     client = Mock()
     client.list_markets.return_value.first_page = AsyncMock(
         return_value=Page(items=items, has_more=has_more)
     )
     with pytest.raises(MarketDataError):
-        asyncio.run(MarketDiscovery(client).search("0x" + "ab" * 32, 12))
+        asyncio.run(MarketDiscovery(client).search(query, 12))
 
 
 def test_missing_identifier_returns_empty_result():
@@ -108,3 +110,20 @@ def test_exact_lookup_transport_failure_is_not_missing_market():
     client = numeric_client(get_market=AsyncMock(side_effect=TimeoutError()))
     with pytest.raises(MarketDataTransportError):
         asyncio.run(MarketDiscovery(client).search("123", 12))
+
+
+@pytest.mark.parametrize(
+    "status", [HTTPStatus.BAD_REQUEST, HTTPStatus.INTERNAL_SERVER_ERROR]
+)
+def test_numeric_lookup_non_missing_rejection_surfaces_transport_failure(status):
+    client = numeric_client(
+        get_market=AsyncMock(
+            side_effect=RequestRejectedError("rejected", status=status)
+        )
+    )
+    with pytest.raises(MarketDataTransportError):
+        asyncio.run(MarketDiscovery(client).search("123", 12))
+    client.list_markets.assert_called_once_with(
+        clob_token_ids=("123",), page_size=IDENTIFIER_LOOKUP_PAGE_SIZE
+    )
+    client.search.assert_not_called()

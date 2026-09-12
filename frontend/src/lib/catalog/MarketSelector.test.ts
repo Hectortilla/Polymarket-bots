@@ -1,3 +1,4 @@
+import { SELECTION_SEARCH_COPY } from "./selectionSearch/copy";
 import { RESOURCE_LIMIT_CASES, RESOURCE_LIMIT_DETAIL } from "$lib/limits/testFixtures";
 import { lookupMarkets, searchMarkets, type MarketSuggestion } from "$lib/api/generated";
 import { MARKET_SELECTOR_COPY } from "$lib/catalog/copy";
@@ -114,7 +115,7 @@ describe("MarketSelector", () => {
     render(MarketSelector, { value: [], onchange: vi.fn(), labelId: "markets" });
     await search();
     if (code) expect(await screen.findByText(RESOURCE_LIMIT_DETAIL)).toBeTruthy();
-    await fireEvent.click(await screen.findByRole("button", { name: MARKET_SELECTOR_COPY.RETRY_SEARCH }));
+    await fireEvent.click(await screen.findByRole("button", { name: SELECTION_SEARCH_COPY.RETRY_SEARCH }));
     expect(screen.getByRole("combobox")).toHaveFocus();
     expect(screen.getByRole("combobox")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("combobox")).not.toHaveValue("");
@@ -139,7 +140,7 @@ describe("MarketSelector", () => {
       .mockResolvedValue({ data: [market] } as Awaited<ReturnType<typeof lookupMarkets>>);
     const onchange = vi.fn();
     render(MarketSelector, { value: [market.slug], onchange, labelId: "markets" });
-    await fireEvent.click(await screen.findByRole("button", { name: MARKET_SELECTOR_COPY.RETRY_DETAILS }));
+    await fireEvent.click(await screen.findByRole("button", { name: SELECTION_SEARCH_COPY.RETRY_DETAILS }));
     expect(await screen.findByText(market.question)).toBeTruthy();
     expect(onchange).not.toHaveBeenCalled();
   });

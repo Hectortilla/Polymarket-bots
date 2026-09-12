@@ -46,7 +46,7 @@
 
 <div class="graph-source-picker">
   <div>
-    <label class="field-label" for="graph-source">Starting point</label>
+    <label class="field-label" for="graph-source">{GRAPH_SOURCE_COPY.STARTING_POINT}</label>
     <span class="field-helper" id="graph-source-helper">
       Start with the default graph, choose an example, or copy the latest strategy from another bot.
     </span>

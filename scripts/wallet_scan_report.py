@@ -25,7 +25,7 @@ class WalletScanSortField(StrEnum):
 @dataclass(frozen=True, slots=True)
 class WalletScanRecord:
     wallet: str
-    label: WalletVerdict
+    verdict: WalletVerdict
     net_cash_usdc: float
     hedge_score: float
     traded_volume_usdc: int
@@ -57,7 +57,7 @@ def parse_wallet_scan_report_line(line: str) -> WalletScanRecord | None:
         )
     (
         wallet,
-        label,
+        verdict,
         net_cash_usdc,
         hedge_score,
         traded_volume_usdc,
@@ -68,7 +68,7 @@ def parse_wallet_scan_report_line(line: str) -> WalletScanRecord | None:
     ) = fields
     record = WalletScanRecord(
         wallet=wallet,
-        label=WalletVerdict(label),
+        verdict=WalletVerdict(verdict),
         net_cash_usdc=float(_field_value(net_cash_usdc, "net")),
         hedge_score=float(_field_value(hedge_score, "hedge")),
         traded_volume_usdc=int(_field_value(traded_volume_usdc, "vol")),
@@ -99,7 +99,7 @@ def load_wallet_scan_report_rows(lines: Iterable[str]) -> list[WalletScanRecord]
 
 def format_wallet_scan_record(
     *,
-    label: WalletVerdict,
+    verdict: WalletVerdict,
     net_cash_usdc: float,
     hedge_score: float,
     traded_volume_usdc: float,
@@ -109,7 +109,7 @@ def format_wallet_scan_record(
     scanned_at: str,
 ) -> str:
     return (
-        f"{label.value} net={net_cash_usdc:+.2f} hedge={hedge_score:.2f} vol={traded_volume_usdc:.0f} "
+        f"{verdict.value} net={net_cash_usdc:+.2f} hedge={hedge_score:.2f} vol={traded_volume_usdc:.0f} "
         f"market_trade_pct={market_trade_pct:.2f} "
         f'trade_density={trade_density:.2f} "{reason}" {scanned_at}'
     )

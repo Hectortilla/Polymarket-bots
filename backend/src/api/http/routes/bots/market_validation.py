@@ -24,21 +24,9 @@ async def validate_new_market_selections(
     config: PaperRunConfig,
     discovery: MarketDiscovery,
     *,
-    previous: PaperRunConfig | None = None,
+    previous_config: PaperRunConfig | None = None,
 ) -> None:
-    previous_slugs = (
-        {slug for rule in previous.stream_rules for slug in rule.market_slugs}
-        if previous is not None
-        else set()
-    )
-    slugs = tuple(
-        dict.fromkeys(
-            slug
-            for rule in config.stream_rules
-            for slug in rule.market_slugs
-            if slug not in previous_slugs
-        )
-    )
+    slugs = config.new_market_slugs(previous_config)
     if not slugs:
         return
     try:

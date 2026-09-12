@@ -3,8 +3,8 @@
 from polybot.framework.base import BaseBot
 
 from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.contracts.nodes import (
-    GraphPosition,
+from api.catalog.graphs.contracts.nodes.position import GraphPosition
+from api.catalog.graphs.contracts.nodes.triggers import (
     GraphTriggerNode,
     GraphTriggerNodeData,
 )

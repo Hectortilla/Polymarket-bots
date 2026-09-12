@@ -29,7 +29,7 @@ from api.catalog.definitions import (
     GraphRequirementError,
 )
 from api.catalog.graphs.contracts import NodeGraph
-from api.catalog.graphs.examples import entry_exit_example
+from api.catalog.graphs.examples.entry_exit import entry_exit_example
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.database import DATABASE_URL_ENV, async_database_url
 from api.events.contracts import (

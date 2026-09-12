@@ -35,6 +35,8 @@ from polybot.polymarket.wallet_reports.positions import (
 )
 from polymarket import RequestRejectedError
 from polymarket.errors import PolymarketError
+from polymarket.models.data.activity import TradeActivity
+from polymarket.models.data.portfolio import Position
 from sdk_market_fixture import sdk_market
 
 from scripts.select_wallet_for_analysis import export as activity_export
@@ -184,12 +186,19 @@ def _position(**changes):
 
 
 @pytest.mark.parametrize(
-    "changes", [{"wallet": "bad"}, {"wallet": "0x" + "b" * 40}, {"size": float("nan")}]
+    "changes",
+    [
+        {"wallet": "bad"},
+        {"wallet": "0x" + "b" * 40},
+        {"size": float("nan")},
+        {"condition_id": None},
+        {"condition_id": 123},
+    ],
 )
 def test_invalid_wallet_positions_fail_the_whole_read(changes) -> None:
     client = FakeClient()
     client.list_positions = lambda **kwargs: FakePaginator(
-        (_position(), _position(**changes))
+        (_position(), Position.model_construct(**vars(_position(**changes))))
     )
     with pytest.raises(WalletReadError) as caught:
         fetch_positions("0x" + "a" * 40, client_factory=lambda: client)
@@ -261,8 +270,24 @@ def test_report_market_projection_is_json_safe_and_preserves_dates_and_labels():
         market_payload(malformed)
 
 
-@pytest.mark.parametrize("invalid_field", ["wallet", "price"])
-def test_bad_activity_row_invalidates_the_complete_report_read(invalid_field):
+@pytest.mark.parametrize(
+    "invalid_field, invalid_value",
+    [
+        ("wallet", "0x" + "b" * 40),
+        ("price", float("nan")),
+        ("condition_id", None),
+        ("condition_id", 123),
+        ("transaction_hash", None),
+        ("transaction_hash", 123),
+        ("token_id", None),
+        ("token_id", 123),
+        ("title", {}),
+        ("slug", 123),
+    ],
+)
+def test_bad_activity_row_invalidates_the_complete_report_read(
+    invalid_field, invalid_value
+):
     values = dict(
         wallet="0x" + "a" * 40,
         timestamp=1,
@@ -278,11 +303,9 @@ def test_bad_activity_row_invalidates_the_complete_report_read(invalid_field):
         title="Question",
         slug="market",
     )
-    valid = SimpleNamespace(**values)
-    values[invalid_field] = (
-        "0x" + "b" * 40 if invalid_field == "wallet" else float("nan")
-    )
-    client = FakeClient(activity=[valid, SimpleNamespace(**values)])
+    valid = TradeActivity.model_construct(**values)
+    values[invalid_field] = invalid_value
+    client = FakeClient(activity=[valid, TradeActivity.model_construct(**values)])
     with pytest.raises(WalletReadError) as caught:
         fetch_all_activity(
             "0x" + "a" * 40, client_factory=lambda: client, enrich=lambda rows: rows

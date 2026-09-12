@@ -1,4 +1,5 @@
 export const RUN_DETAIL_COPY = {
+  TIMING: "Timing",
   LIVE_DATA: "Live data",
   TABS_LABEL: "Run views",
   SHOW_EVENTS: "Show events",

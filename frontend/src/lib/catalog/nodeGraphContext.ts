@@ -1,3 +1,4 @@
+import type { NodeGraphCatalog } from "$lib/catalog/nodeGraph/catalog";
 import type {
   GraphComparisonNodeData,
   GraphConstantNodeData,
@@ -10,6 +11,7 @@ export const NODE_GRAPH_EDITOR_CONTEXT = Symbol("node-graph-editor");
 
 export type NodeGraphEditorContext = {
   catalog: GraphNodeCatalog;
+  resolver: NodeGraphCatalog;
   parameters: GraphParameter[];
   setOperationData: (nodeId: string, data: GraphOperationNodeData) => void;
   readOnly: boolean;

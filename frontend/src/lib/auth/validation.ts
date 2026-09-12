@@ -17,3 +17,7 @@ export function isCurrentUser(value: unknown): value is CurrentUser {
 export function isLogoutResponse(value: unknown): value is LogoutResponse {
   return isRecord(value) && Object.keys(value).length === LOGOUT_RESPONSE_KEYS.length && value.logged_out === true;
 }
+
+export function passwordsMatch(password: string, confirmation: string): boolean {
+  return password === confirmation;
+}

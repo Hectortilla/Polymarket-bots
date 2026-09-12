@@ -11,6 +11,7 @@ from polybot.framework.context import BotContext
 from polybot.framework.dispatch import DispatchSkipReason
 from polybot.framework.events import OrderRequest, Side
 from polybot.framework.events.books import BookGapEvent, BookSnapshot
+from polybot.framework.position_transition import remaining_long_position_size
 
 RandomHoldAction = Literal["buy", "sell"]
 RANDOM_HOLD_BUY_REASON = "random_hold_buy"
@@ -177,7 +178,9 @@ class ExampleRandomHoldBot(BaseBot):
             )
         finally:
             self._sell_in_flight = False
-        self._position_size = max(Decimal("0"), self._position_size - fill.filled_size)
+        self._position_size = remaining_long_position_size(
+            self._position_size, fill.filled_size
+        )
         if self._position_size == 0:
             self._selected_token_id = None
             self._bought_at_monotonic_seconds = None

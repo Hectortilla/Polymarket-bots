@@ -45,6 +45,10 @@ class WalletTradeEvent:
     transaction_hash: str | None = None
     outcome: str | None = None
 
+    def __post_init__(self) -> None:
+        if isinstance(self.wallet, str):
+            object.__setattr__(self, "wallet", normalize_wallet_address(self.wallet))
+
     def is_valid(self) -> bool:
         try:
             return (

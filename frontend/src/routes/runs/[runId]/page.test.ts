@@ -1,3 +1,4 @@
+import { LaunchFormSchema } from "$lib/catalog/schema";
 import { DASHBOARD_COPY } from "$lib/charts/copy";
 import { RUN_GUIDE_COPY } from "$lib/runs/runGuide";
 import { STREAM_CONNECTION_STATE, type StreamConnectionState } from "$lib/runs/events";
@@ -13,7 +14,7 @@ import type { BotDefinitionDescriptor, RunRead } from "$lib/api/generated";
 import { TEST_GRAPH, TEST_GRAPH_CATALOG } from "$lib/catalog/nodeGraphTestFixtures";
 import { BOT_DEFINITION_LABEL, SELECTION_MODE, WIDGET_KIND, WIDGET_SCHEMA_KEY } from "$lib/catalog/schema/contracts";
 import { fieldLabel } from "$lib/catalog/schema/presentation";
-import { launchFields } from "$lib/catalog/schema/fields";
+
 import { BOT_BUILDER_COPY } from "$lib/bots/copy";
 import { botPath } from "$lib/navigation";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
@@ -162,7 +163,7 @@ describe("run detail page", () => {
     await fireEvent.click(await screen.findByRole("tab", { name: BOT_BUILDER_COPY.CONFIGURATION }));
     const configuration = await screen.findByRole("region", { name: BOT_BUILDER_COPY.CONFIGURATION });
     expect([...configuration.querySelectorAll("dt")].map((field) => field.textContent)).toEqual(
-      launchFields(GRAPH_DEFINITION).map(([name, field]) => fieldLabel(name, field)),
+      new LaunchFormSchema(GRAPH_DEFINITION).fields().map(([name, field]) => fieldLabel(name, field)),
     );
     expect(configuration.textContent).toContain("1.2300");
     for (const market of markets) expect(configuration.textContent).toContain(market);
@@ -171,7 +172,7 @@ describe("run detail page", () => {
     const graphSection = screen.getByRole("heading", { name: RUN_DETAIL_COPY.EXECUTED_GRAPH }).closest("section")!;
     expect(graphSection.compareDocumentPosition(configuration) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await fireEvent.click(screen.getByRole("tab", { name: RUN_DETAIL_COPY.LIVE_DATA }));
-    expect(screen.getByRole("region", { name: "Timing" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: RUN_DETAIL_COPY.TIMING })).toBeTruthy();
   });
 
   it("shows stream reconnection until transport is connected again", async () => {
@@ -635,7 +636,7 @@ it("separates live data from configuration and preserves disclosures across tabs
   expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent?.trim())).toEqual([
     DASHBOARD_COPY.EQUITY,
     DASHBOARD_COPY.MARKET_PRICES,
-    "Timing",
+    RUN_DETAIL_COPY.TIMING,
   ]);
   const eventsToggle = screen.getByRole("button", { name: RUN_DETAIL_COPY.SHOW_EVENTS });
   expect(eventsToggle.getAttribute("aria-expanded")).toBe("false");

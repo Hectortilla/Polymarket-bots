@@ -20,6 +20,7 @@ from api.auth.config import AuthSettings
 from api.database import DATABASE_URL_ENV, configured_database_url
 from api.execution.config import REDIS_URL_ENV, configured_redis_url
 from api.limits.policy import PAPER_BETA
+from api.operations.storage_policy import DEFAULT_STORAGE_PROBE_PATH
 from api.runs.lease_policy import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_LEASE_SECONDS
 
 
@@ -36,7 +37,6 @@ HEARTBEAT_SECONDS_ENV = "POLYBOT_HEARTBEAT_SECONDS"
 LEASE_SECONDS_ENV = "POLYBOT_LEASE_SECONDS"
 PROXY_ADDRESS_ENV = "POLYBOT_PROXY_ADDRESS"
 STORAGE_PROBE_PATH_ENV = "POLYBOT_STORAGE_PROBE_PATH"
-DEFAULT_STORAGE_PROBE_PATH = Path("/")
 DEPLOYMENT_STORAGE_PROBE_PATH = Path("/storage")
 DEFAULT_WORKER_CONCURRENCY = PAPER_BETA.global_active_runs
 

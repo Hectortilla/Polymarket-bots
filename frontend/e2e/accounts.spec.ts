@@ -1,6 +1,8 @@
+import type { PaperRunConfig } from "../src/lib/api/generated";
+import { GRAPH_SOURCE_COPY } from "../src/lib/bots/graphSource";
 import { MARKET_SELECTOR_COPY } from "../src/lib/catalog/copy";
 import accountContract from "./accountContract.fixture.json" with { type: "json" };
-import { verifyNewAccount } from "./accountHelpers";
+import { completeEmailVerification } from "./accountLinkFlows";
 import { test, expect, type Page } from "@playwright/test";
 import contract from "../src/lib/runtimeContract.fixture.json" with { type: "json" };
 
@@ -31,7 +33,7 @@ async function authenticate(page: Page, email: string, registration = false) {
   await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: registration ? AUTH_COPY.REGISTER : AUTH_COPY.SIGN_IN, exact: true }).click();
   await expect(page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
-  if (registration) await verifyNewAccount(page, email, PASSWORD);
+  if (registration) await completeEmailVerification(page, email, PASSWORD);
   await expect(page).toHaveURL(NAVIGATION_PATH.HOME);
 }
 
@@ -61,21 +63,34 @@ test("two accounts keep editor, copies, runs and history private across reload a
   await page.reload();
   await expect(page.getByText(FIRST_EMAIL, { exact: true })).toBeVisible();
   await configureBot(page, "First private bot");
+  await page
+    .getByRole("combobox", { name: accountContract.selectorLabels.wallets, exact: true })
+    .fill(accountContract.wallet.name);
+  await page.getByRole("option").filter({ hasText: accountContract.wallet.name }).click();
   await page.getByRole("button", { name: BOT_BUILDER_COPY.CREATE, exact: true }).click();
   await expect(page).toHaveURL(/\/bots\/[a-f0-9-]+$/);
   const botUrl = page.url();
+  const botId = botUrl.split("/").pop()!;
+  await page.reload();
+  await expect(page.getByRole("button", { name: `Remove ${accountContract.wallet.name}`, exact: true })).toBeVisible();
+  const savedBot = await (await page.request.get(contract.apiPaths.bot.replace("{bot_id}", botId))).json();
+  expect(selectedWallets(savedBot.config)).toEqual([accountContract.wallet.address]);
   await page.getByLabel("Name", { exact: true }).fill("First edited bot");
   await page.getByRole("button", { name: BOT_DETAIL_COPY.SAVE_CHANGES, exact: true }).click();
   await expect(page.getByRole("button", { name: BOT_DETAIL_COPY.RUN, exact: true })).toBeEnabled();
   await page.getByRole("button", { name: BOT_DETAIL_COPY.RUN, exact: true }).click();
   await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
   const runUrl = page.url();
+  const launchedRun = await (
+    await page.request.get(contract.apiPaths.run.replace("{run_id}", runUrl.split("/").pop()!))
+  ).json();
+  expect(selectedWallets(launchedRun.config)).toEqual([accountContract.wallet.address]);
   await page.getByRole("button", { name: RUN_STATUS_PRESENTATION[RUN_STATUS.QUEUED].stopLabel!, exact: true }).click();
   await expect(
     page.getByText(RUN_STATUS_PRESENTATION[RUN_STATUS.STOPPED].label, { exact: true }).first(),
   ).toBeVisible();
   await configureBot(page, "First copied bot");
-  await page.getByLabel("Starting point").selectOption({ label: "First edited bot" });
+  await page.getByLabel(GRAPH_SOURCE_COPY.STARTING_POINT).selectOption({ label: "First edited bot" });
   await page.getByRole("button", { name: BOT_BUILDER_COPY.COPY_GRAPH, exact: true }).click();
   await page.getByRole("button", { name: BOT_BUILDER_COPY.CREATE, exact: true }).click();
   await expect(page).toHaveURL(/\/bots\/[a-f0-9-]+$/);
@@ -89,7 +104,7 @@ test("two accounts keep editor, copies, runs and history private across reload a
   await second.goto(runUrl);
   await expect(second.getByRole("alert")).toBeVisible();
   await second.goto(NAVIGATION_PATH.NEW_BOT);
-  await expect(second.getByLabel("Starting point")).not.toContainText("First edited bot");
+  await expect(second.getByLabel(GRAPH_SOURCE_COPY.STARTING_POINT)).not.toContainText("First edited bot");
   const runId = runUrl.split("/").pop()!;
   const denied = await secondContext.request.get(contract.apiPaths.runEvents.replace("{run_id}", runId));
   expect(denied.status()).toBe(HTTP_STATUS.NOT_FOUND);
@@ -285,5 +300,9 @@ test("deleting a bot requires stopped runs and keeps its history visible", async
   await page.goto(botUrl);
   await expect(page.getByText(BOT_DETAIL_COPY.NOT_FOUND, { exact: true })).toBeVisible();
   await page.goto(NAVIGATION_PATH.NEW_BOT);
-  await expect(page.getByLabel("Starting point")).not.toContainText(name);
+  await expect(page.getByLabel(GRAPH_SOURCE_COPY.STARTING_POINT)).not.toContainText(name);
 });
+
+function selectedWallets(config: PaperRunConfig): string[] {
+  return [...new Set(config.stream_rules.flatMap((rule) => rule.wallet_addresses ?? []))];
+}

@@ -35,6 +35,11 @@ dev = [
 
 [tool.setuptools]
 packages = [
+  "polybot.cli.entrypoint",
+  "api.runs.store",
+  "api.catalog.graphs.operations",
+  "api.catalog.graphs.contracts.nodes",
+  "api.catalog.graphs.examples",
   "polybot.recording.trim_recovery",
   "polybot.recording.trim_export",
   "polybot.recording.trim_validation",

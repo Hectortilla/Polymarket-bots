@@ -139,10 +139,10 @@ class DashboardStreamHealth:
         self._trim_event_times(now_monotonic_seconds)
         return len(self.event_monotonic_seconds) / EVENT_RATE_WINDOW_SECONDS
 
-    def stream_rate(self, kind: StreamKind, *, received: bool) -> float:
+    def stream_rate(self, kind: StreamKind, *, use_received_samples: bool) -> float:
         samples = (
             self.stream_received_monotonic_seconds
-            if received
+            if use_received_samples
             else self.stream_dispatched_monotonic_seconds
         ).get(kind)
         if not samples:

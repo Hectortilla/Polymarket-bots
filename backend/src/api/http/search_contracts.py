@@ -1,7 +1,10 @@
 """Shared request bounds for public discovery selectors."""
 
 from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+MIN_DISCOVERY_SEARCH_LIMIT = 1
 
 MIN_DISCOVERY_SEARCH_LENGTH = 2
 MAX_DISCOVERY_SEARCH_LENGTH = 200
@@ -21,5 +24,7 @@ class DiscoverySearchQuery(BaseModel):
         ),
     ]
     limit: int = Field(
-        default=DEFAULT_DISCOVERY_SEARCH_LIMIT, ge=1, le=MAX_DISCOVERY_SEARCH_LIMIT
+        default=DEFAULT_DISCOVERY_SEARCH_LIMIT,
+        ge=MIN_DISCOVERY_SEARCH_LIMIT,
+        le=MAX_DISCOVERY_SEARCH_LIMIT,
     )

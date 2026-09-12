@@ -114,7 +114,7 @@ invoke `on_fill`. Broker submission retains its existing validation and fill beh
 
 Inspect records the connected value in the evaluation result. Inspect and Log also
 emit node-labelled activity; repeated unchanged messages are coalesced to at most one
-per second per node. The next emitted message reports its suppressed-repeat count.
+per 1000 milliseconds per node. The next emitted message reports its suppressed-repeat count.
 Existing order/fill activity remains intact.
 
 **Try this event** evaluates the draft using an editable synthetic framework payload,
