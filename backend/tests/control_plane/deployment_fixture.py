@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import os
 
-import api.execution.worker.lifecycle as lifecycle
 import uvicorn
 from api.auth.config import AuthSettings
 from api.deployment.schema import DeploymentSchema
@@ -16,8 +15,11 @@ from api.events.writer import RunEventWriter
 from api.execution.policy import TASKIQ_DRAIN_SECONDS, TASKIQ_SHUTDOWN_SECONDS
 from api.execution.recovery.__main__ import serve_recovery
 from api.execution.taskiq_app import broker  # noqa: F401
+from api.execution.worker import lifecycle
 from api.http.app import create_app as application
 from api.runs.status import RunStatus
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from polybot.framework.clock import system_now_utc
 from polybot.polymarket.discovery_contracts import MarketSearchResults
 from redis.asyncio import Redis
@@ -68,6 +70,20 @@ def create_app():
     app = application(market_discovery=discovery)
     install_browser_limit_control(app)
     install_browser_mailbox(app, AuthSettings.from_env().origin)
+
+    @app.middleware("http")
+    async def proxy_observation(request: Request, call_next):
+        if request.url.path == "/api/v1/_fixture/proxy":
+            return JSONResponse(
+                {
+                    "client": request.client.host,
+                    "scheme": request.url.scheme,
+                    "forwarded": request.headers.get("forwarded"),
+                    "identity": request.headers.get("tailscale-user-login"),
+                }
+            )
+        return await call_next(request)
+
     return app
 
 

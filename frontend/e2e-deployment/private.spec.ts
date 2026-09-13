@@ -1,5 +1,5 @@
 import accountContract from "../e2e/accountContract.fixture.json" with { type: "json" };
-import { verifyNewAccount } from "../e2e/accountHelpers";
+import { completeEmailVerification } from "../e2e/accountLinkFlows";
 import { test, expect } from "@playwright/test";
 import { AUTH_COPY } from "../src/lib/auth/copy";
 import { REGISTER_PATH, LOGIN_PATH } from "../src/lib/auth/navigation";
@@ -17,7 +17,7 @@ test("private HTTPS browser login, run, Stop, refresh and stream reconnect", asy
   await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(password);
   await page.getByRole("button", { name: AUTH_COPY.REGISTER, exact: true }).click();
   await expect(page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
-  await verifyNewAccount(page, email, password);
+  await completeEmailVerification(page, email, password);
   await page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === LOGIN_PATH);
   await page.getByLabel(AUTH_COPY.EMAIL, { exact: true }).fill(email);
@@ -28,7 +28,7 @@ test("private HTTPS browser login, run, Stop, refresh and stream reconnect", asy
   await page.goto(NAVIGATION_PATH.START);
   await page.getByRole("button", { name: ONBOARDING_COPY.CONTINUE, exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("HTTPS browser bot");
-  await page.getByRole("combobox").fill("browser");
+  await page.getByRole("combobox", { name: accountContract.selectorLabels.markets, exact: true }).fill("browser");
   await page.getByRole("option").filter({ hasText: "Will browser-market happen?" }).click();
   await page.getByRole("button", { name: ONBOARDING_COPY.REVIEW, exact: true }).click();
   await expect(page.getByText(ONBOARDING_COPY.NO_LAUNCH)).toBeVisible();

@@ -12,11 +12,8 @@ class SecretFile(StrEnum):
     REDIS_URL = "redis_url"
     SMTP_USERNAME = "smtp_username"
     SMTP_PASSWORD = "smtp_password"
-    TLS_CERT = "tls_cert"
-    TLS_KEY = "tls_key"
 
 
-CONTAINER_SECRET_MODE = 0o444
 POSTGRES_USER = "polybot"
 POSTGRES_DATABASE = "polybot"
 POSTGRES_PORT = 5432

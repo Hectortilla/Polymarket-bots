@@ -1,10 +1,8 @@
 [Unit]
-Description=Daily encrypted Polybot backup
-
+Description=Polybot backup schedule
 [Timer]
-OnCalendar=*-*-* 02:00:00 UTC
+OnCalendar={{ {24: 'daily'}[backup_policy.interval] }}
 Persistent=true
 Unit=polybot-backup.service
-
 [Install]
 WantedBy=timers.target

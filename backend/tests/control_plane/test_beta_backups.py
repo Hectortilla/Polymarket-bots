@@ -2,7 +2,7 @@
 
 import hashlib
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -51,15 +51,15 @@ def restore_inputs(tmp_path):
     identity.chmod(0o600)
     return (
         tmp_path / "manifest",
-        archive(tmp_path, datetime.now(timezone.utc)),
+        archive(tmp_path, datetime.now(UTC)),
         identity,
         tmp_path,
     )
 
 
-def test_only_completed_intact_archives_count_toward_retention_and_rpo(tmp_path):
+def test_local_staging_expires_only_canonical_archives_at_retention_boundary(tmp_path):
     tmp_path.chmod(0o700)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = archive(tmp_path, now - timedelta(days=BACKUP_RETENTION_DAYS, seconds=1))
     recent = archive(tmp_path, now - timedelta(hours=RECOVERY_POINT_HOURS, seconds=-1))
     future = archive(tmp_path, now + timedelta(hours=1))
@@ -69,10 +69,6 @@ def test_only_completed_intact_archives_count_toward_retention_and_rpo(tmp_path)
     archives.expire()
     assert not old.exists()
     assert recent.exists() and partial.exists()
-    archives.require_recent()
-    recent.write_bytes(b"truncated or corrupted")
-    with pytest.raises(RuntimeError):
-        archives.require_recent()
     assert future.exists()
 
 
@@ -100,12 +96,14 @@ def test_failed_pipeline_publishes_nothing_and_removes_partial(
     dump.poll.return_value = None
     dump.wait.return_value = dump_status
     encrypt.wait.return_value = encryption_status
-    with patch(
-        "scripts.beta_backup.backup.pipeline.subprocess.Popen",
-        side_effect=[dump, encrypt],
+    with (
+        patch(
+            "scripts.beta_backup.backup.pipeline.subprocess.Popen",
+            side_effect=[dump, encrypt],
+        ),
+        pytest.raises(RuntimeError),
     ):
-        with pytest.raises(RuntimeError):
-            BetaBackup(MagicMock(), tmp_path, recipients).create()
+        BetaBackup(MagicMock(), tmp_path, recipients).create()
     dump.kill.assert_called_once()
     assert dump.wait.call_count >= 2
     encrypt.wait.assert_called_once()
@@ -122,12 +120,14 @@ def test_pipeline_timeout_reaps_live_children_and_removes_partial(tmp_path):
         subprocess.TimeoutExpired(AGE_BINARY, BACKUP_PROCESS_TIMEOUT_SECONDS),
         0,
     ]
-    with patch(
-        "scripts.beta_backup.backup.pipeline.subprocess.Popen",
-        side_effect=[dump, encrypt],
+    with (
+        patch(
+            "scripts.beta_backup.backup.pipeline.subprocess.Popen",
+            side_effect=[dump, encrypt],
+        ),
+        pytest.raises(subprocess.TimeoutExpired),
     ):
-        with pytest.raises(subprocess.TimeoutExpired):
-            BetaBackup(MagicMock(), tmp_path, recipients).create()
+        BetaBackup(MagicMock(), tmp_path, recipients).create()
     for process in (dump, encrypt):
         process.kill.assert_called_once()
         assert process.wait.called
@@ -154,12 +154,14 @@ def test_decryption_failure_never_prepares_or_mutates_database(restore_inputs):
 
 def test_existing_restore_destination_never_starts_services():
     release = MagicMock()
-    with patch(
-        "scripts.beta_backup.restore.destination.subprocess.check_output",
-        return_value=b"existing-container",
+    with (
+        patch(
+            "scripts.beta_backup.restore.destination.subprocess.check_output",
+            return_value=b"existing-container",
+        ),
+        pytest.raises(ValueError),
     ):
-        with pytest.raises(ValueError):
-            RestoreDestination(release).prepare()
+        RestoreDestination(release).prepare()
     release.run.assert_not_called()
 
 
@@ -221,16 +223,20 @@ def test_backup_target_rejects_ambient_docker_overrides(monkeypatch, override):
         release.require_local_docker()
 
 
-def test_backup_target_rejects_remote_context_and_pins_local_socket(monkeypatch, tmp_path):
+def test_backup_target_rejects_remote_context_and_pins_local_socket(
+    monkeypatch, tmp_path
+):
     monkeypatch.delenv(DOCKER_HOST_ENV, raising=False)
     monkeypatch.delenv(DOCKER_CONTEXT_ENV, raising=False)
     release = ComposeProject(tmp_path / "manifest", "isolated-backup-test")
-    with patch(
-        "scripts.compose_project.subprocess.check_output",
-        return_value="ssh://unintended-host",
+    with (
+        patch(
+            "scripts.compose_project.subprocess.check_output",
+            return_value="ssh://unintended-host",
+        ),
+        pytest.raises(ValueError),
     ):
-        with pytest.raises(ValueError):
-            release.require_local_docker()
+        release.require_local_docker()
     with patch(
         "scripts.compose_project.subprocess.check_output",
         return_value="unix:///fixture/docker.sock",
@@ -245,12 +251,14 @@ def test_encryption_start_failure_reaps_dump_and_removes_partial(tmp_path):
     recipients.write_text("fixture")
     dump = MagicMock()
     dump.poll.return_value = None
-    with patch(
-        "scripts.beta_backup.backup.pipeline.subprocess.Popen",
-        side_effect=[dump, OSError("age unavailable")],
+    with (
+        patch(
+            "scripts.beta_backup.backup.pipeline.subprocess.Popen",
+            side_effect=[dump, OSError("age unavailable")],
+        ),
+        pytest.raises(OSError),
     ):
-        with pytest.raises(OSError):
-            BetaBackup(MagicMock(), tmp_path, recipients).create()
+        BetaBackup(MagicMock(), tmp_path, recipients).create()
     dump.kill.assert_called_once()
     dump.wait.assert_called_once()
     assert list(tmp_path.iterdir()) == [recipients]
@@ -258,7 +266,7 @@ def test_encryption_start_failure_reaps_dump_and_removes_partial(tmp_path):
 
 def test_archive_parser_and_discovery_ignore_noncanonical_or_nonfile_entries(tmp_path):
     tmp_path.chmod(0o700)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     canonical = archive(tmp_path, now)
     name = ArchiveName.parse(canonical.name)
     assert name is not None
@@ -280,13 +288,9 @@ def test_archive_parser_and_discovery_ignore_noncanonical_or_nonfile_entries(tmp
     directory = tmp_path / ArchiveName(now, uuid4(), name.checksum).format()
     directory.mkdir()
     archives = BackupArchives(tmp_path)
-    with pytest.raises(RuntimeError):
-        archives.require_recent()
     archives.expire()
     assert canonical.is_symlink() and directory.is_dir()
     assert all((tmp_path / filename).exists() for filename in malformed)
-    archive(tmp_path, now)
-    archives.require_recent()
 
 
 def test_verified_docker_endpoint_is_pinned_on_dump_and_restore_commands(

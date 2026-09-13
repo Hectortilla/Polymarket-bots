@@ -1,0 +1,44 @@
+name: Daily private host connectivity
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: polybot-private-connectivity
+  cancel-in-progress: false
+jobs:
+  reachability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: private
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: '0.10.9'
+          python-version: '3.12'
+      - run: uv tool install ansible-core==2.19.7
+      - name: Install verified SSH credentials
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > known_hosts
+      - uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:polybot-ci
+          version: 1.94.2
+      - name: Check OpenSSH and HTTPS without restarting anything
+        env:
+          ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
+        run: ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/connectivity.yml
+      - if: always()
+        run: rm -f ~/.ssh/id_ed25519 known_hosts

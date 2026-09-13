@@ -45,6 +45,26 @@ never restarts a terminated run or restores a revoked session.
 Default worker cleanup budget: heartbeat 5 seconds plus cleanup 10 seconds.
 `POLYBOT_HEARTBEAT_SECONDS` changes the heartbeat portion.
 
+## Host automation and notifications
+
+Ansible `status.yml` checks service readiness, required systemd services, private
+HTTPS certificate validity and remote backup freshness. Bootstrap installs
+`polybot-monitor.timer` every five minutes, daily encrypted SFTP backup and hourly
+remote RPO checks. Monitoring does not restart applications. `scripts.host_operations`
+uses msmtp with the existing TLS SMTP relay; alert recipients and credentials are
+private bootstrap inputs. Repeated identical failures are suppressed only after
+SMTP acceptance; changes and recovery send a new message. Delivery failure remains
+nonzero and retries at the next observation. Journald contains bounded check codes
+and detailed application diagnostics without forwarding secrets into CI artifacts.
+
+The daily GitHub connectivity workflow independently checks verified OpenSSH and
+private HTTPS with a five-minute bound, so host loss can trigger GitHub failure
+notifications even when the host cannot send mail. Enable those notifications for
+the real operator and test receipt. Before the first release, timers are installed
+but their source-path condition defers execution. After first deployment run backup
+and status immediately; do not infer health from absent journals. Follow the
+[ordered setup and activation checklist](beta-deployment.md#one-time-setup).
+
 ## Measurements and alerts
 
 Follow `docker compose --env-file MANIFEST -f deploy/compose.yaml logs -f recovery`.

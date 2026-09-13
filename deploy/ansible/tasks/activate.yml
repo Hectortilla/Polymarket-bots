@@ -1,0 +1,118 @@
+- ansible.builtin.import_tasks: validate.yml
+- name: Require a verified release bundle
+  ansible.builtin.assert:
+    that:
+      - release_commit is match('^[a-f0-9]{40}$')
+      - release_tag is match('^v[0-9]+\.[0-9]+\.[0-9]+$')
+      - operation in ['deploy', 'rollback']
+- name: Inspect existing activation before staging anything
+  ansible.builtin.command: systemctl show polybot-activate.service --property=ActiveState --value
+  register: activation_state
+  changed_when: false
+- name: Wait for a detached activation to finish
+  ansible.builtin.command: systemctl show polybot-activate.service --property=ActiveState --value
+  register: activation_wait
+  until: activation_wait.stdout not in ['activating', 'deactivating']
+  retries: 120
+  delay: 5
+  changed_when: false
+  when: activation_state.stdout in ['activating', 'deactivating']
+- name: Inspect previous activation journal
+  ansible.builtin.command: journalctl -u polybot-activate.service -n 30 --no-pager
+  register: previous_activation_journal
+  changed_when: false
+  no_log: true
+- name: Verify bundle on the controller before extraction
+  ansible.builtin.command:
+    argv: [uv, run, --locked, python, -m, scripts.deployment.bundle, verify, '{{ release_bundle }}', --commit, '{{ release_commit }}', --tag, '{{ release_tag }}']
+  delegate_to: localhost
+  become: false
+  changed_when: false
+- name: Create immutable bundle directory
+  ansible.builtin.file:
+    path: '{{ polybot_root }}/bundles/{{ release_tag }}'
+    state: directory
+    owner: polybot
+    group: polybot
+    mode: '0700'
+- name: Check retained bundle checksum
+  ansible.builtin.stat:
+    path: '{{ polybot_root }}/bundles/{{ release_tag }}/release.tar.gz'
+    checksum_algorithm: sha256
+  register: retained_bundle
+- name: Calculate controller bundle checksum
+  ansible.builtin.stat:
+    path: '{{ release_bundle }}'
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: selected_bundle
+- name: Reject a conflicting installed release
+  ansible.builtin.assert:
+    that: not retained_bundle.stat.exists or retained_bundle.stat.checksum == selected_bundle.stat.checksum
+- name: Transfer the non-secret release bundle
+  ansible.builtin.copy:
+    src: '{{ release_bundle }}'
+    dest: '{{ polybot_root }}/bundles/{{ release_tag }}/release.tar.gz'
+    owner: polybot
+    group: polybot
+    mode: '0600'
+- name: Extract verified release content
+  ansible.builtin.unarchive:
+    src: '{{ polybot_root }}/bundles/{{ release_tag }}/release.tar.gz'
+    dest: '{{ polybot_root }}/bundles/{{ release_tag }}'
+    remote_src: true
+    owner: polybot
+    group: polybot
+- name: Install locked release environment before interrupting applications
+  ansible.builtin.command:
+    argv: [/usr/local/bin/uv, sync, --locked, --no-dev, --python, '3.12']
+    chdir: '{{ polybot_root }}/bundles/{{ release_tag }}'
+  become_user: polybot
+  changed_when: false
+- name: Prepare temporary registry authentication directory
+  ansible.builtin.file:
+    path: '{{ polybot_root }}/registry'
+    state: directory
+    owner: polybot
+    group: polybot
+    mode: '0700'
+- name: Authenticate image pulls using workflow credential on stdin
+  ansible.builtin.command:
+    argv: [docker, --config, '{{ polybot_root }}/registry', login, ghcr.io, --username, '{{ registry_username }}', --password-stdin]
+    stdin: '{{ registry_token }}'
+  become_user: polybot
+  no_log: true
+- name: Install activation unit with selected immutable inputs
+  ansible.builtin.template:
+    src: activate.service.j2
+    dest: /etc/systemd/system/polybot-activate.service
+    mode: '0644'
+- name: Start activation independently of SSH lifetime
+  ansible.builtin.systemd_service:
+    name: polybot-activate.service
+    state: started
+    daemon_reload: true
+    no_block: true
+- name: Observe activation completion
+  ansible.builtin.command: systemctl show polybot-activate.service --property=ActiveState --value
+  register: completion
+  until: completion.stdout not in ['activating', 'deactivating']
+  retries: 180
+  delay: 5
+  changed_when: false
+- name: Read activation outcome
+  ansible.builtin.command: systemctl show polybot-activate.service --property=Result --value
+  register: activation_result
+  changed_when: false
+- name: Require successful activation
+  ansible.builtin.assert:
+    that: activation_result.stdout == 'success'
+    fail_msg: 'Activation failed. Inspect journalctl -u polybot-activate on the host; retry the retained operation or select a forward repair.'
+- name: Verify private HTTPS readiness
+  ansible.builtin.uri:
+    url: '{{ polybot_origin }}/api/v1/health'
+    status_code: 200
+    validate_certs: true
+  delegate_to: localhost
+  become: false

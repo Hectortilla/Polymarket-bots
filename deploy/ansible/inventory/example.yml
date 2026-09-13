@@ -1,0 +1,22 @@
+all:
+  children:
+    polybot:
+      hosts:
+        beta:
+          ansible_host: CHANGE_ME.tailnet-name.ts.net
+          ansible_user: polybot
+          ansible_ssh_common_args: '-o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes'
+      vars:
+        polybot_root: /srv/polybot
+        polybot_arch: amd64 # amd64 or arm64
+        polybot_origin: https://CHANGE_ME.tailnet-name.ts.net
+        polybot_http_port: 8081
+        polybot_smtp_host: smtp.example.com
+        polybot_smtp_port: 587
+        polybot_smtp_security: starttls
+        polybot_smtp_from: accounts@example.com
+        polybot_alert_to: operator@example.com
+        polybot_sftp_host: storage.example.com
+        polybot_sftp_port: 22
+        polybot_sftp_user: CHANGE_ME
+        polybot_sftp_directory: /backups/polybot # Dedicated existing application directory

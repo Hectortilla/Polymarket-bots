@@ -1,0 +1,14 @@
+// Merge into the tailnet policy and remove any broader grants applying to CI.
+{
+  "tagOwners": {
+    "tag:polybot": ["autogroup:admin"],
+    "tag:polybot-ci": ["autogroup:admin"],
+  },
+  "grants": [
+    {"src": ["tag:polybot-ci"], "dst": ["tag:polybot"], "ip": ["tcp:22", "tcp:443"]},
+    {"src": ["autogroup:member"], "dst": ["tag:polybot"], "ip": ["tcp:443"]},
+  ],
+  "tests": [
+    {"src": "tag:polybot-ci", "accept": ["tag:polybot:22", "tag:polybot:443"], "deny": ["tag:polybot:5432", "tag:polybot:8081"]},
+  ],
+}

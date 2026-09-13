@@ -52,13 +52,15 @@ def test_restore_approval_cli_requires_explicit_reconciliation(monkeypatch):
 
 def test_lifecycle_cli_redacts_failure_and_exits_nonzero(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", [LIFECYCLE_MODULE, DataCommand.CLEAN])
-    with patch.object(
-        lifecycle_cli.StartupSettings,
-        "from_env",
-        side_effect=RuntimeError("private fixture secret"),
+    with (
+        patch.object(
+            lifecycle_cli.StartupSettings,
+            "from_env",
+            side_effect=RuntimeError("private fixture secret"),
+        ),
+        pytest.raises(SystemExit) as error,
     ):
-        with pytest.raises(SystemExit) as error:
-            lifecycle_cli.main()
+        lifecycle_cli.main()
     assert error.value.code == 1
     assert "private fixture secret" not in capsys.readouterr().err
 
@@ -121,9 +123,22 @@ def test_backup_cli_dispatch(monkeypatch, command):
             "backup-directory",
             "--recipients",
             "recipients",
+            "--config",
+            "rclone.conf",
+            "--remote",
+            "backup:/polybot",
+            "--bundle",
+            "release.tar.gz",
         ]
     elif command is BackupCommand.CHECK:
-        arguments += ["--directory", "backup-directory"]
+        arguments += [
+            "--directory",
+            "backup-directory",
+            "--config",
+            "rclone.conf",
+            "--remote",
+            "backup:/polybot",
+        ]
     else:
         arguments += [
             "manifest",
@@ -138,7 +153,7 @@ def test_backup_cli_dispatch(monkeypatch, command):
         patch.object(backup_cli, "BetaRelease"),
         patch.object(backup_cli, "ComposeDatabase"),
         patch.object(backup_cli, "BetaBackup") as backup,
-        patch.object(backup_cli, "BackupArchives") as archives,
+        patch.object(backup_cli, "RemoteBackups") as archives,
         patch.object(backup_cli, "BetaRestore") as restore,
     ):
         backup.return_value.create.return_value = Path("archive")
@@ -146,6 +161,9 @@ def test_backup_cli_dispatch(monkeypatch, command):
         backup_cli.main()
         if command is BackupCommand.CREATE:
             backup.return_value.create.assert_called_once()
+            archives.return_value.upload.assert_called_once_with(
+                Path("archive"), Path("release.tar.gz")
+            )
         elif command is BackupCommand.CHECK:
             archives.return_value.require_recent.assert_called_once()
         else:

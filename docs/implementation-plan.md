@@ -1917,35 +1917,20 @@ passed. No Polymarket protocol, transport or SDK boundary changed, so no new
 PolymarketDocs check was required. At the end of Slice 16, Slices 17–23 remained planned work and open signup
 stayed gated; subsequent delivery is recorded in each slice below.
 
-September 13 operator automation follow-up: `scripts.beta_publish` builds a clean
-commit snapshot on the main laptop, pushes the two application images to GHCR
-for an explicit Linux architecture, and records pullable registry digests.
-`scripts.beta_setup` prepares the host's private app directory, copies the
-release commit's Compose file and provisions runtime secrets without overwriting
-an installation. `scripts.beta_start` authenticates, pulls before shutdown and
-reuses `BetaRelease` for migration/readiness and schema-compatible rollback.
-It retains attempt inputs, serializes starts in the same app directory, and
-preserves host settings and infrastructure digests on application updates.
-The existing manual release command now also accepts an installed Compose file.
-
-The deployment review follow-up separates typed image/runtime manifests, Git
-source snapshots, Buildx metadata parsing, private file IO and deployment state
-into focused owners. Host startup validates SMTP settings before Docker work
-and uses a durable attempt journal to recover interrupted activation or partial
-installed-file promotion. The runbook documents candidate replay and explicit
-replacement. Regression tests cover recovery, local Docker rejection,
-publication failures, committed Compose provenance and rendered Compose parity.
-
-Verification: 106 focused deployment/host-automation/backup/contract/auth/mail tests
-passed; 13 database-dependent auth tests were skipped.
-Docker Compose rendered the generated seven-service configuration and resolved
-all runtime secret files with loopback ingress and paper-only settings. The
-automation tests mock registry/daemon mutations; no images were pushed and no
-server deployment was performed. Final documentation-drift audit: README, the
-deployment runbook and this plan now cover the commands and their prerequisites.
-The architecture's existing topology, externally supplied TLS, public-opening
-gate, application contracts and Polymarket adapters remain unchanged. No new
-PolymarketDocs verification was required for this operator tooling.
+September 13 deployment simplification supersedes the earlier laptop automation.
+GitHub Actions now shares validation, publishes immutable release bundles and
+orchestrates tagged deploys and manual published-release deploy/rollback. Ansible
+prepares Debian and invokes the single journaled release executor through systemd.
+Tailscale Serve replaces operator TLS files; rclone SFTP replaces mounted backup
+storage. See `docs/beta-deployment.md` for the removal inventory, setup inputs,
+recovery rules and external acceptance. No Polymarket protocol code changed.
+Operational activation remains pending actual host/account inputs and a recorded
+successful target-tailnet rehearsal; repository tests do not establish that gate.
+Recorded verification: 1,634 Python tests without skips, 398 frontend tests,
+private HTTPS deployment, downloaded encrypted SFTP restore, repeat Debian
+bootstrap, SSH-independent systemd completion and STARTTLS alert delivery passed.
+See `docs/deployment-validation.md` for commands, fixture limits and the completed
+documentation-drift audit.
 
 ## Slice 17: Per-User Resource Limits
 
@@ -2255,7 +2240,7 @@ production database.
 
 Implementation uses a supervised bounded maintenance loop, one retained-history
 selection policy, reauthenticated deletion with execution fencing, and private
-restore quarantine with explicit per-account reconciliation. Daily mounted-storage
+restore quarantine with explicit per-account reconciliation. Daily verified SFTP-transfer
 systemd units run the encrypted backup and hourly recovery-point check; deployment
 installation and separate key custody remain operator release prerequisites.
 

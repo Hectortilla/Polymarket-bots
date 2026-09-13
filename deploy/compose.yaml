@@ -36,10 +36,9 @@ services:
       POLYBOT_AUTH_ORIGIN: ${POLYBOT_AUTH_ORIGIN:?HTTPS origin required}
       POLYBOT_ENTRYPOINT_HEALTH_PATH: /healthz
     # Public binding remains unavailable until the final beta acceptance gate.
-    ports: ['127.0.0.1:${POLYBOT_HTTPS_PORT:-8443}:${POLYBOT_HTTPS_PORT:-8443}']
+    ports: ['127.0.0.1:${POLYBOT_HTTP_PORT:-8081}:8081']
     networks:
       edge: {ipv4_address: *proxy_address}
-    secrets: [tls_cert, tls_key]
     volumes: [caddy_data:/data, caddy_config:/config]
     depends_on:
       api: {condition: service_healthy}
@@ -127,7 +126,7 @@ networks:
   services: {internal: true}
   edge:
     ipam:
-      config: [{subnet: 172.30.16.0/28}]
+      config: [{subnet: 172.30.16.0/28, gateway: 172.30.16.1}]
   outbound: {}
 volumes:
   postgres_data:
@@ -138,7 +137,5 @@ secrets:
   database_url: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/database_url'}
   redis_url: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/redis_url'}
   postgres_password: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/postgres_password'}
-  tls_cert: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/tls_cert'}
-  tls_key: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/tls_key'}
   smtp_username: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/smtp_username'}
   smtp_password: {file: '${POLYBOT_SECRETS_DIR:?runtime secrets directory required}/smtp_password'}

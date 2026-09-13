@@ -1,11 +1,11 @@
-"""Only completed, checksum-valid archives can satisfy the backup recovery point."""
+"""Canonical encrypted local staging; remote verification owns recovery points."""
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from api.lifecycle.policy import BACKUP_RETENTION_DAYS, RECOVERY_POINT_HOURS
+from api.lifecycle.policy import BACKUP_RETENTION_DAYS
 from polybot.persistence.hashing import sha256_file
 
 from scripts.beta_backup.archive_name import ArchiveName
@@ -30,27 +30,10 @@ class BackupArchives:
         return destination
 
     def expire(self) -> None:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=BACKUP_RETENTION_DAYS)
+        cutoff = datetime.now(UTC) - timedelta(days=BACKUP_RETENTION_DAYS)
         for path, archive in self._completed():
             if archive.snapshot_started_at <= cutoff:
                 path.unlink()
-
-    def require_recent(self) -> None:
-        now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(hours=RECOVERY_POINT_HOURS)
-        for path, archive in sorted(
-            self._completed(),
-            key=lambda item: item[1].snapshot_started_at,
-            reverse=True,
-        ):
-            if (
-                cutoff <= archive.snapshot_started_at <= now
-                and sha256_file(path) == archive.checksum
-            ):
-                return
-        raise RuntimeError(
-            "no intact completed backup within the recovery-point target"
-        )
 
     def _completed(self):
         for path in self.directory.iterdir():

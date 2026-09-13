@@ -1,8 +1,7 @@
 name: Account and ownership acceptance
 
 on:
-  pull_request:
-  push:
+  workflow_call:
 
 permissions:
   contents: read
@@ -35,10 +34,12 @@ jobs:
       POLYBOT_BROWSER_POSTGRES_URL: postgresql://polybot:polybot@127.0.0.1:5432/polybot_browser_test
       POLYBOT_BROWSER_REDIS_URL: redis://127.0.0.1:6379/15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
+          version: '0.10.9'
           python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y age rclone
       - run: uv sync --locked --extra dev
       - run: uv run pytest --junitxml=data/acceptance.xml
       - name: Require every acceptance test to run
@@ -48,7 +49,7 @@ jobs:
           report = ElementTree.parse('data/acceptance.xml')
           assert not report.findall('.//skipped'), 'Acceptance tests must not skip'
           PY
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm

@@ -1,0 +1,14 @@
+[Unit]
+Description=Polybot monitor
+After=docker.service tailscaled.service network-online.target
+ConditionPathExists={{ polybot_root }}/current/.venv/bin/python
+[Service]
+Type=oneshot
+User=polybot
+Group=polybot
+WorkingDirectory={{ polybot_root }}/current
+ExecStart={{ polybot_root }}/current/.venv/bin/python -m scripts.host_operations --root {{ polybot_root }} monitor
+UMask=0077
+TimeoutStartSec=3700
+StandardOutput=journal
+StandardError=journal

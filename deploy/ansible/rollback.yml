@@ -1,0 +1,7 @@
+- name: Activate a published schema-compatible rollback
+  hosts: polybot
+  become: true
+  vars:
+    operation: rollback
+  tasks:
+    - ansible.builtin.import_tasks: tasks/activate.yml

@@ -1,0 +1,13 @@
+- name: Independent connectivity observation
+  hosts: polybot
+  gather_facts: false
+  tasks:
+    - name: Verify ordinary OpenSSH execution
+      ansible.builtin.ping:
+    - name: Verify private HTTPS readiness
+      ansible.builtin.uri:
+        url: '{{ polybot_origin }}/api/v1/health'
+        validate_certs: true
+        timeout: 15
+        status_code: 200
+      delegate_to: localhost

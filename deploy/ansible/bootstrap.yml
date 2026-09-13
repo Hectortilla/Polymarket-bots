@@ -1,0 +1,197 @@
+- name: Prepare one private Debian host
+  hosts: polybot
+  become: true
+  tasks:
+    - ansible.builtin.import_tasks: tasks/validate.yml
+    - name: Install distribution tools
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, python3, python3-debian, age, rclone, msmtp-mta, openssh-server]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Create apt key directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+    - name: Install vendor signing keys
+      ansible.builtin.get_url:
+        url: '{{ item.url }}'
+        dest: '{{ item.dest }}'
+        mode: '0644'
+      loop:
+        - {url: 'https://download.docker.com/linux/debian/gpg', dest: /etc/apt/keyrings/docker.asc}
+        - {url: 'https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg', dest: /etc/apt/keyrings/tailscale.gpg}
+    - name: Configure signed vendor package repositories
+      ansible.builtin.apt_repository:
+        repo: '{{ item }}'
+        state: present
+      loop:
+        - 'deb [arch={{ polybot_arch }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable'
+        - 'deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/debian {{ ansible_distribution_release }} main'
+    - name: Install Docker Engine, Compose and Tailscale
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin, tailscale]
+        state: present
+    - name: Install pinned uv from official distribution
+      ansible.builtin.unarchive:
+        src: 'https://github.com/astral-sh/uv/releases/download/0.10.9/uv-{{ {"amd64":"x86_64", "arm64":"aarch64"}[polybot_arch] }}-unknown-linux-gnu.tar.gz'
+        dest: /usr/local/bin
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        creates: /usr/local/bin/uv
+    - name: Create service account
+      ansible.builtin.user:
+        name: polybot
+        groups: docker
+        append: true
+        shell: /bin/bash
+        create_home: true
+    - name: Create private deployment directories
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: directory
+        owner: polybot
+        group: polybot
+        mode: '0700'
+      loop:
+        - '{{ polybot_root }}'
+        - '{{ polybot_root }}/secrets'
+        - '{{ polybot_root }}/bundles'
+        - '{{ polybot_root }}/staging'
+        - /home/polybot/.ssh
+    - name: Install deployment SSH key
+      ansible.builtin.copy:
+        content: "{{ polybot_ssh_public_key | trim }}\n"
+        dest: /home/polybot/.ssh/authorized_keys
+        owner: polybot
+        group: polybot
+        mode: '0600'
+    - name: Allow deployment account to manage this host
+      ansible.builtin.copy:
+        content: 'polybot ALL=(root) NOPASSWD: ALL'
+        dest: /etc/sudoers.d/polybot
+        mode: '0440'
+        validate: '/usr/sbin/visudo -cf %s'
+    - name: Generate database password exactly once
+      ansible.builtin.shell:
+        cmd: 'umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > {{ polybot_root }}/secrets/postgres_password'
+        creates: '{{ polybot_root }}/secrets/postgres_password'
+      no_log: true
+    - name: Read retained database credential
+      ansible.builtin.slurp:
+        src: '{{ polybot_root }}/secrets/postgres_password'
+      register: database_password
+      no_log: true
+    - name: Install container runtime secrets
+      ansible.builtin.copy:
+        content: '{{ item.content }}'
+        dest: '{{ polybot_root }}/secrets/{{ item.name }}'
+        owner: polybot
+        group: polybot
+        mode: '0444'
+      loop:
+        - {name: postgres_password, content: '{{ database_password.content | b64decode }}'}
+        - {name: database_url, content: 'postgresql+asyncpg://polybot:{{ database_password.content | b64decode }}@postgres:5432/polybot'}
+        - {name: redis_url, content: 'redis://redis:6379/0'}
+        - {name: smtp_username, content: '{{ polybot_smtp_username }}'}
+        - {name: smtp_password, content: '{{ polybot_smtp_password }}'}
+      no_log: true
+    - name: Install private backup inputs
+      ansible.builtin.copy:
+        content: '{{ item.content }}'
+        dest: '{{ polybot_root }}/secrets/{{ item.name }}'
+        owner: polybot
+        group: polybot
+        mode: '0600'
+      loop:
+        - {name: sftp_key, content: '{{ polybot_sftp_private_key }}'}
+        - {name: sftp_known_hosts, content: '{{ polybot_sftp_known_hosts }}'}
+        - {name: age-recipients.txt, content: '{{ polybot_age_recipients }}'}
+      no_log: true
+    - name: Install runtime and transport configuration
+      ansible.builtin.template:
+        src: '{{ item.src }}'
+        dest: '{{ polybot_root }}/{{ item.dest }}'
+        owner: polybot
+        group: polybot
+        mode: '0600'
+      loop:
+        - {src: runtime.env.j2, dest: runtime.env}
+        - {src: rclone.conf.j2, dest: secrets/rclone.conf}
+        - {src: msmtprc.j2, dest: secrets/msmtprc}
+      no_log: true
+    - name: Install host operational configuration
+      ansible.builtin.copy:
+        content: '{{ {"remote": "backup:" + polybot_sftp_directory, "alert_to": polybot_alert_to, "origin": polybot_origin} | to_nice_json }}'
+        dest: '{{ polybot_root }}/operations.json'
+        owner: polybot
+        group: polybot
+        mode: '0600'
+    - name: Start host services
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: started
+        enabled: true
+      loop: [docker, tailscaled, ssh]
+    - name: Configure the external tailnet
+      tags: [tailnet]
+      block:
+      - name: Inspect Tailscale enrollment
+        ansible.builtin.command: tailscale status --json
+        register: tailscale_status
+        changed_when: false
+      - name: Enroll host once without enabling Tailscale SSH
+        ansible.builtin.command:
+          argv: [tailscale, up, '--auth-key={{ polybot_tailscale_authkey }}', '--advertise-tags=tag:polybot', '--ssh=false']
+        when: (tailscale_status.stdout | from_json).BackendState != 'Running'
+        no_log: true
+      - name: Read enrolled tailnet identity
+        ansible.builtin.command: tailscale status --json
+        register: enrolled_tailnet
+        changed_when: false
+      - name: Require the configured origin to match the host's Tailscale DNS name
+        ansible.builtin.assert:
+          that: polybot_origin == ('https://' + (enrolled_tailnet.stdout | from_json).Self.DNSName.rstrip('.'))
+          quiet: true
+      - name: Inspect persistent Serve configuration
+        ansible.builtin.command: tailscale serve status --json
+        register: serve_status
+        changed_when: false
+      - name: Reject public Funnel configuration
+        ansible.builtin.assert:
+          that: not ((serve_status.stdout | from_json).AllowFunnel | default({})).values() | select('equalto', true) | list
+      - name: Configure persistent private HTTPS
+        ansible.builtin.command:
+          argv: [tailscale, serve, --bg, --https=443, 'http://127.0.0.1:{{ polybot_http_port }}']
+        when: ('http://127.0.0.1:' + (polybot_http_port | string)) not in serve_status.stdout
+    - name: Read operational policy from the repository owner
+      ansible.builtin.command:
+        argv:
+          - uv
+          - run
+          - --locked
+          - python
+          - -c
+          - 'import json; from api.lifecycle.policy import BACKUP_INTERVAL_HOURS; from scripts.beta_backup.policy import BACKUP_SERVICE_TIMEOUT_SECONDS; print(json.dumps(dict(interval=BACKUP_INTERVAL_HOURS, timeout=BACKUP_SERVICE_TIMEOUT_SECONDS)))'
+      delegate_to: localhost
+      become: false
+      register: backup_policy_result
+      changed_when: false
+    - name: Select backup timer policy
+      ansible.builtin.set_fact:
+        backup_policy: '{{ backup_policy_result.stdout | from_json }}'
+    - name: Install operational systemd units
+      ansible.builtin.template:
+        src: '{{ item }}'
+        dest: '/etc/systemd/system/{{ item | basename | regex_replace(".j2$", "") }}'
+        mode: '0644'
+      with_fileglob: ['templates/polybot-*.j2']
+      register: units
+    - name: Enable monitoring and backup schedules
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: true
+        state: started
+        daemon_reload: '{{ units.changed }}'
+      loop: [polybot-backup.timer, polybot-backup-check.timer, polybot-monitor.timer]

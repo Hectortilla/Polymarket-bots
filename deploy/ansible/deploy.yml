@@ -1,0 +1,7 @@
+- name: Deploy a published release
+  hosts: polybot
+  become: true
+  vars:
+    operation: deploy
+  tasks:
+    - ansible.builtin.import_tasks: tasks/activate.yml

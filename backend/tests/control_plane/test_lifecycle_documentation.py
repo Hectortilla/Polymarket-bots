@@ -90,17 +90,17 @@ def test_lifecycle_disclosures_and_commands_match_policy():
     assert f"return {status.HTTP_202_ACCEPTED}" in route_line
 
 
-def test_backup_units_match_cadence_timeout_and_require_mounted_storage():
-    directory = Path("deploy/systemd")
-    timer = (directory / "polybot-backup.timer").read_text()
+def test_backup_units_match_cadence_timeout_and_require_remote_verification():
+    directory = Path("deploy/ansible/templates")
+    timer = (directory / "polybot-backup.timer.j2").read_text()
     assert policy.BACKUP_INTERVAL_HOURS == 24
-    assert "OnCalendar=*-*-* 02:00:00 UTC" in timer
+    assert "OnCalendar={{ {24: 'daily'}[backup_policy.interval] }}" in timer
     assert "Persistent=true" in timer
-    backup = (directory / "polybot-backup.service").read_text()
-    assert f"TimeoutStartSec={BACKUP_SERVICE_TIMEOUT_SECONDS}" in backup
+    backup = (directory / "polybot-backup.service.j2").read_text()
+    assert "TimeoutStartSec={{ backup_policy.timeout }}" in backup
     assert BACKUP_SERVICE_TIMEOUT_SECONDS > BACKUP_PROCESS_TIMEOUT_SECONDS * 2
-    for filename in ("polybot-backup.service", "polybot-backup-check.service"):
+    for filename in ("polybot-backup.service.j2", "polybot-backup-check.service.j2"):
         assert (
-            "AssertPathIsMountPoint=/mnt/polybot-backups"
+            "scripts.host_operations --root {{ polybot_root }}"
             in (directory / filename).read_text()
         )

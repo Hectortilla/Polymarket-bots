@@ -14,7 +14,7 @@ from api.runs.schema import RUNS_TABLE_NAME, RunColumn
 from api.runs.status import TERMINAL_RUN_STATUSES
 
 from control_plane.deployment_smoke import DeploymentSmoke
-from scripts.beta_backup.archives import BackupArchives
+from control_plane.sftp_fixture import sftp_server
 from scripts.beta_backup.backup import BetaBackup
 from scripts.beta_backup.database import ComposeDatabase
 from scripts.beta_backup.policy import AGE_BINARY
@@ -39,7 +39,7 @@ class BackupRehearsal:
             host.compose(
                 "stop", DeploymentService.RECOVERY, DeploymentService.API, fixture=True
             )
-            database = ComposeDatabase(release)
+            database = ComposeDatabase(release.compose)
             expected = self.inventory(database)
             assert all(item["count"] for item in expected.values())
             directory = host.directory / "backups"
@@ -56,12 +56,21 @@ class BackupRehearsal:
                 subprocess.check_output(["age-keygen", "-y", str(identity)])
             )
             archive = BetaBackup(database, directory, recipients).create()
-            BackupArchives(directory).require_recent()
+            with sftp_server(host.directory / "sftp") as (remote, _storage, _process):
+                # The rehearsal bundle records its uncommitted test provenance explicitly.
+                bundle = host.directory / "fixture-release.tar.gz"
+                bundle.write_bytes(host.manifest.read_bytes())
+                name = archive.name
+                remote.upload(archive, bundle)
+                remote.require_recent()
+                downloaded = host.directory / "downloaded"
+                downloaded.mkdir(mode=0o700)
+                archive, _ = remote.download(name, downloaded)
             self.reject_invalid_database_dump(recipients, identity)
             restore = BetaRestore(host.manifest, archive, identity, host.directory)
             self.restored = BetaRelease.from_manifest(host.manifest, restore.project)
             project, seconds = restore.restore()
-            restored_database = ComposeDatabase(self.restored)
+            restored_database = ComposeDatabase(self.restored.compose)
             assert self.inventory(restored_database) == expected
             assert (
                 self.sql(
@@ -93,10 +102,10 @@ class BackupRehearsal:
                 == 0
             )
             running = subprocess.check_output(
-                restored_database.release.command(
+                restored_database.project.command(
                     "ps", "--status", "running", "--services"
                 ),
-                env=restored_database.release.environment,
+                env=restored_database.project.environment,
                 text=True,
             ).splitlines()
             assert set(running) == {POSTGRES_SERVICE, REDIS_SERVICE}
@@ -117,8 +126,9 @@ class BackupRehearsal:
                 flush=True,
             )
         finally:
+            host.stop_tls()
             if self.restored is not None:
-                self.restored.compose("down", "--volumes", "--remove-orphans")
+                self.restored.compose.run("down", "--volumes", "--remove-orphans")
             if host.manifest.exists():
                 host.compose("down", "--volumes", "--remove-orphans")
 
@@ -147,16 +157,18 @@ class BackupRehearsal:
                 pass
             else:
                 raise AssertionError("invalid database dump reported restore success")
-            database = ComposeDatabase(failed_release)
+            database = ComposeDatabase(failed_release.compose)
             running = subprocess.check_output(
-                failed_release.command("ps", "--status", "running", "--services"),
-                env=failed_release.environment,
+                failed_release.compose.command(
+                    "ps", "--status", "running", "--services"
+                ),
+                env=failed_release.compose.environment,
                 text=True,
             ).splitlines()
             assert set(running) == {POSTGRES_SERVICE, REDIS_SERVICE}
             assert self.sql(database, f"SELECT to_regclass('{USERS_TABLE}')") == ""
         finally:
-            failed_release.compose("down", "--volumes", "--remove-orphans")
+            failed_release.compose.run("down", "--volumes", "--remove-orphans")
             invalid_archive.unlink(missing_ok=True)
 
     def inventory(self, database: ComposeDatabase) -> dict:
@@ -168,14 +180,7 @@ class BackupRehearsal:
             RUN_EVENTS_TABLE_NAME,
         ):
             projection = (
-                ", ".join(
-                    (
-                        UserColumn.ID,
-                        UserColumn.EMAIL,
-                        UserColumn.PASSWORD_HASH,
-                        UserColumn.CREATED_AT,
-                    )
-                )
+                f"{UserColumn.ID}, {UserColumn.EMAIL}, {UserColumn.PASSWORD_HASH}, {UserColumn.CREATED_AT}"
                 if table == USERS_TABLE
                 else "*"
             )
@@ -188,7 +193,7 @@ class BackupRehearsal:
 
     def sql(self, database: ComposeDatabase, statement: str) -> str:
         return self.deployment.command(
-            *database.release.command(
+            *database.project.command(
                 "exec",
                 "-T",
                 POSTGRES_SERVICE,

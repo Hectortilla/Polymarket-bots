@@ -7,7 +7,7 @@ for these procedures.
 
 | Data / objective | Policy |
 | --- | --- |
-| Database backup | Daily encrypted age archive on a protected off-host mounted destination |
+| Database backup | Daily encrypted age archive transferred and verified through SFTP |
 | Backup expiry | 14 days; no indefinite archive |
 | Recovery point | At most 24 hours before an incident |
 | Recovery time | At most 2 hours for an isolated restore and quarantine; reopening requires reconciliation |
@@ -69,63 +69,68 @@ expiry; they are never used to serve archived history.
 
 ## Install automated backups
 
-Install `age` and the repository's pinned Python environment on the Linux host.
-Select a local Docker context without `DOCKER_HOST`/`DOCKER_CONTEXT` overrides.
-Backup/restore validates and pins its Unix socket for the whole workflow; remote
-TCP/SSH contexts are rejected. See [Docker context behavior](https://docs.docker.com/engine/manage-resources/contexts/).
-Mount protected off-host storage at `/mnt/polybot-backups`, owned by the service
-operator with mode 0700. Keep its access credentials in the host secret store.
-Generate the age private identity on the recovery operator's protected system;
-store it separately from the host and backup destination. Install only its public
-recipient lines at `/etc/polybot/backup-recipients.txt`. Record recovery custody
-and test that a second authorized operator can retrieve the identity.
+Follow the single [bootstrap checklist](beta-deployment.md#one-time-setup).
+Ansible installs age, rclone, msmtp, private staging and daily/hourly systemd timers.
+Use one dedicated SFTP application directory and independently verified host keys;
+`known_hosts_file` is mandatory. No mount, TOFU, remote shell hashing or custom SFTP
+transport is used. The age private identity stays on the protected recovery
+machine; only public recipients are installed under `/srv/polybot/secrets`.
 
-Install `deploy/systemd/polybot-backup.{service,timer}` and
-`deploy/systemd/polybot-backup-check.{service,timer}` in `/etc/systemd/system`.
-The units assume `/srv/polybot`, `/usr/local/bin/uv`, and the active pinned release
-manifest `/etc/polybot/release.env`; adapt these explicit host paths when installing.
-Enable both timers with `systemctl enable --now polybot-backup.timer polybot-backup-check.timer`. Start `polybot-backup.service` immediately and inspect
-its exit status before relying on the schedule. The daily timer is 02:00 UTC and
-catches missed executions after reboot. The hourly check fails if no completed
-checksum-valid completed archive satisfies the 24-hour recovery point. Both services
-assert that the destination is mounted and fail if it is only a local directory. The deployment owner must monitor
-failed units and the journal and repair a missed backup immediately. Configure
-host failure notification to the release checklist's real support owner before
-public opening.
+Daily snapshots use the pinned PostgreSQL image's custom-format `pg_dump` streamed
+into age. Both processes must complete before local publication. Canonical names
+bind snapshot start time and the encrypted `sha256` digest. rclone uploads the
+matching non-secret release bundle and encrypted archive, reads both back and
+compares their checksums. Only then is off-server success reported and local
+staging cleaned. Hourly checks independently read remote bytes; incomplete,
+corrupted, future-dated or stale snapshots and missing/corrupt bundles cannot
+satisfy the 24-hour recovery point. An SFTP error fails closed. Checksums detect
+storage damage; age authentication and restoration acceptance remain necessary.
 
-Manual invocation, using the same pinned release:
+Retention deletes only canonical archive/bundle artifacts at the 14-day boundary
+within the configured application directory, including recognized rclone upload
+partials after interruption. It never mirror-deletes arbitrary
+files. Host staging retains at most two failed snapshots and removes stale
+incomplete files. Backup and activation share the deployment lock so the dump and
+retained bundle describe the same active release. The host needs a local Docker
+Unix socket; ambient Docker context overrides are rejected.
+
+The routine operator command is Ansible `backup.yml`. Underlying commands used by
+the tooling, shown for recovery diagnostics with the same private configuration:
 
 ```sh
-uv run python -m scripts.beta_backup create /etc/polybot/release.env --project polybot --directory /mnt/polybot-backups --recipients /etc/polybot/backup-recipients.txt
-uv run python -m scripts.beta_backup check --directory /mnt/polybot-backups
+python -m scripts.beta_backup create /srv/polybot/.env --directory /srv/polybot/staging --recipients /srv/polybot/secrets/age-recipients.txt --config /srv/polybot/secrets/rclone.conf --remote backup:/YOUR_APPLICATION_DIRECTORY --bundle /srv/polybot/current/release.tar.gz
+python -m scripts.beta_backup check --directory /srv/polybot/staging --config /srv/polybot/secrets/rclone.conf --remote backup:/YOUR_APPLICATION_DIRECTORY
 ```
 
-The pipeline uses the database image's `pg_dump` custom format and streams directly
-into age. Only successful dump and encryption exit codes publish an fsynced,
-atomically renamed archive. The completed filename binds the snapshot start time
-and `sha256` digest of the encrypted bytes. Recovery-point checks recompute this
-digest to detect truncation/bit rot; incomplete, malformed, future-dated or corrupted
-archives do not satisfy the check. Directory permissions protect the trusted
-completion record: this checksum is not a substitute for age authentication or a
-restore rehearsal, and the private decryption identity is never installed for the
-hourly check.
-Retention deletes only completed, conventionally named archives older than the
-policy; do not create untracked copies. A successful dump is not a restore test.
-The implementation follows [PostgreSQL pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html),
-[pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html) and the
-[age command-line interface](https://github.com/FiloSottile/age).
+Use `current/.venv/bin/python` from the active bundle directory. Host timer failures
+and recoveries are emailed through msmtp; detailed diagnostics stay in journald.
+The daily calendar derives from the 24-hour policy and catches missed runs after
+boot; hourly freshness checks detect overdue recovery points.
+[rclone SFTP host verification](https://rclone.org/sftp/#host-key-validation),
+[PostgreSQL pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html),
+[age](https://github.com/FiloSottile/age).
 
 ## Restore without reopening old access
 
 Use an isolated host/network with enough disk space for PostgreSQL and the dump.
-Retrieve the matching release manifest and immutable image IDs, the encrypted
-archive and separate private age identity. Restore the required runtime secrets
+Download and verify the archive and its matching retained release bundle into a
+new mode-0700 directory on the recovery machine:
+
+```sh
+python -m scripts.beta_backup download ARCHIVE.dump.age --directory /secure/download --config /secure/rclone.conf --remote backup:/YOUR_APPLICATION_DIRECTORY
+```
+
+This prepares verified source under `/secure/download/release`. Install its locked
+environment with `uv sync --locked --no-dev --directory /secure/download/release`.
+Combine its `images.env` with separately restored origin/SMTP/path configuration
+into `/secure/restore.env` (mode 600). Use isolated runtime secrets and preserve
+its pinned images. Keep the separate private age identity on this recovery machine. Restore the required runtime secrets
 from the secret store. The scratch directory must be mode 0700 on encrypted disk
 or tmpfs; its temporary plaintext file is unlinked on completion/failure. The
 identity must have no group/other permissions.
 
 ```sh
-uv run python -m scripts.beta_backup restore /etc/polybot/release.env /mnt/polybot-backups/ARCHIVE.dump.age --identity /secure/recovery.age --scratch-directory /secure/restore-scratch
+python -m scripts.beta_backup restore /secure/restore.env /secure/download/ARCHIVE.dump.age --identity /secure/recovery.age --scratch-directory /secure/restore-scratch
 ```
 
 This verifies the entire encrypted stream before touching PostgreSQL, generates a
@@ -154,7 +159,7 @@ For each reconciled eligible account, run `python -m api.lifecycle approve-resto
 with its identity and reconciliation flag, using the returned isolated project name:
 
 ```sh
-docker compose --project-name RESTORED_PROJECT --env-file /etc/polybot/release.env -f deploy/compose.yaml run --rm --no-deps --entrypoint python recovery -m api.lifecycle approve-restored-account USER_UUID --reconciled-against-current-records
+docker compose --project-name RESTORED_PROJECT --env-file /secure/restore.env -f deploy/compose.yaml run --rm --no-deps --entrypoint python recovery -m api.lifecycle approve-restored-account USER_UUID --reconciled-against-current-records
 ```
 
 Use the same private command form with `python -m api.lifecycle clean` for maintenance.
@@ -168,12 +173,12 @@ projects and their volumes after the rehearsal.
 ## Non-database files, export and support
 
 Preserve release manifests, immutable image references, environment configuration
-and SMTP/database/TLS secrets through a separately encrypted secret/configuration
+and SMTP/database/SFTP secrets through a separately encrypted secret/configuration
 store with the same recovery availability and access controls. Do not place the
 age private identity next to archives. The browser service needs no uploaded files
 or local market recordings. Redis contains queues, leases/rate counters and live
 telemetry; restore it empty and accept transient counter resets under paused
-admissions. Caddy state is replaceable from the managed TLS/configuration source.
+admissions. Caddy state is replaceable; Tailscale Serve recreates managed certificates.
 Source code and built images remain in their versioned repository/image registry.
 
 Users can export their private graph JSON before deletion through the existing

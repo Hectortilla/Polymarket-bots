@@ -1095,9 +1095,23 @@ architecture for authorization and lock order.
 Slice 21 adds `api.lifecycle` for bounded terminal-history retention, account
 erasure and restore quarantine. The recovery process supervises this maintenance
 alongside operational monitoring. `scripts.beta_backup` and the host systemd
-timers own encrypted database backups; PostgreSQL remains the durable source and
+timers own age encryption, checksum-verified rclone SFTP transfers and retention; PostgreSQL remains the durable source and
 Redis is restored empty. No Polymarket adapter or framework contract changes.
 Approved policy and recovery evidence belong to [the data lifecycle runbook](beta-data-lifecycle.md).
+
+## Private deployment automation
+
+GitHub Actions shares required validation across pull requests and tagged releases,
+publishes digest-pinned application images and a verified source/Compose bundle.
+Ansible prepares a single Debian amd64/arm64 host under `/srv/polybot` and invokes
+one journaled release executor through systemd. Existing schema checks, migration
+failure closure, paper-only settings and restore quarantine remain unchanged.
+Tailscale Serve owns private HTTPS and renewal; Caddy's loopback HTTP listener has
+an independent port and an explicit Serve → Caddy → Uvicorn trust chain.
+Encrypted backups count toward recovery only after rclone SFTP transfer and remote
+readback verification, including the retained non-secret release bundle.
+See [deployment](beta-deployment.md), [operations](beta-operations.md) and
+[data lifecycle](beta-data-lifecycle.md) for setup inputs and acceptance boundaries.
 
 ## Full-repository maintainability follow-up (2026-09-11)
 

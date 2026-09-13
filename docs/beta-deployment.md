@@ -1,323 +1,230 @@
-# Private staging and release operations
+# Private deployment and release operations
 
-Slice 16 adopts the architecture's single-host Docker Compose topology. It adds
-no hosting account, paid provider, public binding, or production deployment.
-The staging baseline is Linux/arm64 or Linux/amd64 with Docker Compose v2,
-four CPU cores, 8 GiB RAM and 40 GiB free disk. These are rehearsal assumptions,
-not a measured public capacity promise. Slice 17's `api.limits.policy.PAPER_BETA`
-owns the initial limits; its bounded synthetic rehearsal is recorded in the
-implementation plan and must be repeated on the target host.
+Use GitHub Actions, Ansible and Docker Compose on one Debian host, amd64 or
+arm64. Tailscale Personal supplies private connectivity and Serve HTTPS. The API
+keeps its own email/password authentication. The application remains paper-only;
+no public-opening gate or live-trading opt-in is changed.
 
-`deploy/compose.yaml` contains the static Caddy frontend, two-process API,
-Taskiq worker, PostgreSQL, Redis and a one-shot forward migration. Only Caddy
-publishes a port, always on loopback. PostgreSQL and Redis use an internal network;
-API and worker have outbound access for market discovery/data. The dedicated
-proxy subnet must not overlap host routes. Uvicorn trusts only Caddy's fixed
-address; Caddy replaces forwarded address/scheme/host headers and removes
-`Forwarded`. SSE is flushed immediately. HTTPS uses externally supplied certificate
-files; certificate acquisition and a real hostname remain operator inputs.
-Caddy's readiness probe binds only to loopback inside its container; that HTTP
-listener is not published. Release activation waits for both API readiness and
-the configured proxy to become healthy. The TLS/browser rehearsal separately
-verifies the supplied certificate and authenticated request path.
-See [Caddy proxy behavior](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
-and [Compose migration ordering](https://docs.docker.com/compose/how-tos/startup-order/).
+## One-time setup
 
-The entrypoint remains private until every Slice 16–23 acceptance gate passes.
-Opening signup requires a separate operational change. No command in this
-repository publishes public ingress.
+Run these steps in order. Account creation and credentials are operator inputs;
+no automation buys capacity, upgrades a plan or enables Funnel.
 
-## Build and configuration
+1. Obtain a Debian 12/13 host with initial OpenSSH access and a sudo-capable account.
+   The staging baseline is four CPUs, 8 GiB RAM and 40 GiB free disk; repeat capacity
+   acceptance on the actual host. Verify the host's SSH public key through its
+   console/provider channel. Do not trust an unauthenticated `ssh-keyscan` result.
+2. Use a Tailscale **Personal** tailnet. Enable MagicDNS and HTTPS in its admin
+   console. Set the intended machine name before selecting the exact
+   `https://HOST.TAILNET.ts.net` origin. Merge `deploy/tailscale-policy.example.hujson`
+   into policy, removing broader grants that would give CI additional access.
+   Tag only this deployment host `tag:polybot`; CI has only TCP 22 and 443 to it.
+   Create a one-time tagged host enrollment key. Never enable Funnel.
+3. Install controller tools with `uv sync --locked --extra dev` and
+   `uv tool install ansible-core==2.19.7`. Generate a deployment SSH key and obtain the SFTP server's public host key
+   through a trusted channel. Create a dedicated existing storage directory and
+   SSH key with read/write/delete rights there. Keep storage ownership outside
+   automation. Generate `age-keygen -o recovery.age` on the protected recovery
+   machine; copy only `age-keygen -y recovery.age` public output to the host inputs.
+   Keep the private identity offline, outside the host and SFTP storage.
+4. Copy `deploy/ansible/inventory/example.yml` to
+   `deploy/ansible/inventory/production.yml`. Commit only the non-secret host,
+   architecture, root, origin and operational configuration. Default root:
+   `/srv/polybot`. Fill every example value. Keep a private `known_hosts` file at
+   the repository root, with verified keys for both the initial address and
+   tailnet hostname. Copy `secrets.example.yml` outside the repository and replace
+   every value; encrypt with `ansible-vault encrypt /secure/polybot-secrets.yml`.
+   SMTP must support STARTTLS or implicit TLS. The deployment account has Docker
+   and sudo authority and is therefore a host administrator; protect its key.
+5. Bootstrap once, from the configured controller with initial SSH access:
 
-Build from the repository root with
-`docker build -f deploy/backend.Dockerfile -t polybot-backend:BUILD .` and
-`docker build -f deploy/frontend.Dockerfile -t polybot-frontend:BUILD .`.
-Dependency lockfiles are installed without updates. Record the source
-commit and resulting image IDs (`docker image inspect --format '{{.Id}}' TAG`)
-in a copy of `deploy/release.env.example`. Production manifests accept only
-image IDs or registry references containing SHA-256 digests, including the
-PostgreSQL and Redis images. Tags are build conveniences, not release inputs.
-Retain both previous and candidate manifests and images outside the source tree.
-For deployable releases, build a clean commit; local rehearsals may exercise
-uncommitted changes and must not be represented as release provenance.
+   ```sh
+   export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
+   ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
+     -e @/secure/polybot-secrets.yml --ask-vault-pass \
+     -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
+   ```
 
-Supply an absolute runtime secret directory, kept outside the build context,
-containing `database_url`, `redis_url`, `postgres_password`, `smtp_username`, `smtp_password`, `tls_cert`, and
-`tls_key`. Use a host directory accessible only to the operator. Secret files
-must be readable by the receiving container user (backend UID 10001); Compose
-mounts only the declared individual secrets into each service. Backend URLs
-use the private service names `postgres` and `redis`; the database name and
-user are `polybot`. Redis is unauthenticated only inside its unexposed internal
-network. The database password in its URL must match `postgres_password`.
-Never pass credentials as build arguments or copy `.env` into an image.
-Do not include TLS private keys or database/Redis credentials in release manifests.
-See [Compose runtime secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
+   Bootstrap installs signed vendor Docker/Tailscale packages, distribution age,
+   rclone and msmtp, and uv 0.10.9. It generates the PostgreSQL password once and
+   preserves it on reruns. It creates private directories, installs runtime
+   secrets and timers, enrolls Tailscale and persists Serve. No application images
+   are built on the host. Check the resulting Tailscale DNS name matches inventory;
+   restrict initial public SSH in the provider/host firewall after tailnet SSH works.
+6. Create GitHub environment `private`. Set secrets `DEPLOY_SSH_KEY`,
+   `DEPLOY_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, and `TS_AUDIENCE`. Configure Tailscale
+   workload identity federation for this repository's `private` environment,
+   issuer `https://token.actions.githubusercontent.com`, subject
+   `repo:OWNER/REPO:environment:private`, the configured audience, `auth_keys` scope
+   and `tag:polybot-ci`. Use ordinary OpenSSH, not Tailscale SSH. Permit Actions
+   package and release publication using `GITHUB_TOKEN`; grant this repository
+   Actions read access to its GHCR packages. Enable failure notifications for
+   the named operator. Do not configure required environment approval if unattended
+   tagged deployment is intended. Protect the default branch and version tags.
+7. Push the first version tag, then run Ansible `status.yml` and `backup.yml`.
+   Timers intentionally wait for a first active release. Complete the external
+   acceptance checklist below before declaring operational setup complete.
 
-Set `POLYBOT_AUTH_ORIGIN` to the exact HTTPS browser origin and
-`POLYBOT_HTTPS_PORT` to its port. For local TLS staging use
-`https://localhost:8443` and trust the rehearsal certificate only in the test
-client. Production rejects HTTP opt-in, mutable release IDs, missing secret
-files, invalid proxy addresses and invalid numeric settings. Startup failure
-reports configuration/dependency/schema failure without logging input values.
+No real production inventory, account credentials or addresses are supplied by
+this repository. Tailscale currently advertises 1,000 ephemeral-resource minutes
+per month on Personal. CI joins only in remote-operation jobs; connectivity runs
+once daily with a five-minute job bound. Track usage and pause automation if the
+free allowance is exhausted; reassess changed terms without enabling paid capacity.
+[Tailscale pricing](https://tailscale.com/pricing) and
+[workload identity GitHub integration](https://tailscale.com/docs/integrations/github/github-action)
+were checked for this implementation.
 
-`StartupSettings` owns database/Redis configuration, worker concurrency,
-heartbeat and lease settings. `PAPER_BETA.global_active_runs` owns the worker-concurrency default.
-Intervals must be finite and positive, with lease greater than heartbeat.
-API startup also validates settings when launched directly. Local development
-continues to use README's Vite/Uvicorn commands and explicit HTTP opt-in.
+## Routine releases
+
+Commit and merge to the default branch, then:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Use the next unused `vMAJOR.MINOR.PATCH`. Required reusable workflows run backend,
+frontend, browser and deployment acceptance before image publication. Docker's
+login, QEMU, Buildx and build/push actions select the inventory architecture,
+use GitHub cache and publish with `GITHUB_TOKEN`. Reviewed infrastructure pins
+live in `deploy/infrastructure.env`; application releases never resolve new
+PostgreSQL/Redis digests. A change to these pins needs a separate maintenance plan.
+
+The single GitHub Release asset `release.tar.gz` contains `bundle.json`,
+`images.env`, the exact Compose file and committed operational source/lockfiles.
+It contains no credentials. Metadata binds tag, commit and all included file
+hashes. The selected commit must be in default-branch history. Existing complete
+assets are downloaded and verified on retry; moved tags, drafts, missing or extra
+assets and checksum/provenance conflicts fail instead of being overwritten. A
+partial draft needs operator inspection and removal or completion before retry;
+never replace a published release. Image-only publication failures can rebuild
+before there is a completed bundle. A completed bundle is reused without builds.
+
+For a published release, open **Actions → Private release → Run workflow**, enter
+`release_tag`, and choose `deploy` or `rollback`. Manual operations never build an
+unpublished release. Rollback checks schema compatibility; it never downgrades the
+database. The workflow serializes releases without cancelling an active one and
+reports commit, digests, result and the diagnostic journal location.
+
+Ansible is also the private operator interface:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/status.yml
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/backup.yml
+```
+
+For exceptional local deploy/rollback, download the published bundle with
+`gh release download TAG --pattern release.tar.gz --dir /secure/release`, then
+invoke `deploy.yml` or `rollback.yml` with private extra vars containing
+`release_tag`, `release_commit`, absolute `release_bundle`, `registry_username`
+and a short-lived `registry_token`. Do not put credentials on command lines.
+The workflow supplies these automatically for routine releases.
 
 ## Release and rollback
 
-Run `uv run python -m scripts.beta_release /absolute/path/release.env`.
-The command validates immutable inputs, waits for infrastructure, closes the
-entrypoint and stops application processes, runs the one-shot forward migration,
-then starts `api`, `worker` and `recovery` and reopens private ingress only after API readiness.
-The application requires the exact migration head shipped in its image. An
-unsuccessful migration leaves ingress closed; diagnose and repair forward before
-retrying. Existing test CI remains in place; deployment checks are additional.
-Application releases preserve existing PostgreSQL/Redis containers rather than
-upgrading infrastructure in place. Infrastructure version changes require their
-own maintenance plan. Run releases serially for a given Compose project.
-
-For rollback, select the previous retained manifest and pass `--rollback`.
-This runs a compatibility check instead of Alembic downgrade. Rollback is
-allowed only when the previous image supports the current schema (currently
-exact-head compatibility). A schema-changing release needs a tested forward
-repair or an explicitly compatible previous build; do not improvise a downgrade.
-The check happens with ingress closed. A failed rollback remains closed.
-Releases deliberately have a short outage and interrupt unfinished paper runs;
-Slice 18 owns bounded automatic recovery of those interruptions.
-
-Stop with `docker compose --env-file MANIFEST -f deploy/compose.yaml stop`.
-Keep volumes and immutable images. Never use `down --volumes` against retained
-data. Database/schema preservation applies to existing Slice 15 accounts too.
-
-## Laptop-to-server automation
-
-Three commands automate the existing private release workflow. Run them from a
-checkout of this repository on each machine, with Git, uv and Python 3.12+;
-`uv sync --locked --no-dev` installs the command dependencies. The main laptop
-needs Docker with Buildx and a builder capable of the target Linux architecture.
-The Debian host needs Docker Engine and Compose v2 accessible to your normal
-user. Its active Docker context must use a local Unix socket, with `DOCKER_HOST`
-and `DOCKER_CONTEXT` unset. No image compilation runs on the Debian host.
-
-Use a GitHub personal access token (classic) with `write:packages` for publishing,
-and a separate token with `read:packages` and access to those packages for the
-server. Organization packages may require SSO authorization. Both commands prompt
-without echo; an already-exported `GITHUB_TOKEN` is also accepted and removed
-from the subprocess environment before subsequent commands. Login uses
-`--password-stdin`. Docker manages stored registry credentials through its
-configured credential store. See [GitHub's GHCR authentication instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
-
-**1. Build and push on the main laptop.** Commit the changes being released first.
-The command refuses a dirty worktree and builds a temporary `git archive` of the
-commit, excluding ignored local files such as credentials and dependencies.
-
-```sh
-uv run python -m scripts.beta_publish \
-  --namespace YOUR_GITHUB_USER_OR_ORG \
-  --username YOUR_GITHUB_USER \
-  --platform linux/amd64 \
-  --output "$HOME/polybot-release-1.env"
-
-scp "$HOME/polybot-release-1.env" SERVER_USER@SERVER_HOST:~/
-```
-
-Use a lowercase namespace. The default platform is `linux/amd64` for an Intel/AMD
-Debian laptop, even when building on an Apple Silicon Mac. Use `linux/arm64` for
-an ARM server. Images are pushed as `ghcr.io/NAMESPACE/polybot-backend:COMMIT`
-and `ghcr.io/NAMESPACE/polybot-frontend:COMMIT`. The output records their registry
-digests, the source commit, and the resolved PostgreSQL/Redis digests. Defaults
-are the rehearsal's `postgres:17` and `redis:7-alpine`; `--postgres-image` and
-`--redis-image` accept explicit references. The script never replaces an existing
-output manifest. If a build fails after the other image was pushed, rerun with a
-fresh output path; only a fully successful run produces a manifest.
-Buildx supplies the pushed digest via its
-[build metadata file](https://docs.docker.com/reference/cli/docker/buildx/build/#write-build-result-metadata-to-a-file---metadata-file).
-
-**2. Prepare the Debian host once.** Clone/fetch this repository on the host so
-the published source commit is available locally. Run from that checkout.
-Provide a certificate valid for your chosen origin and its matching unencrypted private key,
-plus your existing SMTP relay settings:
-
-```sh
-uv run python -m scripts.beta_setup \
-  --release "$HOME/polybot-release-1.env" \
-  --origin https://localhost:8443 \
-  --tls-cert /absolute/path/cert.pem \
-  --tls-key /absolute/path/key.pem \
-  --smtp-host smtp.example.com \
-  --smtp-from accounts@example.com
-```
-
-The script prompts for SMTP username/password, generates a random database
-password and matching database URL, and prepares:
+All installed state uses one configured root:
 
 ```text
-~/app/                      mode 700
-  .env                      mode 600; image/origin/SMTP settings, secret directory
-  docker-compose.yml        exact deploy/compose.yaml from the release commit
-  secrets/                  mode 700
-    database_url, postgres_password, redis_url
-    smtp_username, smtp_password, tls_cert, tls_key
+/srv/polybot/                 private, owned by polybot
+  runtime.env                bootstrap origin/SMTP/path settings, mode 600
+  secrets/                   private directory; container secrets readable by UID 10001
+  operations.json            SFTP destination, origin and alert recipient
+  bundles/TAG/               verified source, release.tar.gz and locked .venv
+  releases/ATTEMPT/           durable candidate and previous Compose/manifests
+  .deployment.json           pending attempt phase and operation
+  .env, docker-compose.yml   active configuration
+  current -> bundles/TAG     operational source selected during promotion
+  staging/                   encrypted backup staging; at most two failed snapshots
 ```
 
-Credentials stay in runtime secret files, following the existing Compose
-contract. Individual secrets are mode `444` inside the private directory so
-bind mounts are readable by backend UID 10001 without granting other host users
-directory traversal. Keep both parent directories private. This uses
-[Compose file secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
-TLS inputs must be regular files, not symlinks. Setup captures their contents
-and checks that the TLS key matches the certificate; hostname validity and
-client trust remain part of the HTTPS rehearsal. Certificate acquisition and
-renewal remain operator responsibilities. `--smtp-port 465 --smtp-security tls`
-selects implicit TLS; defaults are port 587 and STARTTLS. Setup refuses a nonempty
-destination and never rotates existing credentials. `--app-dir` selects another
-directory outside the repository; use the same option on startup.
+Ansible validates/transfers the bundle and installs its locked Python environment
+before touching application processes. `polybot-activate.service` then invokes
+`scripts.beta_release --bundle ... --app-dir ...` under systemd. SSH loss does not
+kill activation. A rerun waits for the existing unit and reads its journal before
+launching another attempt. Temporary Docker authentication is removed by
+`ExecStopPost`, including activation failure or disconnect. Host locking protects
+manual executor invocations and backup snapshots too.
 
-**3. Pull, migrate, start and watch logs on the Debian host.**
+The single executor validates inputs, pulls images, preserves existing
+PostgreSQL/Redis containers, stops ingress, stops applications, runs forward
+migration (or rollback compatibility check), starts `api`, `worker` and `recovery`, waits for
+readiness, and promotes configuration. Failed migrations/rollback checks leave
+ingress closed. Reapplying the active healthy bundle checks health without
+restarting paper runs. An unhealthy active bundle reports failure; repair the
+service or deploy a reviewed repair, rather than assuming rollback is safe.
+
+The durable ACTIVATING journal replays the retained candidate. ACTIVATED recovers
+partial `.env`, Compose or `current` promotion without restarting applications.
+An uncertain activation with no durable completion record is replayed. Retrying
+the same pending candidate requires its recorded deploy/rollback operation. An
+explicit different bundle can replace a failed attempt with a forward repair or
+schema-compatible rollback. Never edit/delete the journal to bypass recovery.
+Diagnostics: `journalctl -u polybot-activate.service`; active inputs can be mixed
+until recovery finishes, so recover before manual Compose operations. Keep volumes;
+never run `down --volumes` on retained data. Paper runs interrupted by a real
+release require explicit relaunch; existing recovery fences remain in effect.
+
+## Private HTTPS boundary
+
+Serve persists `tailscale serve --bg --https=443 http://127.0.0.1:8081`, with the
+configured internal port substituted. Tailscale owns certificates and renewal;
+no production TLS files are mounted into Caddy. Serve rejects internet ingress
+unless Funnel is separately enabled, which bootstrap and host checks reject.
+[Serve persistence](https://tailscale.com/docs/reference/tailscale-cli/serve).
+
+`POLYBOT_AUTH_ORIGIN` is the exact external HTTPS origin;
+`POLYBOT_HTTP_PORT` is an independent loopback listener, default 8081. Caddy keeps
+static frontend serving, API proxying and immediate SSE flushing. Uvicorn trusts
+only Caddy `172.30.16.2`; Caddy trusts only Docker host gateway `172.30.16.1/32`,
+uses strict right-to-left X-Forwarded-For parsing and sends a single client IP.
+The subnet `172.30.16.0/28` must be free on the host. Other containers are untrusted.
+Serve overwrites X-Forwarded-For with the authenticated connection's source IP;
+Caddy removes `Forwarded` and Tailscale identity headers and fixes the upstream
+scheme to HTTPS. Application login remains required, Secure cookies and CSRF
+use the configured origin, and mail links retain that origin.
+[Tailscale forwarding implementation](https://github.com/tailscale/tailscale/blob/v1.94.2/ipn/ipnlocal/serve.go),
+[Caddy trusted proxies](https://caddyserver.com/docs/caddyfile/options#trusted-proxies).
+
+## Acceptance and removal inventory
+
+Ordinary disposable checks, from the root (Docker, age, rclone, OpenSSH tools,
+Ansible and Chromium required; on macOS install Caddy for the local TLS fixture):
 
 ```sh
-uv run python -m scripts.beta_start --username YOUR_GITHUB_USER
+uv run pytest backend/tests/control_plane/test_beta_host_deployment.py backend/tests/control_plane/test_release_automation.py backend/tests/control_plane/test_remote_backups.py backend/tests/control_plane/test_host_monitoring.py
+PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke
+PYTHONPATH=backend/tests uv run python -m control_plane.backup_rehearsal
+PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal
 ```
 
-This logs in, pulls all pinned images before interrupting any services, and
-calls the same `BetaRelease` sequence used by `scripts.beta_release`. It preserves
-the PostgreSQL/Redis containers and volumes, closes ingress, stops applications,
-runs the migration, starts applications and waits for readiness before reopening
-private ingress. A failed migration leaves ingress closed. Logs follow with the
-last 100 lines; Ctrl-C during log following leaves containers running. Use
-`--no-logs` for a command that returns after activation. Re-running startup
-performs another release cycle and interrupts paper runs.
+The HTTPS rehearsal uses a separate disposable TLS terminator in front of the
+production Caddy HTTP path. Its local certificate is test-only. It covers login,
+secure cookies, origin/CSRF, forwarding spoof resistance, email origin, browser
+run/Stop/reload, SSE reconnect, dependency loss and schema failure. Bootstrap
+acceptance runs Debian systemd in a disposable privileged container; it skips only
+external tailnet enrollment/Serve. It must preserve credentials with zero changes
+on its second preparation pass, preserve a running container and volume, and
+prove a detached systemd operation survives SSH client loss. Backup acceptance restores downloaded SFTP bytes
+into a new quarantined Compose project and compares account/ownership/history.
+No retained host or external account is changed by these commands.
+Recorded repository results and the limits of these fixtures are in
+[deployment validation](deployment-validation.md).
 
-The host stores each attempt's candidate and previous configuration under
-`~/app/releases/`. On success it updates `~/app/.env` and `docker-compose.yml`.
-A private `~/app/.deployment.json` journal records the candidate and rollback
-mode before activation. If activation is interrupted, rerun the same startup
-command without `--release`: it resumes that retained candidate and mode. If
-successful activation was durably recorded but either installed file update
-failed, startup finishes both file updates without another activation. Until recovery completes, the
-installed `.env` and Compose file may describe different releases; use
-`beta_start` to recover before running manual Compose commands. Do not delete
-or edit the journal to bypass recovery. If activation finished just before its
-completion record failed, its outcome is uncertain and startup repeats the same
-candidate release cycle. It never infers success from an incomplete record.
+External acceptance remains required on a disposable target in the actual tailnet:
+verify the exact private Serve path from an allowed client, login and Secure
+cookies, rejected foreign-origin mutations, spoofed forwarding headers, real
+client addresses/rate limits, HTTPS mail links, SSE reconnect, and no unauthenticated
+application access. Reboot and repeat Serve checks. Verify CI ephemeral cleanup,
+SSH/HTTPS-only policy, GHCR permissions, release publication/reuse, SSH loss during
+activation, real SMTP failure/recovery delivery, daily GitHub unreachable-host
+notifications, actual SFTP host keys and an offline-identity restore. Record date,
+commit, host architecture and outcomes before declaring setup complete. Missing
+account/host inputs are activation blockers, not passing acceptance evidence.
 
-To replace a failed activation with a forward repair or same-schema rollback,
-pass an explicit `--release` manifest (and `--rollback` for a rollback). This
-preserves host settings from the pending attempt and starts a new attempt;
-previous attempt files remain available for inspection. If completion was
-already recorded, startup first finishes its installed file updates. A normal
-start with no pending journal still performs a fresh release cycle.
-These files are release inputs, not database backups. Use the [backup runbook](beta-data-lifecycle.md) for data.
-The Compose file is managed from the release commit; make topology changes in
-the repository, not in the installed copy. All commands use the existing
-`polybot` project, so use one installation per Docker host and do not run the
-manual release tool concurrently. Automated starts in the same app directory
-are protected by a deployment lock.
-
-For subsequent releases, keep the original infrastructure digests by supplying
-their exact values from the previous manifest to the publisher's
-`--postgres-image` and `--redis-image` options. Copy the new manifest, fetch the
-new source commit on the server, then run:
-
-```sh
-uv run python -m scripts.beta_start \
-  --username YOUR_GITHUB_USER --release "$HOME/polybot-release-2.env"
-```
-
-Startup validates the complete runtime manifest, including SMTP settings, before
-Docker operations. Image repository syntax follows
-[Docker Distribution references](https://github.com/distribution/reference/blob/main/regexp.go).
-Manifests must be regular files; the installed `.env` must
-have mode `600`. Startup preserves the host's settings/secrets and refuses
-infrastructure digest changes; those need the separate maintenance plan described above. For a
-same-schema rollback, pass the previous image manifest with `--rollback`.
-No schema downgrade runs. The lower-level release tool also accepts
-`--compose-file "$HOME/app/docker-compose.yml"` when working with installed files.
-
-For later log inspection without redeploying:
-
-```sh
-docker compose --project-name polybot --env-file "$HOME/app/.env" \
-  -f "$HOME/app/docker-compose.yml" logs --follow --tail 100
-```
-
-The actual frontend is a static Svelte build served by Caddy. These commands
-retain the existing TLS configuration, loopback-only ingress and paper-only
-execution. They do not add the pasted conversation's proposed Cloudflare Tunnel
-or change memory/process budgets. For the default private origin, access from
-the main laptop using `ssh -N -L 8443:127.0.0.1:8443 SERVER_USER@SERVER_HOST`, then
-open `https://localhost:8443` with the certificate trusted by that browser.
-Public opening still requires the existing beta acceptance gates.
-
-Test the automation without registry pushes or retained deployment changes:
-
-```sh
-uv run pytest backend/tests/control_plane/test_beta_host_deployment.py \
-  backend/tests/control_plane/test_deployment.py \
-  backend/tests/control_plane/test_beta_backups.py \
-  backend/tests/control_plane/test_reliability_deployment_contract.py \
-  backend/tests/control_plane/test_auth.py \
-  backend/tests/control_plane/test_account_mail.py
-```
-
-## Capacity and acceptance
-
-The current durable dashboard cadence is at most one sample per active run per
-second. Multiply `PAPER_BETA.global_active_runs` by the seconds in the observation
-window to estimate chart rows, then add lifecycle, activity and order/fill events; measure payload and index bytes before expanding
-capacity. No indefinite history promise is made. Slice 17 owns admission policy,
-Slice 18 the recovery scheduler, Slice 20 alerts and Slice 21 retention/backups.
-
-The deployment rehearsal uses isolated containers/volumes and a generated local
-TLS certificate. Its market/runtime fixture is confined to a separate test
-image; production images contain no acceptance fixture. Identity, ownership,
-database, Redis, Taskiq delivery, lifecycle and reverse proxy are real. It must
-prove migration gating, shared multi-process reads, bounded worker concurrency,
-queued/active Stop, durable progress/reload, SSE reconnect and scheduled lease
-reconciliation after worker loss. Rehearse release and same-schema rollback,
-then verify no service other than the loopback entrypoint publishes ports.
-The reconnect check sends the last durable event ID and observes a later terminal
-event without replaying the earlier event. Captured command/service logs are
-checked for the test database password and browser session tokens before being
-saved; application credentials never enter frontend builds or image build inputs.
-
-Run it from the repository root with
-`PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke`.
-Its uniquely named `polybot-beta-test-*` project and volumes are removed even on
-failure; logs and generated inputs stay under git-ignored `data/beta/`. It
-requires local port 8443 and the proxy subnet to be free. Never reuse this
-destructive disposable harness for retained data. Deployment CI runs the same
-command in addition to existing account and frontend jobs.
-Install frontend dependencies and Chromium first with `npm --prefix frontend ci`
-and `npm --prefix frontend exec -- playwright install chromium`.
-
-
-Slice 18 adds the `recovery` service to release shutdown/startup. Local stacks must
-also run `uv run --env-file .env python -m api.execution.recovery`. It retries queue
-delivery and reconciles expired worker leases on the architecture policy cadence. Run history is
-preserved and interrupted runs require a new launch. The initial migration includes
-reliability metadata. The September 10 local consolidation requires recreating old
-disposable databases; future retained deployments use forward migrations and only
-schema-compatible rollback releases. During a database outage recovery waits for the database,
-and Redis outages keep queue entries durable. See the architecture's Slice 18
-section for lease, I/O and shutdown bounds. Open signup remains gated.
-
-Slice 19 requires SMTP configuration in the release manifest and runtime SMTP
-credential files, available only to the API service. See [account recovery](account-recovery.md).
-Production API startup refuses missing or invalid mail configuration; relay outages
-produce a retryable generic delivery failure without blocking sign-in. Recovery
-state is included in the initial migration and requires a matching schema-aware release. Browser
-acceptance captures mail in a short-lived disposable sink; traces are disabled so
-passwords and link tokens are not retained in test artifacts.
-
-Slice 20's independent operational monitor runs alongside recovery and logs
-structured alerts. Workers publish process presence separately from job leases.
-Recovery mounts the PostgreSQL volume read-only only for filesystem-capacity
-measurement. See [beta operations](beta-operations.md) for incident admission,
-account suspension and OS-authorized diagnostics; no operator HTTP route is added.
-
-The final public-opening checklist and contact prerequisites are in
-[beta launch](beta-launch.md); completing these procedures does not itself open signup.
+Removed: `beta_publish`, `beta_setup`, `beta_start`, `ghcr`, deployment `buildx`,
+`source`, and `tls` helpers; the local-only recovery-point predicate,
+fixed-path mounted-backup units and their obsolete
+tests. Their laptop builds, SCP transfers, host Git fetches, interactive registry
+logins, certificate copying/renewal and backup mounts disappear. The remaining
+release executor, durable journal, Compose/private-file helpers and encrypted
+backup/isolated restore logic retain application-specific safety responsibilities.

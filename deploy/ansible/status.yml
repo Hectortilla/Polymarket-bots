@@ -1,0 +1,11 @@
+- name: Inspect private deployment and operational health
+  hosts: polybot
+  become: true
+  tasks:
+    - ansible.builtin.import_tasks: tasks/validate.yml
+    - name: Run operational checks without restarting applications
+      ansible.builtin.command:
+        argv: ['{{ polybot_root }}/current/.venv/bin/python', -m, scripts.host_operations, --root, '{{ polybot_root }}', status]
+        chdir: '{{ polybot_root }}/current'
+      become_user: polybot
+      changed_when: false

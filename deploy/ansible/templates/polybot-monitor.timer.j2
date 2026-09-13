@@ -1,0 +1,8 @@
+[Unit]
+Description=Polybot monitor schedule
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=polybot-monitor.service
+[Install]
+WantedBy=timers.target

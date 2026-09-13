@@ -694,7 +694,9 @@ Multiple Uvicorn workers are supported because ownership and events are not
 process-local. Scaling API workers does not change bot capacity.
 
 Slice 16 extends this deployment boundary with runtime-only secret files, exact
-schema compatibility, immutable release manifests and a TLS Caddy entrypoint.
+schema compatibility, immutable release bundles and Tailscale Serve HTTPS in
+front of a loopback HTTP Caddy entrypoint. GitHub Actions publishes/deploys tags;
+Ansible prepares the single Debian host and invokes the durable release executor.
 The selected topology and release/rollback contracts live in
 [`beta-deployment.md`](beta-deployment.md). Startup settings are owned by
 `api.deployment.settings`; database/Redis adapters retain URL parsing ownership.
@@ -1129,7 +1131,7 @@ event → run → bot → identity references; stale execution leases
 cannot write after terminal transition or purge.
 
 Host-only `scripts.beta_backup` uses PostgreSQL container utilities and age, with
-systemd timers for backup and RPO checks. Restore decrypts before a single
+systemd timers for verified rclone SFTP backups and remote RPO checks. Restore decrypts before a single
 transaction into a new isolated project and quarantines all access/jobs before any
 application service may start. See [the data runbook](beta-data-lifecycle.md) for
 approved policy, manual reconciliation and non-database secret custody.

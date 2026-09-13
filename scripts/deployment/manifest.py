@@ -18,10 +18,10 @@ from api.auth.mail.config import (
 from scripts.deployment.dotenv import read_values
 from scripts.deployment.images import ImagePolicy, ReleaseImages
 
-HTTPS_PORT_ENV = "POLYBOT_HTTPS_PORT"
+HTTP_PORT_ENV = "POLYBOT_HTTP_PORT"
 SECRETS_DIRECTORY_ENV = "POLYBOT_SECRETS_DIR"
-DEFAULT_HTTPS_PORT = 8443
-DEFAULT_AUTH_ORIGIN = f"https://localhost:{DEFAULT_HTTPS_PORT}"
+DEFAULT_HTTP_PORT = 8081
+DEFAULT_AUTH_ORIGIN = "https://localhost:8443"
 DEFAULT_SMTP_PORT = 587
 
 
@@ -51,8 +51,9 @@ class RuntimeManifest:
     ) -> "RuntimeManifest":
         images = ReleaseImages.from_values(values, policy=policy)
         auth = AuthSettings(values.get(AUTH_ORIGIN_ENV, ""))
-        if int(values.get(HTTPS_PORT_ENV) or DEFAULT_HTTPS_PORT) != auth.port:
-            raise ValueError("HTTPS port must match the browser origin")
+        port = int(values.get(HTTP_PORT_ENV) or DEFAULT_HTTP_PORT)
+        if not 1024 <= port <= 65535:
+            raise ValueError("internal HTTP port must be between 1024 and 65535")
         directory = Path(values.get(SECRETS_DIRECTORY_ENV, ""))
         if not directory.is_absolute() or not directory.is_dir():
             raise ValueError(
@@ -65,7 +66,7 @@ class RuntimeManifest:
             security=values.get(SMTP_SECURITY_ENV) or DEFAULT_SMTP_SECURITY,
         )
         settings = cls(images, auth, smtp, directory)
-        known_fields = settings.to_values().keys()
+        known_fields = settings.to_values().keys() - {HTTP_PORT_ENV}
         extras = {
             key: value for key, value in values.items() if key not in known_fields
         }
@@ -80,7 +81,9 @@ class RuntimeManifest:
             **self.extra_values,
             **self.images.to_values(),
             AUTH_ORIGIN_ENV: self.auth.origin,
-            HTTPS_PORT_ENV: str(self.auth.port),
+            HTTP_PORT_ENV: str(
+                int(self.extra_values.get(HTTP_PORT_ENV) or DEFAULT_HTTP_PORT)
+            ),
             SECRETS_DIRECTORY_ENV: str(self.secrets_directory),
             SMTP_HOST_ENV: self.smtp.host,
             SMTP_PORT_ENV: str(self.smtp.port),

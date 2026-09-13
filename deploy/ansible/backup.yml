@@ -1,0 +1,9 @@
+- name: Run and verify an off-server backup
+  hosts: polybot
+  become: true
+  tasks:
+    - ansible.builtin.import_tasks: tasks/validate.yml
+    - name: Execute supervised backup
+      ansible.builtin.systemd_service:
+        name: polybot-backup.service
+        state: started

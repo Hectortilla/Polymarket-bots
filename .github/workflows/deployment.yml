@@ -1,8 +1,7 @@
 name: Private HTTPS deployment acceptance
 
 on:
-  pull_request:
-  push:
+  workflow_call:
 
 permissions:
   contents: read
@@ -10,14 +9,16 @@ permissions:
 jobs:
   staging:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
+          version: '0.10.9'
           python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y age rclone
       - run: uv sync --locked --extra dev
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -26,3 +27,6 @@ jobs:
       - run: npm --prefix frontend exec -- playwright install --with-deps chromium
       - run: uv run pytest backend/tests/control_plane/test_deployment.py
       - run: PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke
+      - run: PYTHONPATH=backend/tests uv run python -m control_plane.backup_rehearsal
+      - run: uv tool install ansible-core==2.19.7
+      - run: PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal

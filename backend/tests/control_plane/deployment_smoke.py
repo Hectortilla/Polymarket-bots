@@ -2,6 +2,7 @@
 
 import json
 import secrets
+import shutil
 import ssl
 import subprocess
 import time
@@ -48,13 +49,13 @@ from control_plane.account_mail_fixture import (
     MAILBOX_PATH,
 )
 from control_plane.browser_limits_fixture import CLEAR_LIMITS_PATH
-from scripts.beta_publish import DEFAULT_POSTGRES_IMAGE, DEFAULT_REDIS_IMAGE
 from scripts.beta_release import BetaRelease
+from scripts.deployment.dotenv import read_values
 from scripts.deployment.images import ImageField
 from scripts.deployment.manifest import (
     DEFAULT_AUTH_ORIGIN,
-    DEFAULT_HTTPS_PORT,
-    HTTPS_PORT_ENV,
+    DEFAULT_HTTP_PORT,
+    HTTP_PORT_ENV,
     SECRETS_DIRECTORY_ENV,
 )
 from scripts.deployment.paths import (
@@ -66,6 +67,9 @@ from scripts.deployment.paths import (
 from scripts.deployment.storage import SecretFile, database_url, redis_url
 
 STAGING_ORIGIN = DEFAULT_AUTH_ORIGIN
+INFRASTRUCTURE = read_values(REPOSITORY / "deploy/infrastructure.env")
+DEFAULT_POSTGRES_IMAGE = INFRASTRUCTURE[ImageField.POSTGRES]
+DEFAULT_REDIS_IMAGE = INFRASTRUCTURE[ImageField.REDIS]
 TEST_PASSWORD = "disposable staging password 123"
 
 
@@ -78,6 +82,7 @@ class DeploymentSmoke:
         self.manifest = self.directory / "release.env"
         self.values: dict[str, str] = {}
         self.sensitive_values = {TEST_PASSWORD}
+        self.tls_process = None
 
     def run(self) -> None:
         try:
@@ -100,6 +105,7 @@ class DeploymentSmoke:
                 "test",
                 "--config=frontend/playwright.deployment.config.ts",
             )
+            self.verify_proxy_boundary()
             self.exercise_runs()
             self.compose("logs", "--no-color")
             print(
@@ -111,6 +117,7 @@ class DeploymentSmoke:
                 self.compose("logs", "--tail", "100")
             raise
         finally:
+            self.stop_tls()
             if self.manifest.exists():
                 self.compose("down", "--volumes", "--remove-orphans")
 
@@ -136,9 +143,9 @@ class DeploymentSmoke:
             "rsa:2048",
             "-nodes",
             "-keyout",
-            str(directory / SecretFile.TLS_KEY),
+            str(directory / "tls_key"),
             "-out",
-            str(directory / SecretFile.TLS_CERT),
+            str(directory / "tls_cert"),
             "-days",
             "2",
             "-subj",
@@ -165,7 +172,7 @@ class DeploymentSmoke:
             AUTH_ORIGIN_ENV: STAGING_ORIGIN,
             SMTP_HOST_ENV: "smtp.invalid",
             SMTP_FROM_ENV: "accounts@example.com",
-            HTTPS_PORT_ENV: str(DEFAULT_HTTPS_PORT),
+            HTTP_PORT_ENV: str(DEFAULT_HTTP_PORT),
             SECRETS_DIRECTORY_ENV: str(directory),
         }
         for surface, tag in {
@@ -176,6 +183,32 @@ class DeploymentSmoke:
         }.items():
             self.values[surface] = self.image_id(tag)
         self.write_manifest()
+        # A separate loopback TLS terminator exercises the production HTTP Caddy path.
+        binary = shutil.which("caddy")
+        if binary is None:
+            container = self.project + "-caddy-binary"
+            self.command("docker", "create", "--name", container, "caddy:2.11-alpine")
+            binary = str(self.directory / "caddy")
+            try:
+                self.command("docker", "cp", container + ":/usr/bin/caddy", binary)
+            finally:
+                self.command("docker", "rm", container)
+        config = self.directory / "TLS.Caddyfile"
+        config.write_text(
+            (REPOSITORY / "deploy/acceptance-tls.Caddyfile")
+            .read_text()
+            .replace("/tls/", str(directory) + "/")
+        )
+        self.tls_process = subprocess.Popen(
+            [binary, "run", "--config", str(config), "--adapter", "caddyfile"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def stop_tls(self):
+        if self.tls_process:
+            self.tls_process.terminate()
+            self.tls_process.wait(timeout=10)
 
     def failed_migration_stays_closed(self, release: BetaRelease) -> None:
         path = Path(self.values[SECRETS_DIRECTORY_ENV]) / SecretFile.DATABASE_URL
@@ -221,6 +254,43 @@ class DeploymentSmoke:
         )
         self.require_health()
 
+    def verify_proxy_boundary(self):
+        with self.client() as client:
+            observation = client.get(
+                "/api/v1/_fixture/proxy",
+                headers={
+                    "X-Forwarded-For": "203.0.113.9",
+                    "Forwarded": "for=203.0.113.9",
+                    "X-Forwarded-Proto": "http",
+                    "Tailscale-User-Login": "spoof@example.com",
+                },
+            ).json()
+            assert observation == {
+                "client": "127.0.0.1",
+                "scheme": "https",
+                "forwarded": None,
+                "identity": None,
+            }
+            response = client.post(
+                api_route_path(LOGOUT_PATH),
+                json={},
+                headers={"Origin": "https://spoof.example"},
+            )
+            assert response.status_code == status.HTTP_403_FORBIDDEN
+        output = self.command(
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            self.project + "_edge",
+            "--entrypoint",
+            "python",
+            self.values[ImageField.BACKEND],
+            "-c",
+            "import json,urllib.request; request=urllib.request.Request('http://entrypoint:8081/api/v1/_fixture/proxy',headers={'X-Forwarded-For':'203.0.113.9','Forwarded':'for=203.0.113.9'}); print(urllib.request.urlopen(request).read().decode())",
+        )
+        assert json.loads(output)["client"] != "203.0.113.9"
+
     def exercise_runs(self) -> None:
         with self.client() as first, self.client() as second:
             first.post(CLEAR_LIMITS_PATH).raise_for_status()
@@ -238,14 +308,12 @@ class DeploymentSmoke:
                     api_route_path(VERIFY_REQUEST_PATH),
                     json={"email": credentials["email"]},
                 ).raise_for_status()
-                token = (
-                    client.get(
-                        MAILBOX_PATH,
-                        params={MAILBOX_EMAIL_PARAMETER: credentials["email"]},
-                    )
-                    .json()[MAILBOX_LINK_FIELD]
-                    .split("#")[1]
-                )
+                link = client.get(
+                    MAILBOX_PATH,
+                    params={MAILBOX_EMAIL_PARAMETER: credentials["email"]},
+                ).json()[MAILBOX_LINK_FIELD]
+                assert link.startswith(STAGING_ORIGIN + "/")
+                token = link.split("#")[1]
                 self.sensitive_values.add(token)
                 client.post(
                     api_route_path(VERIFY_COMPLETE_PATH),
@@ -415,7 +483,7 @@ class DeploymentSmoke:
         self.wait_for(healthy)
 
     def client(self):
-        certificate = Path(self.values[SECRETS_DIRECTORY_ENV]) / SecretFile.TLS_CERT
+        certificate = Path(self.values[SECRETS_DIRECTORY_ENV]) / "tls_cert"
         return httpx.Client(
             base_url=STAGING_ORIGIN,
             verify=ssl.create_default_context(cafile=str(certificate)),
@@ -457,6 +525,7 @@ class DeploymentSmoke:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            check=False,
         )
         with (self.directory / "commands.log").open("a") as log:
             if any(value in result.stdout for value in self.sensitive_values):

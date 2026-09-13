@@ -1,0 +1,213 @@
+name: Private release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Already published vMAJOR.MINOR.PATCH
+        required: true
+        type: string
+      operation:
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: polybot-private-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+  bundle:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      commit: ${{ steps.identity.outputs.commit }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: '0.10.9'
+          python-version: '3.12'
+      - run: uv sync --locked --no-dev
+      - name: Validate version, tag commit and default-branch ancestry
+        id: identity
+        run: |
+          uv run python -c 'import os; from scripts.deployment.bundle import validate_tag; validate_tag(os.environ["RELEASE_TAG"])'
+          commit=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
+          git merge-base --is-ancestor "$commit" "origin/$DEFAULT_BRANCH"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$commit"
+      - name: Reuse only a complete provenance-matching published bundle
+        id: existing
+        env:
+          COMMIT: ${{ steps.identity.outputs.commit }}
+        run: uv run python -m scripts.deployment.publication "$RELEASE_TAG" "$COMMIT" bundle >> "$GITHUB_OUTPUT"
+      - name: Manual operations require an existing published release
+        if: github.event_name == 'workflow_dispatch' && steps.existing.outputs.reuse != 'true'
+        run: exit 1
+      - name: Select build platforms from reviewed inventory
+        if: steps.existing.outputs.reuse != 'true'
+        id: platform
+        run: |
+          uv tool install ansible-core==2.19.7
+          ansible-inventory -i deploy/ansible/inventory/production.yml --list > inventory.json
+          python - <<'PY'
+          import json, os
+          inventory = json.load(open('inventory.json'))
+          hosts = inventory['_meta']['hostvars']
+          assert len(hosts) == 1, 'Exactly one host required'
+          arch = next(iter(hosts.values()))['polybot_arch']
+          assert arch in ('amd64', 'arm64')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('platform=linux/' + arch + '\n')
+          PY
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: steps.existing.outputs.reuse != 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        if: steps.existing.outputs.reuse != 'true'
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        if: steps.existing.outputs.reuse != 'true'
+      - name: Normalize image namespace
+        id: registry
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: backend
+        if: steps.existing.outputs.reuse != 'true'
+        with:
+          context: .
+          file: deploy/backend.Dockerfile
+          platforms: ${{ steps.platform.outputs.platform }}
+          push: true
+          tags: ${{ steps.registry.outputs.name }}-backend:${{ steps.identity.outputs.commit }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: frontend
+        if: steps.existing.outputs.reuse != 'true'
+        with:
+          context: .
+          file: deploy/frontend.Dockerfile
+          platforms: ${{ steps.platform.outputs.platform }}
+          push: true
+          tags: ${{ steps.registry.outputs.name }}-frontend:${{ steps.identity.outputs.commit }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: Assemble and verify immutable bundle
+        if: steps.existing.outputs.reuse != 'true'
+        env:
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          IMAGE_NAMESPACE: ${{ steps.registry.outputs.name }}
+          COMMIT: ${{ steps.identity.outputs.commit }}
+        run: |
+          mkdir -p bundle
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          values = Path('deploy/infrastructure.env').read_text()
+          values += 'POLYBOT_RELEASE_ID=' + os.environ['COMMIT'] + '\n'
+          for component in ('BACKEND', 'FRONTEND'):
+              values += 'POLYBOT_' + component + '_IMAGE=' + os.environ['IMAGE_NAMESPACE'] + '-' + component.lower() + '@' + os.environ[component + '_DIGEST'] + '\n'
+          Path('bundle/images.env').write_text(values)
+          PY
+          uv run python -m scripts.deployment.bundle create --images bundle/images.env --tag "$RELEASE_TAG" --output bundle/release.tar.gz
+          uv run python -m scripts.deployment.bundle verify bundle/release.tar.gz --tag "$RELEASE_TAG" --commit "$COMMIT"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$COMMIT"
+          gh release create "$RELEASE_TAG" bundle/release.tar.gz --verify-tag --target "$COMMIT" --title "$RELEASE_TAG" --notes "Verified private paper release $COMMIT" --draft
+          gh release edit "$RELEASE_TAG" --draft=false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: bundle/release.tar.gz
+          retention-days: 1
+      - name: Release summary
+        env:
+          COMMIT: ${{ steps.identity.outputs.commit }}
+        run: |
+          echo "Release $RELEASE_TAG; commit $COMMIT" >> "$GITHUB_STEP_SUMMARY"
+          tar -xOf bundle/release.tar.gz images.env >> "$GITHUB_STEP_SUMMARY"
+  deploy:
+    needs: bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: private
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: bundle
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: '0.10.9'
+          python-version: '3.12'
+      - run: |
+          uv sync --locked --no-dev
+          uv tool install ansible-core==2.19.7
+      - name: Install verified SSH credentials
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > known_hosts
+      - uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:polybot-ci
+          version: 1.94.2
+      - name: Activate using Ansible and the host executor
+        env:
+          RELEASE_TAG: ${{ needs.bundle.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.bundle.outputs.commit }}
+          OPERATION: ${{ inputs.operation || 'deploy' }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          values = {key.lower(): os.environ[key] for key in ('RELEASE_TAG','RELEASE_COMMIT','REGISTRY_TOKEN','REGISTRY_USERNAME')}
+          values['release_bundle'] = str(Path('bundle/release.tar.gz').resolve())
+          path = Path('deploy-inputs.json')
+          path.touch(mode=0o600)
+          path.write_text(json.dumps(values))
+          PY
+          ansible-playbook -i deploy/ansible/inventory/production.yml "deploy/ansible/$OPERATION.yml" -e @deploy-inputs.json
+      - name: Deployment summary and private input cleanup
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+          RELEASE_TAG: ${{ needs.bundle.outputs.tag }}
+        run: |
+          echo "Deployment $RELEASE_TAG: $RESULT. Host diagnostics: journalctl -u polybot-activate.service" >> "$GITHUB_STEP_SUMMARY"
+          rm -f deploy-inputs.json ~/.ssh/id_ed25519 known_hosts

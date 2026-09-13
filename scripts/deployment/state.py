@@ -2,6 +2,7 @@
 
 import fcntl
 import json
+import os
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -20,7 +21,11 @@ from scripts.deployment.attempt import (
 )
 from scripts.deployment.dotenv import write_manifest
 from scripts.deployment.manifest import RuntimeManifest
-from scripts.deployment.paths import HOST_COMPOSE_NAME, MANIFEST_NAME
+from scripts.deployment.paths import (
+    BUNDLE_DIRECTORY_ENV,
+    HOST_COMPOSE_NAME,
+    MANIFEST_NAME,
+)
 from scripts.private_files import (
     PRIVATE_DIRECTORY_MODE,
     PRIVATE_FILE_MODE,
@@ -73,13 +78,14 @@ class DeploymentState:
             )
         )
         attempt = DeploymentAttempt(directory, AttemptPhase.ACTIVATING, rollback)
-        write_private(
-            directory / PREVIOUS_MANIFEST_NAME,
-            read_regular(self.manifest, required_mode=PRIVATE_FILE_MODE),
-        )
-        write_private(
-            directory / PREVIOUS_COMPOSE_NAME, read_regular(self.compose_file)
-        )
+        if self.manifest.exists():
+            write_private(
+                directory / PREVIOUS_MANIFEST_NAME,
+                read_regular(self.manifest, required_mode=PRIVATE_FILE_MODE),
+            )
+            write_private(
+                directory / PREVIOUS_COMPOSE_NAME, read_regular(self.compose_file)
+            )
         write_manifest(attempt.manifest, settings.to_values())
         write_private(attempt.compose_file, compose_yaml)
         sync_directory(self.history)
@@ -107,6 +113,15 @@ class DeploymentState:
             self.manifest,
             read_regular(attempt.manifest, required_mode=PRIVATE_FILE_MODE),
         )
+        bundle = RuntimeManifest.read(attempt.manifest).extra_values.get(
+            BUNDLE_DIRECTORY_ENV
+        )
+        if bundle:
+            temporary = self.directory / ".current-next"
+            temporary.unlink(missing_ok=True)
+            temporary.symlink_to(bundle, target_is_directory=True)
+            os.replace(temporary, self.directory / "current")
+            sync_directory(self.directory)
         self.journal.unlink()
         sync_directory(self.directory)
 
