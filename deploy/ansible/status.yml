@@ -5,7 +5,7 @@
     - ansible.builtin.import_tasks: tasks/validate.yml
     - name: Run operational checks without restarting applications
       ansible.builtin.command:
-        argv: ['{{ polybot_root }}/current/.venv/bin/python', -m, scripts.host_operations, --root, '{{ polybot_root }}', status]
-        chdir: '{{ polybot_root }}/current'
+        argv: ['{{ polybot_root }}/{{ deployment_contract.paths.current }}/.venv/bin/python', -m, scripts.host_operations, --root, '{{ polybot_root }}', '{{ deployment_contract.operations.status }}']
+        chdir: '{{ polybot_root }}/{{ deployment_contract.paths.current }}'
       become_user: polybot
       changed_when: false

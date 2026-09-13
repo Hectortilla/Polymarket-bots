@@ -19,6 +19,11 @@ from scripts.beta_backup.policy import (
     BACKUP_PROCESS_TIMEOUT_SECONDS,
     BACKUP_SERVICE_TIMEOUT_SECONDS,
 )
+from scripts.deployment.units import (
+    BACKUP_CHECK_SERVICE_UNIT,
+    BACKUP_SERVICE_UNIT,
+    BACKUP_TIMER_UNIT,
+)
 
 RUNBOOK = Path("docs/beta-data-lifecycle.md")
 
@@ -92,14 +97,13 @@ def test_lifecycle_disclosures_and_commands_match_policy():
 
 def test_backup_units_match_cadence_timeout_and_require_remote_verification():
     directory = Path("deploy/ansible/templates")
-    timer = (directory / "polybot-backup.timer.j2").read_text()
-    assert policy.BACKUP_INTERVAL_HOURS == 24
-    assert "OnCalendar={{ {24: 'daily'}[backup_policy.interval] }}" in timer
+    timer = (directory / (BACKUP_TIMER_UNIT + ".j2")).read_text()
+    assert "OnCalendar={{ deployment_contract.calendar }}" in timer
     assert "Persistent=true" in timer
-    backup = (directory / "polybot-backup.service.j2").read_text()
-    assert "TimeoutStartSec={{ backup_policy.timeout }}" in backup
+    backup = (directory / (BACKUP_SERVICE_UNIT + ".j2")).read_text()
+    assert "TimeoutStartSec={{ deployment_contract.timeout }}" in backup
     assert BACKUP_SERVICE_TIMEOUT_SECONDS > BACKUP_PROCESS_TIMEOUT_SECONDS * 2
-    for filename in ("polybot-backup.service.j2", "polybot-backup-check.service.j2"):
+    for filename in (BACKUP_SERVICE_UNIT + ".j2", BACKUP_CHECK_SERVICE_UNIT + ".j2"):
         assert (
             "scripts.host_operations --root {{ polybot_root }}"
             in (directory / filename).read_text()

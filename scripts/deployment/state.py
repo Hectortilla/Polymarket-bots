@@ -19,12 +19,14 @@ from scripts.deployment.attempt import (
     AttemptPhase,
     DeploymentAttempt,
 )
+from scripts.deployment.candidate import PromotionCandidate
 from scripts.deployment.dotenv import write_manifest
 from scripts.deployment.manifest import RuntimeManifest
 from scripts.deployment.paths import (
-    BUNDLE_DIRECTORY_ENV,
+    CURRENT_RELEASE_NAME,
     HOST_COMPOSE_NAME,
     MANIFEST_NAME,
+    NEXT_RELEASE_NAME,
 )
 from scripts.private_files import (
     PRIVATE_DIRECTORY_MODE,
@@ -106,22 +108,18 @@ class DeploymentState:
     def promote(self, attempt: DeploymentAttempt) -> None:
         if attempt.phase is not AttemptPhase.ACTIVATED:
             raise ValueError("only a successful activation can be promoted")
-        # The durable ACTIVATED journal survives either replacement failing.
-        # A subsequent start finishes this candidate instead of reading stale images.
-        write_private(self.compose_file, read_regular(attempt.compose_file))
-        write_private(
-            self.manifest,
-            read_regular(attempt.manifest, required_mode=PRIVATE_FILE_MODE),
+        candidate = PromotionCandidate.read(attempt, self.directory)
+        # Keep the journal until all three active pointers are durable. A retry
+        # finishes this verified candidate even after a partial replacement.
+        write_private(self.compose_file, candidate.compose_yaml)
+        write_private(self.manifest, candidate.manifest_values)
+        next_release_link = self.directory / NEXT_RELEASE_NAME
+        next_release_link.unlink(missing_ok=True)
+        next_release_link.symlink_to(
+            candidate.bundle_directory, target_is_directory=True
         )
-        bundle = RuntimeManifest.read(attempt.manifest).extra_values.get(
-            BUNDLE_DIRECTORY_ENV
-        )
-        if bundle:
-            temporary = self.directory / ".current-next"
-            temporary.unlink(missing_ok=True)
-            temporary.symlink_to(bundle, target_is_directory=True)
-            os.replace(temporary, self.directory / "current")
-            sync_directory(self.directory)
+        os.replace(next_release_link, self.directory / CURRENT_RELEASE_NAME)
+        sync_directory(self.directory)
         self.journal.unlink()
         sync_directory(self.directory)
 

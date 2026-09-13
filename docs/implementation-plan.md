@@ -2441,6 +2441,26 @@ report cadence and deployment ports. The protocol-document
 checks completed without a blocker. Reconciliation and focused closing reviews
 left no accepted findings outstanding.
 
+## Deployment style-review follow-up (2026-09-13)
+
+This maintenance pass applies the explicitly requested review to the private
+deployment simplification. It adds no product slice. Release bundles, activation,
+remote backup transport/inventory and host supervision have focused package owners
+and typed ingress contracts. Ansible consumes normalized inventory and shared
+paths, units, toolchain, timer and polling policies; static external configuration
+has owner-based parity coverage. Private bootstrap inputs are checked before host
+mutation. Active release pointers and image provenance must agree before healthy
+status or backup selection, and malformed adapter inputs fail visibly.
+
+Validation extends the disposable Debian rehearsal through real Ansible/systemd/
+Compose deployment, rollback and failure recovery, rendered authenticated SMTP,
+and the host backup CLI with real SFTP and quarantined restore. See
+[deployment validation](deployment-validation.md) for measured results and fixture
+limits. The documentation-drift audit covers runtime prerequisites, module owners,
+configuration fields, supervision budgets and the unchanged external acceptance
+gate. SMTP retains documented at-least-once delivery; no live trading, external
+publishing, account configuration or production deployment is part of this pass.
+
 ## Later Product Features
 
 After the public paper beta, consider browser backtesting over available

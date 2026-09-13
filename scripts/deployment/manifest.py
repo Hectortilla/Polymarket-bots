@@ -17,12 +17,15 @@ from api.auth.mail.config import (
 
 from scripts.deployment.dotenv import read_values
 from scripts.deployment.images import ImagePolicy, ReleaseImages
-
-HTTP_PORT_ENV = "POLYBOT_HTTP_PORT"
-SECRETS_DIRECTORY_ENV = "POLYBOT_SECRETS_DIR"
-DEFAULT_HTTP_PORT = 8081
-DEFAULT_AUTH_ORIGIN = "https://localhost:8443"
-DEFAULT_SMTP_PORT = 587
+from scripts.deployment.runtime_contracts import (
+    BUNDLE_DIRECTORY_ENV,
+    DEFAULT_HTTP_PORT,
+    DEFAULT_SMTP_PORT,
+    HTTP_PORT_ENV,
+    HTTP_PORT_MAXIMUM,
+    HTTP_PORT_MINIMUM,
+    SECRETS_DIRECTORY_ENV,
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,8 @@ class RuntimeManifest:
     auth: AuthSettings
     smtp: SmtpSettings
     secrets_directory: Path
+    http_port: int = DEFAULT_HTTP_PORT
+    bundle_directory: Path | None = None
     extra_values: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -51,8 +56,8 @@ class RuntimeManifest:
     ) -> "RuntimeManifest":
         images = ReleaseImages.from_values(values, policy=policy)
         auth = AuthSettings(values.get(AUTH_ORIGIN_ENV, ""))
-        port = int(values.get(HTTP_PORT_ENV) or DEFAULT_HTTP_PORT)
-        if not 1024 <= port <= 65535:
+        http_port = int(values.get(HTTP_PORT_ENV) or DEFAULT_HTTP_PORT)
+        if not HTTP_PORT_MINIMUM <= http_port <= HTTP_PORT_MAXIMUM:
             raise ValueError("internal HTTP port must be between 1024 and 65535")
         directory = Path(values.get(SECRETS_DIRECTORY_ENV, ""))
         if not directory.is_absolute() or not directory.is_dir():
@@ -65,8 +70,12 @@ class RuntimeManifest:
             sender=values.get(SMTP_FROM_ENV, ""),
             security=values.get(SMTP_SECURITY_ENV) or DEFAULT_SMTP_SECURITY,
         )
-        settings = cls(images, auth, smtp, directory)
-        known_fields = settings.to_values().keys() - {HTTP_PORT_ENV}
+        bundle_value = values.get(BUNDLE_DIRECTORY_ENV)
+        bundle_directory = Path(bundle_value) if bundle_value else None
+        if bundle_directory is not None and not bundle_directory.is_absolute():
+            raise ValueError("bundle directory must be absolute")
+        settings = cls(images, auth, smtp, directory, http_port, bundle_directory)
+        known_fields = settings.to_values().keys() | {BUNDLE_DIRECTORY_ENV}
         extras = {
             key: value for key, value in values.items() if key not in known_fields
         }
@@ -76,13 +85,21 @@ class RuntimeManifest:
         self.images.require_same_infrastructure(candidate)
         return replace(self, images=candidate)
 
+    def require_bundle_directory(self) -> Path:
+        if self.bundle_directory is None:
+            raise ValueError("installed release requires a bundle directory")
+        return self.bundle_directory
+
     def to_values(self) -> dict[str, str]:
         return {
             **self.extra_values,
             **self.images.to_values(),
             AUTH_ORIGIN_ENV: self.auth.origin,
-            HTTP_PORT_ENV: str(
-                int(self.extra_values.get(HTTP_PORT_ENV) or DEFAULT_HTTP_PORT)
+            HTTP_PORT_ENV: str(self.http_port),
+            **(
+                {BUNDLE_DIRECTORY_ENV: str(self.bundle_directory)}
+                if self.bundle_directory is not None
+                else {}
             ),
             SECRETS_DIRECTORY_ENV: str(self.secrets_directory),
             SMTP_HOST_ENV: self.smtp.host,

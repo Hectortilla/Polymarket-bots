@@ -7,3 +7,4 @@ class BackupCommand(StrEnum):
     CREATE = "create"
     CHECK = "check"
     RESTORE = "restore"
+    DOWNLOAD = "download"

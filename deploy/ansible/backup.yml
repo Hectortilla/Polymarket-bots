@@ -5,5 +5,5 @@
     - ansible.builtin.import_tasks: tasks/validate.yml
     - name: Execute supervised backup
       ansible.builtin.systemd_service:
-        name: polybot-backup.service
+        name: '{{ deployment_contract.service_units.backup }}'
         state: started

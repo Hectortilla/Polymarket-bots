@@ -1,6 +1,6 @@
 """Publish an encrypted database snapshot only after the complete pipeline succeeds."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from scripts.beta_backup.archives import BackupArchives
@@ -17,6 +17,6 @@ class BetaBackup:
 
     def create(self) -> Path:
         self.archives.expire()
-        snapshot_started_at = datetime.now(timezone.utc)
+        snapshot_started_at = datetime.now(UTC)
         with self._dump.stage() as temporary_archive_path:
             return self.archives.publish(temporary_archive_path, snapshot_started_at)

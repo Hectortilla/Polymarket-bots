@@ -6,10 +6,16 @@ import subprocess
 import time
 from uuid import uuid4
 
-from scripts.deployment.paths import REPOSITORY
+from control_plane.activation_rehearsal import ActivationRehearsal
+from scripts.deployment.inventory import SUPPORTED_ARCHITECTURES
+from scripts.deployment.paths import DEFAULT_APP_DIRECTORY, REPOSITORY
+from scripts.deployment.runtime_contracts import DEFAULT_HTTP_PORT
+from scripts.deployment.units import BACKUP_TIMER_UNIT
+from scripts.local_docker import LocalDocker
 
 
 def main():
+    docker = LocalDocker.from_context().output
     name = "polybot-bootstrap-test-" + uuid4().hex[:10]
     directory = REPOSITORY / "data" / "beta" / name
     directory.mkdir(parents=True, mode=0o700)
@@ -17,9 +23,6 @@ def main():
     subprocess.run(
         ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True
     )
-
-    def docker(*args, **kwargs):
-        return subprocess.check_output(["docker", *args], text=True, **kwargs).strip()
 
     docker("build", "-t", name, "-f", "deploy/rehearsal/Dockerfile", "deploy/rehearsal")
     try:
@@ -48,20 +51,25 @@ def main():
         )
         known = directory / "known_hosts"
         known.write_text(f"[127.0.0.1]:{port} {public_host_key}\n")
+        subprocess.run(
+            ["age-keygen", "-o", str(directory / "age.key")],
+            check=True,
+            capture_output=True,
+        )
         variables = {
             "ansible_host": "127.0.0.1",
             "ansible_port": int(port),
             "ansible_user": "root",
             "ansible_ssh_private_key_file": str(key),
             "ansible_ssh_common_args": f"-o UserKnownHostsFile={known} -o StrictHostKeyChecking=yes",
-            "polybot_root": "/srv/polybot",
-            "polybot_arch": {"aarch64": "arm64", "x86_64": "amd64"}[
-                docker("exec", name, "uname", "-m")
-            ],
+            "polybot_root": str(DEFAULT_APP_DIRECTORY),
+            "polybot_arch": {
+                machine: arch for arch, machine in SUPPORTED_ARCHITECTURES.items()
+            }[docker("exec", name, "uname", "-m")],
             "polybot_origin": "https://fixture.example.ts.net",
-            "polybot_http_port": 8081,
-            "polybot_smtp_host": "smtp.invalid",
-            "polybot_smtp_port": 587,
+            "polybot_http_port": DEFAULT_HTTP_PORT,
+            "polybot_smtp_host": "localhost",
+            "polybot_smtp_port": 1025,
             "polybot_smtp_security": "starttls",
             "polybot_smtp_from": "accounts@example.com",
             "polybot_alert_to": "operator@example.com",
@@ -73,8 +81,10 @@ def main():
             "polybot_smtp_username": "fixture",
             "polybot_smtp_password": "fixture-password",
             "polybot_sftp_private_key": key.read_text(),
-            "polybot_sftp_known_hosts": known.read_text(),
-            "polybot_age_recipients": "age1fixture",
+            "polybot_sftp_known_hosts": f"sftp.invalid {public_host_key}\n",
+            "polybot_age_recipients": subprocess.check_output(
+                ["age-keygen", "-y", str(directory / "age.key")], text=True
+            ).strip(),
         }
         inventory = directory / "inventory.json"
         inventory.write_text(
@@ -185,25 +195,24 @@ def main():
 
         assert "changed=0" in (directory / "bootstrap-2.log").read_text()
         assert (
-            docker("exec", name, "systemctl", "is-enabled", "polybot-backup.timer")
+            docker("exec", name, "systemctl", "is-enabled", BACKUP_TIMER_UNIT)
             == "enabled"
         )
-        docker(
-            "cp",
-            str(REPOSITORY / "backend/tests/control_plane/mail_rehearsal.py"),
-            name + ":/tmp/mail_rehearsal.py",
-        )
+        ActivationRehearsal(docker, name, directory, inventory, env).run()
         print(
             docker(
                 "exec",
                 name,
                 "/usr/local/bin/uv",
                 "run",
-                "--no-project",
+                "--project",
+                "/srv/polybot/current",
+                "--no-dev",
                 "--with",
                 "aiosmtpd==1.4.6",
                 "python",
-                "/tmp/mail_rehearsal.py",
+                "/srv/polybot/current/rehearsal_mail.py",
+                str(DEFAULT_APP_DIRECTORY),
             )
         )
         print(

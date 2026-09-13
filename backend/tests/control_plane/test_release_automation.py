@@ -9,22 +9,27 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from api.deployment.release import RELEASE_ID_ENV
 
-from scripts.deployment import publication
-from scripts.deployment.bundle import (
-    BUNDLE_NAME,
-    METADATA_NAME,
+from scripts.deployment import github, publication
+from scripts.deployment.bundle import ReleaseBundle
+from scripts.deployment.bundle.contracts import (
+    BUNDLE_METADATA_FILENAME,
+    RELEASE_BUNDLE_FILENAME,
+    RELEASE_IMAGE_MANIFEST_FILENAME,
     REQUIRED_FILES,
-    validate_tag,
-    verify,
 )
+from scripts.deployment.dotenv import write_manifest
+from scripts.deployment.identity import validate_release_tag
 from scripts.deployment.images import IMAGE_FIELDS
+from scripts.deployment.paths import SOURCE_COMPOSE_PATH
 
 
 def bundle_archive(path, *, commit="a" * 40, tag="v1.2.3", mutation=None):
     contents = {name: b"fixture" for name in REQUIRED_FILES}
-    contents["images.env"] = (
-        "POLYBOT_RELEASE_ID="
+    contents[RELEASE_IMAGE_MANIFEST_FILENAME] = (
+        RELEASE_ID_ENV
+        + "="
         + commit
         + "\n"
         + "\n".join(
@@ -38,7 +43,7 @@ def bundle_archive(path, *, commit="a" * 40, tag="v1.2.3", mutation=None):
             name: hashlib.sha256(value).hexdigest() for name, value in contents.items()
         },
     }
-    contents[METADATA_NAME] = json.dumps(metadata).encode()
+    contents[BUNDLE_METADATA_FILENAME] = json.dumps(metadata).encode()
     if mutation:
         mutation(contents)
     with tarfile.open(path, "w:gz") as archive:
@@ -51,79 +56,86 @@ def bundle_archive(path, *, commit="a" * 40, tag="v1.2.3", mutation=None):
 
 @pytest.mark.parametrize("tag", ["v1.2.3", "v0.0.0", "v100.2.3"])
 def test_exact_version_tags(tag):
-    assert validate_tag(tag) == tag
+    assert validate_release_tag(tag) == tag
 
 
 @pytest.mark.parametrize("tag", ["v1.2", "v01.2.3", "v1.2.3-rc", "../tag", "v1.2.3\n"])
 def test_invalid_version_tags(tag):
     with pytest.raises(ValueError):
-        validate_tag(tag)
+        validate_release_tag(tag)
 
 
 def test_bundle_rejects_moved_tag_content_corruption_and_path_traversal(tmp_path):
-    path = bundle_archive(tmp_path / BUNDLE_NAME)
-    assert verify(path, commit="a" * 40, tag="v1.2.3")["commit"] == "a" * 40
+    path = bundle_archive(tmp_path / RELEASE_BUNDLE_FILENAME)
+    assert (
+        ReleaseBundle.from_archive(path, commit="a" * 40, tag="v1.2.3").metadata.commit
+        == "a" * 40
+    )
     with pytest.raises(ValueError, match="provenance"):
-        verify(path, commit="b" * 40)
+        ReleaseBundle.from_archive(path, commit="b" * 40)
     bundle_archive(
-        path, mutation=lambda data: data.update({"deploy/compose.yaml": b"corrupt"})
+        path, mutation=lambda data: data.update({str(SOURCE_COMPOSE_PATH): b"corrupt"})
     )
     with pytest.raises(ValueError, match="checksum"):
-        verify(path)
+        ReleaseBundle.from_archive(path)
     bundle_archive(path, mutation=lambda data: data.update({"../escape": b"bad"}))
     with pytest.raises(ValueError, match="unsafe"):
-        verify(path)
+        ReleaseBundle.from_archive(path)
 
 
 def test_release_reuse_verifies_downloaded_provenance(tmp_path, monkeypatch):
-    release = {"tag_name": "v1.2.3", "draft": False, "assets": [{"name": BUNDLE_NAME}]}
+    release = {
+        "tag_name": "v1.2.3",
+        "draft": False,
+        "assets": [{"name": RELEASE_BUNDLE_FILENAME}],
+    }
     monkeypatch.setattr(
-        publication.subprocess,
+        github.subprocess,
         "check_output",
         lambda *args, **kwargs: json.dumps([[release]]),
     )
 
     def download(*args, **kwargs):
-        bundle_archive(tmp_path / BUNDLE_NAME)
+        bundle_archive(tmp_path / RELEASE_BUNDLE_FILENAME)
 
-    monkeypatch.setattr(publication.subprocess, "run", download)
-    assert publication.published("v1.2.3", "a" * 40, tmp_path)
+    monkeypatch.setattr(github.subprocess, "run", download)
+    assert publication.reuse_published_bundle("v1.2.3", "a" * 40, tmp_path)
     with pytest.raises(ValueError, match="provenance"):
-        publication.published("v1.2.3", "b" * 40, tmp_path)
+        publication.reuse_published_bundle("v1.2.3", "b" * 40, tmp_path)
 
 
 @pytest.mark.parametrize(
     "draft,assets",
     [
         (True, []),
-        (True, [{"name": BUNDLE_NAME}]),
+        (True, [{"name": RELEASE_BUNDLE_FILENAME}]),
         (False, []),
         (False, [{"name": "unexpected"}]),
     ],
 )
 def test_partial_publication_is_never_overwritten(tmp_path, monkeypatch, draft, assets):
     monkeypatch.setattr(
-        publication.subprocess,
+        github.subprocess,
         "check_output",
         lambda *args, **kwargs: json.dumps(
             [[{"tag_name": "v1.2.3", "draft": draft, "assets": assets}]]
         ),
     )
     download = Mock()
-    monkeypatch.setattr(publication.subprocess, "run", download)
+    monkeypatch.setattr(github.subprocess, "run", download)
     with pytest.raises(ValueError, match="partial/conflicting"):
-        publication.published("v1.2.3", "a" * 40, tmp_path)
+        publication.reuse_published_bundle("v1.2.3", "a" * 40, tmp_path)
     download.assert_not_called()
 
 
 def test_registry_or_github_failure_does_not_mean_absent_release(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        publication.subprocess,
+        github.subprocess,
         "check_output",
         Mock(side_effect=subprocess.CalledProcessError(1, "gh")),
     )
     with pytest.raises(subprocess.CalledProcessError):
-        publication.published("v1.2.3", "a" * 40, tmp_path)
+        publication.reuse_published_bundle("v1.2.3", "a" * 40, tmp_path)
 
 
 def test_workflows_share_validation_and_connect_only_after_builds():
@@ -147,12 +159,9 @@ def test_workflows_share_validation_and_connect_only_after_builds():
 
 
 def test_create_bundles_only_committed_operational_source(tmp_path):
-    from scripts.deployment.bundle import create
-    from scripts.deployment.dotenv import write_manifest
-
     source = tmp_path / "source"
     source.mkdir()
-    for name in REQUIRED_FILES - {"images.env"}:
+    for name in REQUIRED_FILES - {RELEASE_IMAGE_MANIFEST_FILENAME}:
         path = source / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fixture")
@@ -169,19 +178,19 @@ def test_create_bundles_only_committed_operational_source(tmp_path):
     commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=source, text=True
     ).strip()
-    images = tmp_path / "images.env"
+    images = tmp_path / RELEASE_IMAGE_MANIFEST_FILENAME
     write_manifest(
         images,
         {
-            "POLYBOT_RELEASE_ID": commit,
+            RELEASE_ID_ENV: commit,
             **{
                 field: "ghcr.io/test/image@sha256:" + "a" * 64 for field in IMAGE_FIELDS
             },
         },
     )
-    output = tmp_path / BUNDLE_NAME
-    create(source, images, "v1.0.0", output)
-    assert ".env" not in verify(output)["files"]
-    (source / "deploy/compose.yaml").write_text("dirty")
+    output = tmp_path / RELEASE_BUNDLE_FILENAME
+    ReleaseBundle.create(source, images, "v1.0.0", output)
+    assert ".env" not in ReleaseBundle.from_archive(output).metadata.files
+    (source / str(SOURCE_COMPOSE_PATH)).write_text("dirty")
     with pytest.raises(subprocess.CalledProcessError):
-        create(source, images, "v1.0.1", tmp_path / "dirty.tar.gz")
+        ReleaseBundle.create(source, images, "v1.0.1", tmp_path / "dirty.tar.gz")

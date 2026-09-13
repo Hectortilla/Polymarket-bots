@@ -1,8 +1,8 @@
 [Unit]
 Description=Polybot backup schedule
 [Timer]
-OnCalendar={{ {24: 'daily'}[backup_policy.interval] }}
+OnCalendar={{ deployment_contract.calendar }}
 Persistent=true
-Unit=polybot-backup.service
+Unit={{ deployment_contract.service_units.backup }}
 [Install]
 WantedBy=timers.target

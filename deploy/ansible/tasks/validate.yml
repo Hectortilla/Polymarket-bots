@@ -1,17 +1,14 @@
-- name: Validate the single private Debian host configuration
-  ansible.builtin.assert:
-    that:
-      - groups['polybot'] | length == 1
-      - ansible_distribution == 'Debian'
-      - polybot_arch in ['amd64', 'arm64']
-      - ansible_architecture == {'amd64':'x86_64', 'arm64':'aarch64'}[polybot_arch]
-      - polybot_root is match('^/[a-zA-Z0-9/_-]+$')
-      - polybot_root not in ['/', '/srv', '/etc', '/home']
-      - polybot_origin is match('^https://[a-zA-Z0-9.-]+\.ts\.net$')
-      - polybot_http_port | int >= 1024
-      - polybot_http_port | int <= 65535
-      - polybot_smtp_security in ['starttls', 'tls']
-      - polybot_sftp_directory is match('^/[a-zA-Z0-9/_-]+$')
-      - polybot_sftp_directory not in ['/', '/backups', '/home']
-      - polybot_alert_to is match('^[a-zA-Z0-9._+%-]+@[a-zA-Z0-9.-]+$')
-    quiet: true
+- name: Validate the single private Debian host before mutation
+  ansible.builtin.command:
+    argv: [uv, run, --locked, python, -m, scripts.deployment.controller, inventory]
+    stdin: '{{ {"variables": vars | dict2items | selectattr("key", "match", "^polybot_") | items2dict, "host_count": groups["polybot"] | length, "host_distribution": ansible_distribution, "host_architecture": ansible_architecture} | to_json }}'
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: deployment_contract_result
+  no_log: true
+- name: Load validated deployment policy
+  ansible.builtin.set_fact:
+    deployment_contract: '{{ (deployment_contract_result.stdout | from_json).contract }}'
+- name: Use normalized inventory values at the template boundary
+  ansible.builtin.set_fact: '{{ (deployment_contract_result.stdout | from_json).variables }}'

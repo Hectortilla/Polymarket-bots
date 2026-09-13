@@ -52,19 +52,20 @@ from control_plane.browser_limits_fixture import CLEAR_LIMITS_PATH
 from scripts.beta_release import BetaRelease
 from scripts.deployment.dotenv import read_values
 from scripts.deployment.images import ImageField
-from scripts.deployment.manifest import (
-    DEFAULT_AUTH_ORIGIN,
-    DEFAULT_HTTP_PORT,
-    HTTP_PORT_ENV,
-    SECRETS_DIRECTORY_ENV,
-)
 from scripts.deployment.paths import (
     COMPOSE_FILE,
     REPOSITORY,
     SECRETS_DIRECTORY_NAME,
     SOURCE_DEPLOY_DIRECTORY,
 )
+from scripts.deployment.runtime_contracts import (
+    DEFAULT_AUTH_ORIGIN,
+    DEFAULT_HTTP_PORT,
+    HTTP_PORT_ENV,
+    SECRETS_DIRECTORY_ENV,
+)
 from scripts.deployment.storage import SecretFile, database_url, redis_url
+from scripts.local_docker import LocalDocker
 
 STAGING_ORIGIN = DEFAULT_AUTH_ORIGIN
 INFRASTRUCTURE = read_values(REPOSITORY / "deploy/infrastructure.env")
@@ -75,6 +76,7 @@ TEST_PASSWORD = "disposable staging password 123"
 
 class DeploymentSmoke:
     def __init__(self) -> None:
+        self.docker = LocalDocker.from_context()
         self.identifier = uuid4().hex[:12]
         self.project = f"polybot-beta-test-{self.identifier}"
         self.directory = REPOSITORY / "data" / "beta" / self.project
@@ -519,9 +521,18 @@ class DeploymentSmoke:
         )
 
     def command(self, *arguments: str) -> str:
+        if arguments and arguments[0] == "docker":
+            if arguments[1:2] == ("--host",):
+                if arguments[2] != self.docker.endpoint:
+                    raise ValueError(
+                        "rehearsal Docker endpoint differs from its local context"
+                    )
+            else:
+                arguments = tuple(self.docker.command(*arguments[1:]))
         result = subprocess.run(
             arguments,
             cwd=REPOSITORY,
+            env=self.docker.environment,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

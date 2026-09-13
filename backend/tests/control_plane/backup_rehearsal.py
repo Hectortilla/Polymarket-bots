@@ -1,11 +1,16 @@
 """Real encrypted backup and isolated restore acceptance, disposable projects only."""
 
+import fcntl
 import json
+import shutil
 import subprocess
+import sys
+import tarfile
 
 from api.auth.recovery.schema import ACCOUNT_TOKENS_TABLE
 from api.auth.schema import SESSIONS_TABLE, USERS_TABLE, UserColumn
 from api.bots.schema import BOTS_TABLE_NAME
+from api.deployment.release import RELEASE_ID_ENV
 from api.deployment.services import POSTGRES_SERVICE, REDIS_SERVICE, DeploymentService
 from api.events.schema import RUN_EVENTS_TABLE_NAME
 from api.lifecycle.schema import RESTORE_QUARANTINED_AT_COLUMN
@@ -14,13 +19,30 @@ from api.runs.schema import RUNS_TABLE_NAME, RunColumn
 from api.runs.status import TERMINAL_RUN_STATUSES
 
 from control_plane.deployment_smoke import DeploymentSmoke
+from control_plane.release_bundle_fixture import worktree_bundle
 from control_plane.sftp_fixture import sftp_server
-from scripts.beta_backup.backup import BetaBackup
 from scripts.beta_backup.database import ComposeDatabase
 from scripts.beta_backup.policy import AGE_BINARY
 from scripts.beta_backup.restore import BetaRestore
 from scripts.beta_release import BetaRelease
+from scripts.deployment.attempt import LOCK_NAME
+from scripts.deployment.bundle.contracts import RELEASE_BUNDLE_FILENAME
+from scripts.deployment.dotenv import write_manifest
+from scripts.deployment.images import IMAGE_FIELDS
+from scripts.deployment.paths import (
+    CURRENT_RELEASE_NAME,
+    HOST_COMPOSE_NAME,
+    MANIFEST_NAME,
+    OPERATIONS_CONFIGURATION_NAME,
+    RELEASES_DIRECTORY_NAME,
+    SECRETS_DIRECTORY_NAME,
+    SOURCE_COMPOSE_PATH,
+    STAGING_DIRECTORY_NAME,
+)
+from scripts.deployment.runtime_contracts import BUNDLE_DIRECTORY_ENV
 from scripts.deployment.storage import POSTGRES_DATABASE, POSTGRES_USER
+from scripts.deployment.transport_files import HostTransportFile
+from scripts.private_files import write_private
 
 
 class BackupRehearsal:
@@ -55,19 +77,84 @@ class BackupRehearsal:
             recipients.write_bytes(
                 subprocess.check_output(["age-keygen", "-y", str(identity)])
             )
-            archive = BetaBackup(database, directory, recipients).create()
+            installed = host.directory / RELEASES_DIRECTORY_NAME / "v0.0.0"
+            installed.mkdir(parents=True, mode=0o700)
+            bundle = installed / RELEASE_BUNDLE_FILENAME
+            bundle_images = {
+                field: "rehearsal/image@" + host.values[field] for field in IMAGE_FIELDS
+            }
+            worktree_bundle(
+                bundle,
+                bundle_images | {RELEASE_ID_ENV: host.values[RELEASE_ID_ENV]},
+                tag="v0.0.0",
+            )
+            with tarfile.open(bundle) as source:
+                source.extractall(installed, filter="data")
+            write_manifest(
+                host.directory / MANIFEST_NAME,
+                host.values | bundle_images | {BUNDLE_DIRECTORY_ENV: str(installed)},
+            )
+            shutil.copyfile(
+                str(SOURCE_COMPOSE_PATH), host.directory / HOST_COMPOSE_NAME
+            )
+            (host.directory / CURRENT_RELEASE_NAME).symlink_to(
+                installed, target_is_directory=True
+            )
+            staging = host.directory / STAGING_DIRECTORY_NAME
+            staging.mkdir(mode=0o700)
+            secrets_directory = host.directory / SECRETS_DIRECTORY_NAME
+            shutil.copyfile(
+                recipients, secrets_directory / HostTransportFile.AGE_RECIPIENTS
+            )
             with sftp_server(host.directory / "sftp") as (remote, _storage, _process):
-                # The rehearsal bundle records its uncommitted test provenance explicitly.
-                bundle = host.directory / "fixture-release.tar.gz"
-                bundle.write_bytes(host.manifest.read_bytes())
-                name = archive.name
-                remote.upload(archive, bundle)
+                write_private(
+                    secrets_directory / HostTransportFile.RCLONE_CONFIG,
+                    remote.transport.config.path.read_bytes(),
+                )
+                write_private(
+                    host.directory / OPERATIONS_CONFIGURATION_NAME,
+                    json.dumps(
+                        {
+                            "origin": "https://fixture.example.ts.net",
+                            "alert_to": "operator@example.com",
+                            "remote": remote.transport.config.directory.remote,
+                        }
+                    ).encode(),
+                )
+                # The host entrypoint is exercised in its own subprocess. Its
+                # Compose project is scoped to this rehearsal's disposable stack.
+                command = [
+                    sys.executable,
+                    "-c",
+                    "import sys; import scripts.host_operations as host; from scripts.host_operations.__main__ import main; host.DEFAULT_COMPOSE_PROJECT = sys.argv.pop(1); main()",
+                    host.project,
+                    "--root",
+                    str(host.directory),
+                    "backup",
+                ]
+                subprocess.run(command, check=True)
                 remote.require_recent()
+                pairs = remote.inventory.completed_pairs()
+                assert len(pairs) == 1
+                with (host.directory / LOCK_NAME).open("a") as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    assert (
+                        subprocess.run(
+                            command, capture_output=True, check=False
+                        ).returncode
+                        == 1
+                    )
+                assert len(remote.inventory.completed_pairs()) == 1
+                assert not list(staging.iterdir())
                 downloaded = host.directory / "downloaded"
                 downloaded.mkdir(mode=0o700)
-                archive, _ = remote.download(name, downloaded)
+                downloaded_archive, _ = remote.download(
+                    pairs[0].archive_filename, downloaded
+                )
             self.reject_invalid_database_dump(recipients, identity)
-            restore = BetaRestore(host.manifest, archive, identity, host.directory)
+            restore = BetaRestore(
+                host.manifest, downloaded_archive, identity, host.directory
+            )
             self.restored = BetaRelease.from_manifest(host.manifest, restore.project)
             project, seconds = restore.restore()
             restored_database = ComposeDatabase(self.restored.compose)

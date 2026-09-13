@@ -5,11 +5,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from api.lifecycle.policy import BACKUP_RETENTION_DAYS
+from api.lifecycle.policy import BACKUP_INTERVAL_HOURS
 from polybot.persistence.hashing import sha256_file
 
 from scripts.beta_backup.archive_name import ArchiveName
 from scripts.beta_backup.paths import PrivateBackupPath
+from scripts.beta_backup.policy import (
+    MAX_RETAINED_STAGING_ARCHIVES,
+    backup_retention_cutoff,
+)
 
 
 class BackupArchives:
@@ -30,9 +34,28 @@ class BackupArchives:
         return destination
 
     def expire(self) -> None:
-        cutoff = datetime.now(UTC) - timedelta(days=BACKUP_RETENTION_DAYS)
+        cutoff = backup_retention_cutoff()
         for path, archive in self._completed():
             if archive.snapshot_started_at <= cutoff:
+                path.unlink()
+
+    def prune_staging(self) -> None:
+        archives = sorted(
+            self._completed(),
+            key=lambda item: item[1].snapshot_started_at,
+            reverse=True,
+        )
+        for path, _ in archives[MAX_RETAINED_STAGING_ARCHIVES:]:
+            path.unlink()
+        cutoff = (
+            datetime.now(UTC) - timedelta(hours=BACKUP_INTERVAL_HOURS)
+        ).timestamp()
+        for path in self.directory.glob(".incomplete-*"):
+            if (
+                not path.is_symlink()
+                and path.is_file()
+                and path.stat().st_mtime < cutoff
+            ):
                 path.unlink()
 
     def _completed(self):

@@ -23,7 +23,7 @@ from pydantic import ValidationError
 
 from scripts.beta_release import BetaRelease
 from scripts.deployment.images import IMAGE_FIELDS
-from scripts.deployment.manifest import (
+from scripts.deployment.runtime_contracts import (
     DEFAULT_AUTH_ORIGIN,
     SECRETS_DIRECTORY_ENV,
 )

@@ -1,8 +1,8 @@
 [Unit]
 Description=Polybot monitor schedule
 [Timer]
-OnCalendar=*:0/5
+OnCalendar={{ deployment_contract.monitor_calendar }}
 Persistent=true
-Unit=polybot-monitor.service
+Unit={{ deployment_contract.service_units.monitor }}
 [Install]
 WantedBy=timers.target

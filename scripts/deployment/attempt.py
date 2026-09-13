@@ -6,6 +6,8 @@ from pathlib import Path
 
 from scripts.deployment.paths import HOST_COMPOSE_NAME, MANIFEST_NAME
 
+ACTIVATION_TIMEOUT_SECONDS = 1800
+
 HISTORY_DIRECTORY_NAME = "releases"
 JOURNAL_NAME = ".deployment.json"
 LOCK_NAME = ".deploy.lock"

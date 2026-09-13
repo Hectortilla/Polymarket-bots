@@ -29,6 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "ansible-core==2.19.7",
   "pytest>=8.4,<9.0",
   "ruff>=0.16.6",
 ]
@@ -135,6 +136,10 @@ packages = [
   "api.execution.worker",
   "scripts",
   "scripts.deployment",
+  "scripts.deployment.bundle",
+  "scripts.beta_release",
+  "scripts.host_operations",
+  "scripts.beta_backup.remote",
   "scripts.beta_backup",
     "scripts.beta_backup.backup",
     "scripts.beta_backup.restore",

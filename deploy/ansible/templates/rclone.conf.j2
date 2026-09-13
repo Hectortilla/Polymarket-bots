@@ -1,9 +1,9 @@
-[backup]
-type = sftp
+[{{ deployment_contract.backup_remote }}]
+type = {{ deployment_contract.sftp_backend }}
 host = {{ polybot_sftp_host }}
 port = {{ polybot_sftp_port }}
 user = {{ polybot_sftp_user }}
-key_file = {{ polybot_root }}/secrets/sftp_key
-known_hosts_file = {{ polybot_root }}/secrets/sftp_known_hosts
+key_file = {{ polybot_root }}/{{ deployment_contract.paths.secrets }}/{{ deployment_contract.transport_files.sftp_key }}
+known_hosts_file = {{ polybot_root }}/{{ deployment_contract.paths.secrets }}/{{ deployment_contract.transport_files.sftp_known_hosts }}
 disable_hashcheck = true
 shell_type = none

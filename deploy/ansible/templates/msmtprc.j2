@@ -8,4 +8,4 @@ port {{ polybot_smtp_port }}
 tls_starttls {{ 'on' if polybot_smtp_security == 'starttls' else 'off' }}
 from {{ polybot_smtp_from }}
 user {{ polybot_smtp_username | to_json }}
-passwordeval "cat {{ polybot_root }}/secrets/smtp_password"
+passwordeval "cat {{ polybot_root }}/{{ deployment_contract.paths.secrets }}/{{ deployment_contract.secret_files.smtp_password }}"

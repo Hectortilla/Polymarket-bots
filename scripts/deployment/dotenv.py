@@ -4,20 +4,27 @@ from collections.abc import Mapping
 from io import StringIO
 from pathlib import Path
 
-from dotenv import dotenv_values
+from dotenv.parser import parse_stream
 
 from scripts.private_files import read_regular, write_private
 
 
 def read_values(path: Path, *, required_mode: int | None = None) -> dict[str, str]:
     contents = read_regular(path, required_mode=required_mode).decode()
-    return {
-        key: value
-        for key, value in dotenv_values(
-            stream=StringIO(contents), interpolate=False
-        ).items()
-        if value is not None
-    }
+    return parse_values(contents)
+
+
+def parse_values(contents: str) -> dict[str, str]:
+    values = {}
+    seen = set()
+    for binding in parse_stream(StringIO(contents)):
+        if binding.error or (binding.key is not None and binding.key in seen):
+            raise ValueError("invalid or duplicate manifest assignment")
+        if binding.key is not None:
+            seen.add(binding.key)
+            if binding.value is not None:
+                values[binding.key] = binding.value
+    return values
 
 
 def write_manifest(

@@ -26,7 +26,8 @@ from scripts.beta_backup.database import ComposeDatabase
 from scripts.beta_backup.policy import AGE_BINARY, BACKUP_PROCESS_TIMEOUT_SECONDS
 from scripts.beta_backup.restore import BetaRestore
 from scripts.beta_backup.restore.destination import RestoreDestination
-from scripts.compose_project import DOCKER_CONTEXT_ENV, DOCKER_HOST_ENV, ComposeProject
+from scripts.compose_project import ComposeProject
+from scripts.local_docker import DOCKER_CONTEXT_ENV, DOCKER_HOST_ENV
 
 
 def archive(directory, created):
@@ -231,18 +232,18 @@ def test_backup_target_rejects_remote_context_and_pins_local_socket(
     release = ComposeProject(tmp_path / "manifest", "isolated-backup-test")
     with (
         patch(
-            "scripts.compose_project.subprocess.check_output",
+            "scripts.local_docker.subprocess.check_output",
             return_value="ssh://unintended-host",
         ),
         pytest.raises(ValueError),
     ):
         release.require_local_docker()
     with patch(
-        "scripts.compose_project.subprocess.check_output",
+        "scripts.local_docker.subprocess.check_output",
         return_value="unix:///fixture/docker.sock",
     ):
         release.require_local_docker()
-    assert release._docker_host == "unix:///fixture/docker.sock"
+    assert release._docker.endpoint == "unix:///fixture/docker.sock"
 
 
 def test_encryption_start_failure_reaps_dump_and_removes_partial(tmp_path):
@@ -300,7 +301,7 @@ def test_verified_docker_endpoint_is_pinned_on_dump_and_restore_commands(
     monkeypatch.delenv(DOCKER_CONTEXT_ENV, raising=False)
     release = ComposeProject(tmp_path / "manifest", "isolated-backup-test")
     socket = "unix:///fixture/docker.sock"
-    with patch("scripts.compose_project.subprocess.check_output", return_value=socket):
+    with patch("scripts.local_docker.subprocess.check_output", return_value=socket):
         database = ComposeDatabase(release)
     monkeypatch.setenv(DOCKER_HOST_ENV, "ssh://later-host")
     monkeypatch.setenv(DOCKER_CONTEXT_ENV, "later-context")

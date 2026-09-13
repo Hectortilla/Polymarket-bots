@@ -1,161 +1,93 @@
 """Prepared-release activation preserves fail-closed recovery and idempotency."""
 
 import fcntl
-import hashlib
 import json
+import re
 
 import pytest
-from api.deployment.release import RELEASE_ID_ENV
 from api.deployment.services import APPLICATION_SERVICES, DeploymentService
 
-from scripts.beta_release import BetaRelease, activate_bundle
+from control_plane.beta_host_fixture import make_bundle, refresh_bundle
+from scripts.beta_release import BetaRelease
+from scripts.beta_release.activation import DeploymentActivator
 from scripts.compose_project import ComposeProject
 from scripts.deployment import state as state_module
 from scripts.deployment.attempt import (
+    INVALID_JOURNAL_MESSAGE,
     JOURNAL_NAME,
     LOCK_NAME,
     AttemptPhase,
     JournalField,
 )
-from scripts.deployment.bundle import METADATA_NAME, REQUIRED_FILES
+from scripts.deployment.bundle.contracts import (
+    RELEASE_IMAGE_MANIFEST_FILENAME,
+)
 from scripts.deployment.dotenv import write_manifest
-from scripts.deployment.images import IMAGE_FIELDS, ImageField, ReleaseImages
+from scripts.deployment.images import ImageField, ReleaseImages
 from scripts.deployment.manifest import RuntimeManifest
-from scripts.deployment.paths import COMPOSE_FILE, HOST_COMPOSE_NAME, MANIFEST_NAME
+from scripts.deployment.paths import (
+    CURRENT_RELEASE_NAME,
+    HOST_COMPOSE_NAME,
+    MANIFEST_NAME,
+    RELEASES_DIRECTORY_NAME,
+    RUNTIME_CONFIGURATION_NAME,
+)
 from scripts.deployment.state import DeploymentState
 from scripts.private_files import write_private
 
 
-@pytest.fixture
-def installation(tmp_path):
-    root = tmp_path / "host"
-    root.mkdir(mode=0o700)
-    secrets = root / "secrets"
-    secrets.mkdir(mode=0o700)
-    for name in [
-        "database_url",
-        "redis_url",
-        "postgres_password",
-        "smtp_username",
-        "smtp_password",
-    ]:
-        write_private(secrets / name, b"fixture", mode=0o444)
-    write_manifest(
-        root / "runtime.env",
-        {
-            "POLYBOT_AUTH_ORIGIN": "https://host.example.ts.net",
-            "POLYBOT_HTTP_PORT": "8081",
-            "POLYBOT_SECRETS_DIR": str(secrets),
-            "POLYBOT_SMTP_HOST": "smtp.example.com",
-            "POLYBOT_SMTP_FROM": "accounts@example.com",
-        },
-    )
-    return root
-
-
-@pytest.fixture
-def bundle(tmp_path):
-    return make_bundle(tmp_path / "bundle", "a")
-
-
-def make_bundle(path, marker):
-    path.mkdir()
-    values = {
-        field: f"ghcr.io/test/image-{index}@sha256:" + str(index) * 64
-        for index, field in enumerate(IMAGE_FIELDS, 1)
-    }
-    values[ImageField.BACKEND] = "ghcr.io/test/backend@sha256:" + marker * 64
-    values[RELEASE_ID_ENV] = marker * 40
-    for name in REQUIRED_FILES - {"images.env"}:
-        target = path / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(
-            COMPOSE_FILE.read_bytes() if name == "deploy/compose.yaml" else b"fixture"
-        )
-    write_manifest(path / "images.env", values)
-    refresh_bundle(path)
-    return path
-
-
-def refresh_bundle(path):
-    images = ReleaseImages.read(path / "images.env")
-    (path / METADATA_NAME).write_text(
-        json.dumps(
-            {
-                "tag": "v1.0.0",
-                "commit": images.source_commit,
-                "files": {
-                    name: hashlib.sha256((path / name).read_bytes()).hexdigest()
-                    for name in REQUIRED_FILES
-                },
-            }
-        )
-    )
-
-
-@pytest.fixture
-def docker(monkeypatch):
-    calls = []
-    monkeypatch.setattr(
-        ComposeProject, "require_local_docker", lambda self: calls.append(("local",))
-    )
-    monkeypatch.setattr(ComposeProject, "run", lambda self, *args: calls.append(args))
-    monkeypatch.setattr(
-        BetaRelease, "require_healthy", lambda self: calls.append(("healthy",))
-    )
-    return calls
-
-
 def test_fresh_install_pull_migrate_readiness_promote_and_healthy_retry(
-    installation, bundle, docker
+    installation, bundle, compose_calls
 ):
-    activate_bundle(installation, bundle)
-    assert docker.index(("pull",)) < docker.index(("stop", APPLICATION_SERVICES[0]))
+    DeploymentActivator(installation).activate(bundle)
+    assert compose_calls.index(("pull",)) < compose_calls.index(
+        ("stop", APPLICATION_SERVICES[0])
+    )
     assert (
         "run",
         "--rm",
         "--no-deps",
         DeploymentService.MIGRATE,
         DeploymentService.MIGRATE,
-    ) in docker
-    assert docker[-1] == ("healthy",)
-    assert (installation / "current").resolve() == bundle
-    docker.clear()
-    activate_bundle(installation, bundle)
-    assert docker == [("local",), ("healthy",)]
+    ) in compose_calls
+    assert compose_calls[-1] == ("healthy",)
+    assert (installation / CURRENT_RELEASE_NAME).resolve() == bundle
+    compose_calls.clear()
+    DeploymentActivator(installation).activate(bundle)
+    assert compose_calls == [("local",), ("healthy",)]
 
 
 @pytest.mark.parametrize("failure", ["pull", "run"])
 def test_pull_and_migration_failure_preserve_active_inputs(
-    installation, bundle, docker, monkeypatch, tmp_path, failure
+    installation, bundle, compose_calls, monkeypatch, tmp_path, failure
 ):
-    activate_bundle(installation, bundle)
+    DeploymentActivator(installation).activate(bundle)
     old = (installation / MANIFEST_NAME).read_bytes()
-    candidate = make_bundle(tmp_path / "candidate", "b")
-    docker.clear()
+    candidate = make_bundle(installation / RELEASES_DIRECTORY_NAME / "candidate", "b")
+    compose_calls.clear()
 
     def run(self, *args):
-        docker.append(args)
+        compose_calls.append(args)
         if args[0] == failure:
             raise RuntimeError("injected")
 
     monkeypatch.setattr(ComposeProject, "run", run)
     with pytest.raises(RuntimeError):
-        activate_bundle(installation, candidate)
+        DeploymentActivator(installation).activate(candidate)
     assert (installation / MANIFEST_NAME).read_bytes() == old
-    assert docker[-1][0] == failure
+    assert compose_calls[-1][0] == failure
     assert not any(
-        call[0] == "up" and APPLICATION_SERVICES[0] in call for call in docker
+        call[0] == "up" and APPLICATION_SERVICES[0] in call for call in compose_calls
     )
     if failure == "pull":
-        assert not any(call[0] == "stop" for call in docker)
+        assert not any(call[0] == "stop" for call in compose_calls)
 
 
 @pytest.mark.parametrize(
-    "failure", ["activation_record", "compose", "manifest", "current"]
+    "failure", ["activation_record", "compose", "manifest", CURRENT_RELEASE_NAME]
 )
 def test_interrupted_promotion_recovers_without_an_unnecessary_restart(
-    installation, bundle, docker, monkeypatch, failure
+    installation, bundle, compose_calls, monkeypatch, failure
 ):
     real_write = state_module.write_private
     real_replace = state_module.os.replace
@@ -167,15 +99,7 @@ def test_interrupted_promotion_recovers_without_an_unnecessary_restart(
 
     def write(path, content, **kwargs):
         nonlocal failed
-        should_fail = (
-            (
-                failure == "activation_record"
-                and path.name == JOURNAL_NAME
-                and json.loads(content)[JournalField.PHASE] == AttemptPhase.ACTIVATED
-            )
-            or (failure == "compose" and path == installation / HOST_COMPOSE_NAME)
-            or (failure == "manifest" and path == installation / MANIFEST_NAME)
-        )
+        should_fail = should_inject_write_failure(failure, path, content, installation)
         if should_fail and not failed:
             failed = True
             raise OSError("injected")
@@ -183,7 +107,11 @@ def test_interrupted_promotion_recovers_without_an_unnecessary_restart(
 
     def replace(source, target):
         nonlocal failed
-        if failure == "current" and target == installation / "current" and not failed:
+        if (
+            failure == CURRENT_RELEASE_NAME
+            and target == installation / CURRENT_RELEASE_NAME
+            and not failed
+        ):
             failed = True
             raise OSError("injected")
         real_replace(source, target)
@@ -191,30 +119,30 @@ def test_interrupted_promotion_recovers_without_an_unnecessary_restart(
     monkeypatch.setattr(state_module, "write_private", write)
     monkeypatch.setattr(state_module.os, "replace", replace)
     with pytest.raises(OSError):
-        activate_bundle(installation, bundle)
+        DeploymentActivator(installation).activate(bundle)
     assert DeploymentState(installation).pending()
-    activate_bundle(installation, bundle)
+    DeploymentActivator(installation).activate(bundle)
     assert len(activations) == (2 if failure == "activation_record" else 1)
     assert DeploymentState(installation).pending() is None
-    assert (installation / "current").resolve() == bundle
+    assert (installation / CURRENT_RELEASE_NAME).resolve() == bundle
 
 
 def test_incompatible_rollback_remains_closed(
-    installation, bundle, docker, monkeypatch, tmp_path
+    installation, bundle, compose_calls, monkeypatch, tmp_path
 ):
-    activate_bundle(installation, bundle)
-    candidate = make_bundle(tmp_path / "candidate", "b")
-    docker.clear()
+    DeploymentActivator(installation).activate(bundle)
+    candidate = make_bundle(installation / RELEASES_DIRECTORY_NAME / "candidate", "b")
+    compose_calls.clear()
 
     def run(self, *args):
-        docker.append(args)
+        compose_calls.append(args)
         if args[-1] == DeploymentService.CHECK:
             raise RuntimeError("schema incompatible")
 
     monkeypatch.setattr(ComposeProject, "run", run)
     with pytest.raises(RuntimeError):
-        activate_bundle(installation, candidate, rollback=True)
-    assert docker[-1] == (
+        DeploymentActivator(installation).activate(candidate, rollback=True)
+    assert compose_calls[-1] == (
         "run",
         "--rm",
         "--no-deps",
@@ -223,33 +151,35 @@ def test_incompatible_rollback_remains_closed(
     )
     assert DeploymentState(installation).pending().rollback
     with pytest.raises(ValueError, match="operation differs"):
-        activate_bundle(installation, candidate)
+        DeploymentActivator(installation).activate(candidate)
 
 
-def test_infrastructure_update_rejected_before_docker(
-    installation, bundle, docker, tmp_path
+def test_infrastructure_update_rejected_before_compose_calls(
+    installation, bundle, compose_calls, tmp_path
 ):
-    activate_bundle(installation, bundle)
-    candidate = make_bundle(tmp_path / "candidate", "b")
-    values = ReleaseImages.read(candidate / "images.env").to_values()
+    DeploymentActivator(installation).activate(bundle)
+    candidate = make_bundle(installation / RELEASES_DIRECTORY_NAME / "candidate", "b")
+    values = ReleaseImages.read(candidate / RELEASE_IMAGE_MANIFEST_FILENAME).to_values()
     values[ImageField.POSTGRES] = "postgres@sha256:" + "f" * 64
-    write_manifest(candidate / "images.env", values)
+    write_manifest(candidate / RELEASE_IMAGE_MANIFEST_FILENAME, values)
     refresh_bundle(candidate)
-    docker.clear()
+    compose_calls.clear()
     with pytest.raises(ValueError, match="maintenance"):
-        activate_bundle(installation, candidate)
-    assert not docker
+        DeploymentActivator(installation).activate(candidate)
+    assert not compose_calls
 
 
-def test_lock_and_private_inputs_fail_before_docker(installation, bundle, docker):
+def test_lock_and_private_inputs_fail_before_compose_calls(
+    installation, bundle, compose_calls
+):
     with (installation / LOCK_NAME).open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with pytest.raises(ValueError, match="already running"):
-            activate_bundle(installation, bundle)
-    (installation / "runtime.env").chmod(0o644)
+            DeploymentActivator(installation).activate(bundle)
+    (installation / RUNTIME_CONFIGURATION_NAME).chmod(0o644)
     with pytest.raises(ValueError, match="mode 600"):
-        activate_bundle(installation, bundle)
-    assert not docker
+        DeploymentActivator(installation).activate(bundle)
+    assert not compose_calls
 
 
 @pytest.mark.parametrize(
@@ -261,9 +191,9 @@ def test_lock_and_private_inputs_fail_before_docker(installation, bundle, docker
     ],
 )
 def test_corrupt_journal_blocks_all_mutation(
-    installation, bundle, docker, field, value
+    installation, bundle, compose_calls, field, value
 ):
-    activate_bundle(installation, bundle)
+    DeploymentActivator(installation).activate(bundle)
     state = DeploymentState(installation)
     attempt = state.prepare(
         RuntimeManifest.read(state.manifest),
@@ -273,24 +203,38 @@ def test_corrupt_journal_blocks_all_mutation(
     record = attempt.to_record()
     record[field] = value
     write_private(state.journal, json.dumps(record).encode())
-    docker.clear()
-    with pytest.raises(ValueError, match="invalid deployment journal"):
-        activate_bundle(installation, bundle)
-    assert not docker
+    compose_calls.clear()
+    with pytest.raises(
+        ValueError, match="^" + re.escape(INVALID_JOURNAL_MESSAGE) + "$"
+    ):
+        DeploymentActivator(installation).activate(bundle)
+    assert not compose_calls
 
 
 def test_explicit_forward_repair_replaces_failed_attempt(
-    installation, bundle, docker, monkeypatch, tmp_path
+    installation, bundle, compose_calls, monkeypatch, tmp_path
 ):
     activation = BetaRelease.activate
-    monkeypatch.setattr(
-        BetaRelease,
-        "activate",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("failure")),
-    )
+
+    def fail_activation(*args, **kwargs):
+        raise RuntimeError("failure")
+
+    monkeypatch.setattr(BetaRelease, "activate", fail_activation)
     with pytest.raises(RuntimeError):
-        activate_bundle(installation, bundle)
-    repair = make_bundle(tmp_path / "repair", "b")
+        DeploymentActivator(installation).activate(bundle)
+    repair = make_bundle(installation / RELEASES_DIRECTORY_NAME / "repair", "b")
     monkeypatch.setattr(BetaRelease, "activate", activation)
-    activate_bundle(installation, repair)
+    DeploymentActivator(installation).activate(repair)
     assert ReleaseImages.read(installation / MANIFEST_NAME).source_commit == "b" * 40
+
+
+def should_inject_write_failure(failure, path, content, installation):
+    return (
+        (
+            failure == "activation_record"
+            and path.name == JOURNAL_NAME
+            and json.loads(content)[JournalField.PHASE] == AttemptPhase.ACTIVATED
+        )
+        or (failure == "compose" and path == installation / HOST_COMPOSE_NAME)
+        or (failure == "manifest" and path == installation / MANIFEST_NAME)
+    )

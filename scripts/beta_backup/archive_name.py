@@ -2,7 +2,7 @@
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from polybot.persistence.hashing import SHA256_ALGORITHM
@@ -46,7 +46,7 @@ class ArchiveName:
         try:
             parsed = cls(
                 datetime.strptime(timestamp, ARCHIVE_TIMESTAMP_FORMAT).replace(
-                    tzinfo=timezone.utc
+                    tzinfo=UTC
                 ),
                 UUID(hex=identifier),
                 checksum,

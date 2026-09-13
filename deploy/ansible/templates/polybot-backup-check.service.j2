@@ -1,14 +1,15 @@
 [Unit]
 Description=Polybot backup-check
 After=docker.service tailscaled.service network-online.target
-ConditionPathExists={{ polybot_root }}/current/.venv/bin/python
+# Defer only until a release has been staged; a lost active runtime must fail.
+ConditionPathExistsGlob={{ polybot_root }}/{{ deployment_contract.paths.releases }}/*/pyproject.toml
 [Service]
 Type=oneshot
 User=polybot
 Group=polybot
-WorkingDirectory={{ polybot_root }}/current
-ExecStart={{ polybot_root }}/current/.venv/bin/python -m scripts.host_operations --root {{ polybot_root }} backup-check
+WorkingDirectory={{ polybot_root }}/{{ deployment_contract.paths.current }}
+ExecStart={{ polybot_root }}/{{ deployment_contract.paths.current }}/.venv/bin/python -m scripts.host_operations --root {{ polybot_root }} {{ deployment_contract.operations.backup_check }}
 UMask=0077
-TimeoutStartSec=3700
+TimeoutStartSec={{ deployment_contract.timeout }}
 StandardOutput=journal
 StandardError=journal

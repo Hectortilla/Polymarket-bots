@@ -6,12 +6,12 @@ After=docker.service network-online.target
 Type=oneshot
 User=polybot
 Group=polybot
-WorkingDirectory={{ polybot_root }}/bundles/{{ release_tag }}
-Environment=DOCKER_CONFIG={{ polybot_root }}/registry
+WorkingDirectory={{ polybot_root }}/{{ deployment_contract.paths.releases }}/{{ release_tag }}
+Environment=DOCKER_CONFIG={{ polybot_root }}/{{ deployment_contract.paths.registry }}
 Environment=UV_NO_SYNC=1
-ExecStart={{ polybot_root }}/bundles/{{ release_tag }}/.venv/bin/python -m scripts.beta_release --app-dir {{ polybot_root }} --bundle {{ polybot_root }}/bundles/{{ release_tag }} {{ '--rollback' if operation == 'rollback' else '' }}
-ExecStopPost=/usr/bin/rm -f {{ polybot_root }}/registry/config.json
-TimeoutStartSec=1800
+ExecStart={{ polybot_root }}/{{ deployment_contract.paths.releases }}/{{ release_tag }}/.venv/bin/python -m scripts.beta_release --app-dir {{ polybot_root }} --bundle {{ polybot_root }}/{{ deployment_contract.paths.releases }}/{{ release_tag }} {{ '--rollback' if operation == 'rollback' else '' }}
+ExecStopPost=/usr/bin/rm -f {{ polybot_root }}/{{ deployment_contract.paths.registry }}/config.json
+TimeoutStartSec={{ deployment_contract.activation_timeout }}
 UMask=0077
 StandardOutput=journal
 StandardError=journal

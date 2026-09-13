@@ -20,7 +20,7 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    into policy, removing broader grants that would give CI additional access.
    Tag only this deployment host `tag:polybot`; CI has only TCP 22 and 443 to it.
    Create a one-time tagged host enrollment key. Never enable Funnel.
-3. Install controller tools with `uv sync --locked --extra dev` and
+3. Install `age` and OpenSSH (`ssh-keygen`) on the controller. Install Python controller tools with `uv sync --locked --extra dev` and
    `uv tool install ansible-core==2.19.7`. Generate a deployment SSH key and obtain the SFTP server's public host key
    through a trusted channel. Create a dedicated existing storage directory and
    SSH key with read/write/delete rights there. Keep storage ownership outside
@@ -128,7 +128,7 @@ All installed state uses one configured root:
 /srv/polybot/                 private, owned by polybot
   runtime.env                bootstrap origin/SMTP/path settings, mode 600
   secrets/                   private directory; container secrets readable by UID 10001
-  operations.json            SFTP destination, origin and alert recipient
+  operations.json            SFTP destination, origin, HTTP port and alert recipient
   bundles/TAG/               verified source, release.tar.gz and locked .venv
   releases/ATTEMPT/           durable candidate and previous Compose/manifests
   .deployment.json           pending attempt phase and operation
@@ -228,3 +228,33 @@ tests. Their laptop builds, SCP transfers, host Git fetches, interactive registr
 logins, certificate copying/renewal and backup mounts disappear. The remaining
 release executor, durable journal, Compose/private-file helpers and encrypted
 backup/isolated restore logic retain application-specific safety responsibilities.
+
+The deployment style-review follow-up adds regression coverage at the installed
+boundaries. `uv sync --extra dev` includes the pinned Ansible controller used by
+these tests. Run the focused contracts with:
+
+```sh
+uv run pytest backend/tests/control_plane/test_deployment_boundaries.py backend/tests/control_plane/test_deployment_contracts.py backend/tests/control_plane/test_backup_boundaries.py backend/tests/control_plane/test_beta_host_deployment.py backend/tests/control_plane/test_remote_backups.py backend/tests/control_plane/test_host_monitoring.py
+PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal
+PYTHONPATH=backend/tests uv run python -m control_plane.backup_rehearsal
+```
+
+The Debian rehearsal executes Ansible staging, the installed executor, systemd
+and real disposable Compose processes, including deploy, rollback, retained-bundle
+conflicts, failures, retries, and private HTTPS readiness failure. It substitutes
+local TLS for the unavailable target tailnet and fixture registry authentication;
+the separate application/backup rehearsal uses the real application images and
+PostgreSQL. Mail acceptance uses the rendered msmtp configuration, authenticated
+STARTTLS and the host alert transition path. These remain disposable acceptance
+fixtures; production tailnet, registry, storage and SMTP acceptance still requires
+the reviewed operator inventory and credentials.
+
+Extraction runs as the service account so archive-created parent directories are
+writable during locked environment installation. The controller validates the
+retained database password before rendering dependent secrets. Inventory, exact
+release identity, Tailscale status/Serve, Compose status, artifact metadata and
+alert state are validated at their ingress boundaries before host mutations.
+
+Bootstrap's controller requires `age` and OpenSSH `ssh-keygen` locally. Before host mutation it validates deployment public keys, non-interactive SFTP private keys, a known-host entry matching the configured storage host/port, age recipients, SMTP credentials, and a Tailscale enrollment key (unless the tailnet stage is explicitly skipped). It exports normalized inventory values to Ansible; ports must be YAML integers. Remote access is still verified by the separate connectivity/backup acceptance checks.
+
+Tailscale enrollment accepts only the states defined by the pinned [official v1.94.2 backend](https://github.com/tailscale/tailscale/blob/v1.94.2/ipn/backend.go); unknown states fail before enrollment. Host status and activation validate the `current` pointer against the installed bundle and its runtime image identity.

@@ -47,7 +47,7 @@ jobs:
       - name: Validate version, tag commit and default-branch ancestry
         id: identity
         run: |
-          uv run python -c 'import os; from scripts.deployment.bundle import validate_tag; validate_tag(os.environ["RELEASE_TAG"])'
+          uv run python -c 'import os; from scripts.deployment.identity import validate_release_tag; validate_release_tag(os.environ["RELEASE_TAG"])'
           commit=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
           git merge-base --is-ancestor "$commit" "origin/$DEFAULT_BRANCH"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -67,16 +67,7 @@ jobs:
         run: |
           uv tool install ansible-core==2.19.7
           ansible-inventory -i deploy/ansible/inventory/production.yml --list > inventory.json
-          python - <<'PY'
-          import json, os
-          inventory = json.load(open('inventory.json'))
-          hosts = inventory['_meta']['hostvars']
-          assert len(hosts) == 1, 'Exactly one host required'
-          arch = next(iter(hosts.values()))['polybot_arch']
-          assert arch in ('amd64', 'arm64')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('platform=linux/' + arch + '\n')
-          PY
+          uv run python -m scripts.deployment.controller platform < inventory.json >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: steps.existing.outputs.reuse != 'true'
         with:
@@ -193,15 +184,7 @@ jobs:
           REGISTRY_USERNAME: ${{ github.actor }}
           ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
         run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          values = {key.lower(): os.environ[key] for key in ('RELEASE_TAG','RELEASE_COMMIT','REGISTRY_TOKEN','REGISTRY_USERNAME')}
-          values['release_bundle'] = str(Path('bundle/release.tar.gz').resolve())
-          path = Path('deploy-inputs.json')
-          path.touch(mode=0o600)
-          path.write_text(json.dumps(values))
-          PY
+          uv run python -m scripts.deployment.controller inputs
           ansible-playbook -i deploy/ansible/inventory/production.yml "deploy/ansible/$OPERATION.yml" -e @deploy-inputs.json
       - name: Deployment summary and private input cleanup
         if: always()

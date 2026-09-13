@@ -4,15 +4,15 @@ import argparse
 import subprocess
 import tarfile
 from pathlib import Path
+from typing import assert_never
 
-from scripts.beta_backup.backup import BetaBackup
 from scripts.beta_backup.commands import BackupCommand
-from scripts.beta_backup.database import ComposeDatabase
+from scripts.beta_backup.download import RecoveryDownload
 from scripts.beta_backup.remote import RemoteBackups
 from scripts.beta_backup.restore import BetaRestore
+from scripts.beta_backup.workflow import BackupWorkflow
 from scripts.beta_release import BetaRelease
 from scripts.compose_project import DEFAULT_COMPOSE_PROJECT
-from scripts.deployment.bundle import verify
 
 
 def main() -> None:
@@ -30,7 +30,7 @@ def main() -> None:
     check.add_argument("--directory", type=Path, required=True)
     check.add_argument("--config", type=Path, required=True)
     check.add_argument("--remote", required=True)
-    download = commands.add_parser("download")
+    download = commands.add_parser(BackupCommand.DOWNLOAD)
     download.add_argument("archive")
     download.add_argument("--directory", type=Path, required=True)
     download.add_argument("--config", type=Path, required=True)
@@ -41,17 +41,12 @@ def main() -> None:
     restore.add_argument("--identity", type=Path, required=True)
     restore.add_argument("--scratch-directory", type=Path, required=True)
     args = parser.parse_args()
-    command = args.command
+    command = BackupCommand(args.command)
     try:
-        if command == "download":
-            archive, bundle = RemoteBackups(
-                args.config, args.remote, args.directory
-            ).download(args.archive, args.directory)
-            verify(bundle)
-            destination = args.directory / "release"
-            destination.mkdir(mode=0o700)
-            with tarfile.open(bundle) as source:
-                source.extractall(destination, filter="data")
+        if command == BackupCommand.DOWNLOAD:
+            archive, destination = RecoveryDownload(
+                RemoteBackups(args.config, args.remote, args.directory)
+            ).prepare(args.archive, args.directory)
             print(
                 f"Verified {archive.name}; matching source prepared in {destination}. Supply isolated runtime secrets before restore."
             )
@@ -59,24 +54,22 @@ def main() -> None:
             RemoteBackups(args.config, args.remote, args.directory).require_recent()
             print("Backup recovery-point target is satisfied.")
         elif command == BackupCommand.CREATE:
-            archive = BetaBackup(
-                ComposeDatabase(
-                    BetaRelease.from_manifest(args.manifest, args.project).compose
-                ),
-                args.directory,
+            archive = BackupWorkflow(
+                BetaRelease.from_manifest(args.manifest, args.project),
+                RemoteBackups(args.config, args.remote, args.directory),
                 args.recipients,
-            ).create()
-            RemoteBackups(args.config, args.remote, args.directory).upload(
-                archive, args.bundle
-            )
+                args.directory,
+            ).create(args.bundle)
             print(f"Off-server backup verified: {archive.name}")
-        else:
+        elif command is BackupCommand.RESTORE:
             project, elapsed_seconds = BetaRestore(
                 args.manifest, args.archive, args.identity, args.scratch_directory
             ).restore()
             print(
                 f"Restore quarantined in {project}; elapsed {elapsed_seconds:.1f} seconds. No application processes started."
             )
+        else:
+            assert_never(command)
     except (
         OSError,
         ValueError,

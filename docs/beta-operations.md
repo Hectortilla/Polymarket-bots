@@ -127,3 +127,13 @@ before allowing new work. Resumption is an explicit operator command.
 
 The final public-opening checklist and contact prerequisites are in
 [beta launch](beta-launch.md); completing these procedures does not itself open signup.
+
+Host alert suppression records the accepted failure set after SMTP succeeds and
+serializes concurrent send attempts. Failed delivery retries on the next check.
+SMTP provides at-least-once delivery here: a process or connection failure after
+the relay accepts mail but before local state is saved can produce a duplicate.
+A skipped systemd condition is allowed only before any release is staged. After
+staging, a missing `current` link or Python environment fails the service visibly;
+monitoring also checks the backup, backup-check and monitor service units.
+
+The rendered timer calendars come from `scripts/host_operations/policy.py`: backup freshness uses `hourly`, and monitoring uses `*:0/5`. Activation polling exceeds the systemd activation timeout so a valid long-running activation is not mistaken for a failed deployment.

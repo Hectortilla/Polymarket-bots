@@ -139,6 +139,16 @@ def test_backup_cli_dispatch(monkeypatch, command):
             "--remote",
             "backup:/polybot",
         ]
+    elif command is BackupCommand.DOWNLOAD:
+        arguments += [
+            "archive",
+            "--directory",
+            "backup-directory",
+            "--config",
+            "rclone.conf",
+            "--remote",
+            "backup:/polybot",
+        ]
     else:
         arguments += [
             "manifest",
@@ -151,20 +161,23 @@ def test_backup_cli_dispatch(monkeypatch, command):
     monkeypatch.setattr("sys.argv", arguments)
     with (
         patch.object(backup_cli, "BetaRelease"),
-        patch.object(backup_cli, "ComposeDatabase"),
-        patch.object(backup_cli, "BetaBackup") as backup,
+        patch.object(backup_cli, "BackupWorkflow") as backup,
+        patch.object(backup_cli, "RecoveryDownload") as download,
         patch.object(backup_cli, "RemoteBackups") as archives,
         patch.object(backup_cli, "BetaRestore") as restore,
     ):
         backup.return_value.create.return_value = Path("archive")
+        download.return_value.prepare.return_value = (Path("archive"), Path("release"))
         restore.return_value.restore.return_value = ("isolated", 1.0)
         backup_cli.main()
         if command is BackupCommand.CREATE:
             backup.return_value.create.assert_called_once()
-            archives.return_value.upload.assert_called_once_with(
-                Path("archive"), Path("release.tar.gz")
-            )
+            backup.return_value.create.assert_called_once_with(Path("release.tar.gz"))
         elif command is BackupCommand.CHECK:
             archives.return_value.require_recent.assert_called_once()
+        elif command is BackupCommand.DOWNLOAD:
+            download.return_value.prepare.assert_called_once_with(
+                "archive", Path("backup-directory")
+            )
         else:
             restore.return_value.restore.assert_called_once()

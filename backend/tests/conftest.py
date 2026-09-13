@@ -41,7 +41,7 @@ class DummyBroker(Broker):
             requested_size=order.size,
             filled_size=order.size,
             average_price=order.price,
-            fee_usdc=Decimal("0"),
+            fee_usdc=Decimal(0),
             received_at_ms=0,
         )
 
@@ -87,3 +87,6 @@ def dummy_context() -> BotContext:
         wallet_activity=DummyWalletActivity(),
         positions=DummyPositions(),
     )
+
+
+pytest_plugins = ["control_plane.beta_host_fixture"]

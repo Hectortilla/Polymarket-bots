@@ -1113,6 +1113,23 @@ readback verification, including the retained non-secret release bundle.
 See [deployment](beta-deployment.md), [operations](beta-operations.md) and
 [data lifecycle](beta-data-lifecycle.md) for setup inputs and acceptance boundaries.
 
+Deployment tooling uses explicit adapter and persistence boundaries:
+`deployment.bundle.ReleaseBundle` shares metadata, checksums and image provenance
+between archives and installed directories; `InstalledBundle` restricts host
+candidates to the host's bundle store. `DeploymentActivator` selects typed
+active/pending inputs, while `DeploymentState` validates the full promotion
+candidate before replacing Compose, the runtime manifest and `current`. Its
+journal remains until all three changes are durable.
+
+`beta_backup.remote` separates SFTP configuration, rclone transport and recovery
+inventory from verified transfers. The host backup command and backup CLI use
+`BackupWorkflow`; uploads verify release provenance before remote writes, and
+failed recovery downloads clean their owned files. `host_operations` separates
+configuration, probes and serialized SMTP alert persistence. The controller
+exports deployment-owner contracts to Ansible; rendered and static parity tests
+cover Compose/Caddy, secrets, runtime keys, operations, ports and tool versions.
+
+
 ## Full-repository maintainability follow-up (2026-09-11)
 
 `AsyncRecordingWriter` keeps its public submission and sequence API at the
