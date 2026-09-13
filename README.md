@@ -200,7 +200,10 @@ Open signup remains gated on acceptance and configured operator/support ownershi
 Marketplace work is deferred.
 
 Private HTTPS deployment work and the repeatable release procedure are documented
-in [the deployment runbook](docs/beta-deployment.md). Run its disposable Compose
+in [the deployment runbook](docs/beta-deployment.md). For laptop builds pushed to
+GHCR and an existing Debian Docker host, use its
+[publish, setup and start commands](docs/beta-deployment.md#laptop-to-server-automation).
+Run its disposable Compose
 acceptance from the root with
 `PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke`.
 It builds isolated images/volumes, uses local TLS, and removes only its own test

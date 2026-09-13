@@ -6,7 +6,8 @@ from api.deployment.services import POSTGRES_SERVICE, REDIS_SERVICE, DeploymentS
 from api.lifecycle.commands import LIFECYCLE_MODULE, DataCommand
 
 from scripts.beta_backup.policy import BACKUP_PROCESS_TIMEOUT_SECONDS
-from scripts.compose_project import REPOSITORY, ComposeProject
+from scripts.compose_project import ComposeProject
+from scripts.deployment.paths import REPOSITORY
 
 
 class RestoreDestination:

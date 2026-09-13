@@ -5,22 +5,28 @@ from unittest.mock import Mock
 
 import pytest
 from api.auth.config import AUTH_ALLOW_HTTP_ENV, AUTH_ORIGIN_ENV
+from api.auth.mail.config import SMTP_FROM_ENV, SMTP_HOST_ENV
 from api.database import DATABASE_URL_ENV
 from api.deployment.__main__ import main as deployment_main
+from api.deployment.release import RELEASE_ID_ENV
 from api.deployment.secrets import configured_secret
-from api.deployment.services import DeploymentService
+from api.deployment.services import APPLICATION_SERVICES, DeploymentService
 from api.deployment.settings import (
     DEFAULT_HEARTBEAT_SECONDS,
     ENVIRONMENT_ENV,
     PROXY_ADDRESS_ENV,
-    RELEASE_ID_ENV,
     Environment,
     StartupSettings,
 )
 from api.execution.config import REDIS_URL_ENV
 from pydantic import ValidationError
 
-from scripts.beta_release import APPLICATION_SERVICES, IMAGE_VARIABLES, BetaRelease
+from scripts.beta_release import BetaRelease
+from scripts.deployment.images import IMAGE_FIELDS
+from scripts.deployment.manifest import (
+    DEFAULT_AUTH_ORIGIN,
+    SECRETS_DIRECTORY_ENV,
+)
 
 
 def production_environment(monkeypatch, tmp_path):
@@ -35,7 +41,7 @@ def production_environment(monkeypatch, tmp_path):
     monkeypatch.setenv(ENVIRONMENT_ENV, Environment.PRODUCTION)
     monkeypatch.setenv(RELEASE_ID_ENV, "a" * 40)
     monkeypatch.setenv(PROXY_ADDRESS_ENV, "172.30.16.2")
-    monkeypatch.setenv(AUTH_ORIGIN_ENV, "https://localhost:8443")
+    monkeypatch.setenv(AUTH_ORIGIN_ENV, DEFAULT_AUTH_ORIGIN)
     monkeypatch.setenv(AUTH_ALLOW_HTTP_ENV, "false")
 
 
@@ -101,12 +107,14 @@ def test_startup_reports_the_invalid_setting_without_credentials(monkeypatch, tm
 
 def release_manifest(tmp_path: Path) -> Path:
     manifest = tmp_path / "release.env"
-    values = {name: "sha256:" + "a" * 64 for name in IMAGE_VARIABLES}
+    values = {name: "sha256:" + "a" * 64 for name in IMAGE_FIELDS}
     values.update(
         {
             RELEASE_ID_ENV: "a" * 40,
-            AUTH_ORIGIN_ENV: "https://localhost:8443",
-            "POLYBOT_SECRETS_DIR": str(tmp_path),
+            SMTP_HOST_ENV: "smtp.example.com",
+            SMTP_FROM_ENV: "accounts@example.com",
+            AUTH_ORIGIN_ENV: DEFAULT_AUTH_ORIGIN,
+            SECRETS_DIRECTORY_ENV: str(tmp_path),
         }
     )
     manifest.write_text("\n".join(f"{key}={value}" for key, value in values.items()))
@@ -116,7 +124,7 @@ def release_manifest(tmp_path: Path) -> Path:
 def test_failed_migration_never_activates_release_and_rollback_only_checks_schema(
     tmp_path,
 ):
-    release = BetaRelease(release_manifest(tmp_path), "polybot-test")
+    release = BetaRelease.from_manifest(release_manifest(tmp_path), "polybot-test")
     release.compose.run = Mock(
         side_effect=[None, None, None, None, RuntimeError("migration failed")]
     )
@@ -150,11 +158,11 @@ def test_mutable_images_cannot_enter_release(tmp_path):
     path = release_manifest(tmp_path)
     path.write_text(path.read_text().replace("sha256:" + "a" * 64, "latest", 1))
     with pytest.raises(ValueError, match="digest"):
-        BetaRelease(path, "polybot-test")
+        BetaRelease.from_manifest(path, "polybot-test")
 
 
 def test_rollback_schema_check_failure_never_activates_applications(tmp_path):
-    release = BetaRelease(release_manifest(tmp_path), "polybot-test")
+    release = BetaRelease.from_manifest(release_manifest(tmp_path), "polybot-test")
     release.compose.run = Mock(
         side_effect=[None, None, None, None, RuntimeError("incompatible")]
     )

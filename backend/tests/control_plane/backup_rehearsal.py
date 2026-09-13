@@ -16,14 +16,11 @@ from api.runs.status import TERMINAL_RUN_STATUSES
 from control_plane.deployment_smoke import DeploymentSmoke
 from scripts.beta_backup.archives import BackupArchives
 from scripts.beta_backup.backup import BetaBackup
-from scripts.beta_backup.database import (
-    POSTGRES_DATABASE,
-    POSTGRES_USER,
-    ComposeDatabase,
-)
+from scripts.beta_backup.database import ComposeDatabase
 from scripts.beta_backup.policy import AGE_BINARY
 from scripts.beta_backup.restore import BetaRestore
 from scripts.beta_release import BetaRelease
+from scripts.deployment.storage import POSTGRES_DATABASE, POSTGRES_USER
 
 
 class BackupRehearsal:
@@ -35,7 +32,7 @@ class BackupRehearsal:
         host = self.deployment
         try:
             host.prepare()
-            release = BetaRelease(host.manifest, host.project)
+            release = BetaRelease.from_manifest(host.manifest, host.project)
             release.activate(rollback=False)
             host.install_runtime_fixture()
             host.exercise_runs()
@@ -62,7 +59,7 @@ class BackupRehearsal:
             BackupArchives(directory).require_recent()
             self.reject_invalid_database_dump(recipients, identity)
             restore = BetaRestore(host.manifest, archive, identity, host.directory)
-            self.restored = BetaRelease(host.manifest, restore.project)
+            self.restored = BetaRelease.from_manifest(host.manifest, restore.project)
             project, seconds = restore.restore()
             restored_database = ComposeDatabase(self.restored)
             assert self.inventory(restored_database) == expected
@@ -140,7 +137,9 @@ class BackupRehearsal:
             identity,
             self.deployment.directory,
         )
-        failed_release = BetaRelease(self.deployment.manifest, restore.project)
+        failed_release = BetaRelease.from_manifest(
+            self.deployment.manifest, restore.project
+        )
         try:
             try:
                 restore.restore()

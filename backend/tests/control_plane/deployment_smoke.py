@@ -15,6 +15,7 @@ from api.auth.policy import LOGIN_PATH, LOGOUT_PATH, REGISTER_PATH
 from api.auth.recovery.policy import VERIFY_COMPLETE_PATH, VERIFY_REQUEST_PATH
 from api.catalog.definitions import NODE_BASED_DEFINITION_ID
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
+from api.deployment.release import RELEASE_ID_ENV
 from api.deployment.services import (
     APPLICATION_SERVICES,
     ENTRYPOINT_SERVICE,
@@ -22,7 +23,6 @@ from api.deployment.services import (
     REDIS_SERVICE,
     DeploymentService,
 )
-from api.deployment.settings import RELEASE_ID_ENV
 from api.execution.policy import WORKER_STOP_GRACE_SECONDS
 from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.http.routes.events import LAST_EVENT_ID_HEADER
@@ -48,10 +48,24 @@ from control_plane.account_mail_fixture import (
     MAILBOX_PATH,
 )
 from control_plane.browser_limits_fixture import CLEAR_LIMITS_PATH
+from scripts.beta_publish import DEFAULT_POSTGRES_IMAGE, DEFAULT_REDIS_IMAGE
 from scripts.beta_release import BetaRelease
-from scripts.compose_project import COMPOSE_FILE, REPOSITORY
+from scripts.deployment.images import ImageField
+from scripts.deployment.manifest import (
+    DEFAULT_AUTH_ORIGIN,
+    DEFAULT_HTTPS_PORT,
+    HTTPS_PORT_ENV,
+    SECRETS_DIRECTORY_ENV,
+)
+from scripts.deployment.paths import (
+    COMPOSE_FILE,
+    REPOSITORY,
+    SECRETS_DIRECTORY_NAME,
+    SOURCE_DEPLOY_DIRECTORY,
+)
+from scripts.deployment.storage import SecretFile, database_url, redis_url
 
-STAGING_ORIGIN = "https://localhost:8443"
+STAGING_ORIGIN = DEFAULT_AUTH_ORIGIN
 TEST_PASSWORD = "disposable staging password 123"
 
 
@@ -68,7 +82,7 @@ class DeploymentSmoke:
     def run(self) -> None:
         try:
             self.prepare()
-            release = BetaRelease(self.manifest, self.project)
+            release = BetaRelease.from_manifest(self.manifest, self.project)
             release.activate(rollback=False)
             self.require_health()
             release.activate(rollback=True)
@@ -101,16 +115,16 @@ class DeploymentSmoke:
                 self.compose("down", "--volumes", "--remove-orphans")
 
     def prepare(self) -> None:
-        directory = self.directory / "secrets"
+        directory = self.directory / SECRETS_DIRECTORY_NAME
         directory.mkdir(mode=0o700)
         password = secrets.token_urlsafe(32)
         self.sensitive_values.add(password)
         for name, value in {
-            "postgres_password": password,
-            "database_url": f"postgresql://polybot:{password}@{POSTGRES_SERVICE}:5432/polybot",
-            "redis_url": f"redis://{REDIS_SERVICE}:6379/0",
-            "smtp_username": "acceptance-user",
-            "smtp_password": "acceptance-password",
+            SecretFile.POSTGRES_PASSWORD: password,
+            SecretFile.DATABASE_URL: database_url(password),
+            SecretFile.REDIS_URL: redis_url(),
+            SecretFile.SMTP_USERNAME: "acceptance-user",
+            SecretFile.SMTP_PASSWORD: "acceptance-password",
         }.items():
             (directory / name).write_text(value)
             (directory / name).chmod(0o644)
@@ -122,9 +136,9 @@ class DeploymentSmoke:
             "rsa:2048",
             "-nodes",
             "-keyout",
-            str(directory / "tls_key"),
+            str(directory / SecretFile.TLS_KEY),
             "-out",
-            str(directory / "tls_cert"),
+            str(directory / SecretFile.TLS_CERT),
             "-days",
             "2",
             "-subj",
@@ -137,12 +151,12 @@ class DeploymentSmoke:
                 "docker",
                 "build",
                 "-f",
-                f"deploy/{surface}.Dockerfile",
+                str(SOURCE_DEPLOY_DIRECTORY / f"{surface}.Dockerfile"),
                 "-t",
                 f"{self.project}-{surface}",
                 ".",
             )
-        for tag in ("postgres:17", "redis:7-alpine"):
+        for tag in (DEFAULT_POSTGRES_IMAGE, DEFAULT_REDIS_IMAGE):
             self.command("docker", "pull", tag)
         self.values = {
             RELEASE_ID_ENV: subprocess.check_output(
@@ -151,25 +165,23 @@ class DeploymentSmoke:
             AUTH_ORIGIN_ENV: STAGING_ORIGIN,
             SMTP_HOST_ENV: "smtp.invalid",
             SMTP_FROM_ENV: "accounts@example.com",
-            "POLYBOT_HTTPS_PORT": "8443",
-            "POLYBOT_SECRETS_DIR": str(directory),
+            HTTPS_PORT_ENV: str(DEFAULT_HTTPS_PORT),
+            SECRETS_DIRECTORY_ENV: str(directory),
         }
         for surface, tag in {
-            "BACKEND": f"{self.project}-backend",
-            "FRONTEND": f"{self.project}-frontend",
-            "POSTGRES": "postgres:17",
-            "REDIS": "redis:7-alpine",
+            ImageField.BACKEND: f"{self.project}-backend",
+            ImageField.FRONTEND: f"{self.project}-frontend",
+            ImageField.POSTGRES: DEFAULT_POSTGRES_IMAGE,
+            ImageField.REDIS: DEFAULT_REDIS_IMAGE,
         }.items():
-            self.values[f"POLYBOT_{surface}_IMAGE"] = self.image_id(tag)
+            self.values[surface] = self.image_id(tag)
         self.write_manifest()
 
     def failed_migration_stays_closed(self, release: BetaRelease) -> None:
-        path = Path(self.values["POLYBOT_SECRETS_DIR"]) / "database_url"
+        path = Path(self.values[SECRETS_DIRECTORY_ENV]) / SecretFile.DATABASE_URL
         original = path.read_text()
         try:
-            path.write_text(
-                f"postgresql://polybot:invalid@{POSTGRES_SERVICE}:5432/polybot"
-            )
+            path.write_text(database_url("invalid"))
             try:
                 release.activate(rollback=False)
             except subprocess.CalledProcessError:
@@ -194,12 +206,12 @@ class DeploymentSmoke:
             "--build-arg",
             f"BACKEND_IMAGE={self.project}-backend",
             "-f",
-            "deploy/acceptance.Dockerfile",
+            str(SOURCE_DEPLOY_DIRECTORY / "acceptance.Dockerfile"),
             "-t",
             tag,
             ".",
         )
-        self.values["POLYBOT_BACKEND_IMAGE"] = self.image_id(tag)
+        self.values[ImageField.BACKEND] = self.image_id(tag)
         self.write_manifest()
         self.compose(
             "up", "-d", "--no-deps", "--wait", *APPLICATION_SERVICES[1:], fixture=True
@@ -403,7 +415,7 @@ class DeploymentSmoke:
         self.wait_for(healthy)
 
     def client(self):
-        certificate = Path(self.values["POLYBOT_SECRETS_DIR"]) / "tls_cert"
+        certificate = Path(self.values[SECRETS_DIRECTORY_ENV]) / SecretFile.TLS_CERT
         return httpx.Client(
             base_url=STAGING_ORIGIN,
             verify=ssl.create_default_context(cafile=str(certificate)),
@@ -424,7 +436,12 @@ class DeploymentSmoke:
         ]
         if fixture:
             command.extend(
-                ["-f", str(REPOSITORY / "deploy" / "acceptance.compose.yaml")]
+                [
+                    "-f",
+                    str(
+                        REPOSITORY / SOURCE_DEPLOY_DIRECTORY / "acceptance.compose.yaml"
+                    ),
+                ]
             )
         return self.command(*command, *arguments)
 

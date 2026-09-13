@@ -5,10 +5,9 @@ import subprocess
 from api.deployment.services import POSTGRES_SERVICE
 
 from scripts.beta_backup.policy import BACKUP_PROCESS_TIMEOUT_SECONDS
-from scripts.compose_project import REPOSITORY, ComposeProject
-
-POSTGRES_USER = "polybot"
-POSTGRES_DATABASE = "polybot"
+from scripts.compose_project import ComposeProject
+from scripts.deployment.paths import REPOSITORY
+from scripts.deployment.storage import POSTGRES_DATABASE, POSTGRES_USER
 
 
 class ComposeDatabase:

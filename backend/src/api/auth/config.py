@@ -34,6 +34,11 @@ class AuthSettings:
     def secure_cookie(self) -> bool:
         return urlsplit(self.origin).scheme == OriginScheme.HTTPS
 
+    @property
+    def port(self) -> int:
+        parsed = urlsplit(self.origin)
+        return parsed.port or DEFAULT_ORIGIN_PORTS[OriginScheme(parsed.scheme)]
+
     @classmethod
     def for_app(cls, app: "Starlette") -> "AuthSettings":
         if not hasattr(app.state, "auth_settings"):

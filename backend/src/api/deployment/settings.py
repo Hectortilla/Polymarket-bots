@@ -1,7 +1,6 @@
 """Validated process configuration; credentials are excluded from representations."""
 
 import os
-import re
 from enum import StrEnum
 from ipaddress import ip_address
 from pathlib import Path
@@ -18,6 +17,7 @@ from pydantic import (
 
 from api.auth.config import AuthSettings
 from api.database import DATABASE_URL_ENV, configured_database_url
+from api.deployment.release import RELEASE_ID_ENV, validate_release_id
 from api.execution.config import REDIS_URL_ENV, configured_redis_url
 from api.limits.policy import PAPER_BETA
 from api.operations.storage_policy import DEFAULT_STORAGE_PROBE_PATH
@@ -30,8 +30,6 @@ class Environment(StrEnum):
 
 
 ENVIRONMENT_ENV = "POLYBOT_ENVIRONMENT"
-RELEASE_ID_ENV = "POLYBOT_RELEASE_ID"
-RELEASE_ID_PATTERN = r"[a-f0-9]{40,64}"
 WORKER_CONCURRENCY_ENV = "POLYBOT_WORKER_CONCURRENCY"
 HEARTBEAT_SECONDS_ENV = "POLYBOT_HEARTBEAT_SECONDS"
 LEASE_SECONDS_ENV = "POLYBOT_LEASE_SECONDS"
@@ -79,8 +77,7 @@ class StartupSettings(BaseModel):
         if self.environment is Environment.PRODUCTION:
             if self.seed_development_account:
                 raise ValueError("production forbids development account seeding")
-            if re.fullmatch(RELEASE_ID_PATTERN, self.release_id) is None:
-                raise ValueError("production requires an immutable release identifier")
+            validate_release_id(self.release_id)
             if self.proxy_address is None:
                 raise ValueError(
                     "production requires one explicit trusted proxy address"

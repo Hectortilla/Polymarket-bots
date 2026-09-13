@@ -35,7 +35,7 @@ def main() -> None:
             print("Backup recovery-point target is satisfied.")
         elif command is BackupCommand.CREATE:
             archive = BetaBackup(
-                ComposeDatabase(BetaRelease(args.manifest, args.project).compose),
+                ComposeDatabase(BetaRelease.from_manifest(args.manifest, args.project).compose),
                 args.directory,
                 args.recipients,
             ).create()

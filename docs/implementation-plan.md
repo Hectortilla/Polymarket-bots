@@ -1917,6 +1917,36 @@ passed. No Polymarket protocol, transport or SDK boundary changed, so no new
 PolymarketDocs check was required. At the end of Slice 16, Slices 17–23 remained planned work and open signup
 stayed gated; subsequent delivery is recorded in each slice below.
 
+September 13 operator automation follow-up: `scripts.beta_publish` builds a clean
+commit snapshot on the main laptop, pushes the two application images to GHCR
+for an explicit Linux architecture, and records pullable registry digests.
+`scripts.beta_setup` prepares the host's private app directory, copies the
+release commit's Compose file and provisions runtime secrets without overwriting
+an installation. `scripts.beta_start` authenticates, pulls before shutdown and
+reuses `BetaRelease` for migration/readiness and schema-compatible rollback.
+It retains attempt inputs, serializes starts in the same app directory, and
+preserves host settings and infrastructure digests on application updates.
+The existing manual release command now also accepts an installed Compose file.
+
+The deployment review follow-up separates typed image/runtime manifests, Git
+source snapshots, Buildx metadata parsing, private file IO and deployment state
+into focused owners. Host startup validates SMTP settings before Docker work
+and uses a durable attempt journal to recover interrupted activation or partial
+installed-file promotion. The runbook documents candidate replay and explicit
+replacement. Regression tests cover recovery, local Docker rejection,
+publication failures, committed Compose provenance and rendered Compose parity.
+
+Verification: 106 focused deployment/host-automation/backup/contract/auth/mail tests
+passed; 13 database-dependent auth tests were skipped.
+Docker Compose rendered the generated seven-service configuration and resolved
+all runtime secret files with loopback ingress and paper-only settings. The
+automation tests mock registry/daemon mutations; no images were pushed and no
+server deployment was performed. Final documentation-drift audit: README, the
+deployment runbook and this plan now cover the commands and their prerequisites.
+The architecture's existing topology, externally supplied TLS, public-opening
+gate, application contracts and Polymarket adapters remain unchanged. No new
+PolymarketDocs verification was required for this operator tooling.
+
 ## Slice 17: Per-User Resource Limits
 
 Status: implemented; depends on Slice 15 and the capacity settings from Slice 16.

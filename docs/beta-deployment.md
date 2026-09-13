@@ -92,6 +92,177 @@ Stop with `docker compose --env-file MANIFEST -f deploy/compose.yaml stop`.
 Keep volumes and immutable images. Never use `down --volumes` against retained
 data. Database/schema preservation applies to existing Slice 15 accounts too.
 
+## Laptop-to-server automation
+
+Three commands automate the existing private release workflow. Run them from a
+checkout of this repository on each machine, with Git, uv and Python 3.12+;
+`uv sync --locked --no-dev` installs the command dependencies. The main laptop
+needs Docker with Buildx and a builder capable of the target Linux architecture.
+The Debian host needs Docker Engine and Compose v2 accessible to your normal
+user. Its active Docker context must use a local Unix socket, with `DOCKER_HOST`
+and `DOCKER_CONTEXT` unset. No image compilation runs on the Debian host.
+
+Use a GitHub personal access token (classic) with `write:packages` for publishing,
+and a separate token with `read:packages` and access to those packages for the
+server. Organization packages may require SSO authorization. Both commands prompt
+without echo; an already-exported `GITHUB_TOKEN` is also accepted and removed
+from the subprocess environment before subsequent commands. Login uses
+`--password-stdin`. Docker manages stored registry credentials through its
+configured credential store. See [GitHub's GHCR authentication instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+**1. Build and push on the main laptop.** Commit the changes being released first.
+The command refuses a dirty worktree and builds a temporary `git archive` of the
+commit, excluding ignored local files such as credentials and dependencies.
+
+```sh
+uv run python -m scripts.beta_publish \
+  --namespace YOUR_GITHUB_USER_OR_ORG \
+  --username YOUR_GITHUB_USER \
+  --platform linux/amd64 \
+  --output "$HOME/polybot-release-1.env"
+
+scp "$HOME/polybot-release-1.env" SERVER_USER@SERVER_HOST:~/
+```
+
+Use a lowercase namespace. The default platform is `linux/amd64` for an Intel/AMD
+Debian laptop, even when building on an Apple Silicon Mac. Use `linux/arm64` for
+an ARM server. Images are pushed as `ghcr.io/NAMESPACE/polybot-backend:COMMIT`
+and `ghcr.io/NAMESPACE/polybot-frontend:COMMIT`. The output records their registry
+digests, the source commit, and the resolved PostgreSQL/Redis digests. Defaults
+are the rehearsal's `postgres:17` and `redis:7-alpine`; `--postgres-image` and
+`--redis-image` accept explicit references. The script never replaces an existing
+output manifest. If a build fails after the other image was pushed, rerun with a
+fresh output path; only a fully successful run produces a manifest.
+Buildx supplies the pushed digest via its
+[build metadata file](https://docs.docker.com/reference/cli/docker/buildx/build/#write-build-result-metadata-to-a-file---metadata-file).
+
+**2. Prepare the Debian host once.** Clone/fetch this repository on the host so
+the published source commit is available locally. Run from that checkout.
+Provide a certificate valid for your chosen origin and its matching unencrypted private key,
+plus your existing SMTP relay settings:
+
+```sh
+uv run python -m scripts.beta_setup \
+  --release "$HOME/polybot-release-1.env" \
+  --origin https://localhost:8443 \
+  --tls-cert /absolute/path/cert.pem \
+  --tls-key /absolute/path/key.pem \
+  --smtp-host smtp.example.com \
+  --smtp-from accounts@example.com
+```
+
+The script prompts for SMTP username/password, generates a random database
+password and matching database URL, and prepares:
+
+```text
+~/app/                      mode 700
+  .env                      mode 600; image/origin/SMTP settings, secret directory
+  docker-compose.yml        exact deploy/compose.yaml from the release commit
+  secrets/                  mode 700
+    database_url, postgres_password, redis_url
+    smtp_username, smtp_password, tls_cert, tls_key
+```
+
+Credentials stay in runtime secret files, following the existing Compose
+contract. Individual secrets are mode `444` inside the private directory so
+bind mounts are readable by backend UID 10001 without granting other host users
+directory traversal. Keep both parent directories private. This uses
+[Compose file secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
+TLS inputs must be regular files, not symlinks. Setup captures their contents
+and checks that the TLS key matches the certificate; hostname validity and
+client trust remain part of the HTTPS rehearsal. Certificate acquisition and
+renewal remain operator responsibilities. `--smtp-port 465 --smtp-security tls`
+selects implicit TLS; defaults are port 587 and STARTTLS. Setup refuses a nonempty
+destination and never rotates existing credentials. `--app-dir` selects another
+directory outside the repository; use the same option on startup.
+
+**3. Pull, migrate, start and watch logs on the Debian host.**
+
+```sh
+uv run python -m scripts.beta_start --username YOUR_GITHUB_USER
+```
+
+This logs in, pulls all pinned images before interrupting any services, and
+calls the same `BetaRelease` sequence used by `scripts.beta_release`. It preserves
+the PostgreSQL/Redis containers and volumes, closes ingress, stops applications,
+runs the migration, starts applications and waits for readiness before reopening
+private ingress. A failed migration leaves ingress closed. Logs follow with the
+last 100 lines; Ctrl-C during log following leaves containers running. Use
+`--no-logs` for a command that returns after activation. Re-running startup
+performs another release cycle and interrupts paper runs.
+
+The host stores each attempt's candidate and previous configuration under
+`~/app/releases/`. On success it updates `~/app/.env` and `docker-compose.yml`.
+A private `~/app/.deployment.json` journal records the candidate and rollback
+mode before activation. If activation is interrupted, rerun the same startup
+command without `--release`: it resumes that retained candidate and mode. If
+successful activation was durably recorded but either installed file update
+failed, startup finishes both file updates without another activation. Until recovery completes, the
+installed `.env` and Compose file may describe different releases; use
+`beta_start` to recover before running manual Compose commands. Do not delete
+or edit the journal to bypass recovery. If activation finished just before its
+completion record failed, its outcome is uncertain and startup repeats the same
+candidate release cycle. It never infers success from an incomplete record.
+
+To replace a failed activation with a forward repair or same-schema rollback,
+pass an explicit `--release` manifest (and `--rollback` for a rollback). This
+preserves host settings from the pending attempt and starts a new attempt;
+previous attempt files remain available for inspection. If completion was
+already recorded, startup first finishes its installed file updates. A normal
+start with no pending journal still performs a fresh release cycle.
+These files are release inputs, not database backups. Use the [backup runbook](beta-data-lifecycle.md) for data.
+The Compose file is managed from the release commit; make topology changes in
+the repository, not in the installed copy. All commands use the existing
+`polybot` project, so use one installation per Docker host and do not run the
+manual release tool concurrently. Automated starts in the same app directory
+are protected by a deployment lock.
+
+For subsequent releases, keep the original infrastructure digests by supplying
+their exact values from the previous manifest to the publisher's
+`--postgres-image` and `--redis-image` options. Copy the new manifest, fetch the
+new source commit on the server, then run:
+
+```sh
+uv run python -m scripts.beta_start \
+  --username YOUR_GITHUB_USER --release "$HOME/polybot-release-2.env"
+```
+
+Startup validates the complete runtime manifest, including SMTP settings, before
+Docker operations. Image repository syntax follows
+[Docker Distribution references](https://github.com/distribution/reference/blob/main/regexp.go).
+Manifests must be regular files; the installed `.env` must
+have mode `600`. Startup preserves the host's settings/secrets and refuses
+infrastructure digest changes; those need the separate maintenance plan described above. For a
+same-schema rollback, pass the previous image manifest with `--rollback`.
+No schema downgrade runs. The lower-level release tool also accepts
+`--compose-file "$HOME/app/docker-compose.yml"` when working with installed files.
+
+For later log inspection without redeploying:
+
+```sh
+docker compose --project-name polybot --env-file "$HOME/app/.env" \
+  -f "$HOME/app/docker-compose.yml" logs --follow --tail 100
+```
+
+The actual frontend is a static Svelte build served by Caddy. These commands
+retain the existing TLS configuration, loopback-only ingress and paper-only
+execution. They do not add the pasted conversation's proposed Cloudflare Tunnel
+or change memory/process budgets. For the default private origin, access from
+the main laptop using `ssh -N -L 8443:127.0.0.1:8443 SERVER_USER@SERVER_HOST`, then
+open `https://localhost:8443` with the certificate trusted by that browser.
+Public opening still requires the existing beta acceptance gates.
+
+Test the automation without registry pushes or retained deployment changes:
+
+```sh
+uv run pytest backend/tests/control_plane/test_beta_host_deployment.py \
+  backend/tests/control_plane/test_deployment.py \
+  backend/tests/control_plane/test_beta_backups.py \
+  backend/tests/control_plane/test_reliability_deployment_contract.py \
+  backend/tests/control_plane/test_auth.py \
+  backend/tests/control_plane/test_account_mail.py
+```
+
 ## Capacity and acceptance
 
 The current durable dashboard cadence is at most one sample per active run per

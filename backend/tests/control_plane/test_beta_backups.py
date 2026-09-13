@@ -221,11 +221,10 @@ def test_backup_target_rejects_ambient_docker_overrides(monkeypatch, override):
         release.require_local_docker()
 
 
-def test_backup_target_rejects_remote_context_and_pins_local_socket(monkeypatch):
+def test_backup_target_rejects_remote_context_and_pins_local_socket(monkeypatch, tmp_path):
     monkeypatch.delenv(DOCKER_HOST_ENV, raising=False)
     monkeypatch.delenv(DOCKER_CONTEXT_ENV, raising=False)
-    release = object.__new__(ComposeProject)
-    release._docker_host = None
+    release = ComposeProject(tmp_path / "manifest", "isolated-backup-test")
     with patch(
         "scripts.compose_project.subprocess.check_output",
         return_value="ssh://unintended-host",
@@ -295,10 +294,7 @@ def test_verified_docker_endpoint_is_pinned_on_dump_and_restore_commands(
 ):
     monkeypatch.delenv(DOCKER_HOST_ENV, raising=False)
     monkeypatch.delenv(DOCKER_CONTEXT_ENV, raising=False)
-    release = object.__new__(ComposeProject)
-    release._docker_host = None
-    release.project = "isolated-backup-test"
-    release.manifest = tmp_path / "manifest"
+    release = ComposeProject(tmp_path / "manifest", "isolated-backup-test")
     socket = "unix:///fixture/docker.sock"
     with patch("scripts.compose_project.subprocess.check_output", return_value=socket):
         database = ComposeDatabase(release)

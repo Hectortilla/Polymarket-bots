@@ -33,6 +33,7 @@ SMTP_FROM_ENV = "POLYBOT_SMTP_FROM"
 SMTP_USERNAME_ENV = "POLYBOT_SMTP_USERNAME"
 SMTP_PASSWORD_ENV = "POLYBOT_SMTP_PASSWORD"
 SMTP_TIMEOUT_SECONDS = 5
+DEFAULT_SMTP_SECURITY = SmtpSecurity.STARTTLS
 
 
 class MailConfigurationError(Exception):
@@ -44,7 +45,7 @@ class SmtpSettings(BaseModel):
     host: str = Field(min_length=1, max_length=253)
     port: int = Field(ge=1, le=65535)
     sender: EmailAddress
-    security: SmtpSecurity = SmtpSecurity.STARTTLS
+    security: SmtpSecurity = DEFAULT_SMTP_SECURITY
     username: SecretStr | None = None
     password: SecretStr | None = None
     allow_local: bool = False
@@ -84,7 +85,7 @@ class SmtpSettings(BaseModel):
                 host=os.environ[SMTP_HOST_ENV],
                 port=os.environ[SMTP_PORT_ENV],
                 sender=os.environ[SMTP_FROM_ENV],
-                security=os.getenv(SMTP_SECURITY_ENV, SmtpSecurity.STARTTLS),
+                security=os.getenv(SMTP_SECURITY_ENV, DEFAULT_SMTP_SECURITY),
                 username=None if username is None else SecretStr(username),
                 password=None if password is None else SecretStr(password),
                 allow_local=auth.allow_http,

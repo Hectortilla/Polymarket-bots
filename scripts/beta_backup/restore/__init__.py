@@ -24,7 +24,7 @@ class BetaRestore:
 
     def restore(self) -> tuple[str, float]:
         started_at_monotonic = monotonic()
-        release = BetaRelease(self.manifest, self.project)
+        release = BetaRelease.from_manifest(self.manifest, self.project)
         database = ComposeDatabase(release.compose)
         destination = RestoreDestination(release.compose)
         with self._archive.open() as plaintext:
