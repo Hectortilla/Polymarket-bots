@@ -39,6 +39,8 @@ from scripts.deployment.units import (
     MONITOR_SERVICE_UNIT,
 )
 from scripts.host_operations.contracts import (
+    BACKUP_SERVICE_UNITS,
+    BACKUP_TIMER_UNITS,
     REQUIRED_ACTIVE_UNITS,
     REQUIRED_COMPLETED_UNITS,
     HostOperation,
@@ -125,6 +127,8 @@ class DeploymentContract(TypedDict):
     sftp_backend: str
     paths: HostPaths
     operations: HostOperationNames
+    backup_timers: list[str]
+    backup_services: list[str]
     timers: list[str]
     services: list[str]
 
@@ -180,6 +184,8 @@ def deployment_contract() -> DeploymentContract:
         "operations": {
             operation.name.lower(): operation.value for operation in HostOperation
         },
+        "backup_timers": list(BACKUP_TIMER_UNITS),
+        "backup_services": list(BACKUP_SERVICE_UNITS),
         "timers": [unit for unit in REQUIRED_ACTIVE_UNITS if unit.endswith(".timer")],
         "services": list(REQUIRED_COMPLETED_UNITS),
     }

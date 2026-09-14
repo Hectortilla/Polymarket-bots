@@ -15,6 +15,8 @@ from scripts.deployment.network import HEALTH_HTTP_STATUS
 from scripts.deployment.tailscale import PRIVATE_HTTPS_PORT, PrivateServe, TailnetStatus
 from scripts.host_operations.config import HostOperationsConfig
 from scripts.host_operations.contracts import (
+    BACKUP_SERVICE_UNITS,
+    BACKUP_TIMER_UNITS,
     REQUIRED_ACTIVE_UNITS,
     REQUIRED_COMPLETED_UNITS,
 )
@@ -32,6 +34,8 @@ class HostProbes:
     def services(self) -> None:
         # Check units separately: a multi-unit is-active succeeds when any one is active.
         for unit in REQUIRED_ACTIVE_UNITS:
+            if not self.config.backups_enabled and unit in BACKUP_TIMER_UNITS:
+                continue
             subprocess.run(
                 ["systemctl", "is-active", "--quiet", unit],
                 check=True,
@@ -56,7 +60,12 @@ class HostProbes:
         )
         serve.require_endpoint(self.config.origin, self.config.http_port)
 
-        for unit in REQUIRED_COMPLETED_UNITS:
+        completed_units = [
+            unit
+            for unit in REQUIRED_COMPLETED_UNITS
+            if self.config.backups_enabled or unit not in BACKUP_SERVICE_UNITS
+        ]
+        for unit in completed_units:
             subprocess.run(
                 ["systemctl", "cat", unit],
                 check=True,
@@ -68,7 +77,7 @@ class HostProbes:
                 "systemctl",
                 "is-failed",
                 "--quiet",
-                *REQUIRED_COMPLETED_UNITS,
+                *completed_units,
             ],
             check=False,
             timeout=HOST_COMMAND_TIMEOUT_SECONDS,

@@ -13,7 +13,7 @@
       no_log: true
     - name: Install distribution tools
       ansible.builtin.apt:
-        name: [ca-certificates, curl, python3, python3-debian, age, rclone, msmtp-mta, openssh-server]
+        name: "{{ ['ca-certificates', 'curl', 'python3', 'python3-debian', 'msmtp-mta', 'openssh-server'] + (['age', 'rclone'] if polybot_backups_enabled else []) }}"
         state: present
         update_cache: true
         cache_valid_time: 3600
@@ -109,7 +109,29 @@
         mode: '0444'
       loop: '{{ container_secrets_result.stdout | from_json }}'
       no_log: true
+    - name: Install operational systemd units
+      ansible.builtin.template:
+        src: '{{ item }}'
+        dest: '/etc/systemd/system/{{ item | basename | regex_replace(".j2$", "") }}'
+        mode: '0644'
+      with_fileglob: ['templates/polybot-*.j2']
+      register: unit_installation_result
+    - name: Stop and disable opted-out backup schedules
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: false
+        state: stopped
+        daemon_reload: '{{ unit_installation_result.changed }}'
+      loop: '{{ deployment_contract.backup_timers }}'
+      when: not polybot_backups_enabled
+    - name: Stop opted-out backup services before updating configuration
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+      loop: '{{ deployment_contract.backup_services }}'
+      when: not polybot_backups_enabled
     - name: Install private backup inputs
+      when: polybot_backups_enabled
       ansible.builtin.copy:
         content: '{{ item.content }}'
         dest: '{{ polybot_root }}/{{ deployment_contract.paths.secrets }}/{{ item.name }}'
@@ -130,12 +152,20 @@
         mode: '0600'
       loop:
         - {src: runtime.env.j2, dest: '{{ deployment_contract.paths.runtime }}'}
-        - {src: rclone.conf.j2, dest: '{{ deployment_contract.paths.secrets }}/{{ deployment_contract.transport_files.rclone_config }}'}
         - {src: msmtprc.j2, dest: '{{ deployment_contract.paths.secrets }}/{{ deployment_contract.transport_files.smtp_config }}'}
+      no_log: true
+    - name: Install backup transport configuration
+      ansible.builtin.template:
+        src: rclone.conf.j2
+        dest: '{{ polybot_root }}/{{ deployment_contract.paths.secrets }}/{{ deployment_contract.transport_files.rclone_config }}'
+        owner: polybot
+        group: polybot
+        mode: '0600'
+      when: polybot_backups_enabled
       no_log: true
     - name: Install host operational configuration
       ansible.builtin.copy:
-        content: '{{ {"remote": deployment_contract.backup_remote + ":" + polybot_sftp_directory, "alert_to": polybot_alert_to, "origin": polybot_origin, "http_port": polybot_http_port | int} | to_nice_json }}'
+        content: '{{ {"backups_enabled": polybot_backups_enabled, "remote": (deployment_contract.backup_remote + ":" + polybot_sftp_directory) if polybot_backups_enabled else none, "alert_to": polybot_alert_to, "origin": polybot_origin, "http_port": polybot_http_port | int} | to_nice_json }}'
         dest: '{{ polybot_root }}/{{ deployment_contract.paths.operations }}'
         owner: polybot
         group: polybot
@@ -193,13 +223,6 @@
         ansible.builtin.command:
           argv: [tailscale, serve, --bg, '--https={{ deployment_contract.https_port }}', 'http://127.0.0.1:{{ polybot_http_port }}']
         when: not (private_serve.stdout | from_json).configured
-    - name: Install operational systemd units
-      ansible.builtin.template:
-        src: '{{ item }}'
-        dest: '/etc/systemd/system/{{ item | basename | regex_replace(".j2$", "") }}'
-        mode: '0644'
-      with_fileglob: ['templates/polybot-*.j2']
-      register: unit_installation_result
     - name: Enable monitoring and backup schedules
       ansible.builtin.systemd_service:
         name: '{{ item }}'
@@ -207,3 +230,4 @@
         state: started
         daemon_reload: '{{ unit_installation_result.changed }}'
       loop: '{{ deployment_contract.timers }}'
+      when: polybot_backups_enabled or item not in deployment_contract.backup_timers

@@ -8,6 +8,8 @@ BACKUP_PROCESS_TIMEOUT_SECONDS = 1800
 BACKUP_SERVICE_TIMEOUT_SECONDS = 3700
 AGE_BINARY = "age"
 MAX_RETAINED_STAGING_ARCHIVES = 2
+# Preserve backup protection for existing inventories that omit the opt-out.
+DEFAULT_BACKUPS_ENABLED = True
 
 
 def backup_retention_cutoff() -> datetime:

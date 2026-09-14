@@ -1,5 +1,6 @@
 """Host operational commands and stable aggregate health results."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -30,6 +31,16 @@ class HostOperations:
         self.probes = HostProbes(self.config)
 
     def execute(self, operation: HostOperation) -> list[HostCheckCode]:
+        print(json.dumps({"backups_enabled": self.config.backups_enabled}), flush=True)
+        if not self.config.backups_enabled and operation in {
+            HostOperation.BACKUP,
+            HostOperation.BACKUP_CHECK,
+        }:
+            print(
+                "Backups are disabled in operations.json; enable them through Ansible.",
+                flush=True,
+            )
+            return [HostCheckCode.BACKUPS_DISABLED]
         if operation in {HostOperation.STATUS, HostOperation.MONITOR}:
             failures = self.status()
         else:
@@ -50,8 +61,9 @@ class HostOperations:
             HostCheckCode.APPLICATION: self.application,
             HostCheckCode.HOST_SERVICES: self.probes.services,
             HostCheckCode.HTTPS_CERTIFICATE: self.probes.https,
-            HostCheckCode.BACKUP_FRESHNESS: self.check_backup,
         }
+        if self.config.backups_enabled:
+            checks[HostCheckCode.BACKUP_FRESHNESS] = self.check_backup
         for code, check in checks.items():
             try:
                 check()
@@ -60,6 +72,8 @@ class HostOperations:
         return failures
 
     def backup(self) -> None:
+        if not self.config.backups_enabled:
+            raise RuntimeError("backups are disabled")
         # Deployment and backup share this lock so bundle identity, Compose and
         # database schema cannot change between snapshot selection and upload.
         with self.state.locked():
@@ -93,6 +107,8 @@ class HostOperations:
         self.remote().require_recent()
 
     def remote(self) -> RemoteBackups:
+        if not self.config.backups_enabled:
+            raise RuntimeError("backups are disabled")
         return RemoteBackups(
             self.root / SECRETS_DIRECTORY_NAME / HostTransportFile.RCLONE_CONFIG,
             self.config.remote,

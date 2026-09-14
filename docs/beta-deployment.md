@@ -20,20 +20,28 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    into policy, removing broader grants that would give CI additional access.
    Tag only this deployment host `tag:polybot`; CI has only TCP 22 and 443 to it.
    Create a one-time tagged host enrollment key. Never enable Funnel.
-3. Install `age` and OpenSSH (`ssh-keygen`) on the controller. Install Python controller tools with `uv sync --locked --extra dev` and
-   `uv tool install ansible-core==2.19.7`. Generate a deployment SSH key and obtain the SFTP server's public host key
-   through a trusted channel. Create a dedicated existing storage directory and
-   SSH key with read/write/delete rights there. Keep storage ownership outside
-   automation. Generate `age-keygen -o recovery.age` on the protected recovery
-   machine; copy only `age-keygen -y recovery.age` public output to the host inputs.
-   Keep the private identity offline, outside the host and SFTP storage.
+3. Install OpenSSH (`ssh-keygen`) on the controller. Install Python controller
+   tools with `uv sync --locked --extra dev` and
+   `uv tool install ansible-core==2.19.7`. Generate a deployment SSH key.
+   **SFTP backups are optional:** the example inventory sets
+   `polybot_backups_enabled: false`, so you can continue without SFTP storage,
+   backup credentials, `age` on the controller, or an age recovery identity.
+   To enable backups, set `polybot_backups_enabled: true`, install `age` on the
+   controller, and fill the commented SFTP inventory and secret values. Obtain
+   the SFTP server's public host key through a trusted channel. Create a dedicated
+   existing storage directory and SSH key with read/write/delete rights there;
+   keep storage ownership outside automation. Generate `age-keygen -o recovery.age`
+   on the protected recovery machine; copy only `age-keygen -y recovery.age` public
+   output to the host inputs. Keep the private identity offline, outside the host
+   and SFTP storage.
 4. Copy `deploy/ansible/inventory/example.yml` to
    `deploy/ansible/inventory/production.yml`. Commit only the non-secret host,
    architecture, root, origin and operational configuration. Default root:
    `/srv/polybot`. Fill every example value. Keep a private `known_hosts` file at
    the repository root, with verified keys for both the initial address and
    tailnet hostname. Copy `secrets.example.yml` outside the repository and replace
-   every value; encrypt with `ansible-vault encrypt /secure/polybot-secrets.yml`.
+   every required value (backup secrets only when enabled); encrypt with
+   `ansible-vault encrypt /secure/polybot-secrets.yml`.
    SMTP must support STARTTLS or implicit TLS. The deployment account has Docker
    and sudo authority and is therefore a host administrator; protect its key.
 5. Bootstrap once, from the configured controller with initial SSH access:
@@ -45,9 +53,9 @@ no automation buys capacity, upgrades a plan or enables Funnel.
      -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
    ```
 
-   Bootstrap installs signed vendor Docker/Tailscale packages, distribution age,
-   rclone and msmtp, and uv 0.10.9. It generates the PostgreSQL password once and
-   preserves it on reruns. It creates private directories, installs runtime
+   Bootstrap installs signed vendor Docker/Tailscale packages, distribution msmtp,
+   and uv 0.10.9. It installs age and rclone when backups are enabled. It generates
+   the PostgreSQL password once and preserves it on reruns. It creates private directories, installs runtime
    secrets and timers, enrolls Tailscale and persists Serve. No application images
    are built on the host. Check the resulting Tailscale DNS name matches inventory;
    restrict initial public SSH in the provider/host firewall after tailnet SSH works.
@@ -61,7 +69,8 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    Actions read access to its GHCR packages. Enable failure notifications for
    the named operator. Do not configure required environment approval if unattended
    tagged deployment is intended. Protect the default branch and version tags.
-7. Push the first version tag, then run Ansible `status.yml` and `backup.yml`.
+7. Push the first version tag, then run Ansible `status.yml`; also run `backup.yml`
+   when backups are enabled.
    Timers intentionally wait for a first active release. Complete the external
    acceptance checklist below before declaring operational setup complete.
 
@@ -73,6 +82,31 @@ free allowance is exhausted; reassess changed terms without enabling paid capaci
 [Tailscale pricing](https://tailscale.com/pricing) and
 [workload identity GitHub integration](https://tailscale.com/docs/integrations/github/github-action)
 were checked for this implementation.
+
+## Optional SFTP backups
+
+Set `polybot_backups_enabled: false` in your production inventory to opt out.
+Omit `polybot_sftp_host`, `polybot_sftp_port`, `polybot_sftp_user`,
+`polybot_sftp_directory`, `polybot_sftp_private_key`, `polybot_sftp_known_hosts`,
+and `polybot_age_recipients`. Other deployment inputs remain required. For
+compatibility, inventories that omit the flag keep backups **enabled** and must
+supply the complete backup configuration. Use a YAML boolean, not a quoted string.
+
+With backups disabled, bootstrap stops and disables both backup timers and stops
+any running backup/check services. Application, private HTTPS, and host monitoring
+continue; status reports `"backups_enabled": false` and excludes remote freshness
+and backup-unit checks. Explicit `backup.yml` or host backup/check commands fail
+with a disabled message. No scheduled snapshots or remote retention run, and the
+24-hour recovery-point objective is unavailable. This mode provides no automatic
+local-backup fallback. Retained staging files, backup credentials and remote
+archives are preserved; manage their expiry separately while backups are disabled.
+
+To enable later, set the flag to `true`, provide all SFTP fields and backup secrets,
+install age on the controller, and rerun bootstrap with the encrypted secrets.
+Run `backup.yml` and verify an offline-identity restore before claiming recovery
+coverage. To change an existing host, first deploy a release containing support
+for this flag, then rerun bootstrap; older installed operational bundles cannot
+read the new configuration. Disabling requires the same bootstrap rerun.
 
 ## Routine releases
 
@@ -110,6 +144,7 @@ Ansible is also the private operator interface:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/status.yml
+# When backups are enabled:
 ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/backup.yml
 ```
 
@@ -128,7 +163,7 @@ All installed state uses one configured root:
 /srv/polybot/                 private, owned by polybot
   runtime.env                bootstrap origin/SMTP/path settings, mode 600
   secrets/                   private directory; container secrets readable by UID 10001
-  operations.json            SFTP destination, origin, HTTP port and alert recipient
+  operations.json            backup enablement, optional SFTP destination, origin, port and alerts
   bundles/TAG/               verified source, release.tar.gz and locked .venv
   releases/ATTEMPT/           durable candidate and previous Compose/manifests
   .deployment.json           pending attempt phase and operation
@@ -217,7 +252,8 @@ client addresses/rate limits, HTTPS mail links, SSE reconnect, and no unauthenti
 application access. Reboot and repeat Serve checks. Verify CI ephemeral cleanup,
 SSH/HTTPS-only policy, GHCR permissions, release publication/reuse, SSH loss during
 activation, real SMTP failure/recovery delivery, daily GitHub unreachable-host
-notifications, actual SFTP host keys and an offline-identity restore. Record date,
+notifications and, when backups are enabled, actual SFTP host keys and an
+offline-identity restore. Record the backup mode, date,
 commit, host architecture and outcomes before declaring setup complete. Missing
 account/host inputs are activation blockers, not passing acceptance evidence.
 
@@ -255,6 +291,13 @@ retained database password before rendering dependent secrets. Inventory, exact
 release identity, Tailscale status/Serve, Compose status, artifact metadata and
 alert state are validated at their ingress boundaries before host mutations.
 
-Bootstrap's controller requires `age` and OpenSSH `ssh-keygen` locally. Before host mutation it validates deployment public keys, non-interactive SFTP private keys, a known-host entry matching the configured storage host/port, age recipients, SMTP credentials, and a Tailscale enrollment key (unless the tailnet stage is explicitly skipped). It exports normalized inventory values to Ansible; ports must be YAML integers. Remote access is still verified by the separate connectivity/backup acceptance checks.
+Bootstrap's controller requires OpenSSH `ssh-keygen` locally, plus `age` when
+backups are enabled. Before host mutation it validates deployment public keys,
+SMTP credentials, and a Tailscale enrollment key (unless the tailnet stage is
+explicitly skipped). Enabled backups additionally require validated non-interactive
+SFTP private keys, a known-host entry matching the configured storage host/port,
+and age recipients. It exports normalized inventory values to Ansible; ports must
+be YAML integers. Remote access is still verified by the separate
+connectivity/backup acceptance checks.
 
 Tailscale enrollment accepts only the states defined by the pinned [official v1.94.2 backend](https://github.com/tailscale/tailscale/blob/v1.94.2/ipn/backend.go); unknown states fail before enrollment. Host status and activation validate the `current` pointer against the installed bundle and its runtime image identity.

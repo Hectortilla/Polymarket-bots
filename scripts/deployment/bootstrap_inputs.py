@@ -16,9 +16,9 @@ BOOTSTRAP_INPUT_TIMEOUT_SECONDS = 30
 class BootstrapInputs(BaseModel):
     model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
     ssh_public_key: str = Field(min_length=1, repr=False)
-    sftp_private_key: str = Field(min_length=1, repr=False)
-    sftp_known_hosts: str = Field(min_length=1, repr=False)
-    age_recipients: str = Field(min_length=1, repr=False)
+    sftp_private_key: str = Field(default="", repr=False)
+    sftp_known_hosts: str = Field(default="", repr=False)
+    age_recipients: str = Field(default="", repr=False)
     smtp_username: str = Field(min_length=1, repr=False)
     smtp_password: str = Field(min_length=1, repr=False)
     tailscale_authkey: str = Field(default="", repr=False)
@@ -49,16 +49,30 @@ class BootstrapInputs(BaseModel):
                 (recipients, self.age_recipients),
             ):
                 write_private(path, (content.strip() + "\n").encode())
-            host = inventory.sftp_host
-            if inventory.sftp_port != 22:
-                host = f"[{host}]:{inventory.sftp_port}"
-            commands = [
-                ["ssh-keygen", "-l", "-f", str(public_key)],
-                ["ssh-keygen", "-y", "-P", "", "-f", str(private_key)],
-                ["ssh-keygen", "-l", "-f", str(known_hosts)],
-                ["ssh-keygen", "-F", host, "-f", str(known_hosts)],
-                ["age", "--encrypt", "--recipients-file", str(recipients)],
-            ]
+            commands = [["ssh-keygen", "-l", "-f", str(public_key)]]
+            if inventory.backups_enabled:
+                if not all(
+                    value.strip()
+                    for value in (
+                        self.sftp_private_key,
+                        self.sftp_known_hosts,
+                        self.age_recipients,
+                    )
+                ):
+                    raise DeploymentInputError(
+                        "SFTP credentials and age recipients are required when backups are enabled"
+                    )
+                host = inventory.sftp_host
+                if inventory.sftp_port != 22:
+                    host = f"[{host}]:{inventory.sftp_port}"
+                commands.extend(
+                    [
+                        ["ssh-keygen", "-y", "-P", "", "-f", str(private_key)],
+                        ["ssh-keygen", "-l", "-f", str(known_hosts)],
+                        ["ssh-keygen", "-F", host, "-f", str(known_hosts)],
+                        ["age", "--encrypt", "--recipients-file", str(recipients)],
+                    ]
+                )
             for command in commands:
                 subprocess.run(
                     command,

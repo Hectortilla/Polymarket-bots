@@ -8,6 +8,7 @@ from api.auth.credential_input import EmailAddress
 from api.auth.mail.config import SmtpSecurity, SmtpSettings
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from scripts.beta_backup.policy import DEFAULT_BACKUPS_ENABLED
 from scripts.beta_backup.remote.config import (
     SftpApplicationDirectory,
     validate_sftp_host,
@@ -36,10 +37,11 @@ class DeploymentInventory(BaseModel):
     smtp_security: SmtpSecurity
     smtp_from: EmailAddress
     alert_to: EmailAddress
-    sftp_host: str
-    sftp_port: int = Field(strict=True, ge=1, le=65535)
-    sftp_user: str
-    sftp_directory: str
+    backups_enabled: bool = Field(default=DEFAULT_BACKUPS_ENABLED, strict=True)
+    sftp_host: str | None = None
+    sftp_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
+    sftp_user: str | None = None
+    sftp_directory: str | None = None
 
     @field_validator("root", mode="before")
     @classmethod
@@ -68,23 +70,39 @@ class DeploymentInventory(BaseModel):
 
     @field_validator("sftp_directory")
     @classmethod
-    def remote_directory(cls, value: str) -> str:
-        return SftpApplicationDirectory.parse(value).path
+    def remote_directory(cls, value: str | None) -> str | None:
+        return SftpApplicationDirectory.parse(value).path if value is not None else None
 
     @field_validator("sftp_host")
     @classmethod
-    def sftp_hostname(cls, value: str) -> str:
-        return validate_sftp_host(value)
+    def sftp_hostname(cls, value: str | None) -> str | None:
+        return validate_sftp_host(value) if value is not None else None
 
     @field_validator("sftp_user")
     @classmethod
-    def sftp_username(cls, value: str) -> str:
-        return validate_sftp_user(value)
+    def sftp_username(cls, value: str | None) -> str | None:
+        return validate_sftp_user(value) if value is not None else None
 
     @field_validator("smtp_host")
     @classmethod
     def normalized_smtp_host(cls, value: str) -> str:
         return SmtpSettings.normalize_host(value)
+
+    @model_validator(mode="after")
+    def backup_destination(self) -> Self:
+        if self.backups_enabled and any(
+            value is None
+            for value in (
+                self.sftp_host,
+                self.sftp_port,
+                self.sftp_user,
+                self.sftp_directory,
+            )
+        ):
+            raise DeploymentInputError(
+                "SFTP destination is required when backups are enabled"
+            )
+        return self
 
     @model_validator(mode="after")
     def mail_transport(self) -> Self:

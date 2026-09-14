@@ -1932,6 +1932,18 @@ bootstrap, SSH-independent systemd completion and STARTTLS alert delivery passed
 See `docs/deployment-validation.md` for commands, fixture limits and the completed
 documentation-drift audit.
 
+September 14 optional-backup follow-up: `polybot_backups_enabled: false` permits
+private host setup without SFTP destination/credentials or age recipients. The
+example inventory opts out; existing inventories that omit the flag retain enabled
+backups. Bootstrap manages timer enable/disable transitions and active backup
+services, while host monitoring excludes backup checks only on explicit opt-out.
+Manual backup commands report disabled and fail. Enabled backups retain the same
+verification and retention contracts. Disabled mode supplies no replacement
+snapshots or 24-hour recovery-point coverage; retained artifacts are preserved and
+the operator manages their expiry while automated retention is off. No Polymarket
+protocol or SDK behavior changed. Runbook, lifecycle policy, README and both
+architecture references were audited for this conditional behavior.
+
 ## Slice 17: Per-User Resource Limits
 
 Status: implemented; depends on Slice 15 and the capacity settings from Slice 16.
@@ -2240,9 +2252,11 @@ production database.
 
 Implementation uses a supervised bounded maintenance loop, one retained-history
 selection policy, reauthenticated deletion with execution fencing, and private
-restore quarantine with explicit per-account reconciliation. Daily verified SFTP-transfer
-systemd units run the encrypted backup and hourly recovery-point check; deployment
-installation and separate key custody remain operator release prerequisites.
+restore quarantine with explicit per-account reconciliation. When backups are
+enabled, daily verified SFTP-transfer systemd units run the encrypted backup and
+hourly recovery-point check; their installation and separate key custody remain
+prerequisites for recovery coverage. The optional-backup follow-up in Slice 16
+permits private setup without that coverage.
 
 Acceptance: 1,377 Python tests and six browser scenarios passed with disposable
 PostgreSQL/Redis; 267 frontend tests, Svelte diagnostics, generated client parity,

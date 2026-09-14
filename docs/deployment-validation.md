@@ -117,3 +117,38 @@ The documentation-drift audit also checked normalized inventory output, HTTP por
 in operations.json, controller prerequisites, cadence and polling budgets, package
 ownership and fixture boundaries. No external deployment or Polymarket protocol
 change is included in this maintenance pass.
+
+
+## Optional SFTP backup setup — September 14, 2026
+
+The deployment follow-up adds an explicit `polybot_backups_enabled` opt-out.
+Verification from the repository root:
+
+```sh
+uv run pytest backend/tests/control_plane/test_optional_backups.py backend/tests/control_plane/test_deployment_preflight.py backend/tests/control_plane/test_deployment_contracts.py backend/tests/control_plane/test_host_monitoring.py backend/tests/control_plane/test_beta_host_deployment.py backend/tests/control_plane/test_release_automation.py backend/tests/control_plane/test_deployment_boundaries.py backend/tests/control_plane/test_backup_boundaries.py backend/tests/control_plane/test_remote_backups.py
+PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal
+```
+
+The focused suite passed **247 tests**. It covers omitted SFTP inputs on explicit
+opt-out, strict boolean configuration, enabled-by-default compatibility, retained
+credential validation when enabled, rendered operational configuration, continued
+application monitoring, and refusal of disabled manual backup operations. Ruff
+and Ansible backup-playbook syntax checks passed. A manual `backup.yml` invocation
+against the disposable Debian fixture with backups disabled failed at the explicit
+input guard with zero host changes, before starting a snapshot.
+
+The disposable Debian/systemd rehearsal also passed: fresh bootstrap without any
+SFTP or age inputs, a second pass with zero changes, backup timer
+enable/disable/re-enable transitions with monitoring retained, credential
+preservation, detached activation, migration/rollback failures and retries, private
+HTTPS failure/retry, and authenticated STARTTLS alert delivery. Local logs are under
+`data/beta/polybot-bootstrap-test-866f4e01a7/` (git-ignored).
+
+Final documentation-drift audit: README, deployment and operations guides, data
+lifecycle recovery assumptions, both architecture references, inventory examples
+and the implementation plan describe the same optional behavior. Disabled mode
+provides no scheduled snapshots, retention or recovery-point coverage. Enabled
+backup encryption, remote verification and retention are unchanged. No Polymarket
+protocol/SDK integration changed, so no PolymarketDocs check was required. Actual
+production tailnet, SMTP and enabled-backup recovery acceptance remain operator
+checks; no production host was changed during verification.

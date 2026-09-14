@@ -7,7 +7,7 @@ for these procedures.
 
 | Data / objective | Policy |
 | --- | --- |
-| Database backup | Daily encrypted age archive transferred and verified through SFTP |
+| Database backup | When enabled: daily encrypted age archive transferred and verified through SFTP |
 | Backup expiry | 14 days; no indefinite archive |
 | Recovery point | At most 24 hours before an incident |
 | Recovery time | At most 2 hours for an isolated restore and quarantine; reopening requires reconciliation |
@@ -69,8 +69,17 @@ expiry; they are never used to serve archived history.
 
 ## Install automated backups
 
+SFTP backups can be disabled with `polybot_backups_enabled: false` during private
+setup. This disables scheduled snapshots, remote retention and backup freshness
+monitoring; it does not create local replacement backups. The recovery objectives
+above require backups to be enabled and verified. Existing remote archives and
+staging files remain untouched on opt-out; manage their expiry separately while
+automated retention is off. See [optional backups](beta-deployment.md#optional-sftp-backups)
+for enabling later and the required SFTP/age inputs.
+
 Follow the single [bootstrap checklist](beta-deployment.md#one-time-setup).
-Ansible installs age, rclone, msmtp, private staging and daily/hourly systemd timers.
+With backups enabled, Ansible installs age, rclone, msmtp, private staging and
+starts daily/hourly systemd timers.
 Use one dedicated SFTP application directory and independently verified host keys;
 `known_hosts_file` is mandatory. No mount, TOFU, remote shell hashing or custom SFTP
 transport is used. The age private identity stays on the protected recovery

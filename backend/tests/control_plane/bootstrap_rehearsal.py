@@ -10,7 +10,8 @@ from control_plane.activation_rehearsal import ActivationRehearsal
 from scripts.deployment.inventory import SUPPORTED_ARCHITECTURES
 from scripts.deployment.paths import DEFAULT_APP_DIRECTORY, REPOSITORY
 from scripts.deployment.runtime_contracts import DEFAULT_HTTP_PORT
-from scripts.deployment.units import BACKUP_TIMER_UNIT
+from scripts.deployment.units import MONITOR_TIMER_UNIT
+from scripts.host_operations.contracts import BACKUP_TIMER_UNITS
 from scripts.local_docker import LocalDocker
 
 
@@ -89,7 +90,19 @@ def main():
         inventory = directory / "inventory.json"
         inventory.write_text(
             json.dumps(
-                {"all": {"children": {"polybot": {"hosts": {"fixture": variables}}}}}
+                {
+                    "all": {
+                        "children": {
+                            "polybot": {
+                                "hosts": {
+                                    "fixture": backup_variables(
+                                        variables, enabled=False
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             )
         )
         inventory.chmod(0o600)
@@ -194,10 +207,34 @@ def main():
             raise AssertionError("detached systemd operation did not survive SSH loss")
 
         assert "changed=0" in (directory / "bootstrap-2.log").read_text()
-        assert (
-            docker("exec", name, "systemctl", "is-enabled", BACKUP_TIMER_UNIT)
-            == "enabled"
-        )
+        require_backup_timers(docker, name, enabled=False)
+        for enabled in (True, False, True):
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "all": {
+                            "children": {
+                                "polybot": {
+                                    "hosts": {
+                                        "fixture": backup_variables(
+                                            variables, enabled=enabled
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            )
+            with (directory / f"bootstrap-backups-{enabled}.log").open("w") as output:
+                subprocess.run(
+                    command,
+                    env=env,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                )
+            require_backup_timers(docker, name, enabled=enabled)
         ActivationRehearsal(docker, name, directory, inventory, env).run()
         print(
             docker(
@@ -216,11 +253,43 @@ def main():
             )
         )
         print(
-            "Debian bootstrap twice passed; credentials retained and second pass changed=0. Tailnet enrollment/Serve require external acceptance."
+            "Debian bootstrap without backup inputs twice passed; second pass changed=0. Backup enable/disable/re-enable passed; credentials retained. Tailnet enrollment/Serve require external acceptance."
         )
     finally:
         docker("rm", "-f", name)
         docker("image", "rm", name)
+
+
+def backup_variables(variables, *, enabled):
+    selected = (
+        variables
+        if enabled
+        else {
+            key: value
+            for key, value in variables.items()
+            if not key.startswith("polybot_sftp_") and key != "polybot_age_recipients"
+        }
+    )
+    return selected | {"polybot_backups_enabled": enabled}
+
+
+def require_backup_timers(docker, name, *, enabled):
+    for unit in BACKUP_TIMER_UNITS:
+        assert docker(
+            "exec",
+            name,
+            "systemctl",
+            "show",
+            unit,
+            "--property=UnitFileState",
+            "--value",
+        ) == ("enabled" if enabled else "disabled")
+        assert docker(
+            "exec", name, "systemctl", "show", unit, "--property=ActiveState", "--value"
+        ) == ("active" if enabled else "inactive")
+    assert (
+        docker("exec", name, "systemctl", "is-active", MONITOR_TIMER_UNIT) == "active"
+    )
 
 
 if __name__ == "__main__":

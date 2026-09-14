@@ -1108,7 +1108,11 @@ one journaled release executor through systemd. Existing schema checks, migratio
 failure closure, paper-only settings and restore quarantine remain unchanged.
 Tailscale Serve owns private HTTPS and renewal; Caddy's loopback HTTP listener has
 an independent port and an explicit Serve → Caddy → Uvicorn trust chain.
-Encrypted backups count toward recovery only after rclone SFTP transfer and remote
+SFTP backup provisioning and schedules are optional via `polybot_backups_enabled`.
+Explicit opt-out removes backup checks from host monitoring and provides no
+automatic snapshots or recovery-point guarantee; application monitoring continues.
+Existing inventories default to enabled. Encrypted backups count toward recovery
+only after rclone SFTP transfer and remote
 readback verification, including the retained non-secret release bundle.
 See [deployment](beta-deployment.md), [operations](beta-operations.md) and
 [data lifecycle](beta-data-lifecycle.md) for setup inputs and acceptance boundaries.

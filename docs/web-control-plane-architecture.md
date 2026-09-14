@@ -1131,7 +1131,10 @@ event → run → bot → identity references; stale execution leases
 cannot write after terminal transition or purge.
 
 Host-only `scripts.beta_backup` uses PostgreSQL container utilities and age, with
-systemd timers for verified rclone SFTP backups and remote RPO checks. Restore decrypts before a single
+systemd timers for verified rclone SFTP backups and remote RPO checks when
+`polybot_backups_enabled` is true. Explicit opt-out permits setup without SFTP/age
+inputs, disables backup schedules and related health checks, and provides no
+automatic recovery snapshots; application monitoring continues. Restore decrypts before a single
 transaction into a new isolated project and quarantines all access/jobs before any
 application service may start. See [the data runbook](beta-data-lifecycle.md) for
 approved policy, manual reconciliation and non-database secret custody.

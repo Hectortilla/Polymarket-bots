@@ -114,7 +114,11 @@ def inventory_values():
     ]["children"]["polybot"]["vars"]
     return values | {
         "polybot_origin": "https://fixture.example.ts.net",
+        "polybot_backups_enabled": True,
+        "polybot_sftp_host": "storage.example.com",
+        "polybot_sftp_port": 22,
         "polybot_sftp_user": "fixture",
+        "polybot_sftp_directory": "/backups/polybot",
         "polybot_smtp_username": "fixture",
         "polybot_smtp_password": "fixture-password",
     }

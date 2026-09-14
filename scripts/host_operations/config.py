@@ -2,10 +2,12 @@
 
 import json
 from pathlib import Path
+from typing import Self
 
 from api.auth.credential_input import EmailAddress
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from scripts.beta_backup.policy import DEFAULT_BACKUPS_ENABLED
 from scripts.beta_backup.remote.config import SftpApplicationDirectory
 from scripts.deployment.paths import OPERATIONS_CONFIGURATION_NAME
 from scripts.deployment.runtime_contracts import (
@@ -19,7 +21,8 @@ from scripts.private_files import PRIVATE_FILE_MODE, read_regular
 
 class HostOperationsConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
-    remote: str
+    backups_enabled: bool = Field(default=DEFAULT_BACKUPS_ENABLED, strict=True)
+    remote: str | None = None
     alert_to: EmailAddress
     origin: str
     http_port: int = Field(
@@ -28,13 +31,23 @@ class HostOperationsConfig(BaseModel):
 
     @field_validator("remote")
     @classmethod
-    def private_remote(cls, value: str) -> str:
-        return SftpApplicationDirectory.from_remote(value).remote
+    def private_remote(cls, value: str | None) -> str | None:
+        return (
+            SftpApplicationDirectory.from_remote(value).remote
+            if value is not None
+            else None
+        )
 
     @field_validator("origin")
     @classmethod
     def private_origin(cls, value: str) -> str:
         return validate_private_origin(value)
+
+    @model_validator(mode="after")
+    def backup_destination(self) -> Self:
+        if self.backups_enabled and self.remote is None:
+            raise ValueError("backup remote is required when backups are enabled")
+        return self
 
     @classmethod
     def read(cls, root: Path) -> "HostOperationsConfig":

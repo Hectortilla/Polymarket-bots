@@ -48,9 +48,11 @@ Default worker cleanup budget: heartbeat 5 seconds plus cleanup 10 seconds.
 ## Host automation and notifications
 
 Ansible `status.yml` checks service readiness, required systemd services, private
-HTTPS certificate validity and remote backup freshness. Bootstrap installs
-`polybot-monitor.timer` every five minutes, daily encrypted SFTP backup and hourly
-remote RPO checks. Monitoring does not restart applications. `scripts.host_operations`
+HTTPS certificate validity and, when backups are enabled, remote backup freshness. Bootstrap installs
+`polybot-monitor.timer` every five minutes; enabled backups add daily encrypted
+SFTP snapshots and hourly remote RPO checks. Set `polybot_backups_enabled: false`
+and rerun bootstrap to stop both backup schedules; status reports the disabled
+mode without contacting storage. Application and host checks remain active. Monitoring does not restart applications. `scripts.host_operations`
 uses msmtp with the existing TLS SMTP relay; alert recipients and credentials are
 private bootstrap inputs. Repeated identical failures are suppressed only after
 SMTP acceptance; changes and recovery send a new message. Delivery failure remains
@@ -61,8 +63,8 @@ The daily GitHub connectivity workflow independently checks verified OpenSSH and
 private HTTPS with a five-minute bound, so host loss can trigger GitHub failure
 notifications even when the host cannot send mail. Enable those notifications for
 the real operator and test receipt. Before the first release, timers are installed
-but their source-path condition defers execution. After first deployment run backup
-and status immediately; do not infer health from absent journals. Follow the
+but their source-path condition defers execution. After first deployment run status
+and, when enabled, backup immediately; do not infer health from absent journals. Follow the
 [ordered setup and activation checklist](beta-deployment.md#one-time-setup).
 
 ## Measurements and alerts
