@@ -32,16 +32,18 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    existing storage directory and SSH key with read/write/delete rights there;
    keep storage ownership outside automation. Generate `age-keygen -o recovery.age`
    on the protected recovery machine; copy only `age-keygen -y recovery.age` public
-   output to the host inputs. Keep the private identity offline, outside the host
-   and SFTP storage.
+   output to `polybot_age_recipients` in the public inventory. Keep the private
+   identity offline, outside the host and SFTP storage.
 4. Copy `deploy/ansible/inventory/example.yml` to
    `deploy/ansible/inventory/production.yml`. Commit only the non-secret host,
-   architecture, root, origin and operational configuration. Default root:
-   `/srv/polybot`. Fill every example value. Keep a private `known_hosts` file at
+   architecture, root, origin and operational configuration, including the deployment
+   SSH public key and SMTP username. Default root:
+   `/srv/polybot`. Fill every example value. Keep a `known_hosts` file at
    the repository root, with verified keys for both the initial address and
    tailnet hostname. Copy `secrets.example.yml` outside the repository and replace
    every required value (backup secrets only when enabled); encrypt with
-   `ansible-vault encrypt /secure/polybot-secrets.yml`.
+   `ansible-vault encrypt /secure/polybot-secrets.yml`. Use the public/private
+   split below; do not duplicate variables between inventory and Vault.
    SMTP must support STARTTLS or implicit TLS. The deployment account has Docker
    and sudo authority and is therefore a host administrator; protect its key.
 5. Bootstrap once, from the configured controller with initial SSH access:
@@ -82,6 +84,31 @@ free allowance is exhausted; reassess changed terms without enabling paid capaci
 [Tailscale pricing](https://tailscale.com/pricing) and
 [workload identity GitHub integration](https://tailscale.com/docs/integrations/github/github-action)
 were checked for this implementation.
+
+## Public inventory and private credentials
+
+`production.yml` contains non-secret configuration; the private copy of
+`secrets.example.yml` contains only secrets and must be encrypted with Ansible Vault.
+
+| Value | Location |
+| --- | --- |
+| `polybot_ssh_public_key` (entire deployment `.pub` file) | Public inventory, under `vars` |
+| `polybot_smtp_username` (mailbox login, usually its full email address) | Public inventory, under `vars` |
+| `polybot_sftp_known_hosts` (verified storage host public key records; backups only) | Public inventory, under `vars` |
+| `polybot_age_recipients` (public encryption recipients; backups only) | Public inventory, under `vars` |
+| `polybot_tailscale_authkey` | Ansible Vault |
+| `polybot_smtp_password` | Ansible Vault |
+| `polybot_sftp_private_key` (backups only) | Ansible Vault |
+
+The deployment SSH **private** key stays on the controller and is supplied to CI
+through `DEPLOY_SSH_KEY`; it does not belong in either inventory example. The age
+private recovery identity stays offline. The controller's `known_hosts` file
+contains public host keys, not secrets; verify those keys through a trusted channel.
+
+When updating an existing setup, move the four non-secret variables above from
+Vault to the inventory's `vars` section (backup values only when enabled), then
+remove their Vault definitions. Ansible uses the same variable names regardless
+of which file supplies them; bootstrap commands do not change.
 
 ## Optional SFTP backups
 

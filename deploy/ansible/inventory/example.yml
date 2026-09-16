@@ -1,3 +1,4 @@
+# Public configuration only; put passwords, auth keys and private keys in Ansible Vault.
 all:
   children:
     polybot:
@@ -7,6 +8,7 @@ all:
           ansible_user: polybot
           ansible_ssh_common_args: '-o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes'
       vars:
+        polybot_ssh_public_key: 'ssh-ed25519 REPLACE deployment-client'
         polybot_root: /srv/polybot
         polybot_arch: amd64 # amd64 or arm64
         polybot_origin: https://CHANGE_ME.tailnet-name.ts.net
@@ -15,11 +17,16 @@ all:
         polybot_smtp_port: 587
         polybot_smtp_security: starttls
         polybot_smtp_from: accounts@example.com
+        polybot_smtp_username: accounts@example.com
         polybot_alert_to: operator@example.com
         # Optional off-server backups. Existing inventories default to true when omitted.
         polybot_backups_enabled: false
-        # Set true above and supply all four values to enable SFTP backups.
+        # Set true above and fill these values plus the vaulted SFTP private key.
         # polybot_sftp_host: storage.example.com
         # polybot_sftp_port: 22
         # polybot_sftp_user: CHANGE_ME
         # polybot_sftp_directory: /backups/polybot # Dedicated existing directory
+        # polybot_sftp_known_hosts: |
+        #   REPLACE_WITH_VERIFIED_STORAGE_HOST_KEY
+        # polybot_age_recipients: |
+        #   age1REPLACE_WITH_OFFLINE_PUBLIC_RECIPIENT
