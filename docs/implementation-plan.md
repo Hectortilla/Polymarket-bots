@@ -1944,6 +1944,18 @@ the operator manages their expiry while automated retention is off. No Polymarke
 protocol or SDK behavior changed. Runbook, lifecycle policy, README and both
 architecture references were audited for this conditional behavior.
 
+September 17 host-preparation follow-up: copy and run the standalone
+`scripts/prepare-server.sh` before Ansible. It installs sudo/Python and security
+packages, configures laptop lid behavior and persistent swap, validates and
+reloads key-only OpenSSH, enables UFW/fail2ban/automatic updates, and performs
+browser-based Tailscale enrollment. The operator first proves a fresh non-root
+key login and applies the deployment tag after enrollment. See
+`docs/server-preparation.md` for the root/sudo paths and subsequent Ansible steps.
+Documentation-drift audit: README, architecture, deployment runbook and this plan
+agree on the preparation order; application contracts and Polymarket integration
+are unchanged. Verification and target-host limits are recorded in
+`docs/deployment-validation.md`.
+
 ## Slice 17: Per-User Resource Limits
 
 Status: implemented; depends on Slice 15 and the capacity settings from Slice 16.

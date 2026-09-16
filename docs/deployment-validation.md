@@ -152,3 +152,38 @@ backup encryption, remote verification and retention are unchanged. No Polymarke
 protocol/SDK integration changed, so no PolymarketDocs check was required. Actual
 production tailnet, SMTP and enabled-backup recovery acceptance remain operator
 checks; no production host was changed during verification.
+
+## Standalone server preparation — September 17, 2026
+
+The pre-Ansible entrypoint is `scripts/prepare-server.sh`; follow
+[server preparation](server-preparation.md) before the deployment runbook.
+Verification from the repository root:
+
+```sh
+bash -n scripts/prepare-server.sh
+shellcheck scripts/prepare-server.sh
+uv run pytest backend/tests/control_plane/test_server_preparation.py
+```
+
+All **20 tests** passed. They exercise redirected temporary files and substituted
+host commands: SSH syntax/policy/reload rollback, repeatable Include placement,
+active-swap persistence repair, unsafe existing swap rejection, insufficient disk,
+fstab conflicts, SSH rules before firewall enablement, firewall failure, retained
+Tailscale identity, first enrollment, and pending device approval. Bash syntax,
+ShellCheck and the changed test file's Ruff checks passed.
+
+A separate disposable Debian container exercised real `sshd -t`/`sshd -T`,
+precedence over an earlier cloud drop-in, a second unchanged hardening pass, a
+successful non-root key-only SSH connection, root rejection with the same installed
+key, and configuration rollback for a conflicting user Match rule. Service reload
+was substituted in that container; this does not establish real systemd reload or
+end-to-end host preparation. No production host was changed.
+
+Actual lid behavior, kernel swap activation/reboot persistence, firewall routing,
+systemd timers, and browser enrollment in the intended tailnet remain target-host
+checks in the setup guide. Final documentation-drift audit: README, architecture,
+implementation plan and deployment runbook agree on preparation before Ansible,
+the administrator/sudo prerequisites, manual Tailscale tagging after browser login,
+and the current Vault requirement. The runbook's stale Vault template path was
+also corrected. No application contract or Polymarket protocol/SDK code changed;
+no PolymarketDocs check was required.

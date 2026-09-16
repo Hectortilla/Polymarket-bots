@@ -7,85 +7,551 @@ no public-opening gate or live-trading opt-in is changed.
 
 ## One-time setup
 
-Run these steps in order. Account creation and credentials are operator inputs;
-no automation buys capacity, upgrades a plan or enables Funnel.
+Run steps 1–5 before configuring GitHub releases. Account creation and credentials
+are operator inputs; no automation buys capacity, upgrades a plan or enables
+Funnel. Commands marked **on your Mac/controller** run from the repository root.
+Commands marked **on the server** run through its console or an SSH session.
+The controller is the computer running Ansible; it is not the deployment server.
 
-1. Obtain a Debian 12/13 host with initial OpenSSH access and a sudo-capable account.
-   The staging baseline is four CPUs, 8 GiB RAM and 40 GiB free disk; repeat capacity
-   acceptance on the actual host. Verify the host's SSH public key through its
-   console/provider channel. Do not trust an unauthenticated `ssh-keyscan` result.
-2. Use a Tailscale **Personal** tailnet. Enable MagicDNS and HTTPS in its admin
-   console. Set the intended machine name before selecting the exact
-   `https://HOST.TAILNET.ts.net` origin. Merge `deploy/tailscale-policy.example.hujson`
-   into policy, removing broader grants that would give CI additional access.
-   Tag only this deployment host `tag:polybot`; CI has only TCP 22 and 443 to it.
-   Create a one-time tagged host enrollment key. Never enable Funnel.
-3. Install OpenSSH (`ssh-keygen`) on the controller. Install Python controller
-   tools with `uv sync --locked --extra dev` and
-   `uv tool install ansible-core==2.19.7`. Generate a deployment SSH key.
-   **SFTP backups are optional:** the example inventory sets
-   `polybot_backups_enabled: false`, so you can continue without SFTP storage,
-   backup credentials, `age` on the controller, or an age recovery identity.
-   To enable backups, set `polybot_backups_enabled: true`, install `age` on the
-   controller, and fill the commented SFTP inventory and secret values. Obtain
-   the SFTP server's public host key through a trusted channel. Create a dedicated
-   existing storage directory and SSH key with read/write/delete rights there;
-   keep storage ownership outside automation. Generate `age-keygen -o recovery.age`
-   on the protected recovery machine; copy only `age-keygen -y recovery.age` public
-   output to `polybot_age_recipients` in the public inventory. Keep the private
-   identity offline, outside the host and SFTP storage.
-4. Copy `deploy/ansible/inventory/production.example.yml` to
-   `deploy/ansible/inventory/production.yml`. This file contains the non-secret host,
-   architecture, root, origin and operational configuration, including the deployment
-   SSH public key and SMTP username. Default root:
-   `/srv/polybot`. Fill every example value. Keep a `known_hosts` file at
-   the repository root, with verified keys for both the initial address and
-   tailnet hostname. Create `deploy/ansible/inventory/production.vault.yml` from
-   `secrets.example.yml` using the Vault commands below, then replace every required
-   value with `ansible-vault edit` (backup secrets only when enabled). Commit both
-   `production.yml` and the encrypted `production.vault.yml`; keep plaintext secrets
-   and the Vault password out of Git. Use the public/private split below; do not
-   duplicate variables between inventory and Vault.
-   SMTP must support STARTTLS or implicit TLS. The deployment account has Docker
-   and sudo authority and is therefore a host administrator; protect its key.
-5. Bootstrap once, from the configured controller with initial SSH access:
+Examples use the existing administrator `hec`, the server name `hec-server`, and
+`hec-server.tailnet-name.ts.net`. Replace the tailnet hostname with the exact name
+shown for your machine in Tailscale. Replace `accounts@example.com` with your real
+mailbox. Example keys and passwords are placeholders, not usable credentials.
 
-   ```sh
-   export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
-   ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
-     -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
-     -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
-   ```
+Jump to [server preparation](#1-prepare-the-debian-server-and-existing-administrator),
+[Tailscale](#2-configure-tailscale-the-hostname-and-private-https),
+[controller and keys](#3-prepare-your-maccontroller-and-deployment-ssh-key),
+[inventory and Vault](#4-fill-the-public-inventory-trust-file-and-encrypted-vault),
+or [bootstrap](#5-bootstrap-with-the-existing-administrator).
 
-   Bootstrap installs `gpg` before configuring signed vendor package repositories
-   (required by Ansible's `apt_repository` module on minimal Debian installations).
-   It uses Tailscale's standard `tailscale.list` and
-   `/usr/share/keyrings/tailscale-archive-keyring.gpg` paths so an existing official
-   installation can be reused. Before any APT operation, it removes the obsolete
-   bootstrap entry from `pkgs_tailscale_com_stable_debian.list`, backing up that
-   file and preserving other entries. This also repairs a previous failed run
-   that left conflicting `Signed-By` paths. See the
-   [official Tailscale Debian instructions](https://pkgs.tailscale.com/stable/#debian-trixie).
-   Bootstrap installs signed vendor Docker/Tailscale packages, distribution msmtp,
-   and uv 0.10.9. It installs age and rclone when backups are enabled. It generates
-   the PostgreSQL password once and preserves it on reruns. It creates private directories, installs runtime
-   secrets and timers, enrolls Tailscale and persists Serve. No application images
-   are built on the host. Check the resulting Tailscale DNS name matches inventory;
-   restrict initial public SSH in the provider/host firewall after tailnet SSH works.
-6. Create GitHub environment `private`. Set secrets `DEPLOY_SSH_KEY`,
-   `DEPLOY_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, and `TS_AUDIENCE`. Configure Tailscale
-   workload identity federation for this repository's `private` environment,
-   issuer `https://token.actions.githubusercontent.com`, subject
-   `repo:OWNER/REPO:environment:private`, the configured audience, `auth_keys` scope
-   and `tag:polybot-ci`. Use ordinary OpenSSH, not Tailscale SSH. Permit Actions
-   package and release publication using `GITHUB_TOKEN`; grant this repository
-   Actions read access to its GHCR packages. Enable failure notifications for
-   the named operator. Do not configure required environment approval if unattended
-   tagged deployment is intended. Protect the default branch and version tags.
-7. Push the first version tag, then run Ansible `status.yml`; also run `backup.yml`
-   when backups are enabled.
-   Timers intentionally wait for a first active release. Complete the external
-   acceptance checklist below before declaring operational setup complete.
+| Identity or file | Purpose |
+| --- | --- |
+| Existing server administrator, such as `hec` | First SSH connection and sudo during preparation/bootstrap |
+| Server account `polybot` | Created by bootstrap for subsequent deployments |
+| Administrator's SSH key | Lets your Mac connect as `hec` before bootstrap |
+| Deployment SSH key pair | Later lets your Mac and CI connect as `polybot` |
+| Server SSH host public key in `known_hosts` | Lets clients verify that they reached the correct server |
+| Tailscale auth key | Enrolls the server in the private network; separate from SSH authentication |
+| SMTP app password | Lets the application send email through your mailbox provider |
+| Ansible Vault password | Decrypts the secrets file on the controller |
+
+### 1. Prepare the Debian server and existing administrator
+
+**Why:** Ansible needs a reachable SSH server, Python, and an existing account that
+can become root. It cannot create its own deployment account until those work.
+Use Debian 12/13, amd64 or arm64. The staging baseline is four CPUs, 8 GiB RAM and
+40 GiB free disk; repeat capacity acceptance on the actual host.
+
+Follow [server preparation](server-preparation.md) first. It explains how to copy
+only [`scripts/prepare-server.sh`](../scripts/prepare-server.sh) to the server,
+install/test your administrator's SSH public key, and run the script. A server
+checkout and Ansible installation are not required. Set the final machine name
+before enrolling Tailscale so its DNS name matches your intended inventory.
+
+The preparation script installs sudo and Python, configures host security and
+Tailscale, and keeps ordinary OpenSSH as the login mechanism. It disables SSH
+password authentication, so complete the guide's fresh key-only login test before
+using `--ssh-key-verified`. The administrator still needs a local password for sudo.
+Keep the existing session open until a second login and sudo both work.
+
+For the guide's default account, run **on the server**, after copying the script
+and verifying the key-only connection:
+
+```sh
+sudo bash "$HOME/prepare-server.sh" --admin-user hec --ssh-key-verified
+```
+
+If `sudo` is missing or `hec` cannot use it, start a root shell instead:
+
+```sh
+su -
+bash /home/hec/prepare-server.sh --admin-user hec --ssh-key-verified
+```
+
+`su -` asks for the **root password**. If that is unavailable, use the server
+provider's root console. The script installs sudo and adds `hec` to its group.
+For a server already prepared except for sudo, the equivalent targeted repair,
+run **as root on the server**, is:
+
+```sh
+apt-get update
+apt-get install -y sudo
+usermod -aG sudo hec
+```
+
+Log out and open a fresh SSH session to pick up group membership. Then verify
+**on the server**:
+
+```sh
+id
+sudo whoami
+python3 --version
+```
+
+`sudo whoami` must print `root`; enter **hec's password**, not the root password.
+You do not need to create `polybot` manually. Bootstrap creates it and installs its
+deployment public key in step 5.
+
+### 2. Configure Tailscale, the hostname and private HTTPS
+
+**Why:** Tailscale connects the controller, deployment server and CI privately.
+Serve provides the application's HTTPS address and certificate. The domain you
+bought for email does not automatically become the application's address.
+
+1. Use the intended Tailscale **Personal** tailnet. Connect your Mac to it and
+   complete the server-preparation guide's browser enrollment/device approval.
+2. Open the [Tailscale admin console](https://login.tailscale.com/admin/). Under
+   **Machines**, find the server and confirm its machine name and full DNS name.
+3. Under **DNS**, enable **MagicDNS** and **HTTPS Certificates**. Use the full
+   `https://HOST.TAILNET.ts.net` address, including `https://`, as the origin.
+   See [Tailscale HTTPS setup](https://tailscale.com/docs/how-to/set-up-https-certificates).
+4. Merge [`deploy/tailscale-policy.example.hujson`](../deploy/tailscale-policy.example.hujson)
+   into the tailnet access policy. It defines `tag:polybot` and `tag:polybot-ci`.
+   Remove broader grants that would give CI more than TCP 22 and 443 to the server.
+   Retain a scoped TCP 22 grant for your administrator identity if using tailnet
+   SSH from your Mac: the example's member grant permits HTTPS only. For example,
+   an additional grant can use `"src": ["you@example.com"]`,
+   `"dst": ["tag:polybot"]`, and `"ip": ["tcp:22"]`, with your actual login identity.
+5. Apply `tag:polybot` to this server in the admin console. Browser enrollment does
+   not apply it automatically, and bootstrap retains an already-running enrollment.
+   CI will use `tag:polybot-ci`; do not apply the CI tag to the server.
+
+Keep **Funnel disabled**. The application is intended to be reachable through
+Tailscale, with its own email/password login. Ordinary OpenSSH travels over
+Tailscale; this setup does not use Tailscale SSH.
+
+#### Get `polybot_tailscale_authkey`
+
+In the admin console, open **Settings → Keys → Generate auth key** and select:
+
+| Setting | Value and reason |
+| --- | --- |
+| Description | `polybot-server-bootstrap`, so you can identify its purpose |
+| Reusable | Off: enroll one server |
+| Ephemeral | Off: this server should remain in your tailnet |
+| Tags | `tag:polybot`, defined in the policy above |
+| Pre-approved | Enable if your tailnet uses device approval |
+| Expiration | Choose a period that covers your planned bootstrap |
+
+Copy the generated `tskey-auth-...` value into `polybot_tailscale_authkey` in Vault
+in step 4. This is an **auth key**, not an API key or CI OAuth credential.
+[Tailscale auth-key documentation](https://tailscale.com/docs/features/access-control/auth-keys).
+
+**Already connected?** Bootstrap will skip the enrollment command while Tailscale
+is running, but its current input validator still requires a `tskey-auth-...`
+value for the normal bootstrap invocation. Keep it in Vault even in that case.
+The validator checks the prefix; it does not prove the key is unused or unexpired.
+A one-time key is consumed on enrollment; generate a new one if the server later
+needs re-enrollment. Do not skip the whole tailnet stage merely to avoid supplying
+this value, because that stage also validates/configures private HTTPS Serve.
+
+### 3. Prepare your Mac/controller and deployment SSH key
+
+**On your Mac/controller**, from the repository root, with `uv` and OpenSSH
+(`ssh`, `ssh-keygen`) installed:
+
+```sh
+uv sync --locked --extra dev
+uv tool install ansible-core==2.19.7
+ansible-playbook --version
+command -v ssh-keygen
+```
+
+#### Generate a dedicated deployment key
+
+Do this once, choosing a different filename if the following files already exist:
+
+```sh
+ssh-keygen -t ed25519 -C "polybot-deployment" -f ~/.ssh/polybot_deploy -N ""
+cat ~/.ssh/polybot_deploy.pub
+```
+
+Copy the entire public line (`ssh-ed25519`, key data, and optional comment) into
+`polybot_ssh_public_key` in the public inventory. This example uses no passphrase
+because the current unattended CI workflow loads the private key directly.
+Protect the private file; the resulting server account has Docker and unrestricted
+sudo authority and is therefore a host administrator.
+
+| Generated file | Where it goes |
+| --- | --- |
+| `~/.ssh/polybot_deploy.pub` | Contents go into public `production.yml`; bootstrap installs them in `/home/polybot/.ssh/authorized_keys` |
+| `~/.ssh/polybot_deploy` | Stays private on your Mac; later its full contents become GitHub's `DEPLOY_SSH_KEY` secret |
+
+Do **not** add the deployment key to the server manually. The first bootstrap uses
+your existing administrator's working SSH key; then Ansible installs the new
+public key for `polybot`. These are different from the server host key used below.
+An existing deployment key pair also works if you deliberately choose to reuse it.
+
+#### Optional backups
+
+The example uses `polybot_backups_enabled: false`. You can proceed without SFTP
+storage, backup keys, `age` on the controller, or an age recovery identity.
+
+If enabling backups, set it to `true`, install `age` on the controller, and obtain
+an SFTP host, port, user and a dedicated existing directory with read/write/delete
+permissions. Verify its SSH host public key through a trusted channel. Generate a
+separate non-interactive SFTP key pair and arrange storage-side authorization.
+On the protected recovery machine, generate the encryption identity:
+
+```sh
+age-keygen -o recovery.age
+age-keygen -y recovery.age
+```
+
+Only the public `age1...` output goes into `polybot_age_recipients` in inventory.
+Keep `recovery.age`, the private decryption identity, offline and outside the
+server and SFTP storage. Put the SFTP private key in Vault. See
+[optional SFTP backups](#optional-sftp-backups) for enabling and verifying recovery.
+
+### 4. Fill the public inventory, trust file and encrypted Vault
+
+There are three repository files to maintain:
+
+```text
+known_hosts                                      # Verified server public keys
+deploy/ansible/inventory/production.yml          # Public configuration
+deploy/ansible/inventory/production.vault.yml    # Encrypted secrets
+```
+
+#### Fill `production.yml`
+
+Copy the example **on your Mac/controller**, only if you have not created it yet:
+
+```sh
+cp deploy/ansible/inventory/production.example.yml deploy/ansible/inventory/production.yml
+```
+
+A Namecheap Private Email setup with backups disabled looks like this. Replace
+all example values with your own, including the full deployment public key:
+
+```yaml
+all:
+  children:
+    polybot:
+      hosts:
+        beta:
+          ansible_host: hec-server.tailnet-name.ts.net
+          ansible_user: polybot
+          ansible_ssh_common_args: '-o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes'
+      vars:
+        polybot_ssh_public_key: 'ssh-ed25519 REPLACE_WITH_FULL_PUBLIC_KEY polybot-deployment'
+        polybot_root: /srv/polybot
+        polybot_arch: amd64
+        polybot_origin: https://hec-server.tailnet-name.ts.net
+        polybot_http_port: 8081
+        polybot_smtp_host: mail.privateemail.com
+        polybot_smtp_port: 587
+        polybot_smtp_security: starttls
+        polybot_smtp_from: accounts@example.com
+        polybot_smtp_username: accounts@example.com
+        polybot_alert_to: operator@example.com
+        polybot_backups_enabled: false
+```
+
+| Setting | How to choose it |
+| --- | --- |
+| `beta` | Ansible's local alias for this server; it need not match its DNS name |
+| `ansible_host` | Target server's SSH hostname or address, without `https://`; normally its full Tailscale name |
+| `ansible_user` | Keep `polybot` for routine deployments; override with your existing administrator during the first bootstrap |
+| `polybot_ssh_public_key` | Entire deployment client `.pub` line from step 3, not the server's host key |
+| `polybot_root` | Dedicated application directory on the server; default `/srv/polybot` |
+| `polybot_arch` | Run `uname -m` on the server: `x86_64` means `amd64`, `aarch64` means `arm64` |
+| `polybot_origin` | Exact browser origin, including `https://`; use the server's full Tailscale DNS name without a path or trailing slash |
+| `polybot_http_port` | Local application listener behind Serve; keep `8081` unless changing the port deliberately; it is not the SSH or external HTTPS port |
+| `polybot_smtp_host` | Outgoing mail server provided by your email provider, such as `mail.privateemail.com` |
+| `polybot_smtp_port` / `polybot_smtp_security` | Namecheap example: `587` with `starttls`; implicit TLS uses `465` with `tls` |
+| `polybot_smtp_from` | Sender email address; using the authenticated mailbox is the simplest setup |
+| `polybot_smtp_username` | Full mailbox login address for Namecheap Private Email, not your Namecheap account username |
+| `polybot_alert_to` | Your operator mailbox for host alerts |
+| `polybot_backups_enabled` | YAML boolean `false` or `true`, without quotes; optional backup fields are required when true |
+
+`ansible_host` and `polybot_origin` refer to the same deployment server, but one is
+an SSH destination and the other is its browser URL. Buying `example.com` does
+not change that URL: using `https://app.example.com` would require a different
+routing and HTTPS setup. Your purchased domain can still supply the email address
+`accounts@example.com` while the application uses Tailscale HTTPS.
+
+Namecheap's `privateemail._domainkey` is a **DKIM DNS record name**, used to verify
+email signatures. It is not an SMTP hostname and does not belong in
+`polybot_smtp_host`. Configure provider-required DNS authentication records in the
+domain's DNS panel. An actual Private Email mailbox is required; owning a domain
+alone does not provide SMTP credentials. See
+[Namecheap SMTP settings](https://www.namecheap.com/support/knowledgebase/article.aspx/1179/2175/general-private-email-configuration-for-mail-clients-and-mobile-devices/)
+and [DKIM setup](https://www.namecheap.com/support/knowledgebase/article.aspx/10383/2176/how-to-set-up-a-dkim-record-for-private-email/).
+
+#### Create the repository's `known_hosts`
+
+**Why:** Your client must verify the server's identity before sending credentials.
+The inventory explicitly sets `UserKnownHostsFile=./known_hosts`, so a valid entry
+in `~/.ssh/known_hosts` alone will not satisfy this configuration.
+
+Through the server console/provider channel or an already trusted SSH connection,
+run **on the server**:
+
+```sh
+cat /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+It returns `ssh-ed25519`, the server's public key data, and perhaps a comment such
+as `root@hec-server`. Create `known_hosts` **at the repository root on your Mac**
+and add the full hostname before that public-key record:
+
+```text
+hec-server.tailnet-name.ts.net ssh-ed25519 REPLACE_WITH_FULL_SERVER_HOST_PUBLIC_KEY root@hec-server
+```
+
+The trailing comment is optional. A line for `hec-server` alone does not cover
+`hec-server.tailnet-name.ts.net`; add the exact address you will use. If the first
+bootstrap connects via an initial IP/LAN address, add a verified entry for that
+address too. Both entries can contain the same server public key. For a custom
+SSH port, use `[HOST]:PORT` in `known_hosts` and configure `ansible_port` accordingly.
+
+If you already verified and saved the exact hostname in `~/.ssh/known_hosts`, you
+can copy that entry into the repository file. Find it with:
+
+```sh
+ssh-keygen -F hec-server.tailnet-name.ts.net -f ~/.ssh/known_hosts
+```
+
+Do not treat an unauthenticated `ssh-keyscan` result as proof of identity. Keep
+strict checking enabled. Commit the repository `known_hosts`: its keys are public.
+If the host is reinstalled or its identity key rotates, verify the replacement
+through the console before changing this file.
+
+Check lookup and a fresh administrator connection **from the repository root**:
+
+```sh
+ssh-keygen -F hec-server.tailnet-name.ts.net -f ./known_hosts
+ssh -o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes \
+  -o ControlMaster=no -o ControlPath=none -o BatchMode=yes \
+  hec@hec-server.tailnet-name.ts.net 'id -un'
+```
+
+The SSH command should print `hec`. If your administrator key has a non-default
+filename, add `-i ~/.ssh/YOUR_ADMIN_KEY`; use the matching `--private-key` option
+when invoking Ansible in step 5.
+
+#### Public inventory and private credentials
+
+Public keys are not secrets. They belong in plain YAML even though they are used
+for authentication or encryption. Keep one definition of each variable:
+
+| Value | Location |
+| --- | --- |
+| `polybot_ssh_public_key` | Public `production.yml`, under `vars` |
+| `polybot_smtp_username` | Public `production.yml`, under `vars` |
+| `polybot_sftp_known_hosts` (verified storage host public keys; backups only) | Public `production.yml`, under `vars` |
+| `polybot_age_recipients` (public encryption recipients; backups only) | Public `production.yml`, under `vars` |
+| `polybot_tailscale_authkey` | Encrypted `production.vault.yml` |
+| `polybot_smtp_password` | Encrypted `production.vault.yml` |
+| `polybot_sftp_private_key` (backups only) | Encrypted `production.vault.yml` |
+| Deployment SSH private key | Private file on controller; later GitHub secret `DEPLOY_SSH_KEY` |
+| Age private recovery identity | Offline recovery custody |
+| Vault password | Password manager outside Git |
+
+If using an older secrets file, move the four public variables above into
+inventory's `vars` section and remove their Vault definitions. Ansible reads the
+same variable names from either location; duplicated Vault extra-vars can override
+an inventory value you thought you had changed.
+
+#### Obtain `polybot_smtp_password`
+
+For the current Namecheap Private Email platform:
+
+1. Sign into [Private Email webmail](https://privateemail.com/) as the mailbox you
+   selected for `polybot_smtp_username`.
+2. Open **Settings → Launch Security Center → App passwords**.
+3. Choose **Create new password**, name it `polybot`, and confirm with your mailbox
+   password when prompted.
+4. Save the generated app password immediately; it is shown only once. Paste it
+   exactly, including hyphens, into `polybot_smtp_password` in Vault.
+
+This is not the Namecheap account password. A dedicated SMTP app password also
+avoids confusing the mailbox's current webmail password with its email-client
+credentials. Legacy mail plans can have different controls; use the provider's
+instructions for that mailbox. See
+[Namecheap app passwords](https://www.namecheap.com/support/knowledgebase/article.aspx/10816/2178/how-to-use-app-passwords-for-private-email/).
+
+#### Create and edit `production.vault.yml`
+
+**On your Mac/controller**, for a new file only:
+
+```sh
+ansible-vault encrypt deploy/ansible/inventory/production.vault.example.yml \
+  --output deploy/ansible/inventory/production.vault.yml
+chmod 600 deploy/ansible/inventory/production.vault.yml
+ansible-vault edit deploy/ansible/inventory/production.vault.yml
+```
+
+The first command encrypts a copy of the placeholder template; it does not encrypt
+or modify the example itself. Choose a Vault password and save it in your password
+manager. The edit command decrypts for editing and saves the file encrypted again.
+With backups disabled, the editor should contain these two filled-in secret fields:
+
+```yaml
+polybot_tailscale_authkey: 'tskey-auth-REPLACE_WITH_GENERATED_KEY'
+polybot_smtp_password: 'REPLACE_WITH_MAILBOX_APP_PASSWORD'
+```
+
+Use the same `ansible-vault edit` command for later changes. Do not decrypt the
+tracked file in place. Never put the real Vault password in a command, inventory,
+or committed password file. The current release workflow does not need the Vault
+password: bootstrap installs runtime secrets on the server. If a future CI job
+needs decryption, supply the password through a CI secret.
+
+**Existing secrets file?** An already encrypted `secrets.yml` can be renamed to
+`production.vault.yml` without decrypting it, provided the destination does not
+exist. For an existing plaintext file, use `ansible-vault encrypt PATH_TO_FILE
+--output deploy/ansible/inventory/production.vault.yml` instead of encrypting the
+example. Verify the encrypted copy with `ansible-vault edit`, then remove the
+leftover plaintext file; never stage it. The filename supplied to Ansible must
+match the actual file, including its directory.
+
+**Yes, commit the encrypted Vault.** Encryption is what protects its contents;
+keeping the ciphertext outside the repository is not required. Git retains old
+encrypted versions, so a password change does not re-encrypt past commits. Keep
+the Vault password separate from Git and use a strong unique password.
+
+Check that the file starts with `$ANSIBLE_VAULT;` and contains ciphertext. Then
+stage the public inventory, encrypted secrets and public host keys explicitly:
+
+```sh
+head -n 1 deploy/ansible/inventory/production.vault.yml
+git add deploy/ansible/inventory/production.yml \
+  deploy/ansible/inventory/production.vault.yml known_hosts
+```
+
+### 5. Bootstrap with the existing administrator
+
+**On your Mac/controller**, from the repository root:
+
+```sh
+export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
+  -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
+  -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
+```
+
+| Argument | Meaning |
+| --- | --- |
+| `ANSIBLE_CONFIG` | Selects this repository's Ansible settings |
+| `-i .../production.yml` | Loads the public inventory |
+| `-e @.../production.vault.yml` | Loads variables from the encrypted file on your Mac/controller |
+| `--ask-vault-pass` | Prompts for the Vault encryption password |
+| `-e ansible_host=INITIAL_HOST` | Overrides the normal target address for this connection; use an already reachable IP, LAN name or Tailscale name |
+| `-e ansible_user=INITIAL_ADMIN` | Uses the existing sudo-capable account to create/configure `polybot` |
+| `--ask-become-pass` | Prompts for that existing user's sudo password |
+
+For an already-connected Tailscale server and administrator `hec`:
+
+```sh
+export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
+  -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
+  -e ansible_host=hec-server.tailnet-name.ts.net \
+  -e ansible_user=hec \
+  --ask-become-pass
+```
+
+If the inventory already has this reachable `ansible_host`, the host override is
+optional. The user override is needed for the first bootstrap because `polybot`
+does not exist yet. If your current administrator SSH key is not selected by SSH,
+add `--private-key ~/.ssh/YOUR_ADMIN_KEY` to this command; use the existing
+administrator's key, not the new deployment key unless they are intentionally
+identical.
+
+The prompts may appear as `BECOME password:` followed by `Vault password:`.
+The first wants **hec's sudo password**; the second wants **your Vault password**.
+Neither asks for the SMTP password, Tailscale auth key or deployment private key.
+
+#### What bootstrap does
+
+After gathering facts and validating public/private inputs, bootstrap:
+
+- Repairs its obsolete duplicate Tailscale repository entry before using APT.
+  It backs up that source file and preserves unrelated entries. It then installs
+  `gpg` before configuring signed repositories, and uses Tailscale's standard
+  `tailscale.list` and `/usr/share/keyrings/tailscale-archive-keyring.gpg` paths to
+  coexist with an existing official installation. See
+  [Tailscale Debian packages](https://pkgs.tailscale.com/stable/#debian-trixie).
+- Installs Docker Engine, Compose, Tailscale, msmtp and pinned uv 0.10.9; age/rclone are
+  installed when backups are enabled.
+- Creates `polybot`, adds it to Docker access, installs the public deployment key
+  in `/home/polybot/.ssh/authorized_keys`, and grants passwordless sudo.
+- Creates the private application directories and runtime configuration, generates
+  the PostgreSQL password once, and installs the SMTP/database secrets. Reruns
+  preserve the generated database password.
+- Retains a running Tailscale enrollment, or enrolls with the tagged auth key when
+  needed; validates the expected DNS name and configures persistent private Serve.
+- Installs monitoring and optional backup timers, which wait for an active release.
+
+It does not build application images, deploy a release, or run Alembic migrations.
+Successful bootstrap means the host is prepared; the application becomes available
+when the first release is activated in step 7. Migrations run during that release
+activation, as explained under [database migrations](#database-migrations).
+
+#### Verify deployment access
+
+After successful bootstrap, use your deployment private key **from your Mac**:
+
+```sh
+ssh -i ~/.ssh/polybot_deploy -o IdentitiesOnly=yes \
+  -o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes \
+  -o ControlMaster=no -o ControlPath=none -o BatchMode=yes \
+  polybot@hec-server.tailnet-name.ts.net 'id -un; sudo -n whoami'
+```
+
+Expect `polybot` followed by `root`. For later Ansible operations using the
+inventory's `ansible_user: polybot`, select this key with
+`--private-key ~/.ssh/polybot_deploy` or configure SSH to select it. A custom key
+filename is not automatically discovered merely because the file exists.
+
+Check the server's Tailscale DNS name matches the inventory and its Serve mapping
+is private. Restrict initial public/LAN SSH only after tailnet SSH works. Continue
+with GitHub setup and the first release below.
+
+#### Bootstrap troubleshooting
+
+| Symptom | Meaning and next step |
+| --- | --- |
+| `production.vault.yml` not found; inventory parser also complains about a missing root `plugin` key | First verify the `-e @...` file exists on the controller. Earlier setups named it `secrets.yml`; rename the encrypted file or correct the argument. A static YAML inventory does not need a `plugin` key. If parsing still fails, check YAML indentation separately. |
+| `No ED25519 host key is known ... strict checking` | Check `./known_hosts` in the repository root, the exact hostname, and the working directory. `~/.ssh/known_hosts` is a different file. Populate it using the verified server host key; do not disable strict checking. |
+| `sudo: not found` followed by a JSON/deserialization error during Gathering Facts | Ansible reached SSH but cannot become root. Complete server preparation or install sudo as root and grant the existing administrator access, then start a fresh SSH connection. |
+| Bootstrap credentials fail with `no_log: true` and censored output | Check `polybot_ssh_public_key` is a complete parseable client public key, SMTP username/password are present, and the Tailscale value starts with `tskey-auth-`. If backups are enabled, check the SFTP private key, matching verified host record and age recipients too. Inspect Vault locally with `ansible-vault edit`; do not expose secrets by disabling `no_log`. |
+| `play_hosts` deprecation warning | This can be triggered when the current playbooks enumerate Ansible variables. It is separate from the later fatal error; use the failed task's message to diagnose the blocker. |
+| `Either apt-key or gpg binary is required` | Use the updated bootstrap that installs `gpg` before `apt_repository`. Rerun the full bootstrap. |
+| Tailscale repository `Conflicting values ... Signed-By` | An earlier bootstrap added a second source with another key path. The updated bootstrap removes its obsolete entry before the first APT operation and uses the official path. Rerun from the start so that repair runs. |
+
+To check only the public inventory's structure without decrypting secrets or
+connecting to the server:
+
+```sh
+ansible-inventory -i deploy/ansible/inventory/production.yml --graph
+```
+
+Expect `all → polybot → beta`. After fixing an input or dependency, rerun the full
+bootstrap command. Completed tasks are designed to be repeatable; starting at a
+later task can bypass validation and repair steps.
+
+### 6. Configure GitHub releases
+
+Create GitHub environment `private`. Set secrets `DEPLOY_SSH_KEY`,
+`DEPLOY_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, and `TS_AUDIENCE`. Configure Tailscale
+workload identity federation for this repository's `private` environment,
+issuer `https://token.actions.githubusercontent.com`, subject
+`repo:OWNER/REPO:environment:private`, the configured audience, `auth_keys` scope
+and `tag:polybot-ci`. Use ordinary OpenSSH, not Tailscale SSH. Permit Actions
+package and release publication using `GITHUB_TOKEN`; grant this repository
+Actions read access to its GHCR packages. Enable failure notifications for
+the named operator. Do not configure required environment approval if unattended
+tagged deployment is intended. Protect the default branch and version tags.
+
+### 7. Deploy the first release
+
+Push the first version tag, then run Ansible `status.yml`; also run `backup.yml`
+when backups are enabled.
+Timers intentionally wait for a first active release. Complete the external
+acceptance checklist below before declaring operational setup complete.
 
 The examples contain placeholders; operators supply production inventory values
 and encrypted credentials. Tailscale currently advertises 1,000 ephemeral-resource minutes
@@ -95,65 +561,6 @@ free allowance is exhausted; reassess changed terms without enabling paid capaci
 [Tailscale pricing](https://tailscale.com/pricing) and
 [workload identity GitHub integration](https://tailscale.com/docs/integrations/github/github-action)
 were checked for this implementation.
-
-## Public inventory and private credentials
-
-Commit both files under `deploy/ansible/inventory/`:
-
-- `production.yml`: non-secret configuration in plain YAML.
-- `production.vault.yml`: secrets encrypted with Ansible Vault.
-
-Keep the Vault password in a password manager outside Git. If a future CI job needs
-to decrypt the file, supply that password through a CI secret. The existing release
-workflow does not need it; bootstrap installs the runtime secrets on the host.
-
-For a new setup, run from the repository root (do not overwrite an existing Vault):
-
-```sh
-ansible-vault encrypt deploy/ansible/inventory/secrets.example.yml \
-  --output deploy/ansible/inventory/production.vault.yml
-ansible-vault edit deploy/ansible/inventory/production.vault.yml
-```
-
-The first command encrypts a copy of the placeholder template and asks you to choose
-a Vault password. The second opens the encrypted copy so you can fill in the real
-values; it saves the file encrypted again. Use that same `ansible-vault edit` command
-for later changes. Do not use `ansible-vault decrypt` on the tracked file.
-
-If you already filled in a plaintext secrets file, encrypt that file instead of
-the template, using `--output deploy/ansible/inventory/production.vault.yml`. The
-original plaintext file remains on disk; remove it after verifying the encrypted
-copy with `ansible-vault edit`, and never stage it. An existing encrypted file can
-be moved to `production.vault.yml` without decrypting it.
-
-Before staging, check that `production.vault.yml` starts with `$ANSIBLE_VAULT;` and
-contains ciphertext, then stage only the intended files:
-
-```sh
-git add deploy/ansible/inventory/production.yml \
-  deploy/ansible/inventory/production.vault.yml
-```
-
-| Value | Location |
-| --- | --- |
-| `polybot_ssh_public_key` (entire deployment `.pub` file) | Public inventory, under `vars` |
-| `polybot_smtp_username` (mailbox login, usually its full email address) | Public inventory, under `vars` |
-| `polybot_sftp_known_hosts` (verified storage host public key records; backups only) | Public inventory, under `vars` |
-| `polybot_age_recipients` (public encryption recipients; backups only) | Public inventory, under `vars` |
-| `polybot_tailscale_authkey` | Encrypted `production.vault.yml` |
-| `polybot_smtp_password` | Encrypted `production.vault.yml` |
-| `polybot_sftp_private_key` (backups only) | Encrypted `production.vault.yml` |
-
-The deployment SSH **private** key stays on the controller and is supplied to CI
-through `DEPLOY_SSH_KEY`; it does not belong in either inventory example. The age
-private recovery identity stays offline. The controller's `known_hosts` file
-contains public host keys, not secrets; verify those keys through a trusted channel.
-
-When updating an existing setup, move the four non-secret variables above from
-Vault to the inventory's `vars` section (backup values only when enabled), then
-remove their Vault definitions. Ansible uses the same variable names regardless
-of which file supplies them. Use the `-e @deploy/ansible/inventory/production.vault.yml`
-argument shown in the bootstrap command above to load the encrypted file.
 
 ## Optional SFTP backups
 
@@ -226,6 +633,44 @@ invoke `deploy.yml` or `rollback.yml` with private extra vars containing
 `release_tag`, `release_commit`, absolute `release_bundle`, `registry_username`
 and a short-lived `registry_token`. Do not put credentials on command lines.
 The workflow supplies these automatically for routine releases.
+
+## Database migrations
+
+Alembic runs automatically on the server during release activation, including the
+first deployment. It does not run during host bootstrap. Migration files and
+`backend/alembic.ini` are included in the release's backend container image.
+
+The GitHub **Private release** workflow triggers on a version tag such as `v1.0.0`,
+or a manual deployment of a published release. Ansible stages the release and
+starts `polybot-activate.service`. Its release executor then:
+
+1. Starts PostgreSQL and Redis if needed and waits for them to be healthy,
+   preserving existing containers and data volumes.
+2. Stops web ingress and application processes before changing the database.
+3. Runs a temporary `migrate` container from the candidate backend image. Its
+   entrypoint calls Alembic's `upgrade(..., "head")`, applying revisions not yet
+   recorded in the database, using the mounted database connection secret.
+4. Starts API, worker and recovery services only after migration succeeds. Each
+   application entrypoint checks that the database revision matches its image.
+5. Restores web ingress after application readiness, then promotes the release.
+
+The migration operation is equivalent to `alembic upgrade head`; you do not need
+to SSH in and run it manually. The production executor supplies the selected
+release's Compose file, image and credentials. See
+[`BetaRelease.activate`](../scripts/beta_release/__init__.py) and
+[`DeploymentSchema`](../backend/src/api/deployment/schema.py) for the implementation.
+
+If migration fails, activation stops with ingress closed; repair the cause and
+retry or deploy a reviewed forward repair. An application rollback runs a schema
+compatibility check instead of migrations and never downgrades the database. The
+older image must expect the database's current revision. Reapplying an already
+active healthy release checks health without rerunning activation or migrations.
+
+Inspect activation output **on the server**:
+
+```sh
+sudo journalctl -u polybot-activate.service -n 100 --no-pager
+```
 
 ## Release and rollback
 
