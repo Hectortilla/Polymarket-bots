@@ -57,7 +57,9 @@ no automation buys capacity, upgrades a plan or enables Funnel.
      -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
    ```
 
-   Bootstrap installs signed vendor Docker/Tailscale packages, distribution msmtp,
+   Bootstrap installs `gpg` before configuring signed vendor package repositories
+   (required by Ansible's `apt_repository` module on minimal Debian installations).
+   It installs signed vendor Docker/Tailscale packages, distribution msmtp,
    and uv 0.10.9. It installs age and rclone when backups are enabled. It generates
    the PostgreSQL password once and preserves it on reruns. It creates private directories, installs runtime
    secrets and timers, enrolls Tailscale and persists Serve. No application images

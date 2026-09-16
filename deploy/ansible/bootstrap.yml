@@ -13,7 +13,7 @@
       no_log: true
     - name: Install distribution tools
       ansible.builtin.apt:
-        name: "{{ ['ca-certificates', 'curl', 'python3', 'python3-debian', 'msmtp-mta', 'openssh-server'] + (['age', 'rclone'] if polybot_backups_enabled else []) }}"
+        name: "{{ ['ca-certificates', 'curl', 'gpg', 'python3', 'python3-debian', 'msmtp-mta', 'openssh-server'] + (['age', 'rclone'] if polybot_backups_enabled else []) }}"
         state: present
         update_cache: true
         cache_valid_time: 3600
