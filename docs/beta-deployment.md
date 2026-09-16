@@ -35,15 +35,17 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    output to `polybot_age_recipients` in the public inventory. Keep the private
    identity offline, outside the host and SFTP storage.
 4. Copy `deploy/ansible/inventory/example.yml` to
-   `deploy/ansible/inventory/production.yml`. Commit only the non-secret host,
+   `deploy/ansible/inventory/production.yml`. This file contains the non-secret host,
    architecture, root, origin and operational configuration, including the deployment
    SSH public key and SMTP username. Default root:
    `/srv/polybot`. Fill every example value. Keep a `known_hosts` file at
    the repository root, with verified keys for both the initial address and
-   tailnet hostname. Copy `secrets.example.yml` outside the repository and replace
-   every required value (backup secrets only when enabled); encrypt with
-   `ansible-vault encrypt /secure/polybot-secrets.yml`. Use the public/private
-   split below; do not duplicate variables between inventory and Vault.
+   tailnet hostname. Create `deploy/ansible/inventory/production.vault.yml` from
+   `secrets.example.yml` using the Vault commands below, then replace every required
+   value with `ansible-vault edit` (backup secrets only when enabled). Commit both
+   `production.yml` and the encrypted `production.vault.yml`; keep plaintext secrets
+   and the Vault password out of Git. Use the public/private split below; do not
+   duplicate variables between inventory and Vault.
    SMTP must support STARTTLS or implicit TLS. The deployment account has Docker
    and sudo authority and is therefore a host administrator; protect its key.
 5. Bootstrap once, from the configured controller with initial SSH access:
@@ -51,7 +53,7 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    ```sh
    export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
    ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
-     -e @/secure/polybot-secrets.yml --ask-vault-pass \
+     -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
      -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
    ```
 
@@ -76,8 +78,8 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    Timers intentionally wait for a first active release. Complete the external
    acceptance checklist below before declaring operational setup complete.
 
-No real production inventory, account credentials or addresses are supplied by
-this repository. Tailscale currently advertises 1,000 ephemeral-resource minutes
+The examples contain placeholders; operators supply production inventory values
+and encrypted credentials. Tailscale currently advertises 1,000 ephemeral-resource minutes
 per month on Personal. CI joins only in remote-operation jobs; connectivity runs
 once daily with a five-minute job bound. Track usage and pause automation if the
 free allowance is exhausted; reassess changed terms without enabling paid capacity.
@@ -87,8 +89,41 @@ were checked for this implementation.
 
 ## Public inventory and private credentials
 
-`production.yml` contains non-secret configuration; the private copy of
-`secrets.example.yml` contains only secrets and must be encrypted with Ansible Vault.
+Commit both files under `deploy/ansible/inventory/`:
+
+- `production.yml`: non-secret configuration in plain YAML.
+- `production.vault.yml`: secrets encrypted with Ansible Vault.
+
+Keep the Vault password in a password manager outside Git. If a future CI job needs
+to decrypt the file, supply that password through a CI secret. The existing release
+workflow does not need it; bootstrap installs the runtime secrets on the host.
+
+For a new setup, run from the repository root (do not overwrite an existing Vault):
+
+```sh
+ansible-vault encrypt deploy/ansible/inventory/secrets.example.yml \
+  --output deploy/ansible/inventory/production.vault.yml
+ansible-vault edit deploy/ansible/inventory/production.vault.yml
+```
+
+The first command encrypts a copy of the placeholder template and asks you to choose
+a Vault password. The second opens the encrypted copy so you can fill in the real
+values; it saves the file encrypted again. Use that same `ansible-vault edit` command
+for later changes. Do not use `ansible-vault decrypt` on the tracked file.
+
+If you already filled in a plaintext secrets file, encrypt that file instead of
+the template, using `--output deploy/ansible/inventory/production.vault.yml`. The
+original plaintext file remains on disk; remove it after verifying the encrypted
+copy with `ansible-vault edit`, and never stage it. An existing encrypted file can
+be moved to `production.vault.yml` without decrypting it.
+
+Before staging, check that `production.vault.yml` starts with `$ANSIBLE_VAULT;` and
+contains ciphertext, then stage only the intended files:
+
+```sh
+git add deploy/ansible/inventory/production.yml \
+  deploy/ansible/inventory/production.vault.yml
+```
 
 | Value | Location |
 | --- | --- |
@@ -96,9 +131,9 @@ were checked for this implementation.
 | `polybot_smtp_username` (mailbox login, usually its full email address) | Public inventory, under `vars` |
 | `polybot_sftp_known_hosts` (verified storage host public key records; backups only) | Public inventory, under `vars` |
 | `polybot_age_recipients` (public encryption recipients; backups only) | Public inventory, under `vars` |
-| `polybot_tailscale_authkey` | Ansible Vault |
-| `polybot_smtp_password` | Ansible Vault |
-| `polybot_sftp_private_key` (backups only) | Ansible Vault |
+| `polybot_tailscale_authkey` | Encrypted `production.vault.yml` |
+| `polybot_smtp_password` | Encrypted `production.vault.yml` |
+| `polybot_sftp_private_key` (backups only) | Encrypted `production.vault.yml` |
 
 The deployment SSH **private** key stays on the controller and is supplied to CI
 through `DEPLOY_SSH_KEY`; it does not belong in either inventory example. The age
@@ -108,7 +143,8 @@ contains public host keys, not secrets; verify those keys through a trusted chan
 When updating an existing setup, move the four non-secret variables above from
 Vault to the inventory's `vars` section (backup values only when enabled), then
 remove their Vault definitions. Ansible uses the same variable names regardless
-of which file supplies them; bootstrap commands do not change.
+of which file supplies them. Use the `-e @deploy/ansible/inventory/production.vault.yml`
+argument shown in the bootstrap command above to load the encrypted file.
 
 ## Optional SFTP backups
 

@@ -1,4 +1,4 @@
-# Public configuration only; put passwords, auth keys and private keys in Ansible Vault.
+# Public configuration only; put secrets in the encrypted production.vault.yml.
 all:
   children:
     polybot:
