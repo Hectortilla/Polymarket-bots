@@ -36,9 +36,9 @@ def disabled_inventory():
 
 
 def test_example_inventory_needs_no_backup_configuration():
-    values = yaml.safe_load(Path("deploy/ansible/inventory/example.yml").read_text())[
-        "all"
-    ]["children"]["polybot"]["vars"]
+    values = yaml.safe_load(
+        Path("deploy/ansible/inventory/production.example.yml").read_text()
+    )["all"]["children"]["polybot"]["vars"]
     inventory = DeploymentInventory.model_validate(
         values | {"polybot_origin": "https://fixture.example.ts.net"}
     )

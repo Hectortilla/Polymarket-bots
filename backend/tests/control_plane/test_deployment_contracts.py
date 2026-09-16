@@ -109,9 +109,9 @@ from scripts.host_operations.policy import BACKUP_CHECK_CALENDAR, MONITOR_CALEND
 
 
 def inventory_values():
-    values = yaml.safe_load(Path("deploy/ansible/inventory/example.yml").read_text())[
-        "all"
-    ]["children"]["polybot"]["vars"]
+    values = yaml.safe_load(
+        Path("deploy/ansible/inventory/production.example.yml").read_text()
+    )["all"]["children"]["polybot"]["vars"]
     return values | {
         "polybot_origin": "https://fixture.example.ts.net",
         "polybot_backups_enabled": True,

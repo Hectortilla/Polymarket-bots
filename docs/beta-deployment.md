@@ -34,7 +34,7 @@ no automation buys capacity, upgrades a plan or enables Funnel.
    on the protected recovery machine; copy only `age-keygen -y recovery.age` public
    output to `polybot_age_recipients` in the public inventory. Keep the private
    identity offline, outside the host and SFTP storage.
-4. Copy `deploy/ansible/inventory/example.yml` to
+4. Copy `deploy/ansible/inventory/production.example.yml` to
    `deploy/ansible/inventory/production.yml`. This file contains the non-secret host,
    architecture, root, origin and operational configuration, including the deployment
    SSH public key and SMTP username. Default root:
@@ -59,7 +59,14 @@ no automation buys capacity, upgrades a plan or enables Funnel.
 
    Bootstrap installs `gpg` before configuring signed vendor package repositories
    (required by Ansible's `apt_repository` module on minimal Debian installations).
-   It installs signed vendor Docker/Tailscale packages, distribution msmtp,
+   It uses Tailscale's standard `tailscale.list` and
+   `/usr/share/keyrings/tailscale-archive-keyring.gpg` paths so an existing official
+   installation can be reused. Before any APT operation, it removes the obsolete
+   bootstrap entry from `pkgs_tailscale_com_stable_debian.list`, backing up that
+   file and preserving other entries. This also repairs a previous failed run
+   that left conflicting `Signed-By` paths. See the
+   [official Tailscale Debian instructions](https://pkgs.tailscale.com/stable/#debian-trixie).
+   Bootstrap installs signed vendor Docker/Tailscale packages, distribution msmtp,
    and uv 0.10.9. It installs age and rclone when backups are enabled. It generates
    the PostgreSQL password once and preserves it on reruns. It creates private directories, installs runtime
    secrets and timers, enrolls Tailscale and persists Serve. No application images
