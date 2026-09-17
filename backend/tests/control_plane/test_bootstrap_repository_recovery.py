@@ -1,6 +1,7 @@
 """Exercise bootstrap's legacy repository repair without touching system APT."""
 
 import copy
+import shlex
 import shutil
 import subprocess
 import sys
@@ -8,7 +9,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from jinja2 import Environment, StrictUndefined
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -19,24 +19,30 @@ def test_repository_recovery_preserves_other_entries_and_is_idempotent(
     if executable is None:
         pytest.skip("ansible-playbook is required for the local recovery check")
     tasks = yaml.safe_load(Path("deploy/ansible/bootstrap.yml").read_text())[0]["tasks"]
-    repair = next(task for task in tasks if "ansible.builtin.lineinfile" in task)
-    first_apt = next(task for task in tasks if "ansible.builtin.apt" in task)
+    repair = next(task for task in tasks if task.get("register") == "legacy_source")
+    first_apt = next(
+        task for task in tasks if task.get("register") == "minimal_packages"
+    )
     assert tasks.index(repair) < tasks.index(first_apt)
 
     repair = copy.deepcopy(repair)
-    module = repair["ansible.builtin.lineinfile"]
-    source = tmp_path / Path(module["path"]).name
-    module["path"] = str(source)
+    script = repair["ansible.builtin.raw"]
+    source_assignment = next(
+        line for line in script.splitlines() if line.startswith("legacy=")
+    )
+    source = tmp_path / "sources with spaces.list"
+    repair["ansible.builtin.raw"] = script.replace(
+        source_assignment, f"legacy={shlex.quote(str(source))}", 1
+    )
+    repair["become"] = False
     legacy_entry = (
-        Environment(undefined=StrictUndefined)
-        .from_string(module["line"])
-        .render(ansible_distribution_release="trixie")
+        "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] "
+        "https://pkgs.tailscale.com/stable/debian trixie main"
     )
     retained = "# Operator-managed entry\ndeb https://example.com/debian trixie main\n"
     if existing:
         source.write_text(retained + legacy_entry + "\n")
 
-    repeat = copy.deepcopy(repair) | {"register": "repeated_repair"}
     playbook = tmp_path / "repair.yml"
     playbook.write_text(
         yaml.safe_dump(
@@ -51,10 +57,15 @@ def test_repository_recovery_preserves_other_entries_and_is_idempotent(
                     },
                     "tasks": [
                         repair,
-                        repeat,
                         {
                             "ansible.builtin.assert": {
-                                "that": ["not repeated_repair.changed"]
+                                "that": [f"legacy_source.changed == {existing}"]
+                            },
+                        },
+                        repair,
+                        {
+                            "ansible.builtin.assert": {
+                                "that": ["not legacy_source.changed"]
                             },
                         },
                     ],
@@ -72,7 +83,7 @@ def test_repository_recovery_preserves_other_entries_and_is_idempotent(
     assert result.returncode == 0, result.stdout + result.stderr
     if existing:
         assert source.read_text() == retained
-        backups = list(tmp_path.glob(source.name + ".*~"))
+        backups = list(tmp_path.glob(source.name + ".*.bak"))
         assert len(backups) == 1
         assert backups[0].read_text() == retained + legacy_entry + "\n"
     else:

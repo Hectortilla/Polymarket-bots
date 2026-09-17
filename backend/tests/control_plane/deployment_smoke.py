@@ -544,6 +544,8 @@ class DeploymentSmoke:
                     "a deployment command exposed an acceptance credential"
                 )
             log.write(result.stdout)
+        if result.returncode:
+            print(result.stdout, end="", flush=True)
         result.check_returncode()
         return result.stdout
 

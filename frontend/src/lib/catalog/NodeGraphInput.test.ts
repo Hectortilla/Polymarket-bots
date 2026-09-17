@@ -174,34 +174,34 @@ describe("node graph editor", () => {
     expect(document.querySelector(".graph-summary")?.textContent).toContain("1 connection");
   });
 
-  it("creates and reopens every MVP operation through the actual editor", async () => {
-    stubFlowBrowserApis();
-    const onchange = vi.fn<(graph: NodeGraph) => void>();
-    const view = render(NodeGraphInput, {
-      initialGraph: TEST_GRAPH,
-      graphCatalog: TEST_GRAPH_CATALOG,
-      onchange,
-      labelledby: "editor",
-    });
-    for (const operation of TEST_GRAPH_CATALOG.operations ?? []) {
+  it.each(TEST_GRAPH_CATALOG.operations ?? [])(
+    "creates and reopens $display_name through the actual editor",
+    async (operation) => {
+      stubFlowBrowserApis();
+      const onchange = vi.fn<(graph: NodeGraph) => void>();
+      const view = render(NodeGraphInput, {
+        initialGraph: TEST_GRAPH,
+        graphCatalog: TEST_GRAPH_CATALOG,
+        onchange,
+        labelledby: "editor",
+      });
       await fireEvent.click(screen.getByRole("button", { name: ADD_NODE_LABEL }));
       await fireEvent.input(screen.getByRole("searchbox"), {
         target: { value: operation.display_name },
       });
       await fireEvent.click(screen.getByRole("button", { name: `Add ${operation.display_name}` }));
       expect(screen.getByLabelText(`${operation.display_name} node`, { selector: "section" })).toBeTruthy();
-    }
-    const graph = onchange.mock.calls.at(-1)?.[0];
-    if (!graph) throw new Error("Expected graph edit");
-    view.unmount();
-    render(NodeGraphInput, {
-      initialGraph: graph,
-      graphCatalog: TEST_GRAPH_CATALOG,
-      labelledby: "reopened",
-    });
-    for (const operation of TEST_GRAPH_CATALOG.operations ?? [])
+      const graph = onchange.mock.calls.at(-1)?.[0];
+      if (!graph) throw new Error("Expected graph edit");
+      view.unmount();
+      render(NodeGraphInput, {
+        initialGraph: graph,
+        graphCatalog: TEST_GRAPH_CATALOG,
+        labelledby: "reopened",
+      });
       expect(screen.getByLabelText(`${operation.display_name} node`, { selector: "section" })).toBeTruthy();
-  });
+    },
+  );
 
   it("removes only an expandable input edge and explains incompatible parameter wiring", async () => {
     stubFlowBrowserApis();

@@ -224,3 +224,30 @@ plan, example inventory and deployment runbook agree on Ansible ownership,
 root/sudo/su first access, optional lid/swap settings, the verified SSH transition,
 and Tailscale's route-dependent ordering. No application contract or Polymarket
 protocol/SDK code changed; no PolymarketDocs check was required.
+
+## CI regression follow-up — September 17, 2026
+
+The legacy repository recovery test now executes bootstrap's current raw-shell
+repair before the Python/sudo APT task. It verifies backup preservation, unrelated
+entries, absent files and repeat-run idempotency using temporary files only.
+Recording trim assertions tolerate Rich folding filenames across panel lines.
+Graph editor coverage creates and reopens each operation in a separate test,
+retaining the default timeout without growing one canvas through the full catalog.
+
+The disposable HTTPS/browser rehearsal passed locally. The reported CI browser
+failure could not be identified from its retained log: subprocess output was
+written only to the runner's local `commands.log`. Failed rehearsal commands now
+also print that output after the existing credential-disclosure check, with
+regressions covering exit status and rejection of sensitive output. Its original
+CI-only browser cause remains unconfirmed until a diagnostic rerun.
+
+Verification: `uv run pytest` passed **1,884 tests with no skips** against fresh
+disposable PostgreSQL/Redis; `npm --prefix frontend test` passed **419 tests**;
+`npm --prefix frontend run check` reported zero errors and warnings. The full
+`PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke` command
+passed locally. Changed Python files passed Ruff and the diff passed whitespace
+checks. Existing Starlette/httpx and fork deprecation warnings remain.
+
+Documentation-drift audit: this follow-up changes test coverage and rehearsal
+diagnostics only. Host preparation, trim behavior, application contracts and the
+implementation-plan scope remain unchanged; no PolymarketDocs check was required.

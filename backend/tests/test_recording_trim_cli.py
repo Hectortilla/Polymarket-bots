@@ -113,7 +113,7 @@ def test_main_forwards_dry_run_and_prints_plan(
     assert "12.06 KiB" in output
     assert "Dry run complete" in output
     assert "Archive unchanged" in output
-    assert plan.archive_path.name in output
+    assert plan.archive_path.name in _unwrapped_panel_text(output)
 
 
 @pytest.mark.parametrize("keep_backup", (True, False))
@@ -154,14 +154,14 @@ def test_main_prints_replacement_backup_and_trimmed_size(
 
     output = capsys.readouterr().out
     assert RECORDING_TRIM_COMPLETE_TITLE in output
-    assert plan.archive_path.name in output
+    assert plan.archive_path.name in _unwrapped_panel_text(output)
     assert "Trimmed size" in output
     assert "6.63 KiB" in output
     if backup_path is None:
         assert "Not retained (--no-backup)" in output
     else:
         assert "Backup" in output
-        assert backup_path.name in output
+        assert backup_path.name in _unwrapped_panel_text(output)
         assert "Not retained" not in output
 
 
@@ -209,3 +209,8 @@ def test_main_reports_filesystem_errors_through_argument_parser(
         trim_cli.main(["capture.sqlite3"])
 
     assert str(error) in capsys.readouterr().err
+
+
+def _unwrapped_panel_text(output: str) -> str:
+    # Rich may fold a filename across lines depending on the temporary path length.
+    return "".join(output.replace("│", "").split())
