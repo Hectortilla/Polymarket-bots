@@ -22,7 +22,8 @@ Jump to [server preparation](#1-prepare-the-debian-server-and-existing-administr
 [Tailscale](#2-configure-tailscale-the-hostname-and-private-https),
 [controller and keys](#3-prepare-your-maccontroller-and-deployment-ssh-key),
 [inventory and Vault](#4-fill-the-public-inventory-trust-file-and-encrypted-vault),
-or [bootstrap](#5-bootstrap-with-the-existing-administrator).
+[bootstrap](#5-bootstrap-with-the-existing-administrator), or
+[GitHub releases](#6-configure-github-releases).
 
 | Identity or file | Purpose |
 | --- | --- |
@@ -617,16 +618,261 @@ later task can bypass validation and repair steps.
 
 ### 6. Configure GitHub releases
 
-Create GitHub environment `private`. Set secrets `DEPLOY_SSH_KEY`,
-`DEPLOY_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, and `TS_AUDIENCE`. Configure Tailscale
-workload identity federation for this repository's `private` environment,
-issuer `https://token.actions.githubusercontent.com`, subject
-`repo:OWNER/REPO:environment:private`, the configured audience, `auth_keys` scope
-and `tag:polybot-ci`. Use ordinary OpenSSH, not Tailscale SSH. Permit Actions
-package and release publication using `GITHUB_TOKEN`; grant this repository
-Actions read access to its GHCR packages. Enable failure notifications for
-the named operator. Do not configure required environment approval if unattended
-tagged deployment is intended. Protect the default branch and version tags.
+**Why:** GitHub builds and publishes the release, joins your tailnet temporarily,
+and connects to the server as `polybot` with the deployment SSH key. Tailscale
+workload identity federation lets GitHub prove which repository/environment a
+job belongs to without storing a long-lived Tailscale client secret.
+
+Do this **in GitHub and the Tailscale admin console**, using accounts with
+repository administration and tailnet administration access. The examples below
+use this repository's current identity and default branch:
+
+| Setting | Value for this repository |
+| --- | --- |
+| Repository | `Hectortilla/Polymarket-bots` |
+| Default branch | `master` |
+| GitHub environment name | `private` |
+| Release tag pattern | `v*.*.*`; actual releases must be `vMAJOR.MINOR.PATCH`, such as `v1.0.0` |
+| Tailscale tag for CI runners | `tag:polybot-ci` |
+| Tailscale tag already on the server | `tag:polybot` |
+
+If using a fork or renamed repository, substitute its actual owner/name and
+default branch throughout. Preserve the repository's spelling in the OIDC subject;
+only the container-image namespace below is deliberately lowercased. The name
+`private` identifies a deployment environment; it does not change repository,
+GitHub Release or package visibility.
+
+#### Create the GitHub environment
+
+1. Open the repository's
+   [environment settings](https://github.com/Hectortilla/Polymarket-bots/settings/environments).
+   Choose **New environment**, enter `private`, and select **Configure environment**.
+   If `private` already exists, open it instead.
+2. For unattended deployment, leave **Required reviewers** and **Wait timer** off.
+3. Under **Deployment branches and tags**, choose **Selected branches and tags**.
+   Add the following two rules using **Add deployment branch or tag rule**:
+
+| Ref type | Name pattern | Why it is needed |
+| --- | --- | --- |
+| Branch | `master` | Scheduled connectivity checks and manual deploy/rollback runs selected from the default branch |
+| Tag | `v*.*.*` | Automatic deployment when a version tag is pushed |
+
+Save both rules. A tags-only environment would block the daily connectivity job.
+For manual runs, select `master` in **Use workflow from**, then supply the published
+version separately as `release_tag`. These restrictions control access to the
+environment; branch/tag protection is configured separately below. See
+[GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
+
+#### Create the Tailscale federated identity
+
+First confirm the step 2 access policy defines both tags and permits
+`tag:polybot-ci` to reach `tag:polybot` on TCP 22 and 443. The server keeps its
+`tag:polybot` tag; the temporary GitHub runner receives `tag:polybot-ci`.
+
+In the intended tailnet's admin console, open **Trust credentials**, select
+**Credential → OpenID Connect**, and fill in:
+
+| Field | Value to enter or select |
+| --- | --- |
+| Description, if offered | `polybot-github-private` |
+| Issuer | GitHub, if listed; otherwise **Custom issuer** |
+| Issuer URL | `https://token.actions.githubusercontent.com` |
+| Subject | `repo:Hectortilla/Polymarket-bots:environment:private` |
+| Audience, if offered as an optional input | Leave at the generated/default value; copy the resulting **Audience (aud claim)** after creation |
+| Scope | **Keys → Auth Keys**, with **Write** access (`auth_keys`) |
+| Tags for that scope | `tag:polybot-ci` only |
+| Additional custom claims | Leave empty for these existing workflows |
+
+Choose **Generate credential**. Copy its **Client ID** and **Audience (aud claim)**
+for the GitHub secrets below. If you deliberately set a custom audience, use that
+exact same string in `TS_AUDIENCE`. Do not substitute the application's HTTPS URL
+or the issuer URL. The client ID and audience are identifiers visible in Tailscale,
+not passwords. See
+[Tailscale federated identity setup](https://tailscale.com/docs/features/workload-identity-federation)
+and the [action's required scope and tags](https://github.com/tailscale/github-action).
+
+Both [`release.yml`](../.github/workflows/release.yml) and
+[`connectivity.yml`](../.github/workflows/connectivity.yml) already request
+`id-token: write`, use `environment: private`, and pass these values to Tailscale.
+The subject therefore contains `environment:private`, not `ref:refs/heads/master`
+or a particular version tag. Keep the complete subject exact; do not use
+`repo:Hectortilla/*`.
+
+Despite its name, `TS_OAUTH_CLIENT_ID` takes the **federated identity's Client ID**
+in this setup. You do not need an OAuth client secret or another `tskey-auth-...`
+server-enrollment key. Ordinary OpenSSH still authenticates the `polybot` login;
+keep Tailscale SSH disabled. See the
+[Tailscale GitHub Action integration](https://tailscale.com/docs/integrations/github/github-action).
+
+#### Add the four environment secrets
+
+Return to **Settings → Environments → private → Environment secrets**. Choose
+**Add secret** once for each row. Use these exact names, without quotes:
+
+| Secret name | Exact source of its value |
+| --- | --- |
+| `DEPLOY_SSH_KEY` | Entire contents of `~/.ssh/polybot_deploy` from step 3, including the `-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END OPENSSH PRIVATE KEY-----` lines and real line breaks |
+| `DEPLOY_KNOWN_HOSTS` | Entire contents of the repository's verified `known_hosts` file from step 4; it must include the exact `ansible_host` used by production inventory |
+| `TS_OAUTH_CLIENT_ID` | Client ID copied from the Tailscale OpenID Connect credential just created |
+| `TS_AUDIENCE` | Audience copied from that same credential, exactly as shown |
+
+For the first two, **on your Mac/controller**, copy each file to the clipboard,
+paste it into the corresponding secret's **Value**, and save before copying the
+next file:
+
+```sh
+pbcopy < ~/.ssh/polybot_deploy
+# Save as DEPLOY_SSH_KEY in GitHub, then copy the next value:
+pbcopy < known_hosts
+```
+
+Use the private deployment key, not `polybot_deploy.pub`, your administrator's
+key, or the server's host private key. Paste multiline values unchanged; do not
+base64-encode them or replace line breaks with literal `\n` text.
+
+All four belong under **Environment secrets**, because the workflows read
+`secrets.NAME`. Although the Tailscale identifiers and verified host public keys
+are not confidential, putting them under **Environment variables** would not
+satisfy the current workflows. CI replaces its checked-out `known_hosts` with
+`DEPLOY_KNOWN_HOSTS`; update both copies after a verified server host-key change.
+No Vault password, SMTP password or manually created `GITHUB_TOKEN` is needed.
+
+#### Allow release and container publication
+
+Open **Settings → Actions → General** in the repository:
+
+1. Ensure Actions are enabled. The action policy must allow `actions/*`,
+   `astral-sh/setup-uv`, `docker/*`, and `tailscale/github-action`, plus this
+   repository's reusable workflows. If using **Allow select actions and reusable
+   workflows**, allow those owners/actions at the pinned revisions in the YAML.
+2. Under **Workflow permissions**, the default **Read repository contents and
+   packages permissions** can remain selected. The release workflow explicitly
+   requests the permissions each job needs; there is no need to give every
+   workflow write access by default. Leave **Allow GitHub Actions to create and
+   approve pull requests** off; this release flow does not use it.
+
+The existing workflow already declares:
+
+| Job | Token permissions | Purpose |
+| --- | --- | --- |
+| `bundle` | `contents: write`, `packages: write` | Publish the GitHub Release and push backend/frontend images to GHCR |
+| `deploy` | `contents: read`, `packages: read`, `id-token: write` | Read release content, pull images and obtain a GitHub OIDC token for Tailscale |
+
+GitHub supplies `GITHUB_TOKEN` automatically for each job. Do not create a personal
+access token for routine CI releases. If an organization policy blocks a required
+action or publication, its administrator must allow that capability. See
+[GitHub Actions permissions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
+
+**GHCR package access:** the workflow publishes these two packages:
+
+```text
+ghcr.io/hectortilla/polymarket-bots-backend
+ghcr.io/hectortilla/polymarket-bots-frontend
+```
+
+In the owner's GitHub profile, open **Packages**, select each package, then
+**Package settings → Manage Actions access**. Ensure `Polymarket-bots` has
+**Write** or **Admin** access. If absent, choose **Add repository**, select
+`Hectortilla/Polymarket-bots`, and set its role to **Write**.
+That includes the read access deployment needs;
+read-only package access would prevent later image publication even when the
+workflow requests `packages: write`. Keep existing broader access for the
+publishing repository rather than downgrading it to Read. See
+[package access roles](https://docs.github.com/en/packages/learn-github-packages/about-permissions-for-github-packages).
+
+**Packages do not exist yet?** That is normal before the first release. Publishing
+with this repository's `GITHUB_TOKEN` automatically associates the new packages
+with the repository. Check their access after step 7 first publishes them. For
+pre-existing packages created another way, grant access before the release.
+Keep package visibility private if that is your intended distribution policy;
+do not make an image public to solve a permissions error. See
+[package access and inheritance](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+
+#### Enable failure notifications for the operator
+
+The operator is the person responsible for reacting to failed releases or lost
+connectivity. For a single-person setup, use your GitHub account (`Hectortilla`)
+and a verified email address you monitor:
+
+1. While signed in as that operator, open the repository and choose
+   **Watch → All Activity**.
+2. Open your personal [notification settings](https://github.com/settings/notifications).
+   Under **System → Actions**, enable **Email** and/or **On GitHub**, select
+   **Only notify for failed workflows**, and save. Confirm the selected email
+   address is the mailbox the operator checks.
+3. Check delivery when a failed run occurs, including a scheduled
+   **Daily private host connectivity** run. Each additional operator configures
+   their own subscription; repository settings cannot select another user's
+   personal notification preferences.
+
+These are GitHub notifications. `polybot_alert_to` in inventory controls the
+server's SMTP alerts and does not subscribe anyone to GitHub Actions failures.
+See [GitHub Actions notification setup](https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-github-actions-notifications).
+
+#### Protect `master` and version tags
+
+Open **Settings → Rules → Rulesets**. Use **New ruleset → New branch ruleset**
+and configure this baseline:
+
+| Field | Value |
+| --- | --- |
+| Ruleset name | `protect-master` |
+| Enforcement status | **Active** |
+| Target branches | **Include default branch** (`master`) |
+| Bypass list | Empty for routine work |
+| Rules | **Restrict deletions**, **Block force pushes**, **Require a pull request before merging**, **Require status checks to pass** |
+| Required approvals within the pull-request rule | `0` for a solo maintainer; require a reviewer when a second maintainer is available |
+| Required checks | `backend-browser / acceptance`, `frontend / verify`, `deployment / staging`, as reported by **Required validation** |
+
+Select the checks emitted by an actual recent run, with GitHub Actions as their
+source. If they are not offered yet, run validation on a branch/PR and return to
+the selector. Require the three jobs, not just the workflow title. Leave
+**Restrict updates** off for this branch, so normal PR merges can update it.
+Do not require a successful deployment to `private` before merging: releases
+deploy only after their commit is already in default-branch history.
+
+Then create a **New tag ruleset** named `protect-release-tags`, set it to
+**Active**, target tags matching `v*.*.*`, leave the bypass list empty, and enable
+**Restrict updates** and **Restrict deletions**. Leave **Restrict creations** off
+in this rule so you can push a new version tag. Existing versions must remain
+fixed; publish a new version for a change. See
+[creating rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)
+and [rule meanings](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+
+Anyone with repository write access can still create a new version tag under
+that baseline. If several people have write access and only the release operator
+should create tags, add a **separate** tag ruleset for `v*.*.*` with **Restrict
+creations**, allow only the release operator's eligible role/team to bypass that
+rule, and disable other rules in it. Keep the update/deletion ruleset without
+bypasses so creation permission does not also allow moving published tags.
+
+#### Check the setup before the first release
+
+Confirm the reviewed workflow files, populated public `production.yml`, and
+verified `known_hosts` have reached `master`. Local-only files are unavailable to
+Actions. Check that `private` lists all four secret names and both deployment
+ref rules, and that the branch/tag rulesets are **Active**. Resolve any failing
+**Required validation** jobs before tagging; release publication depends on those
+same checks passing.
+
+Open **Actions → Daily private host connectivity → Run workflow**, choose
+`master`, and run it. It joins Tailscale and checks SSH plus HTTPS without
+deploying or restarting the application. Inspect the individual steps:
+
+| Result | Meaning and next action |
+| --- | --- |
+| Job rejected by environment policy | Allow branch `master` as well as version tags in `private` |
+| Waiting for review | Remove required reviewers/wait timers if this environment is meant to run unattended |
+| Tailscale authentication fails | Check the credential's issuer, exact subject, Client ID, audience, writable `auth_keys` scope and `tag:polybot-ci`; confirm both Tailscale values are environment secrets |
+| SSH host verification fails | Check `DEPLOY_KNOWN_HOSTS` contains the verified key for the exact inventory hostname |
+| SSH reports `Permission denied (publickey)` | Check `DEPLOY_SSH_KEY` matches the public key installed for `polybot` in step 5 |
+| SSH succeeds, but HTTPS readiness fails before any release exists | Bootstrap has not started the application; proceed to step 7, then rerun this check and require a fully green result |
+| Entire workflow succeeds | CI can reach the running application over the intended private route |
+
+Before step 7, a failed final HTTPS probe can be expected, but a Tailscale or SSH
+failure is not explained by the absence of an application release. The scheduled
+check runs daily at **07:17 UTC** and uses these same settings. Its success does
+not test GHCR publication/pulls; the first release verifies those permissions.
 
 ### 7. Deploy the first release
 
