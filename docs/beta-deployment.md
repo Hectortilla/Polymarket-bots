@@ -876,19 +876,98 @@ not test GHCR publication/pulls; the first release verifies those permissions.
 
 ### 7. Deploy the first release
 
-Push the first version tag, then run Ansible `status.yml`; also run `backup.yml`
-when backups are enabled.
-Timers intentionally wait for a first active release. Complete the external
-acceptance checklist below before declaring operational setup complete.
+**Why:** Bootstrap prepared the server. Pushing a version tag now asks GitHub to
+test, build, publish and deploy the application, including database migrations.
 
-The examples contain placeholders; operators supply production inventory values
-and encrypted credentials. Tailscale currently advertises 1,000 ephemeral-resource minutes
-per month on Personal. CI joins only in remote-operation jobs; connectivity runs
-once daily with a five-minute job bound. Track usage and pause automation if the
-free allowance is exhausted; reassess changed terms without enabling paid capacity.
-[Tailscale pricing](https://tailscale.com/pricing) and
-[workload identity GitHub integration](https://tailscale.com/docs/integrations/github/github-action)
-were checked for this implementation.
+#### Tag the reviewed commit
+
+Finish steps 1–6 and merge your deployment configuration into `master`. Wait for
+**Required validation** to pass. **On your Mac/controller**, from the repository
+root, fetch the latest state and inspect the commit you will release:
+
+```sh
+git fetch origin --tags
+git log -1 --oneline origin/master
+git tag --list v1.0.0
+```
+
+Use `v1.0.0` only if the last command prints nothing; otherwise choose the next
+unused `vMAJOR.MINOR.PATCH` and replace it in both commands below. Tagging
+`origin/master` explicitly selects the fetched default-branch commit, regardless
+of your current local branch:
+
+```sh
+git tag v1.0.0 origin/master
+git push origin v1.0.0
+```
+
+The push starts deployment. Do not use **Run workflow** for a brand-new version;
+that option requires an already published release.
+
+#### Follow the deployment in GitHub
+
+Open **Actions → Private release** and select the run for your tag. Expect these
+jobs to succeed in order:
+
+| Job | What it does |
+| --- | --- |
+| `validate` | Runs backend, frontend, browser and deployment checks |
+| `bundle` | Publishes the GHCR images and a GitHub Release containing `release.tar.gz` |
+| `deploy` | Connects over Tailscale/OpenSSH, pulls the images, runs migrations and starts the application |
+
+Wait for **deploy** to turn green; the existence of a GitHub Release alone does
+not mean activation succeeded. Check the run summary's tag and commit, and verify
+the two GHCR packages' Actions access as described in step 6. You do not need to
+run Docker or Alembic commands manually.
+
+#### Verify the running application
+
+With your Mac connected to Tailscale, open the exact `polybot_origin` from
+inventory, for example `https://hec-server.tailnet-name.ts.net`. Confirm the login
+page loads over HTTPS, then verify login and email flows with your account.
+
+**On your Mac/controller**, from the repository root:
+
+```sh
+export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
+# Run this first ONLY if polybot_backups_enabled is true:
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/backup.yml \
+  --private-key ~/.ssh/polybot_deploy
+
+# Run this for every deployment:
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/status.yml \
+  --private-key ~/.ssh/polybot_deploy -v
+```
+
+The backup establishes the first snapshot before status checks its freshness.
+With backups disabled, skip that command. Status should finish with `failed=0`
+and report `"failures": []`. These commands use the bootstrapped `polybot` account
+and server-side secrets; no Vault or sudo password is needed.
+
+Finally, run **Actions → Daily private host connectivity → Run workflow** from
+`master`. Now both SSH and HTTPS must pass. Complete the
+[external acceptance checks](#acceptance-and-removal-inventory), including recovery
+verification if backups are enabled, before declaring setup complete.
+
+#### If the release fails
+
+- **Before publication:** inspect the first failed Actions step. Retry the
+  original run after fixing external configuration; code or inventory changes
+  require a new commit and version tag. For partial draft releases, follow
+  [publication recovery](#routine-releases).
+- **Published, but deployment failed:** fix the cause, then choose
+  **Private release → Run workflow**, **Use workflow from: master**,
+  `release_tag: v1.0.0` (your actual published tag), and `operation: deploy`.
+  The workflow reuses the verified bundle.
+- **Activation or migration failed:** inspect
+  `sudo journalctl -u polybot-activate.service -n 100 --no-pager` **on the server**.
+  See [database migrations](#database-migrations). There is no previous release
+  to roll back to on a first deployment. Never move or overwrite the version tag.
+
+Track CI usage against Tailscale Personal's current 1,000 ephemeral-resource
+minutes per month; pause automation if the allowance is exhausted rather than
+enabling paid capacity. Check [current Tailscale pricing](https://tailscale.com/pricing)
+when reviewing usage.
 
 ## Optional SFTP backups
 
