@@ -115,6 +115,7 @@ test("two accounts keep editor, copies, runs and history private across reload a
   await authenticate(page, SECOND_EMAIL);
   await expect(page.getByText("First edited bot", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === LOGIN_PATH);
   await authenticate(page, FIRST_EMAIL);
   await page.goto(runUrl);
   await expect(

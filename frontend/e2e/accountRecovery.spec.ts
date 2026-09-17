@@ -25,6 +25,7 @@ test("mail reset removes URL secrets, rejects replay, and supports password/sess
   await expect(page).toHaveURL(contract.accountManagement.accountPath);
   await expect(page.getByText(ACCOUNT_COPY.VERIFICATION_REQUIRED)).toBeVisible();
   await page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === LOGIN_PATH);
   await page.goto(contract.accountManagement.forgotPath);
   await page.getByLabel(AUTH_COPY.EMAIL, { exact: true }).fill(EMAIL);
   await page.getByRole("button", { name: ACCOUNT_COPY.SEND_RESET, exact: true }).click();

@@ -256,6 +256,16 @@ check with `npm --prefix frontend run test:e2e` and its
 `-- --list` arguments, adding `--config=playwright.deployment.config.ts` after
 `--` to select the deployment suite.
 
+The recovery and account-switching browser flows also now wait for the login
+redirect after clicking Sign out before starting their next navigation. A click
+can finish before asynchronous session revocation and its redirect; navigating
+immediately allowed that redirect to race the password-recovery page. All browser
+Sign out clicks now wait for this completion boundary, without fixed sleeps or
+increased test timeouts. Application session behavior remains unchanged.
+Verification after this correction: `npm --prefix frontend run test:e2e` passed
+all **12 tests** against fresh disposable PostgreSQL/Redis in 2.4 minutes;
+changed browser tests passed Prettier and the diff passed whitespace checks.
+
 Initial regression verification: `uv run pytest` passed **1,884 tests with no skips** against fresh
 disposable PostgreSQL/Redis; `npm --prefix frontend test` passed **419 tests**;
 `npm --prefix frontend run check` reported zero errors and warnings. The full
