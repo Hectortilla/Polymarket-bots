@@ -101,11 +101,10 @@ class DeploymentSmoke:
                 "npm",
                 "--prefix",
                 "frontend",
-                "exec",
+                "run",
+                "test:e2e",
                 "--",
-                "playwright",
-                "test",
-                "--config=frontend/playwright.deployment.config.ts",
+                "--config=playwright.deployment.config.ts",
             )
             self.verify_proxy_boundary()
             self.exercise_runs()

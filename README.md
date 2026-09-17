@@ -161,6 +161,10 @@ POLYBOT_BROWSER_REDIS_URL=redis://127.0.0.1:56379/15 \
 npm --prefix frontend run test:e2e
 ```
 
+The E2E command generates SvelteKit's TypeScript configuration before Playwright
+loads configuration or tests, so `$lib` imports work in a clean checkout. The
+deployment rehearsal uses the same command with its deployment configuration.
+
 The browser harness recreates only the explicitly configured local `*_test`
 database and requires loopback Redis with an explicit port and nonzero database.
 Throttle cleanup deletes only authentication keys. Use separate disposable databases and Redis databases for Python and

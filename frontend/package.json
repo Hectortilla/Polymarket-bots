@@ -13,7 +13,7 @@
     "generate": "svelte-kit sync && openapi-ts",
     "generate:check": "node scripts/check-generated.mjs",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "svelte-kit sync && playwright test",
     "format": "prettier --write ."
   },
   "dependencies": {

@@ -238,10 +238,25 @@ The disposable HTTPS/browser rehearsal passed locally. The reported CI browser
 failure could not be identified from its retained log: subprocess output was
 written only to the runner's local `commands.log`. Failed rehearsal commands now
 also print that output after the existing credential-disclosure check, with
-regressions covering exit status and rejection of sensitive output. Its original
-CI-only browser cause remains unconfirmed until a diagnostic rerun.
+regressions covering exit status and rejection of sensitive output.
 
-Verification: `uv run pytest` passed **1,884 tests with no skips** against fresh
+The next CI run identified the browser failure: both Playwright configurations
+import application modules that use `$lib`, whose path mappings live in the
+git-ignored `.svelte-kit/tsconfig.json`. That generated file was present locally
+but absent on fresh CI runners. Both failures were reproduced locally after
+temporarily removing `.svelte-kit`. The shared `test:e2e` command now runs
+`svelte-kit sync` before Playwright loads configuration or test modules, and the
+deployment rehearsal invokes that command with its own configuration. Separate
+clean-state `--list` checks discovered all 12 account tests and the HTTPS test.
+The complete account browser suite then passed **12 tests** against fresh
+disposable PostgreSQL/Redis through the updated E2E command, and the HTTPS browser
+test and complete deployment rehearsal passed. The three focused smoke-harness
+tests and changed-file Ruff checks also passed. Reproduce the clean-state discovery
+check with `npm --prefix frontend run test:e2e` and its
+`-- --list` arguments, adding `--config=playwright.deployment.config.ts` after
+`--` to select the deployment suite.
+
+Initial regression verification: `uv run pytest` passed **1,884 tests with no skips** against fresh
 disposable PostgreSQL/Redis; `npm --prefix frontend test` passed **419 tests**;
 `npm --prefix frontend run check` reported zero errors and warnings. The full
 `PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke` command
