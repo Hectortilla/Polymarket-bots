@@ -1104,10 +1104,13 @@ Approved policy and recovery evidence belong to [the data lifecycle runbook](bet
 GitHub Actions shares required validation across pull requests and tagged releases,
 publishes digest-pinned application images and a verified source/Compose bundle.
 Ansible prepares a single Debian amd64/arm64 host under `/srv/polybot` and invokes
-one journaled release executor through systemd. Before Ansible, the standalone
-`scripts/prepare-server.sh` prepares the administrator, host security, laptop lid
-behavior, swap and browser-based Tailscale enrollment; see
-[server preparation](server-preparation.md). Existing schema checks, migration
+one journaled release executor through systemd. Bootstrap starts without remote
+Python, validates controller inputs, installs Python/sudo through raw SSH, and
+manages optional laptop lid behavior and swap plus host security. It verifies a
+fresh deployment-key connection and sudo before disabling root/password SSH;
+failed SSH configuration transitions restore the previous files. See the
+[deployment runbook](beta-deployment.md) for initial root/sudo/su access and the
+optional Tailscale-only first-connection path. Existing schema checks, migration
 failure closure, paper-only settings and restore quarantine remain unchanged.
 Tailscale Serve owns private HTTPS and renewal; Caddy's loopback HTTP listener has
 an independent port and an explicit Serve → Caddy → Uvicorn trust chain.

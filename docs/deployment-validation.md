@@ -153,37 +153,74 @@ protocol/SDK integration changed, so no PolymarketDocs check was required. Actua
 production tailnet, SMTP and enabled-backup recovery acceptance remain operator
 checks; no production host was changed during verification.
 
-## Standalone server preparation — September 17, 2026
+## Ansible host preparation — September 17, 2026
 
-The pre-Ansible entrypoint is `scripts/prepare-server.sh`; follow
-[server preparation](server-preparation.md) before the deployment runbook.
-Verification from the repository root:
+Host policy now belongs to Ansible bootstrap; the standalone preparation script
+and separate guide have been retired. Follow the first-access and bootstrap
+instructions in [the deployment runbook](beta-deployment.md). Verification from
+the repository root:
 
 ```sh
-bash -n scripts/prepare-server.sh
-shellcheck scripts/prepare-server.sh
-uv run pytest backend/tests/control_plane/test_server_preparation.py
+uv run pytest backend/tests/control_plane/test_server_preparation.py backend/tests/control_plane/test_deployment_contracts.py backend/tests/control_plane/test_deployment_preflight.py backend/tests/control_plane/test_optional_backups.py
+ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg" uv run ansible-playbook -i deploy/ansible/inventory/production.example.yml deploy/ansible/bootstrap.yml --syntax-check
+PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal --host-only --initial-access su
 ```
 
-All **20 tests** passed. They exercise redirected temporary files and substituted
-host commands: SSH syntax/policy/reload rollback, repeatable Include placement,
-active-swap persistence repair, unsafe existing swap rejection, insufficient disk,
-fstab conflicts, SSH rules before firewall enablement, firewall failure, retained
-Tailscale identity, first enrollment, and pending device approval. Bash syntax,
-ShellCheck and the changed test file's Ruff checks passed.
+The focused suite passed **148 tests**, including strict host-policy inputs,
+fresh key-only SSH and sudo proof, required remote identity, effective SSH policy
+conflicts, idempotent SSH templates, and the actual Ansible swap filesystem,
+existing-file and fstab guards. Changed Python files passed Ruff; the bootstrap
+playbook passed Ansible syntax checking.
 
-A separate disposable Debian container exercised real `sshd -t`/`sshd -T`,
-precedence over an earlier cloud drop-in, a second unchanged hardening pass, a
-successful non-root key-only SSH connection, root rejection with the same installed
-key, and configuration rollback for a conflicting user Match rule. Service reload
-was substituted in that container; this does not establish real systemd reload or
-end-to-end host preparation. No production host was changed.
+A subsequent production report exposed a gap in the original fixture: it supplied
+host settings explicitly, so it did not catch the normalized dictionary being
+stored under `set_fact`'s `_raw_params` rather than installed as individual facts.
+The handoff now sets each validated key/value explicitly. Two local Ansible
+regressions execute the actual validation task file with omitted and explicit host
+settings, checking every normalized value, including nulls, booleans and hostname
+normalization. They perform no server mutation. This correction preserves the
+documented defaults; an omitted administrator is valid.
+The focused suite passed **150 tests** after the correction, and bootstrap syntax
+checking passed. Documentation-drift audit: the runbook still describes the same
+optional/default behavior; its troubleshooting table now identifies this handoff
+bug. The local laptop inventory explicitly retains the requested lid-ignore policy.
 
-Actual lid behavior, kernel swap activation/reboot persistence, firewall routing,
-systemd timers, and browser enrollment in the intended tailnet remain target-host
-checks in the setup guide. Final documentation-drift audit: README, architecture,
-implementation plan and deployment runbook agree on preparation before Ansible,
-the administrator/sudo prerequisites, manual Tailscale tagging after browser login,
-and the current Vault requirement. The runbook's stale Vault template path was
-also corrected. No application contract or Polymarket protocol/SDK code changed;
-no PolymarketDocs check was required.
+A further production run exposed the delegated SSH proof's working-directory
+assumption: Ansible starts local commands in the playbook directory, so the
+inventory's `./known_hosts` was resolved outside the repository root. The SSH
+subprocess now explicitly runs from the repository root. Two local Ansible
+regressions import the actual proof task and substitute a recording SSH executable
+to verify its working directory, relative key/known-hosts arguments and inventory
+versus command-line hostname selection. A controller test checks that SSH failures
+produce an actionable diagnostic without exposing subprocess output.
+The focused suite passed **153 tests**, Ruff passed, and bootstrap syntax checking
+passed. The corrected proof task also passed a read-only connection to the actual
+server using the existing SSH agent, verifying `polybot` and passwordless root
+sudo; the full production bootstrap was not rerun. Documentation-drift audit:
+the runbook now states the relative-path base and documents this failure.
+
+A disposable Debian/systemd rehearsal passed first bootstrap through root SSH
+on an image without Python or sudo, followed by a second run as `polybot` with
+**changed=0**. It also passed retained container/volume/credential checks, backup
+enable/disable/re-enable, detached systemd execution, release activation/failure/
+retry, and authenticated STARTTLS alert delivery. Logs for that full run are in
+`data/beta/polybot-bootstrap-test-b99a1275b7/` (git-ignored).
+
+The focused `--host-only --initial-access su` rehearsal also passed on a fresh
+minimal image. It repaired a legacy Tailscale source before installing Python/sudo,
+bootstrapped through the human account using the root password, and repeated as
+`polybot` with **changed=0**. Real systemd, UFW, fail2ban, update timers, sudo-group
+membership and the logind drop-in were checked. Root SSH was rejected; a wrong
+deployment key stopped before SSH file mutation; a conflicting user Match rule
+triggered the Ansible rescue path, restored both SSH files and reloaded sshd.
+Logs are in `data/beta/polybot-bootstrap-test-b485ffcb5b/` (git-ignored).
+
+Swap is deliberately unmanaged in the container: its overlay filesystem and shared
+kernel cannot establish actual host swap safety. Laptop lid behavior, kernel swap
+activation, reboot persistence, target firewall routing and real Tailscale
+enrollment/Serve remain target-host acceptance checks. No production host was
+changed. Final documentation-drift audit: README, architecture, implementation
+plan, example inventory and deployment runbook agree on Ansible ownership,
+root/sudo/su first access, optional lid/swap settings, the verified SSH transition,
+and Tailscale's route-dependent ordering. No application contract or Polymarket
+protocol/SDK code changed; no PolymarketDocs check was required.

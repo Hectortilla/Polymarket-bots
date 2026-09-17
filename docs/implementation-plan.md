@@ -1944,13 +1944,16 @@ the operator manages their expiry while automated retention is off. No Polymarke
 protocol or SDK behavior changed. Runbook, lifecycle policy, README and both
 architecture references were audited for this conditional behavior.
 
-September 17 host-preparation follow-up: copy and run the standalone
-`scripts/prepare-server.sh` before Ansible. It installs sudo/Python and security
-packages, configures laptop lid behavior and persistent swap, validates and
-reloads key-only OpenSSH, enables UFW/fail2ban/automatic updates, and performs
-browser-based Tailscale enrollment. The operator first proves a fresh non-root
-key login and applies the deployment tag after enrollment. See
-`docs/server-preparation.md` for the root/sudo paths and subsequent Ansible steps.
+September 17 host-preparation follow-up: Ansible now owns the full host setup;
+the initial standalone preparation script and its separate guide were retired.
+Bootstrap inspects Debian/systemd without Python, validates controller inputs,
+installs Python/sudo using raw SSH, then manages security packages, optional
+administrator sudo membership, laptop lid behavior and persistent swap. A final
+transaction proves fresh deployment-key SSH and sudo access before disabling
+root/password SSH and restores the previous SSH files on transition failure.
+The existing tagged-key Tailscale enrollment/Serve flow remains in Ansible;
+console enrollment is needed beforehand only when Tailscale is the sole route.
+See `docs/beta-deployment.md` for root/sudo/su first access and inventory settings.
 Documentation-drift audit: README, architecture, deployment runbook and this plan
 agree on the preparation order; application contracts and Polymarket integration
 are unchanged. Verification and target-host limits are recorded in

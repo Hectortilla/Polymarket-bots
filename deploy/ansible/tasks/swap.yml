@@ -1,0 +1,89 @@
+- name: Inspect the swap filesystem
+  ansible.builtin.command: findmnt -no FSTYPE -T /
+  changed_when: false
+  register: swap_filesystem
+- name: Inspect an existing swapfile without following links
+  ansible.builtin.stat:
+    path: /swapfile
+    follow: false
+    get_checksum: false
+    get_mime: false
+  register: swap_file
+- name: Require supported swap storage without resizing existing files
+  ansible.builtin.assert:
+    that:
+      - swap_filesystem.stdout | trim in ['ext2', 'ext3', 'ext4', 'xfs']
+      - not swap_file.stat.exists or (swap_file.stat.isreg | default(false) and swap_file.stat.nlink == 1 and swap_file.stat.size == polybot_swap_size_mib * 1024 * 1024)
+    fail_msg: Unsupported filesystem or existing swapfile; inspect it, or set polybot_manage_swap=false to manage swap separately.
+- name: Read an existing swap signature
+  ansible.builtin.command: /usr/sbin/blkid -p -s TYPE -o value /swapfile
+  changed_when: false
+  register: swap_signature
+  when: swap_file.stat.exists
+- name: Refuse to format an existing non-swap file
+  ansible.builtin.assert:
+    that: swap_signature.stdout | trim == 'swap'
+    fail_msg: Existing /swapfile has no swap signature; inspect any interrupted allocation manually.
+  when: swap_file.stat.exists
+- name: Read persistent mounts before modifying swap
+  ansible.builtin.slurp:
+    src: /etc/fstab
+  register: swap_fstab
+- name: Extract existing swapfile entries
+  ansible.builtin.set_fact:
+    swap_fstab_entries: '{{ (swap_fstab.content | b64decode).splitlines() | select("match", "^\s*/swapfile\s+") | list }}'
+- name: Refuse duplicate or conflicting swapfile entries
+  ansible.builtin.assert:
+    that:
+      - swap_fstab_entries | length <= 1
+      - swap_fstab_entries | length == 0 or (swap_fstab_entries[0].split() | length >= 4 and swap_fstab_entries[0].split()[2] == 'swap' and 'noauto' not in swap_fstab_entries[0].split()[3].split(','))
+    fail_msg: Correct the existing /swapfile entries in /etc/fstab before retrying.
+- name: Inspect free bytes before allocation
+  ansible.builtin.command: df --output=avail -B1 /
+  changed_when: false
+  register: swap_free
+  when: not swap_file.stat.exists
+- name: Require swap capacity plus 512 MiB of headroom
+  ansible.builtin.assert:
+    that: swap_free.stdout_lines[-1] | trim | int >= (polybot_swap_size_mib + 512) * 1024 * 1024
+  when: not swap_file.stat.exists
+- name: Allocate real blocks for a new swapfile
+  ansible.builtin.shell:
+    cmd: 'umask 077; dd if=/dev/zero of=/swapfile bs=1M count={{ polybot_swap_size_mib }} status=none'
+    creates: /swapfile
+  register: swap_allocation
+  when: not swap_file.stat.exists
+- name: Format only the newly allocated file
+  ansible.builtin.command: /usr/sbin/mkswap /swapfile
+  when: swap_allocation is changed
+- name: Restrict swapfile ownership and permissions
+  ansible.builtin.file:
+    path: /swapfile
+    owner: root
+    group: root
+    mode: '0600'
+- name: Inspect active swap
+  ansible.builtin.command: /usr/sbin/swapon --show=NAME --noheadings --raw
+  changed_when: false
+  register: active_swap
+- name: Activate the swapfile when needed
+  ansible.builtin.command: /usr/sbin/swapon /swapfile
+  when: "'/swapfile' not in active_swap.stdout_lines"
+- name: Persist swap even when it was already active
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^\s*/swapfile\s+'
+    line: /swapfile none swap sw 0 0
+- name: Persist the selected swappiness
+  ansible.builtin.copy:
+    content: |
+      vm.swappiness={{ polybot_swappiness }}
+    dest: /etc/sysctl.d/99-swappiness.conf
+    mode: '0644'
+- name: Read current swappiness
+  ansible.builtin.command: /usr/sbin/sysctl -n vm.swappiness
+  changed_when: false
+  register: current_swappiness
+- name: Apply swappiness when it differs
+  ansible.builtin.command: '/usr/sbin/sysctl -w vm.swappiness={{ polybot_swappiness }}'
+  when: current_swappiness.stdout | trim | int != polybot_swappiness

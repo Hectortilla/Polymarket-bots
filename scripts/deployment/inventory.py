@@ -38,10 +38,22 @@ class DeploymentInventory(BaseModel):
     smtp_from: EmailAddress
     alert_to: EmailAddress
     backups_enabled: bool = Field(default=DEFAULT_BACKUPS_ENABLED, strict=True)
+    admin_user: str | None = Field(default=None, pattern=r"^[a-z_][a-z0-9_-]*$")
+    ignore_lid: bool = Field(default=False, strict=True)
+    manage_swap: bool = Field(default=True, strict=True)
+    swap_size_mib: int = Field(default=2048, strict=True, ge=128)
+    swappiness: int = Field(default=10, strict=True, ge=0, le=100)
     sftp_host: str | None = None
     sftp_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
     sftp_user: str | None = None
     sftp_directory: str | None = None
+
+    @field_validator("admin_user")
+    @classmethod
+    def non_root_administrator(cls, value: str | None) -> str | None:
+        if value == "root":
+            raise DeploymentInputError("the optional administrator must be non-root")
+        return value
 
     @field_validator("root", mode="before")
     @classmethod

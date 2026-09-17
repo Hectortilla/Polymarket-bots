@@ -1,0 +1,8 @@
+- name: Prove a fresh deployment-key SSH connection and passwordless sudo
+  ansible.builtin.command:
+    argv: [uv, run, --locked, python, -m, scripts.deployment.controller, ssh-access]
+    stdin: '{{ {"host": ansible_host | default(inventory_hostname), "port": ansible_port | default(22) | int, "private_key_file": polybot_ssh_private_key_file | default(ansible_private_key_file | default(ansible_ssh_private_key_file | default(none))), "common_args": ansible_ssh_common_args | default(""), "extra_args": ansible_ssh_extra_args | default("")} | to_json }}'
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: deployment_ssh_access

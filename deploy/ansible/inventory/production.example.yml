@@ -13,6 +13,13 @@ all:
         polybot_arch: amd64 # amd64 or arm64
         polybot_origin: https://CHANGE_ME.tailnet-name.ts.net
         polybot_http_port: 8081
+        # Host policy managed by bootstrap; choose true for a headless laptop.
+        polybot_ignore_lid: false
+        polybot_manage_swap: true # false leaves existing swap and swappiness alone
+        polybot_swap_size_mib: 2048 # Existing /swapfile must already match this size
+        polybot_swappiness: 10
+        # Optional existing human account to add to sudo; polybot is always created.
+        # polybot_admin_user: hec
         polybot_smtp_host: smtp.example.com
         polybot_smtp_port: 587
         polybot_smtp_security: starttls

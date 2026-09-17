@@ -1,21 +1,39 @@
 """Two-pass preparation on an isolated Debian systemd container, no tailnet account."""
 
+import argparse
 import json
 import os
+import shutil
 import subprocess
 import time
 from uuid import uuid4
 
+import yaml
+
 from control_plane.activation_rehearsal import ActivationRehearsal
+from scripts.deployment.ansible_contract import deployment_contract
 from scripts.deployment.inventory import SUPPORTED_ARCHITECTURES
 from scripts.deployment.paths import DEFAULT_APP_DIRECTORY, REPOSITORY
 from scripts.deployment.runtime_contracts import DEFAULT_HTTP_PORT
+from scripts.deployment.ssh_access import (
+    DEPLOYMENT_SSH_USER,
+    SSHD_HARDENING_PATH,
+    SSHD_MAIN_PATH,
+)
 from scripts.deployment.units import MONITOR_TIMER_UNIT
 from scripts.host_operations.contracts import BACKUP_TIMER_UNITS
 from scripts.local_docker import LocalDocker
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--host-only",
+        action="store_true",
+        help="Check bootstrap and SSH guards without release/backup rehearsals.",
+    )
+    parser.add_argument("--initial-access", choices=("root", "su"), default="root")
+    args = parser.parse_args()
     docker = LocalDocker.from_context().output
     name = "polybot-bootstrap-test-" + uuid4().hex[:10]
     directory = REPOSITORY / "data" / "beta" / name
@@ -46,6 +64,20 @@ def main():
         docker("cp", str(key.with_suffix(".pub")), name + ":/root/.ssh/authorized_keys")
         docker("exec", name, "chown", "-R", "root:root", "/root/.ssh")
         docker("exec", name, "chmod", "600", "/root/.ssh/authorized_keys")
+        docker("exec", name, "useradd", "--create-home", "hec")
+        if args.initial_access == "su":
+            docker(
+                "exec", "-i", name, "chpasswd", input="root:disposable-root-password\n"
+            )
+            docker("exec", name, "cp", "-a", "/root/.ssh", "/home/hec/.ssh")
+            docker("exec", name, "chown", "-R", "hec:hec", "/home/hec/.ssh")
+        docker(
+            "exec",
+            name,
+            "sh",
+            "-c",
+            "printf '# retained comment\\ndeb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/debian bookworm main\\n' > /etc/apt/sources.list.d/pkgs_tailscale_com_stable_debian.list",
+        )
         port = docker("port", name, "22/tcp").split(":")[-1]
         public_host_key = docker(
             "exec", name, "cat", "/etc/ssh/ssh_host_ed25519_key.pub"
@@ -69,6 +101,9 @@ def main():
             }[docker("exec", name, "uname", "-m")],
             "polybot_origin": "https://fixture.example.ts.net",
             "polybot_http_port": DEFAULT_HTTP_PORT,
+            "polybot_manage_swap": False,  # Container overlay and kernel swap are not host acceptance.
+            "polybot_ignore_lid": True,
+            "polybot_admin_user": "hec",
             "polybot_smtp_host": "localhost",
             "polybot_smtp_port": 1025,
             "polybot_smtp_security": "starttls",
@@ -87,6 +122,12 @@ def main():
                 ["age-keygen", "-y", str(directory / "age.key")], text=True
             ).strip(),
         }
+        if args.initial_access == "su":
+            variables.update(
+                ansible_user="hec",
+                ansible_become_method="su",
+                ansible_become_password="disposable-root-password",
+            )
         inventory = directory / "inventory.json"
         inventory.write_text(
             json.dumps(
@@ -130,6 +171,14 @@ def main():
                     check=True,
                 )
             if attempt == 1:
+                variables["ansible_user"] = "polybot"
+                variables.pop("ansible_become_method", None)
+                variables.pop("ansible_become_password", None)
+                updated_inventory = json.loads(inventory.read_text())
+                updated_inventory["all"]["children"]["polybot"]["hosts"]["fixture"] = (
+                    backup_variables(variables, enabled=False)
+                )
+                inventory.write_text(json.dumps(updated_inventory))
                 docker(
                     "exec",
                     name,
@@ -177,13 +226,13 @@ def main():
             f"UserKnownHostsFile={known}",
             "-o",
             "StrictHostKeyChecking=yes",
-            "root@127.0.0.1",
+            f"{DEPLOYMENT_SSH_USER}@127.0.0.1",
         ]
         try:
             subprocess.run(
                 [
                     *ssh,
-                    "systemd-run --unit=polybot-detach-test --no-block /bin/sh -c 'sleep 2; touch /srv/polybot/detached-success'; sleep 60",
+                    "sudo -n systemd-run --unit=polybot-detach-test --no-block /bin/sh -c 'sleep 2; touch /srv/polybot/detached-success'; sleep 60",
                 ],
                 timeout=1,
                 check=False,
@@ -207,6 +256,12 @@ def main():
             raise AssertionError("detached systemd operation did not survive SSH loss")
 
         assert "changed=0" in (directory / "bootstrap-2.log").read_text()
+        require_host_security(docker, name, directory, inventory, env, ssh)
+        if args.host_only:
+            print(
+                f"Host bootstrap via {args.initial_access} passed; repeat via polybot changed=0. SSH key rejection/rollback and host security passed; logs: {directory}"
+            )
+            return
         require_backup_timers(docker, name, enabled=False)
         for enabled in (True, False, True):
             inventory.write_text(
@@ -271,6 +326,107 @@ def backup_variables(variables, *, enabled):
         }
     )
     return selected | {"polybot_backups_enabled": enabled}
+
+
+def require_host_security(docker, name, directory, inventory, env, ssh):
+    denied = subprocess.run(
+        [
+            *ssh[:-1],
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ControlPath=none",
+            "-o",
+            "IdentitiesOnly=yes",
+            "root@127.0.0.1",
+            "true",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert denied.returncode == 255
+    assert "Permission denied" in denied.stderr
+    assert "sudo" in docker("exec", name, "id", "-nG", "hec").split()
+    assert "Status: active" in docker("exec", name, "ufw", "status")
+    assert "sshd" in docker("exec", name, "fail2ban-client", "status", "sshd")
+    for unit in ("apt-daily.timer", "apt-daily-upgrade.timer"):
+        assert docker("exec", name, "systemctl", "is-enabled", unit) == "enabled"
+    assert "HandleLidSwitch=ignore" in docker(
+        "exec", name, "cat", "/etc/systemd/logind.conf.d/99-server-lid.conf"
+    )
+
+    fixture = directory / "ssh-transaction"
+    shutil.copytree(REPOSITORY / "deploy/ansible", fixture)
+    play = fixture / "verify.yml"
+    play.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Rehearse SSH failures",
+                    "hosts": "polybot",
+                    "become": True,
+                    "gather_facts": False,
+                    "vars": {"deployment_contract": deployment_contract()},
+                    "tasks": [
+                        {"ansible.builtin.import_tasks": "tasks/ssh-hardening.yml"}
+                    ],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    command = ["ansible-playbook", "-i", str(inventory), str(play)]
+    before = docker("exec", name, "sha256sum", SSHD_MAIN_PATH, SSHD_HARDENING_PATH)
+    wrong_key = directory / "wrong-key"
+    subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(wrong_key)],
+        check=True,
+    )
+    result = subprocess.run(
+        [*command, "-e", f"polybot_ssh_private_key_file={wrong_key}"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    (directory / "ssh-wrong-key.log").write_text(result.stdout + result.stderr)
+    assert result.returncode != 0 and "failed=1" in result.stdout
+    assert "Install the key-only SSH policy" not in result.stdout
+    assert (
+        docker("exec", name, "sha256sum", SSHD_MAIN_PATH, SSHD_HARDENING_PATH) == before
+    )
+
+    backup = "/tmp/sshd-before-rehearsal"
+    docker("exec", name, "cp", SSHD_MAIN_PATH, backup)
+    try:
+        docker(
+            "exec",
+            name,
+            "sh",
+            "-c",
+            f"printf '\\nMatch User polybot\\n    PasswordAuthentication yes\\n' >> {SSHD_MAIN_PATH}",
+        )
+        conflicting = docker(
+            "exec", name, "sha256sum", SSHD_MAIN_PATH, SSHD_HARDENING_PATH
+        )
+        result = subprocess.run(
+            command, env=env, capture_output=True, text=True, check=False
+        )
+        (directory / "ssh-policy-rollback.log").write_text(
+            result.stdout + result.stderr
+        )
+        assert result.returncode != 0 and "rescued=1" in result.stdout
+        assert "previous configuration was restored" in result.stdout
+        assert (
+            docker("exec", name, "sha256sum", SSHD_MAIN_PATH, SSHD_HARDENING_PATH)
+            == conflicting
+        )
+    finally:
+        docker("exec", name, "cp", backup, SSHD_MAIN_PATH)
+        docker("exec", name, "/usr/sbin/sshd", "-t")
+        docker("exec", name, "systemctl", "reload", "ssh")
 
 
 def require_backup_timers(docker, name, *, enabled):

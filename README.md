@@ -200,10 +200,9 @@ Open signup remains gated on acceptance and configured operator/support ownershi
 Marketplace work is deferred.
 
 Private HTTPS deployment work and the repeatable release procedure are documented
-in [the deployment runbook](docs/beta-deployment.md). First copy the standalone
-[`scripts/prepare-server.sh`](scripts/prepare-server.sh) to the Debian host and
-follow [server preparation](docs/server-preparation.md).
-Then bootstrap with Ansible; GitHub Actions tests and deploys version tags using
+in [the deployment runbook](docs/beta-deployment.md). Start with reachable SSH and
+root/sudo/su access; Ansible bootstraps Python and sudo, then manages host policy
+and application infrastructure. GitHub Actions tests and deploys version tags using
 immutable release bundles. Tailscale Serve owns private HTTPS and rclone verifies optional SFTP
 backups. The example inventory disables backups with `polybot_backups_enabled: false`;
 see the [setup guide](docs/beta-deployment.md#optional-sftp-backups) to enable them.

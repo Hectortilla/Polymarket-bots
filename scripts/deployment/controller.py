@@ -15,6 +15,7 @@ from scripts.deployment.inventory import DeploymentInventory
 from scripts.deployment.paths import CI_INPUTS_FILENAME
 from scripts.deployment.provisioning import ContainerSecretInputs
 from scripts.deployment.release_inputs import ReleaseIdentity, ReleaseInputs
+from scripts.deployment.ssh_access import DeploymentSSHAccess, require_hardened_ssh
 from scripts.deployment.tailscale import (
     EnrollmentStatus,
     PrivateServe,
@@ -33,6 +34,8 @@ class ControllerOperation(StrEnum):
     TAILNET = "tailnet"
     ENROLLMENT = "enrollment"
     SERVE = "serve"
+    SSH_ACCESS = "ssh-access"
+    SSH_POLICY = "ssh-policy"
 
 
 def main() -> None:
@@ -49,6 +52,11 @@ def main() -> None:
             return
         record = json.load(sys.stdin)
         match args.operation:
+            case ControllerOperation.SSH_ACCESS:
+                connection = DeploymentSSHAccess.model_validate(record).verify()
+                print(json.dumps({"sshd_selector": connection.sshd_selector()}))
+            case ControllerOperation.SSH_POLICY:
+                require_hardened_ssh(record["effective"])
             case ControllerOperation.BOOTSTRAP:
                 BootstrapInputs.model_validate(record["secrets"]).require_valid(
                     DeploymentInventory.model_validate(record["variables"])
@@ -110,6 +118,13 @@ def main() -> None:
                     )
                 )
     except (ValueError, TypeError, KeyError, OSError, subprocess.SubprocessError):
+        if args.operation is ControllerOperation.SSH_ACCESS:
+            parser.exit(
+                1,
+                "Fresh deployment-key SSH/sudo verification failed; check the "
+                "deployment key, known_hosts, routing and passwordless sudo. "
+                "Relative paths resolve from the repository root.\n",
+            )
         parser.exit(
             1,
             "Invalid deployment controller input; inspect the private configuration.\n",

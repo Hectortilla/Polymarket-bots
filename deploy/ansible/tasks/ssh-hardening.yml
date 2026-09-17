@@ -1,0 +1,105 @@
+# The original connection remains available for rescue, including a first root run.
+# Do not reset it or defer this transaction to a handler.
+- name: Verify deployment access after applying the firewall
+  ansible.builtin.import_tasks: ssh-access.yml
+- name: Inspect SSH files without following links
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  loop: ['{{ deployment_contract.sshd_main }}', '{{ deployment_contract.sshd_hardening }}']
+  register: ssh_original_files
+- name: Require regular SSH configuration files
+  ansible.builtin.assert:
+    that:
+      - ssh_original_files.results[0].stat.isreg | default(false)
+      - not ssh_original_files.results[1].stat.exists or ssh_original_files.results[1].stat.isreg | default(false)
+- name: Retain the original SSH main configuration for rollback
+  ansible.builtin.slurp:
+    src: '{{ deployment_contract.sshd_main }}'
+  register: ssh_original_main
+- name: Retain the existing hardening drop-in for rollback
+  ansible.builtin.slurp:
+    src: '{{ deployment_contract.sshd_hardening }}'
+  register: ssh_original_hardening
+  when: ssh_original_files.results[1].stat.exists
+- name: Create the SSH drop-in directory
+  ansible.builtin.file:
+    path: '{{ deployment_contract.sshd_hardening | dirname }}'
+    state: directory
+    mode: '0755'
+- name: Apply and verify key-only SSH as one recoverable transition
+  block:
+    - name: Install the key-only SSH policy
+      ansible.builtin.template:
+        src: ssh-hardening.conf.j2
+        dest: '{{ deployment_contract.sshd_hardening }}'
+        owner: root
+        group: root
+        mode: '0644'
+      register: ssh_policy_installation
+    - name: Include the policy before distribution and cloud defaults
+      ansible.builtin.template:
+        src: sshd_config.j2
+        dest: '{{ deployment_contract.sshd_main }}'
+        owner: root
+        group: root
+        mode: '{{ ssh_original_files.results[0].stat.mode }}'
+      register: ssh_main_installation
+    - name: Validate the complete SSH configuration
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+    - name: Read global and deployment-connection SSH policy
+      ansible.builtin.command:
+        argv: '{{ ["/usr/sbin/sshd", "-T"] + item }}'
+      loop:
+        - []
+        - ['-C', '{{ (deployment_ssh_access.stdout | from_json).sshd_selector }}']
+      changed_when: false
+      register: effective_ssh_policy
+    - name: Require the effective SSH policy to match the hardening contract
+      ansible.builtin.command:
+        argv: [uv, run, --locked, python, -m, scripts.deployment.controller, ssh-policy]
+        stdin: '{{ {"effective": item.stdout} | to_json }}'
+      loop: '{{ effective_ssh_policy.results }}'
+      loop_control:
+        label: SSH effective policy
+      delegate_to: localhost
+      become: false
+      changed_when: false
+    - name: Reload validated SSH configuration while retaining the current session
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: reloaded
+      when: ssh_policy_installation is changed or ssh_main_installation is changed
+    - name: Verify a new key-only connection after hardening
+      ansible.builtin.include_tasks: ssh-access.yml
+  rescue:
+    - name: Restore the previous SSH main configuration
+      ansible.builtin.copy:
+        content: '{{ ssh_original_main.content | b64decode }}'
+        dest: '{{ deployment_contract.sshd_main }}'
+        mode: '{{ ssh_original_files.results[0].stat.mode }}'
+    - name: Restore the previous SSH hardening drop-in
+      ansible.builtin.copy:
+        content: '{{ ssh_original_hardening.content | b64decode }}'
+        dest: '{{ deployment_contract.sshd_hardening }}'
+        mode: '{{ ssh_original_files.results[1].stat.mode }}'
+      when: ssh_original_files.results[1].stat.exists
+    - name: Remove a newly introduced hardening drop-in
+      ansible.builtin.file:
+        path: '{{ deployment_contract.sshd_hardening }}'
+        state: absent
+      when: not ssh_original_files.results[1].stat.exists
+    - name: Validate the restored configuration
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+    - name: Reload the restored SSH configuration
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: reloaded
+    - name: Report the failed SSH transition
+      ansible.builtin.fail:
+        msg: SSH hardening failed and the previous configuration was restored. Inspect the failing task; retain the current session.
+- name: Report the administrator connection for subsequent runs
+  ansible.builtin.debug:
+    msg: 'Key-only SSH and passwordless sudo verified for {{ deployment_contract.ssh_user }}. Use that account for subsequent Ansible runs; root SSH is disabled.'

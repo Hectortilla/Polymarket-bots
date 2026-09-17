@@ -1,0 +1,68 @@
+- name: Verify deployment access before enabling the firewall
+  ansible.builtin.import_tasks: ssh-access.yml
+- name: Read effective SSH listening ports
+  ansible.builtin.command: /usr/sbin/sshd -T
+  changed_when: false
+  register: ssh_listeners
+- name: Read this SSH connection's local port
+  ansible.builtin.shell: 'printf "%s\n" "$SSH_CONNECTION"'
+  become: false
+  changed_when: false
+  register: bootstrap_ssh_connection
+- name: Select configured and current SSH listener ports
+  ansible.builtin.set_fact:
+    host_ssh_ports: '{{ ((ssh_listeners.stdout | regex_findall("(?m)^port ([0-9]+)$")) + [bootstrap_ssh_connection.stdout.split()[3]]) | map("int") | unique | sort }}'
+- name: Allow SSH before enabling UFW
+  ansible.builtin.command:
+    argv: [/usr/sbin/ufw, allow, '{{ item }}/tcp']
+  loop: '{{ host_ssh_ports }}'
+  environment: {LC_ALL: C}
+  register: ufw_ssh_rules
+  changed_when: "'Rule added' in ufw_ssh_rules.stdout or 'Rules updated' in ufw_ssh_rules.stdout"
+- name: Set the UFW default host policies
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: '^{{ item.name }}='
+    line: '{{ item.name }}="{{ item.value }}"'
+  loop:
+    - {name: DEFAULT_INPUT_POLICY, value: DROP}
+    - {name: DEFAULT_OUTPUT_POLICY, value: ACCEPT}
+  register: ufw_policies
+- name: Inspect UFW activation
+  ansible.builtin.command: /usr/sbin/ufw status
+  environment: {LC_ALL: C}
+  changed_when: false
+  register: ufw_status
+- name: Enable UFW only after SSH rules exist
+  ansible.builtin.command: /usr/sbin/ufw --force enable
+  when: "'Status: inactive' in ufw_status.stdout"
+- name: Apply changed policies to an already active firewall
+  ansible.builtin.command: /usr/sbin/ufw reload
+  when: "'Status: active' in ufw_status.stdout and ufw_policies is changed"
+- name: Enable the SSH fail2ban jail with journald
+  ansible.builtin.copy:
+    content: |
+      [sshd]
+      enabled = true
+      backend = systemd
+      port = {{ host_ssh_ports | join(',') }}
+    dest: /etc/fail2ban/jail.d/99-polybot-sshd.local
+    mode: '0644'
+  notify: Restart fail2ban
+- name: Validate fail2ban configuration
+  ansible.builtin.command: fail2ban-client -t
+  changed_when: false
+- name: Enable fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: started
+    enabled: true
+- name: Apply validated fail2ban changes
+  ansible.builtin.meta: flush_handlers
+- name: Require the SSH jail to be ready
+  ansible.builtin.command: fail2ban-client status sshd
+  register: fail2ban_ready
+  changed_when: false
+  until: fail2ban_ready.rc == 0
+  retries: 10
+  delay: 1

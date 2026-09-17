@@ -1,0 +1,2 @@
+Include {{ deployment_contract.sshd_hardening }}
+{{ ((ssh_original_main.content | b64decode).splitlines() | reject('equalto', 'Include ' ~ deployment_contract.sshd_hardening)) | join('\n') }}

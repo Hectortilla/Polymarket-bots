@@ -28,6 +28,12 @@ from scripts.deployment.paths import (
     STAGING_DIRECTORY_NAME,
 )
 from scripts.deployment.runtime_contracts import HTTP_PORT_ENV, SECRETS_DIRECTORY_ENV
+from scripts.deployment.ssh_access import (
+    DEPLOYMENT_SSH_USER,
+    SSH_HARDENING_POLICY,
+    SSHD_HARDENING_PATH,
+    SSHD_MAIN_PATH,
+)
 from scripts.deployment.storage import SecretFile
 from scripts.deployment.tailscale import PRIVATE_HTTPS_PORT, TAILNET_HOST_TAG
 from scripts.deployment.toolchain import UV_VERSION
@@ -104,6 +110,10 @@ class ServiceUnitNames(TypedDict):
 
 
 class DeploymentContract(TypedDict):
+    ssh_user: str
+    ssh_policy: dict[str, str]
+    sshd_main: str
+    sshd_hardening: str
     https_probe_timeout: int
     architecture_names: dict[str, str]
     activation_poll_interval: int
@@ -135,6 +145,10 @@ class DeploymentContract(TypedDict):
 
 def deployment_contract() -> DeploymentContract:
     return {
+        "ssh_user": DEPLOYMENT_SSH_USER,
+        "ssh_policy": SSH_HARDENING_POLICY,
+        "sshd_main": SSHD_MAIN_PATH,
+        "sshd_hardening": SSHD_HARDENING_PATH,
         "backup_check_calendar": BACKUP_CHECK_CALENDAR,
         "monitor_calendar": MONITOR_CALENDAR,
         "https_probe_timeout": HTTPS_PROBE_TIMEOUT_SECONDS,

@@ -7,6 +7,7 @@ all:
           ansible_user: polybot
           ansible_ssh_common_args: '-o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes'
       vars:
+        polybot_ignore_lid: true # Keep this headless laptop awake with the lid closed
         polybot_ssh_public_key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOvwSj47zq6bvmVzEqZ3Ssm8v9ATxDWGhcuOBKTR9PtR attosoria@hotmail.com'
         polybot_root: /srv/polybot
         polybot_arch: amd64 # amd64 or arm64

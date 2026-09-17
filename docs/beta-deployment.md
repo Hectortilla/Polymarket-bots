@@ -37,60 +37,42 @@ or [bootstrap](#5-bootstrap-with-the-existing-administrator).
 
 ### 1. Prepare the Debian server and existing administrator
 
-**Why:** Ansible needs a reachable SSH server, Python, and an existing account that
-can become root. It cannot create its own deployment account until those work.
+**Why:** Ansible needs a reachable OpenSSH server and an account that can obtain
+root privileges. Remote Python and sudo can be installed by bootstrap itself.
 Use Debian 12/13, amd64 or arm64. The staging baseline is four CPUs, 8 GiB RAM and
 40 GiB free disk; repeat capacity acceptance on the actual host.
 
-Follow [server preparation](server-preparation.md) first. It explains how to copy
-only [`scripts/prepare-server.sh`](../scripts/prepare-server.sh) to the server,
-install/test your administrator's SSH public key, and run the script. A server
-checkout and Ansible installation are not required. Set the final machine name
-before enrolling Tailscale so its DNS name matches your intended inventory.
-
-The preparation script installs sudo and Python, configures host security and
-Tailscale, and keeps ordinary OpenSSH as the login mechanism. It disables SSH
-password authentication, so complete the guide's fresh key-only login test before
-using `--ssh-key-verified`. The administrator still needs a local password for sudo.
-Keep the existing session open until a second login and sudo both work.
-
-For the guide's default account, run **on the server**, after copying the script
-and verifying the key-only connection:
+There is no preparation script to copy or run, and no server checkout or Ansible
+installation is required. Set the final machine hostname before Tailscale enrollment.
+Verify the server's SSH host key through the console/provider before connecting.
+From your Mac, install your administrator's public key if needed and test it
+(replace `INITIAL_HOST` with the reachable LAN/public address):
 
 ```sh
-sudo bash "$HOME/prepare-server.sh" --admin-user hec --ssh-key-verified
+ssh-copy-id -i ~/.ssh/id_ed25519.pub hec@INITIAL_HOST
+ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes \
+  -o ControlMaster=no -o ControlPath=none -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
+  hec@INITIAL_HOST 'id -un'
 ```
 
-If `sudo` is missing or `hec` cannot use it, start a root shell instead:
+Expect `hec`. Choose an existing privilege path for step 5:
 
-```sh
-su -
-bash /home/hec/prepare-server.sh --admin-user hec --ssh-key-verified
-```
+| Initial access | Bootstrap invocation |
+| --- | --- |
+| `hec` can run sudo | Connect as `hec`, use `--ask-become-pass` with hec's password |
+| `hec` can use `su` but sudo is missing/unavailable | Connect as `hec`, use `--become-method=su --ask-become-pass` with the root password |
+| Existing root SSH access | Connect as `root`; no become password is needed |
 
-`su -` asks for the **root password**. If that is unavailable, use the server
-provider's root console. The script installs sudo and adds `hec` to its group.
-For a server already prepared except for sudo, the equivalent targeted repair,
-run **as root on the server**, is:
-
-```sh
-apt-get update
-apt-get install -y sudo
-usermod -aG sudo hec
-```
-
-Log out and open a fresh SSH session to pick up group membership. Then verify
-**on the server**:
-
-```sh
-id
-sudo whoami
-python3 --version
-```
-
-`sudo whoami` must print `root`; enter **hec's password**, not the root password.
-You do not need to create `polybot` manually. Bootstrap creates it and installs its
-deployment public key in step 5.
+If none works, use the server console/provider to establish an SSH account and
+root access first; automation cannot grant itself privileges. You do not need
+to enable root SSH when sudo or su already works. Keep an existing session open
+through the first bootstrap. Ansible creates `polybot`, installs its deployment
+key, and proves fresh SSH plus passwordless sudo before hardening SSH at the end.
+If you want to retain `hec` as a human sudo administrator, set
+`polybot_admin_user: hec`; the account must already exist. New group membership
+takes effect in a fresh login. Lid behavior, swap and security packages are now
+Ansible-managed settings in step 4.
 
 ### 2. Configure Tailscale, the hostname and private HTTPS
 
@@ -98,10 +80,12 @@ deployment public key in step 5.
 Serve provides the application's HTTPS address and certificate. The domain you
 bought for email does not automatically become the application's address.
 
-1. Use the intended Tailscale **Personal** tailnet. Connect your Mac to it and
-   complete the server-preparation guide's browser enrollment/device approval.
+1. Use the intended Tailscale **Personal** tailnet and connect your Mac to it.
+   With initial LAN/public SSH, leave server installation/enrollment to Ansible.
 2. Open the [Tailscale admin console](https://login.tailscale.com/admin/). Under
-   **Machines**, find the server and confirm its machine name and full DNS name.
+   **Machines**, confirm an existing server's machine name and full DNS name.
+   For a fresh server, use its final hostname and your tailnet's DNS suffix to
+   select the intended origin; bootstrap verifies the enrolled DNS name exactly.
 3. Under **DNS**, enable **MagicDNS** and **HTTPS Certificates**. Use the full
    `https://HOST.TAILNET.ts.net` address, including `https://`, as the origin.
    See [Tailscale HTTPS setup](https://tailscale.com/docs/how-to/set-up-https-certificates).
@@ -112,13 +96,23 @@ bought for email does not automatically become the application's address.
    SSH from your Mac: the example's member grant permits HTTPS only. For example,
    an additional grant can use `"src": ["you@example.com"]`,
    `"dst": ["tag:polybot"]`, and `"ip": ["tcp:22"]`, with your actual login identity.
-5. Apply `tag:polybot` to this server in the admin console. Browser enrollment does
-   not apply it automatically, and bootstrap retains an already-running enrollment.
+5. The tagged auth-key flow applies `tag:polybot` during Ansible enrollment. For an
+   already-enrolled server, apply it in the admin console if absent; bootstrap
+   retains an already-running enrollment.
    CI will use `tag:polybot-ci`; do not apply the CI tag to the server.
 
 Keep **Funnel disabled**. The application is intended to be reachable through
 Tailscale, with its own email/password login. Ordinary OpenSSH travels over
 Tailscale; this setup does not use Tailscale SSH.
+
+**Tailscale is the only route to the server?** That connection must exist before
+Ansible can use it. From the server console, install Tailscale using the
+[official Debian instructions](https://pkgs.tailscale.com/stable/), then run
+`tailscale up --ssh=false` as root. Open its browser URL on your Mac, sign in as
+**attosoria@hotmail.com**, complete device approval and apply the host tag above.
+This is the only route-dependent manual installation; Ansible manages the rest.
+Browser enrollment is also available if you prefer it over first enrollment with
+an auth key. Keep ordinary OpenSSH enabled and verify it works over Tailscale.
 
 #### Get `polybot_tailscale_authkey`
 
@@ -239,6 +233,11 @@ all:
         polybot_arch: amd64
         polybot_origin: https://hec-server.tailnet-name.ts.net
         polybot_http_port: 8081
+        polybot_admin_user: hec
+        polybot_ignore_lid: true # This example is a headless laptop
+        polybot_manage_swap: true
+        polybot_swap_size_mib: 2048
+        polybot_swappiness: 10
         polybot_smtp_host: mail.privateemail.com
         polybot_smtp_port: 587
         polybot_smtp_security: starttls
@@ -264,6 +263,24 @@ all:
 | `polybot_smtp_username` | Full mailbox login address for Namecheap Private Email, not your Namecheap account username |
 | `polybot_alert_to` | Your operator mailbox for host alerts |
 | `polybot_backups_enabled` | YAML boolean `false` or `true`, without quotes; optional backup fields are required when true |
+| `polybot_admin_user` | Optional existing non-root account to add to the sudo group; omitted by default; `polybot` is always created separately |
+| `polybot_ignore_lid` | Default `false`; use `true` for a headless laptop. Returning to false removes the managed logind override |
+| `polybot_manage_swap` | Default `true`; `false` leaves existing swap, fstab and swappiness untouched for manual management |
+| `polybot_swap_size_mib` | Default `2048`, minimum `128`; an existing `/swapfile` must match the selected size and have a swap signature; never resized automatically |
+| `polybot_swappiness` | Default `10`, allowed `0`–`100`; applied and persisted when swap management is enabled |
+
+Swap management supports ext2/3/4 and XFS and needs the requested size plus
+512 MiB free for a new file. For Btrfs or another unsupported filesystem, configure
+swap separately and set `polybot_manage_swap: false`. Symlinks, hard links,
+conflicting fstab entries and unexpected existing files stop bootstrap rather than
+being overwritten. An interrupted allocation without a swap signature needs manual
+inspection. Active swap still gets its persistence checked and repaired.
+
+**Already ran the retired preparation script?** Ansible reuses its swapfile and
+managed drop-ins. Set `polybot_ignore_lid: true` explicitly to retain headless
+laptop behavior; the default false removes that override. Keep the desired swap
+size consistent with the existing file. No manual file removal is needed to
+switch to Ansible ownership, and a running Tailscale enrollment is retained.
 
 `ansible_host` and `polybot_origin` refer to the same deployment server, but one is
 an SSH destination and the other is its browser URL. Buying `example.com` does
@@ -321,10 +338,10 @@ through the console before changing this file.
 Check lookup and a fresh administrator connection **from the repository root**:
 
 ```sh
-ssh-keygen -F hec-server.tailnet-name.ts.net -f ./known_hosts
+ssh-keygen -F INITIAL_HOST -f ./known_hosts
 ssh -o UserKnownHostsFile=./known_hosts -o StrictHostKeyChecking=yes \
   -o ControlMaster=no -o ControlPath=none -o BatchMode=yes \
-  hec@hec-server.tailnet-name.ts.net 'id -un'
+  hec@INITIAL_HOST 'id -un'
 ```
 
 The SSH command should print `hec`. If your administrator key has a non-default
@@ -429,7 +446,8 @@ git add deploy/ansible/inventory/production.yml \
 export ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg"
 ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
   -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
-  -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN --ask-become-pass
+  -e ansible_host=INITIAL_HOST -e ansible_user=INITIAL_ADMIN \
+  -e "polybot_ssh_private_key_file=$HOME/.ssh/polybot_deploy" --ask-become-pass
 ```
 
 | Argument | Meaning |
@@ -439,7 +457,8 @@ ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/boots
 | `-e @.../production.vault.yml` | Loads variables from the encrypted file on your Mac/controller |
 | `--ask-vault-pass` | Prompts for the Vault encryption password |
 | `-e ansible_host=INITIAL_HOST` | Overrides the normal target address for this connection; use an already reachable IP, LAN name or Tailscale name |
-| `-e ansible_user=INITIAL_ADMIN` | Uses the existing sudo-capable account to create/configure `polybot` |
+| `-e ansible_user=INITIAL_ADMIN` | Uses the existing account with sudo, su or root access to create/configure `polybot` |
+| `polybot_ssh_private_key_file` | Controller-local deployment private-key path used to prove fresh `polybot` access before and after SSH hardening; no key is copied to the server |
 | `--ask-become-pass` | Prompts for that existing user's sudo password |
 
 For an already-connected Tailscale server and administrator `hec`:
@@ -450,6 +469,7 @@ ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/boots
   -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
   -e ansible_host=hec-server.tailnet-name.ts.net \
   -e ansible_user=hec \
+  -e "polybot_ssh_private_key_file=$HOME/.ssh/polybot_deploy" \
   --ask-become-pass
 ```
 
@@ -460,13 +480,35 @@ add `--private-key ~/.ssh/YOUR_ADMIN_KEY` to this command; use the existing
 administrator's key, not the new deployment key unless they are intentionally
 identical.
 
+**No sudo yet, but `su` works?** Use the same command with
+`--become-method=su --ask-become-pass`; enter the **root password**. Ansible uses
+su to install Python/sudo and finish bootstrap. For existing root SSH access,
+use `-e ansible_user=root` and omit `--ask-become-pass`. The raw prerequisite task
+runs directly as root in that case. Root SSH is disabled only at the final
+verified transition; use `polybot` for the next run.
+
+The deployment-key proof is separate from the initial administrator connection.
+If `polybot_ssh_private_key_file` is omitted, it uses Ansible's selected private
+key, or the SSH agent/default identities when no key file is selected. With
+different administrator and deployment keys, pass both `--private-key` for the
+administrator and `polybot_ssh_private_key_file` for the deployment account.
+Load any encrypted keys into your agent first; verification is non-interactive.
+The proof retains the inventory's `ansible_ssh_common_args` and
+`ansible_ssh_extra_args` for known-hosts and proxy routing, while forcing a new
+key-only connection. Relative key and known-hosts paths resolve from the repository
+root, including when Ansible launches the delegated task from `deploy/ansible`.
+Custom connection plugins are not supported by this
+OpenSSH-based proof. Bootstrap requires a normal run, not `--check`.
+
 The prompts may appear as `BECOME password:` followed by `Vault password:`.
-The first wants **hec's sudo password**; the second wants **your Vault password**.
+With the sudo method, the first wants **hec's sudo password**; with su it wants
+the **root password**. The second wants **your Vault password**.
 Neither asks for the SMTP password, Tailscale auth key or deployment private key.
 
 #### What bootstrap does
 
-After gathering facts and validating public/private inputs, bootstrap:
+After inspecting Debian/systemd through SSH and validating public/private inputs
+on the controller, bootstrap:
 
 - Repairs its obsolete duplicate Tailscale repository entry before using APT.
   It backs up that source file and preserves unrelated entries. It then installs
@@ -474,16 +516,39 @@ After gathering facts and validating public/private inputs, bootstrap:
   `tailscale.list` and `/usr/share/keyrings/tailscale-archive-keyring.gpg` paths to
   coexist with an existing official installation. See
   [Tailscale Debian packages](https://pkgs.tailscale.com/stable/#debian-trixie).
+- Installs Python and sudo with Ansible's `raw` module when missing, then gathers
+  facts. No Python-dependent remote module runs before this prerequisite step.
+  See [Ansible raw bootstrap](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/raw_module.html).
 - Installs Docker Engine, Compose, Tailscale, msmtp and pinned uv 0.10.9; age/rclone are
   installed when backups are enabled.
 - Creates `polybot`, adds it to Docker access, installs the public deployment key
   in `/home/polybot/.ssh/authorized_keys`, and grants passwordless sudo.
+- Adds the optional existing human administrator to the sudo group; configures
+  optional lid behavior and persistent swap/swappiness according to inventory.
+- Enables unattended upgrades and the APT daily timers using the distribution's
+  allowed update origins, without adding an automatic-reboot policy.
 - Creates the private application directories and runtime configuration, generates
   the PostgreSQL password once, and installs the SMTP/database secrets. Reruns
   preserve the generated database password.
 - Retains a running Tailscale enrollment, or enrolls with the tagged auth key when
   needed; validates the expected DNS name and configures persistent private Serve.
 - Installs monitoring and optional backup timers, which wait for an active release.
+- Proves a fresh `polybot` key login and passwordless sudo, then allows the actual
+  SSH listener ports before enabling UFW with deny-incoming/allow-outgoing host
+  defaults. Existing UFW rules are retained. Enables and validates an explicit
+  fail2ban SSH jail with journald, including on Debian without `auth.log`.
+- Finally disables password/keyboard-interactive SSH and root SSH login. It puts
+  its policy before existing SSH defaults, validates syntax and effective policy
+  globally and for the verified deployment connection, reloads SSH only when
+  changed, and proves a new key-only connection again. Failure restores the old
+  SSH files and reloads them through the retained original session. An interrupted
+  controller or broken original connection can still require console recovery.
+
+There are no new public 80/443 rules: the application uses Tailscale Serve.
+UFW does not replace tailnet policy or Docker networking controls; retain the
+loopback-only application listener. Custom SSH Match rules or existing firewall
+denials may need manual adjustment if the access checks fail. Logind is restarted
+only when its managed lid file changes; this may affect desktop sessions.
 
 It does not build application images, deploy a release, or run Alembic migrations.
 Successful bootstrap means the host is prepared; the application becomes available
@@ -506,6 +571,19 @@ inventory's `ansible_user: polybot`, select this key with
 `--private-key ~/.ssh/polybot_deploy` or configure SSH to select it. A custom key
 filename is not automatically discovered merely because the file exists.
 
+To reapply bootstrap with the deployment account after the first run:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
+  -e @deploy/ansible/inventory/production.vault.yml --ask-vault-pass \
+  --private-key ~/.ssh/polybot_deploy
+```
+
+Check `sudo ufw status verbose`, `sudo fail2ban-client status sshd`,
+`swapon --show`, and `systemctl list-timers 'apt-daily*'` on the server. Verify
+reboot persistence and, for a laptop, SSH reachability with the lid closed;
+desktop power managers can also control suspend behavior.
+
 Check the server's Tailscale DNS name matches the inventory and its Serve mapping
 is private. Restrict initial public/LAN SSH only after tailnet SSH works. Continue
 with GitHub setup and the first release below.
@@ -516,7 +594,11 @@ with GitHub setup and the first release below.
 | --- | --- |
 | `production.vault.yml` not found; inventory parser also complains about a missing root `plugin` key | First verify the `-e @...` file exists on the controller. Earlier setups named it `secrets.yml`; rename the encrypted file or correct the argument. A static YAML inventory does not need a `plugin` key. If parsing still fails, check YAML indentation separately. |
 | `No ED25519 host key is known ... strict checking` | Check `./known_hosts` in the repository root, the exact hostname, and the working directory. `~/.ssh/known_hosts` is a different file. Populate it using the verified server host key; do not disable strict checking. |
-| `sudo: not found` followed by a JSON/deserialization error during Gathering Facts | Ansible reached SSH but cannot become root. Complete server preparation or install sudo as root and grant the existing administrator access, then start a fresh SSH connection. |
+| `sudo: not found` at the initial raw tasks | Select an existing privilege path: connect as root, or use `--become-method=su --ask-become-pass` with the root password. Bootstrap can install sudo but cannot invoke missing sudo to get root first. |
+| `polybot_admin_user` is undefined after inventory validation succeeds | An earlier playbook stored the normalized dictionary as `_raw_params` instead of installing its facts. Use the corrected `tasks/validate.yml` and rerun from the start. Omitting the optional administrator is supported; the same correction applies all host-policy defaults. |
+| Fresh deployment-key SSH proof fails | Supply `polybot_ssh_private_key_file` pointing to the deployment private key, verify its public counterpart in inventory and check `known_hosts`, routing and sudo access. This proof must pass before firewall/SSH hardening. |
+| SSH proof reports `Invalid deployment controller input` although direct `polybot` SSH and sudo work | An earlier proof resolved `./known_hosts` from Ansible's playbook directory. Use the corrected `scripts/deployment/ssh_access.py` and rerun the same bootstrap command. Relative paths now resolve from the repository root; SSH failures report a dedicated diagnostic. |
+| SSH hardening fails and reports restored configuration | Inspect conflicting `Match` rules or the failed reload/connection check. Keep the original session; use the console if it is unavailable. Correct the conflict and rerun. |
 | Bootstrap credentials fail with `no_log: true` and censored output | Check `polybot_ssh_public_key` is a complete parseable client public key, SMTP username/password are present, and the Tailscale value starts with `tskey-auth-`. If backups are enabled, check the SFTP private key, matching verified host record and age recipients too. Inspect Vault locally with `ansible-vault edit`; do not expose secrets by disabling `no_log`. |
 | `play_hosts` deprecation warning | This can be triggered when the current playbooks enumerate Ansible variables. It is separate from the later fatal error; use the failed task's message to diagnose the blocker. |
 | `Either apt-key or gpg binary is required` | Use the updated bootstrap that installs `gpg` before `apt_repository`. Rerun the full bootstrap. |

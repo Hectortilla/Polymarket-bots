@@ -1,7 +1,39 @@
 - name: Prepare one private Debian host
   hosts: polybot
   become: true
+  gather_facts: false
+  handlers:
+    - name: Restart logind
+      ansible.builtin.systemd_service:
+        name: systemd-logind
+        state: restarted
+    - name: Restart fail2ban
+      ansible.builtin.systemd_service:
+        name: fail2ban
+        state: restarted
   tasks:
+    - name: Require an actual bootstrap run for connection and root-access checks
+      ansible.builtin.assert:
+        that: not ansible_check_mode
+        fail_msg: Bootstrap verifies real SSH access and does not support check mode.
+    - name: Inspect the minimal host without Python or privilege escalation
+      ansible.builtin.raw: |
+        set -eu
+        . /etc/os-release
+        test "$ID" = debian
+        case "$VERSION_ID" in 12|13) ;; *) exit 1 ;; esac
+        test -d /run/systemd/system
+        printf 'Debian\n'
+        uname -m
+        printf '%s\n' "$VERSION_CODENAME"
+      become: false
+      changed_when: false
+      register: minimal_host
+    - name: Supply platform identity for controller preflight before installing Python
+      ansible.builtin.set_fact:
+        ansible_distribution: '{{ minimal_host.stdout_lines[0] | trim }}'
+        ansible_architecture: '{{ minimal_host.stdout_lines[1] | trim }}'
+        ansible_distribution_release: '{{ minimal_host.stdout_lines[2] | trim }}'
     - ansible.builtin.import_tasks: tasks/validate.yml
     - name: Validate private bootstrap credentials before host mutation
       ansible.builtin.command:
@@ -11,15 +43,39 @@
       become: false
       changed_when: false
       no_log: true
-    - name: Remove the obsolete bootstrap Tailscale repository entry before using apt
-      ansible.builtin.lineinfile:
-        path: /etc/apt/sources.list.d/pkgs_tailscale_com_stable_debian.list
-        line: 'deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/debian {{ ansible_distribution_release }} main'
-        state: absent
-        backup: true
+    - name: Repair the legacy Tailscale source before any prerequisite APT operation
+      ansible.builtin.raw: |
+        set -eu
+        legacy=/etc/apt/sources.list.d/pkgs_tailscale_com_stable_debian.list
+        obsolete={{ ('deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/debian ' ~ ansible_distribution_release ~ ' main') | quote }}
+        if test -f "$legacy" && grep -Fxq "$obsolete" "$legacy"; then
+          cp -p "$legacy" "$legacy.$(date +%Y%m%d%H%M%S).bak"
+          temporary=$(mktemp)
+          trap 'rm -f "$temporary"' EXIT
+          awk -v obsolete="$obsolete" '$0 != obsolete' "$legacy" > "$temporary"
+          cat "$temporary" > "$legacy"
+          printf 'POLYBOT_LEGACY_SOURCE_REMOVED\n'
+        fi
+      become: '{{ ansible_user != "root" }}'
+      register: legacy_source
+      changed_when: "'POLYBOT_LEGACY_SOURCE_REMOVED' in legacy_source.stdout"
+    - name: Bootstrap Python and sudo on the minimal host
+      ansible.builtin.raw: |
+        set -eu
+        if ! test -x /usr/bin/python3 || ! test -x /usr/bin/sudo; then
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y python3 sudo
+          printf 'POLYBOT_PREREQUISITES_INSTALLED\n'
+        fi
+      become: '{{ ansible_user != "root" }}'
+      register: minimal_packages
+      changed_when: "'POLYBOT_PREREQUISITES_INSTALLED' in minimal_packages.stdout"
+    - name: Gather facts after installing the module runtime
+      ansible.builtin.setup:
     - name: Install distribution tools
       ansible.builtin.apt:
-        name: "{{ ['ca-certificates', 'curl', 'gpg', 'python3', 'python3-debian', 'msmtp-mta', 'openssh-server'] + (['age', 'rclone'] if polybot_backups_enabled else []) }}"
+        name: "{{ ['ca-certificates', 'curl', 'gpg', 'python3', 'python3-debian', 'sudo', 'msmtp-mta', 'openssh-server', 'ufw', 'fail2ban', 'python3-systemd', 'unattended-upgrades'] + (['age', 'rclone'] if polybot_backups_enabled else []) }}"
         state: present
         update_cache: true
         cache_valid_time: 3600
@@ -91,6 +147,7 @@
         dest: /etc/sudoers.d/polybot
         mode: '0440'
         validate: '/usr/sbin/visudo -cf %s'
+    - ansible.builtin.import_tasks: tasks/host-settings.yml
     - name: Generate database password exactly once
       ansible.builtin.shell:
         cmd: 'umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > {{ polybot_root }}/{{ deployment_contract.paths.secrets }}/{{ deployment_contract.secret_files.postgres_password }}'
@@ -241,3 +298,7 @@
         daemon_reload: '{{ unit_installation_result.changed }}'
       loop: '{{ deployment_contract.timers }}'
       when: polybot_backups_enabled or item not in deployment_contract.backup_timers
+    - name: Apply host service changes before the final SSH transition
+      ansible.builtin.meta: flush_handlers
+    - ansible.builtin.import_tasks: tasks/firewall.yml
+    - ansible.builtin.import_tasks: tasks/ssh-hardening.yml

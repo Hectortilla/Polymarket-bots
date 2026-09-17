@@ -11,4 +11,8 @@
   ansible.builtin.set_fact:
     deployment_contract: '{{ (deployment_contract_result.stdout | from_json).contract }}'
 - name: Use normalized inventory values at the template boundary
-  ansible.builtin.set_fact: '{{ (deployment_contract_result.stdout | from_json).variables }}'
+  ansible.builtin.set_fact:
+    '{{ item.key }}': '{{ item.value }}'
+  loop: '{{ (deployment_contract_result.stdout | from_json).variables | dict2items }}'
+  loop_control:
+    label: '{{ item.key }}'
