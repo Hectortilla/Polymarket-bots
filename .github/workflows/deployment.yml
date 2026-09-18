@@ -25,8 +25,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend exec -- playwright install --with-deps chromium
-      - run: uv run pytest backend/tests/control_plane/test_deployment.py
+      - run: uv run pytest backend/tests/control_plane/test_deployment.py backend/tests/control_plane/test_cloudflare_deployment.py
       - run: PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke
       - run: PYTHONPATH=backend/tests uv run python -m control_plane.backup_rehearsal
       - run: uv tool install ansible-core==2.19.7
-      - run: PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal
+      - run: PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal --ingress cloudflare

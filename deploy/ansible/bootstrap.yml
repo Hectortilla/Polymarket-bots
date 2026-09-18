@@ -1,4 +1,4 @@
-- name: Prepare one private Debian host
+- name: Prepare one Debian deployment host
   hosts: polybot
   become: true
   gather_facts: false
@@ -38,7 +38,7 @@
     - name: Validate private bootstrap credentials before host mutation
       ansible.builtin.command:
         argv: [uv, run, --locked, python, -m, scripts.deployment.controller, bootstrap]
-        stdin: '{{ {"variables": vars | dict2items | selectattr("key", "match", "^polybot_") | items2dict, "secrets": {"ssh_public_key": polybot_ssh_public_key | default(""), "sftp_private_key": polybot_sftp_private_key | default(""), "sftp_known_hosts": polybot_sftp_known_hosts | default(""), "age_recipients": polybot_age_recipients | default(""), "smtp_username": polybot_smtp_username | default(""), "smtp_password": polybot_smtp_password | default(""), "tailscale_authkey": polybot_tailscale_authkey | default(""), "enroll_tailnet": "tailnet" not in ansible_skip_tags}} | to_json }}'
+        stdin: '{{ {"variables": vars | dict2items | selectattr("key", "match", "^polybot_") | items2dict, "secrets": {"ssh_public_key": polybot_ssh_public_key | default(""), "sftp_private_key": polybot_sftp_private_key | default(""), "sftp_known_hosts": polybot_sftp_known_hosts | default(""), "age_recipients": polybot_age_recipients | default(""), "smtp_username": polybot_smtp_username | default(""), "smtp_password": polybot_smtp_password | default(""), "tailscale_authkey": polybot_tailscale_authkey | default(""), "cloudflare_tunnel_token": polybot_cloudflare_tunnel_token | default(""), "enroll_tailnet": "tailnet" not in ansible_skip_tags}} | to_json }}'
       delegate_to: localhost
       become: false
       changed_when: false
@@ -210,6 +210,9 @@
         - {name: '{{ deployment_contract.transport_files.sftp_known_hosts }}', content: '{{ polybot_sftp_known_hosts }}'}
         - {name: '{{ deployment_contract.transport_files.age_recipients }}', content: '{{ polybot_age_recipients }}'}
       no_log: true
+    - ansible.builtin.import_tasks: tasks/close-tunnel.yml
+    - ansible.builtin.import_tasks: tasks/cloudflare.yml
+      when: polybot_ingress == deployment_contract.ingress_modes.cloudflare
     - name: Install runtime and transport configuration
       ansible.builtin.template:
         src: '{{ item.src }}'
@@ -232,7 +235,7 @@
       no_log: true
     - name: Install host operational configuration
       ansible.builtin.copy:
-        content: '{{ {"backups_enabled": polybot_backups_enabled, "remote": (deployment_contract.backup_remote + ":" + polybot_sftp_directory) if polybot_backups_enabled else none, "alert_to": polybot_alert_to, "origin": polybot_origin, "http_port": polybot_http_port | int} | to_nice_json }}'
+        content: '{{ {"backups_enabled": polybot_backups_enabled, "remote": (deployment_contract.backup_remote + ":" + polybot_sftp_directory) if polybot_backups_enabled else none, "alert_to": polybot_alert_to, "origin": polybot_origin, "tailnet_origin": polybot_tailnet_origin, "ingress": polybot_ingress, "public_enabled": polybot_public_enabled, "http_port": polybot_http_port | int} | to_nice_json }}'
         dest: '{{ polybot_root }}/{{ deployment_contract.paths.operations }}'
         owner: polybot
         group: polybot
@@ -270,7 +273,7 @@
       - name: Validate enrolled identity at the controller boundary
         ansible.builtin.command:
           argv: [uv, run, --locked, python, -m, scripts.deployment.controller, tailnet]
-          stdin: '{{ {"status": enrolled_tailnet.stdout | from_json, "origin": polybot_origin} | to_json }}'
+          stdin: '{{ {"status": enrolled_tailnet.stdout | from_json, "origin": polybot_tailnet_origin} | to_json }}'
         delegate_to: localhost
         become: false
         changed_when: false
@@ -281,7 +284,7 @@
       - name: Validate persisted private Serve configuration
         ansible.builtin.command:
           argv: [uv, run, --locked, python, -m, scripts.deployment.controller, serve]
-          stdin: '{{ {"status": serve_status.stdout | from_json, "origin": polybot_origin, "http_port": polybot_http_port | int} | to_json }}'
+          stdin: '{{ {"status": serve_status.stdout | from_json, "origin": polybot_tailnet_origin, "http_port": polybot_http_port | int} | to_json }}'
         delegate_to: localhost
         become: false
         changed_when: false

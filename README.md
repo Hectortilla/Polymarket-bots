@@ -207,7 +207,11 @@ Private HTTPS deployment work and the repeatable release procedure are documente
 in [the deployment runbook](docs/beta-deployment.md). Start with reachable SSH and
 root/sudo/su access; Ansible bootstraps Python and sudo, then manages host policy
 and application infrastructure. GitHub Actions tests and deploys version tags using
-immutable release bundles. Tailscale Serve owns private HTTPS and rclone verifies optional SFTP
+immutable release bundles. Tailscale Serve owns private staging HTTPS. Ansible also
+installs the named Cloudflare Tunnel connector for `polybotlab.com`; public access
+requires explicit inventory opt-in and healthy release activation. Prepare domain
+DNS and the tunnel token before bootstrap; follow the runbook's separate public
+activation stage after private acceptance. rclone verifies optional SFTP
 backups. The example inventory disables backups with `polybot_backups_enabled: false`;
 see the [setup guide](docs/beta-deployment.md#optional-sftp-backups) to enable them.
 Run its disposable Compose

@@ -276,3 +276,50 @@ checks. Existing Starlette/httpx and fork deprecation warnings remain.
 Documentation-drift audit: this follow-up changes test coverage and rehearsal
 diagnostics only. Host preparation, trim behavior, application contracts and the
 implementation-plan scope remain unchanged; no PolymarketDocs check was required.
+
+## Cloudflare Tunnel deployment — September 17, 2026
+
+The deployment extension prepares a named Cloudflare Tunnel for `polybotlab.com`
+before bootstrap, while retaining Tailscale for SSH and private acceptance.
+Ansible installs the official connector and a protected token file for a dedicated
+service account. Public activation requires explicit inventory opt-in, agreement
+with bootstrapped configuration, successful local release health and a public
+HTTPS check. Failed activation leaves the connector closed.
+
+Verification from the repository root:
+
+```sh
+uv run pytest backend/tests/control_plane/test_deployment.py backend/tests/control_plane/test_deployment_contracts.py backend/tests/control_plane/test_deployment_preflight.py backend/tests/control_plane/test_host_monitoring.py backend/tests/control_plane/test_deployment_boundaries.py backend/tests/control_plane/test_beta_host_deployment.py backend/tests/control_plane/test_release_automation.py backend/tests/control_plane/test_bootstrap_repository_recovery.py backend/tests/control_plane/test_cloudflare_deployment.py backend/tests/control_plane/test_optional_backups.py backend/tests/control_plane/test_server_preparation.py -o addopts='' -q
+PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke
+PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal --ingress cloudflare
+```
+
+The focused suite passed **292 tests**. Changed Python files passed Ruff;
+bootstrap, deployment, rollback and connectivity playbooks passed syntax checks;
+the deployment workflow passed actionlint. Local documentation links and headings
+also passed validation. The real HTTPS/browser rehearsal passed, including the
+added Cloudflare-shaped forwarding chain and spoofed client-IP rejection through
+production Caddy. Its log is `data/cloudflare-deployment-smoke.log` (git-ignored).
+
+The complete Cloudflare-mode Debian/systemd rehearsal passed: bootstrap twice
+with **changed=0** on the second pass, retained application data and credentials,
+connector disabled during private setup, public opening, healthy retry, migration
+and rollback failure/recovery, and connector closure after failed HTTPS verification.
+It also passed backup enable/disable/re-enable and authenticated STARTTLS alert
+delivery. The dedicated connector account can read its token but cannot modify it;
+the token is absent from the unit's command arguments. Logs are in
+`data/beta/polybot-bootstrap-test-2dcd9999e3/` and
+`data/cloudflare-activation-final.log` (git-ignored).
+
+The rehearsal substitutes the external Cloudflare connection and public TLS
+endpoint; it does not prove a real tunnel token, DNS migration, edge certificate,
+email DNS, cache rules or live SSE behavior through Cloudflare. Those checks and
+reboot persistence remain required on the actual host. No provider account or
+production host was changed, and public access remains disabled in the inventory.
+
+Documentation-drift audit: README, deployment/launch/operations runbooks, both
+architecture references, product spec, implementation plan and inventory examples
+agree on preparation before bootstrap and separate public activation. Authentication
+and email use the private origin before launch and the public origin afterward.
+No application API, generated client, Polymarket integration or live-trading gate
+changed; no PolymarketDocs check was required.

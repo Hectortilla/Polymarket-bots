@@ -1959,6 +1959,22 @@ agree on the preparation order; application contracts and Polymarket integration
 are unchanged. Verification and target-host limits are recorded in
 `docs/deployment-validation.md`.
 
+September 17 Cloudflare deployment extension: the selected public route is a named
+Cloudflare Tunnel for `polybotlab.com`, with Namecheap retaining registration/email
+and Cloudflare managing DNS. Ansible installs the official connector package and
+supplies a protected token file readable by its dedicated service account. Public and Tailscale origins
+are separate validated inputs; `polybot_public_enabled` defaults false and selects
+the runtime authentication/email origin. Bootstrap closes the connector; deployment
+opens it only after local application health and closes it on failed external HTTPS
+verification. Monitoring checks the management identity and selected ingress.
+The runbook moves domain/tunnel preparation before Vault/bootstrap and retains
+public activation as a separate launch stage. Existing private inventories retain
+their behavior. No Polymarket integration or live-trading gate changes.
+Verification and actual-provider acceptance limits are recorded in
+`docs/deployment-validation.md`. Documentation drift was checked across README,
+both architecture references, product spec, deployment/operations/launch runbooks
+and this plan; account contracts and generated clients are unchanged.
+
 ## Slice 17: Per-User Resource Limits
 
 Status: implemented; depends on Slice 15 and the capacity settings from Slice 16.

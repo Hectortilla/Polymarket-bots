@@ -1,0 +1,59 @@
+- name: Install Cloudflare package signing key
+  ansible.builtin.get_url:
+    url: https://pkg.cloudflare.com/cloudflare-main.gpg
+    dest: /usr/share/keyrings/cloudflare-main.gpg
+    mode: '0644'
+- name: Configure signed Cloudflare package repository
+  ansible.builtin.apt_repository:
+    repo: 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main'
+    filename: cloudflared
+    state: present
+- name: Install Cloudflare connector
+  ansible.builtin.apt:
+    name: cloudflared
+    state: present
+- name: Inspect connector version
+  ansible.builtin.command: cloudflared --version
+  changed_when: false
+  register: cloudflared_version
+- name: Require token-file support
+  ansible.builtin.assert:
+    that: (cloudflared_version.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) is version('2025.4.0', '>=')
+    fail_msg: Upgrade cloudflared to a version supporting --token-file.
+- name: Create connector service group
+  ansible.builtin.group:
+    name: '{{ deployment_contract.cloudflare_user }}'
+    system: true
+- name: Create connector service account
+  ansible.builtin.user:
+    name: '{{ deployment_contract.cloudflare_user }}'
+    group: '{{ deployment_contract.cloudflare_user }}'
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+- name: Create protected connector configuration directory
+  ansible.builtin.file:
+    path: '{{ deployment_contract.paths.cloudflare }}'
+    state: directory
+    owner: root
+    group: '{{ deployment_contract.cloudflare_user }}'
+    mode: '0750'
+- name: Install protected tunnel token
+  ansible.builtin.copy:
+    content: '{{ polybot_cloudflare_tunnel_token }}'
+    dest: '{{ deployment_contract.paths.cloudflare }}/{{ deployment_contract.transport_files.cloudflare_token }}'
+    owner: root
+    group: '{{ deployment_contract.cloudflare_user }}'
+    mode: '0640'
+  no_log: true
+- name: Install managed tunnel service
+  ansible.builtin.template:
+    src: cloudflared.service.j2
+    dest: /etc/systemd/system/{{ deployment_contract.service_units.cloudflare }}
+    mode: '0644'
+- name: Keep connector closed until a healthy release activates public access
+  ansible.builtin.systemd_service:
+    name: '{{ deployment_contract.service_units.cloudflare }}'
+    enabled: false
+    state: stopped
+    daemon_reload: true

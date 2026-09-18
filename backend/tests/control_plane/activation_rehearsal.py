@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import yaml
+from api.auth.config import AUTH_ORIGIN_ENV
 from api.deployment.release import RELEASE_ID_ENV
 from api.deployment.services import (
     APPLICATION_SERVICES,
@@ -19,12 +20,21 @@ from api.deployment.services import (
 
 from control_plane.release_bundle_fixture import worktree_bundle
 from scripts.deployment.attempt import JOURNAL_NAME
+from scripts.deployment.dotenv import parse_values
 from scripts.deployment.images import IMAGE_FIELDS
-from scripts.deployment.paths import REPOSITORY
+from scripts.deployment.ingress import IngressMode
+from scripts.deployment.paths import (
+    CLOUDFLARE_CONFIGURATION_DIRECTORY,
+    OPERATIONS_CONFIGURATION_NAME,
+    REPOSITORY,
+    RUNTIME_CONFIGURATION_NAME,
+)
+from scripts.deployment.transport_files import HostTransportFile
 from scripts.deployment.units import (
     ACTIVATION_SERVICE_UNIT,
     BACKUP_CHECK_SERVICE_UNIT,
     BACKUP_TIMER_UNIT,
+    CLOUDFLARE_SERVICE_UNIT,
 )
 
 
@@ -51,6 +61,10 @@ class ActivationRehearsal:
     ):
         self.docker, self.container, self.directory = docker, container, directory
         self.inventory, self.environment = inventory, environment
+        variables = json.loads(inventory.read_text())["all"]["children"]["polybot"][
+            "hosts"
+        ]["fixture"]
+        self.cloudflare = variables.get("polybot_ingress") == IngressMode.CLOUDFLARE
 
     def run(self) -> None:
         fixture = self.directory / "activation"
@@ -92,12 +106,18 @@ class ActivationRehearsal:
             tasks = yaml.safe_load(tasks_path.read_text())
             readiness = next(
                 task
-                for task in tasks
-                if task.get("name") == "Verify private HTTPS readiness"
+                for task in next(
+                    task["block"]
+                    for task in tasks
+                    if task.get("name") == "Activate and verify the selected ingress"
+                )
+                if task.get("name")
+                == "Verify HTTPS readiness through the selected ingress"
             )
             readiness["ansible.builtin.uri"]["url"] = (
                 f"https://localhost:{server.server_port}/api/v1/health"
             )
+            readiness["retries"] = 0
             readiness["ansible.builtin.uri"]["ca_path"] = str(certificate)
             tasks_path.write_text(yaml.safe_dump(tasks, sort_keys=False))
             self.host(
@@ -156,6 +176,18 @@ class ActivationRehearsal:
                 and "failed=0" in first
             )
             assert self.host("readlink", "/srv/polybot/current").endswith("/v0.0.1")
+            if self.cloudflare:
+                self.require_tunnel_state(active=False)
+                self.prepare_public_fixture(fixture)
+                self.play(
+                    fixture,
+                    bundles["v0.0.1"],
+                    "v0.0.1",
+                    "a",
+                    "deploy",
+                    "public-opening",
+                )
+                self.require_tunnel_state(active=True)
             before = self.container_start_timestamp()
             self.play(
                 fixture, bundles["v0.0.1"], "v0.0.1", "a", "deploy", "healthy-retry"
@@ -173,6 +205,8 @@ class ActivationRehearsal:
             )
             assert self.host("readlink", "/srv/polybot/current").endswith("/v0.0.1")
             assert self.host("cat", "/srv/polybot/" + JOURNAL_NAME)
+            if self.cloudflare:
+                self.require_tunnel_state(active=False)
             self.host("rm", "/srv/polybot/fixture-control/fail")
             self.play(
                 fixture, bundles["v0.0.2"], "v0.0.2", "b", "deploy", "forward-retry"
@@ -224,9 +258,13 @@ class ActivationRehearsal:
                 success=False,
             )
             ReadinessHandler.status = 200
+            if self.cloudflare:
+                self.require_tunnel_state(active=False)
             self.play(
                 fixture, bundles["v0.0.1"], "v0.0.1", "a", "deploy", "https-retry"
             )
+            if self.cloudflare:
+                self.require_tunnel_state(active=True)
             self.host("rm", "/srv/polybot/current")
             result = self.host(
                 "sh",
@@ -247,6 +285,68 @@ class ActivationRehearsal:
 
     def host(self, *args):
         return self.docker("exec", self.container, *args)
+
+    def prepare_public_fixture(self, fixture):
+        # Substitute only the external Cloudflare connection. The production unit
+        # still reads its protected token as the dedicated service account.
+        override = fixture / "connector.conf"
+        token_path = (
+            CLOUDFLARE_CONFIGURATION_DIRECTORY / HostTransportFile.CLOUDFLARE_TOKEN
+        )
+        override.write_text(
+            "[Service]\nExecStart=\n"
+            f"ExecStart=/bin/sh -c 'test -s {token_path} && exec /bin/sleep infinity'\n"
+        )
+        drop_in = f"/etc/systemd/system/{CLOUDFLARE_SERVICE_UNIT}.d"
+        self.host("mkdir", "-p", drop_in)
+        self.docker(
+            "cp", str(override), self.container + ":" + drop_in + "/fixture.conf"
+        )
+        self.host("systemctl", "daemon-reload")
+        record = json.loads(self.inventory.read_text())
+        variables = record["all"]["children"]["polybot"]["hosts"]["fixture"]
+        variables["polybot_public_enabled"] = True
+        self.inventory.write_text(json.dumps(record))
+        root = variables["polybot_root"]
+        runtime = parse_values(self.host("cat", f"{root}/{RUNTIME_CONFIGURATION_NAME}"))
+        runtime[AUTH_ORIGIN_ENV] = variables["polybot_origin"]
+        operations = json.loads(
+            self.host("cat", f"{root}/{OPERATIONS_CONFIGURATION_NAME}")
+        )
+        operations["public_enabled"] = True
+        for name, content in (
+            (
+                RUNTIME_CONFIGURATION_NAME,
+                "\n".join(
+                    f"{key}={json.dumps(value)}" for key, value in runtime.items()
+                )
+                + "\n",
+            ),
+            (OPERATIONS_CONFIGURATION_NAME, json.dumps(operations)),
+        ):
+            path = fixture / name
+            path.write_text(content)
+            self.docker("cp", str(path), self.container + f":{root}/{name}")
+            self.host("chown", "polybot:polybot", f"{root}/{name}")
+            self.host("chmod", "600", f"{root}/{name}")
+
+    def require_tunnel_state(self, *, active):
+        state = self.host(
+            "systemctl",
+            "show",
+            CLOUDFLARE_SERVICE_UNIT,
+            "--property=ActiveState",
+            "--value",
+        )
+        assert state == ("active" if active else "inactive"), state
+        enabled = self.host(
+            "systemctl",
+            "show",
+            CLOUDFLARE_SERVICE_UNIT,
+            "--property=UnitFileState",
+            "--value",
+        )
+        assert enabled == ("enabled" if active else "disabled"), enabled
 
     def container_start_timestamp(self):
         return self.host(

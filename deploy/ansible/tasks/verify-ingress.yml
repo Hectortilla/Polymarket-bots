@@ -1,0 +1,14 @@
+- name: Read ingress configuration for {{ ingress_runtime_filename }}
+  ansible.builtin.slurp:
+    src: '{{ polybot_root }}/{{ item }}'
+  loop: ['{{ ingress_runtime_filename }}', '{{ deployment_contract.paths.operations }}']
+  register: bootstrapped_ingress
+  no_log: true
+- name: Require inventory, host policy and runtime ingress to agree
+  ansible.builtin.command:
+    argv: [uv, run, --locked, python, -m, scripts.deployment.controller, ingress]
+    stdin: '{{ {"variables": vars | dict2items | selectattr("key", "match", "^polybot_") | items2dict, "runtime": bootstrapped_ingress.results[0].content | b64decode, "operations": bootstrapped_ingress.results[1].content | b64decode | from_json} | to_json }}'
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  no_log: true

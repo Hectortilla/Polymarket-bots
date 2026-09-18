@@ -12,15 +12,25 @@ import yaml
 
 from control_plane.activation_rehearsal import ActivationRehearsal
 from scripts.deployment.ansible_contract import deployment_contract
+from scripts.deployment.ingress import IngressMode
 from scripts.deployment.inventory import SUPPORTED_ARCHITECTURES
-from scripts.deployment.paths import DEFAULT_APP_DIRECTORY, REPOSITORY
+from scripts.deployment.paths import (
+    CLOUDFLARE_CONFIGURATION_DIRECTORY,
+    DEFAULT_APP_DIRECTORY,
+    REPOSITORY,
+)
 from scripts.deployment.runtime_contracts import DEFAULT_HTTP_PORT
 from scripts.deployment.ssh_access import (
     DEPLOYMENT_SSH_USER,
     SSHD_HARDENING_PATH,
     SSHD_MAIN_PATH,
 )
-from scripts.deployment.units import MONITOR_TIMER_UNIT
+from scripts.deployment.transport_files import HostTransportFile
+from scripts.deployment.units import (
+    CLOUDFLARE_SERVICE_UNIT,
+    CLOUDFLARE_SERVICE_USER,
+    MONITOR_TIMER_UNIT,
+)
 from scripts.host_operations.contracts import BACKUP_TIMER_UNITS
 from scripts.local_docker import LocalDocker
 
@@ -33,6 +43,9 @@ def main():
         help="Check bootstrap and SSH guards without release/backup rehearsals.",
     )
     parser.add_argument("--initial-access", choices=("root", "su"), default="root")
+    parser.add_argument(
+        "--ingress", choices=list(IngressMode), default=IngressMode.TAILSCALE
+    )
     args = parser.parse_args()
     docker = LocalDocker.from_context().output
     name = "polybot-bootstrap-test-" + uuid4().hex[:10]
@@ -122,6 +135,14 @@ def main():
                 ["age-keygen", "-y", str(directory / "age.key")], text=True
             ).strip(),
         }
+        if args.ingress == IngressMode.CLOUDFLARE:
+            variables.update(
+                polybot_ingress=IngressMode.CLOUDFLARE,
+                polybot_origin="https://polybotlab.example",
+                polybot_tailnet_origin=variables["polybot_origin"],
+                polybot_public_enabled=False,
+                polybot_cloudflare_tunnel_token="fixture-token-not-connected-to-cloudflare",
+            )
         if args.initial_access == "su":
             variables.update(
                 ansible_user="hec",
@@ -212,6 +233,52 @@ def main():
             )
         assert snapshots[0] == snapshots[1]
         assert service_snapshots[0] == service_snapshots[1]
+        if args.ingress == IngressMode.CLOUDFLARE:
+            token_path = str(
+                CLOUDFLARE_CONFIGURATION_DIRECTORY / HostTransportFile.CLOUDFLARE_TOKEN
+            )
+            assert (
+                docker("exec", name, "stat", "-c", "%a %U %G", token_path)
+                == f"640 root {CLOUDFLARE_SERVICE_USER}"
+            )
+            docker(
+                "exec",
+                name,
+                "runuser",
+                "-u",
+                CLOUDFLARE_SERVICE_USER,
+                "--",
+                "sh",
+                "-c",
+                'test ! -w "$1" && head -c 1 "$1" >/dev/null',
+                "token-check",
+                token_path,
+            )
+            unit = docker("exec", name, "systemctl", "cat", CLOUDFLARE_SERVICE_UNIT)
+            assert variables["polybot_cloudflare_tunnel_token"] not in unit
+            assert "--token-file" in unit
+            state = docker(
+                "exec",
+                name,
+                "systemctl",
+                "show",
+                CLOUDFLARE_SERVICE_UNIT,
+                "--property=ActiveState",
+                "--value",
+            )
+            assert state == "inactive"
+            assert (
+                docker(
+                    "exec",
+                    name,
+                    "systemctl",
+                    "show",
+                    CLOUDFLARE_SERVICE_UNIT,
+                    "--property=UnitFileState",
+                    "--value",
+                )
+                == "disabled"
+            )
         assert (
             docker("exec", name, "docker", "exec", "sentinel", "cat", "/data/value")
             == "retained"

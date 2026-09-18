@@ -16,10 +16,13 @@ from scripts.beta_backup.policy import BACKUP_SERVICE_TIMEOUT_SECONDS, backup_ca
 from scripts.beta_backup.remote.config import BACKUP_REMOTE_NAME, SFTP_BACKEND
 from scripts.deployment.attempt import ACTIVATION_TIMEOUT_SECONDS
 from scripts.deployment.bundle.contracts import RELEASE_BUNDLE_FILENAME
+from scripts.deployment.ingress import IngressMode
 from scripts.deployment.inventory import SUPPORTED_ARCHITECTURES
 from scripts.deployment.network import HEALTH_HTTP_STATUS
 from scripts.deployment.paths import (
+    CLOUDFLARE_CONFIGURATION_DIRECTORY,
     CURRENT_RELEASE_NAME,
+    MANIFEST_NAME,
     OPERATIONS_CONFIGURATION_NAME,
     REGISTRY_AUTH_DIRECTORY_NAME,
     RELEASES_DIRECTORY_NAME,
@@ -42,6 +45,8 @@ from scripts.deployment.units import (
     ACTIVATION_SERVICE_UNIT,
     BACKUP_CHECK_SERVICE_UNIT,
     BACKUP_SERVICE_UNIT,
+    CLOUDFLARE_SERVICE_UNIT,
+    CLOUDFLARE_SERVICE_USER,
     MONITOR_SERVICE_UNIT,
 )
 from scripts.host_operations.contracts import (
@@ -77,6 +82,7 @@ class SecretFileNames(TypedDict):
 
 
 class TransportFileNames(TypedDict):
+    cloudflare_token: str
     sftp_key: str
     sftp_known_hosts: str
     age_recipients: str
@@ -85,6 +91,8 @@ class TransportFileNames(TypedDict):
 
 
 class HostPaths(TypedDict):
+    cloudflare: str
+    active_manifest: str
     registry: str
     current: str
     releases: str
@@ -103,6 +111,7 @@ class HostOperationNames(TypedDict):
 
 
 class ServiceUnitNames(TypedDict):
+    cloudflare: str
     activation: str
     backup: str
     backup_check: str
@@ -110,6 +119,8 @@ class ServiceUnitNames(TypedDict):
 
 
 class DeploymentContract(TypedDict):
+    cloudflare_user: str
+    ingress_modes: dict[str, str]
     ssh_user: str
     ssh_policy: dict[str, str]
     sshd_main: str
@@ -145,6 +156,8 @@ class DeploymentContract(TypedDict):
 
 def deployment_contract() -> DeploymentContract:
     return {
+        "cloudflare_user": CLOUDFLARE_SERVICE_USER,
+        "ingress_modes": {mode.name.lower(): mode.value for mode in IngressMode},
         "ssh_user": DEPLOYMENT_SSH_USER,
         "ssh_policy": SSH_HARDENING_POLICY,
         "sshd_main": SSHD_MAIN_PATH,
@@ -157,6 +170,7 @@ def deployment_contract() -> DeploymentContract:
         "activation_poll_retries": ACTIVATION_TIMEOUT_SECONDS // 5 + 2,
         "checksum_algorithm": SHA256_ALGORITHM,
         "service_units": {
+            "cloudflare": CLOUDFLARE_SERVICE_UNIT,
             "activation": ACTIVATION_SERVICE_UNIT,
             "backup": BACKUP_SERVICE_UNIT,
             "backup_check": BACKUP_CHECK_SERVICE_UNIT,
@@ -186,6 +200,8 @@ def deployment_contract() -> DeploymentContract:
         "backup_remote": BACKUP_REMOTE_NAME,
         "sftp_backend": SFTP_BACKEND,
         "paths": {
+            "cloudflare": str(CLOUDFLARE_CONFIGURATION_DIRECTORY),
+            "active_manifest": MANIFEST_NAME,
             "registry": REGISTRY_AUTH_DIRECTORY_NAME,
             "current": CURRENT_RELEASE_NAME,
             "releases": RELEASES_DIRECTORY_NAME,

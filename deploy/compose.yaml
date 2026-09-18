@@ -35,7 +35,7 @@ services:
     environment:
       POLYBOT_AUTH_ORIGIN: ${POLYBOT_AUTH_ORIGIN:?HTTPS origin required}
       POLYBOT_ENTRYPOINT_HEALTH_PATH: /healthz
-    # Public binding remains unavailable until the final beta acceptance gate.
+    # Host Serve/cloudflared reaches loopback; application ports stay private.
     ports: ['127.0.0.1:${POLYBOT_HTTP_PORT:-8081}:8081']
     networks:
       edge: {ipv4_address: *proxy_address}

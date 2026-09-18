@@ -278,6 +278,21 @@ class DeploymentSmoke:
                 headers={"Origin": "https://spoof.example"},
             )
             assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Model Cloudflare's append behavior at the connector's loopback boundary.
+        # Caddy must select the real peer on the right, never the spoofed prefix.
+        forwarded_client = "198.51.100.7"
+        observation = httpx.get(
+            f"http://127.0.0.1:{self.values[HTTP_PORT_ENV]}/api/v1/_fixture/proxy",
+            headers={
+                "X-Forwarded-For": f"203.0.113.9, {forwarded_client}",
+                "Forwarded": "for=203.0.113.9",
+                "X-Forwarded-Proto": "http",
+            },
+            timeout=10,
+        ).json()
+        assert observation["client"] == forwarded_client
+        assert observation["scheme"] == "https"
+        assert observation["forwarded"] is None
         output = self.command(
             "docker",
             "run",

@@ -47,8 +47,14 @@ Default worker cleanup budget: heartbeat 5 seconds plus cleanup 10 seconds.
 
 ## Host automation and notifications
 
-Ansible `status.yml` checks service readiness, required systemd services, private
-HTTPS certificate validity and, when backups are enabled, remote backup freshness. Bootstrap installs
+Ansible `status.yml` checks service readiness, required systemd services, selected
+HTTPS certificate validity and, when backups are enabled, remote backup freshness.
+It verifies Tailscale identity/Serve independently of the public domain. In
+Cloudflare mode it also requires the connector to be active only when public
+access is enabled; HTTPS checks use the public origin after opt-in and the private
+origin before it. Bootstrap closes the connector until a successful deployment
+reopens it. Use the [public-access procedure](beta-deployment.md#public-access-and-a-custom-domain)
+for closure, reopening and token rotation. Bootstrap installs
 `polybot-monitor.timer` every five minutes; enabled backups add daily encrypted
 SFTP snapshots and hourly remote RPO checks. Set `polybot_backups_enabled: false`
 and rerun bootstrap to stop both backup schedules; status reports the disabled
@@ -60,7 +66,7 @@ nonzero and retries at the next observation. Journald contains bounded check cod
 and detailed application diagnostics without forwarding secrets into CI artifacts.
 
 The daily GitHub connectivity workflow independently checks verified OpenSSH and
-private HTTPS with a five-minute bound, so host loss can trigger GitHub failure
+the selected HTTPS origin with a five-minute bound, so host loss can trigger GitHub failure
 notifications even when the host cannot send mail. Enable those notifications for
 the real operator and test receipt. Before the first release, timers are installed
 but their source-path condition defers execution. After first deployment run status

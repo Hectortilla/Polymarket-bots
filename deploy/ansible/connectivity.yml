@@ -5,9 +5,9 @@
     - ansible.builtin.import_tasks: tasks/validate.yml
     - name: Verify ordinary OpenSSH execution
       ansible.builtin.ping:
-    - name: Verify private HTTPS readiness
+    - name: Verify HTTPS readiness through the selected ingress
       ansible.builtin.uri:
-        url: '{{ polybot_origin }}{{ deployment_contract.health_path }}'
+        url: '{{ polybot_readiness_origin }}{{ deployment_contract.health_path }}'
         validate_certs: true
         timeout: '{{ deployment_contract.https_probe_timeout }}'
         status_code: '{{ deployment_contract.health_status }}'

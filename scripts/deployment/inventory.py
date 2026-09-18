@@ -6,7 +6,7 @@ from typing import Self
 
 from api.auth.credential_input import EmailAddress
 from api.auth.mail.config import SmtpSecurity, SmtpSettings
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from scripts.beta_backup.policy import DEFAULT_BACKUPS_ENABLED
 from scripts.beta_backup.remote.config import (
@@ -15,14 +15,13 @@ from scripts.beta_backup.remote.config import (
     validate_sftp_user,
 )
 from scripts.deployment.errors import DeploymentInputError
-from scripts.deployment.runtime_contracts import HTTP_PORT_MAXIMUM, HTTP_PORT_MINIMUM
-from scripts.deployment.tailscale import validate_private_origin
+from scripts.deployment.ingress import IngressSettings
 
 SUPPORTED_ARCHITECTURES = {"amd64": "x86_64", "arm64": "aarch64"}
 SUPPORTED_DISTRIBUTION = "Debian"
 
 
-class DeploymentInventory(BaseModel):
+class DeploymentInventory(IngressSettings):
     model_config = ConfigDict(
         frozen=True,
         hide_input_in_errors=True,
@@ -30,8 +29,6 @@ class DeploymentInventory(BaseModel):
     )
     root: Path
     arch: str
-    origin: str
-    http_port: int = Field(strict=True, ge=HTTP_PORT_MINIMUM, le=HTTP_PORT_MAXIMUM)
     smtp_host: str
     smtp_port: int = Field(strict=True, ge=1, le=65535)
     smtp_security: SmtpSecurity
@@ -74,11 +71,6 @@ class DeploymentInventory(BaseModel):
         if value not in SUPPORTED_ARCHITECTURES:
             raise DeploymentInputError("unsupported deployment architecture")
         return value
-
-    @field_validator("origin")
-    @classmethod
-    def origin_policy(cls, value: str) -> str:
-        return validate_private_origin(value)
 
     @field_validator("sftp_directory")
     @classmethod

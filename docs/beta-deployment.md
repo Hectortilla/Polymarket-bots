@@ -1,9 +1,10 @@
-# Private deployment and release operations
+# Deployment, public access and release operations
 
 Use GitHub Actions, Ansible and Docker Compose on one Debian host, amd64 or
-arm64. Tailscale Personal supplies private connectivity and Serve HTTPS. The API
-keeps its own email/password authentication. The application remains paper-only;
-no public-opening gate or live-trading opt-in is changed.
+arm64. Tailscale supplies private SSH/CI connectivity and staging HTTPS. A named
+Cloudflare Tunnel serves `https://polybotlab.com` after explicit public activation.
+Namecheap remains the domain registrar and email provider; Cloudflare manages DNS.
+The application retains email/password authentication and paper-only execution.
 
 ## One-time setup
 
@@ -25,6 +26,18 @@ Jump to [server preparation](#1-prepare-the-debian-server-and-existing-administr
 [bootstrap](#5-bootstrap-with-the-existing-administrator), or
 [GitHub releases](#6-configure-github-releases).
 
+Prepare Cloudflare in [step 2A](#2a-prepare-namecheap-dns-and-the-cloudflare-tunnel)
+before bootstrap. Steps 1–7 keep the application private;
+[public activation](#public-access-and-a-custom-domain) follows separately.
+
+**Already completed steps 1–7?** Follow step 2A, add the Cloudflare inventory and
+Vault fields in step 4, and rerun bootstrap with the deployment account. Deploy a
+new release containing this integration with `polybot_public_enabled: false`,
+verify private access, then follow public activation. Keep existing keys, database
+and GitHub credentials. Older operational bundles cannot read the new ingress
+fields: monitoring may report failures between bootstrap and the updated release;
+perform those steps in one maintenance window.
+
 | Identity or file | Purpose |
 | --- | --- |
 | Existing server administrator, such as `hec` | First SSH connection and sudo during preparation/bootstrap |
@@ -32,6 +45,7 @@ Jump to [server preparation](#1-prepare-the-debian-server-and-existing-administr
 | Administrator's SSH key | Lets your Mac connect as `hec` before bootstrap |
 | Deployment SSH key pair | Later lets your Mac and CI connect as `polybot` |
 | Server SSH host public key in `known_hosts` | Lets clients verify that they reached the correct server |
+| Cloudflare tunnel token | Named tunnel credential stored in Vault; Ansible installs it on the server |
 | Tailscale auth key | Enrolls the server in the private network; separate from SSH authentication |
 | SMTP app password | Lets the application send email through your mailbox provider |
 | Ansible Vault password | Decrypts the secrets file on the controller |
@@ -78,8 +92,8 @@ Ansible-managed settings in step 4.
 ### 2. Configure Tailscale, the hostname and private HTTPS
 
 **Why:** Tailscale connects the controller, deployment server and CI privately.
-Serve provides the application's HTTPS address and certificate. The domain you
-bought for email does not automatically become the application's address.
+Serve provides private staging HTTPS. Cloudflare supplies public HTTPS in step 2A;
+these addresses have separate inventory fields.
 
 1. Use the intended Tailscale **Personal** tailnet and connect your Mac to it.
    With initial LAN/public SSH, leave server installation/enrollment to Ansible.
@@ -88,7 +102,7 @@ bought for email does not automatically become the application's address.
    For a fresh server, use its final hostname and your tailnet's DNS suffix to
    select the intended origin; bootstrap verifies the enrolled DNS name exactly.
 3. Under **DNS**, enable **MagicDNS** and **HTTPS Certificates**. Use the full
-   `https://HOST.TAILNET.ts.net` address, including `https://`, as the origin.
+   `https://HOST.TAILNET.ts.net` address as `polybot_tailnet_origin`.
    See [Tailscale HTTPS setup](https://tailscale.com/docs/how-to/set-up-https-certificates).
 4. Merge [`deploy/tailscale-policy.example.hujson`](../deploy/tailscale-policy.example.hujson)
    into the tailnet access policy. It defines `tag:polybot` and `tag:polybot-ci`.
@@ -102,9 +116,8 @@ bought for email does not automatically become the application's address.
    retains an already-running enrollment.
    CI will use `tag:polybot-ci`; do not apply the CI tag to the server.
 
-Keep **Funnel disabled**. The application is intended to be reachable through
-Tailscale, with its own email/password login. Ordinary OpenSSH travels over
-Tailscale; this setup does not use Tailscale SSH.
+Keep **Funnel disabled**. Cloudflare owns public access; Serve stays private.
+Ordinary OpenSSH travels over Tailscale; this setup does not use Tailscale SSH.
 
 **Tailscale is the only route to the server?** That connection must exist before
 Ansible can use it. From the server console, install Tailscale using the
@@ -139,6 +152,45 @@ The validator checks the prefix; it does not prove the key is unused or unexpire
 A one-time key is consumed on enrollment; generate a new one if the server later
 needs re-enrollment. Do not skip the whole tailnet stage merely to avoid supplying
 this value, because that stage also validates/configures private HTTPS Serve.
+
+### 2A. Prepare Namecheap DNS and the Cloudflare Tunnel
+
+Do this in the provider dashboards **before bootstrap**. Ansible installs the
+connector later; do not run the dashboard's `cloudflared service install` command.
+
+1. Add `polybotlab.com` to Cloudflare on the Free plan. Copy and verify all
+   existing DNS records, especially Namecheap email's MX, SPF, DKIM and DMARC.
+   Keep mail-server address records DNS-only. Disable existing DNSSEC before
+   changing nameservers, following the [DNS migration guide](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/).
+2. In Namecheap, open **Domain List → Manage → Nameservers → Custom DNS** and
+   enter Cloudflare's assigned nameservers. Domain registration and Private Email
+   stay at Namecheap; future DNS edits happen in Cloudflare. Wait for the zone to
+   become active, re-enable DNSSEC using Cloudflare's new DS details at Namecheap,
+   and verify email delivery. [Namecheap instructions](https://www.namecheap.com/support/knowledgebase/article.aspx/767/10/how-to-change-dns-for-a-domain/).
+3. In Cloudflare, open **Networking → Tunnels → Create Tunnel** and create a named,
+   remotely managed tunnel, such as `polybot-production`. Copy only the tunnel
+   token from the connector installation command into `polybot_cloudflare_tunnel_token`
+   in Vault (step 4). Do not paste the whole command. The connector remains offline
+   until public activation; that is expected. Quick Tunnels are unsuitable because
+   they do not support the application's Server-Sent Events (SSE).
+4. Add a **Published application** route: hostname `polybotlab.com` (leave the
+   subdomain and path empty), service `HTTP`, URL `127.0.0.1:8081`. Substitute
+   `polybot_http_port` if different. Cloudflare creates the tunnel DNS record;
+   remove a conflicting website A/AAAA/CNAME record for that hostname, preserving
+   email records. Never point this hostname at your home IP.
+5. Wait for the domain's edge certificate to be active and enable **Always Use
+   HTTPS**. Add a Cache Rule to **bypass cache for this application hostname**;
+   authenticated/API responses must not be cached. Keep visitor IP headers enabled
+   and Pseudo IPv4 off; do not add Workers or another proxy to this route. Public
+   visitors use the app's own login, so no Cloudflare Access login policy is needed.
+
+See [named tunnel setup](https://developers.cloudflare.com/tunnel/get-started/)
+and [Cache Rules](https://developers.cloudflare.com/cache/how-to/cache-rules/create-dashboard/).
+The route does not reach the app while the managed connector is stopped. Until
+activation, visiting the domain can show a Cloudflare tunnel-offline error.
+No home router port forwarding or inbound HTTP/HTTPS firewall rule is needed;
+allow outbound connectivity to Cloudflare, including TCP/UDP 7844. Use this named
+tunnel only for this deployment, with no separately running connector replicas.
 
 ### 3. Prepare your Mac/controller and deployment SSH key
 
@@ -232,7 +284,10 @@ all:
         polybot_ssh_public_key: 'ssh-ed25519 REPLACE_WITH_FULL_PUBLIC_KEY polybot-deployment'
         polybot_root: /srv/polybot
         polybot_arch: amd64
-        polybot_origin: https://hec-server.tailnet-name.ts.net
+        polybot_ingress: cloudflare
+        polybot_origin: https://polybotlab.com
+        polybot_tailnet_origin: https://hec-server.tailnet-name.ts.net
+        polybot_public_enabled: false
         polybot_http_port: 8081
         polybot_admin_user: hec
         polybot_ignore_lid: true # This example is a headless laptop
@@ -256,8 +311,11 @@ all:
 | `polybot_ssh_public_key` | Entire deployment client `.pub` line from step 3, not the server's host key |
 | `polybot_root` | Dedicated application directory on the server; default `/srv/polybot` |
 | `polybot_arch` | Run `uname -m` on the server: `x86_64` means `amd64`, `aarch64` means `arm64` |
-| `polybot_origin` | Exact browser origin, including `https://`; use the server's full Tailscale DNS name without a path or trailing slash |
-| `polybot_http_port` | Local application listener behind Serve; keep `8081` unless changing the port deliberately; it is not the SSH or external HTTPS port |
+| `polybot_ingress` | `cloudflare` for this deployment; older inventories default to `tailscale` |
+| `polybot_origin` | Public application origin: `https://polybotlab.com`, no path or trailing slash |
+| `polybot_tailnet_origin` | Exact private `https://HOST.TAILNET.ts.net` origin, matching the enrolled server |
+| `polybot_public_enabled` | Keep boolean `false` through step 7; `true` permits release activation to start the public connector |
+| `polybot_http_port` | Loopback application listener used by Serve and cloudflared; keep `8081` unless changing the port deliberately; it is not the SSH or external HTTPS port |
 | `polybot_smtp_host` | Outgoing mail server provided by your email provider, such as `mail.privateemail.com` |
 | `polybot_smtp_port` / `polybot_smtp_security` | Namecheap example: `587` with `starttls`; implicit TLS uses `465` with `tls` |
 | `polybot_smtp_from` | Sender email address; using the authenticated mailbox is the simplest setup |
@@ -283,16 +341,20 @@ laptop behavior; the default false removes that override. Keep the desired swap
 size consistent with the existing file. No manual file removal is needed to
 switch to Ansible ownership, and a running Tailscale enrollment is retained.
 
-`ansible_host` and `polybot_origin` refer to the same deployment server, but one is
-an SSH destination and the other is its browser URL. Buying `example.com` does
-not change that URL: using `https://app.example.com` would require a different
-routing and HTTPS setup. Your purchased domain can still supply the email address
-`accounts@example.com` while the application uses Tailscale HTTPS.
+`ansible_host` is the Tailscale SSH destination. `polybot_tailnet_origin` is the
+private browser address; `polybot_origin` is the future public browser address.
+While `polybot_public_enabled` is false, runtime authentication, email links and
+HTTPS probes use the private origin. When true, they use the public origin.
+Ansible derives `polybot_readiness_origin`; do not set it yourself. Changing these
+settings requires bootstrap and a release deployment; deployment rejects stale
+bootstrapped ingress configuration. For a private-only installation, use
+`polybot_ingress: tailscale`, make both origins the same, and leave public access
+false; no Cloudflare token is needed.
 
 Namecheap's `privateemail._domainkey` is a **DKIM DNS record name**, used to verify
 email signatures. It is not an SMTP hostname and does not belong in
 `polybot_smtp_host`. Configure provider-required DNS authentication records in the
-domain's DNS panel. An actual Private Email mailbox is required; owning a domain
+Cloudflare DNS panel after step 2A. An actual Private Email mailbox is required; owning a domain
 alone does not provide SMTP credentials. See
 [Namecheap SMTP settings](https://www.namecheap.com/support/knowledgebase/article.aspx/1179/2175/general-private-email-configuration-for-mail-clients-and-mobile-devices/)
 and [DKIM setup](https://www.namecheap.com/support/knowledgebase/article.aspx/10383/2176/how-to-set-up-a-dkim-record-for-private-email/).
@@ -362,6 +424,7 @@ for authentication or encryption. Keep one definition of each variable:
 | `polybot_age_recipients` (public encryption recipients; backups only) | Public `production.yml`, under `vars` |
 | `polybot_tailscale_authkey` | Encrypted `production.vault.yml` |
 | `polybot_smtp_password` | Encrypted `production.vault.yml` |
+| `polybot_cloudflare_tunnel_token` | Encrypted `production.vault.yml`; required for Cloudflare mode even while public access is disabled |
 | `polybot_sftp_private_key` (backups only) | Encrypted `production.vault.yml` |
 | Deployment SSH private key | Private file on controller; later GitHub secret `DEPLOY_SSH_KEY` |
 | Age private recovery identity | Offline recovery custody |
@@ -404,11 +467,12 @@ ansible-vault edit deploy/ansible/inventory/production.vault.yml
 The first command encrypts a copy of the placeholder template; it does not encrypt
 or modify the example itself. Choose a Vault password and save it in your password
 manager. The edit command decrypts for editing and saves the file encrypted again.
-With backups disabled, the editor should contain these two filled-in secret fields:
+With backups disabled, the editor should contain these three filled-in secret fields:
 
 ```yaml
 polybot_tailscale_authkey: 'tskey-auth-REPLACE_WITH_GENERATED_KEY'
 polybot_smtp_password: 'REPLACE_WITH_MAILBOX_APP_PASSWORD'
+polybot_cloudflare_tunnel_token: 'REPLACE_WITH_NAMED_TUNNEL_TOKEN'
 ```
 
 Use the same `ansible-vault edit` command for later changes. Do not decrypt the
@@ -504,7 +568,7 @@ OpenSSH-based proof. Bootstrap requires a normal run, not `--check`.
 The prompts may appear as `BECOME password:` followed by `Vault password:`.
 With the sudo method, the first wants **hec's sudo password**; with su it wants
 the **root password**. The second wants **your Vault password**.
-Neither asks for the SMTP password, Tailscale auth key or deployment private key.
+Neither asks for the SMTP password, tunnel token, Tailscale auth key or deployment private key.
 
 #### What bootstrap does
 
@@ -522,6 +586,14 @@ on the controller, bootstrap:
   See [Ansible raw bootstrap](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/raw_module.html).
 - Installs Docker Engine, Compose, Tailscale, msmtp and pinned uv 0.10.9; age/rclone are
   installed when backups are enabled.
+- In Cloudflare mode, installs `cloudflared` from its signed Debian repository,
+  requires token-file support (2025.4.0+), and installs `polybot-cloudflared.service`.
+  The token is a root-owned mode-0640 file in `/etc/polybot-cloudflared`,
+  readable by the dedicated `polybot-cloudflared` service group. It never enters
+  the service command line, images or CI secrets. The connector runs as that
+  restricted account and stays stopped/disabled until deployment.
+  See [official packages](https://pkg.cloudflare.com/) and
+  [token-file support](https://developers.cloudflare.com/tunnel/reference/run-parameters/#token-file).
 - Creates `polybot`, adds it to Docker access, installs the public deployment key
   in `/home/polybot/.ssh/authorized_keys`, and grants passwordless sudo.
 - Adds the optional existing human administrator to the sudo group; configures
@@ -545,7 +617,7 @@ on the controller, bootstrap:
   SSH files and reloads them through the retained original session. An interrupted
   controller or broken original connection can still require console recovery.
 
-There are no new public 80/443 rules: the application uses Tailscale Serve.
+There are no new public 80/443 rules: Serve is private and cloudflared connects outbound.
 UFW does not replace tailnet policy or Docker networking controls; retain the
 loopback-only application listener. Custom SSH Match rules or existing firewall
 denials may need manual adjustment if the access checks fail. Logind is restarted
@@ -572,7 +644,8 @@ inventory's `ansible_user: polybot`, select this key with
 `--private-key ~/.ssh/polybot_deploy` or configure SSH to select it. A custom key
 filename is not automatically discovered merely because the file exists.
 
-To reapply bootstrap with the deployment account after the first run:
+To reapply bootstrap with the deployment account after the first run (this closes
+an active public connector until the next successful release deployment):
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory/production.yml deploy/ansible/bootstrap.yml \
@@ -586,7 +659,10 @@ reboot persistence and, for a laptop, SSH reachability with the lid closed;
 desktop power managers can also control suspend behavior.
 
 Check the server's Tailscale DNS name matches the inventory and its Serve mapping
-is private. Restrict initial public/LAN SSH only after tailnet SSH works. Continue
+is private. In Cloudflare mode, `systemctl is-enabled polybot-cloudflared` should
+report `disabled`, and `systemctl is-active polybot-cloudflared` should report
+`inactive`; bootstrap intentionally does not publish the app. Restrict initial
+public/LAN SSH only after tailnet SSH works. Continue
 with GitHub setup and the first release below.
 
 #### Bootstrap troubleshooting
@@ -600,7 +676,7 @@ with GitHub setup and the first release below.
 | Fresh deployment-key SSH proof fails | Supply `polybot_ssh_private_key_file` pointing to the deployment private key, verify its public counterpart in inventory and check `known_hosts`, routing and sudo access. This proof must pass before firewall/SSH hardening. |
 | SSH proof reports `Invalid deployment controller input` although direct `polybot` SSH and sudo work | An earlier proof resolved `./known_hosts` from Ansible's playbook directory. Use the corrected `scripts/deployment/ssh_access.py` and rerun the same bootstrap command. Relative paths now resolve from the repository root; SSH failures report a dedicated diagnostic. |
 | SSH hardening fails and reports restored configuration | Inspect conflicting `Match` rules or the failed reload/connection check. Keep the original session; use the console if it is unavailable. Correct the conflict and rerun. |
-| Bootstrap credentials fail with `no_log: true` and censored output | Check `polybot_ssh_public_key` is a complete parseable client public key, SMTP username/password are present, and the Tailscale value starts with `tskey-auth-`. If backups are enabled, check the SFTP private key, matching verified host record and age recipients too. Inspect Vault locally with `ansible-vault edit`; do not expose secrets by disabling `no_log`. |
+| Bootstrap credentials fail with `no_log: true` and censored output | Check `polybot_ssh_public_key` is a complete parseable client public key, SMTP username/password are present, the Tailscale value starts with `tskey-auth-`, and Cloudflare mode has a non-placeholder tunnel token without whitespace. If backups are enabled, check the SFTP private key, matching verified host record and age recipients too. Inspect Vault locally with `ansible-vault edit`; do not expose secrets by disabling `no_log`. |
 | `play_hosts` deprecation warning | This can be triggered when the current playbooks enumerate Ansible variables. It is separate from the later fatal error; use the failed task's message to diagnose the blocker. |
 | `Either apt-key or gpg binary is required` | Use the updated bootstrap that installs `gpg` before `apt_repository`. Rerun the full bootstrap. |
 | Tailscale repository `Conflicting values ... Signed-By` | An earlier bootstrap added a second source with another key path. The updated bootstrap removes its obsolete entry before the first APT operation and uses the official path. Rerun from the start so that repair runs. |
@@ -735,7 +811,8 @@ All four belong under **Environment secrets**, because the workflows read
 are not confidential, putting them under **Environment variables** would not
 satisfy the current workflows. CI replaces its checked-out `known_hosts` with
 `DEPLOY_KNOWN_HOSTS`; update both copies after a verified server host-key change.
-No Vault password, SMTP password or manually created `GITHUB_TOKEN` is needed.
+No Vault password, SMTP password, Cloudflare token or manually created
+`GITHUB_TOKEN` is needed. Ansible already installed the tunnel token on the host.
 
 #### Allow release and container publication
 
@@ -867,7 +944,7 @@ deploying or restarting the application. Inspect the individual steps:
 | SSH host verification fails | Check `DEPLOY_KNOWN_HOSTS` contains the verified key for the exact inventory hostname |
 | SSH reports `Permission denied (publickey)` | Check `DEPLOY_SSH_KEY` matches the public key installed for `polybot` in step 5 |
 | SSH succeeds, but HTTPS readiness fails before any release exists | Bootstrap has not started the application; proceed to step 7, then rerun this check and require a fully green result |
-| Entire workflow succeeds | CI can reach the running application over the intended private route |
+| Entire workflow succeeds | CI can reach SSH and the selected HTTPS origin (private until public activation) |
 
 Before step 7, a failed final HTTPS probe can be expected, but a Tailscale or SSH
 failure is not explained by the absence of an application release. The scheduled
@@ -922,8 +999,9 @@ run Docker or Alembic commands manually.
 
 #### Verify the running application
 
-With your Mac connected to Tailscale, open the exact `polybot_origin` from
-inventory, for example `https://hec-server.tailnet-name.ts.net`. Confirm the login
+Keep `polybot_public_enabled: false` for this first release. With your Mac
+connected to Tailscale, open `polybot_tailnet_origin` from inventory, for example
+`https://hec-server.tailnet-name.ts.net`. Confirm the login
 page loads over HTTPS, then verify login and email flows with your account.
 
 **On your Mac/controller**, from the repository root:
@@ -969,6 +1047,67 @@ minutes per month; pause automation if the allowance is exhausted rather than
 enabling paid capacity. Check [current Tailscale pricing](https://tailscale.com/pricing)
 when reviewing usage.
 
+## Public access and a custom domain
+
+This is the separate launch stage after steps 1–7. The selected route is:
+
+```text
+Browser → Cloudflare HTTPS → encrypted tunnel → cloudflared on Debian
+        → loopback Caddy → API / frontend
+Administrator and CI → Tailscale → OpenSSH
+```
+
+Cloudflare Tunnel is available free and works without a public home IP or port
+forwarding. It does not publish your home IP through tunnel DNS, but Cloudflare
+knows that IP and terminates browser TLS. Your server still depends on home power
+and internet. [Tunnel availability](https://developers.cloudflare.com/tunnel/),
+[TLS privacy](https://developers.cloudflare.com/ssl/faq/). Tailscale Funnel cannot
+directly serve `polybotlab.com`; keep it disabled. [Funnel limits](https://tailscale.com/docs/features/tailscale-funnel).
+
+### Activate public access
+
+1. Complete the [launch checklist](beta-launch.md#final-opening-checklist) through
+   the private acceptance stage, including operator/support identity and recovery
+   arrangements. Verify step 2A's domain route, certificate and cache bypass.
+2. Set `polybot_public_enabled: true` in `production.yml`. Keep
+   `polybot_origin: https://polybotlab.com` and the existing Tailscale hostname.
+   Rerun step 5 bootstrap with Vault and the deployment key. This writes the public
+   authentication/email origin while keeping the connector stopped. Commit and
+   merge the inventory so CI uses the same settings.
+3. Deploy a new reviewed version using step 7. Ansible verifies that inventory
+   matches bootstrap, closes any managed connector before activation, and enables
+   `polybot-cloudflared.service` only after local application health passes. It
+   then checks HTTPS at `https://polybotlab.com`; failure stops and disables the
+   connector. Fix DNS, route, certificate or connectivity and retry the published
+   release through **Private release → Run workflow → deploy**.
+4. With Tailscale disconnected, use mobile data to verify login, verification and
+   recovery emails, live run updates, reconnects and logout. Sessions from the
+   private hostname do not transfer; sign in again at the public domain. Run
+   `status.yml` and **Daily private host connectivity**: their HTTPS probe now
+   checks the public domain, while SSH still travels over Tailscale. Reboot and
+   confirm the connector and application recover before inviting users.
+
+The GitHub environment and workflow retain their existing `private` names; those
+names describe the management path, not the application's public availability.
+Public-domain support must be present in every release selected for rollback.
+Older bundles that predate this integration are not compatible monitoring targets.
+
+### Close access or rotate the token
+
+For immediate closure, run `sudo systemctl disable --now polybot-cloudflared`
+on the server. Remove the published route in Cloudflare if necessary. Then set
+`polybot_public_enabled: false`, rerun bootstrap and deploy the configuration so
+future releases stay closed and restore the private authentication origin.
+Bootstrap alone always leaves the managed tunnel closed; after any bootstrap
+rerun on a public host, deploy a release again to reopen it. Token rotation follows
+the same maintenance sequence: rotate in Cloudflare, update the Vault value,
+bootstrap, then deploy. No token is added to GitHub Actions.
+
+On a failed or interrupted deployment, local activation can finish under systemd
+while public access stays closed. Rerun deployment to perform the public-opening
+and HTTPS checks. Diagnose with `sudo journalctl -u polybot-cloudflared -n 50 --no-pager`;
+a running process alone does not prove the tunnel or domain is healthy.
+
 ## Optional SFTP backups
 
 Set `polybot_backups_enabled: false` in your production inventory to opt out.
@@ -979,7 +1118,7 @@ compatibility, inventories that omit the flag keep backups **enabled** and must
 supply the complete backup configuration. Use a YAML boolean, not a quoted string.
 
 With backups disabled, bootstrap stops and disables both backup timers and stops
-any running backup/check services. Application, private HTTPS, and host monitoring
+any running backup/check services. Application, selected HTTPS ingress, and host monitoring
 continue; status reports `"backups_enabled": false` and excludes remote freshness
 and backup-unit checks. Explicit `backup.yml` or host backup/check commands fail
 with a disabled message. No scheduled snapshots or remote retention run, and the
@@ -1087,7 +1226,7 @@ All installed state uses one configured root:
 /srv/polybot/                 private, owned by polybot
   runtime.env                bootstrap origin/SMTP/path settings, mode 600
   secrets/                   private directory; container secrets readable by UID 10001
-  operations.json            backup enablement, optional SFTP destination, origin, port and alerts
+  operations.json            ingress mode/origins/public gate, backups, port and alerts
   bundles/TAG/               verified source, release.tar.gz and locked .venv
   releases/ATTEMPT/           durable candidate and previous Compose/manifests
   .deployment.json           pending attempt phase and operation
@@ -1123,7 +1262,7 @@ until recovery finishes, so recover before manual Compose operations. Keep volum
 never run `down --volumes` on retained data. Paper runs interrupted by a real
 release require explicit relaunch; existing recovery fences remain in effect.
 
-## Private HTTPS boundary
+## HTTPS and proxy boundary
 
 Serve persists `tailscale serve --bg --https=443 http://127.0.0.1:8081`, with the
 configured internal port substituted. Tailscale owns certificates and renewal;
@@ -1131,18 +1270,23 @@ no production TLS files are mounted into Caddy. Serve rejects internet ingress
 unless Funnel is separately enabled, which bootstrap and host checks reject.
 [Serve persistence](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
-`POLYBOT_AUTH_ORIGIN` is the exact external HTTPS origin;
+`POLYBOT_AUTH_ORIGIN` is the selected private/public HTTPS origin;
 `POLYBOT_HTTP_PORT` is an independent loopback listener, default 8081. Caddy keeps
 static frontend serving, API proxying and immediate SSE flushing. Uvicorn trusts
 only Caddy `172.30.16.2`; Caddy trusts only Docker host gateway `172.30.16.1/32`,
 uses strict right-to-left X-Forwarded-For parsing and sends a single client IP.
 The subnet `172.30.16.0/28` must be free on the host. Other containers are untrusted.
-Serve overwrites X-Forwarded-For with the authenticated connection's source IP;
+Serve overwrites X-Forwarded-For with the authenticated connection's source IP.
+Cloudflare appends the connecting client's IP to X-Forwarded-For; cloudflared on
+this host forwards it through the same loopback listener. Strict right-to-left
+parsing selects the first untrusted address, ignoring attacker-supplied values to
+its left. Keep the documented direct Cloudflare route and default visitor headers.
 Caddy removes `Forwarded` and Tailscale identity headers and fixes the upstream
 scheme to HTTPS. Application login remains required, Secure cookies and CSRF
 use the configured origin, and mail links retain that origin.
 [Tailscale forwarding implementation](https://github.com/tailscale/tailscale/blob/v1.94.2/ipn/ipnlocal/serve.go),
-[Caddy trusted proxies](https://caddyserver.com/docs/caddyfile/options#trusted-proxies).
+[Caddy trusted proxies](https://caddyserver.com/docs/caddyfile/options#trusted-proxies),
+[Cloudflare forwarding headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/#x-forwarded-for).
 
 ## Acceptance and removal inventory
 
@@ -1150,18 +1294,20 @@ Ordinary disposable checks, from the root (Docker, age, rclone, OpenSSH tools,
 Ansible and Chromium required; on macOS install Caddy for the local TLS fixture):
 
 ```sh
-uv run pytest backend/tests/control_plane/test_beta_host_deployment.py backend/tests/control_plane/test_release_automation.py backend/tests/control_plane/test_remote_backups.py backend/tests/control_plane/test_host_monitoring.py
+uv run pytest backend/tests/control_plane/test_beta_host_deployment.py backend/tests/control_plane/test_release_automation.py backend/tests/control_plane/test_remote_backups.py backend/tests/control_plane/test_host_monitoring.py backend/tests/control_plane/test_cloudflare_deployment.py
 PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke
 PYTHONPATH=backend/tests uv run python -m control_plane.backup_rehearsal
-PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal
+PYTHONPATH=backend/tests uv run python -m control_plane.bootstrap_rehearsal --ingress cloudflare
 ```
 
 The HTTPS rehearsal uses a separate disposable TLS terminator in front of the
 production Caddy HTTP path. Its local certificate is test-only. It covers login,
 secure cookies, origin/CSRF, forwarding spoof resistance, email origin, browser
 run/Stop/reload, SSE reconnect, dependency loss and schema failure. Bootstrap
-acceptance runs Debian systemd in a disposable privileged container; it skips only
-external tailnet enrollment/Serve. It must preserve credentials with zero changes
+acceptance runs Debian systemd in a disposable privileged container; it skips
+external tailnet enrollment/Serve and substitutes the live Cloudflare connection
+with a local service that exercises the production service-account/token-file boundary.
+It must preserve credentials with zero changes
 on its second preparation pass, preserve a running container and volume, and
 prove a detached systemd operation survives SSH client loss. Backup acceptance restores downloaded SFTP bytes
 into a new quarantined Compose project and compares account/ownership/history.
@@ -1170,10 +1316,11 @@ Recorded repository results and the limits of these fixtures are in
 [deployment validation](deployment-validation.md).
 
 External acceptance remains required on a disposable target in the actual tailnet:
-verify the exact private Serve path from an allowed client, login and Secure
-cookies, rejected foreign-origin mutations, spoofed forwarding headers, real
+verify the exact private Serve path before launch and the public Cloudflare path
+after launch, login and Secure cookies, rejected foreign-origin mutations,
+spoofed forwarding headers, real
 client addresses/rate limits, HTTPS mail links, SSE reconnect, and no unauthenticated
-application access. Reboot and repeat Serve checks. Verify CI ephemeral cleanup,
+application access. Reboot and repeat Serve/connector checks. Verify CI ephemeral cleanup,
 SSH/HTTPS-only policy, GHCR permissions, release publication/reuse, SSH loss during
 activation, real SMTP failure/recovery delivery, daily GitHub unreachable-host
 notifications and, when backups are enabled, actual SFTP host keys and an
@@ -1217,8 +1364,8 @@ alert state are validated at their ingress boundaries before host mutations.
 
 Bootstrap's controller requires OpenSSH `ssh-keygen` locally, plus `age` when
 backups are enabled. Before host mutation it validates deployment public keys,
-SMTP credentials, and a Tailscale enrollment key (unless the tailnet stage is
-explicitly skipped). Enabled backups additionally require validated non-interactive
+SMTP credentials, a Cloudflare token when selected, and a Tailscale enrollment key
+(unless the tailnet stage is explicitly skipped). Enabled backups additionally require validated non-interactive
 SFTP private keys, a known-host entry matching the configured storage host/port,
 and age recipients. It exports normalized inventory values to Ansible; ports must
 be YAML integers. Remote access is still verified by the separate

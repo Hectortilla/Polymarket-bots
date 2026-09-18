@@ -1,0 +1,21 @@
+[Unit]
+Description=Polybot Cloudflare Tunnel
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ deployment_contract.cloudflare_user }}
+Group={{ deployment_contract.cloudflare_user }}
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run --token-file {{ deployment_contract.paths.cloudflare }}/{{ deployment_contract.transport_files.cloudflare_token }}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

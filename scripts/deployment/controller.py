@@ -8,13 +8,18 @@ import sys
 from enum import StrEnum
 from pathlib import Path
 
+from api.auth.config import AUTH_ORIGIN_ENV
+
 from scripts.deployment.ansible_contract import deployment_contract
 from scripts.deployment.bootstrap_inputs import BootstrapInputs
 from scripts.deployment.bundle.contracts import RELEASE_BUNDLE_FILENAME
+from scripts.deployment.dotenv import parse_values
+from scripts.deployment.ingress import IngressSettings
 from scripts.deployment.inventory import DeploymentInventory
 from scripts.deployment.paths import CI_INPUTS_FILENAME
 from scripts.deployment.provisioning import ContainerSecretInputs
 from scripts.deployment.release_inputs import ReleaseIdentity, ReleaseInputs
+from scripts.deployment.runtime_contracts import DEFAULT_HTTP_PORT, HTTP_PORT_ENV
 from scripts.deployment.ssh_access import DeploymentSSHAccess, require_hardened_ssh
 from scripts.deployment.tailscale import (
     EnrollmentStatus,
@@ -36,6 +41,7 @@ class ControllerOperation(StrEnum):
     SERVE = "serve"
     SSH_ACCESS = "ssh-access"
     SSH_POLICY = "ssh-policy"
+    INGRESS = "ingress"
 
 
 def main() -> None:
@@ -52,6 +58,15 @@ def main() -> None:
             return
         record = json.load(sys.stdin)
         match args.operation:
+            case ControllerOperation.INGRESS:
+                runtime = parse_values(record["runtime"])
+                DeploymentInventory.model_validate(
+                    record["variables"]
+                ).require_bootstrapped(
+                    IngressSettings.model_validate(record["operations"]),
+                    runtime.get(AUTH_ORIGIN_ENV),
+                    int(runtime.get(HTTP_PORT_ENV) or DEFAULT_HTTP_PORT),
+                )
             case ControllerOperation.SSH_ACCESS:
                 connection = DeploymentSSHAccess.model_validate(record).verify()
                 print(json.dumps({"sshd_selector": connection.sshd_selector()}))

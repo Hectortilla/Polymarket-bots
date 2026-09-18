@@ -7,6 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from scripts.deployment.errors import DeploymentInputError
+from scripts.deployment.ingress import IngressMode
 from scripts.deployment.inventory import DeploymentInventory
 from scripts.private_files import write_private
 
@@ -22,9 +23,16 @@ class BootstrapInputs(BaseModel):
     smtp_username: str = Field(min_length=1, repr=False)
     smtp_password: str = Field(min_length=1, repr=False)
     tailscale_authkey: str = Field(default="", repr=False)
+    cloudflare_tunnel_token: str = Field(default="", repr=False)
     enroll_tailnet: bool = True
 
     def require_valid(self, inventory: DeploymentInventory) -> None:
+        if inventory.ingress is IngressMode.CLOUDFLARE and (
+            not self.cloudflare_tunnel_token
+            or any(character.isspace() for character in self.cloudflare_tunnel_token)
+            or self.cloudflare_tunnel_token.startswith("REPLACE")
+        ):
+            raise DeploymentInputError("a Cloudflare tunnel token is required")
         if self.enroll_tailnet and not self.tailscale_authkey.startswith("tskey-auth-"):
             raise DeploymentInputError("a tagged Tailscale enrollment key is required")
         public_records = self.ssh_public_key.strip().splitlines()

@@ -1,4 +1,7 @@
 - ansible.builtin.import_tasks: validate.yml
+- ansible.builtin.import_tasks: verify-ingress.yml
+  vars:
+    ingress_runtime_filename: '{{ deployment_contract.paths.runtime }}'
 - name: Validate release identity and operation before staging
   ansible.builtin.command:
     argv: [uv, run, --locked, python, -m, scripts.deployment.controller, release]
@@ -90,6 +93,7 @@
     src: activate.service.j2
     dest: /etc/systemd/system/{{ deployment_contract.service_units.activation }}
     mode: '0644'
+- ansible.builtin.import_tasks: close-tunnel.yml
 - name: Start activation independently of SSH lifetime
   ansible.builtin.systemd_service:
     name: '{{ deployment_contract.service_units.activation }}'
@@ -111,10 +115,30 @@
   ansible.builtin.assert:
     that: activation_result.stdout == 'success'
     fail_msg: 'Activation failed. Inspect journalctl -u polybot-activate on the host; retry the retained operation or select a forward repair.'
-- name: Verify private HTTPS readiness
-  ansible.builtin.uri:
-    url: '{{ polybot_origin }}{{ deployment_contract.health_path }}'
-    status_code: '{{ deployment_contract.health_status }}'
-    validate_certs: true
-  delegate_to: localhost
-  become: false
+- ansible.builtin.import_tasks: verify-ingress.yml
+  vars:
+    ingress_runtime_filename: '{{ deployment_contract.paths.active_manifest }}'
+- name: Activate and verify the selected ingress
+  block:
+    - name: Open public tunnel only after successful local release activation
+      ansible.builtin.systemd_service:
+        name: '{{ deployment_contract.service_units.cloudflare }}'
+        enabled: true
+        state: started
+      when: polybot_public_enabled
+    - name: Verify HTTPS readiness through the selected ingress
+      ansible.builtin.uri:
+        url: '{{ polybot_readiness_origin }}{{ deployment_contract.health_path }}'
+        status_code: '{{ deployment_contract.health_status }}'
+        validate_certs: true
+        timeout: '{{ deployment_contract.https_probe_timeout }}'
+      delegate_to: localhost
+      become: false
+      register: ingress_readiness
+      until: ingress_readiness is succeeded
+      retries: 12
+      delay: 5
+  rescue:
+    - ansible.builtin.import_tasks: close-tunnel.yml
+    - ansible.builtin.fail:
+        msg: 'HTTPS readiness failed; the public connector is closed. Check DNS, tunnel routing and certificates, then retry deployment.'

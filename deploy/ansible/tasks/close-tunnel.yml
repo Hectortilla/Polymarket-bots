@@ -1,0 +1,10 @@
+- name: Inspect managed tunnel unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/{{ deployment_contract.service_units.cloudflare }}
+  register: managed_tunnel_unit
+- name: Close public access before changing runtime or release inputs
+  ansible.builtin.systemd_service:
+    name: '{{ deployment_contract.service_units.cloudflare }}'
+    enabled: false
+    state: stopped
+  when: managed_tunnel_unit.stat.exists

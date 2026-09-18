@@ -1,4 +1,4 @@
-"""Installed systemd unit names shared by supervision and Ansible."""
+"""Installed systemd units and dedicated service identity shared with Ansible."""
 
 ACTIVATION_SERVICE_UNIT = "polybot-activate.service"
 BACKUP_SERVICE_UNIT = "polybot-backup.service"
@@ -7,3 +7,5 @@ MONITOR_SERVICE_UNIT = "polybot-monitor.service"
 BACKUP_TIMER_UNIT = "polybot-backup.timer"
 BACKUP_CHECK_TIMER_UNIT = "polybot-backup-check.timer"
 MONITOR_TIMER_UNIT = "polybot-monitor.timer"
+CLOUDFLARE_SERVICE_UNIT = "polybot-cloudflared.service"
+CLOUDFLARE_SERVICE_USER = "polybot-cloudflared"

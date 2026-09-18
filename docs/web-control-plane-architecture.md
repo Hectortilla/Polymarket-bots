@@ -700,7 +700,12 @@ Ansible prepares the single Debian host and invokes the durable release executor
 The selected topology and release/rollback contracts live in
 [`beta-deployment.md`](beta-deployment.md). Startup settings are owned by
 `api.deployment.settings`; database/Redis adapters retain URL parsing ownership.
-Public ingress remains closed pending all readiness slices.
+Cloudflare Tunnel is the selected public ingress, with a separate Tailscale
+management/staging origin. Ansible installs its connector and token before launch;
+`polybot_public_enabled` defaults false. Public activation switches the runtime
+origin, starts the connector after local release health, and verifies the public
+HTTPS route. Bootstrap and failed public verification leave the connector closed.
+Operational acceptance and operator/support ownership still gate public launch.
 
 Secret-file IO runs outside the API/worker event loop and each resource lifetime
 reuses its parsed settings. The browser refreshes an older run snapshot when the

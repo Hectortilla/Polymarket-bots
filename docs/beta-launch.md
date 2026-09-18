@@ -121,6 +121,10 @@ The operator/support identity and real deployment setup gates are still pending.
   [deployment](beta-deployment.md).
 - Audit README, product spec, both architecture documents, implementation plan,
   operator runbooks and generated contracts for drift.
-- Only then deliberately configure the approved public ingress/domain and invite
-  users. Record the action separately from the coding commit. Keep a tested route
+- Only then deliberately configure the approved public ingress/domain using the
+  [public-access guide](beta-deployment.md#public-access-and-a-custom-domain) and
+  invite users. Cloudflare Tunnel is the selected public route; set
+  `polybot_public_enabled: true`, bootstrap and deploy only after private acceptance.
+  Verify the real domain and tunnel before inviting users.
+  Record the action separately from the coding commit. Keep a tested route
   to incident pause and rollback; never restore and reopen automatically.

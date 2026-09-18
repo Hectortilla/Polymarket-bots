@@ -9,3 +9,4 @@ class HostTransportFile(StrEnum):
     AGE_RECIPIENTS = "age-recipients.txt"
     RCLONE_CONFIG = "rclone.conf"
     SMTP_CONFIG = "msmtprc"
+    CLOUDFLARE_TOKEN = "cloudflare-tunnel-token"

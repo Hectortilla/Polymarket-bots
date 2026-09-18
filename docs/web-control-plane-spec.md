@@ -352,7 +352,10 @@ Slice 16 implementation uses a private HTTPS staging entrypoint. Browser
 authentication and resource ownership have the same behavior through the proxy;
 release maintenance may briefly make the service unavailable. Failed migrations
 keep it unavailable until an operator repairs the release. This infrastructure
-does not enable public signup. Recovery from interrupted workers is owned by
+does not enable public signup automatically. The Cloudflare deployment extension
+adds an Ansible-managed named tunnel and explicit public-access flag, preserving
+Tailscale management access. Public launch remains a separate operational stage.
+Recovery from interrupted workers is owned by
 Slice 18 and never resumes a paper portfolio automatically.
 
 ## Slice 17: Paper-beta allowances

@@ -2,6 +2,8 @@
 # Commit only the encrypted file; keep plaintext secrets and the Vault password out of Git.
 # Public keys, SMTP username, known hosts and age public recipients belong in example.yml.
 polybot_tailscale_authkey: 'REPLACE_WITH_ONE_TIME_TAGGED_HOST_KEY'
+# Named Cloudflare Tunnel token; Ansible installs the connector, not the dashboard command.
+polybot_cloudflare_tunnel_token: REPLACE_WITH_TUNNEL_TOKEN
 # password of polybot_smtp_username
 polybot_smtp_password: REPLACE
 # Required only when polybot_backups_enabled is true. Uncomment and replace then.

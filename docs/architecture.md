@@ -1112,8 +1112,14 @@ failed SSH configuration transitions restore the previous files. See the
 [deployment runbook](beta-deployment.md) for initial root/sudo/su access and the
 optional Tailscale-only first-connection path. Existing schema checks, migration
 failure closure, paper-only settings and restore quarantine remain unchanged.
-Tailscale Serve owns private HTTPS and renewal; Caddy's loopback HTTP listener has
-an independent port and an explicit Serve → Caddy → Uvicorn trust chain.
+Tailscale Serve owns private staging HTTPS and renewal. A named Cloudflare Tunnel
+supplies public HTTPS after `polybot_public_enabled` opt-in; Tailscale retains SSH/CI
+connectivity. Both host connectors reach Caddy's loopback HTTP listener, which
+parses forwarded client IPs right-to-left through the trusted host gateway.
+Ansible owns the connector package, protected token file and systemd service. Bootstrap
+closes it; deployment opens it only after local readiness and closes it on failed
+public HTTPS verification. Authentication/email origin switches with the public
+gate; public and Tailscale origins are validated separately.
 SFTP backup provisioning and schedules are optional via `polybot_backups_enabled`.
 Explicit opt-out removes backup checks from host monitoring and provides no
 automatic snapshots or recovery-point guarantee; application monitoring continues.

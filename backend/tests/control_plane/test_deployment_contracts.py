@@ -112,7 +112,9 @@ def inventory_values():
     values = yaml.safe_load(
         Path("deploy/ansible/inventory/production.example.yml").read_text()
     )["all"]["children"]["polybot"]["vars"]
-    return values | {
+    values = values | {
+        "polybot_ingress": "tailscale",
+        "polybot_tailnet_origin": "https://fixture.example.ts.net",
         "polybot_origin": "https://fixture.example.ts.net",
         "polybot_backups_enabled": True,
         "polybot_sftp_host": "storage.example.com",
@@ -122,6 +124,10 @@ def inventory_values():
         "polybot_smtp_username": "fixture",
         "polybot_smtp_password": "fixture-password",
     }
+
+    return values | DeploymentInventory.model_validate(values).model_dump(
+        mode="json", by_alias=True
+    )
 
 
 def render_template(name, values=None):

@@ -11,8 +11,10 @@ from urllib.parse import urlsplit
 from api.http.routes.paths import HEALTH_PATH, api_route_path
 
 from scripts.deployment.errors import DeploymentInputError
+from scripts.deployment.ingress import IngressMode
 from scripts.deployment.network import HEALTH_HTTP_STATUS
 from scripts.deployment.tailscale import PRIVATE_HTTPS_PORT, PrivateServe, TailnetStatus
+from scripts.deployment.units import CLOUDFLARE_SERVICE_UNIT
 from scripts.host_operations.config import HostOperationsConfig
 from scripts.host_operations.contracts import (
     BACKUP_SERVICE_UNITS,
@@ -49,7 +51,7 @@ class HostProbes:
                 )
             )
         )
-        status.require_origin(self.config.origin)
+        status.require_origin(self.config.tailnet_origin)
         serve = PrivateServe.from_record(
             json.loads(
                 subprocess.check_output(
@@ -58,7 +60,18 @@ class HostProbes:
                 )
             )
         )
-        serve.require_endpoint(self.config.origin, self.config.http_port)
+        serve.require_endpoint(self.config.tailnet_origin, self.config.http_port)
+        if self.config.ingress is IngressMode.CLOUDFLARE:
+            result = subprocess.run(
+                ["systemctl", "is-active", "--quiet", CLOUDFLARE_SERVICE_UNIT],
+                check=False,
+                timeout=HOST_COMMAND_TIMEOUT_SECONDS,
+            )
+            expected = 0 if self.config.public_enabled else 3
+            if result.returncode != expected:
+                raise RuntimeError(
+                    "Cloudflare connector differs from public access policy"
+                )
 
         completed_units = [
             unit
@@ -88,7 +101,7 @@ class HostProbes:
             raise RuntimeError("a required backup unit failed or is unavailable")
 
     def https(self) -> None:
-        origin = self.config.origin
+        origin = self.config.readiness_origin
         parsed = urlsplit(origin)
         context = ssl.create_default_context()
         with (
@@ -105,7 +118,7 @@ class HostProbes:
             origin + api_route_path(HEALTH_PATH), timeout=HTTPS_PROBE_TIMEOUT_SECONDS
         ) as response:
             if response.status != HEALTH_HTTP_STATUS:
-                raise RuntimeError("private HTTPS readiness failed")
+                raise RuntimeError("HTTPS readiness failed")
 
 
 def certificate_expiry(record: object) -> float:
