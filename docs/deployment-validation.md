@@ -323,3 +323,38 @@ agree on preparation before bootstrap and separate public activation. Authentica
 and email use the private origin before launch and the public origin afterward.
 No application API, generated client, Polymarket integration or live-trading gate
 changed; no PolymarketDocs check was required.
+
+## Bootstrap credential diagnostics — September 18, 2026
+
+Bootstrap now retains `no_log` on the credential-bearing controller command and
+reports only a sanitized diagnostic in the following assertion. The preflight
+identifies invalid credential fields, individual OpenSSH/age checks, missing
+controller executables and timeouts. Unexpected failures use a generic message;
+raw exception and subprocess output are never forwarded to the assertion. A
+nonzero controller result still stops bootstrap before host mutation.
+
+Inventory collection now selects variable names with Ansible's
+[varnames lookup](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/varnames_lookup.html)
+before evaluating their values. Bootstrap and ingress verification reuse the
+normalized inventory, avoiding the deprecated `play_hosts` evaluation caused by
+enumerating all variable values before filtering.
+
+Verification from the repository root:
+
+```sh
+uv run pytest backend/tests/control_plane/test_bootstrap_diagnostics.py backend/tests/control_plane/test_deployment_preflight.py backend/tests/control_plane/test_server_preparation.py backend/tests/control_plane/test_optional_backups.py backend/tests/control_plane/test_cloudflare_deployment.py backend/tests/control_plane/test_deployment_contracts.py
+ANSIBLE_CONFIG="$PWD/deploy/ansible/ansible.cfg" uv run ansible-playbook -i deploy/ansible/inventory/production.example.yml deploy/ansible/bootstrap.yml deploy/ansible/deploy.yml deploy/ansible/rollback.yml --syntax-check
+```
+
+The focused suite passed **200 tests**, including real local Ansible runs for
+success, rejected credentials and controller startup failure. They verify that
+private fixture values and raw stderr remain hidden, failed validation prevents
+subsequent mutation, and unrelated undefined variables and `play_hosts` are not
+evaluated. Python lint and all three playbook syntax checks passed.
+
+Final documentation-drift audit: the deployment runbook's troubleshooting table
+describes the new diagnostics and the separate deprecation warning. Credential
+requirements, deployment policy and implementation-plan scope are unchanged.
+No production host or Vault contents were changed; the original censored log
+cannot identify the failing private input without a rerun. No Polymarket protocol
+or SDK behavior changed, so no PolymarketDocs check was required.

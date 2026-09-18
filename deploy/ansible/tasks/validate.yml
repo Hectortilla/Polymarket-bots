@@ -1,7 +1,9 @@
 - name: Validate the single private Debian host before mutation
   ansible.builtin.command:
     argv: [uv, run, --locked, python, -m, scripts.deployment.controller, inventory]
-    stdin: '{{ {"variables": vars | dict2items | selectattr("key", "match", "^polybot_") | items2dict, "host_count": groups["polybot"] | length, "host_distribution": ansible_distribution, "host_architecture": ansible_architecture} | to_json }}'
+    stdin: '{{ {"variables": dict(deployment_variable_names | zip(query("ansible.builtin.vars", *deployment_variable_names))), "host_count": groups["polybot"] | length, "host_distribution": ansible_distribution, "host_architecture": ansible_architecture} | to_json }}'
+  vars:
+    deployment_variable_names: '{{ query("ansible.builtin.varnames", "^polybot_") }}'
   delegate_to: localhost
   become: false
   changed_when: false

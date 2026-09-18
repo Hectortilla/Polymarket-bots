@@ -1,0 +1,17 @@
+- name: Validate private bootstrap credentials before host mutation
+  ansible.builtin.command:
+    argv: [uv, run, --locked, python, -m, scripts.deployment.controller, bootstrap]
+    stdin: '{{ {"variables": (deployment_contract_result.stdout | from_json).variables, "secrets": {"ssh_public_key": polybot_ssh_public_key | default(""), "sftp_private_key": polybot_sftp_private_key | default(""), "sftp_known_hosts": polybot_sftp_known_hosts | default(""), "age_recipients": polybot_age_recipients | default(""), "smtp_username": polybot_smtp_username | default(""), "smtp_password": polybot_smtp_password | default(""), "tailscale_authkey": polybot_tailscale_authkey | default(""), "cloudflare_tunnel_token": polybot_cloudflare_tunnel_token | default(""), "enroll_tailnet": "tailnet" not in ansible_skip_tags}} | to_json }}'
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: bootstrap_preflight
+  failed_when: false
+  no_log: true
+- name: Require valid bootstrap credentials before host mutation
+  ansible.builtin.assert:
+    that: bootstrap_preflight.rc | default(1) == 0
+    fail_msg: >-
+      {{ (bootstrap_preflight.stdout | from_json).error
+         if bootstrap_preflight.stdout | default('') | length > 0
+         else 'Bootstrap controller could not run; check uv, the locked environment and controller prerequisites.' }}

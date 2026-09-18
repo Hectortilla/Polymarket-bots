@@ -35,14 +35,7 @@
         ansible_architecture: '{{ minimal_host.stdout_lines[1] | trim }}'
         ansible_distribution_release: '{{ minimal_host.stdout_lines[2] | trim }}'
     - ansible.builtin.import_tasks: tasks/validate.yml
-    - name: Validate private bootstrap credentials before host mutation
-      ansible.builtin.command:
-        argv: [uv, run, --locked, python, -m, scripts.deployment.controller, bootstrap]
-        stdin: '{{ {"variables": vars | dict2items | selectattr("key", "match", "^polybot_") | items2dict, "secrets": {"ssh_public_key": polybot_ssh_public_key | default(""), "sftp_private_key": polybot_sftp_private_key | default(""), "sftp_known_hosts": polybot_sftp_known_hosts | default(""), "age_recipients": polybot_age_recipients | default(""), "smtp_username": polybot_smtp_username | default(""), "smtp_password": polybot_smtp_password | default(""), "tailscale_authkey": polybot_tailscale_authkey | default(""), "cloudflare_tunnel_token": polybot_cloudflare_tunnel_token | default(""), "enroll_tailnet": "tailnet" not in ansible_skip_tags}} | to_json }}'
-      delegate_to: localhost
-      become: false
-      changed_when: false
-      no_log: true
+    - ansible.builtin.import_tasks: tasks/bootstrap-preflight.yml
     - name: Repair the legacy Tailscale source before any prerequisite APT operation
       ansible.builtin.raw: |
         set -eu

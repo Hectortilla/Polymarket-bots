@@ -11,7 +11,7 @@ from pathlib import Path
 from api.auth.config import AUTH_ORIGIN_ENV
 
 from scripts.deployment.ansible_contract import deployment_contract
-from scripts.deployment.bootstrap_inputs import BootstrapInputs
+from scripts.deployment.bootstrap_inputs import BootstrapInputError, BootstrapInputs
 from scripts.deployment.bundle.contracts import RELEASE_BUNDLE_FILENAME
 from scripts.deployment.dotenv import parse_values
 from scripts.deployment.ingress import IngressSettings
@@ -73,7 +73,7 @@ def main() -> None:
             case ControllerOperation.SSH_POLICY:
                 require_hardened_ssh(record["effective"])
             case ControllerOperation.BOOTSTRAP:
-                BootstrapInputs.model_validate(record["secrets"]).require_valid(
+                BootstrapInputs.from_record(record["secrets"]).require_valid(
                     DeploymentInventory.model_validate(record["variables"])
                 )
             case ControllerOperation.SECRETS:
@@ -132,7 +132,22 @@ def main() -> None:
                         )
                     )
                 )
-    except (ValueError, TypeError, KeyError, OSError, subprocess.SubprocessError):
+    except (
+        ValueError,
+        TypeError,
+        KeyError,
+        OSError,
+        subprocess.SubprocessError,
+    ) as error:
+        if args.operation is ControllerOperation.BOOTSTRAP:
+            diagnostic = (
+                str(error)
+                if isinstance(error, BootstrapInputError)
+                else "Bootstrap preflight could not validate the private configuration; "
+                "check inventory, Vault and controller prerequisites."
+            )
+            print(json.dumps({"error": diagnostic}))
+            parser.exit(1)
         if args.operation is ControllerOperation.SSH_ACCESS:
             parser.exit(
                 1,
