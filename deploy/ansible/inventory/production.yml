@@ -11,7 +11,10 @@ all:
         polybot_ssh_public_key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOvwSj47zq6bvmVzEqZ3Ssm8v9ATxDWGhcuOBKTR9PtR attosoria@hotmail.com'
         polybot_root: /srv/polybot
         polybot_arch: amd64 # amd64 or arm64
-        polybot_origin: https://hec-server.tail0746d7.ts.net
+        polybot_ingress: cloudflare
+        polybot_origin: https://polybotlab.com
+        polybot_tailnet_origin: https://hec-server.tail0746d7.ts.net
+        polybot_public_enabled: true # Enable only for the public-launch step
         polybot_http_port: 8081
         polybot_smtp_host: mail.privateemail.com
         polybot_smtp_port: 587
