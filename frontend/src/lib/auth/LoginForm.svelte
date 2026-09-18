@@ -28,11 +28,9 @@
   }
 </script>
 
-<svelte:head><title>Welcome back | {SERVICE_NAME}</title></svelte:head>
+<svelte:head><title>Sign in | {SERVICE_NAME}</title></svelte:head>
 <section class="account-panel">
-  <p class="eyebrow">{AUTH_COPY.WORKSPACE_TAGLINE}</p>
-  <h1>Welcome back</h1>
-  <p>Sign in to your bots, graphs, and run history.</p>
+  <h1>{AUTH_COPY.SIGN_IN}</h1>
   {#if page.url.searchParams.has(ACCOUNT_UPDATED_QUERY_PARAM)}<p role="status">{ACCOUNT_COPY.DONE}</p>{/if}
   {#if page.url.searchParams.has(ACCOUNT_DELETION_QUERY_PARAM)}<p role="status">{LIFECYCLE_COPY.REQUESTED}</p>{/if}
   <CredentialForm

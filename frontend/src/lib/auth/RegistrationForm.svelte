@@ -22,12 +22,8 @@
 
 <svelte:head><title>Create your account | {SERVICE_NAME}</title></svelte:head>
 <section class="account-panel">
-  <p class="eyebrow">{AUTH_COPY.WORKSPACE_TAGLINE}</p>
-  <h1>Create your account</h1>
-  <p>
-    Save your bots and follow your paper runs in one place. Registration signs you in immediately. Verify your email in
-    Account settings before launching a run.
-  </p>
+  <h1>{AUTH_COPY.REGISTER}</h1>
+  <p>You’ll need to verify your email before running a bot.</p>
   <CredentialForm
     onsubmit={submit}
     submitLabel={AUTH_COPY.REGISTER}

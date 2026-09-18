@@ -1,9 +1,9 @@
 # Beta backups and data lifecycle
 
 These approved beta policies apply to the single-host paper deployment. They do
-not open public signup. The operator name and support contact remain placeholders
-until Slice 23's release gate is completed; the deployment owner is responsible
-for these procedures.
+not open public signup. Support is listed as `operator@polybotlab.com`; operator
+ownership and mailbox monitoring still require verification through Slice 23’s
+release gate. The deployment owner is responsible for these procedures.
 
 | Data / objective | Policy |
 | --- | --- |

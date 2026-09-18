@@ -88,7 +88,7 @@ describe("account failure and race boundaries", () => {
         revoke = resolve;
       }),
     );
-    vi.stubGlobal("window", { location: { pathname: LOGIN_PATH } });
+    vi.stubGlobal("window", { location: { pathname: LOGIN_PATH, replace: vi.fn() } });
     session.state.set({ status: ACCOUNT_SESSION_STATUS.AUTHENTICATED, user: first });
     const signingOut = session.signOut();
     await session.restore();
@@ -201,5 +201,18 @@ it.each(Object.values(PUBLIC_INFORMATION_PATH))(
     expect(get(session.account)).toBeNull();
     expect(close).toHaveBeenCalledOnce();
     expect(replace).not.toHaveBeenCalled();
+  },
+);
+
+it.each([LOGIN_PATH, runPath("example"), ...Object.values(PUBLIC_INFORMATION_PATH)])(
+  "redirects explicit sign-out to login from %s",
+  async (path) => {
+    const replace = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: path, search: "", replace } });
+    session.state.set({ status: ACCOUNT_SESSION_STATUS.AUTHENTICATED, user: first });
+    mocks.logout.mockResolvedValue({});
+    await session.signOut();
+    expect(get(session.account)).toBeNull();
+    expect(replace).toHaveBeenCalledExactlyOnceWith(LOGIN_PATH);
   },
 );

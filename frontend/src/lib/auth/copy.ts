@@ -1,5 +1,4 @@
 export const AUTH_COPY = {
-  WORKSPACE_TAGLINE: "Your private workspace",
   EMAIL: "Email",
   PASSWORD: "Password",
   SIGN_IN: "Sign in",

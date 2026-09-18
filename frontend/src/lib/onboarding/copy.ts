@@ -1,22 +1,20 @@
 export const ONBOARDING_COPY = {
-  START: "Create your first paper bot",
+  START: "Create a bot from an example",
   TITLE: "Start with an example",
   CHOOSE: "Choose an example",
   SETTINGS: "Paper settings",
   REVIEW: "Review and save",
   CONTINUE: "Continue to settings",
   BACK: "Back",
-  SAVE: "Save private bot",
-  SAVING: "Saving private bot…",
+  SAVE: "Save bot",
+  SAVING: "Saving bot…",
   LOADING: "Loading examples…",
   LOAD_ERROR: "Examples are unavailable. Try again, or return to your bots.",
   SAVE_ERROR: "The bot could not be saved. Your choices are still here; review them and retry.",
-  NO_LAUNCH: "Saving creates a private bot. Nothing runs until you choose Run bot on its saved page.",
+  NO_LAUNCH: "Saving does not start a run. Choose Run bot on the saved bot page when you’re ready.",
   PARAMETERS: "Example conditions",
-  PAPER_ONLY:
-    "Paper cash and fills are simulated. Conditions may never be met; this example does not promise a trade or a return.",
+  PAPER_ONLY: "Runs use simulated funds. No real trades are placed.",
   ADVANCED: "Open the full strategy editor",
-  VERIFY: "Verify your email in Account settings before your first Run.",
 } as const;
 
 export const ONBOARDING_STEP = { EXAMPLE: "example", SETTINGS: "settings", REVIEW: "review" } as const;

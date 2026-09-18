@@ -2,71 +2,69 @@
   import { ACCOUNT_COPY } from "$lib/auth/recovery/copy";
   import { PUBLIC_COPY } from "$lib/public/copy";
   import PublicPage from "$lib/public/PublicPage.svelte";
-  import BetaLimits from "$lib/public/BetaLimits.svelte";
   import { PUBLIC_INFORMATION_PATH } from "$lib/public/navigation";
   import { REGISTER_PATH, LOGIN_PATH } from "$lib/auth/navigation";
+  import { NAVIGATION_PATH } from "$lib/navigation";
+  import { accountSession } from "$lib/auth/session";
   import contract from "$lib/runtimeContract.fixture.json";
+  const { account } = accountSession;
 </script>
 
 <PublicPage
-  title="Your first paper run"
-  intro="A saved strategy, an explicit launch and a clear record of what the simulation did."
+  title="Help"
+  intro={$account
+    ? "Create a bot, troubleshoot a run or manage your account."
+    : "How to get started and recover account access."}
 >
   <section>
-    <h2>Start with an example</h2>
+    <h2>{$account ? "Start a run" : "Get started"}</h2>
     <ol>
+      {#if !$account}
+        <li>
+          <a href={REGISTER_PATH}>Create an account</a> or <a href={LOGIN_PATH}>sign in</a>. New accounts need email
+          verification before running a bot.
+        </li>
+      {/if}
       <li>
-        <a href={REGISTER_PATH}>Create an account</a> inside the approved beta access boundary. Verify your email from {ACCOUNT_COPY.SETTINGS}
-        before launching. Verification requires access to your mailbox and asks you to set your password.
-      </li>
-      <li>
-        Choose guided setup from your empty bot list or {ACCOUNT_COPY.SETTINGS}. Read the example's conditions, choose
-        available markets and set paper cash, order limits and latency.
+        {#if $account}<a href={NAVIGATION_PATH.START}>Choose an example</a> or
+          <a href={NAVIGATION_PATH.NEW_BOT}>use the editor</a>.
+        {:else}Choose an example or build a strategy in the visual editor.{/if}
+        Select markets and set your simulated balance and order settings.
       </li>
       <li>{PUBLIC_COPY.SAVE_BEFORE_RUN}</li>
-      <li>
-        Read the run guide, status, simulated balances and loaded orders/fills. Press Stop when finished. Reload to view
-        retained history.
-      </li>
+      <li>Follow orders, fills and balances on the run page. Select Stop to end the run.</li>
     </ol>
   </section>
   <section>
-    <h2>When a run is quiet</h2>
+    <h2>No orders or fills?</h2>
     <p>
-      A running bot may be waiting for its condition. Check the latest book-health report and recorded progress.
-      Unavailable or stale input, reconnection and failed or interrupted execution have different messages. Loaded
-      history counts may cover only part of a longer run; load older events when available. Paper execution does not
-      guarantee a fill.
+      A running bot may be waiting for its conditions to be met. Check the run’s status and event history for missing or
+      stale market data, skipped orders or errors. An order does not guarantee a fill.
     </p>
   </section>
   <section>
-    <h2>Recover without guessing</h2>
+    <h2>A save or launch failed?</h2>
     <p>
-      If search fails, retry while keeping your selected markets. Capacity feedback explains whether to wait, stop an
-      active run or reduce configuration. If a launch response is lost, retry on the saved bot page to recover its
-      existing attempt. If that attempt has expired, the page asks for a new explicit Run.
+      Follow the message next to the action. If a save could not be confirmed, check your bot list before creating
+      another copy. If a launch could not be confirmed, retry from the saved bot page to check the original attempt.
     </p>
-    <p>
-      If a save result is unknown, return to your bots and inspect them before creating another copy. The current draft
-      blocks blind resends; reloading starts a new blank form.
-    </p>
+    <p>For capacity limits, check Account usage on your bot list or setup page.</p>
   </section>
   <section>
-    <h2>Account access and deletion</h2>
-    <p>
-      <a href={contract.accountManagement.forgotPath}>{ACCOUNT_COPY.RESET_TITLE}</a> using your registered mailbox. {PUBLIC_COPY.LINK_LIFETIME}
-      Password reset revokes existing sessions. Signed-in {ACCOUNT_COPY.SETTINGS} support password changes, session revocation
-      and password-confirmed account deletion.
-    </p>
-    <p>
-      Deletion immediately revokes access and stops further execution; eligible stored account data is removed within {contract
-        .dataLifecycle.deletionTargetHours} hours when maintenance is healthy. Read the
-      <a href={PUBLIC_INFORMATION_PATH.PRIVACY}>{PUBLIC_COPY.DATA_POLICY}</a> for history, backups and audit retention.
-    </p>
+    <h2>{$account ? "Manage your account" : "Trouble signing in?"}</h2>
+    {#if $account}
+      <p>
+        Open <a href={contract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a> to verify your email, change your
+        password, sign out other devices or delete your account.
+      </p>
+    {:else}
+      <p>
+        <a href={contract.accountManagement.forgotPath}>{ACCOUNT_COPY.RESET_TITLE}</a> using your account email. You need
+        access to that inbox. Resetting your password signs you out on all devices.
+      </p>
+      <p>{PUBLIC_COPY.LINK_LIFETIME}</p>
+    {/if}
+    <p><a href={PUBLIC_INFORMATION_PATH.PRIVACY}>Data retention and deletion</a></p>
   </section>
-  <BetaLimits />
-  <p>
-    <a href={LOGIN_PATH}>Sign in to your account</a> ·
-    <a href={PUBLIC_INFORMATION_PATH.SUPPORT}>{PUBLIC_COPY.SUPPORT}</a>
-  </p>
+  <p><a href={PUBLIC_INFORMATION_PATH.SUPPORT}>Contact support</a></p>
 </PublicPage>

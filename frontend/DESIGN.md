@@ -58,9 +58,10 @@ The brand always links home; Help is always available. Support remains in the
 public information navigation, not the global header. A known
 signed-in session adds the account email, Account settings and Sign out. Otherwise,
 show Sign in in the same navigation. Do not switch header variants by route.
-Public pages retain the existing no-preload/no-session-polling boundary; a cold
-public visit does not probe for an account. Sign-out failures remain visible and
-retryable without hiding public content.
+Public pages restore the session once on a direct visit so overview, help and
+support reflect whether the user is signed in, including after a reload. Public
+navigation does not preload private resources or poll sessions. Sign out always
+returns to `/login`; failures remain visible and retryable without hiding public content.
 
 Authentication: a 400px maximum-width surface with 28px desktop padding,
 24px mobile padding (20px on small phones), 8px radius and a fine border.
@@ -78,7 +79,10 @@ retains all consequences and the explicit confirmation checkbox.
 
 Public information: a shared navigation rail and a readable article. Selected
 navigation uses a quiet surface, a fine accent edge and `aria-current`. Contact
-readiness is a restrained notice; never imply an unconfigured mailbox works.
+uses the configured support email, with a brief fallback if unavailable. Keep copy
+direct and focused on the next action. Usage limits belong in the existing Account
+usage UI; retention details belong in Privacy. Operator deployment instructions
+belong in runbooks, not user-facing pages.
 
 Guided setup: reuse account usage, preserve the three-step flow and keyboard
 focus transfer, show the current stage with an accent edge. Selectable examples

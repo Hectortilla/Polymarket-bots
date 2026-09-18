@@ -34,7 +34,6 @@
     </div>
   {/each}
 </dl>
-<p>{ONBOARDING_COPY.PAPER_ONLY}</p>
 <p>{ONBOARDING_COPY.NO_LAUNCH}</p>
 
 <style>

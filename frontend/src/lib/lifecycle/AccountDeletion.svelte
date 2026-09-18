@@ -5,6 +5,7 @@
   import { ACCOUNT_DELETION_QUERY_PARAM } from "$lib/auth/navigation";
   import { accountActionError } from "$lib/auth/recovery/result";
   import { AUTH_COPY } from "$lib/auth/copy";
+  import { PUBLIC_INFORMATION_PATH } from "$lib/public/navigation";
   import { LIFECYCLE_COPY } from "./copy";
 
   let password = $state("");
@@ -33,14 +34,14 @@
 <section class="settings-section" aria-labelledby="delete-account-heading">
   <div>
     <h2 id="delete-account-heading">{LIFECYCLE_COPY.DELETE_HEADING}</h2>
-    <p>{LIFECYCLE_COPY.HISTORY}</p>
     <p>
-      This immediately signs out every session and stops queued and active paper runs. Eligible account details, bots,
-      graphs and run history are removed within {contract.dataLifecycle.deletionTargetHours} hours. You cannot undo the request.
+      Deletion signs you out everywhere and stops all runs. Your account, bots and history are scheduled for removal
+      within {contract.dataLifecycle.deletionTargetHours} hours. This cannot be undone.
     </p>
     <p>
-      Encrypted backups expire within {contract.dataLifecycle.backupRetentionDays} days. Minimal deletion and operator receipts
-      remain for {contract.dataLifecycle.auditRetentionDays} days. Export any graphs you need before continuing.
+      Backups expire within {contract.dataLifecycle.backupRetentionDays} days; audit records remain for
+      {contract.dataLifecycle.auditRetentionDays} days. Save any strategies you need first.
+      <a href={PUBLIC_INFORMATION_PATH.PRIVACY}>Data retention details</a>.
     </p>
   </div>
   <form onsubmit={submit}>

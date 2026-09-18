@@ -6,14 +6,15 @@ boundary until the operator completes and records every gate below.
 
 ## Ownership and contact readiness
 
-The application service name remains a working name. The deployment operator,
-incident/on-call owner, privacy contact and support mailbox are **placeholders**,
-as approved for this implementation. `api.service_identity` owns the service name
+The application service name remains a working name. The public support address
+is `operator@polybotlab.com`. A named deployment operator, incident/on-call owner,
+privacy ownership and evidence of mailbox monitoring still need to be recorded.
+`api.service_identity` owns the service name
 used by SMTP and exports it to the generated browser contract; the dependency-light
 `frontend/src/lib/serviceIdentity.ts` supplies browser titles and branding.
-`frontend/src/lib/public/identity.ts` owns the public operator/contact. Its support page explicitly says contact is not
-configured and accepts no messages. Before opening, replace the placeholders
-with the actual responsible identity and monitored mailbox, review the service
+`frontend/src/lib/public/identity.ts` owns the public contact. The support page
+links to that mailbox and has no submitting form. Before opening, record the actual
+responsible identity and verify mailbox monitoring, review the service
 terms/privacy notice, test mailbox receipt and recovery/verification delivery,
 and record who covers incidents and backup recovery. Do not advertise a response
 SLA until one is staffed.
@@ -22,8 +23,10 @@ SLA until one is staffed.
 
 The exact information-page allowlist is owned by
 `frontend/src/lib/public/navigation.ts`: overview, help, privacy, terms and support.
-These static pages require no account lookup, usage request or private resource
-preload. Account-entry/recovery pages retain their separate allowlist. Navigating
+Direct visits make one current-user lookup so guidance matches the session.
+The public content remains readable when that lookup fails. Public navigation
+does not poll the session, request usage or preload private resources.
+Account-entry/recovery pages retain their separate allowlist. Navigating
 to a private page restores the session before rendering its keyed account view.
 The HTTP allowlist remains the method/path pairs in `api.auth.policy.PUBLIC_ROUTES`:
 health and the existing authentication/recovery operations. No new anonymous API
@@ -106,8 +109,8 @@ The operator/support identity and real deployment setup gates are still pending.
 - Record the release commit/images, host, time and named accountable operator.
 - Obtain passing complete tests, generated parity, builds, browser, load, HTTPS
   failure/rollback and encrypted restore evidence for the release under review.
-- Replace the operator/support placeholders, review visible privacy/terms and
-  test support plus account email delivery. Verify recovery and deletion paths.
+- Record operator ownership, verify the configured support mailbox, review visible
+  privacy/terms and test support plus account email delivery. Verify recovery and deletion paths.
 - Install and supervise the recovery/monitor processes; route structured alerts
   to the named incident owner and rehearse acknowledgement. See
   [operations](beta-operations.md).

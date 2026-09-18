@@ -480,8 +480,8 @@ explicit public-opening gates.
 
 ## Slice 22: Guided first use
 
-After account verification, the empty Bots page links to **Create your first
-paper bot**; Account settings also exposes this route. Users choose a
+After account verification, the empty Bots page links to **Create a bot from an
+example**; Account settings also exposes this route. Users choose a
 catalog-owned example, select available markets, review conditions and paper
 settings, then save a private bot. Back navigation preserves settings. An unknown save result requires checking
 existing bots before creating another; it cannot blindly resend the current draft. Saving
@@ -495,18 +495,22 @@ cover the basic first-use path.
 
 ## Slice 23: Launch information and acceptance
 
-Public overview, help, privacy, preview terms and support pages describe only the
-delivered visual builder and simulated paper execution. The dashboard, bots,
-graphs, runs, events and usage stay private. Anonymous information navigation does
-not request account state or preload private resources. Existing authentication
-and recovery entrypoints retain their prior boundaries; no public data API is added.
+Public overview, help, privacy, terms and support pages describe only the
+delivered visual builder and simulated paper execution. Overview, help and support
+adapt their guidance and links to the session. Direct visits check the existing
+current-user endpoint once, without blocking public content; public navigation
+reuses that session without polling or preloading private resources. The dashboard,
+bots, graphs, runs, events and usage stay private. Explicit sign-out redirects to
+`/login`, including from public pages; passive session expiry leaves public pages
+open. No public data API is added. Usage limits are shown in Account usage rather
+than repeated in public copy; data retention stays in Privacy.
 
-The approved operator/support placeholders are visible as unconfigured, with no
-fake mailbox or submitting feedback form. Self-service recovery/help links work.
-The public-opening gate remains blocked until a named operator and monitored
-support contact replace the placeholders, appropriate service terms/privacy are
-reviewed, email and incident ownership are tested, and deployment/backups are
-installed. The [release checklist](beta-launch.md) owns final acceptance evidence
+The support page links to `operator@polybotlab.com`; no feedback form is present.
+Self-service recovery/help links work. Operator readiness instructions remain in
+the runbooks. The public-opening gate still requires a named operator, verified
+mailbox monitoring, reviewed service terms/privacy, tested email and incident
+ownership, and installed deployment/backups. The [release checklist](beta-launch.md)
+owns final acceptance evidence
 and the separate deliberate ingress-opening step. Coding completion does not
 publish the service.
 

@@ -11,7 +11,7 @@
 <svelte:head><title>Reset password | {SERVICE_NAME}</title></svelte:head>
 <section class="account-panel">
   <h1>{ACCOUNT_COPY.RESET_TITLE}</h1>
-  <p>Enter your registered email. You need access to that mailbox to recover your account.</p>
+  <p>Enter your account email to request a reset link.</p>
   <RequestLink flow={PASSWORD_RESET_FLOW} />
   <p><a href={LOGIN_PATH}>{AUTH_COPY.SIGN_IN}</a></p>
 </section>

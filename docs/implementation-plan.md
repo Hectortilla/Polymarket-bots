@@ -2405,6 +2405,16 @@ identity owner. Placeholder operator/contact status is explicit on overview and
 support; configuring the contact updates both through one component. No new
 anonymous API, strategy engine or live path was introduced.
 
+Copy and navigation follow-up (2026-09-18): account, onboarding and public pages
+use concise action-focused wording. Overview/help/support adapt to sign-in state,
+including direct visits and reloads through one current-user lookup. Public
+navigation still avoids private preloads and session polling; explicit sign-out
+returns to `/login`. Usage limits remain in Account usage and retention details in
+Privacy. Support links to `operator@polybotlab.com`. Operator readiness instructions
+remain in runbooks, and publishing this address does not establish mailbox testing
+or authorize opening public ingress. This supersedes the initial no-account-lookup
+and visible-contact-placeholder behavior above.
+
 Acceptance on 2026-09-10: all 51 registered style reviewers completed, followed by
 holistically applied fixes and focused closing reviews. All 1,389 backend tests ran
 against real disposable PostgreSQL/Redis with no skipped service tests; all 314

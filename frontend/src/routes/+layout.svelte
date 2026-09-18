@@ -31,6 +31,8 @@
   configureApiResponseValidation();
   configureAccountBoundary();
   onMount(() => {
+    // Restore once on direct public visits so the copy also fits returning users.
+    if (isPublicInformationPath(page.url.pathname)) void accountSession.restore();
     const unwatch = accountSession.watchChanges();
     const interval = setInterval(() => {
       if ($account && !isPublicInformationPath(page.url.pathname)) void accountSession.restore();
@@ -42,7 +44,7 @@
   });
 
   // Restore on route changes only; session-store reads must not retrigger this effect.
-  // Public information must render without fetching private account resources.
+  // Public-to-public navigation reuses the session without fetching bots, runs or usage.
   $effect(() => {
     if (!isPublicInformationPath(page.url.pathname))
       untrack(() => {
@@ -52,8 +54,8 @@
 </script>
 
 <svelte:head>
-  <title>{SERVICE_IDENTITY.name} control plane</title>
-  <meta name="description" content={`Private launch and run interface for ${SERVICE_IDENTITY.name} paper trading.`} />
+  <title>{SERVICE_IDENTITY.name}</title>
+  <meta name="description" content="Build trading bots and test them with simulated funds." />
 </svelte:head>
 
 <a class="skip-link" href="#main-content">Skip to content</a>

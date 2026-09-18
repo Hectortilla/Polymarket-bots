@@ -51,7 +51,8 @@ export class AccountSession {
     this.state.set({ status: ACCOUNT_SESSION_STATUS.SIGNING_OUT });
     if (await revokeCurrentSession()) {
       this.channel.announce();
-      this.expire();
+      this.clear();
+      window.location.replace(LOGIN_PATH);
     } else {
       this.state.set({ status: ACCOUNT_SESSION_STATUS.FAILURE, reason: ACCOUNT_FAILURE.SIGN_OUT });
     }

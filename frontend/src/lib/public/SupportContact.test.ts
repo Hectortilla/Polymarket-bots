@@ -1,4 +1,3 @@
-import { PUBLIC_COPY } from "./copy";
 import { cleanup, render, screen } from "@testing-library/svelte";
 import { afterEach, expect, it } from "vitest";
 import { SERVICE_IDENTITY, SUPPORT_PENDING } from "./identity";
@@ -23,5 +22,4 @@ it("shows a configured mailbox and removes the placeholder state", () => {
     `mailto:${SERVICE_IDENTITY.supportEmail}`,
   );
   expect(screen.queryByText(SUPPORT_PENDING)).toBeNull();
-  expect(screen.queryByText(PUBLIC_COPY.SUPPORT_PLACEHOLDER)).toBeNull();
 });

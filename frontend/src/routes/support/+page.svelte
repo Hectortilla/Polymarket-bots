@@ -3,31 +3,31 @@
   import { PUBLIC_COPY } from "$lib/public/copy";
   import SupportContact from "$lib/public/SupportContact.svelte";
   import PublicPage from "$lib/public/PublicPage.svelte";
-  import { SERVICE_IDENTITY } from "$lib/public/identity";
   import { PUBLIC_INFORMATION_PATH } from "$lib/public/navigation";
+  import { accountSession } from "$lib/auth/session";
   import contract from "$lib/runtimeContract.fixture.json";
+  const { account } = accountSession;
 </script>
 
-<PublicPage title={PUBLIC_COPY.SUPPORT} intro="Recover access, understand a run or report a problem with the preview.">
+<PublicPage title={PUBLIC_COPY.SUPPORT} intro="Report a problem or send feedback.">
   <section>
-    <h2>Contact readiness</h2>
-    <p>{PUBLIC_COPY.RESPONSIBLE_OPERATOR} {SERVICE_IDENTITY.operator}.</p>
+    <h2>Email</h2>
     <SupportContact />
-  </section>
-  <section>
-    <h2>Available self-service</h2>
     <p>
-      <a href={contract.accountManagement.forgotPath}>{PUBLIC_COPY.RECOVER}</a>, or consult
-      <a href={PUBLIC_INFORMATION_PATH.HELP}>the run and account guide</a>. While signed in, {ACCOUNT_COPY.SETTINGS} let you
-      change your password, revoke sessions and request deletion.
+      Include what happened, the error message and the run ID if relevant. Never send passwords, recovery links or
+      wallet keys.
     </p>
   </section>
   <section>
-    <h2>When reporting a problem</h2>
-    <p>
-      Once the contact is configured, include the time, visible error and relevant run identifier, plus steps to
-      reproduce. Never send passwords, session cookies, recovery links, wallet keys or private strategy details that are
-      not needed. There is no promised response time during the preview.
-    </p>
+    <h2>Common questions</h2>
+    <p><a href={PUBLIC_INFORMATION_PATH.HELP}>Bot setup and run troubleshooting</a></p>
+    {#if $account}
+      <p>
+        <a href={contract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a> — email verification, password, sessions
+        and deletion.
+      </p>
+    {:else}
+      <p><a href={contract.accountManagement.forgotPath}>{PUBLIC_COPY.RECOVER}</a></p>
+    {/if}
   </section>
 </PublicPage>

@@ -11,7 +11,6 @@
   import { SavedBotDraft } from "$lib/bots/savedDraft";
   import { DraftSaveFeedback } from "$lib/bots/savedDraft/feedback";
   import AccountUsage from "$lib/limits/AccountUsage.svelte";
-  import contract from "$lib/runtimeContract.fixture.json";
   import { NAVIGATION_LABEL, NAVIGATION_PATH, botPath } from "$lib/navigation";
   import { ONBOARDING_COPY, ONBOARDING_STEP, ONBOARDING_STEP_LABEL, type OnboardingStep } from "./copy";
   import ReviewSettings from "./ReviewSettings.svelte";
@@ -90,7 +89,6 @@
     <p>{ONBOARDING_COPY.PAPER_ONLY}</p>
   </header>
   <AccountUsage />
-  <p><a href={contract.accountManagement.accountPath}>{ONBOARDING_COPY.VERIFY}</a></p>
   {#if loading}<div class="setup-loading" role="status">
       <p>{ONBOARDING_COPY.LOADING}</p>
       <div class="skeleton"></div>
@@ -137,7 +135,7 @@
           serverIssues={inputIssues}
           submitLabel={ONBOARDING_COPY.REVIEW}
           showSelectionNotes={false}
-          sectionDescription="Choose available markets and set the paper cash, order limits and simulated latency."
+          sectionDescription="Choose markets, a starting balance and order settings."
         />
         <button class="secondary" onclick={() => moveToStep(ONBOARDING_STEP.EXAMPLE)}>{ONBOARDING_COPY.BACK}</button>
       </div>

@@ -50,7 +50,7 @@
   <a href={LOGIN_PATH}>{AUTH_COPY.SIGN_IN}</a>
 {:else}
   {#if token}
-    <p>Choose a password to prove mailbox ownership. All browser sessions will be signed out. Paper runs continue.</p>
+    <p>Set your password, then sign in again. This signs you out on all devices. Active runs continue.</p>
     <form onsubmit={submit}>
       <NewPassword bind:password bind:confirmation />
       <button type="submit" class="primary" disabled={busy}>{busy ? AUTH_COPY.BUSY : flow.completeLabel}</button>

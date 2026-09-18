@@ -96,13 +96,11 @@
 <section class="account-panel account-settings">
   <header class="settings-heading">
     <h1>{ACCOUNT_COPY.SETTINGS}</h1>
-    <p>Manage account access, passwords and sessions.</p>
   </header>
   <section class="settings-section">
     <div>
-      <h2>Email verification</h2>
+      <h2>Email</h2>
       <p class="account-identity">{$account?.email}</p>
-      <p class="settings-help">Verify your email before launching your first paper run.</p>
     </div>
     <div>
       {#if status}
@@ -119,8 +117,8 @@
     <div>
       <h2>Password and sessions</h2>
       <p>
-        Enter your current password again to make changes. Changing your password or signing out all sessions requires a
-        new sign-in. Already-authorized paper runs continue.
+        Use your current password to change it or sign out other devices. Changing your password signs you out
+        everywhere. Active runs continue.
       </p>
     </div>
     <div>
@@ -154,10 +152,7 @@
       </form>
       {#if error}<p role="alert" class="notice error">{error}</p>{/if}
       {#if message}<p role="status">{message}</p>{/if}
-      <p>
-        Recovery requires access to your registered mailbox. Email changes, identity transfers and support recovery
-        overrides are unavailable.
-      </p>
+      <p>Keep access to your email: you’ll need it to reset a forgotten password. Email changes are not supported.</p>
     </div>
   </section>
   <AccountDeletion />
