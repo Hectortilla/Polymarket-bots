@@ -40,7 +40,7 @@
       </p>
     {/snippet}
   </CredentialForm>
-  <p>
+  <p class="account-footer">
     Already have an account? <a href={accountPath(LOGIN_PATH, page.url.searchParams.get(RETURN_TO_QUERY_PARAM))}
       >{AUTH_COPY.SIGN_IN}</a
     >

@@ -11,6 +11,7 @@ import { REGISTER_PATH, LOGIN_PATH } from "../src/lib/auth/navigation";
 import { AUTH_COPY } from "../src/lib/auth/copy";
 import { NAVIGATION_PATH } from "../src/lib/navigation";
 import contract from "../src/lib/runtimeContract.fixture.json" with { type: "json" };
+import { HTTP_STATUS } from "../src/lib/api/http";
 
 test("anonymous information navigation never requests private resources and account links remain usable", async ({
   page,
@@ -30,6 +31,10 @@ test("anonymous information navigation never requests private resources and acco
     await link.click();
     await expect(page).toHaveURL((url) => url.pathname === path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: SERVICE_IDENTITY.name, exact: true }),
+    ).toHaveAttribute("href", NAVIGATION_PATH.HOME);
+    await expect(page.getByRole("banner").getByRole("link", { name: AUTH_COPY.SIGN_IN, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
   await page.goto("/%77elcome");
@@ -38,6 +43,11 @@ test("anonymous information navigation never requests private resources and acco
   await page.getByRole("banner").getByRole("link", { name: AUTH_COPY.SIGN_IN, exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === LOGIN_PATH);
   await expect(page.getByLabel(AUTH_COPY.EMAIL, { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("banner")
+      .getByRole("link", { name: PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP], exact: true }),
+  ).toBeVisible();
   expect(apiRequests.some((url) => new URL(url).pathname === contract.apiPaths.currentUser)).toBe(true);
   await page.goto(NAVIGATION_PATH.HOME);
   await expect(page).toHaveURL((url) => url.pathname === LOGIN_PATH);
@@ -47,7 +57,7 @@ test("anonymous information navigation never requests private resources and acco
   await expect(page.getByLabel(AUTH_COPY.EMAIL, { exact: true })).toBeVisible();
 });
 
-test("authenticated information visits suppress session polling and resume it on private navigation", async ({
+test("the shared header keeps account controls on public pages without private polling and supports sign out", async ({
   page,
 }) => {
   await page.goto(REGISTER_PATH);
@@ -57,24 +67,50 @@ test("authenticated information visits suppress session polling and resume it on
   await page.getByRole("button", { name: AUTH_COPY.REGISTER, exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === contract.accountManagement.accountPath);
   await page
-    .getByRole("link", { name: PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.SUPPORT], exact: true })
+    .getByRole("link", { name: PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP], exact: true })
     .click();
-  await expect(page).toHaveURL((url) => url.pathname === PUBLIC_INFORMATION_PATH.SUPPORT);
+  await expect(page).toHaveURL((url) => url.pathname === PUBLIC_INFORMATION_PATH.HELP);
   const privateRequests: string[] = [];
   page.on("request", (request) => {
     if (["fetch", "xhr"].includes(request.resourceType())) privateRequests.push(request.url());
   });
+  const header = page.getByRole("banner");
+  for (const path of Object.values(PUBLIC_INFORMATION_PATH)) {
+    await page
+      .getByRole("navigation", { name: PUBLIC_INFORMATION_NAV_LABEL })
+      .getByRole("link", { name: PUBLIC_INFORMATION_LABEL[path], exact: true })
+      .click();
+    await expect(page).toHaveURL((url) => url.pathname === path);
+    await expect(header.getByText(email, { exact: true })).toBeVisible();
+    await expect(header.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
+    await expect(header.getByRole("link", { name: ACCOUNT_COPY.SETTINGS, exact: true })).toBeVisible();
+    await expect(header.getByRole("link", { name: AUTH_COPY.SIGN_IN, exact: true })).toHaveCount(0);
+  }
   // Wait across the actual session interval while preserving the live client account.
   await page.waitForTimeout(contract.auth.sessionRecheckMs + 250);
   expect(privateRequests).toEqual([]);
-  await page.getByRole("banner").getByRole("link", { name: AUTH_COPY.SIGN_IN, exact: true }).click();
+  await header.getByRole("link", { name: ACCOUNT_COPY.SETTINGS, exact: true }).click();
   await expect(page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
   await expect
     .poll(() => privateRequests.some((url) => new URL(url).pathname === contract.apiPaths.currentUser))
     .toBe(true);
-  await expect(page.getByText(email, { exact: true })).toBeVisible();
-  await page.goto(NAVIGATION_PATH.HOME);
+  await expect(header.getByText(email, { exact: true })).toBeVisible();
+  await header.getByRole("link", { name: SERVICE_IDENTITY.name, exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === NAVIGATION_PATH.HOME);
   await expect(page.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true })).toBeVisible();
+  await header.getByRole("link", { name: PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP], exact: true }).click();
+  await page.route(
+    `**${contract.apiPaths.logout}`,
+    (route) => route.fulfill({ status: HTTP_STATUS.SERVICE_UNAVAILABLE, body: "{}" }),
+    { times: 1 },
+  );
+  await header.getByRole("button", { name: AUTH_COPY.SIGN_OUT, exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText(AUTH_COPY.SIGN_OUT_ERROR);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Retry sign out", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: AUTH_COPY.SIGN_IN, exact: true })).toBeVisible();
+  await expect(page).toHaveURL((url) => url.pathname === PUBLIC_INFORMATION_PATH.HELP);
 });
 
 test("public claims and links reflect paper-only operation and the generated data policy", async ({ page }) => {

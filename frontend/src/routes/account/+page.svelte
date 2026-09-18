@@ -93,49 +93,72 @@
 </script>
 
 <svelte:head><title>Account settings | {SERVICE_NAME}</title></svelte:head>
-<section class="account-panel">
-  <h1>{ACCOUNT_COPY.SETTINGS}</h1>
-  <p><a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a></p>
-  {#if status}
-    <p>{accountStatusMessage(status)}</p>
-    {#if !status.email_verified}<RequestLink flow={EMAIL_VERIFICATION_FLOW} initialEmail={$account?.email ?? ""} />{/if}
-  {:else}<button onclick={() => void load()}>Reload account status</button>{/if}
-  <h2>Password and sessions</h2>
-  <p>
-    Enter your current password again to make changes. Changing your password or signing out all sessions requires a new
-    sign-in. Already-authorized paper runs continue.
-  </p>
-  <form onsubmit={submitPasswordChange}>
-    <label
-      >{ACCOUNT_COPY.CURRENT_PASSWORD}<input
-        type="password"
-        autocomplete="current-password"
-        minlength={contract.auth.existingPasswordMinLength}
-        maxlength={contract.auth.passwordMaxLength}
-        bind:value={currentPassword}
-        required
-      /></label
-    >
-    <NewPassword bind:password bind:confirmation />
-    <button type="submit" disabled={busy}>{busy ? AUTH_COPY.BUSY : ACCOUNT_COPY.CHANGE_PASSWORD}</button>
-    <button
-      type="button"
-      class="secondary"
-      disabled={busy || !currentPassword}
-      onclick={() => void revokeSessions(SESSION_REVOCATION.OTHER)}>{ACCOUNT_COPY.REVOKE_OTHER}</button
-    >
-    <button
-      type="button"
-      class="secondary"
-      disabled={busy || !currentPassword}
-      onclick={() => void revokeSessions(SESSION_REVOCATION.ALL)}>{ACCOUNT_COPY.REVOKE_ALL}</button
-    >
-  </form>
-  {#if error}<p role="alert" class="notice error">{error}</p>{/if}
-  {#if message}<p role="status">{message}</p>{/if}
-  <p>
-    Recovery requires access to your registered mailbox. Email changes, identity transfers and support recovery
-    overrides are unavailable.
-  </p>
+<section class="account-panel account-settings">
+  <header class="settings-heading">
+    <h1>{ACCOUNT_COPY.SETTINGS}</h1>
+    <p>Manage account access, passwords and sessions.</p>
+  </header>
+  <section class="settings-section">
+    <div>
+      <h2>Email verification</h2>
+      <p class="account-identity">{$account?.email}</p>
+      <p class="settings-help">Verify your email before launching your first paper run.</p>
+    </div>
+    <div>
+      {#if status}
+        <p>{accountStatusMessage(status)}</p>
+        {#if !status.email_verified}<RequestLink
+            flow={EMAIL_VERIFICATION_FLOW}
+            initialEmail={$account?.email ?? ""}
+          />{/if}
+      {:else}<button onclick={() => void load()}>Reload account status</button>{/if}
+      <p><a href={NAVIGATION_PATH.START}>{ONBOARDING_COPY.START}</a></p>
+    </div>
+  </section>
+  <section class="settings-section">
+    <div>
+      <h2>Password and sessions</h2>
+      <p>
+        Enter your current password again to make changes. Changing your password or signing out all sessions requires a
+        new sign-in. Already-authorized paper runs continue.
+      </p>
+    </div>
+    <div>
+      <form onsubmit={submitPasswordChange}>
+        <label
+          >{ACCOUNT_COPY.CURRENT_PASSWORD}<input
+            type="password"
+            autocomplete="current-password"
+            minlength={contract.auth.existingPasswordMinLength}
+            maxlength={contract.auth.passwordMaxLength}
+            bind:value={currentPassword}
+            required
+          /></label
+        >
+        <NewPassword bind:password bind:confirmation />
+        <button type="submit" disabled={busy}>{busy ? AUTH_COPY.BUSY : ACCOUNT_COPY.CHANGE_PASSWORD}</button>
+        <div class="settings-actions">
+          <button
+            type="button"
+            class="secondary"
+            disabled={busy || !currentPassword}
+            onclick={() => void revokeSessions(SESSION_REVOCATION.OTHER)}>{ACCOUNT_COPY.REVOKE_OTHER}</button
+          >
+          <button
+            type="button"
+            class="secondary"
+            disabled={busy || !currentPassword}
+            onclick={() => void revokeSessions(SESSION_REVOCATION.ALL)}>{ACCOUNT_COPY.REVOKE_ALL}</button
+          >
+        </div>
+      </form>
+      {#if error}<p role="alert" class="notice error">{error}</p>{/if}
+      {#if message}<p role="status">{message}</p>{/if}
+      <p>
+        Recovery requires access to your registered mailbox. Email changes, identity transfers and support recovery
+        overrides are unavailable.
+      </p>
+    </div>
+  </section>
   <AccountDeletion />
 </section>

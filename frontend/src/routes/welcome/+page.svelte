@@ -12,7 +12,11 @@
   title="Build a strategy. Observe a paper run."
   intro="Compose visual trading logic, save a private bot and see how it behaves with simulated execution."
 >
-  <SupportContact />
+  <div class="welcome-actions">
+    <a class="primary-link" href={REGISTER_PATH}>{AUTH_COPY.REGISTER}</a>
+    <a href={LOGIN_PATH}>{AUTH_COPY.SIGN_IN}</a>
+  </div>
+  <div class="welcome-readiness"><SupportContact /></div>
   <section>
     <h2>From an example to your own strategy</h2>
     <p>
@@ -35,8 +39,23 @@
   </section>
   <BetaLimits />
   <p>
-    <a href={PUBLIC_INFORMATION_PATH.HELP}>Read the getting-started guide</a> ·
-    <a href={LOGIN_PATH}>{AUTH_COPY.SIGN_IN}</a>
-    · <a href={REGISTER_PATH}>{AUTH_COPY.REGISTER}</a>
+    <a href={PUBLIC_INFORMATION_PATH.HELP}>Read the getting-started guide</a>
   </p>
 </PublicPage>
+
+<style>
+  .welcome-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 24px;
+    font-size: 0.8125rem;
+  }
+  .welcome-actions .primary-link {
+    font-size: 0.8125rem;
+    text-decoration: none;
+  }
+  .welcome-readiness {
+    margin-bottom: 28px;
+  }
+</style>

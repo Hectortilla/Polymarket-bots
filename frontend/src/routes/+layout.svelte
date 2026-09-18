@@ -61,43 +61,37 @@
 <!-- Header links share the public no-preload boundary, including Sign in. -->
 <header class="site-header" data-sveltekit-preload-data={PUBLIC_PRELOAD_DATA_POLICY}>
   <div class="site-header-inner">
-    <a
-      class="brand"
-      href={isPublicInformationPath(page.url.pathname) ? PUBLIC_INFORMATION_PATH.WELCOME : NAVIGATION_PATH.HOME}
-      aria-label={SERVICE_IDENTITY.name}
-    >
+    <a class="brand" href={NAVIGATION_PATH.HOME} aria-label={SERVICE_IDENTITY.name}>
       <span class="brand-mark" aria-hidden="true"></span>
       <span>{SERVICE_IDENTITY.name}</span>
     </a>
     <span class="environment-label">paper trading</span>
-    {#if isPublicInformationPath(page.url.pathname)}
-      <nav class="account-controls" aria-label="Preview navigation">
-        <a href={PUBLIC_INFORMATION_PATH.HELP}>{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP]}</a><a
-          href={PUBLIC_INFORMATION_PATH.SUPPORT}>{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.SUPPORT]}</a
-        ><a href={LOGIN_PATH}>{AUTH_COPY.SIGN_IN}</a>
-      </nav>
-    {:else if $account}
-      <div class="account-controls">
-        <span>{$account.email}</span><a href={PUBLIC_INFORMATION_PATH.HELP}
-          >{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP]}</a
-        ><a href={PUBLIC_INFORMATION_PATH.SUPPORT}>{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.SUPPORT]}</a><a
-          href={runtimeContract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a
-        ><button class="secondary" onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button>
-      </div>
-    {/if}
+    <nav class="account-controls" aria-label="Account navigation">
+      {#if $account}<span>{$account.email}</span>{/if}
+      <a href={PUBLIC_INFORMATION_PATH.HELP}>{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP]}</a>
+      {#if $account}
+        <a href={runtimeContract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a>
+        <button class="secondary" onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button>
+      {:else}
+        <a href={LOGIN_PATH}>{AUTH_COPY.SIGN_IN}</a>
+      {/if}
+    </nav>
   </div>
 </header>
 
 <main id="main-content">
-  {#if isPublicInformationPath(page.url.pathname)}
-    {@render children()}
-  {:else if $accountError}
+  {#if $accountError}
     <p role="alert" class="notice error">{$accountError}</p>
     <button onclick={() => void accountSession.restore()}>Retry session</button>
     <button class="secondary" onclick={() => void accountSession.signOut()}>Retry sign out</button>
-  {:else if !$accountReady}
-    <p role="status">Restoring your session…</p>
-  {:else if $account || isAccountPath(page.url.pathname)}
-    {#key $account?.id ?? "signed-out"}{@render children()}{/key}
+  {/if}
+  {#if isPublicInformationPath(page.url.pathname)}
+    {@render children()}
+  {:else if !$accountError}
+    {#if !$accountReady}
+      <p role="status">Restoring your session…</p>
+    {:else if $account || isAccountPath(page.url.pathname)}
+      {#key $account?.id ?? "signed-out"}{@render children()}{/key}
+    {/if}
   {/if}
 </main>

@@ -30,17 +30,19 @@
   }
 </script>
 
-<section aria-labelledby="delete-account-heading">
-  <h2 id="delete-account-heading">{LIFECYCLE_COPY.DELETE_HEADING}</h2>
-  <p>{LIFECYCLE_COPY.HISTORY}</p>
-  <p>
-    This immediately signs out every session and stops queued and active paper runs. Eligible account details, bots,
-    graphs and run history are removed within {contract.dataLifecycle.deletionTargetHours} hours. You cannot undo the request.
-  </p>
-  <p>
-    Encrypted backups expire within {contract.dataLifecycle.backupRetentionDays} days. Minimal deletion and operator receipts
-    remain for {contract.dataLifecycle.auditRetentionDays} days. Export any graphs you need before continuing.
-  </p>
+<section class="settings-section" aria-labelledby="delete-account-heading">
+  <div>
+    <h2 id="delete-account-heading">{LIFECYCLE_COPY.DELETE_HEADING}</h2>
+    <p>{LIFECYCLE_COPY.HISTORY}</p>
+    <p>
+      This immediately signs out every session and stops queued and active paper runs. Eligible account details, bots,
+      graphs and run history are removed within {contract.dataLifecycle.deletionTargetHours} hours. You cannot undo the request.
+    </p>
+    <p>
+      Encrypted backups expire within {contract.dataLifecycle.backupRetentionDays} days. Minimal deletion and operator receipts
+      remain for {contract.dataLifecycle.auditRetentionDays} days. Export any graphs you need before continuing.
+    </p>
+  </div>
   <form onsubmit={submit}>
     <label
       >{LIFECYCLE_COPY.PASSWORD}<input
@@ -53,7 +55,9 @@
       /></label
     >
     <label><input type="checkbox" bind:checked={confirmed} required /> {LIFECYCLE_COPY.CONFIRM}</label>
-    <button type="submit" disabled={busy || !confirmed}>{busy ? AUTH_COPY.BUSY : LIFECYCLE_COPY.DELETE}</button>
+    <button class="danger-action" type="submit" disabled={busy || !confirmed}
+      >{busy ? AUTH_COPY.BUSY : LIFECYCLE_COPY.DELETE}</button
+    >
     {#if error}<p role="alert">{error}</p>{/if}
   </form>
 </section>

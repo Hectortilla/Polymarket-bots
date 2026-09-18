@@ -1,21 +1,39 @@
 .account-panel {
-  width: min(100%, 440px);
-  margin: 32px auto;
+  width: min(100%, 400px);
+  margin: 40px auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  font-size: 0.875rem;
 }
 .account-panel h1 {
-  margin: 12px 0 20px;
+  margin: 0 0 10px;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  letter-spacing: -0.035em;
 }
-.account-panel > p {
-  line-height: 1.65;
+.account-panel p {
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.account-panel > :last-child {
+  margin-bottom: 0;
+}
+.account-panel .eyebrow {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
 }
 .account-panel form {
   display: grid;
   gap: 8px;
-  margin: 32px 0;
+  margin: 24px 0;
 }
 .account-panel form > input + label,
 .account-panel form > label + label {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .account-panel form > button[type="submit"] {
   margin-top: 12px;
@@ -24,23 +42,150 @@
   margin: 8px 0;
 }
 .account-panel h2 {
-  margin-block: 28px 12px;
+  margin: 0 0 10px;
+  font-size: 0.9375rem;
+  letter-spacing: -0.015em;
 }
 .account-panel label {
-  font-weight: 600;
+  font-size: 0.8125rem;
+  font-weight: 550;
 }
-.account-panel input {
+.account-panel input:not([type="checkbox"]) {
   width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 0.875rem;
+}
+.account-panel label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.6;
+  font-weight: 450;
+}
+.account-panel input[type="checkbox"] {
+  margin-top: 2px;
 }
 .account-panel .field-help {
-  font-size: 0.8rem;
-  margin: 0 0 12px;
+  font-size: 0.75rem;
+  margin: 0 0 8px;
 }
 .account-panel button {
   min-height: 44px;
+  font-size: 0.8125rem;
+  padding: 10px 14px;
 }
-@media (max-width: 600px) {
+.account-panel a {
+  text-decoration-color: var(--control-line);
+}
+.account-panel a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+.account-panel details {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.account-panel summary {
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+  color: var(--text-soft);
+}
+.account-panel [role="status"] {
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+.account-panel .account-footer {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+  font-size: 0.8125rem;
+}
+.account-panel.account-settings {
+  width: min(100%, 960px);
+  margin: 8px auto 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.account-settings .settings-heading {
+  padding-bottom: 24px;
+}
+.account-settings .settings-heading h1 {
+  font-size: 1.75rem;
+}
+.account-settings .settings-section {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 40px;
+  padding: 28px 0;
+  border-top: 1px solid var(--line);
+}
+.account-settings .settings-section > * {
+  min-width: 0;
+}
+.account-settings .settings-section form {
+  margin: 0;
+}
+.account-settings .settings-section form + p {
+  margin-top: 16px;
+}
+.account-settings .settings-section form > button[type="submit"] {
+  justify-self: start;
+}
+.account-settings .settings-section form > .secondary {
+  justify-self: start;
+}
+.account-settings .settings-section p {
+  max-width: 60ch;
+}
+.account-settings .settings-section .settings-help {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.account-settings .settings-section .account-identity {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.account-settings .settings-section .settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.account-settings .settings-section .settings-actions button {
+  margin: 0;
+}
+.account-settings .settings-section .danger-action {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+@media (max-width: 767px) {
   .account-panel {
-    margin: 16px auto;
+    margin: 12px auto;
+    padding: 24px;
+  }
+  .account-panel input:not([type="checkbox"]) {
+    font-size: 1rem;
+  }
+  .account-settings .settings-section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding-block: 24px;
+  }
+  .account-settings .settings-section .settings-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (max-width: 420px) {
+  .account-panel {
+    padding: 20px;
   }
 }

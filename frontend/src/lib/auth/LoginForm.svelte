@@ -42,7 +42,7 @@
     passwordMinimumLength={runtimeContract.auth.existingPasswordMinLength}
   ></CredentialForm>
   <p><a href={runtimeContract.accountManagement.forgotPath}>{ACCOUNT_COPY.FORGOT}</a></p>
-  <p>
+  <p class="account-footer">
     New to {SERVICE_NAME}?
     <a href={accountPath(REGISTER_PATH, page.url.searchParams.get(RETURN_TO_QUERY_PARAM))}>{AUTH_COPY.REGISTER}</a>
   </p>

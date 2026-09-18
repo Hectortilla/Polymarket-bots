@@ -40,19 +40,34 @@
 <style>
   dl {
     display: grid;
-    gap: 0.75rem;
+    gap: 0;
+    margin: 12px 0 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
   }
   dl div {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 1rem;
+    padding: 12px 16px;
+  }
+  dl div + div {
+    border-top: 1px solid var(--line);
+  }
+  dt {
+    color: var(--text-muted);
+  }
+  dd {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
   }
   dt,
   dd {
     margin: 0;
     overflow-wrap: anywhere;
   }
-  @media (max-width: 560px) {
+  @media (max-width: 767px) {
     dl div {
       grid-template-columns: 1fr;
       gap: 0.2rem;
