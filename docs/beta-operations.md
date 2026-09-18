@@ -145,3 +145,23 @@ staging, a missing `current` link or Python environment fails the service visibl
 monitoring also checks the backup, backup-check and monitor service units.
 
 The rendered timer calendars come from `scripts/host_operations/policy.py`: backup freshness uses `hourly`, and monitoring uses `*:0/5`. Activation polling exceeds the systemd activation timeout so a valid long-running activation is not mistaken for a failed deployment.
+
+## Read-only administration
+
+The [admin panel](admin-panel.md) is served at `/admin` on the application origin,
+using normal login plus an explicit database admin flag. It provides cross-account
+inspection of users, saved configurations and runs. Deploy migration `0002` with
+the corresponding API/frontend release; retained data is preserved and no accounts
+are promoted automatically. Use the OS-authorized `grant-admin USER_UUID` and
+`revoke-admin USER_UUID` operator commands; privilege changes revoke sessions and
+are audited. Existing user-facing API ownership remains unchanged.
+
+This is a read-only follow-up to Slice 20, with public HTTPS application access.
+It does not enable browser operator mutations, MFA, generalized RBAC or live trading.
+The admin runbook documents field exclusions, deployment checks and the audit-preserving
+downgrade restriction.
+
+```sh
+python -m api.operations grant-admin USER_UUID
+python -m api.operations revoke-admin USER_UUID
+```

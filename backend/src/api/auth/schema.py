@@ -18,6 +18,7 @@ class UserColumn(StrEnum):
     EMAIL_VERIFIED_AT = "email_verified_at"
     SUSPENDED_AT = "suspended_at"
     VERIFICATION_REQUIRED = "verification_required"
+    IS_ADMIN = "is_admin"
 
 
 class SessionColumn(StrEnum):

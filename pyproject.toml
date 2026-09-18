@@ -25,6 +25,7 @@ dependencies = [
     "uvicorn==0.52.1",
     "argon2-cffi==25.1.0",
     "email-validator==2.3.0",
+    "sqladmin==0.31.1",
 ]
 
 [project.optional-dependencies]
@@ -113,6 +114,7 @@ packages = [
   "api.auth",
   "api.auth.recovery",
   "api.auth.recovery.store",
+  "api.admin",
   "api.auth.mail",
   "api.auth.store",
   "api.auth.middleware",
@@ -163,3 +165,6 @@ testpaths = ["backend/tests"]
 markers = [
   "postgres: requires POLYBOT_TEST_POSTGRES_URL for an isolated PostgreSQL database",
 ]
+
+[tool.setuptools.package-data]
+"api.admin" = ["templates/**/*.html"]

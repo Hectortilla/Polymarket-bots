@@ -9,13 +9,22 @@ class OperatorAction(StrEnum):
     STOP_ALL = "stop-all"
     RESUME_ADMISSIONS = "resume-admissions"
     STOP_RUN = "stop-run"
+    GRANT_ADMIN = "grant-admin"
+    REVOKE_ADMIN = "revoke-admin"
 
     @property
     def requires_target(self) -> bool:
         return self in ACCOUNT_ACTIONS or self is OperatorAction.STOP_RUN
 
 
-ACCOUNT_ACTIONS = frozenset({OperatorAction.SUSPEND, OperatorAction.RESUME_ACCOUNT})
+ACCOUNT_ACTIONS = frozenset(
+    {
+        OperatorAction.SUSPEND,
+        OperatorAction.RESUME_ACCOUNT,
+        OperatorAction.GRANT_ADMIN,
+        OperatorAction.REVOKE_ADMIN,
+    }
+)
 
 
 class OperatorOutcome(StrEnum):

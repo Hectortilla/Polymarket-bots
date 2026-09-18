@@ -41,7 +41,7 @@ from api.lifecycle.schema import (
     RESTORE_QUARANTINED_AT_COLUMN,
     DeletionColumn,
 )
-from api.operations.database_types import AUDIT_ACTION_TYPE, AUDIT_OUTCOME_TYPE
+from api.operations.database_types import AUDIT_OUTCOME_TYPE
 from api.operations.schema import (
     AUDIT_TABLE,
     AUDIT_TIME_INDEX,
@@ -63,6 +63,19 @@ revision: str = "0001"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+
+# Freeze the original action vocabulary; later actions belong to forward migrations.
+AUDIT_ACTION_TYPE = sa.Enum(
+    "suspend",
+    "resume-account",
+    "stop-all",
+    "resume-admissions",
+    "stop-run",
+    name="ck_operation_audit_action",
+    native_enum=False,
+    create_constraint=True,
+)
 
 
 def upgrade() -> None:

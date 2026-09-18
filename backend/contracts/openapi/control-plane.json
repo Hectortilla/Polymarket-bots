@@ -453,6 +453,11 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "is_admin": {
+            "default": false,
+            "title": "Is Admin",
+            "type": "boolean"
           }
         },
         "required": [

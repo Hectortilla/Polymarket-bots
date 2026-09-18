@@ -2524,3 +2524,34 @@ performance analysis; explanations of blocked/skipped graph actions; run
 notifications; and reusable market selection for recurring markets. Live trading
 remains a separate expansion requiring per-user wallet authorization, execution
 risk controls and order/fill reconciliation; it is not a paper-beta prerequisite.
+
+## Read-only admin-panel follow-up (September 2026)
+
+Implements the approved SQLAdmin panel separately from the delivered Slice 20 scope.
+Users, saved configurations and runs are inspectable by explicit administrators at
+`/admin`, using normal application login and current database authorization on every
+request. Pagination is bounded and fields are allowlisted. No browser mutations,
+exports, impersonation or live event dashboard are added.
+
+Forward migration `0002` preserves data, defaults admin access to false and extends
+the existing operator audit constraint. The initial migration's original action
+vocabulary is frozen so later enum additions cannot rewrite its historical behavior.
+OS-authorized grants require verified active accounts, while revocations remain
+available for inactive accounts. Changed privileges revoke sessions atomically.
+
+Caddy/Vite routing, the additive current-user contract, conditional frontend link,
+packaged templates, and shared-engine admin sessions complete integration. Read-only
+SQLAdmin views can be added explicitly; future mutations must use application
+services and audit/CSRF authorization. Polymarket adapters and protocol behavior
+are unchanged, so no protocol-sensitive MCP verification is required.
+
+Acceptance covers real database sessions, owner-only API regression, cross-account
+inspection, denied routes, escaped payloads, data-preserving migration, operator
+auditing and session invalidation. Shared browser tests exercise login return,
+admin navigation, non-admin denial and logout locally and through HTTPS Caddy.
+Documentation-drift audit updates README, architecture/product contracts, deployment
+and operations runbooks and [admin documentation](admin-panel.md). Production
+activation and selection of the first admin account remain operator rollout steps.
+The public privacy description now discloses administrator inspection. A pre-existing
+browser retention assertion is updated to follow the existing Privacy link after
+the prior account-copy change; retention behavior is unchanged.

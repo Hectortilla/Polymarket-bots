@@ -31,6 +31,8 @@ class OperatorControl:
             OperatorAction.STOP_RUN: self._runs.terminate_run,
             OperatorAction.STOP_ALL: self._stop_all,
             OperatorAction.RESUME_ADMISSIONS: self._resume_admissions,
+            OperatorAction.GRANT_ADMIN: self._accounts.grant_admin,
+            OperatorAction.REVOKE_ADMIN: self._accounts.revoke_admin,
         }[action]
         # Serialize with launch, claim and terminal release so incident controls
         # cannot race new work into the account after revoking access.

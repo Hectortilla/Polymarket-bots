@@ -246,6 +246,10 @@ export type CurrentUser = {
      * Id
      */
     id: string;
+    /**
+     * Is Admin
+     */
+    is_admin?: boolean;
 };
 
 export type DataTradesBudget = number;

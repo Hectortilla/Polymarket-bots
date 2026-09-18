@@ -20,6 +20,7 @@ from api.deployment.settings import Environment, StartupSettings
 from api.http.app import create_app
 from api.http.dependencies import application_lifespan
 from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from control_plane.account_mail_fixture import MemoryAccountMailer
 from control_plane.market_fixtures import market_discovery
@@ -28,7 +29,7 @@ from control_plane.market_fixtures import market_discovery
 def production_app():
     app = create_app(
         auth_settings=AuthSettings("https://paper.example.com"),
-        session_factory=AsyncMock(),
+        session_factory=async_sessionmaker(),
         redis=AsyncMock(),
         launcher=AsyncMock(),
         market_discovery=market_discovery(),

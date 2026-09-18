@@ -1,0 +1,29 @@
+{% extends "sqladmin_original/layout.html" %}
+{% block topbar %}
+<header class="navbar px-3 gap-3">
+  <span>Read-only administration</span>
+  <a href="/">Return to application</a>
+  <button type="button" class="btn btn-secondary" id="admin-sign-out">Sign out</button>
+  <span id="admin-sign-out-error" role="alert"></span>
+</header>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+<script>
+// SQLAdmin's GET logout link uses the same POST-only sign-out action.
+const signOut = async (event) => {
+  event.preventDefault();
+  try {
+    const response = await fetch({{ admin_logout_path | tojson }}, {
+      method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: "{}"
+    });
+    if (!response.ok) throw new Error("Sign out failed");
+    window.location.replace("/login");
+  } catch {
+    document.getElementById("admin-sign-out-error").textContent = "Unable to sign out. Please retry.";
+  }
+};
+document.getElementById("admin-sign-out").addEventListener("click", signOut);
+document.querySelectorAll('a[href="{{ request.url_for("admin:logout") }}"]').forEach(link => link.addEventListener("click", signOut));
+</script>
+{% endblock %}

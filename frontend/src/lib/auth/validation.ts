@@ -1,7 +1,7 @@
 import { isRecord, isUuid } from "$lib/valueGuards";
 import type { CurrentUser, LogoutResponse } from "$lib/api/generated";
 
-const CURRENT_USER_RESPONSE_KEYS = ["id", "email"] as const satisfies readonly (keyof CurrentUser)[];
+const CURRENT_USER_RESPONSE_KEYS = ["id", "email", "is_admin"] as const satisfies readonly (keyof CurrentUser)[];
 const LOGOUT_RESPONSE_KEYS = ["logged_out"] as const satisfies readonly (keyof LogoutResponse)[];
 
 export function isCurrentUser(value: unknown): value is CurrentUser {
@@ -9,6 +9,7 @@ export function isCurrentUser(value: unknown): value is CurrentUser {
     isRecord(value) &&
     Object.keys(value).length === CURRENT_USER_RESPONSE_KEYS.length &&
     isUuid(value.id) &&
+    typeof value.is_admin === "boolean" &&
     typeof value.email === "string" &&
     value.email.includes("@")
   );

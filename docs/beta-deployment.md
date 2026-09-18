@@ -1374,3 +1374,18 @@ be YAML integers. Remote access is still verified by the separate
 connectivity/backup acceptance checks.
 
 Tailscale enrollment accepts only the states defined by the pinned [official v1.94.2 backend](https://github.com/tailscale/tailscale/blob/v1.94.2/ipn/backend.go); unknown states fail before enrollment. Host status and activation validate the `current` pointer against the installed bundle and its runtime image identity.
+
+## Read-only administration
+
+The [admin panel](admin-panel.md) is served at `/admin` on the application origin,
+using normal login plus an explicit database admin flag. It provides cross-account
+inspection of users, saved configurations and runs. Deploy migration `0002` with
+the corresponding API/frontend release; retained data is preserved and no accounts
+are promoted automatically. Use the OS-authorized `grant-admin USER_UUID` and
+`revoke-admin USER_UUID` operator commands; privilege changes revoke sessions and
+are audited. Existing user-facing API ownership remains unchanged.
+
+This is a read-only follow-up to Slice 20, with public HTTPS application access.
+It does not enable browser operator mutations, MFA, generalized RBAC or live trading.
+The admin runbook documents field exclusions, deployment checks and the audit-preserving
+downgrade restriction.

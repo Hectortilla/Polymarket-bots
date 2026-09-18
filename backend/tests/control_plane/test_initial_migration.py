@@ -60,17 +60,18 @@ def test_repeated_upgrade_preserves_accounts_and_terminal_history(limits_service
     asyncio.run(verify())
 
 
-def test_initial_revision_is_the_only_head_and_supports_offline_sql():
+def test_forward_revision_has_one_head_and_supports_offline_sql():
     output = StringIO()
     config = Config(Path(__file__).parents[2] / "alembic.ini", output_buffer=output)
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
-    assert [item.revision for item in revisions] == ["0001"]
-    assert revisions[0].down_revision is None
+    assert [item.revision for item in revisions] == ["0002", "0001"]
+    assert revisions[0].down_revision == "0001"
+    assert revisions[1].down_revision is None
     config.set_main_option("sqlalchemy.url", "postgresql+asyncpg://")
     command.upgrade(config, "head", sql=True)
     sql = output.getvalue()
     assert "CREATE TABLE" in sql
-    assert "ALTER TABLE" not in sql
+    assert "ADD COLUMN is_admin" in sql
     assert "DROP TABLE" not in sql
 
 

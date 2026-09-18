@@ -2,6 +2,7 @@
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from api.admin.policy import ADMIN_PATH
 from api.http.protocol import (
     ASGI_HTTP_RESPONSE_START,
     ASGI_HTTP_SCOPE,
@@ -30,6 +31,15 @@ class PrivateResponseMiddleware:
                     for key, value in message["headers"]
                     if key.lower() != CACHE_CONTROL_ASGI_HEADER
                 ]
+                if scope["path"] == ADMIN_PATH or scope["path"].startswith(
+                    ADMIN_PATH + "/"
+                ):
+                    message["headers"].extend(
+                        [
+                            (b"x-frame-options", b"DENY"),
+                            (b"content-security-policy", b"frame-ancestors 'none'"),
+                        ]
+                    )
                 message["headers"].append(
                     (CACHE_CONTROL_ASGI_HEADER, NO_STORE_ASGI_DIRECTIVE)
                 )

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     String,
     UniqueConstraint,
+    false,
     true,
 )
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
@@ -47,6 +48,12 @@ class UserRow(SQLModel, table=True):
     )
     email: str = Field(
         sa_column=Column(UserColumn.EMAIL, String(EMAIL_MAX_LENGTH), nullable=False)
+    )
+    is_admin: bool = Field(
+        default=False,
+        sa_column=Column(
+            UserColumn.IS_ADMIN, Boolean, nullable=False, server_default=false()
+        ),
     )
     password_hash: str = Field(
         repr=False, sa_column=Column(UserColumn.PASSWORD_HASH, String, nullable=False)

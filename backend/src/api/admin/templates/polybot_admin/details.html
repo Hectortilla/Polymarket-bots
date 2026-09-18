@@ -1,0 +1,13 @@
+{% extends "sqladmin/details.html" %}
+{% block content %}
+<div class="col-12 mb-3 d-flex gap-2">
+{% if model_view.identity == user_view_id %}
+<a class="btn" href="{{ request.url_for('admin:list', identity=configuration_view_id).include_query_params(**{owner_filter: model.id}) }}">User configurations</a>
+<a class="btn" href="{{ request.url_for('admin:list', identity=run_view_id).include_query_params(**{owner_filter: model.id}) }}">User runs</a>
+{% elif model_view.identity == configuration_view_id %}
+<a class="btn" href="{{ request.url_for('admin:list', identity=run_view_id).include_query_params(**{bot_filter: model.id}) }}">Configuration runs</a>
+{% if model.deleted_at %}<strong>Deleted configuration — retained for run history</strong>{% endif %}
+{% endif %}
+</div>
+{{ super() }}
+{% endblock %}

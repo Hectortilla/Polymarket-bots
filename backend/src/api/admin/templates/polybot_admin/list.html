@@ -1,0 +1,18 @@
+{% extends "sqladmin/list.html" %}
+{% block content %}
+{% if model_view.owner_filter %}
+<div class="col-12"><form method="get" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+  <label>Owner user ID<input class="form-control" name="{{ owner_filter }}" value="{{ request.query_params.get(owner_filter, '') }}" placeholder="UUID"></label>
+  {% if model_view.bot_filter %}<label>Bot ID<input class="form-control" name="{{ bot_filter }}" value="{{ request.query_params.get(bot_filter, '') }}" placeholder="UUID"></label>{% endif %}
+  {% if model_view.status_filter %}
+  <div><label for="admin-status-filter">Status</label><select id="admin-status-filter" class="form-select" name="{{ status_filter }}"><option value="">All statuses</option>
+    {% for status in run_statuses %}<option value="{{ status }}" {% if request.query_params.get(status_filter) == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+  </select></div>
+  {% endif %}
+  <input type="hidden" name="search" value="{{ request.query_params.get('search', '') }}">
+  <button class="btn btn-primary" type="submit">Apply filters</button>
+  <a class="btn" href="{{ request.url_for('admin:list', identity=model_view.identity) }}">Clear</a>
+</form></div>
+{% endif %}
+{{ super() }}
+{% endblock %}

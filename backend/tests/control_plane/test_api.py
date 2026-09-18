@@ -13,6 +13,7 @@ import api.http.routes.events as events_routes
 import api.http.routes.run_lookup as run_lookup
 import api.http.routes.runs as runs_routes
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from api.bots.contracts import BotCreate, BotRead, BotUpdate
 from api.bots.models import BotRow
 from api.catalog.contracts import BotDefinitionDescriptor
@@ -756,7 +757,7 @@ def test_application_lifespan_owns_default_resources(
 ) -> None:
     engine = _Engine()
     redis = _Redis()
-    session_factory = object()
+    session_factory = async_sessionmaker()
     launcher = _Launcher()
     discovery = market_discovery()
     wallets = AsyncMock(spec=dependencies_module.WalletDiscovery)
@@ -799,7 +800,7 @@ def test_application_lifespan_owns_default_resources(
     injected_wallets = AsyncMock()
     with TestClient(
         create_app(
-            session_factory=object(),
+            session_factory=async_sessionmaker(),
             redis=injected_redis,
             launcher=_Launcher(),
             market_discovery=injected_discovery,
@@ -906,6 +907,7 @@ class _State:
 
 
 class _SessionFactory:
+    kw = {}
     def __init__(self, state: _State) -> None:
         self.state = state
 

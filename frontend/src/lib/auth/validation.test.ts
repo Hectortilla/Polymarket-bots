@@ -3,14 +3,14 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE } from "$lib/api/http";
 import { validateOperationResponse } from "$lib/api/responseValidation/operations";
 
-const user = { id: "11111111-1111-4111-8111-111111111111", email: "first@example.com" };
+const user = { id: "11111111-1111-4111-8111-111111111111", email: "first@example.com", is_admin: false };
 
 describe("auth operation response validation", () => {
   it.each([runtimeContract.apiPaths.currentUser, runtimeContract.apiPaths.login, runtimeContract.apiPaths.register])(
     "requires the current-user shape for %s",
     async (url) => {
       await expect(validate(url, user)).resolves.toBeInstanceOf(Response);
-      for (const body of [{ email: user.email }, { ...user, id: "invalid" }, { ...user, secret: "hidden" }]) {
+      for (const body of [{ email: user.email }, { ...user, id: "invalid" }, { ...user, secret: "hidden" }, { ...user, is_admin: "true" }, { ...user, is_admin: undefined }]) {
         await expect(validate(url, body)).rejects.toThrow("operation validation");
       }
     },

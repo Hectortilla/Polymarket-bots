@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from api.admin.policy import CONFIGURATION_VIEW_ID, RUN_VIEW_ID, USER_VIEW_ID
 from api.catalog.inputs import NodeBasedLaunchInputs
 from polybot.framework.streams import (
     STREAM_RULE_MARKET_SLUGS_FIELD,
@@ -15,6 +16,7 @@ from control_plane.account_mail_fixture import (
     MAILBOX_LINK_FIELD,
     MAILBOX_PATH,
 )
+from control_plane.admin_browser_fixture import ADMIN_EMAIL, ADMIN_PASSWORD
 from control_plane.browser_limits_fixture import CLEAR_LIMITS_PATH
 from control_plane.browser_wallet_fixture import BROWSER_WALLET
 
@@ -26,6 +28,13 @@ ACCOUNT_BROWSER_CONTRACT_PATH = (
 def account_browser_contract():
     selector_fields = NodeBasedLaunchInputs.model_json_schema()["properties"]
     return {
+        "admin": {
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD,
+            "userView": USER_VIEW_ID,
+            "configurationView": CONFIGURATION_VIEW_ID,
+            "runView": RUN_VIEW_ID,
+        },
         "wallet": asdict(BROWSER_WALLET),
         "selectorLabels": {
             "markets": selector_fields[STREAM_RULE_MARKET_SLUGS_FIELD]["title"],

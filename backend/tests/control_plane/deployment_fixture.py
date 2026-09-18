@@ -25,6 +25,7 @@ from polybot.polymarket.discovery_contracts import MarketSearchResults
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from control_plane.admin_browser_fixture import install_admin_fixture
 from control_plane.account_mail_fixture import install_browser_mailbox
 from control_plane.browser_limits_fixture import install_browser_limit_control
 from control_plane.market_fixtures import market_discovery, market_suggestion
@@ -68,6 +69,7 @@ def create_app():
         has_more=False,
     )
     app = application(market_discovery=discovery)
+    install_admin_fixture(app)
     install_browser_limit_control(app)
     install_browser_mailbox(app, AuthSettings.from_env().origin)
 

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from api.admin.application import install_admin
 from api.auth.config import AuthSettings
 from api.auth.development import DevelopmentAccountStore
 from api.auth.mail import AccountMailer
@@ -69,6 +70,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         owned_wallet_discovery = WalletDiscovery()
         app.state.wallet_discovery = owned_wallet_discovery
     try:
+        install_admin(app)
         if startup_settings is not None and startup_settings.seed_development_account:
             async with app.state.session_factory() as session:
                 await DevelopmentAccountStore(session).ensure_account()

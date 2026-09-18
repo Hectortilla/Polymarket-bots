@@ -7,6 +7,8 @@ from polybot.polymarket.wallet_discovery import WalletDiscovery
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api.admin.application import install_admin
+from api.admin.authentication import AdminBoundaryMiddleware
 from api.auth.config import AuthSettings
 from api.auth.dependencies import application_authentication
 from api.auth.middleware import AuthBoundaryMiddleware
@@ -63,6 +65,7 @@ def create_app(
         openapi_url=None,
         lifespan=application_lifespan,
     )
+    application.add_middleware(AdminBoundaryMiddleware)
     application.add_middleware(AuthBoundaryMiddleware)
     application.add_middleware(ServiceFailureMiddleware)
     # Keep cache protection outside errors so generated 503 responses are private too.
@@ -97,6 +100,8 @@ def create_app(
         health_router,
     ):
         application.include_router(router, prefix=API_PREFIX)
+    if session_factory is not None:
+        install_admin(application)
     return application
 
 

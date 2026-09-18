@@ -44,7 +44,9 @@ describe("credential failure presentation", () => {
     const destination = "/runs/example";
     page.url.searchParams.set(RETURN_TO_QUERY_PARAM, destination);
     const registering = component === RegistrationForm;
-    (registering ? mocks.register : mocks.login).mockResolvedValue({ data: { id: "account", email: "a@a.a" } });
+    (registering ? mocks.register : mocks.login).mockResolvedValue({
+      data: { id: "account", email: "a@a.a", is_admin: false },
+    });
     const accept = vi.spyOn(accountSession, "acceptLogin").mockImplementation(() => {});
     render(component);
     await fillCredentials();
@@ -63,7 +65,7 @@ describe("credential failure presentation", () => {
   });
 
   it("submits a one-character existing password", async () => {
-    mocks.login.mockResolvedValue({ data: { id: "account", email: "a@a.a" } });
+    mocks.login.mockResolvedValue({ data: { id: "account", email: "a@a.a", is_admin: false } });
     const accept = vi.spyOn(accountSession, "acceptLogin").mockImplementation(() => {});
     render(LoginForm);
     await fireEvent.input(screen.getByLabelText(AUTH_COPY.EMAIL), { target: { value: "a@a.a" } });
@@ -109,7 +111,7 @@ describe("credential failure presentation", () => {
   });
 
   it("accepts a successful account response through the session lifecycle", async () => {
-    mocks.login.mockResolvedValue({ data: { id: "account", email: "first@example.com" } });
+    mocks.login.mockResolvedValue({ data: { id: "account", email: "first@example.com", is_admin: false } });
     const accept = vi.spyOn(accountSession, "acceptLogin").mockImplementation(() => {});
     render(LoginForm);
     await fillCredentials();

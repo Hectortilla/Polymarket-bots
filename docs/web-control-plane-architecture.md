@@ -1220,3 +1220,26 @@ from keyboard interaction and rendering. Closed response fields are generated
 from OpenAPI and checked against the schema in parity tests. Graph response
 validation separates envelope, node, catalog and preview contracts; launch-field
 requiredness is queried from the same schema owner by rendering and validation.
+
+## Read-only administration follow-up (September 2026)
+
+SQLAdmin mounts at `/admin` in the existing FastAPI process and uses the same
+origin and opaque database sessions. An outer ASGI authorization guard protects
+the complete mount independently of FastAPI dependencies. Current-user responses
+include `is_admin`; every admin request reloads access from the database. Ordinary
+API ownership predicates remain unchanged. A database or session failure never
+grants access.
+
+`api.admin` registers only Users, Configurations and Runs, with explicit display
+fields, escaped JSON, bounded pagination and owner navigation. Generic mutations,
+exports and helper routes are removed. Run ownership is joined through bots. The
+SQLAdmin session factory shares the application engine but isolates the library's
+autoflush configuration. No second authentication cookie is introduced. Caddy and
+Vite route the complete admin prefix to the API.
+
+The forward `0002` migration adds `users.is_admin` defaulting to false and extends
+the operator audit constraint. OS-authorized `grant-admin` and `revoke-admin`
+commands lock the account, audit changes and revoke sessions atomically. Grants
+require verified, active, non-deleting accounts. Admin authority cannot be assigned
+through registration or a browser API. SQLAdmin adapters remain outside `polybot`.
+See [admin operation and extension](admin-panel.md) for rollout and downgrade limits.

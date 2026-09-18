@@ -171,6 +171,14 @@ Throttle cleanup deletes only authentication keys. Use separate disposable datab
 browser suites. Service-dependent tests must pass without skips to establish
 multi-user isolation. Account acceptance CI enforces this requirement.
 
+## Administration
+
+The read-only [admin panel](docs/admin-panel.md) is available at `/admin` using the
+existing application login. Explicitly granted administrators can inspect users,
+saved configurations and run snapshots across accounts. Ordinary API ownership
+remains unchanged. Migration `0002` preserves existing data and grants nobody
+admin access; the operator CLI manages grants and revocations.
+
 ## Documentation and Current Status
 
 Start with:

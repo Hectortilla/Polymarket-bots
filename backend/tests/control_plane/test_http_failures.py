@@ -29,7 +29,7 @@ def test_service_failure_after_headers_ends_without_a_second_response(error_type
     send = AsyncMock()
     app = PrivateResponseMiddleware(ServiceFailureMiddleware(failing_app))
     with pytest.raises(RuntimeError, match=SERVICE_UNAVAILABLE_DETAIL) as raised:
-        asyncio.run(app({"type": "http"}, AsyncMock(), send))
+        asyncio.run(app({"type": "http", "path": "/"}, AsyncMock(), send))
     assert raised.value.__suppress_context__
     send.assert_awaited_once()
     assert send.call_args.args[0]["headers"] == [

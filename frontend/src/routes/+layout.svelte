@@ -72,6 +72,7 @@
       {#if $account}<span>{$account.email}</span>{/if}
       <a href={PUBLIC_INFORMATION_PATH.HELP}>{PUBLIC_INFORMATION_LABEL[PUBLIC_INFORMATION_PATH.HELP]}</a>
       {#if $account}
+        {#if $account.is_admin}<a href={runtimeContract.admin.path} data-sveltekit-reload>Admin</a>{/if}
         <a href={runtimeContract.accountManagement.accountPath}>{ACCOUNT_COPY.SETTINGS}</a>
         <button class="secondary" onclick={() => void accountSession.signOut()}>{AUTH_COPY.SIGN_OUT}</button>
       {:else}

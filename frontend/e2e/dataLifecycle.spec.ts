@@ -4,6 +4,8 @@ import contract from "../src/lib/runtimeContract.fixture.json" with { type: "jso
 import { AUTH_COPY } from "../src/lib/auth/copy";
 import { LOGIN_PATH, REGISTER_PATH } from "../src/lib/auth/navigation";
 import { ACCOUNT_COPY } from "../src/lib/auth/recovery/copy";
+import { PUBLIC_COPY } from "../src/lib/public/copy";
+import { PUBLIC_INFORMATION_PATH } from "../src/lib/public/navigation";
 import { LIFECYCLE_COPY } from "../src/lib/lifecycle/copy";
 
 const PASSWORD = "browser deletion password";
@@ -15,7 +17,11 @@ test("account deletion requires confirmation, revokes access and explains expiry
   await page.getByLabel(AUTH_COPY.PASSWORD, { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: AUTH_COPY.REGISTER, exact: true }).click();
   await expect(page).toHaveURL(contract.accountManagement.accountPath);
-  await expect(page.getByText(LIFECYCLE_COPY.HISTORY)).toBeVisible();
+  const retentionLink = page.getByRole("link", { name: "Data retention details", exact: true });
+  await expect(retentionLink).toHaveAttribute("href", PUBLIC_INFORMATION_PATH.PRIVACY);
+  await retentionLink.click();
+  await expect(page.getByText(PUBLIC_COPY.HISTORY_RETENTION)).toBeVisible();
+  await page.goto(contract.accountManagement.accountPath);
   await expect(page.getByRole("button", { name: LIFECYCLE_COPY.DELETE, exact: true })).toBeDisabled();
   await page.getByLabel(LIFECYCLE_COPY.PASSWORD, { exact: true }).fill("incorrect browser password");
   await page.getByLabel(LIFECYCLE_COPY.CONFIRM, { exact: true }).check();

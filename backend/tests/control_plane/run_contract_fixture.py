@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from api.admin.policy import ADMIN_PATH
 from api.auth.policy import (
     CSRF_SAFE_METHODS,
     EMAIL_MAX_LENGTH,
@@ -57,14 +58,14 @@ from api.http.routes.paths import (
     HEALTH_PATH,
     MARKET_LOOKUP_PATH,
     MARKET_SEARCH_PATH,
-    WALLET_SEARCH_PATH,
-    WALLET_LOOKUP_PATH,
     RUN_EVENTS_PATH,
     RUN_EVENTS_STREAM_PATH,
     RUN_PATH,
     RUN_STOP_PATH,
     RUNS_PATH,
     USAGE_PATH,
+    WALLET_LOOKUP_PATH,
+    WALLET_SEARCH_PATH,
     api_route_path,
 )
 from api.http.sse.frames import DASHBOARD_SSE_EVENT
@@ -207,6 +208,7 @@ def frontend_run_contract() -> dict[str, object]:
                 for scope in account_policy.SessionRevocation
             },
         },
+        "admin": {"path": ADMIN_PATH},
         "auth": {
             "csrfSafeMethods": list(CSRF_SAFE_METHODS),
             "jsonContentType": JSON_CONTENT_TYPE,

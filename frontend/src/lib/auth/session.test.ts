@@ -14,8 +14,8 @@ import { HTTP_STATUS } from "$lib/api/http";
 
 let session = new AccountSession();
 
-const first = { id: "11111111-1111-4111-8111-111111111111", email: "first@example.com" };
-const second = { id: "22222222-2222-4222-8222-222222222222", email: "second@example.com" };
+const first = { id: "11111111-1111-4111-8111-111111111111", email: "first@example.com", is_admin: false };
+const second = { id: "22222222-2222-4222-8222-222222222222", email: "second@example.com", is_admin: false };
 
 afterEach(() => {
   session.clear();

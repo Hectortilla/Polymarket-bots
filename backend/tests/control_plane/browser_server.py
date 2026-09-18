@@ -17,6 +17,7 @@ from polybot.polymarket.discovery_contracts import MarketSearchResults
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from control_plane.admin_browser_fixture import install_admin_fixture
 from control_plane.account_mail_fixture import install_browser_mailbox
 from control_plane.browser_launcher import BrowserRunLauncher
 from control_plane.browser_limits_fixture import install_browser_limit_control
@@ -78,6 +79,7 @@ def main():
         auth_settings=AuthSettings(args.origin, True),
     )
     launcher.install_lifespan(app)
+    install_admin_fixture(app)
     install_browser_limit_control(app)
     install_browser_mailbox(app, args.origin)
     uvicorn.run(app, host=args.api_host, port=args.api_port, proxy_headers=False)

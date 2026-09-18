@@ -1,0 +1,10 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12"><div class="card"><div class="card-body">
+  <h2>Inspect accounts and activity</h2>
+  <p>Browse users, saved configurations and run snapshots. Changes are managed through the operator command.</p>
+  {% for view in admin.views %}
+  <a class="btn btn-outline-primary me-2" href="{{ request.url_for('admin:list', identity=view.identity) }}">{{ view.name_plural }}</a>
+  {% endfor %}
+</div></div></div>
+{% endblock %}

@@ -26,6 +26,7 @@ class CurrentUser(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     id: UUID
     email: str
+    is_admin: bool = False
     can_launch_runs: bool = Field(exclude=True)
 
     @classmethod
@@ -33,6 +34,7 @@ class CurrentUser(BaseModel):
         return cls(
             id=user.id,
             email=user.email,
+            is_admin=user.is_admin,
             can_launch_runs=user.can_launch_runs,
         )
 

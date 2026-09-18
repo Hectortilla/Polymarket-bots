@@ -75,7 +75,7 @@
       "ChangePasswordRequest": ["current_password", "new_password"],
       "ChartSamplePayload": ["equity", "markets", "sampled_at_ms"],
       "Credentials": ["email", "password"],
-      "CurrentUser": ["email", "id"],
+      "CurrentUser": ["email", "id", "is_admin"],
       "EmailRequest": ["email"],
       "EquityChartPayload": ["point", "sampled_at_ms"],
       "EquityChartPointPayload": ["status", "value"],
@@ -298,6 +298,9 @@
       "other": false,
       "all": true
     }
+  },
+  "admin": {
+    "path": "/admin"
   },
   "auth": {
     "csrfSafeMethods": ["GET", "HEAD", "OPTIONS"],

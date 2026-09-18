@@ -448,7 +448,8 @@ there is no support override, email change, account linking or identity transfer
 ## Slice 20: Operations policy
 
 Operators use an OS-authorized maintenance command on the private deployment host;
-there is no operator HTTP endpoint or browser role. Account suspension revokes
+there is no operator mutation HTTP endpoint. The later read-only admin panel
+adds explicit browser inspection privileges without exposing these commands. Account suspension revokes
 sessions and recovery links, prevents login/new work, stops queued runs and
 interrupts active runs in the same transaction. History remains readable after an
 operator resumes the account and the user signs in again. Global incident stop
@@ -528,3 +529,18 @@ stay in the system. Old runs, their executed graphs and events remain visible to
 their owner under the existing retention policy, with a deleted-configuration
 label on run detail. Deleted bots no longer consume the visible saved-bot allowance.
 Account erasure still removes retained bot data through its established lifecycle.
+
+## Read-only administration
+
+The [admin panel](admin-panel.md) is served at `/admin` on the application origin,
+using normal login plus an explicit database admin flag. It provides cross-account
+inspection of users, saved configurations and runs. Deploy migration `0002` with
+the corresponding API/frontend release; retained data is preserved and no accounts
+are promoted automatically. Use the OS-authorized `grant-admin USER_UUID` and
+`revoke-admin USER_UUID` operator commands; privilege changes revoke sessions and
+are audited. Existing user-facing API ownership remains unchanged.
+
+This is a read-only follow-up to Slice 20, with public HTTPS application access.
+It does not enable browser operator mutations, MFA, generalized RBAC or live trading.
+The admin runbook documents field exclusions, deployment checks and the audit-preserving
+downgrade restriction.

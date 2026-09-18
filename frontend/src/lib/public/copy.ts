@@ -9,7 +9,7 @@ export const PUBLIC_COPY = {
   SAVE_BEFORE_RUN:
     "Review your settings and save the bot. Saving does not start it. Open the saved bot and select Run bot.",
   ACCOUNT_DATA:
-    "We store your email, a password hash, sign-in and recovery records, and email verification status to manage your account. A session cookie keeps you signed in. We also store your bot settings, strategy graphs and revisions, selected market and wallet identifiers, and run history. Your bots and runs are private to your account.",
+    "We store your email, a password hash, sign-in and recovery records, and email verification status to manage your account. A session cookie keeps you signed in. We also store your bot settings, strategy graphs and revisions, selected market and wallet identifiers, and run history. Other users cannot access your bots or runs. Authorized administrators can inspect account details, bot configurations and run records.",
   RESTORE_QUARANTINE:
     "If a backup is restored, deletion requests must be reapplied before access resumes. Old sessions and runs are not restarted.",
   TERMS_SCOPE:

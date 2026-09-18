@@ -140,7 +140,7 @@ async def signup(client, email="first@example.com"):
         api_route_path(REGISTER_PATH), json={"email": email, "password": PASSWORD}
     )
     assert result.status_code == status.HTTP_201_CREATED, result.text
-    assert set(result.json()) == {"id", "email"}
+    assert set(result.json()) == {"id", "email", "is_admin"}
     return result
 
 

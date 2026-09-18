@@ -1,4 +1,11 @@
 {
+  "admin": {
+    "email": "browser-admin@example.com",
+    "password": "disposable admin browser password 123",
+    "userView": "user-row",
+    "configurationView": "bot-row",
+    "runView": "run-row"
+  },
   "wallet": {
     "address": "0xabababababababababababababababababababab",
     "name": "Browser trader"

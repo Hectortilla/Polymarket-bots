@@ -46,3 +46,26 @@ class AccountControls:
         user.suspended_at = None
         self._session.add(user)
         return outcome
+
+    async def grant_admin(self, owner_user_id: UUID) -> OperatorOutcome:
+        return await self._set_admin(owner_user_id, enabled=True)
+
+    async def revoke_admin(self, owner_user_id: UUID) -> OperatorOutcome:
+        return await self._set_admin(owner_user_id, enabled=False)
+
+    async def _set_admin(
+        self, owner_user_id: UUID, *, enabled: bool
+    ) -> OperatorOutcome:
+        user = await self._access.lock_account(owner_user_id)
+        if user is None:
+            return OperatorOutcome.NOT_FOUND
+        if enabled:
+            await DeletionRequests(self._session).require_no_request(owner_user_id)
+            if not user.access_allowed or user.email_verified_at is None:
+                raise ValueError("admin grants require a verified, active account")
+        if user.is_admin == enabled:
+            return OperatorOutcome.UNCHANGED
+        user.is_admin = enabled
+        self._session.add(user)
+        await self._access.delete_sessions(user.id)
+        return OperatorOutcome.APPLIED

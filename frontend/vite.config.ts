@@ -9,6 +9,10 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     proxy: {
+      "^/admin(?:/|$)": {
+        target: loadEnv(mode, ".", "POLYBOT_").POLYBOT_DEV_API_URL ?? "http://127.0.0.1:8000",
+        changeOrigin: false,
+      },
       "/api": loadEnv(mode, ".", "POLYBOT_").POLYBOT_DEV_API_URL ?? "http://127.0.0.1:8000",
     },
   },
