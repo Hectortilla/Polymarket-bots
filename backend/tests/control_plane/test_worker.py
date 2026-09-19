@@ -39,13 +39,12 @@ from polybot.framework.runner import BotRunner
 from polybot.polymarket.markets import Market, MarketOutcome
 
 from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.live_fixtures import RecordingLive, RecordingWorkerLive
 
 
-def _coordinator(store, writer, session_factory=object()):
+def _coordinator(store, writer, session_factory=None):
     return worker_lifecycle.RunLifecycleCoordinator(
-        store,
-        session_factory,
-        writer,
+        store, session_factory, writer, live_telemetry=RecordingWorkerLive()
     )
 
 
@@ -221,7 +220,10 @@ def test_worker_completes_stop_that_wins_before_runtime_start() -> None:
     store = _PrestartStopStore(_run())
     writer = _CollectingEventWriter()
 
-    asyncio.run(_coordinator(store, writer).execute(uuid4()))
+    coordinator = _coordinator(store, writer)
+    asyncio.run(coordinator.execute(uuid4()))
+    assert coordinator._live_telemetry.handles
+    assert all(handle.closed for handle in coordinator._live_telemetry.handles)
 
     assert store.transitions == [RunStatus.STOPPING]
     assert store.finished == [(RunStatus.STOPPED, None)]
@@ -413,7 +415,7 @@ def test_node_based_runtime_uses_paper_broker_and_durable_event_path(
         }
     )
     writer = _CollectingEventWriter()
-    observer = WebRuntimeObserver(run.id, writer)
+    observer = WebRuntimeObserver(run.id, writer, live_telemetry=RecordingLive())
 
     outcomes: list[DispatchOutcome] = []
     paper_brokers: list[PaperBroker] = []
@@ -632,9 +634,6 @@ class _CollectingEventWriter:
         self.events: list[DurableEvent] = []
         self._fail = fail
 
-    def health_writer(self):
-        return AsyncMock()
-
     def for_execution(self, execution_token, lease_seconds):
         return self
 
@@ -770,7 +769,11 @@ def test_lease_loss_monitor_cancels_runtime_as_interrupted(monkeypatch):
         monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", runtime)
         store = _FakeRunStore(_run())
         coordinator = worker_lifecycle.RunLifecycleCoordinator(
-            store, _SessionFactory(), _CollectingEventWriter(), heartbeat_seconds=0.001
+            store,
+            _SessionFactory(),
+            _CollectingEventWriter(),
+            heartbeat_seconds=0.001,
+            live_telemetry=RecordingWorkerLive(),
         )
         await asyncio.wait_for(coordinator.execute(uuid4()), timeout=1)
         assert stopped.is_set()
@@ -822,3 +825,16 @@ def test_stop_with_cancellation_resistant_cleanup_has_a_bound(monkeypatch):
             await asyncio.sleep(0)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("status", [RunStatus.STOPPED, None])
+def test_worker_lost_start_does_not_finish_again_and_unregisters(status):
+    class LostStartStore(_PrestartStopStore):
+        async def status(self, run_id):
+            return status
+
+    store = LostStartStore(_run())
+    coordinator = _coordinator(store, _CollectingEventWriter())
+    asyncio.run(coordinator.execute(uuid4()))
+    assert store.finished == []
+    assert all(handle.closed for handle in coordinator._live_telemetry.handles)

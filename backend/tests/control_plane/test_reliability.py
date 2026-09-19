@@ -7,8 +7,10 @@ from uuid import uuid4
 
 import pytest
 from api.bots.store import BotStore
-from api.events.contracts import LiveStreamHealthEvent, RunLifecycleEvent
+from api.events.contracts import RunLifecycleEvent
 from api.events.kinds import EventKind
+from api.events.live.permits import LivePermitRefresher
+from api.events.live.routing import LiveShardRouter
 from api.events.store import EventStore
 from api.events.writer import RunEventWriter
 from api.execution.recovery import RunRecovery
@@ -24,7 +26,6 @@ from api.runs.status import RunStatus
 from api.runs.store import RunStore
 from fastapi import status
 from httpx import ASGITransport, AsyncClient
-from polybot.cli.observability.events import StreamHealth
 from polybot.framework.clock import system_now_utc
 from sqlalchemy import func, select, update
 
@@ -314,17 +315,15 @@ def test_live_fence_and_delivery_age_boundaries(limits_services):
             assert launcher.launch.await_count == 2
             async with sessions() as session:
                 claimed = await RunStore(session).claim(run.id, now=system_now_utc())
-            publisher = AsyncMock()
-            live = LiveStreamHealthEvent.from_observation(
-                run.id,
-                StreamHealth(1, 2, 3, False, 1.0, 4, 1),
-                occurred_at=system_now_utc(),
+            refresher = LivePermitRefresher(
+                sessions,
+                LiveShardRouter(("redis://fixture",)),
+                (redis,),
+                lease_seconds=DEFAULT_LEASE_SECONDS,
             )
-            wrong = RunEventWriter(sessions, publisher).for_execution(
-                uuid4(), DEFAULT_LEASE_SECONDS
-            )
-            with pytest.raises(ExecutionOwnershipLost):
-                await wrong.publish_live(live)
+            wrong = refresher.register(run.id, uuid4())
+            await refresher.refresh_once()
+            assert refresher.permit_for(wrong) is None
             async with sessions() as session:
                 await session.execute(
                     update(RunRow)
@@ -335,11 +334,8 @@ def test_live_fence_and_delivery_age_boundaries(limits_services):
                     )
                 )
                 await session.commit()
-            expired = RunEventWriter(sessions, publisher).for_execution(
-                claimed.execution_token, DEFAULT_LEASE_SECONDS
-            )
-            with pytest.raises(ExecutionOwnershipLost):
-                await expired.publish_live(live)
-            publisher.publish.assert_not_awaited()
+            expired = refresher.register(run.id, claimed.execution_token)
+            await refresher.refresh_once()
+            assert refresher.permit_for(expired) is None
 
     asyncio.run(scenario())

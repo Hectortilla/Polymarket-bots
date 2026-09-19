@@ -23,6 +23,9 @@ def response_field_contract() -> dict[str, object]:
 
 
 def _event_fields(schemas: dict, union: str) -> dict[str, list[str]]:
+    if "discriminator" not in schemas[union]:
+        schema = schemas[union]
+        return {schema["properties"]["kind"]["const"]: list(schema["properties"])}
     return {
         kind: list(schemas[reference.rsplit("/", 1)[-1]]["properties"])
         for kind, reference in schemas[union]["discriminator"]["mapping"].items()

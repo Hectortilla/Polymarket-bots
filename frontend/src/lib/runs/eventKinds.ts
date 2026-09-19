@@ -1,11 +1,4 @@
-import type {
-  LiveEquityChartEvent,
-  LiveMarketChartEvent,
-  LiveRunEvent,
-  LiveStreamHealthEvent,
-  LiveWalletChartEvent,
-  PersistedDurableEvent,
-} from "$lib/api/generated";
+import type { LiveRunEvent, PersistedDurableEvent } from "$lib/api/generated";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 
 type DottedLowercase<Value extends string> = Value extends `${infer Head}_${infer Tail}`
@@ -33,8 +26,5 @@ export const EVENT_KIND = {
 } as const satisfies Record<string, PersistedDurableEvent["kind"]>;
 
 export const LIVE_EVENT_KIND = {
-  market: runtimeContract.liveEventKind.CHART_MARKET as NonNullable<LiveMarketChartEvent["kind"]>,
-  equity: runtimeContract.liveEventKind.CHART_EQUITY as NonNullable<LiveEquityChartEvent["kind"]>,
-  wallet: runtimeContract.liveEventKind.CHART_WALLET as NonNullable<LiveWalletChartEvent["kind"]>,
-  streamHealth: runtimeContract.liveEventKind.STREAM_HEALTH as NonNullable<LiveStreamHealthEvent["kind"]>,
+  snapshot: runtimeContract.liveEventKind.RUN_SNAPSHOT as NonNullable<LiveRunEvent["kind"]>,
 } as const satisfies Record<string, NonNullable<LiveRunEvent["kind"]>>;

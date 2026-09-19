@@ -31,6 +31,7 @@ from api.events.contracts.payloads.portfolio import (
     PORTFOLIO_MINIMUM_POSITION_SIZE,
     PORTFOLIO_TOKEN_IDS_MUST_BE_UNIQUE,
 )
+from api.events.health.policy import FEED_TTL_SECONDS
 from api.events.ids import (
     FIRST_DURABLE_EVENT_ID,
     FIRST_EVENT_CURSOR,
@@ -155,6 +156,7 @@ from polybot.framework.streams import (
 from polybot.framework.wallets import WALLET_ADDRESS_SCHEMA_PATTERN
 from polybot.performance.contracts.valuation_status import ValuationStatus
 
+from control_plane.live_contract_cases import live_validation_cases
 from control_plane.response_field_contract import response_field_contract
 
 FRONTEND_RUN_CONTRACT_PATH = (
@@ -163,6 +165,10 @@ FRONTEND_RUN_CONTRACT_PATH = (
     / "src"
     / "lib"
     / "runtimeContract.fixture.json"
+)
+
+FRONTEND_LIVE_VALIDATION_PATH = (
+    FRONTEND_RUN_CONTRACT_PATH.parent / "runs/events/liveValidation.fixture.json"
 )
 
 
@@ -358,6 +364,7 @@ def frontend_run_contract() -> dict[str, object]:
             "minimumPositionSize": str(PORTFOLIO_MINIMUM_POSITION_SIZE),
             "tokenIdsMustBeUnique": PORTFOLIO_TOKEN_IDS_MUST_BE_UNIQUE,
         },
+        "liveTelemetry": {"feedTtlSeconds": FEED_TTL_SECONDS},
         "liveEventKind": _enum_values(LiveEventKind),
         "orderStatus": _enum_values(OrderStatus),
         "outcomePrice": {
@@ -397,6 +404,9 @@ def _enum_values(enum_type: type) -> dict[str, str]:
 
 
 def write_frontend_run_contract() -> None:
+    FRONTEND_LIVE_VALIDATION_PATH.write_text(
+        json.dumps(live_validation_cases(), indent=2) + "\n", encoding="utf-8"
+    )
     FRONTEND_RUN_CONTRACT_PATH.write_text(
         json.dumps(frontend_run_contract(), indent=2) + "\n",
         encoding="utf-8",

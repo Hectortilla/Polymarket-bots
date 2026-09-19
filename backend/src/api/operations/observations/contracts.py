@@ -6,6 +6,7 @@ from typing import Literal
 
 
 class Observation(StrEnum):
+    LIVE_TELEMETRY = "live_telemetry"
     HTTP_ERROR = "http_error"
     ADMISSION_REJECTION = "admission_rejection"
     TELEMETRY_UNAVAILABLE = "telemetry_unavailable"
@@ -108,6 +109,15 @@ class LogOverflowObservation:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class LiveTelemetryObservation:
+    source: str
+    measurements: dict[str, float]
+    event: Literal[Observation.LIVE_TELEMETRY] = field(
+        default=Observation.LIVE_TELEMETRY, init=False
+    )
+
+
 type OperationalRecord = (
     HttpObservation
     | FailureObservation
@@ -116,4 +126,5 @@ type OperationalRecord = (
     | RedisObservation
     | AlertObservation
     | LogOverflowObservation
+    | LiveTelemetryObservation
 )

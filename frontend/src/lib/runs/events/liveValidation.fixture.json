@@ -1,0 +1,297 @@
+[
+  {
+    "name": "valid",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": true
+  },
+  {
+    "name": "markers",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": ["BUY"]
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "duplicate tokens",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        },
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "blank token",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": " ",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "blank label",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": " ",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "unsafe sample time",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 9007199254740992,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "unsafe health counter",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 1,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 9007199254740992,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "unsafe sequence",
+    "payload": {
+      "run_id": "00000000-0000-0000-0000-000000000001",
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "kind": "run.live_snapshot",
+      "generation": 1,
+      "sequence": 9007199254740992,
+      "sampled_at_ms": 1,
+      "markets": [
+        {
+          "token_id": "token",
+          "label": "Market",
+          "value": "0.5",
+          "status": "fresh",
+          "markers": []
+        }
+      ],
+      "equity": {
+        "value": "100",
+        "status": "fresh"
+      },
+      "health": {
+        "observed_at": "2026-01-01T00:00:00Z",
+        "health": {
+          "queue_depth": 0,
+          "peak_queue_depth": 0,
+          "book_dispatch_lag_ms": 0,
+          "book_stale": false,
+          "book_received_count": 0,
+          "book_coalesced_count": 0
+        }
+      }
+    },
+    "accepted": false
+  }
+]

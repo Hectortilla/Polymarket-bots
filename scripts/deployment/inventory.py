@@ -6,7 +6,7 @@ from typing import Self
 
 from api.auth.credential_input import EmailAddress
 from api.auth.mail.config import SmtpSecurity, SmtpSettings
-from api.deployment.settings import DEFAULT_WORKER_DATABASE_POOL_SIZE
+from api.deployment.settings import DEFAULT_WORKER_DATABASE_POOL_SIZE, StartupSettings
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from scripts.beta_backup.policy import DEFAULT_BACKUPS_ENABLED
@@ -38,6 +38,7 @@ class DeploymentInventory(IngressSettings):
     worker_database_pool_size: int = Field(
         default=DEFAULT_WORKER_DATABASE_POOL_SIZE, strict=True, gt=0
     )
+    live_redis_shards: str = Field(default="", repr=False)
     backups_enabled: bool = Field(default=DEFAULT_BACKUPS_ENABLED, strict=True)
     admin_user: str | None = Field(default=None, pattern=r"^[a-z_][a-z0-9_-]*$")
     ignore_lid: bool = Field(default=False, strict=True)
@@ -48,6 +49,13 @@ class DeploymentInventory(IngressSettings):
     sftp_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
     sftp_user: str | None = None
     sftp_directory: str | None = None
+
+    @field_validator("live_redis_shards")
+    @classmethod
+    def live_shards(cls, value: str) -> str:
+        return ",".join(
+            url.get_secret_value() for url in StartupSettings.parse_live_shards(value)
+        )
 
     @field_validator("admin_user")
     @classmethod

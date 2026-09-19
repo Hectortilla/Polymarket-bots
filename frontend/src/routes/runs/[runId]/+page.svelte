@@ -86,7 +86,7 @@
     let activeConnection = 0;
     let requestedConnection = 0;
     const liveBatcher = createLiveDashboardBatcher((liveEvents) => {
-      if (!disposed) dashboard = dashboard.mergeLiveEvents(liveEvents);
+      if (!disposed && !dashboard.terminal) dashboard = dashboard.mergeLiveEvents(liveEvents);
     });
     const runId = page.params.runId;
     if (!runId) {
@@ -113,6 +113,10 @@
         // Preserve chart controls/history when the activity mode changes.
         dashboard = dashboard.mergeDurableEvents(hydration.dashboardPage.events);
         dashboard = dashboard.mergeDurableEvents(hydration.events);
+        if (RUN_STATUS_PRESENTATION[hydration.run.status].terminal) {
+          dashboard = dashboard.finish();
+          liveBatcher.dispose();
+        }
         if (firstLoad) nextDashboardEventId = hydration.dashboardPage.nextBeforeEventId;
         if (!executedDefinition && !definitionLoading) {
           definitionLoading = true;
@@ -133,10 +137,13 @@
           runId,
           handleHydratedRun,
           (event) => {
-            if (!disposed && activeConnection === connection) appendDurableEvent(event);
+            if (!disposed && activeConnection === connection) {
+              appendDurableEvent(event);
+              if (dashboard.terminal) liveBatcher.dispose();
+            }
           },
           (event) => {
-            if (!disposed && activeConnection === connection) liveBatcher.push(event);
+            if (!disposed && !dashboard.terminal && activeConnection === connection) liveBatcher.push(event);
           },
           undefined,
           (state) => {
@@ -202,7 +209,7 @@
     events = [...events, event];
     trimEventWindow();
     dashboard = dashboard.mergeDurableEvents([event]);
-    if (run && event.kind === EVENT_KIND.runLifecycle) {
+    if (run && !RUN_STATUS_PRESENTATION[run.status].terminal && event.kind === EVENT_KIND.runLifecycle) {
       run = { ...run, status: event.payload.status };
     }
   }

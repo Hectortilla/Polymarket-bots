@@ -9,10 +9,8 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from api.events.contracts import LiveStreamHealthEvent
-from api.events.health.contracts import FeedObservation
+from api.events.contracts.payloads.lifecycle import FeedObservation
 from api.events.health.policy import FEED_TTL_SECONDS
-from api.events.health.store import FeedHealthStore
 from api.execution.taskiq_app import broker
 from api.execution.worker.process import start_worker, stop_worker
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
@@ -59,6 +57,7 @@ from taskiq import TaskiqEvents, TaskiqState
 
 from control_plane.limits_fixtures import limits_services as limits_services
 from control_plane.limits_fixtures import resource_services
+from control_plane.live_fixtures import health_reader, seed_health
 
 
 @pytest.mark.parametrize(
@@ -129,7 +128,7 @@ def test_feed_missing_malformed_stale_and_unknown_lag_remain_unavailable(
 ):
     async def scenario():
         async with resource_services(limits_services) as (_, redis):
-            store = FeedHealthStore(redis)
+            store = health_reader(redis)
             run_id = uuid4()
             assert await store.read(run_id) is None
             await redis.set(store.key(run_id), "not-json")
@@ -138,16 +137,15 @@ def test_feed_missing_malformed_stale_and_unknown_lag_remain_unavailable(
                 (None, system_now_utc()),
                 (0, system_now_utc() - timedelta(seconds=FEED_TTL_SECONDS + 1)),
             ]:
-                await store.record(
-                    LiveStreamHealthEvent.from_observation(
-                        run_id, StreamHealth(0, 0, lag), occurred_at=occurred_at
-                    )
+                await seed_health(
+                    redis, run_id, StreamHealth(0, 0, lag), observed_at=occurred_at
                 )
                 assert await store.read(run_id) is None
-            await store.record(
-                LiveStreamHealthEvent.from_observation(
-                    run_id, StreamHealth(0, 0, 10, True), occurred_at=system_now_utc()
-                )
+            await seed_health(
+                redis,
+                run_id,
+                StreamHealth(0, 0, 10, True),
+                observed_at=system_now_utc(),
             )
             value = await store.read(run_id)
             assert value.book_stale and value.book_dispatch_lag_ms == 10
@@ -352,15 +350,13 @@ def test_taskiq_broker_registers_process_presence_lifecycle():
 def test_feed_adapter_rejects_coerced_json_types(limits_services, field, value):
     async def scenario():
         async with resource_services(limits_services) as (_, redis):
-            store = FeedHealthStore(redis)
+            store = health_reader(redis)
             run_id = uuid4()
-            await store.record(
-                LiveStreamHealthEvent.from_observation(
-                    run_id, StreamHealth(0, 0, 0), occurred_at=system_now_utc()
-                )
+            await seed_health(
+                redis, run_id, StreamHealth(0, 0, 0), observed_at=system_now_utc()
             )
             payload = json.loads(await redis.get(store.key(run_id)))
-            payload["health"][field] = value
+            payload["observation"]["health"][field] = value
             await redis.set(store.key(run_id), json.dumps(payload))
             assert await store.read(run_id) is None
 
@@ -375,9 +371,9 @@ def test_feed_freshness_boundary(offset, available):
     now = system_now_utc()
     observation = FeedObservation(
         observed_at=now - timedelta(seconds=offset),
-        health=LiveStreamHealthEvent.from_observation(
-            uuid4(), StreamHealth(0, 0, 0), occurred_at=now
-        ).payload,
+        health=FeedObservation.from_observation(
+            StreamHealth(0, 0, 0), observed_at=now
+        ).health,
     )
     assert (observation.available_health(now) is not None) is available
 
@@ -417,12 +413,11 @@ def test_monitor_wires_queue_storage_and_lag_thresholds(limits_services, at_thre
             lag = ALERT_DEFINITIONS[AlertCode.FEED_DEGRADED].threshold
             depth = ALERT_DEFINITIONS[AlertCode.QUEUE_CAPACITY].threshold
             free = ALERT_DEFINITIONS[AlertCode.STORAGE_LOW].threshold
-            await FeedHealthStore(redis).record(
-                LiveStreamHealthEvent.from_observation(
-                    run_id,
-                    StreamHealth(0, 0, int(lag if at_threshold else lag - 1)),
-                    occurred_at=system_now_utc(),
-                )
+            await seed_health(
+                redis,
+                run_id,
+                StreamHealth(0, 0, int(lag if at_threshold else lag - 1)),
+                observed_at=system_now_utc(),
             )
             snapshot = DatabaseMeasurements(
                 int(depth if at_threshold else depth - 1), 0, 0, 1, (run_id,), False

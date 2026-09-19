@@ -28,6 +28,7 @@ from api.deployment.settings import (
     API_PORT,
     DEFAULT_WORKER_DATABASE_POOL_SIZE,
     ENVIRONMENT_ENV,
+    LIVE_REDIS_SHARDS_ENV,
     PROXY_ADDRESS_ENV,
     STORAGE_PROBE_PATH_ENV,
     WORKER_DATABASE_POOL_SIZE_ENV,
@@ -202,6 +203,7 @@ def test_runtime_template_uses_the_manifest_key_contract():
     rendered = parse_values(render_template("runtime.env.j2"))
     expected = {
         WORKER_DATABASE_POOL_SIZE_ENV,
+        LIVE_REDIS_SHARDS_ENV,
         AUTH_ORIGIN_ENV,
         HTTP_PORT_ENV,
         SECRETS_DIRECTORY_ENV,
@@ -463,6 +465,7 @@ def test_compose_safety_storage_and_full_environment_contract():
         AUTH_ALLOW_HTTP_ENV,
         DATABASE_URL_ENV + "_FILE",
         REDIS_URL_ENV + "_FILE",
+        LIVE_REDIS_SHARDS_ENV,
         PROXY_ADDRESS_ENV,
         BOT_MODE_ENV,
         BOT_LIVE_ENABLED_ENV,
@@ -590,3 +593,24 @@ def test_static_examples_and_release_transport_names_match_owners():
     assert (
         f"python:{PYTHON_VERSION}-slim" in Path("deploy/backend.Dockerfile").read_text()
     )
+
+
+def test_live_shards_survive_inventory_normalization_and_runtime_template():
+    urls = "redis://one:6379/1,rediss://two:6380/2"
+    inventory = DeploymentInventory.model_validate(
+        inventory_values() | {"polybot_live_redis_shards": urls}
+    )
+    normalized = inventory.model_dump(mode="json", by_alias=True)
+    rendered = parse_values(render_template("runtime.env.j2", normalized))
+    assert rendered[LIVE_REDIS_SHARDS_ENV] == urls
+    for invalid in (
+        "http://one",
+        "redis://one,,redis://two",
+        "redis://one:-2",
+        "redis://one/word",
+        "redis://",
+    ):
+        with pytest.raises(ValueError):
+            DeploymentInventory.model_validate(
+                inventory_values() | {"polybot_live_redis_shards": invalid}
+            )

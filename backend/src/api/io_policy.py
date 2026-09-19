@@ -9,3 +9,5 @@ REDIS_SOCKET_OPTIONS = {
     "socket_connect_timeout": DEPENDENCY_TIMEOUT_SECONDS,
     "socket_timeout": DEPENDENCY_TIMEOUT_SECONDS,
 }
+
+REDIS_CONTROL_POOL_SIZE = 32

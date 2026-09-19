@@ -115,10 +115,10 @@ supporting private modules are not prescribed:
 - `api.runs.status`: `RunStatus` and its lifecycle policy;
   `api.runs.contracts`: `PaperRunConfig` and `RunRead`.
 - `api.events.kinds`: dependency-light durable and live event
-  discriminators; `api.events.contracts`: `DurableEvent` plus
-  their discriminated payloads. Slice 12E adds `LiveChartEvent`,
-  `LiveStreamHealthEvent`, their `LiveRunEvent` union, and the `chart.sample`
-  durable variant when it first implements live observability cadence.
+  discriminators; `api.events.contracts`: durable payloads and the one
+  replaceable `LiveRunSnapshot` wire shape. `api.events.live` owns bounded
+  permits, fixed Redis-shard routing, deadline-gated operations, and publisher
+  workers; it never becomes an execution or durable-write authority.
 - `api.execution.launcher`: the `RunLauncher` protocol.
 - `api.bots`: complete saved-bot configurations and atomic persistence operations.
 
@@ -342,8 +342,10 @@ shutdown, the latest state is appended once as the run's final `stream.health`
 summary before the terminal lifecycle event. A run that observes no stream
 health, or loses its process before graceful observer shutdown, has no such
 summary. Through Slice 12D, a running browser therefore receives no live health
-updates. Slice 12E publishes the latest state once per second as an ephemeral
-`LiveStreamHealthEvent`; it never persists those live frames. The terminal
+updates. The durable health event also keeps that observation time as `occurred_at`;
+shutdown and replay cannot rejuvenate an old observation.
+The scalable telemetry follow-up carries the original observed-at timestamp and
+latest health in the single ephemeral `LiveRunSnapshot`; it never persists those live frames. The terminal
 durable summary remains the reload contract.
 
 The web observer maps runtime events to the durable list above and enqueues
@@ -430,15 +432,19 @@ This section is the sole owner of chart cadence and durability:
 ```text
 accepted runtime events
   -> presentation-neutral projections
-  -> every 250 ms: LiveChartEvent -> Redis Pub/Sub -> SSE (ephemeral)
-  -> every 1 s: LiveStreamHealthEvent -> Redis Pub/Sub -> SSE (ephemeral)
+  -> every 2 s: bounded PostgreSQL ownership sample -> <=5 s advisory permit
+  -> watched every 250 ms: LiveRunSnapshot -> live Redis shard -> API SSE hub
+  -> actual observations: deadline-gated latest feed health in the live shard
   -> every 1 s: chart.sample DurableEvent -> PostgreSQL -> Redis wake-up
 ```
 
-`LiveRunEvent` is the discriminated union of `LiveChartEvent` and
-`LiveStreamHealthEvent`. The event persistence section owns which inputs are
-durable. The browser merges its detailed in-memory live window with loaded
-durable samples but preserves their different resolution. On initial hydration
+`LiveRunSnapshot` is replaceable display state: it has generation/sequence
+ordering, current market/equity values and optional latest health, but no wallet
+preview or chart markers. The event persistence section owns markers and wallet
+identity. PostgreSQL is not accessed at display cadence: a worker can publish
+only while its sampled permit is valid, so a forced stop may retain advisory
+publication authority for at most five seconds. Fills, heartbeats, transitions,
+and durable writes remain immediately PostgreSQL-fenced. On initial hydration
 it uses the newest bounded dashboard event page, independently of activity history. Explicit older-page requests
 may expand chart history, but the chart retains at most the shared
 `MAX_CHART_HISTORY_POINTS` (currently 720) newest durable samples and never
@@ -509,13 +515,47 @@ It is a wake-up hint, not an SSE payload or source of truth; after a valid
 frame, the subscriber reads PostgreSQL after its current cursor. Malformed
 frames are logged and dropped at this Redis ingress boundary.
 
-Slice 12E extends that same channel with JSON `LiveRunEvent` frames. The
-subscriber distinguishes the existing strict decimal wake-up from a JSON frame,
-validates JSON as `LiveRunEvent` once at ingress, and logs and drops malformed
-input. Live events are sent without an SSE ID. Slice 12E also adds
-`LiveChartEvent` and `LiveStreamHealthEvent` as explicit SSE-route schemas
-alongside `PersistedDurableEvent` so OpenAPI generates every frontend payload
-type.
+Durable wakes and live snapshots use distinct Redis channel namespaces. A
+lifespan-owned hub keeps one durable Pub/Sub connection and one live connection
+per configured shard, subscriptions are the union of authorized local viewers,
+and each viewer has one replaceable pending live frame. Durable replay has its
+own 15-second reconciliation deadline even under continuous live traffic;
+terminal durable state clears live state and remains final.
+Subscription commands and reads have one task owner per connection. Subscription
+membership scans run only after a subscription change, and attachment waits for
+Redis's acknowledgement rather than just a successful socket write. Transport
+failures invalidate clock samples/pending live frames and reconnect with bounded
+backoff; registrations survive and sequence numbers do not reset. Fresh Redis
+clock samples are required at receipt and after per-viewer authorization before
+send. Late clock/SQL responses cannot restore an invalidated clock epoch. A live
+frame dequeued before another viewer observes terminal state is checked again
+after authorization. The encoded SSE bytes are shared among viewers.
+
+All terminal writers stage bounded wake hints on the SQL session. Only outer
+commit admits them to the process-owned `TerminalWakePublisher`; rollback,
+including savepoint rollback and implicit rollback on session close, discards the
+applicable hints. API, worker, recovery
+and operator lifecycles own the sink. Wake failure is observable but cannot undo
+a committed transition; the independent reconciliation deadline remains the fallback.
+
+Web projections retain current values and at most 256 pending markers per token,
+not terminal-style 720-point histories or wallet timelines. A failed durable
+queue admission retains one sample with its original timestamp; successful
+admission consumes exactly its markers, and shutdown drains that sample before
+the final sample. Concurrent cleanup calls share one cancellation-shielded drain,
+bounded by the existing runtime cleanup budget. A drain timeout cancels its writer
+and reports observer failure; uncommitted telemetry cannot be recovered by replay.
+Overflow emits an observer failure signal. Browser history
+tracks durable provenance so a late marker-free snapshot cannot erase annotations;
+terminal callbacks discard scheduled animation work.
+
+Live Redis pools are capped at 12 connections per process per shard; each worker
+uses eight fixed publisher tasks per shard for snapshots and health together.
+The control pool and Taskiq broker pool each cap at 32 connections. Process
+metrics emit bounded-cardinality `live_telemetry` operational records every five
+seconds, including refresh/query counts, failures, publication bytes/durations,
+queue/in-flight counts, subscription connections, snapshot age and event-loop lag.
+
 
 ## HTTP API
 
@@ -628,7 +668,7 @@ dependency error.
   `@hey-api/openapi-ts`. Generated files are never edited.
 - Use the generated client for ordinary HTTP. Slice 12D's sole handwritten
   transport is a small EventSource adapter using generated persisted-event
-  types; Slice 12E extends it with the generated `LiveRunEvent` variants.
+  types and the single generated `LiveRunEvent` snapshot shape.
 - Validate successful generated-client responses by operation before exposing
   them to route state, including JSON content type, non-empty bodies, finite
   state values, nested stream rules, and discriminated graph nodes. The
@@ -978,7 +1018,7 @@ resolver owns lookup and connection/port compatibility. Home, bot
 builder, run detail, chart dashboard, and failure-detail styles live near their
 owners; tokens, shell, reset, controls, and shared primitives remain global.
 
-Persisted and live wallet chart payloads validate wallet address shape and
+Persisted wallet chart payloads validate wallet address shape and
 canonicalize case/whitespace at their model boundary. Durable wallet timeline
 payloads apply the same normalization to the trade and its chart point, then
 check that the point matches its source trade and outcome.
@@ -1033,8 +1073,8 @@ leave queued reservations intact. PostgreSQL outages prevent claims and progress
 recovery retries when PostgreSQL returns. No active run is requeued or resumed.
 
 Every claim creates an internal execution token. Worker transitions, heartbeat
-renewal and durable/live publication check that token and a fresh database lease.
-Publication locks the run row so it serializes with terminal transitions; expired
+renewal and durable publication check that token and a fresh database lease.
+Durable publication locks the run row so it serializes with terminal transitions; expired
 leases cannot be renewed before reconciliation. All terminal writers share
 `TerminalRunWriter`: the conditional state change, lifecycle event and capacity
 release commit together or roll back together. SSE periodically replays PostgreSQL
@@ -1139,8 +1179,9 @@ Slice 20 operational logs use typed payload-free records and a bounded backgroun
 log writer; sink saturation is reported by the next accepted overflow record.
 Counter/presence Redis adapters validate stored values; feed envelopes preserve
 the original observation time and classify missing lag, invalid JSON and expired
-health as unavailable. A separate `api.events.health.writer.RunHealthWriter` shares the
-event writer execution lease without adding side effects to generic publication.
+health as unavailable. The shard-routed `FeedHealthStore` uses the same sampled
+live permit as snapshots, original observation time, generation and sequence CAS.
+No health write opens a SQL session. Monitoring reads through the identical shard map.
 The monitor uses its own cadence, verifies the required incident singleton, and
 is supervised by recovery. The CLI returns typed status/inspection/mutation shapes;
 unhealthy status checks exit nonzero. HTTP admission exposes `incident_paused`

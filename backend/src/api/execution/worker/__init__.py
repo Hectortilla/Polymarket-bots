@@ -25,6 +25,7 @@ async def execute_run(run_id: UUID, *, resources: WorkerResources) -> None:
                     RunStore(session),
                     resources.sessions,
                     resources.event_writer,
+                    live_telemetry=resources.live_telemetry,
                     heartbeat_seconds=resources.settings.heartbeat_seconds,
                     lease_seconds=resources.settings.lease_seconds,
                 ).execute(eligible_run_id)

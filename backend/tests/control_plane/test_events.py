@@ -13,7 +13,7 @@ from api.events.contracts import (
     BrokerOrderPayload,
     DurableEvent,
     DurableEventBase,
-    LiveStreamHealthEvent,
+    LiveRunSnapshot,
     PersistedRunLifecycleEvent,
     PortfolioSnapshotPayload,
     RunLifecycleEvent,
@@ -25,15 +25,14 @@ from api.events.contracts.payloads.chart import (
     EquityChartPointPayload,
     MarketChartPointPayload,
 )
+from api.events.contracts.payloads.lifecycle import FeedObservation
 from api.events.ids import FIRST_DURABLE_EVENT_ID, MAX_DURABLE_EVENT_ID
 from api.events.kinds import (
     EVENT_DISCRIMINATOR_FIELD,
     EventKind,
-    LiveEventKind,
 )
-from api.events.observer import WebRuntimeObserver
+from api.events.observer import DURABLE_DASHBOARD_TICKS, WebRuntimeObserver
 from api.events.projection import RUNTIME_RUN_STATUS, project_runtime_event_to_durable
-from api.events.projection.live import project_live_chart_events
 from api.events.store import EventStore
 from api.events.writer import RunEventWriter
 from api.runs.status import RunStatus
@@ -63,10 +62,10 @@ from polybot.cli.streams.contracts import (
 from polybot.cli.streams.kinds import StreamKind
 from polybot.dashboard.contracts import (
     CHART_SAMPLE_INTERVAL_SECONDS,
+    MAX_PENDING_MARKERS_PER_TOKEN,
     DashboardSample,
     EquityChartPoint,
     MarketChartPoint,
-    WalletChartPoint,
 )
 from polybot.dashboard.projection import DashboardProjection
 from polybot.execution.paper.portfolio import PAPER_SETTLEMENT_OWNER
@@ -97,12 +96,14 @@ from polybot.performance.contracts.valuation_status import ValuationStatus
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from control_plane.live_fixtures import RecordingLive
+
 
 def test_runtime_projection_keeps_typed_lifecycle_payloads() -> None:
     run_id = uuid4()
     (started,) = project_runtime_event_to_durable(
         run_id,
-        RuntimeStarted("run", BotMode.PAPER, Decimal("100"), 12.0),
+        RuntimeStarted("run", BotMode.PAPER, Decimal(100), 12.0),
     )
     (running,) = project_runtime_event_to_durable(
         run_id,
@@ -110,7 +111,7 @@ def test_runtime_projection_keeps_typed_lifecycle_payloads() -> None:
     )
 
     assert started.kind is EventKind.RUN_LIFECYCLE
-    assert started.payload.initial_cash_usdc == Decimal("100")
+    assert started.payload.initial_cash_usdc == Decimal(100)
     assert running.run_id == run_id
     assert running.payload.status is RunStatus.RUNNING
     assert running.occurred_at.tzinfo is UTC
@@ -204,69 +205,22 @@ def test_live_dashboard_projection_preserves_sample_and_wallet_fields() -> None:
             status=ValuationStatus.UNAVAILABLE,
         ),
     )
-    wallet_point = WalletChartPoint(
-        source_key="wallet\0source",
-        wallet="0x" + "a" * 40,
-        trade_timestamp_ms=41,
-        side=Side.SELL,
-        notional=Decimal("1.25"),
-        market_label="Market · Down",
-        accepted=False,
-    )
-
-    market, equity, wallet = project_live_chart_events(
+    snapshot = LiveRunSnapshot.from_sample(
         run_id,
         sample,
-        (wallet_point,),
         occurred_at=occurred_at,
-    )
-
-    assert market.payload.model_dump() == {
-        "sampled_at_ms": 42,
-        "points": (
-            {
-                "token_id": "token",
-                "label": "Market · Up",
-                "value": Decimal("0.55"),
-                "status": ValuationStatus.STALE,
-                "markers": (Side.BUY,),
-            },
+        generation=1,
+        sequence=1,
+        health=FeedObservation.from_observation(
+            StreamHealth(1, 2, 3, True, 1.0, 4, 1), observed_at=occurred_at
         ),
-    }
-    assert equity.payload.model_dump() == {
-        "sampled_at_ms": 42,
-        "point": {
-            "value": None,
-            "status": ValuationStatus.UNAVAILABLE,
-        },
-    }
-    assert wallet.payload.model_dump() == {
-        "sampled_at_ms": 42,
-        "points": (
-            {
-                "source_key": "wallet\0source",
-                "wallet": "0x" + "a" * 40,
-                "trade_timestamp_ms": 41,
-                "side": Side.SELL,
-                "notional": Decimal("1.25"),
-                "market_label": "Market · Down",
-                "accepted": False,
-            },
-        ),
-    }
-    health = LiveStreamHealthEvent.from_observation(
-        run_id,
-        StreamHealth(1, 2, 3, True, 1.0, 4, 1),
-        occurred_at=occurred_at,
     )
-    assert health.payload.model_dump() == {
-        "queue_depth": 1,
-        "peak_queue_depth": 2,
-        "book_dispatch_lag_ms": 3,
-        "book_stale": True,
-        "book_received_count": 4,
-        "book_coalesced_count": 1,
-    }
+    assert snapshot.sampled_at_ms == 42
+    assert snapshot.markets[0].value == Decimal("0.55")
+    assert snapshot.markets[0].markers == ()
+    assert snapshot.equity.value is None
+    assert snapshot.health.health.queue_depth == 1
+    assert snapshot.health.observed_at == occurred_at
 
 
 def test_durable_event_adapter_rejects_invalid_finite_state() -> None:
@@ -288,15 +242,15 @@ def test_fill_and_settlement_project_portfolio_snapshots() -> None:
     portfolio = PortfolioSnapshot(
         cash_usdc=Decimal("99.5"),
         cumulative_fees_usdc=Decimal("0.01"),
-        positions=(PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.5")),),
+        positions=(PortfolioPositionSnapshot("token", Decimal(1), Decimal("0.5")),),
     )
     fill = FillEvent(
         order_id="order",
         token_id="token",
         side=Side.BUY,
         status=OrderStatus.FILLED,
-        requested_size=Decimal("1"),
-        filled_size=Decimal("1"),
+        requested_size=Decimal(1),
+        filled_size=Decimal(1),
         average_price=Decimal("0.5"),
         fee_usdc=Decimal("0.01"),
         received_at_ms=1,
@@ -316,9 +270,9 @@ def test_fill_and_settlement_project_portfolio_snapshots() -> None:
             SettledPosition(
                 owner=PAPER_SETTLEMENT_OWNER,
                 token_id="token",
-                size=Decimal("1"),
-                payout_per_token=Decimal("1"),
-                cash_payout_usdc=Decimal("1"),
+                size=Decimal(1),
+                payout_per_token=Decimal(1),
+                cash_payout_usdc=Decimal(1),
             ),
         ),
         followed_wallet_positions=(),
@@ -390,7 +344,7 @@ def test_durable_event_adapter_rejects_invalid_wallet_trade() -> None:
     )
     trade_field = next(iter(WalletTimelinePayload.model_fields))
     invalid[payload_field][trade_field] = asdict(
-        replace(_wallet_trade(), size=Decimal("-1"))
+        replace(_wallet_trade(), size=Decimal(-1))
     )
 
     with pytest.raises(ValidationError, match="wallet timeline trade is invalid"):
@@ -407,9 +361,9 @@ def test_durable_payloads_reject_invalid_orders_and_portfolio_positions() -> Non
         BrokerOrderPayload(order=replace(_order(), token_id=""))
     with pytest.raises(ValidationError, match="token IDs"):
         PortfolioSnapshotPayload(
-            cash_usdc=Decimal("1"),
-            cumulative_fees_usdc=Decimal("0"),
-            positions=(PortfolioPositionSnapshot("", Decimal("1"), Decimal("0.5")),),
+            cash_usdc=Decimal(1),
+            cumulative_fees_usdc=Decimal(0),
+            positions=(PortfolioPositionSnapshot("", Decimal(1), Decimal("0.5")),),
         )
 
 
@@ -429,9 +383,9 @@ def test_chart_payloads_reject_inconsistent_values() -> None:
         )
     with pytest.raises(ValidationError, match="valid average outcome price"):
         PortfolioSnapshotPayload(
-            cash_usdc=Decimal("1"),
-            cumulative_fees_usdc=Decimal("0"),
-            positions=(PortfolioPositionSnapshot("token", Decimal("1"), Decimal("2")),),
+            cash_usdc=Decimal(1),
+            cumulative_fees_usdc=Decimal(0),
+            positions=(PortfolioPositionSnapshot("token", Decimal(1), Decimal(2)),),
         )
 
 
@@ -447,7 +401,9 @@ def test_terminal_lifecycle_factory_rejects_nonterminal_status() -> None:
 def test_observer_drains_accepted_events_and_isolates_writer_failures() -> None:
     async def scenario() -> tuple[list[EventKind], list[EventKind]]:
         collecting = _CollectingWriter()
-        observer = WebRuntimeObserver(uuid4(), collecting)
+        observer = WebRuntimeObserver(
+            uuid4(), collecting, live_telemetry=collecting.live
+        )
         observer.emit(RuntimeFailed("before-start", 1.0))
         await observer.start(BotConfig(name="test"))
         observer.emit(RuntimeFailed("first", 2.0))
@@ -455,7 +411,9 @@ def test_observer_drains_accepted_events_and_isolates_writer_failures() -> None:
         await observer.stop()
 
         failing = _CollectingWriter(fail=True)
-        failing_observer = WebRuntimeObserver(uuid4(), failing)
+        failing_observer = WebRuntimeObserver(
+            uuid4(), failing, live_telemetry=failing.live
+        )
         await failing_observer.start(BotConfig(name="test"))
         failing_observer.emit(RuntimeFailed("ignored failure", 4.0))
         failing_observer.emit(StreamHealth(1, 2, 3, False, 5.0, 4, 1))
@@ -482,7 +440,7 @@ def test_observer_drains_accepted_events_and_isolates_writer_failures() -> None:
 def test_observer_persists_only_latest_stream_health_during_shutdown() -> None:
     async def scenario() -> list[DurableEvent]:
         writer = _CollectingWriter()
-        observer = WebRuntimeObserver(uuid4(), writer)
+        observer = WebRuntimeObserver(uuid4(), writer, live_telemetry=writer.live)
         await observer.start(BotConfig(name="test"))
         for count in range(5_000):
             observer.emit(
@@ -515,7 +473,9 @@ def test_observer_persists_only_latest_stream_health_during_shutdown() -> None:
 def test_observer_drops_overflow_but_preserves_final_stream_health() -> None:
     async def scenario() -> list[EventKind]:
         writer = _CollectingWriter()
-        observer = WebRuntimeObserver(uuid4(), writer, max_pending_events=1)
+        observer = WebRuntimeObserver(
+            uuid4(), writer, live_telemetry=writer.live, max_pending_events=1
+        )
         await observer.start(BotConfig(name="test"))
         observer.emit(RuntimeFailed("accepted", 1.0))
         observer.emit(RuntimeFailed("overflow", 2.0))
@@ -546,16 +506,16 @@ def test_terminal_and_web_share_dashboard_semantics() -> None:
         token_id=book.token_id,
         side=Side.BUY,
         status=OrderStatus.FILLED,
-        requested_size=Decimal("1"),
-        filled_size=Decimal("1"),
+        requested_size=Decimal(1),
+        filled_size=Decimal(1),
         average_price=Decimal("0.5"),
-        fee_usdc=Decimal("0"),
+        fee_usdc=Decimal(0),
         received_at_ms=1_000,
     )
     portfolio = PortfolioSnapshot(
         Decimal("99.5"),
-        Decimal("0"),
-        (PortfolioPositionSnapshot(book.token_id, Decimal("1"), Decimal("0.5")),),
+        Decimal(0),
+        (PortfolioPositionSnapshot(book.token_id, Decimal(1), Decimal("0.5")),),
     )
     events = (
         StreamReceived(book_item, 1.0),
@@ -602,16 +562,14 @@ def test_terminal_and_web_share_dashboard_semantics() -> None:
     assert tuple(terminal.chart_tokens) == ()
 
 
-@pytest.mark.parametrize("fail_first", [False, True])
-def test_observer_does_not_refresh_old_feed_observations(fail_first) -> None:
+def test_observer_keeps_original_health_timestamp_across_cadence_ticks() -> None:
     async def scenario():
         clock = _ControlledClock()
         writer = _CollectingWriter()
-        if fail_first:
-            writer.health.record.side_effect = [RuntimeError("unavailable"), None, None]
         observer = WebRuntimeObserver(
             uuid4(),
             writer,
+            live_telemetry=writer.live,
             sleep=clock.sleep,
             now_ms=clock.now_ms,
             now_utc=clock.now_utc,
@@ -621,15 +579,21 @@ def test_observer_does_not_refresh_old_feed_observations(fail_first) -> None:
         for _ in range(8):
             clock.advance()
             await asyncio.sleep(0)
-        assert writer.health.record.await_count == (2 if fail_first else 1)
-        first_observed_at = writer.health.record.await_args.args[0].occurred_at
+        assert len(writer.live.observations) == 2
+        assert (
+            writer.live.observations[0].observed_at
+            == writer.live.observations[1].observed_at
+        )
         observer.emit(StreamHealth(0, 0, None))
         for _ in range(4):
             clock.advance()
             await asyncio.sleep(0)
-        assert writer.health.record.await_count == (3 if fail_first else 2)
-        assert writer.health.record.await_args.args[0].occurred_at > first_observed_at
+        assert (
+            writer.live.observations[-1].observed_at
+            > writer.live.observations[0].observed_at
+        )
         await observer.stop()
+        assert writer.live.closed
 
     asyncio.run(scenario())
 
@@ -645,6 +609,7 @@ def test_observer_cadence_and_persistence_classification() -> None:
         observer = WebRuntimeObserver(
             uuid4(),
             writer,
+            live_telemetry=writer.live,
             sleep=clock.sleep,
             now_ms=clock.now_ms,
             now_utc=clock.now_utc,
@@ -661,27 +626,11 @@ def test_observer_cadence_and_persistence_classification() -> None:
     clock, writer, initial_cash_usdc = asyncio.run(scenario())
 
     assert clock.delays == [CHART_SAMPLE_INTERVAL_SECONDS] * 5
-    assert [event.kind for event in writer.live_events].count(
-        LiveEventKind.CHART_MARKET
-    ) == 4
-    assert [event.kind for event in writer.live_events].count(
-        LiveEventKind.CHART_EQUITY
-    ) == 4
-    assert [event.kind for event in writer.live_events].count(
-        LiveEventKind.CHART_WALLET
-    ) == 4
-    assert [event.kind for event in writer.live_events].count(
-        LiveEventKind.STREAM_HEALTH
-    ) == 1
-    live_equity_events = [
-        event
-        for event in writer.live_events
-        if event.kind is LiveEventKind.CHART_EQUITY
-    ]
+    assert len(writer.live.snapshots) == 4
     assert all(
-        event.payload.point.value == initial_cash_usdc
-        and event.payload.point.status is ValuationStatus.FRESH
-        for event in live_equity_events
+        event.equity.value == initial_cash_usdc
+        and event.equity.status is ValuationStatus.FRESH
+        for event in writer.live.snapshots
     )
     assert [event.kind for event in writer.events] == [
         EventKind.CHART_SAMPLE,
@@ -692,13 +641,15 @@ def test_observer_cadence_and_persistence_classification() -> None:
     assert writer.events[0].payload.equity.status is ValuationStatus.FRESH
 
 
-def test_observer_keeps_sampling_when_live_publication_fails() -> None:
+def test_observer_keeps_durable_sampling_when_unwatched() -> None:
     async def scenario() -> list[EventKind]:
         clock = _ControlledClock()
-        writer = _CollectingWriter(fail_live=True)
+        writer = _CollectingWriter()
+        writer.live.interested = False
         observer = WebRuntimeObserver(
             uuid4(),
             writer,
+            live_telemetry=writer.live,
             sleep=clock.sleep,
             now_ms=clock.now_ms,
             now_utc=clock.now_utc,
@@ -732,6 +683,7 @@ def test_observer_publishes_wallet_points_and_persists_each_fill_marker_once() -
         observer = WebRuntimeObserver(
             uuid4(),
             writer,
+            live_telemetry=writer.live,
             sleep=clock.sleep,
             now_ms=clock.now_ms,
             now_utc=clock.now_utc,
@@ -752,18 +704,18 @@ def test_observer_publishes_wallet_points_and_persists_each_fill_marker_once() -
         )
         portfolio = PortfolioSnapshot(
             Decimal("99.5"),
-            Decimal("0"),
-            (PortfolioPositionSnapshot("token", Decimal("1"), Decimal("0.5")),),
+            Decimal(0),
+            (PortfolioPositionSnapshot("token", Decimal(1), Decimal("0.5")),),
         )
         fill = FillEvent(
             order_id="order",
             token_id="token",
             side=Side.BUY,
             status=OrderStatus.FILLED,
-            requested_size=Decimal("1"),
-            filled_size=Decimal("1"),
+            requested_size=Decimal(1),
+            filled_size=Decimal(1),
             average_price=Decimal("0.5"),
-            fee_usdc=Decimal("0"),
+            fee_usdc=Decimal(0),
             received_at_ms=1,
         )
         rejected_fill = FillEvent(
@@ -771,10 +723,10 @@ def test_observer_publishes_wallet_points_and_persists_each_fill_marker_once() -
             token_id="rejected-token",
             side=Side.BUY,
             status=OrderStatus.REJECTED,
-            requested_size=Decimal("1"),
-            filled_size=Decimal("0"),
+            requested_size=Decimal(1),
+            filled_size=Decimal(0),
             average_price=None,
-            fee_usdc=Decimal("0"),
+            fee_usdc=Decimal(0),
             received_at_ms=1,
             reject_reason=FillRejectReason.BOOK_CROSSED,
             reject_message="crossed book",
@@ -815,21 +767,18 @@ def test_observer_publishes_wallet_points_and_persists_each_fill_marker_once() -
 
     writer = asyncio.run(scenario())
     wallet_events = [
-        event
-        for event in writer.live_events
-        if event.kind is LiveEventKind.CHART_WALLET and event.payload.points
+        event for event in writer.events if event.kind is EventKind.WALLET_TIMELINE
     ]
     chart_samples = [
         event for event in writer.events if event.kind is EventKind.CHART_SAMPLE
     ]
-
-    assert len(wallet_events) == 1
     assert {
-        point.source_key: point.accepted for point in wallet_events[0].payload.points
-    } == {
-        _wallet_trade().source_key: True,
-        skipped_trade.source_key: False,
-    }
+        event.payload.point.source_key: event.payload.point.accepted
+        for event in wallet_events
+    } == {_wallet_trade().source_key: True, skipped_trade.source_key: False}
+    assert all(
+        not point.markers for event in writer.live.snapshots for point in event.markets
+    )
     markers_by_token = [
         {point.token_id: point.markers for point in sample.payload.markets}
         for sample in chart_samples
@@ -933,26 +882,16 @@ def test_event_store_rejects_an_id_outside_the_public_cursor_range() -> None:
 
 
 class _CollectingWriter:
-    def __init__(self, *, fail: bool = False, fail_live: bool = False) -> None:
-        self.events: list[DurableEvent] = []
-        self.live_events = []
+    def __init__(self, *, fail=False):
+        self.events = []
+        self.live = RecordingLive()
         self._fail = fail
-        self._fail_live = fail_live
-        self.health = AsyncMock()
-
-    def health_writer(self):
-        return self.health
 
     async def append(self, event):
         self.events.append(event)
         if self._fail:
             raise RuntimeError("writer unavailable")
         return event
-
-    async def publish_live(self, event):
-        self.live_events.append(event)
-        if self._fail_live:
-            raise RuntimeError("live publisher unavailable")
 
 
 class _ControlledClock:
@@ -992,7 +931,7 @@ def _order() -> OrderRequest:
         token_id="token",
         side=Side.BUY,
         price=Decimal("0.5"),
-        size=Decimal("1"),
+        size=Decimal(1),
     )
 
 
@@ -1002,7 +941,7 @@ def _wallet_trade() -> WalletTradeEvent:
         condition_id="condition",
         token_id="token",
         side=Side.BUY,
-        size=Decimal("1"),
+        size=Decimal(1),
         price=Decimal("0.5"),
         source_id="source",
         trade_timestamp_ms=1,
@@ -1013,8 +952,8 @@ def _wallet_trade() -> WalletTradeEvent:
 def _book() -> BookSnapshot:
     return BookSnapshot(
         token_id="token",
-        bids=(BookLevel(Decimal("0.4"), Decimal("10")),),
-        asks=(BookLevel(Decimal("0.6"), Decimal("10")),),
+        bids=(BookLevel(Decimal("0.4"), Decimal(10)),),
+        asks=(BookLevel(Decimal("0.6"), Decimal(10)),),
         received_at_ms=1_000,
         market_slug="market",
         condition_id="condition",
@@ -1083,3 +1022,155 @@ def test_runtime_status_projection_is_exhaustive_and_keeps_terminal_ownership() 
         else:
             assert len(projected) == 1
             assert projected[0].payload.status is RUNTIME_RUN_STATUS[state]
+
+
+def test_saturated_observer_retains_marker_timestamp_and_drains_final_sample():
+    async def scenario():
+        clock = _ControlledClock()
+        release = asyncio.Event()
+
+        class BlockedWriter(_CollectingWriter):
+            async def append(self, event):
+                await release.wait()
+                return await super().append(event)
+
+        writer = BlockedWriter()
+        observer = WebRuntimeObserver(
+            uuid4(),
+            writer,
+            live_telemetry=writer.live,
+            max_pending_events=1,
+            sleep=clock.sleep,
+            now_ms=clock.now_ms,
+            now_utc=clock.now_utc,
+        )
+        await observer.start(BotConfig(name="saturated"))
+        observer.emit(RuntimeFailed("hold writer", 1))
+        await asyncio.sleep(0)
+        observer.emit(RuntimeFailed("fill queue", 2))
+        projection = observer._projection
+        projection.charts.record_trade("token", Side.BUY)
+        for _ in range(DURABLE_DASHBOARD_TICKS):
+            clock.advance()
+            await asyncio.sleep(0)
+        pending_time = observer._pending_sample[0].sampled_at_ms
+        projection.charts.record_trade("token", Side.SELL)
+        for _ in range(DURABLE_DASHBOARD_TICKS):
+            clock.advance()
+            await asyncio.sleep(0)
+        assert observer._pending_sample[0].sampled_at_ms == pending_time
+        assert not projection.charts.chart_sample_epoch_seconds
+        release.set()
+        await observer.stop()
+        samples = [
+            event for event in writer.events if event.kind is EventKind.CHART_SAMPLE
+        ]
+        assert samples[0].payload.sampled_at_ms == pending_time
+        assert [event.payload.markets[0].markers for event in samples] == [
+            (Side.BUY,),
+            (Side.SELL,),
+        ]
+        assert writer.live.closed
+
+    asyncio.run(scenario())
+
+
+def test_marker_acknowledgement_does_not_consume_reactivated_token_markers():
+    projection = DashboardProjection.from_config(
+        BotConfig(name="markers"), retain_history=False
+    )
+    projection.charts.record_trade("token", Side.BUY)
+    sample = projection.sample_durable(1)
+    projection.charts.remove_tokens(("token",))
+    projection.charts.record_trade("token", Side.SELL)
+    projection.acknowledge_sample(sample)
+    assert projection.sample_durable(2).markets[0].markers == (Side.SELL,)
+
+
+def test_pending_markers_are_bounded_and_overflow_is_explicit():
+    projection = DashboardProjection.from_config(
+        BotConfig(name="bounded"), retain_history=False
+    )
+    for _ in range(MAX_PENDING_MARKERS_PER_TOKEN):
+        assert projection.charts.record_trade("token", Side.BUY)
+    assert not projection.charts.record_trade("token", Side.BUY)
+    assert (
+        len(projection.charts.pending_trade_markers["token"])
+        == MAX_PENDING_MARKERS_PER_TOKEN
+    )
+
+
+def test_cancelled_stop_can_be_awaited_again_without_losing_the_final_sample():
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        class BlockedWriter(_CollectingWriter):
+            async def append(self, event):
+                entered.set()
+                await release.wait()
+                return await super().append(event)
+
+        writer = BlockedWriter()
+        observer = WebRuntimeObserver(uuid4(), writer, live_telemetry=writer.live)
+        await observer.start(BotConfig(name="cancelled stop"))
+        stopping = asyncio.create_task(observer.stop())
+        await entered.wait()
+        stopping.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await stopping
+        release.set()
+        await asyncio.wait_for(observer.stop(), 1)
+        samples = [
+            event for event in writer.events if event.kind is EventKind.CHART_SAMPLE
+        ]
+        assert len(samples) == 1
+        assert writer.live.closed
+        assert observer._writer is None
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_stops_share_one_drain_and_final_sample():
+    async def scenario():
+        writer = _CollectingWriter()
+        observer = WebRuntimeObserver(uuid4(), writer, live_telemetry=writer.live)
+        await observer.start(BotConfig(name="concurrent stop"))
+        await asyncio.wait_for(asyncio.gather(observer.stop(), observer.stop()), 1)
+        assert (
+            len(
+                [
+                    event
+                    for event in writer.events
+                    if event.kind is EventKind.CHART_SAMPLE
+                ]
+            )
+            == 1
+        )
+
+    asyncio.run(scenario())
+
+
+def test_observer_drain_deadline_cleans_up_tasks_and_reports_loss(monkeypatch):
+    async def scenario():
+        failures = []
+        monkeypatch.setattr("api.events.observer.RUNTIME_CLEANUP_SECONDS", 0.01)
+        monkeypatch.setattr(
+            WebRuntimeObserver, "_failure", staticmethod(lambda: failures.append(True))
+        )
+
+        class StalledWriter(_CollectingWriter):
+            async def append(self, event):
+                await asyncio.Event().wait()
+
+        writer = StalledWriter()
+        observer = WebRuntimeObserver(
+            uuid4(), writer, live_telemetry=writer.live, max_pending_events=1
+        )
+        await observer.start(BotConfig(name="drain timeout"))
+        await asyncio.wait_for(observer.stop(), 1)
+        await observer.stop()
+        assert failures == [True]
+        assert observer._writer is None and observer._cadence is None
+        assert observer._pending.empty() and writer.live.closed
+
+    asyncio.run(scenario())

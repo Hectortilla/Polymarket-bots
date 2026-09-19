@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from polybot.cli.observability.events import PortfolioSnapshot, StreamHealth
-from polybot.dashboard.contracts import DashboardSample
+from polybot.cli.observability.events import PortfolioSnapshot
+from polybot.dashboard.contracts import MAX_CHART_TOKENS, DashboardSample
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
     TypeAdapter,
+    model_validator,
 )
 
+from api.events.contracts.payloads.base import MAX_JSON_INTEGER, NonNegativeJsonInteger
 from api.events.contracts.payloads.broker import (
     BrokerFailurePayload,
     BrokerFillPayload,
@@ -23,13 +25,13 @@ from api.events.contracts.payloads.broker import (
 )
 from api.events.contracts.payloads.chart import (
     ChartSamplePayload,
-    EquityChartPayload,
-    MarketChartPayload,
-    WalletChartPayload,
+    EquityChartPointPayload,
+    MarketChartPointPayload,
     WalletTimelinePayload,
 )
 from api.events.contracts.payloads.lifecycle import (
     BotActivityPayload,
+    FeedObservation,
     RunBootstrapPayload,
     RunFailurePayload,
     RunStartedPayload,
@@ -153,12 +155,12 @@ class StreamHealthEvent(DurableEventBase):
     def from_observation(
         cls,
         run_id: UUID,
-        event: StreamHealth,
+        event: FeedObservation,
     ) -> StreamHealthEvent:
         return StreamHealthEvent(
             run_id=run_id,
-            occurred_at=datetime.now(UTC),
-            payload=StreamHealthPayload.from_observation(event),
+            occurred_at=event.observed_at,
+            payload=event.health,
         )
 
 
@@ -290,66 +292,56 @@ type PersistedDurableEvent = Annotated[
 PERSISTED_DURABLE_EVENT_ADAPTER = TypeAdapter(PersistedDurableEvent)
 
 
-class LiveEventBase(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class LiveRunSnapshot(BaseModel):
+    """One replaceable display state; annotations are committed durable records."""
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
     run_id: UUID
     occurred_at: AwareDatetime
+    kind: Literal[kinds.LiveEventKind.RUN_SNAPSHOT] = kinds.LiveEventKind.RUN_SNAPSHOT
+    generation: int = Field(ge=1, le=MAX_JSON_INTEGER)
+    sequence: int = Field(ge=1, le=MAX_JSON_INTEGER)
+    sampled_at_ms: NonNegativeJsonInteger
+    markets: tuple[MarketChartPointPayload, ...] = Field(max_length=MAX_CHART_TOKENS)
+    equity: EquityChartPointPayload
+    health: FeedObservation | None = None
 
-
-class LiveMarketChartEvent(LiveEventBase):
-    kind: Literal[kinds.LiveEventKind.CHART_MARKET] = kinds.LiveEventKind.CHART_MARKET
-    payload: MarketChartPayload
-
-
-class LiveEquityChartEvent(LiveEventBase):
-    kind: Literal[kinds.LiveEventKind.CHART_EQUITY] = kinds.LiveEventKind.CHART_EQUITY
-    payload: EquityChartPayload
-
-
-class LiveWalletChartEvent(LiveEventBase):
-    kind: Literal[kinds.LiveEventKind.CHART_WALLET] = kinds.LiveEventKind.CHART_WALLET
-    payload: WalletChartPayload
-
-
-class LiveStreamHealthEvent(LiveEventBase):
-    kind: Literal[kinds.LiveEventKind.STREAM_HEALTH] = kinds.LiveEventKind.STREAM_HEALTH
-    payload: StreamHealthPayload
+    @model_validator(mode="after")
+    def validate_markets(self) -> LiveRunSnapshot:
+        if any(point.markers for point in self.markets):
+            raise ValueError("live snapshots cannot contain transient markers")
+        if len({point.token_id for point in self.markets}) != len(self.markets):
+            raise ValueError("duplicate live market token")
+        return self
 
     @classmethod
-    def from_observation(
+    def from_sample(
         cls,
         run_id: UUID,
-        event: StreamHealth,
+        sample: DashboardSample,
         *,
         occurred_at: datetime,
-    ) -> LiveStreamHealthEvent:
-        return LiveStreamHealthEvent(
+        generation: int,
+        sequence: int,
+        health: FeedObservation | None = None,
+    ) -> LiveRunSnapshot:
+        return cls(
             run_id=run_id,
             occurred_at=occurred_at,
-            payload=StreamHealthPayload.from_observation(event),
+            generation=generation,
+            sequence=sequence,
+            sampled_at_ms=sample.sampled_at_ms,
+            markets=tuple(
+                MarketChartPointPayload.from_point(point).model_copy(
+                    update={"markers": ()}
+                )
+                for point in sample.markets
+            ),
+            equity=EquityChartPointPayload.from_point(sample.equity),
+            health=health,
         )
 
 
-LIVE_EVENT_MODELS = (
-    LiveMarketChartEvent,
-    LiveEquityChartEvent,
-    LiveWalletChartEvent,
-    LiveStreamHealthEvent,
-)
-
-
-type LiveChartEvent = Annotated[
-    LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent,
-    Field(discriminator=kinds.EVENT_DISCRIMINATOR_FIELD),
-]
-type LiveRunEvent = Annotated[
-    LiveMarketChartEvent
-    | LiveEquityChartEvent
-    | LiveWalletChartEvent
-    | LiveStreamHealthEvent,
-    Field(discriminator=kinds.EVENT_DISCRIMINATOR_FIELD),
-]
-
-
+LIVE_EVENT_MODELS = (LiveRunSnapshot,)
+type LiveRunEvent = LiveRunSnapshot
 LIVE_RUN_EVENT_ADAPTER = TypeAdapter(LiveRunEvent)

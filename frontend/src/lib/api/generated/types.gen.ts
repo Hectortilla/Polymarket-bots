@@ -218,10 +218,7 @@ export type ChartSamplePayload = {
      * Markets
      */
     markets: Array<MarketChartPointPayload>;
-    /**
-     * Sampled At Ms
-     */
-    sampled_at_ms: number;
+    sampled_at_ms: NonNegativeJsonInteger;
 };
 
 /**
@@ -285,17 +282,6 @@ export type EmailRequest = {
 };
 
 /**
- * EquityChartPayload
- */
-export type EquityChartPayload = {
-    point: EquityChartPointPayload;
-    /**
-     * Sampled At Ms
-     */
-    sampled_at_ms: number;
-};
-
-/**
  * EquityChartPointPayload
  */
 export type EquityChartPointPayload = {
@@ -323,6 +309,17 @@ export type EventCursorValue = number;
  * EventView
  */
 export type EventView = 'activity' | 'diagnostics' | 'dashboard';
+
+/**
+ * FeedObservation
+ */
+export type FeedObservation = {
+    health: StreamHealthPayload;
+    /**
+     * Observed At
+     */
+    observed_at: string;
+};
 
 /**
  * FillEvent
@@ -1030,89 +1027,38 @@ export type HealthResponse = {
 };
 
 /**
- * LiveEquityChartEvent
+ * LiveRunSnapshot
+ *
+ * One replaceable display state; annotations are committed durable records.
  */
-export type LiveEquityChartEvent = {
+export type LiveRunEvent = {
+    equity: EquityChartPointPayload;
+    /**
+     * Generation
+     */
+    generation: number;
+    health?: FeedObservation | null;
     /**
      * Kind
      */
-    kind?: 'chart.equity';
+    kind?: 'run.live_snapshot';
+    /**
+     * Markets
+     */
+    markets: Array<MarketChartPointPayload>;
     /**
      * Occurred At
      */
     occurred_at: string;
-    payload: EquityChartPayload;
     /**
      * Run Id
      */
     run_id: string;
-};
-
-/**
- * LiveMarketChartEvent
- */
-export type LiveMarketChartEvent = {
+    sampled_at_ms: NonNegativeJsonInteger;
     /**
-     * Kind
+     * Sequence
      */
-    kind?: 'chart.market';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: MarketChartPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-export type LiveRunEvent = ({
-    kind: 'chart.market';
-} & LiveMarketChartEvent) | ({
-    kind: 'chart.equity';
-} & LiveEquityChartEvent) | ({
-    kind: 'chart.wallet';
-} & LiveWalletChartEvent) | ({
-    kind: 'stream.health.live';
-} & LiveStreamHealthEvent);
-
-/**
- * LiveStreamHealthEvent
- */
-export type LiveStreamHealthEvent = {
-    /**
-     * Kind
-     */
-    kind?: 'stream.health.live';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: StreamHealthPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
-};
-
-/**
- * LiveWalletChartEvent
- */
-export type LiveWalletChartEvent = {
-    /**
-     * Kind
-     */
-    kind?: 'chart.wallet';
-    /**
-     * Occurred At
-     */
-    occurred_at: string;
-    payload: WalletChartPayload;
-    /**
-     * Run Id
-     */
-    run_id: string;
+    sequence: number;
 };
 
 /**
@@ -1133,20 +1079,6 @@ export type LogoutResponse = {
      * Logged Out
      */
     logged_out: true;
-};
-
-/**
- * MarketChartPayload
- */
-export type MarketChartPayload = {
-    /**
-     * Points
-     */
-    points: Array<MarketChartPointPayload>;
-    /**
-     * Sampled At Ms
-     */
-    sampled_at_ms: number;
 };
 
 /**
@@ -1309,6 +1241,8 @@ export type NodeGraph = {
      */
     parameters?: Array<GraphParameter>;
 };
+
+export type NonNegativeJsonInteger = number;
 
 export type NonnegativeDecimal = string;
 
@@ -2051,30 +1985,15 @@ export type Side = 'BUY' | 'SELL';
  * StreamHealthPayload
  */
 export type StreamHealthPayload = {
-    /**
-     * Book Coalesced Count
-     */
-    book_coalesced_count: number;
-    /**
-     * Book Dispatch Lag Ms
-     */
-    book_dispatch_lag_ms: number | null;
-    /**
-     * Book Received Count
-     */
-    book_received_count: number;
+    book_coalesced_count: NonNegativeJsonInteger;
+    book_dispatch_lag_ms: NonNegativeJsonInteger | null;
+    book_received_count: NonNegativeJsonInteger;
     /**
      * Book Stale
      */
     book_stale: boolean;
-    /**
-     * Peak Queue Depth
-     */
-    peak_queue_depth: number;
-    /**
-     * Queue Depth
-     */
-    queue_depth: number;
+    peak_queue_depth: NonNegativeJsonInteger;
+    queue_depth: NonNegativeJsonInteger;
 };
 
 /**
@@ -2131,20 +2050,6 @@ export type ValidationError = {
 export type ValuationStatus = 'fresh' | 'stale' | 'unavailable';
 
 export type WalletAddress = string;
-
-/**
- * WalletChartPayload
- */
-export type WalletChartPayload = {
-    /**
-     * Points
-     */
-    points: Array<WalletChartPointPayload>;
-    /**
-     * Sampled At Ms
-     */
-    sampled_at_ms: number;
-};
 
 /**
  * WalletChartPointPayload
@@ -3579,7 +3484,7 @@ export type StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses = {
     /**
      * Successful Response
      */
-    200: PersistedDurableEvent | LiveMarketChartEvent | LiveEquityChartEvent | LiveWalletChartEvent | LiveStreamHealthEvent;
+    200: PersistedDurableEvent | LiveRunEvent;
 };
 
 export type StreamRunEventsApiV1RunsRunIdEventsStreamGetResponse = StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses[keyof StreamRunEventsApiV1RunsRunIdEventsStreamGetResponses];

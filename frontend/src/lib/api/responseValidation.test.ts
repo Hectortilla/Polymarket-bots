@@ -153,16 +153,24 @@ describe("control-plane response validation", () => {
       next_before_event_id: null,
     };
     const liveEvent = {
-      kind: runtimeContract.liveEventKind.STREAM_HEALTH,
+      kind: runtimeContract.liveEventKind.RUN_SNAPSHOT,
+      generation: 1,
+      sequence: 1,
+      sampled_at_ms: 1,
+      markets: [],
+      equity: { value: "100", status: "fresh" },
       run_id: RUN_ID,
       occurred_at: CREATED_AT,
-      payload: {
-        queue_depth: 0,
-        peak_queue_depth: 1,
-        book_dispatch_lag_ms: null,
-        book_stale: false,
-        book_received_count: 2,
-        book_coalesced_count: 0,
+      health: {
+        observed_at: CREATED_AT,
+        health: {
+          queue_depth: 0,
+          peak_queue_depth: 1,
+          book_dispatch_lag_ms: null,
+          book_stale: false,
+          book_received_count: 2,
+          book_coalesced_count: 0,
+        },
       },
     };
     for (const response of [

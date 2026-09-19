@@ -8,12 +8,15 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from api.deployment.settings import StartupSettings
+from api.events.live.connections import LiveConnections
+from api.events.live.service import WorkerLiveTelemetry
+from api.events.terminal_wakes import TerminalWakePublisher
 from api.events.writer import RunEventWriter
 from api.execution.policy import (
     WORKER_DELIVERY_CLEANUP_SECONDS,
     WORKER_RESOURCE_CLEANUP_SECONDS,
 )
-from api.io_policy import REDIS_SOCKET_OPTIONS
+from api.io_policy import REDIS_CONTROL_POOL_SIZE, REDIS_SOCKET_OPTIONS
 
 from .database import create_worker_database
 
@@ -25,12 +28,21 @@ class WorkerResources:
         engine: AsyncEngine,
         sessions: async_sessionmaker[AsyncSession],
         redis: Redis,
+        live: LiveConnections,
     ) -> None:
         self.settings = settings
         self.sessions = sessions
         self.event_writer = RunEventWriter(sessions, redis)
+        self.live_telemetry = WorkerLiveTelemetry(
+            sessions,
+            live.router,
+            live.clients,
+            lease_seconds=settings.lease_seconds,
+        )
+        self.terminal_wakes = TerminalWakePublisher(sessions, redis)
         self._engine = engine
         self._redis = redis
+        self._live_redis = live.clients
         self._deliveries: set[asyncio.Task] = set()
         self._closing = False
         self._shutdown: asyncio.Task[None] | None = None
@@ -42,15 +54,34 @@ class WorkerResources:
             pool_size=settings.worker_database_pool_size,
         )
         redis = None
+        live: LiveConnections | None = None
+        resources = None
         try:
             redis = Redis.from_url(
-                settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS
+                settings.redis_url.get_secret_value(),
+                max_connections=REDIS_CONTROL_POOL_SIZE,
+                **REDIS_SOCKET_OPTIONS,
             )
-            return cls(settings, engine, sessions, redis)
+            live = LiveConnections(settings)
+            resources = cls(settings, engine, sessions, redis, live)
+            await resources.terminal_wakes.start()
+            await resources.live_telemetry.start()
+            return resources
         except BaseException:
             try:
+                if resources is not None:
+                    await resources.live_telemetry.close()
+                    await resources.terminal_wakes.close()
                 if redis is not None:
                     await redis.aclose()
+                if live is not None:
+                    await asyncio.gather(
+                        *(
+                            client.aclose()
+                            for client in live.clients
+                            if client is not redis
+                        )
+                    )
             finally:
                 await engine.dispose()
             raise
@@ -102,8 +133,16 @@ class WorkerResources:
         # unresolved run ownership is left to the existing lease reconciler.
         try:
             async with asyncio.timeout(WORKER_RESOURCE_CLEANUP_SECONDS):
+                live_clients = tuple(
+                    client for client in self._live_redis if client is not self._redis
+                )
+                await self.live_telemetry.close()
+                await self.terminal_wakes.close()
                 results = await asyncio.gather(
-                    self._redis.aclose(), self._engine.dispose(), return_exceptions=True
+                    self._redis.aclose(),
+                    *(client.aclose() for client in live_clients),
+                    self._engine.dispose(),
+                    return_exceptions=True,
                 )
                 errors.extend(
                     result for result in results if isinstance(result, BaseException)

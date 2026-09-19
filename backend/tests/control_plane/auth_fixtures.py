@@ -9,10 +9,12 @@ from api.auth.contracts import CurrentUser
 from api.auth.dependencies import CurrentUserDependency, application_authentication
 from api.auth.models import UserRow
 from api.auth.store.tokens import SessionToken
+from api.events.live.routing import LiveShardRouter
 from api.http.app import create_app
 from api.http.dependencies import SessionFactoryDependency
 from api.http.protocol import CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE
 from api.http.routes.run_lookup import require_stored_run
+from api.http.sse.hub import LiveSubscriptionHub
 from api.limits.http import application_resource_limits, stream_lease
 from api.limits.policy import STREAM_LIFETIME_SECONDS
 from api.limits.redis.stream_admission import StreamLease
@@ -64,6 +66,12 @@ def create_authenticated_app(**kwargs):
     application = create_app(
         auth_settings=AuthSettings(TEST_ORIGIN, allow_http=True), **kwargs
     )
+    if "redis" in kwargs and kwargs["redis"] is not None:
+        application.state.live_subscription_hub = LiveSubscriptionHub(
+            LiveShardRouter(("redis://fixture",)),
+            (application.state.redis,),
+            application.state.redis,
+        )
     application.dependency_overrides[application_authentication] = regression_identity
     application.dependency_overrides[application_resource_limits] = lambda: None
     application.dependency_overrides[stream_lease] = regression_stream_lease

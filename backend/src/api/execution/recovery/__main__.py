@@ -7,11 +7,13 @@ from polybot.framework.lifecycle import install_signal_handlers
 from redis.asyncio import Redis
 
 from api.deployment.settings import StartupSettings
+from api.events.live.connections import LiveConnections
+from api.events.terminal_wakes import TerminalWakePublisher
 from api.execution.recovery import RunRecovery
 from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.execution.taskiq_app import TaskiqRunLauncher
 from api.execution.worker.database import create_worker_database
-from api.io_policy import REDIS_SOCKET_OPTIONS
+from api.io_policy import REDIS_CONTROL_POOL_SIZE, REDIS_SOCKET_OPTIONS
 from api.lifecycle.maintenance import DataMaintenance
 from api.operations.monitor import OperationMonitor
 
@@ -26,13 +28,19 @@ async def serve_recovery(settings: StartupSettings) -> None:
         session_factory, TaskiqRunLauncher(), lease_seconds=settings.lease_seconds
     )
     redis = Redis.from_url(
-        settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS
+        settings.redis_url.get_secret_value(),
+        max_connections=REDIS_CONTROL_POOL_SIZE,
+        **REDIS_SOCKET_OPTIONS,
     )
+    wakes = TerminalWakePublisher(session_factory, redis)
+    await wakes.start()
+    live = LiveConnections(settings)
     monitor = OperationMonitor(
         session_factory,
         redis,
         lease_seconds=settings.lease_seconds,
         storage_path=settings.storage_probe_path,
+        feeds=live.health,
     )
     monitor_task = asyncio.create_task(monitor.serve())
     maintenance_task = asyncio.create_task(DataMaintenance(session_factory).serve())
@@ -59,6 +67,8 @@ async def serve_recovery(settings: StartupSettings) -> None:
         monitor_task.cancel()
         maintenance_task.cancel()
         await asyncio.gather(monitor_task, maintenance_task, return_exceptions=True)
+        await wakes.close()
+        await live.close()
         await redis.aclose()
         await engine.dispose()
 

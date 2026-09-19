@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { loadEnv } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vitest/config";
@@ -18,6 +19,12 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     environment: "jsdom",
+    provide: {
+      liveCapture: (() => {
+        const path = loadEnv(mode, ".", "POLYBOT_").POLYBOT_LIVE_CAPTURE;
+        return path ? JSON.parse(readFileSync(path, "utf8")) : [];
+      })(),
+    },
     include: ["src/**/*.test.ts"],
     setupFiles: ["./vitest-setup.ts"],
   },

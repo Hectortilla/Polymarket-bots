@@ -130,6 +130,7 @@ packages = [
   "api.catalog.node_based.evaluator",
   "api.runs",
   "api.events",
+  "api.events.live",
     "api.events.projection",
   "api.events.health",
   "api.events.contracts",

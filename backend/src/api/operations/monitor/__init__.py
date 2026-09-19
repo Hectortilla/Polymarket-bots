@@ -7,6 +7,7 @@ from pathlib import Path
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api.events.health.store import FeedHealthStore
 from api.io_policy import DEPENDENCY_TIMEOUT_SECONDS
 from api.operations.alerts import ALERT_DEFINITIONS
 from api.operations.alerts.policy import ALERT_OWNER
@@ -33,11 +34,12 @@ class OperationMonitor:
         *,
         lease_seconds: float,
         storage_path: Path = DEFAULT_STORAGE_PROBE_PATH,
+        feeds: FeedHealthStore | None = None,
     ) -> None:
         self._sessions = sessions
         self._lease_seconds = lease_seconds
         self._storage = StorageProbe(storage_path)
-        self._redis = RedisOperationProbe(redis)
+        self._redis = RedisOperationProbe(redis, feeds)
 
     async def serve(self) -> None:
         while True:

@@ -3,8 +3,10 @@
 from redis.asyncio import Redis
 
 from api.deployment.settings import StartupSettings
+from api.events.live.connections import LiveConnections
+from api.events.terminal_wakes import TerminalWakePublisher
 from api.execution.worker.database import create_worker_database
-from api.io_policy import REDIS_SOCKET_OPTIONS
+from api.io_policy import REDIS_CONTROL_POOL_SIZE, REDIS_SOCKET_OPTIONS
 from api.operations.commands import CommandRequest, ReadCommand
 from api.operations.contracts import (
     OperationResult,
@@ -21,6 +23,14 @@ async def execute(
     request: CommandRequest, settings: StartupSettings, actor: str
 ) -> OperationResult | OperationStatus | RunInspection | RunInspectionList:
     engine, sessions = create_worker_database(settings.database_url.get_secret_value())
+    redis = Redis.from_url(
+        settings.redis_url.get_secret_value(),
+        max_connections=REDIS_CONTROL_POOL_SIZE,
+        **REDIS_SOCKET_OPTIONS,
+    )
+    wakes = TerminalWakePublisher(sessions, redis)
+    await wakes.start()
+    live = LiveConnections(settings)
     try:
         if request.command is ReadCommand.LIST_RUNS:
             async with sessions() as session:
@@ -31,19 +41,14 @@ async def execute(
             async with sessions() as session:
                 return await RunInspector(session).read(request.target)
         if request.command is ReadCommand.STATUS:
-            redis = Redis.from_url(
-                settings.redis_url.get_secret_value(), **REDIS_SOCKET_OPTIONS
-            )
-            try:
-                alerts = await OperationMonitor(
-                    sessions,
-                    redis,
-                    lease_seconds=settings.lease_seconds,
-                    storage_path=settings.storage_probe_path,
-                ).tick()
-                return OperationStatus(alerts=alerts)
-            finally:
-                await redis.aclose()
+            alerts = await OperationMonitor(
+                sessions,
+                redis,
+                lease_seconds=settings.lease_seconds,
+                storage_path=settings.storage_probe_path,
+                feeds=live.health,
+            ).tick()
+            return OperationStatus(alerts=alerts)
         async with sessions() as session:
             outcome = await OperatorControl(session, actor).apply(
                 request.command, request.target
@@ -52,4 +57,7 @@ async def execute(
                 action=request.command, target=request.target, outcome=outcome
             )
     finally:
+        await wakes.close()
+        await live.close()
+        await redis.aclose()
         await engine.dispose()

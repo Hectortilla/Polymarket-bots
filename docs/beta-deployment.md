@@ -1427,3 +1427,95 @@ Deliveries get up to 20 seconds to cancel, drain observers and record terminal
 state before the shared publisher and engine close. Cleanup failure remains
 visible and lease recovery handles unresolved runs. Restart the worker to apply
 pool settings; no database migration is required.
+
+## Live telemetry shards and capacity evidence
+
+`POLYBOT_LIVE_REDIS_SHARDS` is an ordered comma-separated list of Redis URLs for
+advisory live snapshots. It defaults to the control-plane Redis URL, but workers
+and API processes create bounded clients for every configured live shard. Keep
+the same ordered list on every worker and API process. Draining both process types
+is required before changing that list: routing changes require fresh permits and
+there is deliberately no online resharding protocol.
+
+Compose applies Redis Pub/Sub output limits of 16 MiB hard and 4 MiB for five
+seconds soft. They protect the process-owned API subscription hubs; a slow or
+disconnected browser is closed and reloads committed durable history. Durable
+wake channels remain on the control-plane Redis namespace and must not share the
+live-channel prefix.
+
+Run live telemetry scale rehearsal only against disposable PostgreSQL and Redis.
+Record the command, CPU/RAM/network topology, worker/API process counts, shard
+count, Redis persistence, pool bounds, watched ratio, viewers per run, token
+count, payload percentiles, background durable workload, and injected faults.
+The accepted implementation has no 20,000- or 50,000-run certification yet;
+those are gates in [the telemetry plan](live-telemetry-scaling-plan.md), not
+deployment allowances. Do not increase beta admission from this section.
+
+The runner starts synthetic producer and actual API processes, owned PostgreSQL
+rows, real observer cadence/permits/publishers, Redis scripts, authenticated HTTP
+SSE viewers and bounded capture replay through the frontend validator/batcher/history.
+`--mode isolated` replaces the durable observer sink with a counting sink and uses
+synthetic batched heartbeats. `--mode integrated` retains the production fenced
+durable writer and independently scheduled owned heartbeat/stop calls. After the
+measurement window it requests stop for every run, drains accepted samples before
+terminal commit, and requires every regular viewer to receive terminal history.
+Both modes keep real identity/ownership lookups. Test-only request/stream count
+allowances are explicitly overridden; production admission policy is never patched.
+
+Set `POLYBOT_TEST_POSTGRES_URL` to a dedicated local `*_test` database and
+`POLYBOT_TEST_REDIS_URL` to a nonzero database on a disposable Redis instance.
+Fault injection affects the entire Redis server, so do not share that instance.
+Repeat `--live-redis-url` for each distinct disposable Redis server in map order.
+No scale services, paid hosts, or production databases are provisioned by the runner.
+
+```sh
+PYTHONPATH=backend/tests uv run python -m control_plane.live_telemetry_capacity \
+  --producers 5 --watched-percent 100 --viewers 1 --tokens 20 \
+  --duration-seconds 30 --worker-processes 1 --api-processes 1 \
+  --mode integrated --smoke --faults \
+  --manifest data/live-telemetry-smoke.json
+```
+
+For a gate, omit `--smoke`, select 1,000/10,000/20,000/50,000 producers and a
+minimum 1,800-second duration. Use 14,400 seconds for the target soak. Matrix
+axes are 0/10/100 percent watched, 1/3 viewers, and 1/10/20 tokens. `--slow-viewers`
+adds TCP clients that do not drain their receive buffers; `--hot-run-viewers N`
+adds viewers to one hot run and `--bursts` adds synthetic fill/wallet annotations.
+Short runs may not fill
+OS/proxy buffers and cannot establish slow-client eviction latency.
+
+`--faults` exercises script-cache flush, Pub/Sub disconnect, synthetic producer
+restart and API restart. Producer restart deliberately reuses test execution tokens;
+this is not Taskiq execution recovery or restoration of interrupted bot state.
+Token IDs use realistic 77-digit payload lengths. Results include process exit codes, query counts and recent latency
+percentiles, CPU/max RSS, live counters, queue gauges, Redis connections/operations,
+HTTP snapshot age and ordering counters. Distributions retain the last 4,096
+observations per metric; reports are written off the event loop. Frame captures
+retain 256 events and are replayed by the real frontend test, whose exit code is
+recorded. The runner requires live delivery to every requested regular viewer and
+zero snapshot bytes without viewers. The manifest names admission overrides and
+substituted execution behavior. It checks query/checkouts in live and health operations, ordering,
+snapshot/initial-state latency, publisher/subscription bounds, retained worker
+history and (when requested) slow-client closure. A measured violation produces
+`failed` and a nonzero exit. Unmeasured fleet headroom, soak-memory stability and
+proxy/rendering checks remain explicitly null. Initial-state latency is reported
+but not classified as healthy during fault injection. Successful reports say
+`measured-not-certified`, even when smoke checks pass.
+They are evidence for reviewing the plan's gates, not automatic certification.
+Record external host/network/proxy utilization and deployment configuration alongside
+these reports; the runner cannot establish the required 30% fleet headroom alone.
+
+For Ansible deployment, `polybot_live_redis_shards` sets the ordered comma-separated
+URL list in `runtime.env`; omission uses control Redis. Every API, worker, recovery
+and operator container receives the same list through the shared Compose environment.
+URLs are validated at inventory ingress and startup; empty entries are rejected. Treat credential-bearing
+URLs as secrets in inventory and runtime files. Drain processes before changing the map.
+Each live-shard pool caps at 12 connections per process. Control clients and the
+separate Taskiq broker pool cap at 32 each. Budget all processes, including monitoring
+and overlapping releases. External live shards need the same Pub/Sub output limits
+as the Compose Redis instance.
+
+The real two-shard integration test additionally accepts
+`POLYBOT_TEST_SECOND_REDIS_URL`, pointing to a second distinct disposable Redis
+server. It verifies health placement, one subscription per watched shard and
+disconnect isolation. Without this variable only that test is skipped.

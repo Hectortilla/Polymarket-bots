@@ -84,6 +84,8 @@ def test_lifecycle_runtime_dispatch_and_database_disposal(command, fails):
             operation.side_effect = RuntimeError("fixture failure")
         user_id = uuid4()
         with (
+            patch.object(runtime, "Redis") as redis_factory,
+            patch.object(runtime, "TerminalWakePublisher", return_value=AsyncMock()),
             patch.object(runtime, "DeploymentSchema") as schema,
             patch.object(
                 runtime, "create_worker_database", return_value=(engine, sessions)
@@ -91,6 +93,7 @@ def test_lifecycle_runtime_dispatch_and_database_disposal(command, fails):
             patch.object(runtime, "DataMaintenance", return_value=maintenance),
             patch.object(runtime, "RestoreQuarantine", return_value=restore),
         ):
+            redis_factory.from_url.return_value = AsyncMock()
             schema.return_value.require_compatible = AsyncMock()
             if fails:
                 with pytest.raises(RuntimeError):

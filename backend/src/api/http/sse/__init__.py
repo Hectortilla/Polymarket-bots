@@ -1,102 +1,106 @@
-"""Durable PostgreSQL replay with Redis-assisted SSE continuation."""
+"""Authorized ordered durable replay with replaceable live snapshots."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing
+from time import monotonic
 from uuid import UUID
 
 from fastapi import Request
-from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from api.auth.streams import StreamAuthorization
-from api.events.channels import decode_durable_wake_frame
-from api.events.live_codec import decode_live_event_frame
 from api.events.views import EventView
-from api.http.sse.frames import SSE_IDLE_COMMENT, sse_frame
+from api.http.sse.frames import SSE_IDLE_COMMENT
+from api.http.sse.hub import LiveSubscriptionHub
+from api.http.sse.mailbox import LiveFrame
+from api.http.sse.policy import SSE_RECONCILIATION_SECONDS
 from api.http.sse.replay import RunEventReplay
-from api.http.sse.subscription import RunSubscription
 
 LOGGER = logging.getLogger(__name__)
-SSE_IDLE_TIMEOUT_SECONDS = 15
 
 
 class RunEventStreamer:
-    """Stream one run while owning its durable and live dependencies."""
-
     def __init__(
         self,
         run_id: UUID,
         request: Request,
         session_factory: async_sessionmaker[AsyncSession],
-        redis: Redis,
         authorization: StreamAuthorization,
         *,
+        hub: LiveSubscriptionHub,
         view: EventView = EventView.ACTIVITY,
     ) -> None:
         self._authorization = authorization
-        self._run_id = run_id
-        self._request = request
+        self._run_id, self._request = run_id, request
         self._replay = RunEventReplay(run_id, session_factory, view=view)
-        self._redis = redis
+        self._hub = hub
 
-    async def stream(self, after_event_id: int) -> AsyncIterator[str]:
+    async def stream(self, after_event_id: int) -> AsyncIterator[str | bytes]:
         try:
             async with aclosing(self._stream_frames(after_event_id)) as frames:
                 async for frame, terminal in frames:
+                    if terminal:
+                        self._hub.terminal(self._run_id)
                     if not await self._authorization.allowed():
                         return
-                    yield frame
+                    if isinstance(frame, LiveFrame):
+                        if not self._hub.is_terminal(self._run_id) and frame.fresh():
+                            yield frame.data
+                    else:
+                        yield frame
                     if terminal:
                         return
-        except (SQLAlchemyError, RedisError):
-            LOGGER.error(
+        except (SQLAlchemyError, RedisError, TimeoutError):
+            LOGGER.warning(
                 "run event stream ended because a required service is unavailable"
             )
-            return
 
     async def _stream_frames(
-        self, after_event_id: int
-    ) -> AsyncIterator[tuple[str, bool]]:
+        self, cursor: int
+    ) -> AsyncIterator[tuple[str | LiveFrame, bool]]:
         if not await self._authorization.allowed():
             return
-        cursor = after_event_id
         async for frame, cursor, terminal in self._replay.frames_after(cursor):
             yield frame, terminal
-
-        async with RunSubscription(self._redis, self._run_id) as pubsub:
-            async for frame, cursor, terminal in self._replay.frames_after(cursor):
-                yield frame, terminal
-
+            if terminal:
+                return
+        mailbox = await self._hub.attach(self._run_id)
+        try:
+            # Flush an empty stream through HTTP proxies without waiting for a
+            # live frame or the independent durable reconciliation deadline.
+            yield SSE_IDLE_COMMENT, False
+            reconcile_at = monotonic()
+            durable_wake = True
             while not await self._request.is_disconnected():
                 if not await self._authorization.allowed():
                     return
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=SSE_IDLE_TIMEOUT_SECONDS,
-                )
-                if message is None:
-                    # Redis carries hints; replay also recovers lost post-commit wakes.
+                if durable_wake or monotonic() >= reconcile_at:
                     async for frame, cursor, terminal in self._replay.frames_after(
                         cursor
                     ):
                         yield frame, terminal
+                        if terminal:
+                            return
+                    reconcile_at = monotonic() + SSE_RECONCILIATION_SECONDS
+                try:
+                    live, durable_wake, closed = await asyncio.wait_for(
+                        mailbox.next(), timeout=max(0, reconcile_at - monotonic())
+                    )
+                except TimeoutError:
+                    durable_wake = True
                     yield SSE_IDLE_COMMENT, False
                     continue
-                channel_frame = message.get("data")
-                if decode_durable_wake_frame(channel_frame) is not None:
-                    async for frame, cursor, terminal in self._replay.frames_after(
-                        cursor
-                    ):
-                        yield frame, terminal
+                if closed:
+                    return
+                if durable_wake:
+                    # Replay before any advisory frame from the same wake. The
+                    # pending frame can be replaced; committed records cannot.
                     continue
-                live_event = decode_live_event_frame(channel_frame)
-                if live_event is None or live_event.run_id != self._run_id:
-                    LOGGER.warning(
-                        "dropping malformed run event frame for run %s",
-                        self._run_id,
-                    )
-                    continue
-                yield sse_frame(live_event), False
+                if live is not None:
+                    yield live, False
+        finally:
+            await self._hub.detach(self._run_id, mailbox)

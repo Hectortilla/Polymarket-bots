@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from math import isfinite
 
@@ -18,7 +18,7 @@ from polybot.cli.observability.events import (
 )
 from polybot.cli.streams.kinds import StreamKind
 from polybot.framework.config.models import BotConfig
-from polybot.framework.events import OrderStatus
+from polybot.framework.events import OrderStatus, Side
 from polybot.framework.events.books import BookSnapshot
 from polybot.framework.events.wallet_trades import WalletTradeEvent
 from polybot.performance.contracts.valuation_status import ValuationStatus
@@ -38,6 +38,7 @@ from .wallets import DashboardWallets, WalletTimelineEvent
 class ProjectionChange:
     accepted_book: BookSnapshot | None = None
     wallet_event: WalletTimelineEvent | None = None
+    marker_overflow: bool = False
 
 
 @dataclass(slots=True)
@@ -48,10 +49,17 @@ class DashboardProjection:
     charts: DashboardHistory = field(default_factory=DashboardHistory)
     wallets: DashboardWallets = field(default_factory=DashboardWallets)
     initial_cash_usdc: Decimal | None = None
+    _marker_sources: dict[str, list[Side]] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     @classmethod
-    def from_config(cls, config: BotConfig) -> "DashboardProjection":
+    def from_config(
+        cls, config: BotConfig, *, retain_history: bool = True
+    ) -> DashboardProjection:
         projection = cls(
+            charts=DashboardHistory(retain_history=retain_history),
+            wallets=DashboardWallets(retain_history=retain_history),
             markets=DashboardMarkets(
                 require_accepted_books=True,
             ),
@@ -82,8 +90,7 @@ class DashboardProjection:
         if isinstance(event, DispatchCompleted):
             return self._dispatch_completed(event)
         if isinstance(event, FillCompleted):
-            self._fill_completed(event)
-            return ProjectionChange()
+            return ProjectionChange(marker_overflow=self._fill_completed(event))
         if isinstance(event, MarketSettled):
             self.markets.portfolio = event.portfolio
             token_ids = self.markets.settle(
@@ -94,6 +101,10 @@ class DashboardProjection:
         return ProjectionChange()
 
     def sample(self, sampled_at_ms: int) -> DashboardSample:
+        if not self.charts.retain_history:
+            sample = self.sample_durable(sampled_at_ms)
+            self.acknowledge_sample(sample)
+            return sample
         self.charts.record_sample(
             sampled_at_ms,
             current_book=self.markets.current_book,
@@ -119,6 +130,53 @@ class DashboardProjection:
             ),
         )
 
+    def sample_durable(self, sampled_at_ms: int) -> DashboardSample:
+        sample = self.sample_current(sampled_at_ms)
+        # One outstanding durable sample. Retain list identity so removing and
+        # reactivating a token cannot acknowledge markers from its new lifetime.
+        self._marker_sources = dict(self.charts.pending_trade_markers)
+        return replace(
+            sample,
+            markets=tuple(
+                replace(
+                    point,
+                    markers=tuple(
+                        self.charts.pending_trade_markers.get(point.token_id, ())
+                    ),
+                )
+                for point in sample.markets
+            ),
+        )
+
+    def acknowledge_sample(self, sample: DashboardSample) -> None:
+        for point in sample.markets:
+            if self._marker_sources.get(
+                point.token_id
+            ) is self.charts.pending_trade_markers.get(point.token_id):
+                self.charts.acknowledge_markers(point.token_id, len(point.markers))
+        self._marker_sources.clear()
+
+    def sample_current(self, sampled_at_ms: int) -> DashboardSample:
+        """Sample live display state without retaining another browser-style point."""
+        equity_value, equity_stale = self.charts.current_executable_equity(
+            self.markets.portfolio_valuation(
+                sampled_at_ms,
+                initial_cash_usdc=self.initial_cash_usdc,
+                allow_stale_marks=False,
+            ).equity_usdc
+        )
+        return DashboardSample(
+            sampled_at_ms=sampled_at_ms,
+            markets=tuple(
+                self._current_market_chart_point(token_id, sampled_at_ms)
+                for token_id in self.charts.chart_tokens
+            ),
+            equity=EquityChartPoint(
+                value=_decimal_chart_value(equity_value),
+                status=_sample_status(equity_value, equity_stale),
+            ),
+        )
+
     def wallet_point(self, source_key: str) -> WalletChartPoint | None:
         event = self.wallets.wallet_timeline_by_source.get(source_key)
         if event is None:
@@ -136,6 +194,20 @@ class DashboardProjection:
                 self.charts.price_stale_history[token_id][-1],
             ),
             markers=self.charts.trade_marker_history[token_id][-1],
+        )
+
+    def _current_market_chart_point(
+        self, token_id: str, sampled_at_ms: int
+    ) -> MarketChartPoint:
+        value, stale = self.charts.current_market_value(
+            token_id, sampled_at_ms, self.markets.current_book
+        )
+        return MarketChartPoint(
+            token_id=token_id,
+            label=self.markets.market_label(token_id),
+            value=_decimal_chart_value(value),
+            status=_sample_status(value, stale),
+            markers=(),
         )
 
     def _stream_received(self, event: StreamReceived) -> ProjectionChange:
@@ -181,13 +253,14 @@ class DashboardProjection:
             )
         return ProjectionChange(accepted_book, wallet_event)
 
-    def _fill_completed(self, event: FillCompleted) -> None:
+    def _fill_completed(self, event: FillCompleted) -> bool:
         self.markets.portfolio = event.portfolio
         if event.fill.status is OrderStatus.REJECTED:
-            return
+            return False
         self.markets.refresh_fill_mark(event.fill)
         if event.fill.has_execution:
-            self.charts.record_trade(event.fill.token_id, event.fill.side)
+            return not self.charts.record_trade(event.fill.token_id, event.fill.side)
+        return False
 
     def _record_book(self, book: BookSnapshot) -> None:
         self.markets.record_book(book, activate_chart_token=self.charts.activate_token)

@@ -9,7 +9,6 @@ from fastapi.responses import StreamingResponse
 from api.auth.dependencies import CurrentUserDependency
 from api.auth.streams import StreamAuthorization
 from api.events.contracts import (
-    LIVE_EVENT_MODELS,
     PERSISTED_DURABLE_EVENT_ADAPTER,
     LiveRunEvent,
     PersistedDurableEvent,
@@ -24,7 +23,7 @@ from api.http.contracts import (
     RunEventPage,
 )
 from api.http.dependencies import (
-    RedisDependency,
+    LiveSubscriptionHubDependency,
     SessionFactoryDependency,
 )
 from api.http.responses import NOT_FOUND_RESPONSE
@@ -42,9 +41,7 @@ from api.limits.streams import LimitedStreamResponse
 SSE_MEDIA_TYPE = "text/event-stream"
 LAST_EVENT_ID_HEADER = "Last-Event-ID"
 DURABLE_EVENT_SCHEMA_REFERENCE = "#/components/schemas/PersistedDurableEvent"
-LIVE_EVENT_SCHEMA_REFERENCES = tuple(
-    f"#/components/schemas/{model.__name__}" for model in LIVE_EVENT_MODELS
-)
+LIVE_EVENT_SCHEMA_REFERENCES = ("#/components/schemas/LiveRunEvent",)
 
 router = APIRouter()
 
@@ -110,7 +107,7 @@ async def stream_run_events(
     request: Request,
     session_factory: SessionFactoryDependency,
     user: CurrentUserDependency,
-    redis: RedisDependency,
+    hub: LiveSubscriptionHubDependency,
     lease: StreamLeaseDependency,
     view: Literal[EventView.ACTIVITY, EventView.DIAGNOSTICS] = EventView.ACTIVITY,
     after_event_id: Annotated[EventCursorValue, Query()] = FIRST_EVENT_CURSOR,
@@ -124,12 +121,13 @@ async def stream_run_events(
         run_id,
         request,
         session_factory,
-        redis,
         StreamAuthorization(session_factory, request.state.session_token, user.id),
+        hub=hub,
         view=view,
     )
     return LimitedStreamResponse(
         streamer.stream(cursor),
         lease,
         media_type=SSE_MEDIA_TYPE,
+        metrics=hub.metrics,
     )

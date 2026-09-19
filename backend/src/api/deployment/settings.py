@@ -5,6 +5,7 @@ from enum import StrEnum
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Self
+from urllib.parse import urlsplit
 
 from pydantic import (
     BaseModel,
@@ -32,6 +33,7 @@ class Environment(StrEnum):
 ENVIRONMENT_ENV = "POLYBOT_ENVIRONMENT"
 WORKER_CONCURRENCY_ENV = "POLYBOT_WORKER_CONCURRENCY"
 WORKER_DATABASE_POOL_SIZE_ENV = "POLYBOT_WORKER_DATABASE_POOL_SIZE"
+LIVE_REDIS_SHARDS_ENV = "POLYBOT_LIVE_REDIS_SHARDS"
 HEARTBEAT_SECONDS_ENV = "POLYBOT_HEARTBEAT_SECONDS"
 LEASE_SECONDS_ENV = "POLYBOT_LEASE_SECONDS"
 PROXY_ADDRESS_ENV = "POLYBOT_PROXY_ADDRESS"
@@ -49,6 +51,7 @@ class StartupSettings(BaseModel):
 
     database_url: SecretStr
     redis_url: SecretStr
+    live_redis_urls: tuple[SecretStr, ...] = ()
     environment: Environment = Environment.DEVELOPMENT
     seed_development_account: bool = False
     release_id: str = "development"
@@ -64,6 +67,30 @@ class StartupSettings(BaseModel):
     )
     proxy_address: str | None = None
     storage_probe_path: Path = DEFAULT_STORAGE_PROBE_PATH
+
+    @field_validator("live_redis_urls")
+    @classmethod
+    def validate_live_shards(cls, urls: tuple[SecretStr, ...]) -> tuple[SecretStr, ...]:
+        for secret in urls:
+            parsed = urlsplit(secret.get_secret_value())
+            if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname:
+                raise ValueError("live shards require Redis URLs with a host")
+            if parsed.path and (not parsed.path[1:].isdecimal()):
+                raise ValueError("live Redis database must be nonnegative")
+            try:
+                if parsed.port == 0:
+                    raise ValueError("invalid live Redis port")
+            except ValueError:
+                raise ValueError("invalid live Redis port") from None
+        return urls
+
+    @classmethod
+    def parse_live_shards(cls, value: str) -> tuple[SecretStr, ...]:
+        if not value.strip():
+            return ()
+        return cls.validate_live_shards(
+            tuple(SecretStr(url.strip()) for url in value.split(","))
+        )
 
     @field_validator("storage_probe_path", mode="before")
     @classmethod
@@ -101,9 +128,11 @@ class StartupSettings(BaseModel):
             raise ValueError(
                 "invalid or missing database/Redis configuration"
             ) from None
+        live_redis_urls = cls.parse_live_shards(os.getenv(LIVE_REDIS_SHARDS_ENV, ""))
         settings = cls(
             database_url=SecretStr(database_url),
             redis_url=SecretStr(redis_url),
+            live_redis_urls=live_redis_urls,
             environment=os.getenv(ENVIRONMENT_ENV, Environment.DEVELOPMENT),
             seed_development_account=(
                 os.getenv(ENVIRONMENT_ENV) == Environment.DEVELOPMENT

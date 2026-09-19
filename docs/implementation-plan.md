@@ -1070,7 +1070,9 @@ Acceptance:
 
 ## Slice 12E: Browser Dashboard Parity
 
-Status: implemented; depends on Slices 12B through 12D.
+Status: implemented; depends on Slices 12B through 12D. The incremental live
+variants below describe the historical slice. The scalable live telemetry
+follow-up replaces them with one snapshot contract.
 
 Minimum deliverable:
 
@@ -2593,3 +2595,56 @@ resource ownership, pool configuration/Ansible override, connection-budget
 formula, local startup command and shutdown-policy table. Policy-table and
 runtime-template tests verify the affected contracts. No intentional protocol,
 public API, database-schema or bot-capacity divergence was introduced.
+
+## Follow-up: Scalable live run telemetry (September 19, 2026)
+
+Status: implemented pending capacity certification; depends on the shared, bounded worker pool follow-up above.
+The [live telemetry scaling plan](live-telemetry-scaling-plan.md) removes
+per-frame PostgreSQL access through process-owned, batched ownership validation
+and five-second advisory publication permits. The user approved that bounded
+live-chart freshness window; execution and durable-write fences remain strict.
+
+The scope also covers replaceable snapshots, bounded publication, demand-aware
+sampling, shared API subscriptions, slow-client handling, terminal reconciliation,
+and an explicit Redis scale-out unit. The component acceptance target is 20,000
+active producers and 20,000 watched dashboards, with a subsequent 50,000 gate.
+These are measurement targets, not achieved capacities or end-to-end bot claims.
+Durable-history volume and shared market ingestion remain separate follow-ups.
+The runtime now uses worker-owned five-second advisory publication permits,
+replaceable snapshots, fixed Redis live-shard routing, and API-process
+multiplexed live subscriptions. Production capacity allowances remain unchanged
+until the plan's disposable-service capacity gates have been measured.
+
+
+The correctness follow-up removes the obsolete live variants and optional legacy
+paths; fixes SQL interval sampling, conservative deadline expiry, Redis health CAS
+and TTL, and reconnecting subscription ownership; preserves durable marker
+precedence and terminal finality; and provides bounded observability and actual
+multiprocess HTTP workloads. The capacity runner supports isolated and integrated
+modes and browser capture replay. Local smoke evidence does not certify the
+20,000/50,000 gates or four-hour soak. No Polymarket adapter, production admission,
+execution fence, or database migration changes are part of this follow-up.
+
+Documentation-drift audit: current architecture, generated wire schemas, deployment
+shard environment/Ansible contract, pool budgets, operational signal ownership,
+and executable workload commands now describe the snapshot implementation.
+Historical Slice 12E text is explicitly labeled. Capacity claims remain gated on
+measured hardware/topology evidence.
+
+Telemetry correction verification (September 2026): the implementation now has
+real PostgreSQL/Redis regression coverage, two-shard disconnect isolation and an
+executable multiprocess HTTP capacity runner. Local 30-second smoke runs cover
+an integrated fault workload and an isolated 1,000-producer workload. These are
+development evidence only; target-scale 30-minute gates, four-hour soak, per-node
+headroom and deployment proxy/rendering certification remain outstanding. See
+`docs/beta-deployment.md` for commands and interpretation.
+
+Principal review corrections: Redis clock invalidation cannot be overwritten by
+late TIME/SQL results; hub subscription scans occur only on membership changes
+and readiness requires a Redis acknowledgement; observer drain is bounded and
+shared across cancellation/repeated cleanup; terminal state suppresses frames
+already dequeued by another viewer; session-close rollbacks discard terminal wake
+hints. The capacity runner now exercises owned heartbeats and terminal stop/replay
+in integrated mode, requires every viewer to receive live state, and records its
+remaining synthetic execution substitutions explicitly. No target-scale capacity
+claim follows from these regression checks.

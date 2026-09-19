@@ -28,13 +28,16 @@ from api.events.contracts import (
     RunStatusPayload,
 )
 from api.events.ids import FIRST_EVENT_CURSOR
+from api.events.live.routing import LiveShardRouter
 from api.events.store import EventStore
 from api.http.lifecycle import ApiRunLifecycle
 from api.http.sse import RunEventStreamer
 from api.http.sse.frames import (
     SSE_FIELD_SEPARATOR,
     SSE_ID_FIELD,
+    SSE_IDLE_COMMENT,
 )
+from api.http.sse.hub import LiveSubscriptionHub
 from api.runs.status import RunStatus
 from api.runs.store import RunStore
 from redis.asyncio import Redis
@@ -244,16 +247,24 @@ def test_sse_handoff_rechecks_postgres_after_real_redis_subscribe() -> None:
                 )
 
             wrapped_redis = _InjectingRedis(redis, inject_terminal_event)
+            hub = LiveSubscriptionHub(
+                LiveShardRouter(("redis://fixture",)), (redis,), wrapped_redis
+            )
+            await hub.start()
             streamer = RunEventStreamer(
                 run.id,
                 _ConnectedRequest(),
                 session_factory,
-                wrapped_redis,
                 AsyncMock(allowed=AsyncMock(return_value=True)),
+                hub=hub,
             )
             frames = [frame async for frame in streamer.stream(FIRST_EVENT_CURSOR)]
+            await hub.close()
             assert first.id is not None
-            return tuple(_frame_id(frame) for frame in frames)
+            assert SSE_IDLE_COMMENT in frames
+            return tuple(
+                _frame_id(frame) for frame in frames if frame != SSE_IDLE_COMMENT
+            )
         finally:
             await redis.aclose()
             await engine.dispose()
@@ -296,7 +307,7 @@ class _InjectingRedis:
         self.redis = redis
         self.inject = inject
 
-    def pubsub(self) -> "_InjectingPubSub":
+    def pubsub(self) -> _InjectingPubSub:
         return _InjectingPubSub(self.redis.pubsub(), self.inject)
 
 

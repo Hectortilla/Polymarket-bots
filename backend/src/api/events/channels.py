@@ -40,3 +40,17 @@ def decode_durable_wake_frame(frame: object) -> int | None:
     if not is_durable_event_id(event_id):
         return None
     return event_id
+
+
+def run_from_event_channel(channel: object) -> UUID | None:
+    if isinstance(channel, bytes):
+        try:
+            channel = channel.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    if not isinstance(channel, str) or not channel.startswith(RUN_EVENT_CHANNEL_PREFIX):
+        return None
+    try:
+        return UUID(channel.removeprefix(RUN_EVENT_CHANNEL_PREFIX))
+    except ValueError:
+        return None

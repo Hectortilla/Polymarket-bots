@@ -1,3 +1,5 @@
+from control_plane.live_fixtures import RecordingWorkerLive
+
 """Capacity survives worker processes, stop transitions and retained history."""
 
 import asyncio
@@ -9,7 +11,6 @@ from time import monotonic, sleep
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import api.execution.worker.lifecycle as lifecycle
 import api.execution.worker.runtime as worker_runtime
 import polybot.runtime as runtime_module
 import pytest
@@ -17,6 +18,7 @@ from api.events.kinds import EventKind
 from api.events.pagination import DEFAULT_EVENT_PAGE_LIMIT
 from api.events.store import EventStore
 from api.events.writer import RunEventWriter
+from api.execution.worker import lifecycle
 from api.limits.policy import PAPER_BETA
 from api.limits.usage import AccountUsageReader
 from api.runs.failures import RunFailureReason
@@ -111,7 +113,10 @@ def test_elapsed_startup_expires_immediately(limits_services, monkeypatch):
                 monkeypatch.setattr(lifecycle, "run_claimed_bot", runtime)
                 await asyncio.wait_for(
                     lifecycle.RunLifecycleCoordinator(
-                        store, sessions, RunEventWriter(sessions, redis)
+                        store,
+                        sessions,
+                        RunEventWriter(sessions, redis),
+                        live_telemetry=RecordingWorkerLive(),
                     ).execute(queued.id),
                     0.5,
                 )
@@ -243,7 +248,10 @@ def test_dynamic_runtime_market_cap_fails_and_closes_resources(
             )
             async with sessions() as session:
                 await lifecycle.RunLifecycleCoordinator(
-                    RunStore(session), sessions, RunEventWriter(sessions, redis)
+                    RunStore(session),
+                    sessions,
+                    RunEventWriter(sessions, redis),
+                    live_telemetry=RecordingWorkerLive(),
                 ).execute(run.id)
             async with sessions() as session:
                 finished = await RunStore(session).read(run.id)

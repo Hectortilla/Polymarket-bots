@@ -8,9 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth.dependencies import CurrentUserDependency
 from api.events.store import EventStore
-from api.events.writer import publish_durable_wake
 from api.http.dependencies import (
-    RedisDependency,
     SessionFactoryDependency,
 )
 from api.http.lifecycle import ApiRunLifecycle
@@ -73,7 +71,6 @@ async def stop_run(
     run_id: UUID,
     session_factory: SessionFactoryDependency,
     user: CurrentUserDependency,
-    redis: RedisDependency,
 ) -> RunRead:
     now = system_now_utc()
     async with session_factory() as session:
@@ -81,10 +78,8 @@ async def stop_run(
         transition = await ApiRunLifecycle(session).request_stop(run_id, now=now)
         if transition is None:
             raise_run_not_found()
-        run, terminal_event_id = transition
+        run, _ = transition
         run = (await _with_event_summaries(session, (run,)))[0]
-    if terminal_event_id is not None:
-        await publish_durable_wake(redis, run_id, terminal_event_id)
     return run
 
 

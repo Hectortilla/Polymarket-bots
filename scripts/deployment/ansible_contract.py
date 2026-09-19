@@ -11,6 +11,7 @@ from api.auth.mail.config import (
 )
 from api.deployment.settings import (
     DEFAULT_WORKER_DATABASE_POOL_SIZE,
+    LIVE_REDIS_SHARDS_ENV,
     WORKER_DATABASE_POOL_SIZE_ENV,
 )
 from api.http.routes.paths import HEALTH_PATH, api_route_path
@@ -68,6 +69,7 @@ from scripts.host_operations.policy import (
 
 
 class RuntimeKeys(TypedDict):
+    live_redis_shards: str
     worker_database_pool_size: str
     origin: str
     http_port: str
@@ -193,6 +195,7 @@ def deployment_contract() -> DeploymentContract:
         "activation_timeout": ACTIVATION_TIMEOUT_SECONDS,
         "runtime_keys": {
             "worker_database_pool_size": WORKER_DATABASE_POOL_SIZE_ENV,
+            "live_redis_shards": LIVE_REDIS_SHARDS_ENV,
             "origin": AUTH_ORIGIN_ENV,
             "http_port": HTTP_PORT_ENV,
             "secrets": SECRETS_DIRECTORY_ENV,

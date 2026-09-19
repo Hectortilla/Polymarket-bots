@@ -8,6 +8,7 @@ from uuid import UUID
 from redis.asyncio import Redis
 
 from api.events.health.store import FeedHealthStore
+from api.events.live.routing import LiveShardRouter
 from api.operations.alerts import ALERT_DEFINITIONS
 from api.operations.measurement_contracts import RedisMeasurements
 from api.operations.observations.contracts import AlertCode, Observation
@@ -24,10 +25,10 @@ class StorageProbe:
 
 
 class RedisOperationProbe:
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis, feeds: FeedHealthStore | None = None) -> None:
         self._presence = WorkerPresenceStore(redis)
         self._counters = ObservationCounters(redis)
-        self._feeds = FeedHealthStore(redis)
+        self._feeds = feeds or FeedHealthStore(LiveShardRouter(("control",)), (redis,))
 
     async def read(self) -> RedisMeasurements:
         return RedisMeasurements(

@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING
 
 from polybot.framework.timestamps import MILLISECONDS_PER_SECOND
 
-from .contracts import MAX_CHART_HISTORY_POINTS, MAX_CHART_TOKENS
+from .contracts import (
+    MAX_CHART_HISTORY_POINTS,
+    MAX_CHART_TOKENS,
+    MAX_PENDING_MARKERS_PER_TOKEN,
+)
 
 if TYPE_CHECKING:
     from polybot.framework.events import Side
@@ -20,6 +24,9 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class DashboardHistory:
+    retain_history: bool = True
+    last_market_values: dict[str, float] = field(default_factory=dict)
+    last_equity_value: float | None = None
     chart_tokens: deque[str] = field(default_factory=deque)
     price_history: dict[str, deque[float]] = field(default_factory=dict)
     price_stale_history: dict[str, deque[bool]] = field(default_factory=dict)
@@ -43,12 +50,25 @@ class DashboardHistory:
         self._ensure_token_history(token_id)
         return True
 
-    def record_trade(self, token_id: str, side: Side) -> None:
-        if self.activate_token(token_id):
-            self.pending_trade_markers.setdefault(token_id, []).append(side)
+    def record_trade(self, token_id: str, side: Side) -> bool:
+        if not self.activate_token(token_id):
+            return False
+        markers = self.pending_trade_markers.setdefault(token_id, [])
+        if len(markers) >= MAX_PENDING_MARKERS_PER_TOKEN:
+            return False
+        markers.append(side)
+        return True
+
+    def acknowledge_markers(self, token_id: str, count: int) -> None:
+        markers = self.pending_trade_markers.get(token_id)
+        if markers is not None:
+            del markers[:count]
+            if not markers:
+                self.pending_trade_markers.pop(token_id, None)
 
     def remove_tokens(self, token_ids: Iterable[str]) -> None:
         for token_id in token_ids:
+            self.last_market_values.pop(token_id, None)
             self.price_history.pop(token_id, None)
             self.price_stale_history.pop(token_id, None)
             self.trade_marker_history.pop(token_id, None)
@@ -69,17 +89,9 @@ class DashboardHistory:
         trim(self.chart_sample_epoch_seconds, MAX_CHART_HISTORY_POINTS)
         for token_id in self.chart_tokens:
             history, stale_history, marker_history = self._token_histories(token_id)
-            book = current_book(token_id, sampled_at_ms)
-            midpoint = None if book is None else book.midpoint()
-            if midpoint is not None:
-                value = float(midpoint)
-                is_stale = False
-            elif book is None:
-                value = last_chart_value(history)
-                is_stale = value is not None
-            else:
-                value = None
-                is_stale = False
+            value, is_stale = self.current_market_value(
+                token_id, sampled_at_ms, current_book
+            )
             history.append(float("nan") if value is None else value)
             stale_history.append(is_stale)
             marker_history.append(tuple(self.pending_trade_markers.pop(token_id, ())))
@@ -88,14 +100,36 @@ class DashboardHistory:
             trim(marker_history, MAX_CHART_HISTORY_POINTS)
         self._record_executable_equity(executable_equity)
 
-    def _record_executable_equity(self, executable_equity: Decimal | None) -> None:
+    def current_market_value(
+        self,
+        token_id: str,
+        sampled_at_ms: int,
+        current_book: Callable[[str, int], BookSnapshot | None],
+    ) -> tuple[float, bool]:
+        """Return a display value without extending retained chart history."""
+        book = current_book(token_id, sampled_at_ms)
+        midpoint = None if book is None else book.midpoint()
+        if midpoint is not None:
+            value = float(midpoint)
+            self.last_market_values[token_id] = value
+            return value, False
+        if book is None:
+            previous = self.last_market_values.get(token_id)
+            return (float("nan"), False) if previous is None else (previous, True)
+        return float("nan"), False
+
+    def current_executable_equity(
+        self, executable_equity: Decimal | None
+    ) -> tuple[float, bool]:
         if executable_equity is not None:
-            value = float(executable_equity)
-            is_stale = False
-        else:
-            value = last_chart_value(self.executable_equity_history)
-            is_stale = value is not None
-        self.executable_equity_history.append(float("nan") if value is None else value)
+            self.last_equity_value = float(executable_equity)
+            return self.last_equity_value, False
+        previous = self.last_equity_value
+        return (float("nan"), False) if previous is None else (previous, True)
+
+    def _record_executable_equity(self, executable_equity: Decimal | None) -> None:
+        value, is_stale = self.current_executable_equity(executable_equity)
+        self.executable_equity_history.append(value)
         self.executable_equity_stale_history.append(is_stale)
         trim(self.executable_equity_history, MAX_CHART_HISTORY_POINTS)
         trim(self.executable_equity_stale_history, MAX_CHART_HISTORY_POINTS)
@@ -111,6 +145,8 @@ class DashboardHistory:
         )
 
     def _ensure_token_history(self, token_id: str) -> None:
+        if not self.retain_history:
+            return
         self.price_history.setdefault(token_id, deque())
         self.price_stale_history.setdefault(token_id, deque())
         self.trade_marker_history.setdefault(token_id, deque())

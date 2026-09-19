@@ -24,10 +24,11 @@ from api.events.contracts.payloads.chart import (
     EquityChartPointPayload,
     MarketChartPointPayload,
 )
+from api.events.live.routing import LiveShardRouter
 from api.events.pagination import DEFAULT_EVENT_PAGE_LIMIT
 from api.events.store import EventStore
 from api.events.writer import RunEventWriter
-from api.http.sse.subscription import RunSubscription
+from api.http.sse.hub import LiveSubscriptionHub
 from api.limits.policy import PAPER_BETA
 from api.limits.redis.request_budgets import RequestRateLimiter
 from api.limits.redis.stream_admission import OpenStreamAdmission
@@ -161,33 +162,40 @@ async def rehearse(settings):
                 counters["writes"] += 1
                 await asyncio.sleep(DURABLE_TICK_SECONDS)
 
+        hub = LiveSubscriptionHub(
+            LiveShardRouter(("redis://fixture",)), (redis,), redis
+        )
+        await hub.start()
+
         async def reader(run):
             owner = uuid4()
             limiter = RequestRateLimiter(redis, owner)
             lease = await OpenStreamAdmission(redis, owner).acquire_stream()
             try:
-                async with RunSubscription(redis, run.id) as subscription:
-                    next_read = 0
-                    while perf_counter() < deadline:
-                        if perf_counter() >= next_read:
-                            started = perf_counter()
-                            await limiter.consume_request_budget(expensive=False)
-                            async with sessions() as session:
-                                await EventStore(session).read_page(
-                                    run.id,
-                                    before_event_id=None,
-                                    limit=DEFAULT_EVENT_PAGE_LIMIT,
-                                )
-                            io_latencies.append(perf_counter() - started)
-                            counters["reads"] += 1
-                            counters["requests"] += 1
-                            next_read = perf_counter() + READ_TICK_SECONDS
-                        frame = await subscription.get_message(
-                            ignore_subscribe_messages=True, timeout=0.1
-                        )
-                        if frame is not None:
-                            counters["stream_frames"] += 1
+                subscription = await hub.attach(run.id)
+                next_read = 0
+                while perf_counter() < deadline:
+                    if perf_counter() >= next_read:
+                        started = perf_counter()
+                        await limiter.consume_request_budget(expensive=False)
+                        async with sessions() as session:
+                            await EventStore(session).read_page(
+                                run.id,
+                                before_event_id=None,
+                                limit=DEFAULT_EVENT_PAGE_LIMIT,
+                            )
+                        io_latencies.append(perf_counter() - started)
+                        counters["reads"] += 1
+                        counters["requests"] += 1
+                        next_read = perf_counter() + READ_TICK_SECONDS
+                    try:
+                        frame = await asyncio.wait_for(subscription.next(), 0.1)
+                    except TimeoutError:
+                        frame = None
+                    if frame is not None:
+                        counters["stream_frames"] += 1
             finally:
+                await hub.detach(run.id, subscription)
                 await lease.release()
 
         try:
@@ -201,6 +209,7 @@ async def rehearse(settings):
                     ),
                 )
         finally:
+            await hub.close()
             for run in runs:
                 async with sessions() as session:
                     store = RunStore(session)

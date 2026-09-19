@@ -15,6 +15,7 @@ x-application: &application
     POLYBOT_AUTH_ALLOW_HTTP: 'false'
     POLYBOT_DATABASE_URL_FILE: /run/secrets/database_url
     POLYBOT_REDIS_URL_FILE: /run/secrets/redis_url
+    POLYBOT_LIVE_REDIS_SHARDS: ${POLYBOT_LIVE_REDIS_SHARDS:-}
     POLYBOT_PROXY_ADDRESS: &proxy_address 172.30.16.2
     BOT_MODE: paper
     BOT_LIVE_ENABLED: 'false'
@@ -114,7 +115,7 @@ services:
     logging: *logging
   redis:
     image: ${POLYBOT_REDIS_IMAGE:?pinned Redis image required}
-    command: [redis-server, --appendonly, 'yes']
+    command: [redis-server, --appendonly, 'yes', --client-output-buffer-limit, 'pubsub 16mb 4mb 5']
     volumes: [redis_data:/data]
     networks: [services]
     restart: unless-stopped

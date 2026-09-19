@@ -149,106 +149,40 @@ describe("run EventSource adapter", () => {
     );
   });
 
-  it("accepts every live variant and rejects malformed live payloads", () => {
+  it("accepts snapshots and rejects malformed or oversized live data", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     const onLiveEvent = vi.fn();
     openRunEventStream(RUN_ID, INITIAL_EVENT_CURSOR, vi.fn(), onLiveEvent);
-    const base = {
+    const event = {
+      kind: LIVE_EVENT_KIND.snapshot,
       run_id: RUN_ID,
       occurred_at: "2026-08-23T00:00:00Z",
+      generation: 1,
+      sequence: 1,
+      sampled_at_ms: 1,
+      markets: [],
+      equity: { value: "100", status: VALUATION_STATUS.fresh },
     };
-    const events = [
-      {
-        ...base,
-        kind: LIVE_EVENT_KIND.market,
-        payload: {
-          sampled_at_ms: 1,
-          points: [
-            {
-              token_id: "token",
-              label: "Market",
-              value: "0.5",
-              status: VALUATION_STATUS.fresh,
-              markers: [SIDE.buy],
-            },
-          ],
-        },
-      },
-      {
-        ...base,
-        kind: LIVE_EVENT_KIND.equity,
-        payload: {
-          sampled_at_ms: 1,
-          point: { value: "100", status: VALUATION_STATUS.fresh },
-        },
-      },
-      {
-        ...base,
-        kind: LIVE_EVENT_KIND.wallet,
-        payload: {
-          sampled_at_ms: 1,
-          points: [
-            {
-              source_key: `wallet${runtimeContract.walletSourceKeySeparator}source`,
-              wallet: "0x" + "a".repeat(40),
-              trade_timestamp_ms: 1,
-              side: SIDE.sell,
-              notional: "2",
-              market_label: "Market",
-              accepted: null,
-            },
-          ],
-        },
-      },
-      {
-        ...base,
-        kind: LIVE_EVENT_KIND.streamHealth,
-        payload: {
-          queue_depth: 0,
-          peak_queue_depth: 1,
-          book_dispatch_lag_ms: null,
-          book_stale: false,
-          book_received_count: 2,
-          book_coalesced_count: 0,
-        },
-      },
-    ];
-    for (const event of events) emit(event);
-
+    emit(event);
+    emit({ ...event, id: 4 });
+    emit({ ...event, sequence: 0 });
+    emit({ ...event, sampled_at_ms: Number.MAX_SAFE_INTEGER + 1 });
+    emit({ ...event, generation: Number.MAX_SAFE_INTEGER + 1 });
+    emit({ ...event, equity: { value: "0x10", status: VALUATION_STATUS.fresh } });
+    const point = { token_id: "token", label: "Market", value: "0.5", status: VALUATION_STATUS.fresh, markers: [] };
+    emit({ ...event, markets: [{ ...point, markers: [SIDE.buy] }] });
+    emit({ ...event, markets: [point, point] });
+    emit({ ...event, markets: [{ ...point, token_id: " " }] });
+    emit({ ...event, markets: [{ ...point, label: " " }] });
     emit({
-      ...events[0],
-      payload: {
-        sampled_at_ms: 2,
-        points: [
-          {
-            token_id: "token",
-            label: "Market",
-            value: "0.5",
-            status: VALUATION_STATUS.unavailable,
-            markers: [],
-          },
-        ],
-      },
+      ...event,
+      markets: Array.from({ length: runtimeContract.dashboard.maxChartTokens + 1 }, (_, i) => ({
+        ...point,
+        token_id: String(i),
+      })),
     });
-    emit({ ...events[1], id: 4 });
-    emit({
-      ...events[1],
-      payload: {
-        sampled_at_ms: 2,
-        point: { value: "0x10", status: VALUATION_STATUS.fresh },
-      },
-    });
-    emit({
-      ...events[2],
-      payload: { sampled_at_ms: 2, points: [{ notional: "-1" }] },
-    });
-    emit({
-      ...events[3],
-      payload: { ...events[3].payload, queue_depth: -1 },
-    });
-
-    expect(onLiveEvent).toHaveBeenCalledTimes(4);
-    expect(onLiveEvent.mock.calls.map(([event]) => event.kind)).toEqual(events.map(({ kind }) => kind));
+    emit({ ...event, health: { observed_at: "bad", health: {} } });
+    expect(onLiveEvent).toHaveBeenCalledTimes(1);
   });
 
   it("validates every durable financial-history payload at ingress", () => {

@@ -10,7 +10,6 @@ from polybot.polymarket.discovery import MarketDiscovery
 from polybot.polymarket.wallet_discovery import WalletDiscovery
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -21,10 +20,15 @@ from api.auth.config import AuthSettings
 from api.auth.development import DevelopmentAccountStore
 from api.auth.mail import AccountMailer
 from api.deployment.settings import Environment, StartupSettings
+from api.events.live.connections import LiveConnections
+from api.events.live.routing import LiveShardRouter
+from api.events.terminal_wakes import TerminalWakePublisher
 from api.execution.launcher import RunLauncher
+from api.http.sse.hub import LiveSubscriptionHub
 from api.io_policy import (
     DATABASE_CONNECT_ARGS,
     DEPENDENCY_TIMEOUT_SECONDS,
+    REDIS_CONTROL_POOL_SIZE,
     REDIS_SOCKET_OPTIONS,
 )
 
@@ -40,51 +44,62 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         and startup_settings.environment is Environment.PRODUCTION
     ):
         await AccountMailer.for_app(app)
-    owned_engine: AsyncEngine | None = None
-    owned_redis: Redis | None = None
-    owned_discovery: MarketDiscovery | None = None
-    owned_wallet_discovery: WalletDiscovery | None = None
-    if not hasattr(app.state, "session_factory"):
-        owned_engine = create_async_engine(
-            app.state.startup_settings.database_url.get_secret_value(),
-            hide_parameters=True,
-            connect_args=DATABASE_CONNECT_ARGS,
-            pool_timeout=DEPENDENCY_TIMEOUT_SECONDS,
+    async with AsyncExitStack() as cleanup:
+        if not hasattr(app.state, "session_factory"):
+            engine = create_async_engine(
+                app.state.startup_settings.database_url.get_secret_value(),
+                hide_parameters=True,
+                connect_args=DATABASE_CONNECT_ARGS,
+                pool_timeout=DEPENDENCY_TIMEOUT_SECONDS,
+            )
+            cleanup.push_async_callback(engine.dispose)
+            app.state.session_factory = async_sessionmaker(
+                engine, expire_on_commit=False
+            )
+        if not hasattr(app.state, "redis"):
+            redis = Redis.from_url(
+                app.state.startup_settings.redis_url.get_secret_value(),
+                max_connections=REDIS_CONTROL_POOL_SIZE,
+                **REDIS_SOCKET_OPTIONS,
+            )
+            cleanup.push_async_callback(redis.aclose)
+            app.state.redis = redis
+        if not hasattr(app.state, "live_subscription_hub"):
+            if startup_settings is not None:
+                live = LiveConnections(startup_settings)
+                cleanup.push_async_callback(live.close)
+                router, clients = live.router, live.clients
+            else:
+                router, clients = (
+                    LiveShardRouter(("injected-redis",)),
+                    (app.state.redis,),
+                )
+            hub = LiveSubscriptionHub(router, clients, app.state.redis)
+            app.state.live_subscription_hub = hub
+            cleanup.push_async_callback(hub.close)
+            await hub.start()
+        else:
+            cleanup.push_async_callback(app.state.live_subscription_hub.close)
+        if not hasattr(app.state, "launcher"):
+            app.state.launcher = await asyncio.to_thread(_default_launcher)
+        if not hasattr(app.state, "market_discovery"):
+            discovery = MarketDiscovery()
+            cleanup.push_async_callback(discovery.close)
+            app.state.market_discovery = discovery
+        if not hasattr(app.state, "wallet_discovery"):
+            wallet_discovery = WalletDiscovery()
+            cleanup.push_async_callback(wallet_discovery.close)
+            app.state.wallet_discovery = wallet_discovery
+        terminal_wakes = TerminalWakePublisher(
+            app.state.session_factory, app.state.redis
         )
-        app.state.session_factory = async_sessionmaker(
-            owned_engine,
-            expire_on_commit=False,
-        )
-    if not hasattr(app.state, "redis"):
-        owned_redis = Redis.from_url(
-            app.state.startup_settings.redis_url.get_secret_value(),
-            **REDIS_SOCKET_OPTIONS,
-        )
-        app.state.redis = owned_redis
-    if not hasattr(app.state, "launcher"):
-        app.state.launcher = await asyncio.to_thread(_default_launcher)
-    if not hasattr(app.state, "market_discovery"):
-        owned_discovery = MarketDiscovery()
-        app.state.market_discovery = owned_discovery
-    if not hasattr(app.state, "wallet_discovery"):
-        owned_wallet_discovery = WalletDiscovery()
-        app.state.wallet_discovery = owned_wallet_discovery
-    try:
+        cleanup.push_async_callback(terminal_wakes.close)
+        await terminal_wakes.start()
         install_admin(app)
         if startup_settings is not None and startup_settings.seed_development_account:
             async with app.state.session_factory() as session:
                 await DevelopmentAccountStore(session).ensure_account()
         yield
-    finally:
-        async with AsyncExitStack() as cleanup:
-            if owned_engine is not None:
-                cleanup.push_async_callback(owned_engine.dispose)
-            if owned_redis is not None:
-                cleanup.push_async_callback(owned_redis.aclose)
-            if owned_wallet_discovery is not None:
-                cleanup.push_async_callback(owned_wallet_discovery.close)
-            if owned_discovery is not None:
-                cleanup.push_async_callback(owned_discovery.close)
 
 
 def _default_launcher() -> RunLauncher:
@@ -99,6 +114,10 @@ def _session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
 
 def _redis(request: Request) -> Redis:
     return request.app.state.redis
+
+
+def _live_subscription_hub(request: Request) -> LiveSubscriptionHub:
+    return request.app.state.live_subscription_hub
 
 
 def _launcher(request: Request) -> RunLauncher:
@@ -118,6 +137,9 @@ SessionFactoryDependency = Annotated[
     Depends(_session_factory),
 ]
 RedisDependency = Annotated[Redis, Depends(_redis)]
+LiveSubscriptionHubDependency = Annotated[
+    LiveSubscriptionHub, Depends(_live_subscription_hub)
+]
 LauncherDependency = Annotated[RunLauncher, Depends(_launcher)]
 MarketDiscoveryDependency = Annotated[MarketDiscovery, Depends(_market_discovery)]
 

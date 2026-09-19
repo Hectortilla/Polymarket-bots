@@ -2,15 +2,15 @@
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
-from uuid import uuid4
 
 import pytest
 from api.auth.passwords import PasswordVerificationError
+from api.events.live.metrics import LiveMetrics
 from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
 from api.http.middleware.private_cache import PrivateResponseMiddleware
 from api.http.middleware.service_failures import ServiceFailureMiddleware
 from api.http.protocol import CACHE_CONTROL_HEADER, NO_STORE_CACHE_DIRECTIVE
-from api.http.sse.subscription import RunSubscription
+from api.http.sse.subscriptions import SubscriptionLane
 from fastapi import status
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
@@ -37,22 +37,27 @@ def test_service_failure_after_headers_ends_without_a_second_response(error_type
     ]
 
 
-@pytest.mark.parametrize("operation", ["subscribe", "unsubscribe"])
-def test_subscription_failure_still_closes_the_owned_pubsub(operation):
-    pubsub = AsyncMock()
-    error = RedisError("subscription unavailable")
-    getattr(pubsub, operation).side_effect = error
-    redis = Mock()
-    redis.pubsub.return_value = pubsub
-
+def test_subscription_failure_closes_transport_and_recovers():
     async def scenario():
-        async with RunSubscription(redis, uuid4()):
-            assert operation == "unsubscribe"
+        failed, ready = AsyncMock(), AsyncMock()
+        failed.subscribe.side_effect = RedisError("private detail")
 
-    with pytest.raises(RedisError) as raised:
-        asyncio.run(scenario())
-    assert raised.value is error
-    pubsub.aclose.assert_awaited_once()
+        async def receive(**kwargs):
+            await asyncio.sleep(0.01)
+            return {"type": "subscribe", "channel": b"channel", "data": 1}
+
+        ready.get_message.side_effect = receive
+        redis = Mock()
+        redis.pubsub.side_effect = [failed, ready]
+        lane = SubscriptionLane(redis, lambda _: None, lambda: None, LiveMetrics())
+        lane.add("channel")
+        lane.start()
+        await lane.ready("channel")
+        await lane.close()
+        failed.aclose.assert_awaited_once()
+        ready.aclose.assert_awaited_once()
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("scope_type", ["lifespan", "websocket"])

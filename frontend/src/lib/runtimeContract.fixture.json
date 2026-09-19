@@ -77,9 +77,9 @@
       "Credentials": ["email", "password"],
       "CurrentUser": ["email", "id", "is_admin"],
       "EmailRequest": ["email"],
-      "EquityChartPayload": ["point", "sampled_at_ms"],
       "EquityChartPointPayload": ["status", "value"],
       "ErrorResponse": ["code", "detail"],
+      "FeedObservation": ["health", "observed_at"],
       "GraphBooleanConstantData": ["scalar_type", "value"],
       "GraphBrokerActionDescriptor": [
         "action",
@@ -160,13 +160,19 @@
       "GraphTriggerNodeData": ["hook_name"],
       "GraphValueRead": ["input_handle_id", "message", "reason", "status", "value"],
       "HealthResponse": ["status"],
-      "LiveEquityChartEvent": ["kind", "occurred_at", "payload", "run_id"],
-      "LiveMarketChartEvent": ["kind", "occurred_at", "payload", "run_id"],
-      "LiveStreamHealthEvent": ["kind", "occurred_at", "payload", "run_id"],
-      "LiveWalletChartEvent": ["kind", "occurred_at", "payload", "run_id"],
+      "LiveRunEvent": [
+        "equity",
+        "generation",
+        "health",
+        "kind",
+        "markets",
+        "occurred_at",
+        "run_id",
+        "sampled_at_ms",
+        "sequence"
+      ],
       "LoginCredentials": ["email", "password"],
       "LogoutResponse": ["logged_out"],
-      "MarketChartPayload": ["points", "sampled_at_ms"],
       "MarketChartPointPayload": ["label", "markers", "status", "token_id", "value"],
       "MarketLookupRequest": ["slugs"],
       "MarketSettlementPayload": ["portfolio", "settlement"],
@@ -247,7 +253,6 @@
         "peak_queue_depth",
         "queue_depth"
       ],
-      "WalletChartPayload": ["points", "sampled_at_ms"],
       "WalletChartPointPayload": [
         "accepted",
         "market_label",
@@ -275,10 +280,17 @@
       "wallet.timeline": ["id", "kind", "occurred_at", "payload", "run_id"]
     },
     "live": {
-      "chart.equity": ["kind", "occurred_at", "payload", "run_id"],
-      "chart.market": ["kind", "occurred_at", "payload", "run_id"],
-      "chart.wallet": ["kind", "occurred_at", "payload", "run_id"],
-      "stream.health.live": ["kind", "occurred_at", "payload", "run_id"]
+      "run.live_snapshot": [
+        "equity",
+        "generation",
+        "health",
+        "kind",
+        "markets",
+        "occurred_at",
+        "run_id",
+        "sampled_at_ms",
+        "sequence"
+      ]
     }
   },
   "accountManagement": {
@@ -527,11 +539,11 @@
     "minimumPositionSize": "0",
     "tokenIdsMustBeUnique": true
   },
+  "liveTelemetry": {
+    "feedTtlSeconds": 45
+  },
   "liveEventKind": {
-    "CHART_MARKET": "chart.market",
-    "CHART_EQUITY": "chart.equity",
-    "CHART_WALLET": "chart.wallet",
-    "STREAM_HEALTH": "stream.health.live"
+    "RUN_SNAPSHOT": "run.live_snapshot"
   },
   "orderStatus": {
     "ACCEPTED": "accepted",

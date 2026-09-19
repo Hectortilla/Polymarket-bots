@@ -10,11 +10,12 @@ from api.execution.config import configured_redis_url
 from api.execution.policy import MAX_RETAINED_WAKE_HINTS, TASKIQ_READ_BLOCK_SECONDS
 from api.execution.worker import execute_run
 from api.execution.worker.process import start_worker, stop_worker, worker_resources
-from api.io_policy import REDIS_SOCKET_OPTIONS
+from api.io_policy import REDIS_CONTROL_POOL_SIZE, REDIS_SOCKET_OPTIONS
 
 broker = RedisStreamBroker(
     configured_redis_url(),
     consumer_id="0-0",
+    max_connection_pool_size=REDIS_CONTROL_POOL_SIZE,
     maxlen=MAX_RETAINED_WAKE_HINTS,
     **REDIS_SOCKET_OPTIONS,
     xread_block=int(TASKIQ_READ_BLOCK_SECONDS * MILLISECONDS_PER_SECOND),

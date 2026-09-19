@@ -10,10 +10,8 @@ import api.http.openapi as openapi_module
 import api.http.routes.bots.run_launch as bot_run_routes
 import api.http.routes.bots.saved_bot as saved_bot_routes
 import api.http.routes.events as events_routes
-import api.http.routes.run_lookup as run_lookup
 import api.http.routes.runs as runs_routes
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from api.bots.contracts import BotCreate, BotRead, BotUpdate
 from api.bots.models import BotRow
 from api.catalog.contracts import BotDefinitionDescriptor
@@ -49,6 +47,7 @@ from api.http.contracts import HealthResponse
 from api.http.errors import SERVICE_UNAVAILABLE_DETAIL
 from api.http.openapi import OPENAPI_OUTPUT_PATH
 from api.http.protocol import IDEMPOTENCY_KEY_HEADER, IDEMPOTENCY_RECOVERY_HEADER
+from api.http.routes import run_lookup
 from api.http.routes.bots.market_validation import (
     MARKET_SELECTION_UNAVAILABLE_DETAIL,
 )
@@ -77,13 +76,16 @@ from api.runs.models import RunRow
 from api.runs.status import RunStatus
 from fastapi import status
 from polybot.performance.contracts.valuation_status import ValuationStatus
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from control_plane.auth_fixtures import TEST_USER_ID
 from control_plane.auth_fixtures import authenticated_test_client as TestClient
 from control_plane.auth_fixtures import create_authenticated_app as create_app
 from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.live_contract_cases import live_validation_cases
 from control_plane.market_fixtures import market_discovery
 from control_plane.run_contract_fixture import (
+    FRONTEND_LIVE_VALIDATION_PATH,
     FRONTEND_RUN_CONTRACT_PATH,
     frontend_run_contract,
 )
@@ -417,7 +419,8 @@ def test_queued_and_running_stop_are_idempotent(
     assert running_first.json()["latest_equity"] == "101.25"
     assert running_second.json()["status"] == RunStatus.STOP_REQUESTED
     assert state.terminal_event_count == 1
-    assert len(redis.published) == 1
+    # TerminalRunWriter owns the post-commit wake; this route fake does no SQL.
+    assert redis.published == []
 
 
 def test_launcher_failure_is_visible_and_sanitized(
@@ -908,6 +911,7 @@ class _State:
 
 class _SessionFactory:
     kw = {}
+
     def __init__(self, state: _State) -> None:
         self.state = state
 
@@ -1180,3 +1184,9 @@ def test_stream_forwards_event_view_and_defaults_to_activity(monkeypatch, view):
     )
     assert response.status_code == status.HTTP_200_OK
     assert observed == [EventView.ACTIVITY if view is None else view]
+
+
+def test_frontend_live_validation_fixture_matches_backend_semantics():
+    assert (
+        json.loads(FRONTEND_LIVE_VALIDATION_PATH.read_text()) == live_validation_cases()
+    )

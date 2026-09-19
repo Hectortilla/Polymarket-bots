@@ -21,7 +21,4 @@ class EventKind(StrEnum):
 
 
 class LiveEventKind(StrEnum):
-    CHART_MARKET = "chart.market"
-    CHART_EQUITY = "chart.equity"
-    CHART_WALLET = "chart.wallet"
-    STREAM_HEALTH = "stream.health.live"
+    RUN_SNAPSHOT = "run.live_snapshot"

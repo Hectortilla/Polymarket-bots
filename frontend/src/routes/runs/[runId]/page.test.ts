@@ -532,32 +532,48 @@ describe("run detail interactions", () => {
       name: RUN_STATUS_PRESENTATION[RUN_STATUS.RUNNING].stopLabel!,
     });
     live({
-      kind: LIVE_EVENT_KIND.streamHealth,
+      kind: LIVE_EVENT_KIND.snapshot,
+      generation: 1,
+      sequence: 1,
+      sampled_at_ms: Date.now(),
+      markets: [],
+      equity: { value: "100", status: "fresh" },
       run_id: RUN.id,
       occurred_at: RUN.created_at,
-      payload: {
-        queue_depth: 17,
-        peak_queue_depth: 23,
-        book_dispatch_lag_ms: 8,
-        book_stale: true,
-        book_received_count: 41,
-        book_coalesced_count: 5,
+      health: {
+        observed_at: new Date().toISOString(),
+        health: {
+          queue_depth: 17,
+          peak_queue_depth: 23,
+          book_dispatch_lag_ms: 8,
+          book_stale: true,
+          book_received_count: 41,
+          book_coalesced_count: 5,
+        },
       },
     });
     expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_UNAVAILABLE)).toBeTruthy();
     expect(screen.queryByText("17")).toBeNull();
 
     live({
-      kind: LIVE_EVENT_KIND.streamHealth,
+      kind: LIVE_EVENT_KIND.snapshot,
+      generation: 1,
+      sequence: 2,
+      sampled_at_ms: Date.now(),
+      markets: [],
+      equity: { value: "100", status: "fresh" },
       run_id: RUN.id,
       occurred_at: RUN.created_at,
-      payload: {
-        queue_depth: 0,
-        peak_queue_depth: 23,
-        book_dispatch_lag_ms: 8,
-        book_stale: false,
-        book_received_count: 42,
-        book_coalesced_count: 5,
+      health: {
+        observed_at: new Date().toISOString(),
+        health: {
+          queue_depth: 0,
+          peak_queue_depth: 23,
+          book_dispatch_lag_ms: 8,
+          book_stale: false,
+          book_received_count: 42,
+          book_coalesced_count: 5,
+        },
       },
     });
     expect(await screen.findByText(RUN_GUIDE_COPY.BOOK_REPORTED)).toBeTruthy();

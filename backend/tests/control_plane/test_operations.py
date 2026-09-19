@@ -9,9 +9,7 @@ from uuid import uuid4
 import pytest
 from api.auth.models import UserRow
 from api.auth.store import AuthStore
-from api.events.contracts import LiveStreamHealthEvent
 from api.events.store import EventStore
-from api.events.writer import RunEventWriter
 from api.limits.errors import ResourceLimitError
 from api.operations.alerts.policy import (
     DATABASE_SIZE_ALERT_BYTES,
@@ -43,6 +41,7 @@ from control_plane.limits_fixtures import (
     resource_services,
 )
 from control_plane.limits_fixtures import limits_services as limits_services
+from control_plane.live_fixtures import seed_health
 
 ACTOR = "disposable-test-operator"
 
@@ -202,17 +201,12 @@ def test_monitor_injected_failures_are_actionable_and_redacted(limits_services, 
             alerts = await monitor.tick()
             assert AlertCode.WORKER_UNAVAILABLE in alerts
             assert AlertCode.QUEUE_DELAY in alerts
-            claimed = await claim_run(sessions, run)
+            await claim_run(sessions, run)
             telemetry = WorkerPresenceStore(redis)
             worker = uuid4()
             await telemetry.refresh(worker)
-            writer = RunEventWriter(sessions, redis).for_execution(
-                claimed.execution_token, DEFAULT_LEASE_SECONDS
-            )
-            await writer.health_writer().record(
-                LiveStreamHealthEvent.from_observation(
-                    run.id, StreamHealth(0, 0, 0, True), occurred_at=system_now_utc()
-                )
+            await seed_health(
+                redis, run.id, StreamHealth(0, 0, 0, True), observed_at=system_now_utc()
             )
             assert AlertCode.FEED_DEGRADED in await monitor.tick()
             with patch.object(

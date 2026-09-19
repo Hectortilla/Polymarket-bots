@@ -43,6 +43,7 @@ from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.events.contracts import RunLifecycleEvent, RunStatusPayload
 from api.events.delivery import EventDelivery
 from api.events.ids import FIRST_EVENT_CURSOR
+from api.events.live.routing import LiveShardRouter
 from api.http.app import create_app
 from api.http.protocol import (
     CACHE_CONTROL_HEADER,
@@ -63,6 +64,7 @@ from api.http.routes.paths import (
     api_route_path,
 )
 from api.http.sse import RunEventStreamer
+from api.http.sse.hub import LiveSubscriptionHub
 from api.http.sse.replay import RunEventReplay
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
@@ -125,12 +127,16 @@ async def run_scenario(services, scenario):
         market_discovery=market_discovery(),
         auth_settings=AuthSettings(ORIGIN, True),
     )
+    hub = LiveSubscriptionHub(LiveShardRouter(("redis://fixture",)), (redis,), redis)
+    app.state.live_subscription_hub = hub
+    await hub.start()
     try:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url=ORIGIN, headers=HEADERS
         ) as client:
             await scenario(client, app, factory, redis, launcher)
     finally:
+        await hub.close()
         await redis.aclose()
         await engine.dispose()
 
@@ -489,7 +495,13 @@ def test_stream_authorization_stops_after_logout_within_bound(services):
         with patch("api.auth.streams.monotonic", return_value=SESSION_RECHECK_SECONDS):
             assert not await authorization.allowed()
         # Guarded streaming cannot read history or subscribe after revocation.
-        streamer = RunEventStreamer(uuid4(), AsyncMock(), factory, redis, authorization)
+        streamer = RunEventStreamer(
+            uuid4(),
+            AsyncMock(),
+            factory,
+            authorization,
+            hub=app.state.live_subscription_hub,
+        )
         with patch.object(RunEventReplay, "read", AsyncMock()) as reads:
             assert [frame async for frame in streamer.stream(FIRST_EVENT_CURSOR)] == []
             reads.assert_not_called()
@@ -544,22 +556,22 @@ def test_open_idle_stream_closes_after_logout_and_releases_redis(services):
         )
         request = AsyncMock()
         request.is_disconnected.return_value = False
-        pubsub = redis.pubsub()
-        streamer = RunEventStreamer(uuid4(), request, factory, redis, authorization)
+        hub = app.state.live_subscription_hub
+        streamer = RunEventStreamer(uuid4(), request, factory, authorization, hub=hub)
         with (
-            patch.object(redis, "pubsub", return_value=pubsub),
+            patch("api.http.sse.SSE_RECONCILIATION_SECONDS", 0.01),
             patch.object(RunEventReplay, "read", AsyncMock(return_value=())),
         ):
             stream = streamer.stream(FIRST_EVENT_CURSOR)
             with patch("api.auth.streams.monotonic", return_value=0):
                 assert await anext(stream)
-            assert pubsub.subscribed
+            assert hub._viewers
             await client.post(api_route_path(LOGOUT_PATH))
             with patch(
                 "api.auth.streams.monotonic", return_value=SESSION_RECHECK_SECONDS
             ):
                 assert [frame async for frame in stream] == []
-            assert not pubsub.subscribed
+            assert not hub._viewers
 
     asyncio.run(run_scenario(services, scenario))
 
@@ -636,7 +648,13 @@ def test_replay_stops_before_the_next_frame_after_session_revocation(services):
             )
             for event_id in (1, 2)
         )
-        streamer = RunEventStreamer(run_id, AsyncMock(), factory, redis, authorization)
+        streamer = RunEventStreamer(
+            run_id,
+            AsyncMock(),
+            factory,
+            authorization,
+            hub=app.state.live_subscription_hub,
+        )
         with patch.object(
             RunEventReplay,
             "read",

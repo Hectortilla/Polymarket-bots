@@ -1,7 +1,7 @@
 import { MAX_CHART_HISTORY_POINTS } from "$lib/charts/contracts";
 
 import { DashboardHistory } from "$lib/charts/history";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 
 import type { PersistedDurableEvent } from "$lib/api/generated";
 import { EVENT_KIND, requirePersistedDurableEvents } from "$lib/runs/durableEvents";
@@ -21,18 +21,10 @@ describe("dashboard history", () => {
     expect(history.samples).toHaveLength(MAX_CHART_HISTORY_POINTS);
     expect(history.samples[0].sampled_at_ms).toBe(3_000);
 
-    history = history.mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.equity,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: {
-        sampled_at_ms: 1_000_000,
-        point: { value: "125.5", status: VALUATION_STATUS.fresh },
-      },
-    } as LiveRunEvent);
+    history = history.mergeLiveEvent(snapshot(1, 1_000_000));
 
     expect(history.samples).toHaveLength(MAX_CHART_HISTORY_POINTS);
-    expect(history.samples.at(-1)?.equity.value).toBe("125.5");
+    expect(history.samples.at(-1)?.equity.value).toBe("101");
   });
 
   it("hydrates canonical wallet points and terminal health from durable events", () => {
@@ -102,163 +94,57 @@ describe("dashboard history", () => {
         accepted: true,
       },
     ]);
-    expect(history.streamHealth).toEqual(events[1].payload);
+    expect(history.healthObservation?.health).toEqual(events[1].payload);
   });
 
-  it("merges every live dashboard branch and upserts wallet sources", () => {
-    let history = new DashboardHistory();
-    history = history.mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.market,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: {
-        sampled_at_ms: 1,
-        points: [
-          {
-            token_id: "token",
-            label: "Market",
-            value: "0.5",
-            status: VALUATION_STATUS.fresh,
-            markers: [SIDE.buy],
-          },
-        ],
-      },
-    });
-    history = history.mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.equity,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: {
-        sampled_at_ms: 1,
-        point: { value: "101", status: VALUATION_STATUS.fresh },
-      },
-    });
-    for (const notional of ["1", "2"]) {
-      history = history.mergeLiveEvent({
-        kind: LIVE_EVENT_KIND.wallet,
-        run_id: RUN_ID,
-        occurred_at: "2026-08-23T00:00:00Z",
-        payload: {
-          sampled_at_ms: 1,
-          points: [
-            {
-              source_key: `wallet${runContract.walletSourceKeySeparator}source`,
-              wallet: "wallet",
-              trade_timestamp_ms: 1,
-              side: SIDE.buy,
-              notional,
-              market_label: "Market",
-              accepted: true,
-            },
-          ],
-        },
-      });
+  afterEach(() => vi.useRealTimers());
+
+  it("preserves durable markers regardless of live/durable arrival order", () => {
+    const durable = chartEvent(1);
+    if (durable.kind !== EVENT_KIND.chartSample) throw new Error("fixture");
+    durable.payload.markets = [
+      { token_id: "token", label: "Market", value: "0.5", status: VALUATION_STATUS.fresh, markers: [SIDE.buy] },
+    ];
+    for (const liveFirst of [true, false]) {
+      const history = liveFirst
+        ? new DashboardHistory().mergeLiveEvent(snapshot(1, 1000)).mergeDurableEvents([durable])
+        : new DashboardHistory().mergeDurableEvents([durable]).mergeLiveEvent(snapshot(1, 1000));
+      expect(history.samples[0].markets[0].markers).toEqual([SIDE.buy]);
+      expect(history.samples[0].equity.value).toBe("1");
     }
-    history = history.mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.streamHealth,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: {
-        queue_depth: 1,
-        peak_queue_depth: 2,
-        book_dispatch_lag_ms: 3,
-        book_stale: false,
-        book_received_count: 4,
-        book_coalesced_count: 1,
-      },
-    });
-
-    expect(history.samples[0]).toMatchObject({
-      markets: [{ token_id: "token" }],
-      equity: { value: "101" },
-    });
-    expect(history.walletTimelinePoints).toHaveLength(1);
-    expect(history.walletTimelinePoints[0].notional).toBe("2");
-    expect(history.streamHealth?.queue_depth).toBe(1);
   });
 
-  it("combines same-timestamp chart variants before committing the sample", () => {
+  it("drops duplicate, reordered and older-generation snapshots", () => {
     const history = new DashboardHistory().mergeLiveEvents([
-      {
-        kind: LIVE_EVENT_KIND.market,
-        run_id: RUN_ID,
-        occurred_at: "2026-08-23T00:00:00Z",
-        payload: {
-          sampled_at_ms: 1,
-          points: [
-            {
-              token_id: "token",
-              label: "Market",
-              value: "0.5",
-              status: VALUATION_STATUS.fresh,
-              markers: [SIDE.buy],
-            },
-          ],
-        },
-      },
-      {
-        kind: LIVE_EVENT_KIND.equity,
-        run_id: RUN_ID,
-        occurred_at: "2026-08-23T00:00:00Z",
-        payload: {
-          sampled_at_ms: 1,
-          point: { value: "101", status: VALUATION_STATUS.fresh },
-        },
-      },
-      {
-        kind: LIVE_EVENT_KIND.wallet,
-        run_id: RUN_ID,
-        occurred_at: "2026-08-23T00:00:00Z",
-        payload: {
-          sampled_at_ms: 1,
-          points: [
-            {
-              source_key: `wallet${runContract.walletSourceKeySeparator}source`,
-              wallet: "wallet",
-              trade_timestamp_ms: 1,
-              side: SIDE.buy,
-              notional: "2",
-              market_label: "Market",
-              accepted: true,
-            },
-          ],
-        },
-      },
+      snapshot(2, 2000),
+      snapshot(1, 1000),
+      snapshot(2, 3000),
+      { ...snapshot(1, 4000), generation: 2 },
+      snapshot(3, 5000),
     ]);
-
-    expect(history.samples).toEqual([
-      {
-        sampled_at_ms: 1,
-        markets: [expect.objectContaining({ token_id: "token" })],
-        equity: { value: "101", status: VALUATION_STATUS.fresh },
-      },
-    ]);
-    expect(history.walletTimelinePoints).toHaveLength(1);
+    expect(history.samples.map((s) => s.sampled_at_ms)).toEqual([2000, 4000]);
   });
 
-  it("preserves chart allocations for empty wallet and health-only frames", () => {
-    const initial = new DashboardHistory().mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.equity,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: {
-        sampled_at_ms: 1,
-        point: { value: "100", status: VALUATION_STATUS.fresh },
+  it("makes terminal durable state final for later live frames", () => {
+    const history = new DashboardHistory().mergeDurableEvents([
+      {
+        id: 1,
+        run_id: RUN_ID,
+        occurred_at: new Date().toISOString(),
+        kind: EVENT_KIND.runLifecycle,
+        payload: { status: "stopped" },
       },
-    });
-    const emptyWallet = initial.mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.wallet,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: { sampled_at_ms: 1, points: [] },
-    });
+    ]);
+    expect(history.terminal).toBe(true);
+    expect(history.mergeLiveEvent(snapshot(1, 1000))).toBe(history);
+  });
 
-    expect(emptyWallet).toBe(initial);
-    const withHealth = emptyWallet.mergeLiveEvent({
-      kind: LIVE_EVENT_KIND.streamHealth,
-      run_id: RUN_ID,
-      occurred_at: "2026-08-23T00:00:00Z",
-      payload: {
+  it("keeps original health observation age across new snapshots", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00Z"));
+    const health = {
+      observed_at: new Date().toISOString(),
+      health: {
         queue_depth: 1,
         peak_queue_depth: 2,
         book_dispatch_lag_ms: 3,
@@ -266,11 +152,28 @@ describe("dashboard history", () => {
         book_received_count: 4,
         book_coalesced_count: 1,
       },
-    });
-    expect(withHealth.samples).toBe(initial.samples);
-    expect(withHealth.walletTimelinePoints).toBe(initial.walletTimelinePoints);
+    };
+    const history = new DashboardHistory().mergeLiveEvent({ ...snapshot(1, 1000), health });
+    expect(history.streamHealth?.book_stale).toBe(false);
+    vi.advanceTimersByTime((runContract.liveTelemetry.feedTtlSeconds + 1) * 1000);
+    const later = history.mergeLiveEvent({ ...snapshot(2, 2000), health });
+    expect(later.streamHealth?.book_stale).toBe(true);
+    expect(later.streamHealth?.book_dispatch_lag_ms).toBeNull();
   });
 });
+
+function snapshot(sequence: number, sampled_at_ms: number): LiveRunEvent {
+  return {
+    kind: LIVE_EVENT_KIND.snapshot,
+    run_id: RUN_ID,
+    occurred_at: new Date().toISOString(),
+    generation: 1,
+    sequence,
+    sampled_at_ms,
+    markets: [],
+    equity: { value: "101", status: VALUATION_STATUS.fresh },
+  };
+}
 
 function chartEvent(index: number): PersistedDurableEvent {
   return {

@@ -1,358 +1,224 @@
+"""Replay ordering and authorization at the SSE/hub boundary."""
+
 import asyncio
-import json
-import logging
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from api.events.channels import decode_durable_wake_frame, encode_durable_wake_frame
-from api.events.contracts import (
-    EquityChartPayload,
-    LiveEquityChartEvent,
-    RunLifecycleEvent,
-    RunStatusPayload,
-)
-from api.events.contracts.payloads.chart import EquityChartPointPayload
+from api.events.contracts import RunLifecycleEvent, RunStatusPayload
 from api.events.delivery import EventDelivery
-from api.events.ids import (
-    FIRST_DURABLE_EVENT_ID,
-    FIRST_EVENT_CURSOR,
-    MAX_DURABLE_EVENT_ID,
-    MAX_DURABLE_EVENT_ID_DIGITS,
-)
-from api.events.kinds import (
-    EVENT_DISCRIMINATOR_FIELD,
-    LiveEventKind,
-)
-from api.events.live_codec import encode_live_event_frame
+from api.events.ids import MAX_DURABLE_EVENT_ID
 from api.events.pagination import MAX_EVENT_PAGE_LIMIT
 from api.http.sse import RunEventStreamer
-from api.http.sse.frames import (
-    SSE_DATA_FIELD,
-    SSE_FIELD_SEPARATOR,
-    SSE_ID_FIELD,
-    SSE_IDLE_COMMENT,
-)
+from api.http.sse import __name__ as STREAM_MODULE
+from api.http.sse.frames import SSE_IDLE_COMMENT
+from api.http.sse.mailbox import LiveFrame, ViewerMailbox
 from api.http.sse.replay import RunEventReplay
 from api.runs.status import RunStatus
-from polybot.performance.contracts.valuation_status import ValuationStatus
-from redis.exceptions import RedisError
 from sqlalchemy.exc import OperationalError
 
 
-def test_durable_wake_frame_is_strict_positive_bigint_ascii() -> None:
-    assert encode_durable_wake_frame(MAX_DURABLE_EVENT_ID) == str(MAX_DURABLE_EVENT_ID)
-    with pytest.raises(ValueError):
-        encode_durable_wake_frame(FIRST_DURABLE_EVENT_ID - 1)
-    with pytest.raises(ValueError):
-        encode_durable_wake_frame(MAX_DURABLE_EVENT_ID + 1)
-    assert decode_durable_wake_frame(b"42") == 42
-    assert decode_durable_wake_frame("42") == 42
+def test_durable_wake_frame_is_strict_positive_bigint_ascii():
+    assert (
+        decode_durable_wake_frame(encode_durable_wake_frame(MAX_DURABLE_EVENT_ID))
+        == MAX_DURABLE_EVENT_ID
+    )
     for invalid in (
         b"",
-        str(FIRST_DURABLE_EVENT_ID - 1).encode(),
+        "0",
         b"+1",
         b" 1",
         b"1\n",
-        "N{ARABIC-INDIC DIGIT ONE}",
+        "١",
         str(MAX_DURABLE_EVENT_ID + 1),
         1,
-        b"1" * (MAX_DURABLE_EVENT_ID_DIGITS + 1),
     ):
         assert decode_durable_wake_frame(invalid) is None
+    for invalid in (0, MAX_DURABLE_EVENT_ID + 1):
+        with pytest.raises(ValueError):
+            encode_durable_wake_frame(invalid)
 
 
-def test_terminal_initial_replay_does_not_subscribe(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    pubsub = _PubSub(())
-    redis = _Redis(pubsub)
-
-    async def read_events(*args, **kwargs):
-        return (_event(run_id, 1, RunStatus.STOPPED),)
-
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-
-    frames = asyncio.run(_collect(run_id, redis))
-
-    assert tuple(_frame_id(frame) for frame in frames) == (1,)
-    assert redis.pubsub_requested is False
+def test_terminal_initial_replay_does_not_attach(monkeypatch):
+    run = uuid4()
+    monkeypatch.setattr(
+        RunEventReplay,
+        "read",
+        AsyncMock(return_value=(_event(run, 1, RunStatus.STOPPED),)),
+    )
+    hub = _Hub()
+    frames = asyncio.run(_collect(run, hub))
+    assert len(frames) == 1 and frames[0].startswith("id: 1")
+    assert not hub.attached
 
 
-def test_persisted_event_without_id_is_rejected_at_sse_boundary(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    pubsub = _PubSub(())
-    redis = _Redis(pubsub)
+def test_missing_durable_id_is_rejected(monkeypatch):
+    event = _event(uuid4(), None, RunStatus.RUNNING)
+    monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=(event,)))
+    with pytest.raises(ValueError, match="missing its ID"):
+        asyncio.run(_collect(event.event.run_id, _Hub()))
 
-    async def read_events(*args, **kwargs):
+
+def test_handoff_recheck_and_wake_share_latest_cursor(monkeypatch):
+    run = uuid4()
+    cursors = []
+
+    async def read(self, after_event_id):
+        cursors.append(after_event_id)
         return (
-            EventDelivery(
-                RunLifecycleEvent(
-                    run_id=run_id,
-                    occurred_at=datetime.now(UTC),
-                    payload=RunStatusPayload(status=RunStatus.RUNNING),
-                ),
-                False,
+            _event(
+                run,
+                after_event_id + 1,
+                RunStatus.STOPPED if after_event_id == 2 else RunStatus.RUNNING,
             ),
         )
 
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-
-    with pytest.raises(ValueError, match="missing its ID"):
-        asyncio.run(_collect(run_id, redis))
-    assert redis.pubsub_requested is False
-
-
-def test_replay_recheck_and_wake_share_the_latest_cursor(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    pubsub = _PubSub((None, {"data": b"3"}))
-    redis = _Redis(pubsub)
-    reads = iter(
-        (
-            (_event(run_id, 1, RunStatus.RUNNING),),
-            (_event(run_id, 2, RunStatus.RUNNING),),
-            (_event(run_id, 3, RunStatus.STOPPED),),
-        )
-    )
-    cursors: list[int] = []
-
-    async def read_events(*args, after_event_id: int, **kwargs):
-        cursors.append(after_event_id)
-        return next(reads)
-
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-
-    frames = asyncio.run(_collect(run_id, redis))
-
-    assert tuple(_frame_id(frame) for frame in frames if not frame.startswith(":")) == (
-        1,
-        2,
-        3,
-    )
-    assert SSE_IDLE_COMMENT not in frames
+    monkeypatch.setattr(RunEventReplay, "read", read)
+    hub = _Hub(wake=True)
+    frames = asyncio.run(_collect(run, hub))
+    assert [frame.splitlines()[0] for frame in frames] == ["id: 1", "id: 2", "id: 3"]
     assert cursors == [0, 1, 2]
+    assert hub.detached and hub.terminal_seen
 
 
-def test_replay_subscribe_recheck_delivers_handoff_event_and_closes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    pubsub = _PubSub([])
-    redis = _Redis(pubsub)
-    reads = iter(
-        (
-            (_event(run_id, 1, RunStatus.RUNNING),),
-            (_event(run_id, 2, RunStatus.STOPPED),),
-        )
-    )
-
-    async def read_events(*args, **kwargs):
-        return next(reads)
-
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-
-    frames = asyncio.run(_collect(run_id, redis))
-
-    assert tuple(_frame_id(frame) for frame in frames) == (1, 2)
-    assert pubsub.subscribed is True
-    assert pubsub.unsubscribed is True
-    assert pubsub.closed is True
-
-
-def test_initial_replay_reads_large_backlog_in_bounded_batches(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    terminal_id = MAX_EVENT_PAGE_LIMIT * 2 + 1
+def test_large_initial_backlog_is_bounded(monkeypatch):
+    run = uuid4()
+    last = MAX_EVENT_PAGE_LIMIT * 2 + 1
     events = tuple(
-        _event(
-            run_id,
-            event_id,
-            RunStatus.STOPPED if event_id == terminal_id else RunStatus.RUNNING,
-        )
-        for event_id in range(1, terminal_id + 1)
+        _event(run, i, RunStatus.STOPPED if i == last else RunStatus.RUNNING)
+        for i in range(1, last + 1)
     )
-    cursors: list[int] = []
+    cursors = []
 
-    async def read_events(*args, after_event_id: int, **kwargs):
+    async def read(self, after_event_id):
         cursors.append(after_event_id)
         return events[after_event_id : after_event_id + MAX_EVENT_PAGE_LIMIT]
 
-    redis = _Redis(_PubSub(()))
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-
-    frames = asyncio.run(_collect(run_id, redis))
-
-    assert len(frames) == terminal_id
+    monkeypatch.setattr(RunEventReplay, "read", read)
+    hub = _Hub()
+    assert len(asyncio.run(_collect(run, hub))) == last
     assert cursors == [0, MAX_EVENT_PAGE_LIMIT, MAX_EVENT_PAGE_LIMIT * 2]
-    assert redis.pubsub_requested is False
+    assert not hub.attached
 
 
-def test_malformed_wake_is_dropped_before_valid_terminal_wake(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    run_id = uuid4()
-    pubsub = _PubSub(({"data": b"bad"}, {"data": b"2"}))
-    redis = _Redis(pubsub)
-    reads = iter(((), (), (_event(run_id, 2, RunStatus.FAILED),)))
+def test_continuous_live_cannot_starve_reconciliation(monkeypatch):
+    async def scenario():
+        run = uuid4()
+        calls = 0
 
-    async def read_events(*args, **kwargs):
-        return next(reads)
+        async def read(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return (_event(run, 1, RunStatus.STOPPED),) if calls >= 3 else ()
 
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-    caplog.set_level(logging.WARNING)
+        monkeypatch.setattr(RunEventReplay, "read", read)
+        monkeypatch.setattr(STREAM_MODULE + ".SSE_RECONCILIATION_SECONDS", 0.03)
+        hub = _Hub()
 
-    frames = asyncio.run(_collect(run_id, redis))
+        async def flood():
+            while True:
+                hub.mailbox.offer_live(_live())
+                await asyncio.sleep(0.001)
 
-    assert tuple(_frame_id(frame) for frame in frames) == (2,)
-    assert "dropping malformed run event frame" in caplog.text
-    assert pubsub.closed is True
+        producer = asyncio.create_task(flood())
+        try:
+            frames = await asyncio.wait_for(_collect(run, hub), 0.5)
+            assert any(isinstance(frame, bytes) for frame in frames)
+            assert frames[-1].startswith("id: 1")
+            assert hub.terminal_seen and hub.detached
+        finally:
+            producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
 
-
-def test_live_frame_has_no_cursor_and_durable_continuation_keeps_its_cursor(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    live = LiveEquityChartEvent(
-        run_id=run_id,
-        occurred_at=datetime.now(UTC),
-        payload=EquityChartPayload(
-            sampled_at_ms=1_000,
-            point=EquityChartPointPayload(
-                value="101.5",
-                status=ValuationStatus.FRESH,
-            ),
-        ),
-    )
-    pubsub = _PubSub(({"data": encode_live_event_frame(live)}, {"data": b"2"}))
-    reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
-
-    async def read_events(*args, **kwargs):
-        return next(reads)
-
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-    frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
-
-    data_prefix = f"{SSE_DATA_FIELD}{SSE_FIELD_SEPARATOR}"
-    id_prefix = f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}"
-    assert frames[0].startswith(data_prefix)
-    assert not frames[0].startswith(id_prefix)
-    assert (
-        json.loads(frames[0].split(data_prefix, 1)[1])[EVENT_DISCRIMINATOR_FIELD]
-        == LiveEventKind.CHART_EQUITY.value
-    )
-    assert _frame_id(frames[1]) == 2
+    asyncio.run(scenario())
 
 
-def test_live_event_for_another_run_is_dropped_before_target_continues(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    run_id = uuid4()
-    wrong_run_event = LiveEquityChartEvent(
-        run_id=uuid4(),
-        occurred_at=datetime.now(UTC),
-        payload=EquityChartPayload(
-            sampled_at_ms=1_000,
-            point=EquityChartPointPayload(
-                value="101.5",
-                status=ValuationStatus.FRESH,
-            ),
-        ),
-    )
-    pubsub = _PubSub(
-        ({"data": encode_live_event_frame(wrong_run_event)}, {"data": b"2"})
-    )
-    reads = iter(((), (), (_event(run_id, 2, RunStatus.STOPPED),)))
-
-    async def read_events(*args, **kwargs):
-        return next(reads)
-
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-    caplog.set_level(logging.WARNING)
-
-    frames = asyncio.run(_collect(run_id, _Redis(pubsub)))
-
-    assert tuple(_frame_id(frame) for frame in frames) == (2,)
-    assert "dropping malformed run event frame" in caplog.text
-
-
-def test_disconnect_releases_pubsub_resources(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run_id = uuid4()
-    pubsub = _PubSub([])
-    redis = _Redis(pubsub)
-
-    async def read_events(*args, **kwargs):
-        return ()
-
-    monkeypatch.setattr(RunEventReplay, "read", read_events)
-
-    frames = asyncio.run(_collect(run_id, redis, disconnected=True))
-
-    assert frames == []
-    assert pubsub.unsubscribed is True
-    assert pubsub.closed is True
-
-
-def test_redis_failure_ends_stream_and_releases_subscription(monkeypatch, caplog):
-    pubsub = _PubSub([])
-    monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=()))
+def test_durable_wake_takes_precedence_over_pending_live(monkeypatch):
+    run = uuid4()
     monkeypatch.setattr(
-        pubsub,
-        "get_message",
-        AsyncMock(side_effect=RedisError("private infrastructure detail")),
+        RunEventReplay,
+        "read",
+        AsyncMock(side_effect=[(), (), (_event(run, 1, RunStatus.STOPPED),)]),
     )
-    with caplog.at_level(logging.ERROR):
-        assert asyncio.run(_collect(uuid4(), _Redis(pubsub))) == []
-    assert pubsub.unsubscribed and pubsub.closed
-    assert "required service is unavailable" in caplog.text
-    assert "private infrastructure detail" not in caplog.text
+    hub = _Hub(wake=True)
+    hub.mailbox.offer_live(_live())
+    frames = asyncio.run(_collect(run, hub))
+    assert len(frames) == 1 and frames[0].startswith("id: 1")
 
 
-def test_database_replay_failure_is_sanitized_before_subscribing(monkeypatch, caplog):
-    pubsub = _PubSub([])
-    redis = _Redis(pubsub)
-    failure = OperationalError("private SQL", {}, Exception("private database detail"))
+def test_authorization_revocation_drops_pending_live_and_detaches(monkeypatch):
+    monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=()))
+    hub = _Hub()
+    hub.mailbox.offer_live(_live())
+    authorization = SimpleNamespace(allowed=AsyncMock(side_effect=[True, True, False]))
+    assert asyncio.run(_collect(uuid4(), hub, authorization=authorization)) == []
+    assert hub.detached
+
+
+def test_expiry_after_authorization_drops_live(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=()))
+        hub = _Hub()
+        frame = _live()
+        hub.mailbox.offer_live(frame)
+
+        async def allowed():
+            if hub.attached:
+                frame.clock.valid = False
+                hub.mailbox.close()
+            return True
+
+        assert (
+            await _collect(uuid4(), hub, authorization=SimpleNamespace(allowed=allowed))
+            == []
+        )
+
+    asyncio.run(scenario())
+
+
+def test_other_viewer_terminal_during_authorization_drops_dequeued_live(monkeypatch):
+    async def scenario():
+        run, hub = uuid4(), _Hub()
+
+        async def frames(self, cursor):
+            yield _live(), False
+
+        async def allowed():
+            hub.terminal(run)
+            return True
+
+        monkeypatch.setattr(RunEventStreamer, "_stream_frames", frames)
+        assert (
+            await _collect(run, hub, authorization=SimpleNamespace(allowed=allowed))
+            == []
+        )
+
+    asyncio.run(scenario())
+
+
+def test_disconnect_releases_mailbox(monkeypatch):
+    monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=()))
+    hub = _Hub()
+    assert asyncio.run(_collect(uuid4(), hub, disconnected=True)) == []
+    assert hub.detached
+
+
+def test_database_failure_is_sanitized(monkeypatch, caplog):
+    failure = OperationalError("private SQL", {}, Exception("private detail"))
     monkeypatch.setattr(RunEventReplay, "read", AsyncMock(side_effect=failure))
-    with caplog.at_level(logging.ERROR):
-        assert asyncio.run(_collect(uuid4(), redis)) == []
-    assert not redis.pubsub_requested
+    assert asyncio.run(_collect(uuid4(), _Hub())) == []
     assert "required service is unavailable" in caplog.text
     assert "private" not in caplog.text
 
 
-async def _collect(
-    run_id: UUID,
-    redis: "_Redis",
-    *,
-    disconnected: bool = False,
-) -> list[str]:
-    return [
-        frame
-        async for frame in RunEventStreamer(
-            run_id,
-            _Request(disconnected),
-            object(),
-            redis,
-            AsyncMock(allowed=AsyncMock(return_value=True)),
-        ).stream(FIRST_EVENT_CURSOR)
-    ]
-
-
-def _event(run_id: UUID, event_id: int, status: RunStatus) -> EventDelivery:
+def _event(run, event_id, status):
     return EventDelivery(
         RunLifecycleEvent(
             id=event_id,
-            run_id=run_id,
+            run_id=run,
             occurred_at=datetime.now(UTC),
             payload=RunStatusPayload(status=status),
         ),
@@ -360,44 +226,62 @@ def _event(run_id: UUID, event_id: int, status: RunStatus) -> EventDelivery:
     )
 
 
-def _frame_id(frame: str) -> int:
-    first_line = frame.splitlines()[0]
-    return int(first_line.removeprefix(f"{SSE_ID_FIELD}{SSE_FIELD_SEPARATOR}"))
+def _live():
+    clock = SimpleNamespace(epoch=0, valid=True)
+    clock.fresh = lambda _: clock.valid
+    return LiveFrame(b"data: {}\n\n", 1, clock, 0)
 
 
-class _Request:
-    def __init__(self, disconnected: bool) -> None:
-        self.disconnected = disconnected
+class _Hub:
+    def __init__(self, wake=False):
+        self.mailbox = ViewerMailbox()
+        self.attached = self.detached = self.terminal_seen = False
+        if wake:
+            self.mailbox.offer_durable_wake()
 
-    async def is_disconnected(self) -> bool:
-        return self.disconnected
+    async def attach(self, run):
+        self.attached = True
+        return self.mailbox
+
+    async def detach(self, run, mailbox):
+        self.detached = True
+        mailbox.close()
+
+    def terminal(self, run):
+        self.terminal_seen = True
+        self.mailbox.terminal()
+
+    def is_terminal(self, run):
+        return self.terminal_seen
 
 
-class _Redis:
-    def __init__(self, pubsub: "_PubSub") -> None:
-        self._pubsub = pubsub
-        self.pubsub_requested = False
+async def _collect(run, hub, *, disconnected=False, authorization=None):
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=disconnected))
+    authorization = authorization or SimpleNamespace(
+        allowed=AsyncMock(return_value=True)
+    )
+    return [
+        frame
+        async for frame in RunEventStreamer(
+            run, request, object(), authorization, hub=hub
+        ).stream(0)
+        if frame != SSE_IDLE_COMMENT
+    ]
 
-    def pubsub(self) -> "_PubSub":
-        self.pubsub_requested = True
-        return self._pubsub
 
+def test_idle_stream_flushes_a_comment_before_waiting(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(RunEventReplay, "read", AsyncMock(return_value=()))
+        hub = _Hub()
+        stream = RunEventStreamer(
+            uuid4(),
+            SimpleNamespace(is_disconnected=AsyncMock(return_value=False)),
+            object(),
+            SimpleNamespace(allowed=AsyncMock(return_value=True)),
+            hub=hub,
+        ).stream(0)
+        assert await asyncio.wait_for(anext(stream), 0.5) == SSE_IDLE_COMMENT
+        await stream.aclose()
+        assert hub.detached
 
-class _PubSub:
-    def __init__(self, messages) -> None:
-        self.messages = iter(messages)
-        self.subscribed = False
-        self.unsubscribed = False
-        self.closed = False
-
-    async def subscribe(self, channel: str) -> None:
-        self.subscribed = True
-
-    async def get_message(self, **kwargs):
-        return next(self.messages)
-
-    async def unsubscribe(self, channel: str) -> None:
-        self.unsubscribed = True
-
-    async def aclose(self) -> None:
-        self.closed = True
+    asyncio.run(scenario())

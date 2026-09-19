@@ -53,6 +53,7 @@ class WalletTimelineEvent:
 
 @dataclass(slots=True)
 class DashboardWallets:
+    retain_history: bool = True
     wallet_lanes: deque[str] = field(default_factory=deque)
     wallet_timeline: deque[WalletTimelineEvent] = field(default_factory=deque)
     wallet_timeline_by_source: dict[str, WalletTimelineEvent] = field(
@@ -73,6 +74,8 @@ class DashboardWallets:
             notional=point.notional,
             market_label=point.market_label,
         )
+        if not self.retain_history:
+            return timeline_event
         self.wallet_timeline.append(timeline_event)
         self.wallet_timeline_by_source[trade.source_key] = timeline_event
         self._trim_timeline()

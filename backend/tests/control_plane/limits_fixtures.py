@@ -17,9 +17,11 @@ from api.auth.models import UserRow
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
 from api.deployment.settings import StartupSettings
+from api.events.live.routing import LiveShardRouter
 from api.execution.worker import execute_run
 from api.execution.worker.resources import WorkerResources
 from api.http.app import create_app
+from api.http.sse.hub import LiveSubscriptionHub
 from api.limits.errors import ResourceLimitError
 from api.limits.redis.contracts import RESOURCE_KEY_PREFIX
 from api.operations.telemetry.keys import OPERATIONS_TELEMETRY_KEY_NAMESPACE
@@ -123,6 +125,10 @@ def account_app(sessions, redis, account):
         session_factory=sessions,
         redis=redis,
         launcher=AsyncMock(),
+    )
+
+    app.state.live_subscription_hub = LiveSubscriptionHub(
+        LiveShardRouter(("redis://fixture",)), (redis,), redis
     )
 
     async def identity(request: Request):

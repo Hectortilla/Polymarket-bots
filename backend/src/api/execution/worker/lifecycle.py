@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from api.catalog.definitions import GraphRequirementError
+from api.events.live.service import WorkerLiveTelemetry
 from api.events.observer import WebRuntimeObserver
 from api.events.writer import RunEventWriter
 from api.execution.policy import RUNTIME_CLEANUP_SECONDS
@@ -43,6 +44,8 @@ class RunLifecycleCoordinator:
         store: RunStore,
         session_factory: async_sessionmaker[AsyncSession],
         event_writer: RunEventWriter,
+        *,
+        live_telemetry: WorkerLiveTelemetry,
         heartbeat_seconds: float = WORKER_POLL_INTERVAL_SECONDS,
         lease_seconds: float = DEFAULT_LEASE_SECONDS,
     ) -> None:
@@ -50,6 +53,7 @@ class RunLifecycleCoordinator:
         self._execution_store: OwnedRunStore | None = None
         self._session_factory = session_factory
         self._event_writer = event_writer
+        self._live_telemetry = live_telemetry
         self._heartbeat_seconds = heartbeat_seconds
         self._lease_seconds = lease_seconds
         self._lease: ExecutionLease | None = None
@@ -78,97 +82,110 @@ class RunLifecycleCoordinator:
         observer = WebRuntimeObserver(
             run_id,
             self._event_writer.for_execution(run.execution_token, self._lease_seconds),
+            live_telemetry=self._live_telemetry.for_execution(
+                run_id, run.execution_token
+            ),
         )
         try:
-            if not await self._execution_store.mark_running(run_id):
-                # A stop can win after the atomic claim but before execution starts;
-                # complete that durable request without constructing the bot.
-                if (
-                    await self._execution_store.status(run_id)
-                    is RunStatus.STOP_REQUESTED
-                ):
-                    await self._execution_store.begin_stopping(run_id)
-                    await self._finish_run(run_id, RunStatus.STOPPED)
-                return
-            remaining_seconds = PAPER_BETA.remaining_run_seconds(
-                run.started_at, system_now_utc()
-            )
-            if remaining_seconds == 0:
-                await self._execution_store.begin_stopping(run_id)
-                await self._finish_run(
-                    run_id, RunStatus.STOPPED, failure_detail=DURATION_EXPIRED_DETAIL
-                )
-                return
-            bot_task = asyncio.create_task(
-                run_claimed_bot(
-                    run,
-                    observer,
-                    execution_scope=FillOwnership(
-                        run_id, self._session_factory, self._lease
-                    ).scope,
-                )
-            )
-            cooperative_stop = asyncio.Event()
-            monitor_task = asyncio.create_task(
-                self._poll_stop_request_and_heartbeat(
-                    run_id,
-                    bot_task,
-                    cooperative_stop,
-                )
-            )
             try:
-                done, _ = await asyncio.wait(
-                    (bot_task, monitor_task),
-                    timeout=remaining_seconds,
-                    return_when=asyncio.FIRST_COMPLETED,
+                if not await self._execution_store.mark_running(run_id):
+                    # A stop can win after the atomic claim but before execution starts;
+                    # complete that durable request without constructing the bot.
+                    if (
+                        await self._execution_store.status(run_id)
+                        is RunStatus.STOP_REQUESTED
+                    ):
+                        await self._execution_store.begin_stopping(run_id)
+                        await self._finish_run(run_id, RunStatus.STOPPED)
+                    return
+                remaining_seconds = PAPER_BETA.remaining_run_seconds(
+                    run.started_at, system_now_utc()
                 )
-                if not done:
+                if remaining_seconds == 0:
                     await self._execution_store.begin_stopping(run_id)
-                    cooperative_stop.set()
-                    bot_task.cancel()
-                    failure_detail = DURATION_EXPIRED_DETAIL
-                if monitor_task in done:
-                    # Monitoring owns the stop lease; its failure must stop execution.
-                    await monitor_task
-                    if not bot_task.done() and not cooperative_stop.is_set():
-                        raise RuntimeError("owned run monitoring ended unexpectedly")
-                if not bot_task.done():
-                    await asyncio.wait((bot_task,), timeout=RUNTIME_CLEANUP_SECONDS)
-                if bot_task.done():
-                    bot_task.result()
-                else:
-                    terminal_status = RunStatus.INTERRUPTED
+                    await self._finish_run(
+                        run_id,
+                        RunStatus.STOPPED,
+                        failure_detail=DURATION_EXPIRED_DETAIL,
+                    )
+                    return
+                bot_task = asyncio.create_task(
+                    run_claimed_bot(
+                        run,
+                        observer,
+                        execution_scope=FillOwnership(
+                            run_id, self._session_factory, self._lease
+                        ).scope,
+                    )
+                )
+                cooperative_stop = asyncio.Event()
+                monitor_task = asyncio.create_task(
+                    self._poll_stop_request_and_heartbeat(
+                        run_id,
+                        bot_task,
+                        cooperative_stop,
+                    )
+                )
+                try:
+                    done, _ = await asyncio.wait(
+                        (bot_task, monitor_task),
+                        timeout=remaining_seconds,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if not done:
+                        await self._execution_store.begin_stopping(run_id)
+                        cooperative_stop.set()
+                        bot_task.cancel()
+                        failure_detail = DURATION_EXPIRED_DETAIL
+                    if monitor_task in done:
+                        # Monitoring owns the stop lease; its failure must stop execution.
+                        await monitor_task
+                        if not bot_task.done() and not cooperative_stop.is_set():
+                            raise RuntimeError(
+                                "owned run monitoring ended unexpectedly"
+                            )
+                    if not bot_task.done():
+                        await asyncio.wait((bot_task,), timeout=RUNTIME_CLEANUP_SECONDS)
+                    if bot_task.done():
+                        bot_task.result()
+                    else:
+                        terminal_status = RunStatus.INTERRUPTED
+                except asyncio.CancelledError:
+                    # Manual stop and duration expiry record cooperative cancellation;
+                    # Taskiq/process shutdown records lease interruption.
+                    if not cooperative_stop.is_set():
+                        terminal_status = RunStatus.INTERRUPTED
+                        propagate_cancellation = True
+                finally:
+                    if not await self._shutdown_runtime_tasks(bot_task, monitor_task):
+                        terminal_status = RunStatus.INTERRUPTED
             except asyncio.CancelledError:
-                # Manual stop and duration expiry record cooperative cancellation;
-                # Taskiq/process shutdown records lease interruption.
-                if not cooperative_stop.is_set():
-                    terminal_status = RunStatus.INTERRUPTED
-                    propagate_cancellation = True
-            finally:
-                if not await self._shutdown_runtime_tasks(bot_task, monitor_task):
-                    terminal_status = RunStatus.INTERRUPTED
-        except asyncio.CancelledError:
-            terminal_status = RunStatus.INTERRUPTED
-            propagate_cancellation = True
-        except (ExecutionOwnershipLost, SQLAlchemyError, TimeoutError):
-            terminal_status = RunStatus.INTERRUPTED
-        except TrackedMarketLimitExceeded:
-            terminal_status = RunStatus.FAILED
-            failure_detail = RunFailureReason.TRACKED_MARKET_ALLOWANCE
-        except Exception as error:
-            terminal_status = RunStatus.FAILED
-            failure_detail = sanitized_failure_detail(error, PAPER_RUN_FAILURE_REASON)
-        else:
-            if terminal_status is RunStatus.STOPPED:
-                await self._execution_store.begin_stopping(run_id)
+                terminal_status = RunStatus.INTERRUPTED
+                propagate_cancellation = True
+            except (ExecutionOwnershipLost, SQLAlchemyError, TimeoutError):
+                terminal_status = RunStatus.INTERRUPTED
+            except TrackedMarketLimitExceeded:
+                terminal_status = RunStatus.FAILED
+                failure_detail = RunFailureReason.TRACKED_MARKET_ALLOWANCE
+            except Exception as error:
+                terminal_status = RunStatus.FAILED
+                failure_detail = sanitized_failure_detail(
+                    error, PAPER_RUN_FAILURE_REASON
+                )
+            else:
+                if terminal_status is RunStatus.STOPPED:
+                    await self._execution_store.begin_stopping(run_id)
 
-        await self._finish_run(
-            run_id,
-            terminal_status,
-            failure_detail=failure_detail,
-        )
-        if propagate_cancellation:
-            raise asyncio.CancelledError
+            await observer.stop()
+            await self._finish_run(
+                run_id,
+                terminal_status,
+                failure_detail=failure_detail,
+            )
+            if propagate_cancellation:
+                raise asyncio.CancelledError
+        finally:
+            await observer.stop()
 
     async def _poll_stop_request_and_heartbeat(
         self,

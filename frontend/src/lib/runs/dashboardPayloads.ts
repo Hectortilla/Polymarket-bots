@@ -1,6 +1,6 @@
 import { hasOnlyResponseFields } from "$lib/api/responseValidation/fields";
 import type { DispatchSkipReason, Side } from "$lib/api/generated";
-import { MAX_CHART_TOKENS, MAX_WALLET_TIMELINE_EVENTS } from "$lib/charts/contracts";
+import { MAX_CHART_TOKENS } from "$lib/charts/contracts";
 import { isOutcomePrice } from "$lib/outcomePrices";
 import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { isSide } from "$lib/sides";
@@ -39,31 +39,6 @@ export function isChartSamplePayload(payload: Record<string, unknown>): boolean 
   );
 }
 
-export function isMarketChartPayload(payload: Record<string, unknown>): boolean {
-  if (!hasOnlyResponseFields(payload, "MarketChartPayload")) return false;
-  return (
-    isNonnegativeInteger(payload.sampled_at_ms) &&
-    Array.isArray(payload.points) &&
-    payload.points.length <= MAX_CHART_TOKENS &&
-    payload.points.every(isMarketPoint)
-  );
-}
-
-export function isEquityChartPayload(payload: Record<string, unknown>): boolean {
-  if (!hasOnlyResponseFields(payload, "EquityChartPayload")) return false;
-  return isNonnegativeInteger(payload.sampled_at_ms) && isEquityPoint(payload.point);
-}
-
-export function isWalletChartPayload(payload: Record<string, unknown>): boolean {
-  if (!hasOnlyResponseFields(payload, "WalletChartPayload")) return false;
-  return (
-    isNonnegativeInteger(payload.sampled_at_ms) &&
-    Array.isArray(payload.points) &&
-    payload.points.length <= MAX_WALLET_TIMELINE_EVENTS &&
-    payload.points.every(isWalletChartPoint)
-  );
-}
-
 export function isWalletTimelinePayload(payload: Record<string, unknown>): boolean {
   if (!hasOnlyResponseFields(payload, "WalletTimelinePayload")) return false;
   if (!isRecord(payload.trade) || !isWalletChartPoint(payload.point)) return false;
@@ -85,7 +60,7 @@ export function isStreamHealthPayload(payload: Record<string, unknown>): boolean
   );
 }
 
-function isMarketPoint(value: unknown): boolean {
+export function isMarketPoint(value: unknown): boolean {
   return (
     isRecord(value) &&
     hasOnlyResponseFields(value, "MarketChartPointPayload") &&
@@ -97,7 +72,7 @@ function isMarketPoint(value: unknown): boolean {
   );
 }
 
-function isEquityPoint(value: unknown): boolean {
+export function isEquityPoint(value: unknown): boolean {
   return (
     isRecord(value) &&
     hasOnlyResponseFields(value, "EquityChartPointPayload") &&

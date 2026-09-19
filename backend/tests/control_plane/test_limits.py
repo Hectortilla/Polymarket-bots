@@ -1,3 +1,5 @@
+from control_plane.live_fixtures import RecordingWorkerLive
+
 """Shared-service acceptance for the Slice 17 paper-beta allowance boundary."""
 
 import asyncio
@@ -7,7 +9,6 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import api.execution.worker.lifecycle as lifecycle
 import pytest
 from api.auth.config import AuthSettings
 from api.auth.contracts import CurrentUser
@@ -15,6 +16,7 @@ from api.auth.dependencies import application_authentication
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
 from api.events.writer import RunEventWriter
+from api.execution.worker import lifecycle
 from api.execution.worker.lifecycle import RunLifecycleCoordinator
 from api.http.app import create_app
 from api.http.lifecycle import ApiRunLifecycle
@@ -160,7 +162,10 @@ def test_invalid_snapshot_and_duration_expiry_release_capacity(
             async with sessions() as session:
                 await asyncio.wait_for(
                     RunLifecycleCoordinator(
-                        RunStore(session), sessions, RunEventWriter(sessions, redis)
+                        RunStore(session),
+                        sessions,
+                        RunEventWriter(sessions, redis),
+                        live_telemetry=RecordingWorkerLive(),
                     ).execute(expiring.id),
                     timeout=2,
                 )
@@ -322,7 +327,7 @@ def test_subscription_configuration_and_dynamic_registry_caps():
         outcomes=(MarketOutcome("Up", "up"), MarketOutcome("Down", "down")),
         question="Fixture",
         minimum_tick_size=Decimal("0.01"),
-        minimum_order_size=Decimal("1"),
+        minimum_order_size=Decimal(1),
         neg_risk=False,
         fee_rate=Decimal(0),
     )

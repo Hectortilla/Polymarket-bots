@@ -1,3 +1,5 @@
+from control_plane.live_fixtures import RecordingWorkerLive
+
 """Account suspension serializes with HTTP credentials and private paper execution."""
 
 import asyncio
@@ -279,6 +281,7 @@ def test_operator_stop_cancels_owned_runtime_on_next_worker_poll(limits_services
                     RunEventWriter(sessions, redis),
                     heartbeat_seconds=0.01,
                     lease_seconds=DEFAULT_LEASE_SECONDS,
+                    live_telemetry=RecordingWorkerLive(),
                 )
                 with patch("api.execution.worker.lifecycle.run_claimed_bot", runtime):
                     task = asyncio.create_task(coordinator.execute(run.id))

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.events.contracts import RunLifecycleEvent
 from api.events.ids import require_persisted_event_id
 from api.events.models import EventRow
+from api.events.terminal_wakes import TerminalWakePublisher
 from api.runs.models import RunRow
 
 
@@ -32,4 +33,5 @@ class TerminalRunWriter:
         self._session.add(event_row)
         await self._session.flush()
         event_id = require_persisted_event_id(event_row.id)
+        TerminalWakePublisher.stage(self._session.sync_session, row.id, event_id)
         return event_id

@@ -1,4 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field
+
+MAX_JSON_INTEGER = 2**53 - 1
+type NonNegativeJsonInteger = Annotated[int, Field(ge=0, le=MAX_JSON_INTEGER)]
 
 
 class EventPayload(BaseModel):

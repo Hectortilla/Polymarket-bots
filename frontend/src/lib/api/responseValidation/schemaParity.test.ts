@@ -1,3 +1,4 @@
+import liveValidationCases from "$lib/runs/events/liveValidation.fixture.json";
 import document from "../../../../../backend/contracts/openapi/control-plane.json";
 import catalogContract from "$lib/catalog/catalogContract.fixture.json";
 import Ajv from "ajv";
@@ -6,6 +7,7 @@ import runtimeContract from "$lib/runtimeContract.fixture.json";
 import { isActivityPayload, isLifecyclePayload } from "$lib/runs/eventPayloads/lifecycle";
 import { isWalletTimelinePayload } from "$lib/runs/dashboardPayloads";
 import { isEventPage } from "./events";
+import { liveRunEvent } from "$lib/runs/events/live";
 import { isGraphValueRead } from "./graph/preview";
 
 const ajv = new Ajv({ strict: false, validateFormats: false });
@@ -20,6 +22,10 @@ function parity(
 }
 
 describe("backend response schema parity", () => {
+  it.each(liveValidationCases)("matches Python live validation: $name", ({ payload, accepted }) => {
+    expect(liveRunEvent(payload, payload.run_id) !== null).toBe(accepted);
+  });
+
   it.each([{}, { unexpected: true }])("matches closed activity fields: %j", (extra) => {
     parity("BotActivityPayload", isActivityPayload, {
       message: "Watching",

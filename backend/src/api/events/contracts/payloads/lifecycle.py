@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -9,12 +10,15 @@ from polybot.cli.observability.states import (
 from polybot.framework.activity import ActivitySeverity, validate_activity_message
 from polybot.framework.config.mode import BotMode
 from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
     Field,
-    NonNegativeInt,
     model_validator,
 )
 
-from api.events.contracts.payloads.base import EventPayload
+from api.events.contracts.payloads.base import EventPayload, NonNegativeJsonInteger
+from api.events.health.policy import FEED_TTL_SECONDS
 from api.runs.status import INITIAL_RUN_STATUS, RunStatus
 
 
@@ -51,12 +55,12 @@ class BotActivityPayload(EventPayload):
 
 
 class StreamHealthPayload(EventPayload):
-    queue_depth: NonNegativeInt
-    peak_queue_depth: NonNegativeInt
-    book_dispatch_lag_ms: NonNegativeInt | None
+    queue_depth: NonNegativeJsonInteger
+    peak_queue_depth: NonNegativeJsonInteger
+    book_dispatch_lag_ms: NonNegativeJsonInteger | None
     book_stale: bool
-    book_received_count: NonNegativeInt
-    book_coalesced_count: NonNegativeInt
+    book_received_count: NonNegativeJsonInteger
+    book_coalesced_count: NonNegativeJsonInteger
 
     @classmethod
     def from_observation(cls, event: StreamHealth) -> "StreamHealthPayload":
@@ -65,3 +69,35 @@ class StreamHealthPayload(EventPayload):
 
 class RunFailurePayload(EventPayload):
     error: str = Field(min_length=1)
+
+
+class AvailableFeedHealth(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    book_stale: bool
+    book_dispatch_lag_ms: NonNegativeJsonInteger
+
+
+class FeedObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    observed_at: AwareDatetime
+    health: StreamHealthPayload
+
+    @classmethod
+    def from_observation(
+        cls, event: StreamHealth, *, observed_at: datetime
+    ) -> "FeedObservation":
+        return cls(
+            observed_at=observed_at, health=StreamHealthPayload.from_observation(event)
+        )
+
+    def available_health(self, now: datetime) -> AvailableFeedHealth | None:
+        age_seconds = (now - self.observed_at).total_seconds()
+        if (
+            not 0 <= age_seconds <= FEED_TTL_SECONDS
+            or self.health.book_dispatch_lag_ms is None
+        ):
+            return None
+        return AvailableFeedHealth(
+            book_stale=self.health.book_stale,
+            book_dispatch_lag_ms=self.health.book_dispatch_lag_ms,
+        )

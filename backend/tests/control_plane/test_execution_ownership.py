@@ -1,3 +1,5 @@
+from control_plane.live_fixtures import RecordingWorkerLive
+
 """Real database ownership gates around paper fills and resolution settlement."""
 
 import asyncio
@@ -49,9 +51,9 @@ def test_host_lease_fences_real_fill_and_settlement(limits_services, ownership_l
                 slug="market",
                 question="Will it happen?",
                 minimum_tick_size=Decimal("0.01"),
-                minimum_order_size=Decimal("1"),
+                minimum_order_size=Decimal(1),
                 neg_risk=False,
-                fee_rate=Decimal("0"),
+                fee_rate=Decimal(0),
                 outcomes=(MarketOutcome("Yes", "123"), MarketOutcome("No", "456")),
                 active=True,
                 closed=False,
@@ -64,7 +66,7 @@ def test_host_lease_fences_real_fill_and_settlement(limits_services, ownership_l
                 market_slug=market.slug,
                 received_at_ms=1000,
                 bids=(),
-                asks=(BookLevel(price=Decimal("0.4"), size=Decimal("10")),),
+                asks=(BookLevel(price=Decimal("0.4"), size=Decimal(10)),),
             )
             paper = PaperBroker(
                 BotConfig(
@@ -79,7 +81,7 @@ def test_host_lease_fences_real_fill_and_settlement(limits_services, ownership_l
                 token_id=book.token_id,
                 side=Side.BUY,
                 price=Decimal("0.4"),
-                size=Decimal("1"),
+                size=Decimal(1),
                 market_slug=market.slug,
             )
             initial = paper.snapshot()
@@ -152,7 +154,10 @@ def test_corrupted_claim_snapshot_fails_once_and_releases_queue(limits_services)
             run = await queue_run(sessions, bot)
             async with sessions() as session:
                 coordinator = RunLifecycleCoordinator(
-                    RunStore(session), sessions, RunEventWriter(sessions, redis)
+                    RunStore(session),
+                    sessions,
+                    RunEventWriter(sessions, redis),
+                    live_telemetry=RecordingWorkerLive(),
                 )
                 with patch.object(
                     RunStore,

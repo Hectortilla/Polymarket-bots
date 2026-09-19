@@ -44,9 +44,16 @@ export const openRunEventStream: EventStreamOpener = (
 ) => {
   const url = runEventStreamUrl(runId, afterEventId, options?.view);
   const source = new EventSource(url);
-  const close = accountSession.streams.track(() => source.close());
-  source.onopen = () => onConnectionState?.(STREAM_CONNECTION_STATE.CONNECTED);
+  let closed = false;
+  const close = accountSession.streams.track(() => {
+    closed = true;
+    source.close();
+  });
+  source.onopen = () => {
+    if (!closed) onConnectionState?.(STREAM_CONNECTION_STATE.CONNECTED);
+  };
   source.onerror = () => {
+    if (closed) return;
     onConnectionState?.(STREAM_CONNECTION_STATE.RECONNECTING);
     // EventSource hides HTTP status; separately confirm whether the session expired.
     void accountSession.restore();
@@ -54,6 +61,7 @@ export const openRunEventStream: EventStreamOpener = (
   let cursor = afterEventId;
 
   source.addEventListener(runtimeContract.dashboardSseEvent, (message) => {
+    if (closed) return;
     const event = parseDurableEvent(parseJson((message as MessageEvent).data), runId);
     if (event === null || event.id <= cursor) return;
     cursor = event.id;
@@ -61,6 +69,7 @@ export const openRunEventStream: EventStreamOpener = (
   });
 
   source.onmessage = (message) => {
+    if (closed) return;
     const payload: unknown = parseJson(message.data);
     const event = parseDurableEvent(payload, runId);
     if (event !== null) {

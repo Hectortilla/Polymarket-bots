@@ -96,6 +96,7 @@ from sqlmodel import select
 from control_plane.auth_fixtures import TEST_HEADERS, ensure_test_user
 from control_plane.auth_fixtures import create_authenticated_app as create_app
 from control_plane.graph_fixtures import threshold_buy_graph
+from control_plane.live_fixtures import RecordingWorkerLive
 from control_plane.service_config import (
     POSTGRES_NOT_CONFIGURED_SKIP_REASON,
     TEST_POSTGRES_URL_ENV,
@@ -580,7 +581,7 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
 
     class FakeRedis:
         @classmethod
-        def from_url(cls, configured_url: str, **kwargs) -> "FakeRedis":
+        def from_url(cls, configured_url: str, **kwargs) -> FakeRedis:
             return cls()
 
         async def publish(self, channel: str, message: str) -> int:
@@ -642,6 +643,12 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
     monkeypatch.setenv(DATABASE_URL_ENV, url)
     monkeypatch.setenv(REDIS_URL_ENV, "redis://localhost:6379/0")
     monkeypatch.setattr(worker_resources, "Redis", FakeRedis)
+    monkeypatch.setattr("api.events.live.connections.Redis", FakeRedis)
+    monkeypatch.setattr(
+        worker_resources,
+        "WorkerLiveTelemetry",
+        lambda *args, **kwargs: RecordingWorkerLive(),
+    )
     monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
 
     async def scenario() -> tuple[RunRead, tuple[object, ...]]:
@@ -709,7 +716,7 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_snapshot(
 
     class FakeRedis:
         @classmethod
-        def from_url(cls, configured_url: str, **kwargs) -> "FakeRedis":
+        def from_url(cls, configured_url: str, **kwargs) -> FakeRedis:
             return cls()
 
         async def publish(self, channel: str, message: str) -> int:
@@ -725,6 +732,12 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_snapshot(
     monkeypatch.setenv(DATABASE_URL_ENV, url)
     monkeypatch.setenv(REDIS_URL_ENV, "redis://localhost:6379/0")
     monkeypatch.setattr(worker_resources, "Redis", FakeRedis)
+    monkeypatch.setattr("api.events.live.connections.Redis", FakeRedis)
+    monkeypatch.setattr(
+        worker_resources,
+        "WorkerLiveTelemetry",
+        lambda *args, **kwargs: RecordingWorkerLive(),
+    )
     monkeypatch.setattr(worker_runtime, "run_bot", run_bot)
 
     async def scenario() -> tuple[RunRow | None, tuple[object, ...]]:
@@ -845,6 +858,7 @@ def test_expired_worker_lease_interrupts_once_and_never_relaunches(
                 RunStore(session),
                 session_factory,
                 writer,
+                live_telemetry=RecordingWorkerLive(),
             ).execute(run.id)
         async with session_factory() as session:
             restored = await RunStore(session).read(run.id)
@@ -1106,8 +1120,8 @@ def test_concurrent_claim_stop_lease_and_event_ordering() -> None:
         assert newest_page.next_before_event_id == stored_last.id
         assert older_page.events == (stored_first,)
         assert older_page.next_before_event_id == stored_first.id
-        assert latest_samples[queued.id].payload.equity.value == Decimal("102")
-        assert latest_samples[other_run_id].payload.equity.value == Decimal("201")
+        assert latest_samples[queued.id].payload.equity.value == Decimal(102)
+        assert latest_samples[other_run_id].payload.equity.value == Decimal(201)
         assert latest_failures[queued.id].payload.error == (
             "ConnectionError: latest failure"
         )
@@ -1135,7 +1149,7 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
 
     class FakeRedis:
         @classmethod
-        def from_url(cls, configured_url: str, **kwargs) -> "FakeRedis":
+        def from_url(cls, configured_url: str, **kwargs) -> FakeRedis:
             return cls()
 
         async def publish(self, channel: str, message: str) -> int:
@@ -1151,6 +1165,12 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
     monkeypatch.setenv(DATABASE_URL_ENV, url)
     monkeypatch.setenv(REDIS_URL_ENV, "redis://localhost:6379/0")
     monkeypatch.setattr(worker_resources, "Redis", FakeRedis)
+    monkeypatch.setattr("api.events.live.connections.Redis", FakeRedis)
+    monkeypatch.setattr(
+        worker_resources,
+        "WorkerLiveTelemetry",
+        lambda *args, **kwargs: RecordingWorkerLive(),
+    )
     monkeypatch.setattr(worker_lifecycle, "run_claimed_bot", run_claimed_bot)
 
     async def scenario() -> tuple[RunRead | None, tuple[RunLifecycleEvent, ...]]:

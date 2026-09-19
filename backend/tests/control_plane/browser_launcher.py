@@ -5,6 +5,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from api.catalog.definitions import GraphRequirementError
+from api.events.live.routing import LiveShardRouter
+from api.events.live.service import WorkerLiveTelemetry
 from api.events.writer import RunEventWriter
 from api.execution.recovery import RunRecovery
 from api.execution.worker.lifecycle import RunLifecycleCoordinator
@@ -23,6 +25,12 @@ class BrowserRunLauncher:
     def __init__(self, redis, sessions):
         self.redis = redis
         self.sessions = sessions
+        self.live = WorkerLiveTelemetry(
+            sessions,
+            LiveShardRouter(("redis://fixture",)),
+            (redis,),
+            lease_seconds=DEFAULT_LEASE_SECONDS,
+        )
         # Retain tasks for run-level deduplication and awaited shutdown.
         self.execution_tasks_by_run_id = {}
         self.recovery = RunRecovery(sessions, self, lease_seconds=DEFAULT_LEASE_SECONDS)
@@ -50,11 +58,13 @@ class BrowserRunLauncher:
         @asynccontextmanager
         async def lifespan(application):
             async with original_lifespan(application):
+                await self.live.start()
                 recovery_task = asyncio.create_task(self._recover())
                 try:
                     yield
                 finally:
                     await self._shutdown_background_tasks(recovery_task)
+                    await self.live.close()
 
         app.router.lifespan_context = lifespan
 
@@ -80,6 +90,7 @@ class BrowserRunLauncher:
                 RunStore(session),
                 self.sessions,
                 RunEventWriter(self.sessions, self.redis),
+                live_telemetry=self.live,
                 heartbeat_seconds=FIXTURE_TICK_SECONDS,
             ).execute(run_id)
 

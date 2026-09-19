@@ -46,6 +46,10 @@ def test_recovery_process_retries_database_outage_and_handles_termination(caplog
                 "create_worker_database",
                 return_value=(engine, object()),
             ),
+            patch.object(
+                recovery_process, "TerminalWakePublisher", return_value=AsyncMock()
+            ),
+            patch.object(recovery_process, "LiveConnections", return_value=AsyncMock()),
             patch.object(recovery_process, "RunRecovery", return_value=recovery),
             patch.object(recovery_process.Redis, "from_url", return_value=redis),
             patch.object(recovery_process, "OperationMonitor", return_value=monitor),
@@ -100,6 +104,10 @@ def test_recovery_supervises_monitor_completion_and_closes_resources(
                 "create_worker_database",
                 return_value=(engine, object()),
             ),
+            patch.object(
+                recovery_process, "TerminalWakePublisher", return_value=AsyncMock()
+            ),
+            patch.object(recovery_process, "LiveConnections", return_value=AsyncMock()),
             patch.object(recovery_process, "RunRecovery", return_value=recovery),
             patch.object(recovery_process.Redis, "from_url", return_value=redis),
             patch.object(recovery_process, "OperationMonitor", return_value=monitor),

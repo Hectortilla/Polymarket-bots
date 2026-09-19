@@ -24,6 +24,12 @@ def resource_factory(monkeypatch):
     engine = SimpleNamespace(dispose=AsyncMock())
     redis = SimpleNamespace(aclose=AsyncMock())
     sessions = Mock()
+    monkeypatch.setattr(
+        resources_module, "WorkerLiveTelemetry", Mock(return_value=AsyncMock())
+    )
+    monkeypatch.setattr(
+        resources_module, "TerminalWakePublisher", Mock(return_value=AsyncMock())
+    )
     database = Mock(return_value=(engine, sessions))
     monkeypatch.setattr(resources_module, "create_worker_database", database)
     monkeypatch.setattr(resources_module.Redis, "from_url", Mock(return_value=redis))
@@ -288,3 +294,24 @@ def test_failed_delivery_cleanup_is_reported_after_disposal(resource_factory):
         resource_factory.redis.aclose.assert_awaited_once()
 
     asyncio.run(scenario())
+
+
+def test_live_start_failure_closes_started_terminal_publisher(
+    resource_factory, monkeypatch
+):
+    live = AsyncMock()
+    live.start.side_effect = RuntimeError("live start failed")
+    terminal = AsyncMock()
+    monkeypatch.setattr(
+        resources_module, "WorkerLiveTelemetry", Mock(return_value=live)
+    )
+    monkeypatch.setattr(
+        resources_module, "TerminalWakePublisher", Mock(return_value=terminal)
+    )
+    with pytest.raises(RuntimeError, match="live start failed"):
+        asyncio.run(WorkerResources.create(resource_factory.settings))
+    terminal.start.assert_awaited_once()
+    terminal.close.assert_awaited_once()
+    live.close.assert_awaited_once()
+    resource_factory.redis.aclose.assert_awaited_once()
+    resource_factory.engine.dispose.assert_awaited_once()

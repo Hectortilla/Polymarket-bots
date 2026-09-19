@@ -7,10 +7,10 @@ from uuid import uuid4
 
 import pytest
 from api.catalog.definitions import WINNER_DEFINITION_ID
-from api.events.contracts import LiveStreamHealthEvent
-from api.events.health.store import FeedHealthStore
+from api.events.contracts.payloads.lifecycle import FeedObservation
+from api.events.live.routing import LiveShardRouter
+from api.events.live.service import WorkerLiveTelemetry
 from api.events.store import EventStore
-from api.events.writer import RunEventWriter
 from api.http.protocol import RETRY_AFTER_HEADER
 from api.http.routes.paths import BOTS_PATH, api_route_path
 from api.limits.admission import RunAdmission
@@ -18,7 +18,6 @@ from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.operations.control import OperatorControl
 from api.operations.models import OperatorAuditRow
 from api.operations.schema import OperatorAction, OperatorOutcome
-from api.runs.failures import ExecutionOwnershipLost
 from api.runs.lease_policy import DEFAULT_LEASE_SECONDS
 from api.runs.models import RunRow
 from api.runs.status import RunStatus
@@ -123,18 +122,20 @@ def test_health_sink_refuses_lost_execution_ownership(limits_services, ownership
             _, bot = await account_bot(sessions)
             run = await queue_run(sessions, bot)
             claimed = await claim_run(sessions, run)
-            writer = RunEventWriter(sessions, redis).for_execution(
-                claimed.execution_token, DEFAULT_LEASE_SECONDS
+            live = WorkerLiveTelemetry(
+                sessions,
+                LiveShardRouter(("redis://fixture",)),
+                (redis,),
+                lease_seconds=DEFAULT_LEASE_SECONDS,
             )
-            event = LiveStreamHealthEvent.from_observation(
-                run.id, StreamHealth(0, 0, 0), occurred_at=system_now_utc()
+            handle = live.for_execution(run.id, claimed.execution_token)
+            await live.permits.refresh_once()
+            observation = FeedObservation.from_observation(
+                StreamHealth(0, 0, 0), observed_at=system_now_utc()
             )
-            await writer.health_writer().record(event)
-            before = await redis.get(FeedHealthStore.key(run.id))
+            assert handle.record_health(observation)
             if ownership == "wrong":
-                writer = RunEventWriter(sessions, redis).for_execution(
-                    uuid4(), DEFAULT_LEASE_SECONDS
-                )
+                registration = live.permits.register(run.id, uuid4())
             else:
                 async with sessions() as session:
                     if ownership == "terminal":
@@ -151,9 +152,15 @@ def test_health_sink_refuses_lost_execution_ownership(limits_services, ownership
                             )
                         )
                         await session.commit()
-            with pytest.raises(ExecutionOwnershipLost):
-                await writer.health_writer().record(event)
-            assert await redis.get(FeedHealthStore.key(run.id)) == before
+                registration = handle._registration
+            await live.permits.refresh_once()
+            assert live.permits.permit_for(registration) is None
+            assert not handle.record_health(
+                FeedObservation.from_observation(
+                    StreamHealth(1, 1, 0), observed_at=system_now_utc()
+                )
+            )
+            await live.close()
 
     asyncio.run(scenario())
 
