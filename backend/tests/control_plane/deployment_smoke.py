@@ -24,6 +24,7 @@ from api.deployment.services import (
     REDIS_SERVICE,
     DeploymentService,
 )
+from api.deployment.settings import WORKER_DATABASE_POOL_SIZE_ENV
 from api.execution.policy import WORKER_STOP_GRACE_SECONDS
 from api.execution.recovery.policy import DELIVERY_RETRY_SECONDS
 from api.http.routes.events import LAST_EVENT_ID_HEADER
@@ -94,6 +95,16 @@ class DeploymentSmoke:
             self.require_health()
             release.activate(rollback=True)
             self.require_health()
+            self.compose(
+                "exec",
+                "-T",
+                DeploymentService.WORKER,
+                "python",
+                "-c",
+                "from api.deployment.settings import StartupSettings; "
+                "assert StartupSettings.from_env().worker_database_pool_size == "
+                + self.values[WORKER_DATABASE_POOL_SIZE_ENV],
+            )
             self.require_private_ports()
             self.failed_migration_stays_closed(release)
             self.install_runtime_fixture()
@@ -167,6 +178,7 @@ class DeploymentSmoke:
         for tag in (DEFAULT_POSTGRES_IMAGE, DEFAULT_REDIS_IMAGE):
             self.command("docker", "pull", tag)
         self.values = {
+            WORKER_DATABASE_POOL_SIZE_ENV: "2",
             RELEASE_ID_ENV: subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], text=True
             ).strip(),

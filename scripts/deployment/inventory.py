@@ -6,6 +6,7 @@ from typing import Self
 
 from api.auth.credential_input import EmailAddress
 from api.auth.mail.config import SmtpSecurity, SmtpSettings
+from api.deployment.settings import DEFAULT_WORKER_DATABASE_POOL_SIZE
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from scripts.beta_backup.policy import DEFAULT_BACKUPS_ENABLED
@@ -34,6 +35,9 @@ class DeploymentInventory(IngressSettings):
     smtp_security: SmtpSecurity
     smtp_from: EmailAddress
     alert_to: EmailAddress
+    worker_database_pool_size: int = Field(
+        default=DEFAULT_WORKER_DATABASE_POOL_SIZE, strict=True, gt=0
+    )
     backups_enabled: bool = Field(default=DEFAULT_BACKUPS_ENABLED, strict=True)
     admin_user: str | None = Field(default=None, pattern=r"^[a-z_][a-z0-9_-]*$")
     ignore_lid: bool = Field(default=False, strict=True)

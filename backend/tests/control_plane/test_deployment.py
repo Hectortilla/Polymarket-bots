@@ -13,8 +13,11 @@ from api.deployment.secrets import configured_secret
 from api.deployment.services import APPLICATION_SERVICES, DeploymentService
 from api.deployment.settings import (
     DEFAULT_HEARTBEAT_SECONDS,
+    DEFAULT_WORKER_DATABASE_POOL_SIZE,
     ENVIRONMENT_ENV,
     PROXY_ADDRESS_ENV,
+    WORKER_CONCURRENCY_ENV,
+    WORKER_DATABASE_POOL_SIZE_ENV,
     Environment,
     StartupSettings,
 )
@@ -49,6 +52,9 @@ def production_environment(monkeypatch, tmp_path):
     "changes",
     [
         {"worker_concurrency": 0},
+        {"worker_database_pool_size": 0},
+        {"worker_database_pool_size": -1},
+        {"worker_database_pool_size": "1.5"},
         {"heartbeat_seconds": 0},
         {"lease_seconds": 0},
         {"lease_seconds": DEFAULT_HEARTBEAT_SECONDS},
@@ -170,3 +176,23 @@ def test_rollback_schema_check_failure_never_activates_applications(tmp_path):
         release.activate(rollback=True)
     assert release.compose.run.call_count == 5
     assert release.compose.run.call_args.args[-1] is DeploymentService.CHECK
+
+
+def test_worker_pool_setting_is_independent_of_concurrency(monkeypatch):
+    monkeypatch.setenv(DATABASE_URL_ENV, "postgresql://localhost/worker_test")
+    monkeypatch.setenv(REDIS_URL_ENV, "redis://localhost:6379/1")
+    monkeypatch.delenv(ENVIRONMENT_ENV, raising=False)
+    monkeypatch.delenv(WORKER_DATABASE_POOL_SIZE_ENV, raising=False)
+    settings = StartupSettings.from_env()
+    assert settings.worker_database_pool_size == DEFAULT_WORKER_DATABASE_POOL_SIZE
+    monkeypatch.setenv(WORKER_CONCURRENCY_ENV, "100")
+    assert (
+        StartupSettings.from_env().worker_database_pool_size
+        == DEFAULT_WORKER_DATABASE_POOL_SIZE
+    )
+    monkeypatch.setenv(WORKER_DATABASE_POOL_SIZE_ENV, "2")
+    assert StartupSettings.from_env().worker_database_pool_size == 2
+    for invalid in ("0", "-1", "1.5", "unlimited", ""):
+        monkeypatch.setenv(WORKER_DATABASE_POOL_SIZE_ENV, invalid)
+        with pytest.raises(ValidationError):
+            StartupSettings.from_env()

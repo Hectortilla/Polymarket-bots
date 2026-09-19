@@ -32,6 +32,7 @@ from api.catalog.graphs.contracts import NodeGraph
 from api.catalog.graphs.examples.entry_exit import entry_exit_example
 from api.catalog.graphs.starter import STARTER_NODE_GRAPH
 from api.database import DATABASE_URL_ENV, async_database_url
+from api.deployment.settings import StartupSettings
 from api.events.contracts import (
     BrokerFillEvent,
     BrokerOrderEvent,
@@ -657,7 +658,13 @@ def test_persisted_node_graph_worker_writes_paper_order_and_fill_events(
                 ),
                 graph=NodeGraph.model_validate(threshold_buy_graph()),
             )
-        await execute_run(created.id)
+        resources = await worker_resources.WorkerResources.create(
+            StartupSettings.from_env()
+        )
+        try:
+            await execute_run(created.id, resources=resources)
+        finally:
+            await resources.close()
         async with AsyncSession(engine, expire_on_commit=False) as session:
             restored = await RunStore(session).read(created.id)
             events = await EventStore(session).read(created.id)
@@ -753,7 +760,13 @@ def test_worker_lifecycle_fails_closed_on_corrupt_node_graph_snapshot(
                 await session.commit()
                 run_id = created.id
 
-        await execute_run(run_id)
+        resources = await worker_resources.WorkerResources.create(
+            StartupSettings.from_env()
+        )
+        try:
+            await execute_run(run_id, resources=resources)
+        finally:
+            await resources.close()
 
         async with AsyncSession(engine, expire_on_commit=False) as session:
             restored = await session.get(RunRow, run_id)
@@ -1155,7 +1168,16 @@ def test_duplicate_worker_delivery_starts_one_bot_instance(
                     }
                 ),
             )
-        await asyncio.gather(execute_run(created.id), execute_run(created.id))
+        resources = await worker_resources.WorkerResources.create(
+            StartupSettings.from_env()
+        )
+        try:
+            await asyncio.gather(
+                execute_run(created.id, resources=resources),
+                execute_run(created.id, resources=resources),
+            )
+        finally:
+            await resources.close()
         async with AsyncSession(engine, expire_on_commit=False) as session:
             restored = await RunStore(session).read(created.id)
             events = await EventStore(session).read(created.id)

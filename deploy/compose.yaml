@@ -71,6 +71,9 @@ services:
   worker:
     <<: *application
     command: [worker]
+    environment:
+      <<: *application_environment
+      POLYBOT_WORKER_DATABASE_POOL_SIZE:
     stop_grace_period: 45s
     # Worker market-data connections require outbound access too.
     networks: [services, outbound]

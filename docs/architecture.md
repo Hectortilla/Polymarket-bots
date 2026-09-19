@@ -1201,3 +1201,15 @@ This is a read-only follow-up to Slice 20, with public HTTPS application access.
 It does not enable browser operator mutations, MFA, generalized RBAC or live trading.
 The admin runbook documents field exclusions, deployment checks and the audit-preserving
 downgrade restriction.
+
+
+## Worker connection ownership (September 2026)
+
+The application Taskiq worker owns one database pool and Redis publisher per
+process, injected explicitly into deliveries. Sessions and execution leases remain
+isolated per operation/run. The pool has a configurable positive size (default 10),
+zero overflow and bounded waits. Cancellation/observer drain and terminal writes
+precede normal disposal; failed cleanup leaves unresolved runs to lease recovery.
+The lifecycle contract is in `web-control-plane-architecture.md`; deployment
+budgeting is in `beta-deployment.md`. Framework code and Polymarket adapters are
+unaffected, and this does not increase the four-run beta admission limit.

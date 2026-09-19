@@ -42,6 +42,16 @@ def test_reliability_runbook_and_policy_table_match_code():
         ("Taskiq read block", execution_policy, "TASKIQ_READ_BLOCK_SECONDS"),
         ("Taskiq job drain", execution_policy, "TASKIQ_DRAIN_SECONDS"),
         ("Runtime cleanup", execution_policy, "RUNTIME_CLEANUP_SECONDS"),
+        (
+            "Worker delivery cleanup",
+            execution_policy,
+            "WORKER_DELIVERY_CLEANUP_SECONDS",
+        ),
+        (
+            "Worker resource cleanup",
+            execution_policy,
+            "WORKER_RESOURCE_CLEANUP_SECONDS",
+        ),
         ("Taskiq shutdown", execution_policy, "TASKIQ_SHUTDOWN_SECONDS"),
         ("Worker process stop", execution_policy, "WORKER_STOP_GRACE_SECONDS"),
         ("Recovery process stop", execution_policy, "RECOVERY_STOP_GRACE_SECONDS"),
@@ -52,6 +62,15 @@ def test_reliability_runbook_and_policy_table_match_code():
             f"| {label} | {getattr(module, attribute):g} | `{module.__name__}.{attribute}` |"
         )
     assert table == "\n".join(expected)
+    assert (
+        execution_policy.WORKER_DELIVERY_CLEANUP_SECONDS
+        + execution_policy.WORKER_RESOURCE_CLEANUP_SECONDS
+        < execution_policy.TASKIQ_SHUTDOWN_SECONDS
+    )
+    assert (
+        execution_policy.TASKIQ_DRAIN_SECONDS + execution_policy.TASKIQ_SHUTDOWN_SECONDS
+        < execution_policy.WORKER_STOP_GRACE_SECONDS
+    )
     runbook = Path("docs/beta-deployment.md").read_text()
     procedure = runbook.split("## Release and rollback", 1)[1].split("For rollback", 1)[
         0

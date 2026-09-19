@@ -14,6 +14,7 @@ from api.events.health.contracts import FeedObservation
 from api.events.health.policy import FEED_TTL_SECONDS
 from api.events.health.store import FeedHealthStore
 from api.execution.taskiq_app import broker
+from api.execution.worker.process import start_worker, stop_worker
 from api.limits.errors import ResourceLimitCode, ResourceLimitError
 from api.limits.http import resource_limit_response
 from api.operations.alerts import ALERT_DEFINITIONS
@@ -336,8 +337,8 @@ def test_non_http_scope_passes_through_without_observation():
 
 
 def test_taskiq_broker_registers_process_presence_lifecycle():
-    assert start_worker_presence in broker.event_handlers[TaskiqEvents.WORKER_STARTUP]
-    assert stop_worker_presence in broker.event_handlers[TaskiqEvents.WORKER_SHUTDOWN]
+    assert start_worker in broker.event_handlers[TaskiqEvents.WORKER_STARTUP]
+    assert stop_worker in broker.event_handlers[TaskiqEvents.WORKER_SHUTDOWN]
 
 
 @pytest.mark.parametrize(

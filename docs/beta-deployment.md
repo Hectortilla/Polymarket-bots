@@ -1389,3 +1389,41 @@ This is a read-only follow-up to Slice 20, with public HTTPS application access.
 It does not enable browser operator mutations, MFA, generalized RBAC or live trading.
 The admin runbook documents field exclusions, deployment checks and the audit-preserving
 downgrade restriction.
+
+
+## Worker database connection budget
+
+Each Taskiq worker process owns one PostgreSQL pool shared by its concurrent bot
+runs. `POLYBOT_WORKER_DATABASE_POOL_SIZE` defaults to 10 connections, with zero
+overflow and a five-second acquisition timeout. This is a starting tuning value,
+not a capacity claim. Bot admission remains four active runs globally.
+
+For Ansible deployments, optionally set `polybot_worker_database_pool_size` to a
+positive integer in the inventory, then bootstrap and deploy to apply the runtime
+configuration. Its Python-owned default is rendered into `runtime.env`. For a
+manual runtime manifest, set `POLYBOT_WORKER_DATABASE_POOL_SIZE`; omission uses the
+application default. Compose forwards this setting only to the worker.
+
+Budget the whole deployment before adding worker processes:
+
+`worker processes × pool size + API/recovery/other connections + operational reserve`
+
+Include all replicas, operator/migration/backup clients and overlapping processes
+during deployment. Fit this budget within PostgreSQL's available connection slots
+and measured CPU, memory and I/O capacity. Worker size and task concurrency do not
+automatically increase the pool. Raising the pool cannot remedy excessive query
+volume or a saturated database.
+
+Roll out at the current bot limit. Observe worker connection counts and wait
+latency, pool-acquisition timeouts, heartbeat delay and interrupted runs. On a
+disposable or staging database, use `pg_stat_activity` to inspect sessions and
+application/worker logs for pool timeouts; collect pool checkout/acquisition timing
+in a load test before raising capacity. The connection-bound test exercises 100
+concurrent deliveries through a two-connection pool; it is not a bot-throughput
+benchmark. No new monitoring service is introduced by this change.
+
+Taskiq shutdown allows 30 seconds inside the 45-second worker stop grace period.
+Deliveries get up to 20 seconds to cancel, drain observers and record terminal
+state before the shared publisher and engine close. Cleanup failure remains
+visible and lease recovery handles unresolved runs. Restart the worker to apply
+pool settings; no database migration is required.

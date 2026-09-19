@@ -367,7 +367,7 @@ same worker entrypoint and add task-reference persistence then; no ECS code or
 fields exist in v0.
 
 The Taskiq task is a thin adapter calling
-`api.execution.worker.execute_run(run_id: UUID)`. A class
+`api.execution.worker.execute_run(run_id: UUID, *, resources: WorkerResources)`. A class
 wrapper is unnecessary unless a later implementation creates a real second
 caller with additional owned state.
 
@@ -377,6 +377,20 @@ Lifecycle rows are the shared reservations; `PAPER_BETA` owns account/global cap
 A successful claim returns `ClaimedRunRead` with its required start timestamp.
 Taskiq deliveries wake the database queue drain; stale deliveries are harmless.
 Taskiq concurrency is a separate local process ceiling.
+
+Taskiq worker startup owns one `WorkerResources` bundle per process: one
+PostgreSQL engine/session factory, one Redis publication client and validated
+settings. The task context supplies the bundle explicitly; direct Python callers
+must initialize it and close it in `finally`. A delivery never creates or closes
+these shared resources. Sessions and lease-bound event writers remain isolated
+per operation/run. API, recovery and operator pool behavior is unchanged.
+
+Shutdown closes admission to the bundle and cancels active deliveries, allowing
+up to 20 seconds for runtime/observer cleanup and terminal writes. Redis and the
+engine are then closed together within five seconds; process-presence cleanup
+runs alongside this shutdown. Taskiq allows 30 seconds within the container's
+45-second grace period. Cleanup errors and timeouts fail visibly; unresolved runs
+remain subject to lease recovery after an unclean exit.
 
 After a successful claim, `execute_run`:
 
@@ -689,6 +703,13 @@ heartbeat interval, and lease interval at process startup. Concurrency and
 numeric intervals must be positive, and the lease must exceed the heartbeat.
 The worker-concurrency default derives from `PAPER_BETA.global_active_runs`
 through `DEFAULT_WORKER_CONCURRENCY`.
+
+`POLYBOT_WORKER_DATABASE_POOL_SIZE` is a positive integer, default 10, independent
+of bot concurrency. Worker pools have zero overflow and the existing five-second
+acquisition/connect/command timeouts. Zero is invalid, not an unlimited-pool
+switch. Startup creates the pool after process creation; connections open lazily.
+Exhaustion waits until the acquisition timeout and uses existing failure handling.
+Missing or closing worker resources never trigger a replacement pool.
 
 Multiple Uvicorn workers are supported because ownership and events are not
 process-local. Scaling API workers does not change bot capacity.
@@ -1037,7 +1058,9 @@ Unfinished paper runs report an interruption and require an explicit new launch.
 | Taskiq read block | 1 | `api.execution.policy.TASKIQ_READ_BLOCK_SECONDS` |
 | Taskiq job drain | 1 | `api.execution.policy.TASKIQ_DRAIN_SECONDS` |
 | Runtime cleanup | 10 | `api.execution.policy.RUNTIME_CLEANUP_SECONDS` |
-| Taskiq shutdown | 20 | `api.execution.policy.TASKIQ_SHUTDOWN_SECONDS` |
+| Worker delivery cleanup | 20 | `api.execution.policy.WORKER_DELIVERY_CLEANUP_SECONDS` |
+| Worker resource cleanup | 5 | `api.execution.policy.WORKER_RESOURCE_CLEANUP_SECONDS` |
+| Taskiq shutdown | 30 | `api.execution.policy.TASKIQ_SHUTDOWN_SECONDS` |
 | Worker process stop | 45 | `api.execution.policy.WORKER_STOP_GRACE_SECONDS` |
 | Recovery process stop | 15 | `api.execution.policy.RECOVERY_STOP_GRACE_SECONDS` |
 <!-- reliability-policy:end -->

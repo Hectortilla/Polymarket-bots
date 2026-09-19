@@ -17,7 +17,8 @@ from api.auth.models import UserRow
 from api.bots.store import BotStore
 from api.catalog.definitions import CATALOG, WINNER_DEFINITION_ID
 from api.deployment.settings import StartupSettings
-from api.execution.worker.resources import drain_queued_runs_with_worker_resources
+from api.execution.worker import execute_run
+from api.execution.worker.resources import WorkerResources
 from api.http.app import create_app
 from api.limits.errors import ResourceLimitError
 from api.limits.redis.contracts import RESOURCE_KEY_PREFIX
@@ -145,7 +146,7 @@ def process_drain_queue(settings):
         patch.object(StartupSettings, "from_env", return_value=startup),
         patch("api.execution.worker.lifecycle.run_claimed_bot", runtime),
     ):
-        asyncio.run(drain_queued_runs_with_worker_resources())
+        asyncio.run(drain_worker(startup))
     return completed
 
 
@@ -161,4 +162,12 @@ def process_gated_queue_drain(settings, started, release):
         patch.object(StartupSettings, "from_env", return_value=startup),
         patch("api.execution.worker.lifecycle.run_claimed_bot", runtime),
     ):
-        asyncio.run(drain_queued_runs_with_worker_resources())
+        asyncio.run(drain_worker(startup))
+
+
+async def drain_worker(settings):
+    resources = await WorkerResources.create(settings)
+    try:
+        await execute_run(uuid4(), resources=resources)
+    finally:
+        await resources.close()

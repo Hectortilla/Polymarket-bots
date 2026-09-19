@@ -40,9 +40,14 @@ configured in `.env`):
 
 ```sh
 uv run uvicorn api.http.app:app --env-file .env --reload --no-proxy-headers
-uv run --env-file .env taskiq worker api.execution.taskiq_app:broker --workers 1 --max-async-tasks 4 --wait-tasks-timeout 1 --shutdown-timeout 20
+uv run --env-file .env taskiq worker api.execution.taskiq_app:broker --workers 1 --max-async-tasks 4 --wait-tasks-timeout 1 --shutdown-timeout 30
 uv run --env-file .env python -m api.execution.recovery
 ```
+
+Worker deliveries share one process-owned PostgreSQL pool, defaulting to 10
+connections with zero overflow. Set `POLYBOT_WORKER_DATABASE_POOL_SIZE` to a
+positive integer to override it; task concurrency does not change this budget.
+See [worker connection budgeting](docs/beta-deployment.md#worker-database-connection-budget).
 
 Restart API, worker and recovery processes together after changing their Python package
 paths; drain an old worker queue before switching to the renamed task entrypoint.

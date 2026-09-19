@@ -2555,3 +2555,41 @@ activation and selection of the first admin account remain operator rollout step
 The public privacy description now discloses administrator inspection. A pre-existing
 browser retention assertion is updated to follow the existing Privacy link after
 the prior account-copy change; retention behavior is unchanged.
+
+
+## Follow-up: Shared, bounded worker database pools (September 19, 2026)
+
+Implementation scope: process-owned Taskiq worker resources, explicit dependency
+injection, a configurable PostgreSQL pool defaulting to 10 with zero overflow,
+and ordered bounded shutdown. API/recovery/operator factory callers retain their
+existing pooling behavior; public contracts and database schema are unchanged.
+The serialized task still carries only its run ID, while direct Python callers
+supply initialized worker resources explicitly. Taskiq shutdown is 30 seconds
+within the existing 45-second container grace period.
+
+Acceptance covers resource/session isolation, delivery completion/failure/
+cancellation, startup and shutdown failures, pool exhaustion, deployment settings,
+and real Taskiq cancellation with observer drain and terminal events. Real
+PostgreSQL contention tests run 100 concurrent operations through a pool capped at
+two connections. The deployment smoke also overrides the worker pool to two and
+verifies the setting inside the deployed worker.
+
+Keep existing bot admission limits for rollout; this work does not establish
+thousand-bot capacity. Shared feeds, chart-query reduction, write batching,
+retention redesign and capacity expansion remain separate follow-ups. No protocol
+integration changed, so no Polymarket MCP implementation check was required.
+
+Validation: `uv run pytest -ra` passed all 1,964 backend tests with disposable
+PostgreSQL and Redis configured; no tests skipped. Targeted Ruff checks and
+`git diff --check` passed. `uv build` produced the wheel/source distribution,
+and the wheel includes both worker lifecycle modules. The disposable
+`PYTHONPATH=backend/tests uv run python -m control_plane.deployment_smoke` passed
+HTTPS, ownership, queueing, Stop, reload/SSE, worker loss, release and rollback
+with the two-connection override. Compose configuration was also checked with
+the override omitted, preserving the application default.
+
+Documentation-drift audit: updated the internal execution signature, worker
+resource ownership, pool configuration/Ansible override, connection-budget
+formula, local startup command and shutdown-policy table. Policy-table and
+runtime-template tests verify the affected contracts. No intentional protocol,
+public API, database-schema or bot-capacity divergence was introduced.

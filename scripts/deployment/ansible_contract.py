@@ -9,6 +9,10 @@ from api.auth.mail.config import (
     SMTP_PORT_ENV,
     SMTP_SECURITY_ENV,
 )
+from api.deployment.settings import (
+    DEFAULT_WORKER_DATABASE_POOL_SIZE,
+    WORKER_DATABASE_POOL_SIZE_ENV,
+)
 from api.http.routes.paths import HEALTH_PATH, api_route_path
 from polybot.persistence.hashing import SHA256_ALGORITHM
 
@@ -64,6 +68,7 @@ from scripts.host_operations.policy import (
 
 
 class RuntimeKeys(TypedDict):
+    worker_database_pool_size: str
     origin: str
     http_port: str
     secrets: str
@@ -119,6 +124,7 @@ class ServiceUnitNames(TypedDict):
 
 
 class DeploymentContract(TypedDict):
+    worker_database_pool_size: int
     cloudflare_user: str
     ingress_modes: dict[str, str]
     ssh_user: str
@@ -156,6 +162,7 @@ class DeploymentContract(TypedDict):
 
 def deployment_contract() -> DeploymentContract:
     return {
+        "worker_database_pool_size": DEFAULT_WORKER_DATABASE_POOL_SIZE,
         "cloudflare_user": CLOUDFLARE_SERVICE_USER,
         "ingress_modes": {mode.name.lower(): mode.value for mode in IngressMode},
         "ssh_user": DEPLOYMENT_SSH_USER,
@@ -185,6 +192,7 @@ def deployment_contract() -> DeploymentContract:
         "uv_version": UV_VERSION,
         "activation_timeout": ACTIVATION_TIMEOUT_SECONDS,
         "runtime_keys": {
+            "worker_database_pool_size": WORKER_DATABASE_POOL_SIZE_ENV,
             "origin": AUTH_ORIGIN_ENV,
             "http_port": HTTP_PORT_ENV,
             "secrets": SECRETS_DIRECTORY_ENV,

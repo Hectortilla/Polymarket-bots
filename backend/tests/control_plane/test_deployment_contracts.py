@@ -26,9 +26,11 @@ from api.deployment.services import (
 )
 from api.deployment.settings import (
     API_PORT,
+    DEFAULT_WORKER_DATABASE_POOL_SIZE,
     ENVIRONMENT_ENV,
     PROXY_ADDRESS_ENV,
     STORAGE_PROBE_PATH_ENV,
+    WORKER_DATABASE_POOL_SIZE_ENV,
 )
 from api.deployment.settings import Environment as RuntimeEnvironment
 from api.execution.config import REDIS_URL_ENV
@@ -199,6 +201,7 @@ def test_ci_inventory_adapter_returns_only_supported_platform():
 def test_runtime_template_uses_the_manifest_key_contract():
     rendered = parse_values(render_template("runtime.env.j2"))
     expected = {
+        WORKER_DATABASE_POOL_SIZE_ENV,
         AUTH_ORIGIN_ENV,
         HTTP_PORT_ENV,
         SECRETS_DIRECTORY_ENV,
@@ -208,12 +211,27 @@ def test_runtime_template_uses_the_manifest_key_contract():
         SMTP_FROM_ENV,
     }
     assert set(rendered) == expected
+    assert rendered[WORKER_DATABASE_POOL_SIZE_ENV] == str(
+        DEFAULT_WORKER_DATABASE_POOL_SIZE
+    )
     assert rendered[HTTP_PORT_ENV] == str(DEFAULT_HTTP_PORT)
     assert rendered[SMTP_PORT_ENV] == str(DEFAULT_SMTP_PORT)
     assert rendered[SMTP_SECURITY_ENV] == DEFAULT_SMTP_SECURITY
     assert rendered[SECRETS_DIRECTORY_ENV] == str(
         DEFAULT_APP_DIRECTORY / SECRETS_DIRECTORY_NAME
     )
+
+
+def test_worker_pool_inventory_override_reaches_runtime_manifest():
+    values = inventory_values() | {"polybot_worker_database_pool_size": 3}
+    assert DeploymentInventory.model_validate(values).worker_database_pool_size == 3
+    rendered = parse_values(render_template("runtime.env.j2", values))
+    assert rendered[WORKER_DATABASE_POOL_SIZE_ENV] == "3"
+    for invalid in (0, -1, "3", True):
+        with pytest.raises(ValueError):
+            DeploymentInventory.model_validate(
+                values | {"polybot_worker_database_pool_size": invalid}
+            )
 
 
 @pytest.mark.parametrize("security,starttls", [("starttls", "on"), ("tls", "off")])
@@ -468,6 +486,10 @@ def test_compose_safety_storage_and_full_environment_contract():
     assert set(
         services[DeploymentService.RECOVERY]["environment"]
     ) == expected_common | {STORAGE_PROBE_PATH_ENV}
+    assert services[DeploymentService.WORKER]["environment"] == {
+        **common,
+        WORKER_DATABASE_POOL_SIZE_ENV: None,
+    }
     image_roles = {
         DeploymentService.API: ImageField.BACKEND,
         DeploymentService.WORKER: ImageField.BACKEND,

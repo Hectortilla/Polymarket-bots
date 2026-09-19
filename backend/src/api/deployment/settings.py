@@ -31,12 +31,14 @@ class Environment(StrEnum):
 
 ENVIRONMENT_ENV = "POLYBOT_ENVIRONMENT"
 WORKER_CONCURRENCY_ENV = "POLYBOT_WORKER_CONCURRENCY"
+WORKER_DATABASE_POOL_SIZE_ENV = "POLYBOT_WORKER_DATABASE_POOL_SIZE"
 HEARTBEAT_SECONDS_ENV = "POLYBOT_HEARTBEAT_SECONDS"
 LEASE_SECONDS_ENV = "POLYBOT_LEASE_SECONDS"
 PROXY_ADDRESS_ENV = "POLYBOT_PROXY_ADDRESS"
 STORAGE_PROBE_PATH_ENV = "POLYBOT_STORAGE_PROBE_PATH"
 DEPLOYMENT_STORAGE_PROBE_PATH = Path("/storage")
 DEFAULT_WORKER_CONCURRENCY = PAPER_BETA.global_active_runs
+DEFAULT_WORKER_DATABASE_POOL_SIZE = 10
 
 API_WORKERS = 2
 API_PORT = 8000
@@ -51,6 +53,9 @@ class StartupSettings(BaseModel):
     seed_development_account: bool = False
     release_id: str = "development"
     worker_concurrency: int = Field(default=DEFAULT_WORKER_CONCURRENCY, gt=0)
+    worker_database_pool_size: int = Field(
+        default=DEFAULT_WORKER_DATABASE_POOL_SIZE, gt=0
+    )
     heartbeat_seconds: float = Field(
         default=DEFAULT_HEARTBEAT_SECONDS, gt=0, allow_inf_nan=False
     )
@@ -106,6 +111,9 @@ class StartupSettings(BaseModel):
             release_id=os.getenv(RELEASE_ID_ENV, "development"),
             worker_concurrency=os.getenv(
                 WORKER_CONCURRENCY_ENV, DEFAULT_WORKER_CONCURRENCY
+            ),
+            worker_database_pool_size=os.getenv(
+                WORKER_DATABASE_POOL_SIZE_ENV, DEFAULT_WORKER_DATABASE_POOL_SIZE
             ),
             heartbeat_seconds=os.getenv(
                 HEARTBEAT_SECONDS_ENV, DEFAULT_HEARTBEAT_SECONDS
